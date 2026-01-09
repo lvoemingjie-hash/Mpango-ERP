@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: mpango_postgres
+    environment:
+      POSTGRES_DB: mpango_erp
+      POSTGRES_USER: mpango
+      POSTGRES_PASSWORD: mpango123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - mpango_network
+
+  # Redis for caching and Celery
+  redis:
+    image: redis:7-alpine
+    container_name: mpango_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mpango_network
+
+  # Backend API (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mpango_backend
+    environment:
+      - DATABASE_URL=postgresql://mpango:mpango123@postgres:5432/mpango_erp
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+    networks:
+      - mpango_network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend (React + Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mpango_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - mpango_network
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    command: npm run dev
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  mpango_network:
+    driver: bridge

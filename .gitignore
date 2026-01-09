@@ -1,0 +1,22 @@
+# Editor / IDE
+.vscode/
+.idea/
+
+# Python / Node / 通用依赖目录（以后有的话就会被自动忽略）
+venv/
+env/
+node_modules/
+
+# Build / dist
+dist/
+build/
+out/
+
+# Logs
+*.log
+logs/
+
+# Env / secrets
+.env
+.env.*
+!.env.example

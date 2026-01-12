@@ -1,0 +1,222 @@
+# Mpango ERP System - Spec-Kit Data Model Definition (MVP Version)
+# Version: 1.0.0
+# Author: Jeff Lee + GPT
+# Purpose: Initialize ERP system for wholesale-retail supply chain
+
+project:
+  name: "Mpango ERP"
+  version: "1.0.0"
+  description: "B2B wholesale-retail ERP system for African market"
+  environment: production
+
+modules:
+  - crm
+  - sales
+  - inventory
+  - procurement
+  - user
+
+entities:
+
+  Wholesaler:
+    fields:
+      id: uuid
+      code: string        # tenant_code, regex ^[A-Z0-9]+$, unique, immutable
+      name: string
+      address: string
+      contact: string
+      plan_type: string
+      created_at: datetime
+
+  Retailer:
+    fields:
+      id: uuid
+      phone: string
+      name: string
+      invite_code: string          # 一次性邀请码，用于注册
+      invite_used_at: datetime     # 首次使用时间
+      status: enum(active, pending, inactive)
+      created_at: datetime
+
+  User:
+    fields:
+      id: uuid
+      username: string
+      password_hash: string
+      tenant_id: ref(Wholesaler)
+      created_at: datetime
+
+  Role:
+    fields:
+      id: uuid
+      name: string          # admin | sales | warehouse | finance
+      tenant_id: ref(Wholesaler)
+      created_at: datetime
+
+  Permission:
+    fields:
+      id: uuid
+      code: string          # e.g. orders:read
+      description: string
+      created_at: datetime
+
+  UserRole:
+    fields:
+      id: uuid
+      user_id: ref(User)
+      role_id: ref(Role)
+      created_at: datetime
+
+  RolePermission:
+    fields:
+      id: uuid
+      role_id: ref(Role)
+      permission_id: ref(Permission)
+      created_at: datetime
+
+  Binding:
+    fields:
+      id: uuid
+      wholesaler_id: ref(Wholesaler)
+      retailer_id: ref(Retailer)
+      created_at: datetime
+
+  CustomerProfile:
+    fields:
+      id: uuid
+      wholesaler_id: ref(Wholesaler)
+      retailer_id: ref(Retailer)
+      credit_limit: float
+      current_balance: float
+      customer_level: string
+      tags: list(string)
+      created_at: datetime
+
+  PriceRule:
+    fields:
+      id: uuid
+      wholesaler_id: ref(Wholesaler)
+      product_id: ref(Product)
+      retailer_id: ref(Retailer)
+      special_price: float
+
+  CreditRecord:
+    fields:
+      id: uuid
+      retailer_id: ref(Retailer)
+      order_id: ref(Order)
+      used_amount: float
+      repayment_due: date
+      status: enum(active, overdue, closed)
+
+  Product:
+    fields:
+      id: uuid
+      name: string
+      sku: string
+      category: string
+      unit: string
+      price: float
+      image_url: string
+      status: enum(active, inactive)
+      created_at: datetime
+
+  ProductAttribute:
+    fields:
+      id: uuid
+      product_id: ref(Product)
+      key: string
+      value: string
+
+  Inventory:
+    fields:
+      id: uuid
+      product_id: ref(Product)
+      warehouse_id: uuid
+      quantity: integer
+      updated_at: datetime
+
+  InventoryLog:
+    fields:
+      id: uuid
+      product_id: ref(Product)
+      change_type: enum(sale, purchase, adjustment, cancel)
+      qty_change: integer
+      reference_id: uuid
+      operator_id: ref(User)
+      created_at: datetime
+
+  Supplier:
+    fields:
+      id: uuid
+      wholesaler_id: ref(Wholesaler)
+      name: string
+      contact_name: string
+      phone: string
+      address: string
+      status: enum(active, inactive)
+
+  PurchaseOrder:
+    fields:
+      id: uuid
+      wholesaler_id: ref(Wholesaler)
+      supplier_id: ref(Supplier)
+      total_amount: float
+      status: enum(draft, pending, received, completed, canceled)
+      created_at: datetime
+      expected_date: date
+
+  PurchaseOrderItem:
+    fields:
+      id: uuid
+      purchase_order_id: ref(PurchaseOrder)
+      product_id: ref(Product)
+      quantity: integer
+      price: float
+
+  InboundLog:
+    fields:
+      id: uuid
+      purchase_order_id: ref(PurchaseOrder)
+      product_id: ref(Product)
+      quantity: integer
+      received_at: datetime
+      operator_id: ref(User)
+
+  Order:
+    fields:
+      id: uuid
+      retailer_id: ref(Retailer)
+      wholesaler_id: ref(Wholesaler)
+      total_amount: float
+      status: enum(pending, confirmed, shipped, completed, canceled)
+      created_at: datetime
+
+  OrderItem:
+    fields:
+      id: uuid
+      order_id: ref(Order)
+      product_id: ref(Product)
+      quantity: integer
+      price: float
+
+  Payment:
+    fields:
+      id: uuid
+      order_id: ref(Order)
+      amount: float
+      method: enum(cash, transfer, credit)
+      transaction_id: string
+      paid_at: datetime
+
+relations:
+  - Wholesaler has_many Retailer through Binding
+  - Retailer has_many Order
+  - Order has_many OrderItem
+  - Product has_one Inventory
+  - Supplier has_many PurchaseOrder
+  - PurchaseOrder has_many PurchaseOrderItem
+  - PurchaseOrder has_many InboundLog
+  - Retailer has_one CustomerProfile
+  - Product has_many ProductAttribute
+  - Wholesaler has_many Supplier

@@ -1,54 +1,175 @@
+"""
+Security utilities for Mpango ERP.
+Implements JWT token handling and password hashing.
+
+Per multi_tenancy_spec.md section 4.1, JWT claims must contain:
+- user_id: UUID
+- tenant_id: UUID  
+- tenant_schema: string
+- exp: expiration timestamp
+- type: "access" or "refresh"
+"""
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
-from jose import JWTError, jwt
+from typing import Optional
+
+from jose import jwt, JWTError, ExpiredSignatureError
 from passlib.context import CryptContext
-from fastapi import HTTPException, status
+from pydantic import BaseModel
 
-from .config import settings
+from core.config import get_settings
 
+
+# Custom exceptions
+class InvalidTokenError(Exception):
+    """Raised when JWT token is invalid (bad signature, malformed, etc.)."""
+    pass
+
+
+class ExpiredTokenError(Exception):
+    """Raised when JWT token has expired."""
+    pass
+
+
+# Password hashing context using bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码"""
-    return pwd_context.verify(plain_password, hashed_password)
+class TokenPayload(BaseModel):
+    """
+    JWT token payload schema.
+    Per multi_tenancy_spec.md section 4.1.
+    """
+    user_id: str
+    tenant_id: str
+    tenant_schema: str
+    exp: Optional[int] = None
+    type: str = "access"  # "access" or "refresh"
 
 
-def get_password_hash(password: str) -> str:
-    """生成密码哈希"""
+def create_access_token(
+    user_id: str,
+    tenant_id: str,
+    tenant_schema: str,
+    expires_delta: Optional[timedelta] = None
+) -> str:
+    """
+    Create JWT access token with tenant claims.
+    
+    Args:
+        user_id: User UUID as string
+        tenant_id: Tenant UUID as string
+        tenant_schema: Tenant schema name (e.g., "t_abc123...")
+        expires_delta: Optional custom expiration time
+        
+    Returns:
+        Encoded JWT string
+    """
+    settings = get_settings()
+    
+    if expires_delta is None:
+        expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    expire = datetime.utcnow() + expires_delta
+    
+    payload = {
+        "user_id": user_id,
+        "tenant_id": tenant_id,
+        "tenant_schema": tenant_schema,
+        "exp": expire,
+        "type": "access"
+    }
+    
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def create_refresh_token(
+    user_id: str,
+    tenant_id: str,
+    tenant_schema: str,
+    expires_delta: Optional[timedelta] = None
+) -> str:
+    """
+    Create JWT refresh token with tenant claims.
+    
+    Args:
+        user_id: User UUID as string
+        tenant_id: Tenant UUID as string
+        tenant_schema: Tenant schema name (e.g., "t_abc123...")
+        expires_delta: Optional custom expiration time
+        
+    Returns:
+        Encoded JWT string
+    """
+    settings = get_settings()
+    
+    if expires_delta is None:
+        expires_delta = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    
+    expire = datetime.utcnow() + expires_delta
+    
+    payload = {
+        "user_id": user_id,
+        "tenant_id": tenant_id,
+        "tenant_schema": tenant_schema,
+        "exp": expire,
+        "type": "refresh"
+    }
+    
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def decode_token(token: str) -> TokenPayload:
+    """
+    Decode and validate JWT token.
+    
+    Args:
+        token: JWT token string
+        
+    Returns:
+        TokenPayload with decoded claims
+        
+    Raises:
+        ExpiredTokenError: If token has expired
+        InvalidTokenError: If token is invalid (bad signature, malformed)
+    """
+    settings = get_settings()
+    
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM]
+        )
+        return TokenPayload(**payload)
+    except ExpiredSignatureError:
+        raise ExpiredTokenError("Token has expired")
+    except JWTError as e:
+        raise InvalidTokenError(f"Invalid token: {str(e)}")
+
+
+# Password utilities using bcrypt
+def hash_password(password: str) -> str:
+    """
+    Hash password using bcrypt.
+    
+    Args:
+        password: Plain text password
+        
+    Returns:
+        Hashed password string
+    """
     return pwd_context.hash(password)
 
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-    """创建访问令牌"""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify password against hash.
     
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
-
-
-def create_refresh_token(data: Dict[str, Any]) -> str:
-    """创建刷新令牌"""
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
-
-
-def verify_token(token: str) -> Dict[str, Any]:
-    """验证令牌"""
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    Args:
+        plain_password: Plain text password to verify
+        hashed_password: Stored password hash
+        
+    Returns:
+        True if password matches, False otherwise
+    """
+    return pwd_context.verify(plain_password, hashed_password)

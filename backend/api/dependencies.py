@@ -1,98 +1,114 @@
-from typing import Optional
-from uuid import UUID
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+"""
+FastAPI dependencies for Mpango ERP.
+Provides dependency injection for database sessions and authentication.
+
+Per multi_tenancy_spec.md section 4.2:
+- Tenant schema is ONLY derived from JWT claims
+- Never from headers or request parameters
+- This ensures tenant isolation cannot be bypassed
+"""
+from typing import AsyncGenerator, Optional
+from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.session import get_tenant_db
-from core.security import verify_token
-from core.exceptions import invalid_credentials, permission_denied
-from crud.user import user
-from models.user import User
-
-security = HTTPBearer()
+from database.session import get_db, get_tenant_db
+from api.middleware.auth import JWTBearer
+from core.security import TokenPayload
 
 
-async def get_current_user_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> dict:
-    """从JWT令牌中获取用户信息"""
-    try:
-        payload = verify_token(credentials.credentials)
-        return payload
-    except Exception:
-        raise invalid_credentials()
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Dependency for public schema database session.
+    
+    Usage:
+        @app.get("/endpoint")
+        async def endpoint(db: AsyncSession = Depends(get_db_session)):
+            # Use db session
+    """
+    async for session in get_db():
+        yield session
+
+
+async def get_tenant_session(
+    tenant_schema: Optional[str] = Header(None, alias="X-Tenant-Schema")
+) -> AsyncGenerator[AsyncSession, None]:
+    """
+    DEPRECATED: Use get_tenant_db_session instead.
+    
+    This dependency reads tenant_schema from header, which is insecure.
+    Kept for backward compatibility during migration.
+    
+    Args:
+        tenant_schema: Tenant schema from header
+        
+    Yields:
+        AsyncSession with tenant search_path set
+        
+    Raises:
+        HTTPException: If tenant_schema is missing
+    """
+    if not tenant_schema:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Tenant-Schema header is required"
+        )
+    
+    async for session in get_tenant_db(tenant_schema):
+        yield session
+
+
+# JWT Bearer authentication instance
+_jwt_bearer = JWTBearer()
+
+
+async def get_current_user_context(
+    token: TokenPayload = Depends(_jwt_bearer)
+) -> TokenPayload:
+    """
+    Get current user context from JWT token.
+    
+    Extracts and validates JWT from Authorization header.
+    Returns TokenPayload with user_id, tenant_id, tenant_schema.
+    
+    Args:
+        token: Decoded JWT payload from JWTBearer
+        
+    Returns:
+        TokenPayload with user context
+        
+    Raises:
+        HTTPException 401: If token is missing, invalid, or expired
+    """
+    return token
 
 
 async def get_tenant_db_session(
-    token_payload: dict = Depends(get_current_user_token)
-) -> AsyncSession:
-    """获取租户数据库会话"""
-    tenant_schema = token_payload.get("tenant_schema")
-    if not tenant_schema:
-        raise invalid_credentials()
+    token: TokenPayload = Depends(get_current_user_context)
+) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Get database session with tenant search_path set from JWT claims.
     
-    async with get_tenant_db(tenant_schema) as db:
-        yield db
-
-
-async def get_current_user(
-    token_payload: dict = Depends(get_current_user_token),
-    db: AsyncSession = Depends(get_tenant_db_session)
-) -> User:
-    """获取当前用户"""
-    user_id = token_payload.get("user_id")
-    if not user_id:
-        raise invalid_credentials()
+    CRITICAL: Tenant schema is ONLY derived from JWT claims.
+    This ensures tenant isolation cannot be bypassed by headers or params.
     
-    try:
-        user_uuid = UUID(user_id)
-    except ValueError:
-        raise invalid_credentials()
+    Per multi_tenancy_spec.md section 4.2:
+    - Sets search_path to "<tenant_schema>", public
+    - ORM models automatically resolve to correct tenant schema
     
-    db_user = await user.get(db, id=user_uuid)
-    if not db_user:
-        raise invalid_credentials()
-    
-    if not await user.is_active(db_user):
+    Args:
+        token: JWT payload containing tenant_schema
+        
+    Yields:
+        AsyncSession with tenant search_path set
+        
+    Raises:
+        HTTPException 401: If tenant_schema claim is missing
+    """
+    if not token.tenant_schema:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "MISSING_TENANT", "message": "Tenant schema missing from token"}
         )
     
-    return db_user
-
-
-def require_permission(permission_code: str):
-    """权限检查装饰器"""
-    async def permission_checker(
-        current_user: User = Depends(get_current_user),
-        db: AsyncSession = Depends(get_tenant_db_session)
-    ) -> User:
-        # 获取用户权限
-        user_permissions = await user.get_user_permissions(db, user_id=current_user.id)
-        
-        # 检查是否有所需权限
-        if permission_code not in user_permissions:
-            raise permission_denied()
-        
-        return current_user
-    
-    return permission_checker
-
-
-async def get_current_active_superuser(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_tenant_db_session)
-) -> User:
-    """获取当前超级用户（admin角色）"""
-    user_permissions = await user.get_user_permissions(db, user_id=current_user.id)
-    
-    # 检查是否有admin权限（简化检查，实际可能需要更复杂的逻辑）
-    if "users:create" not in user_permissions:  # admin应该有所有权限
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    return current_user
+    async for session in get_tenant_db(token.tenant_schema):
+        yield session

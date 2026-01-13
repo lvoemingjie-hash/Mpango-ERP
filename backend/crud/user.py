@@ -1,106 +1,330 @@
-from typing import Optional
+"""
+CRUD operations for User model.
+Operates on tenant schema.
+"""
+from typing import Optional, List, Tuple
 from uuid import UUID
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from crud.base import CRUDBase
-from models.user import User, Role, Permission
-from schemas.user import UserCreate, UserUpdate, RoleCreate, RoleUpdate, PermissionCreate, PermissionRead
-from core.security import get_password_hash, verify_password
+from models.user import User, Role
+from core.security import hash_password
 
 
-class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
-    async def get_by_email(self, db: AsyncSession, *, email: str) -> Optional[User]:
-        """根据邮箱获取用户"""
-        result = await db.execute(
-            select(User).where(
-                User.email == email,
-                User.is_deleted == False
-            )
-        )
-        return result.scalar_one_or_none()
-
-    async def create(self, db: AsyncSession, *, obj_in: UserCreate) -> User:
-        """创建用户（加密密码）"""
-        create_data = obj_in.dict()
-        create_data["password_hash"] = get_password_hash(create_data.pop("password"))
+async def get_user_by_email(
+    db: AsyncSession,
+    email: str
+) -> Optional[User]:
+    """
+    Get user by email.
+    
+    Queries tenant schema (search_path must be set).
+    Used during login to find user by email.
+    
+    Args:
+        db: Database session (tenant schema)
+        email: User email
         
-        db_obj = User(**create_data)
-        db.add(db_obj)
-        await db.commit()
-        await db.refresh(db_obj)
-        return db_obj
+    Returns:
+        User if found, None otherwise
+    """
+    result = await db.execute(
+        select(User).where(User.email == email)
+    )
+    return result.scalar_one_or_none()
 
-    async def authenticate(
-        self, db: AsyncSession, *, email: str, password: str
-    ) -> Optional[User]:
-        """验证用户凭据"""
-        user = await self.get_by_email(db, email=email)
-        if not user:
-            return None
-        if not verify_password(password, user.password_hash):
-            return None
-        return user
 
-    async def is_active(self, user: User) -> bool:
-        """检查用户是否激活"""
-        return user.is_active
-
-    async def get_user_with_roles(self, db: AsyncSession, *, user_id: UUID) -> Optional[User]:
-        """获取用户及其角色"""
-        result = await db.execute(
-            select(User)
-            .options(selectinload(User.roles).selectinload(UserRole.role))
-            .where(
-                User.id == user_id,
-                User.is_deleted == False
-            )
-        )
-        return result.scalar_one_or_none()
-
-    async def get_user_permissions(self, db: AsyncSession, *, user_id: UUID) -> list[str]:
-        """获取用户的所有权限代码"""
-        # 这里需要复杂的查询来获取用户通过角色获得的所有权限
-        # 简化版本，实际应该通过JOIN查询优化
-        user = await self.get_user_with_roles(db, user_id=user_id)
-        if not user:
-            return []
+async def get_user_with_permissions(
+    db: AsyncSession,
+    user_id: str
+) -> Optional[User]:
+    """
+    Get user with roles and permissions loaded.
+    
+    Eagerly loads:
+    - user.roles (list of Role)
+    - role.permissions (list of Permission for each role)
+    
+    Used by RBAC middleware to check permissions.
+    
+    Args:
+        db: Database session (tenant schema)
+        user_id: User UUID as string
         
-        permissions = set()
-        for user_role in user.roles:
-            role = user_role.role
-            for role_permission in role.permissions:
-                permissions.add(role_permission.permission.code)
+    Returns:
+        User with roles and permissions loaded, None if not found
+    """
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        return None
+    
+    result = await db.execute(
+        select(User)
+        .where(User.id == user_uuid)
+        .options(
+            selectinload(User.roles).selectinload(Role.permissions)
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_id(
+    db: AsyncSession,
+    user_id: str
+) -> Optional[User]:
+    """
+    Get user by ID with roles loaded.
+    
+    Args:
+        db: Database session (tenant schema)
+        user_id: User UUID as string
         
-        return list(permissions)
+    Returns:
+        User with roles loaded, None if not found
+    """
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        return None
+    
+    result = await db.execute(
+        select(User)
+        .where(User.id == user_uuid)
+        .where(User.is_deleted == False)
+        .options(selectinload(User.roles))
+    )
+    return result.scalar_one_or_none()
 
 
-class CRUDRole(CRUDBase[Role, RoleCreate, RoleUpdate]):
-    async def get_by_name(self, db: AsyncSession, *, name: str) -> Optional[Role]:
-        """根据名称获取角色"""
-        result = await db.execute(
-            select(Role).where(
-                Role.name == name,
-                Role.is_deleted == False
-            )
-        )
-        return result.scalar_one_or_none()
+async def get_users_paginated(
+    db: AsyncSession,
+    page: int = 1,
+    size: int = 10
+) -> Tuple[List[User], int]:
+    """
+    Get paginated list of users.
+    
+    Args:
+        db: Database session (tenant schema)
+        page: Page number (1-based)
+        size: Items per page
+        
+    Returns:
+        Tuple of (users list, total count)
+    """
+    # Get total count
+    count_result = await db.execute(
+        select(func.count(User.id)).where(User.is_deleted == False)
+    )
+    total = count_result.scalar_one()
+    
+    # Get paginated users
+    offset = (page - 1) * size
+    result = await db.execute(
+        select(User)
+        .where(User.is_deleted == False)
+        .options(selectinload(User.roles))
+        .order_by(User.created_at.desc())
+        .offset(offset)
+        .limit(size)
+    )
+    users = list(result.scalars().all())
+    
+    return users, total
 
 
-class CRUDPermission(CRUDBase[Permission, PermissionCreate, PermissionRead]):
-    async def get_by_code(self, db: AsyncSession, *, code: str) -> Optional[Permission]:
-        """根据代码获取权限"""
-        result = await db.execute(
-            select(Permission).where(
-                Permission.code == code,
-                Permission.is_deleted == False
-            )
-        )
-        return result.scalar_one_or_none()
+async def create_user(
+    db: AsyncSession,
+    email: str,
+    password: str,
+    full_name: Optional[str] = None,
+    created_by: Optional[str] = None
+) -> User:
+    """
+    Create a new user.
+    
+    Args:
+        db: Database session (tenant schema)
+        email: User email
+        password: Plain text password (will be hashed)
+        full_name: Optional full name
+        created_by: UUID of user creating this user
+        
+    Returns:
+        Created User object
+    """
+    user = User(
+        email=email,
+        password_hash=hash_password(password),
+        full_name=full_name,
+        is_active=True
+    )
+    
+    if created_by:
+        try:
+            user.created_by = UUID(created_by)
+        except ValueError:
+            pass
+    
+    db.add(user)
+    await db.flush()
+    await db.refresh(user, ["roles"])
+    
+    return user
 
 
-# 创建CRUD实例
-user = CRUDUser(User)
-role = CRUDRole(Role)
-permission = CRUDPermission(Permission)
+async def update_user(
+    db: AsyncSession,
+    user: User,
+    email: Optional[str] = None,
+    full_name: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    updated_by: Optional[str] = None
+) -> User:
+    """
+    Update user fields.
+    
+    Args:
+        db: Database session (tenant schema)
+        user: User object to update
+        email: New email (optional)
+        full_name: New full name (optional)
+        is_active: New active status (optional)
+        updated_by: UUID of user making the update
+        
+    Returns:
+        Updated User object
+    """
+    if email is not None:
+        user.email = email
+    if full_name is not None:
+        user.full_name = full_name
+    if is_active is not None:
+        user.is_active = is_active
+    
+    if updated_by:
+        try:
+            user.updated_by = UUID(updated_by)
+        except ValueError:
+            pass
+    
+    await db.flush()
+    await db.refresh(user, ["roles"])
+    
+    return user
+
+
+async def soft_delete_user(
+    db: AsyncSession,
+    user: User,
+    deleted_by: Optional[str] = None
+) -> User:
+    """
+    Soft delete a user (set is_deleted=True).
+    
+    Args:
+        db: Database session (tenant schema)
+        user: User object to delete
+        deleted_by: UUID of user performing deletion
+        
+    Returns:
+        Deleted User object
+    """
+    user.soft_delete()
+    
+    if deleted_by:
+        try:
+            user.updated_by = UUID(deleted_by)
+        except ValueError:
+            pass
+    
+    await db.flush()
+    
+    return user
+
+
+async def assign_roles_to_user(
+    db: AsyncSession,
+    user: User,
+    role_ids: List[str],
+    updated_by: Optional[str] = None
+) -> User:
+    """
+    Assign roles to a user (replaces existing roles).
+    
+    Args:
+        db: Database session (tenant schema)
+        user: User object
+        role_ids: List of role UUIDs to assign
+        updated_by: UUID of user making the change
+        
+    Returns:
+        Updated User object with new roles
+        
+    Raises:
+        ValueError: If any role_id is invalid
+    """
+    # Convert and validate role IDs
+    role_uuids = []
+    for rid in role_ids:
+        try:
+            role_uuids.append(UUID(rid))
+        except ValueError:
+            raise ValueError(f"Invalid role ID: {rid}")
+    
+    # Fetch roles
+    result = await db.execute(
+        select(Role).where(Role.id.in_(role_uuids))
+    )
+    roles = list(result.scalars().all())
+    
+    # Check all roles were found
+    found_ids = {role.id for role in roles}
+    missing = [str(rid) for rid in role_uuids if rid not in found_ids]
+    if missing:
+        raise ValueError(f"Roles not found: {', '.join(missing)}")
+    
+    # Assign roles
+    user.roles = roles
+    
+    if updated_by:
+        try:
+            user.updated_by = UUID(updated_by)
+        except ValueError:
+            pass
+    
+    await db.flush()
+    await db.refresh(user, ["roles"])
+    
+    return user
+
+
+async def email_exists(
+    db: AsyncSession,
+    email: str,
+    exclude_user_id: Optional[str] = None
+) -> bool:
+    """
+    Check if email already exists.
+    
+    Args:
+        db: Database session (tenant schema)
+        email: Email to check
+        exclude_user_id: User ID to exclude from check (for updates)
+        
+    Returns:
+        True if email exists, False otherwise
+    """
+    query = select(User.id).where(User.email == email)
+    
+    if exclude_user_id:
+        try:
+            user_uuid = UUID(exclude_user_id)
+            query = query.where(User.id != user_uuid)
+        except ValueError:
+            pass
+    
+    result = await db.execute(query)
+    return result.scalar_one_or_none() is not None

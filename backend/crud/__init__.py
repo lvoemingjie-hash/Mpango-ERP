@@ -1,11 +1,11 @@
-from .base import CRUDBase
-from .user import user, role, permission
-from .wholesaler import wholesaler
+"""
+CRUD operations for Mpango ERP.
+"""
+from crud.wholesaler import get_wholesaler_by_code
+from crud.user import get_user_by_email, get_user_with_permissions
 
 __all__ = [
-    "CRUDBase",
-    "user",
-    "role", 
-    "permission",
-    "wholesaler"
+    "get_wholesaler_by_code",
+    "get_user_by_email",
+    "get_user_with_permissions"
 ]

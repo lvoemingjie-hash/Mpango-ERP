@@ -1,64 +1,134 @@
-from sqlalchemy import Column, String, Boolean, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
-from database.base import BaseModel
+"""
+User, Role, Permission models - Tenant schema RBAC tables.
+Implements database_contract.md tenant schema tables.
+"""
+from typing import Optional, List, TYPE_CHECKING
+
+from sqlalchemy import String, Boolean, Text, Index
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from models.base import BaseModel
+
+if TYPE_CHECKING:
+    from models.user import Role
 
 
 class User(BaseModel):
-    """用户模型 - 存储在租户schema中"""
+    """
+    User model - stored in tenant schema.
+    
+    Implements database_contract.md users table:
+    - email: varchar(255), UNIQUE, NOT NULL
+    - password_hash: varchar(255), NOT NULL
+    - full_name: text, NULL
+    - is_active: boolean, NOT NULL, DEFAULT true
+    """
     __tablename__ = "users"
+    __table_args__ = (
+        Index('ix_users_email', 'email', unique=True),
+    )
     
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    full_name = Column(String(255), nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
+    email: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True
+    )
+    password_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False
+    )
+    full_name: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
     
-    # 用户角色关系（多对多）
-    roles = relationship("UserRole", back_populates="user")
+    # Relationships
+    roles: Mapped[List["Role"]] = relationship(
+        "Role",
+        secondary="user_roles",
+        back_populates="users",
+        lazy="selectin"
+    )
 
 
 class Role(BaseModel):
-    """角色模型 - 存储在租户schema中"""
+    """
+    Role model - stored in tenant schema.
+    
+    Implements database_contract.md roles table:
+    - name: varchar(100), UNIQUE, NOT NULL
+    - description: text, NULL
+    
+    Default roles per rbac_matrix.md: admin, sales, warehouse, finance
+    """
     __tablename__ = "roles"
+    __table_args__ = (
+        Index('ix_roles_name', 'name', unique=True),
+    )
     
-    name = Column(String(100), unique=True, nullable=False, index=True)
-    description = Column(String(500), nullable=True)
+    name: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        nullable=False,
+        index=True
+    )
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True
+    )
     
-    # 角色权限关系（多对多）
-    permissions = relationship("RolePermission", back_populates="role")
-    users = relationship("UserRole", back_populates="role")
+    # Relationships
+    users: Mapped[List["User"]] = relationship(
+        "User",
+        secondary="user_roles",
+        back_populates="roles",
+        lazy="selectin"
+    )
+    permissions: Mapped[List["Permission"]] = relationship(
+        "Permission",
+        secondary="role_permissions",
+        back_populates="roles",
+        lazy="selectin"
+    )
 
 
 class Permission(BaseModel):
-    """权限模型 - 存储在租户schema中"""
+    """
+    Permission model - stored in tenant schema.
+    
+    Implements database_contract.md permissions table:
+    - code: varchar(100), UNIQUE, NOT NULL (format: <resource>:<action>)
+    - description: text, NULL
+    
+    Permission codes per rbac_matrix.md: users:read, orders:create, etc.
+    """
     __tablename__ = "permissions"
+    __table_args__ = (
+        Index('ix_permissions_code', 'code', unique=True),
+    )
     
-    code = Column(String(100), unique=True, nullable=False, index=True)  # e.g., 'users:read'
-    description = Column(String(500), nullable=True)
+    code: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="Permission code format: <resource>:<action>"
+    )
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True
+    )
     
-    # 权限角色关系（多对多）
-    roles = relationship("RolePermission", back_populates="permission")
-
-
-class UserRole(BaseModel):
-    """用户角色关联表"""
-    __tablename__ = "user_roles"
-    
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), nullable=False)
-    
-    # 关系
-    user = relationship("User", back_populates="roles")
-    role = relationship("Role", back_populates="users")
-
-
-class RolePermission(BaseModel):
-    """角色权限关联表"""
-    __tablename__ = "role_permissions"
-    
-    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), nullable=False)
-    permission_id = Column(UUID(as_uuid=True), ForeignKey("permissions.id", ondelete="CASCADE"), nullable=False)
-    
-    # 关系
-    role = relationship("Role", back_populates="permissions")
-    permission = relationship("Permission", back_populates="roles")
+    # Relationships
+    roles: Mapped[List["Role"]] = relationship(
+        "Role",
+        secondary="role_permissions",
+        back_populates="permissions",
+        lazy="selectin"
+    )

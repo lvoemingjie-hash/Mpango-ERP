@@ -1,38 +1,83 @@
+"""
+Configuration module for Mpango ERP Backend.
+Loads settings from environment variables with .env file support.
+"""
+from functools import lru_cache
 from typing import List
 from pydantic_settings import BaseSettings
+from pydantic import Field
 
 
 class Settings(BaseSettings):
-    # Database
-    DATABASE_URL: str = "postgresql://mpango:mpango123@localhost:5432/mpango_erp"
+    """Application settings loaded from environment variables."""
     
-    # Security
-    SECRET_KEY: str = "your-secret-key-change-in-production"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Database - REQUIRED
+    DATABASE_URL: str = Field(
+        ...,
+        description="PostgreSQL connection string"
+    )
+    DATABASE_ECHO: bool = Field(
+        default=False,
+        description="Echo SQL queries for debugging"
+    )
+    
+    # Security - REQUIRED
+    SECRET_KEY: str = Field(
+        ...,
+        description="Secret key for JWT signing"
+    )
+    ALGORITHM: str = Field(
+        default="HS256",
+        description="JWT signing algorithm"
+    )
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
+        default=30,
+        description="Access token expiration in minutes"
+    )
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(
+        default=7,
+        description="Refresh token expiration in days"
+    )
+    
+    # Application
+    APP_NAME: str = Field(
+        default="Mpango ERP",
+        description="Application name"
+    )
+    DEBUG: bool = Field(
+        default=False,
+        description="Debug mode"
+    )
     
     # CORS
-    ALLOWED_ORIGINS: List[str] = [
-        "http://localhost:5173",  # Vite dev server (避免3000端口)
-        "http://localhost:3001",  # 备用前端端口
-        "http://127.0.0.1:5173",
-    ]
-    
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
-    
-    # AWS S3 (可选)
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "us-east-1"
-    S3_BUCKET_NAME: str = "mpango-erp-files"
+    CORS_ORIGINS: List[str] = Field(
+        default=["http://localhost:3000", "http://localhost:5173"],
+        description="Allowed CORS origins"
+    )
     
     # Multi-tenancy
-    DEFAULT_TENANT_SCHEMA: str = "t_dev"  # 开发环境默认租户
+    DEFAULT_TENANT_SCHEMA: str = Field(
+        default="t_dev",
+        description="Default tenant schema for development"
+    )
     
     class Config:
         env_file = ".env"
+        case_sensitive = True
 
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    """
+    Get cached settings instance.
+    Raises ValidationError if required config is missing.
+    """
+    return Settings()
+
+
+# For backward compatibility - will raise if required vars missing
+try:
+    settings = Settings()
+except Exception:
+    # Allow import without .env for testing/CI
+    settings = None  # type: ignore

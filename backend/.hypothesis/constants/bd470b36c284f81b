@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\models\associations.py
+# hypothesis_version: 6.150.1
+
+['CASCADE', 'permission_id', 'permissions.id', 'role_id', 'role_permissions', 'roles.id', 'user_id', 'user_roles', 'users.id']

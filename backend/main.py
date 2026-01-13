@@ -1,44 +1,113 @@
+"""
+Mpango ERP Backend - Main FastAPI Application.
+
+v0.1.0-platform - Stabilization release with:
+- Full RBAC enforcement
+- Tenant isolation
+- Order state machine
+- Idempotency middleware
+- Health checks
+"""
+import yaml
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
-from api.v1 import auth, users
-from core.config import settings
+from core.config import get_settings
+from api.v1 import auth, users, roles, orders, health
+from api.middleware.idempotency import IdempotencyMiddleware
+
+
+# Get settings
+settings = get_settings()
+
+# Version
+__version__ = "0.1.0"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时执行
-    print("🚀 Mpango ERP Backend starting...")
+    """Application lifespan manager."""
+    print(f"🚀 Mpango ERP Backend v{__version__} starting...")
+    print(f"📋 Loading OpenAPI spec from docs/contracts/openapi.yaml")
     yield
-    # 关闭时执行
     print("🛑 Mpango ERP Backend shutting down...")
 
 
+# Create FastAPI app
 app = FastAPI(
     title="Mpango ERP API",
     description="Multi-tenant ERP system for African wholesale-retail operations",
-    version="1.0.0",
+    version=__version__,
     lifespan=lifespan
 )
+
+
+def custom_openapi():
+    """
+    Load and serve OpenAPI specification from canonical source.
+    
+    Implements requirement 4.1: Load OpenAPI spec from docs/contracts/openapi.yaml
+    """
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    try:
+        # Load canonical OpenAPI spec
+        with open("docs/contracts/openapi.yaml", "r") as f:
+            openapi_schema = yaml.safe_load(f)
+        
+        # Cache the schema
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+    except FileNotFoundError:
+        # Fallback to FastAPI's generated schema if file not found
+        print("⚠️  Warning: docs/contracts/openapi.yaml not found, using generated schema")
+        return get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+
+
+# Override OpenAPI schema generation
+app.openapi = custom_openapi
+
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 路由注册
+# Idempotency middleware (for safe request retries)
+app.add_middleware(IdempotencyMiddleware)
+
+
+# Include routers
+app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(roles.router, prefix="/api/v1/roles", tags=["roles"])
+app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
 
+
+# Root endpoint
 @app.get("/")
 async def root():
-    return {"message": "Mpango ERP API", "version": "1.0.0"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+    """Root endpoint."""
+    return {
+        "message": "Mpango ERP API",
+        "version": __version__,
+        "status": "v0.1-platform",
+        "endpoints": {
+            "health": "/health",
+            "api": "/api/v1"
+        }
+    }

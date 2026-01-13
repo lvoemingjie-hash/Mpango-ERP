@@ -1,21 +1,28 @@
 """
 Role management API endpoints.
-Implements openapi.yaml /roles/* endpoints as stubs.
+Implements openapi.yaml /roles/* endpoints.
 
-All endpoints return 501 Not Implemented for skeleton.
 RBAC permissions enforced per rbac_matrix.md.
+Tenant isolation enforced via JWT-derived search_path.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.dependencies import get_tenant_db_session
 from api.middleware.rbac import RequirePermission
 from core.security import TokenPayload
-from schemas.user import RoleListResponse
+from crud.role import get_all_roles
+from schemas.user import RoleListResponse, RoleRead
 
 router = APIRouter()
 
 
 @router.get("", response_model=RoleListResponse, status_code=status.HTTP_200_OK)
-async def list_roles(token: TokenPayload = Depends(RequirePermission("roles:read"))):
+async def list_roles(
+    token: TokenPayload = Depends(RequirePermission("roles:read")),
+    db: AsyncSession = Depends(get_tenant_db_session)
+):
     """
     List all roles.
     
@@ -24,9 +31,19 @@ async def list_roles(token: TokenPayload = Depends(RequirePermission("roles:read
     Requires: roles:read permission
     
     Returns:
-        501 Not Implemented (skeleton)
+        RoleListResponse with all roles
     """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="List roles endpoint not implemented in skeleton"
+    roles = await get_all_roles(db)
+    
+    return RoleListResponse(
+        success=True,
+        data=[
+            RoleRead(
+                id=str(role.id),
+                name=role.name,
+                description=role.description
+            )
+            for role in roles
+        ],
+        timestamp=datetime.utcnow()
     )

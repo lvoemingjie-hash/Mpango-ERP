@@ -159,12 +159,12 @@
 - [ ] Use Hypothesis for property-based testing
 
 ## Task 16: Write RBAC Enforcement Tests
-- [ ] Create `backend/tests/test_rbac_enforcement.py`:
+- [x] Create `backend/tests/test_rbac_enforcement.py`:
   - Test user with permission gets 200
   - Test user without permission gets 403
   - Test admin user bypasses permission check
   - Test permission loaded from role_permissions
-- [ ] Properties: P4, P5
+- [x] Properties: P4, P5
 
 ## Task 17: Update AI Ledger
 - [x] Create `ai-ledger/backend/2026-01-12_identity_security_implementation.md`:

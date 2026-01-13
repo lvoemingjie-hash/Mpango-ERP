@@ -1,8 +1,12 @@
 """
 Mpango ERP Backend - Main FastAPI Application.
 
-This is the skeleton implementation that proves OpenAPI ↔ DB ↔ FastAPI alignment.
-No business logic is implemented - all endpoints return 501 Not Implemented.
+v0.1.0-platform - Stabilization release with:
+- Full RBAC enforcement
+- Tenant isolation
+- Order state machine
+- Idempotency middleware
+- Health checks
 """
 import yaml
 from contextlib import asynccontextmanager
@@ -12,17 +16,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from core.config import get_settings
-from api.v1 import auth, users, roles, orders
+from api.v1 import auth, users, roles, orders, health
+from api.middleware.idempotency import IdempotencyMiddleware
 
 
 # Get settings
 settings = get_settings()
 
+# Version
+__version__ = "0.1.0"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    print("🚀 Mpango ERP Backend starting...")
+    print(f"🚀 Mpango ERP Backend v{__version__} starting...")
     print(f"📋 Loading OpenAPI spec from docs/contracts/openapi.yaml")
     yield
     print("🛑 Mpango ERP Backend shutting down...")
@@ -31,8 +39,8 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Mpango ERP API",
-    description="Multi-tenant ERP system for African wholesale-retail operations (Skeleton)",
-    version="1.0.0",
+    description="Multi-tenant ERP system for African wholesale-retail operations",
+    version=__version__,
     lifespan=lifespan
 )
 
@@ -78,8 +86,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Idempotency middleware (for safe request retries)
+app.add_middleware(IdempotencyMiddleware)
+
 
 # Include routers
+app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(roles.router, prefix="/api/v1/roles", tags=["roles"])
@@ -92,22 +104,10 @@ async def root():
     """Root endpoint."""
     return {
         "message": "Mpango ERP API",
-        "version": "1.0.0",
-        "status": "skeleton",
-        "note": "All endpoints return 501 Not Implemented"
-    }
-
-
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint.
-    
-    Implements requirement 4.5: Include health check endpoint at /health
-    """
-    return {
-        "status": "healthy",
-        "service": "mpango-erp-backend",
-        "version": "1.0.0"
+        "version": __version__,
+        "status": "v0.1-platform",
+        "endpoints": {
+            "health": "/health",
+            "api": "/api/v1"
+        }
     }

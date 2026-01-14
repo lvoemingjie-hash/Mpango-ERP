@@ -7,18 +7,10 @@ import {
   CubeIcon,
   ShoppingCartIcon,
   TruckIcon,
-  CurrencyDollarIcon,
+  CpuChipIcon,
 } from '@heroicons/react/24/outline'
 import { NavLink } from 'react-router-dom'
-
-const navigation = [
-  { name: 'Dashboard', href: '/', icon: HomeIcon },
-  { name: 'Users', href: '/users', icon: UsersIcon },
-  { name: 'Products', href: '/products', icon: CubeIcon },
-  { name: 'Orders', href: '/orders', icon: ShoppingCartIcon },
-  { name: 'Procurement', href: '/procurement', icon: TruckIcon },
-  { name: 'Finance', href: '/finance', icon: CurrencyDollarIcon },
-]
+import { useAuthStore } from '../../stores/authStore'
 
 interface SidebarProps {
   open: boolean
@@ -26,6 +18,38 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ open, setOpen }) => {
+  const { role } = useAuthStore()
+
+  // Base navigation for all users
+  const baseNavigation = [
+    { name: 'Dashboard', href: '/', icon: HomeIcon },
+    { name: 'Orders', href: '/orders', icon: ShoppingCartIcon },
+  ]
+
+  // Role-specific navigation
+  const retailerNavigation = [
+    ...baseNavigation,
+    { name: 'Create Order', href: '/retailer', icon: CubeIcon },
+  ]
+
+  const wholesalerNavigation = [
+    ...baseNavigation,
+    { name: 'Order Management', href: '/wholesaler', icon: TruckIcon },
+    { name: 'Users', href: '/users', icon: UsersIcon },
+  ]
+
+  // Development tools (remove in production)
+  const devNavigation = [
+    { name: 'V0 Playground', href: '/v0-playground', icon: CpuChipIcon },
+  ]
+
+  // Choose navigation based on role
+  const navigation = role === 'wholesaler' 
+    ? [...wholesalerNavigation, ...devNavigation]
+    : role === 'retailer'
+    ? [...retailerNavigation, ...devNavigation]
+    : baseNavigation
+
   return (
     <>
       {/* Mobile sidebar */}

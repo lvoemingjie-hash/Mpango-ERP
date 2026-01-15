@@ -31,6 +31,7 @@ class OrderItemCreate(BaseModel):
     """
     product_id: str = Field(..., description="Product UUID")
     quantity: int = Field(..., ge=1, description="Item quantity")
+    unit_price: Decimal = Field(..., ge=0, description="Unit price")
     
     model_config = {"from_attributes": True}
 

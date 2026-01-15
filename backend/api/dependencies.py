@@ -7,8 +7,8 @@ Per multi_tenancy_spec.md section 4.2:
 - Never from headers or request parameters
 - This ensures tenant isolation cannot be bypassed
 """
-from typing import AsyncGenerator, Optional
-from fastapi import Depends, Header, HTTPException, status
+from typing import AsyncGenerator
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.session import get_db, get_tenant_db
@@ -26,34 +26,6 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             # Use db session
     """
     async for session in get_db():
-        yield session
-
-
-async def get_tenant_session(
-    tenant_schema: Optional[str] = Header(None, alias="X-Tenant-Schema")
-) -> AsyncGenerator[AsyncSession, None]:
-    """
-    DEPRECATED: Use get_tenant_db_session instead.
-    
-    This dependency reads tenant_schema from header, which is insecure.
-    Kept for backward compatibility during migration.
-    
-    Args:
-        tenant_schema: Tenant schema from header
-        
-    Yields:
-        AsyncSession with tenant search_path set
-        
-    Raises:
-        HTTPException: If tenant_schema is missing
-    """
-    if not tenant_schema:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-Tenant-Schema header is required"
-        )
-    
-    async for session in get_tenant_db(tenant_schema):
         yield session
 
 

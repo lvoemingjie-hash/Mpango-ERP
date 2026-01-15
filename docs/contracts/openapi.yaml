@@ -893,7 +893,7 @@ components:
 
     OrderItemCreate:
       type: object
-      required: [product_id, quantity]
+      required: [product_id, quantity, unit_price]
       properties:
         product_id:
           type: string
@@ -901,6 +901,10 @@ components:
         quantity:
           type: integer
           minimum: 1
+        unit_price:
+          type: number
+          format: float
+          minimum: 0
 
     OrderCreateRequest:
       type: object

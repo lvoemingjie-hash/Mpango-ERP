@@ -144,7 +144,8 @@ async def create_order(
     items = [
         {
             "product_id": item.product_id,
-            "quantity": item.quantity
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
         }
         for item in request.items
     ]

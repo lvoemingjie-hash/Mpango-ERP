@@ -11,22 +11,45 @@ Uses in-memory cache for MVP (Redis in production).
 import hashlib
 import json
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, Callable
-from functools import wraps
+from typing import Optional, Dict, Any, Callable, Protocol
 
 from fastapi import Request, Response, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from core.security import decode_token
 
-# In-memory cache for MVP (replace with Redis in production)
-_idempotency_cache: Dict[str, Dict[str, Any]] = {}
 
 # Cache TTL (24 hours)
 IDEMPOTENCY_TTL = timedelta(hours=24)
 
 # Methods that support idempotency
 IDEMPOTENT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+class IdempotencyStore(Protocol):
+    async def get(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        ...
+
+    async def set(self, cache_key: str, value: Dict[str, Any]) -> None:
+        ...
+
+    async def delete(self, cache_key: str) -> None:
+        ...
+
+
+class InMemoryIdempotencyStore:
+    def __init__(self):
+        self._cache: Dict[str, Dict[str, Any]] = {}
+
+    async def get(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        return self._cache.get(cache_key)
+
+    async def set(self, cache_key: str, value: Dict[str, Any]) -> None:
+        self._cache[cache_key] = value
+
+    async def delete(self, cache_key: str) -> None:
+        self._cache.pop(cache_key, None)
 
 
 class IdempotencyMiddleware(BaseHTTPMiddleware):
@@ -43,6 +66,16 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         - Missing key on mutating requests: proceeds without caching
         - Duplicate key: returns cached response with 200 OK
     """
+
+    def __init__(
+        self,
+        app,
+        store: Optional[IdempotencyStore] = None,
+        ttl: timedelta = IDEMPOTENCY_TTL,
+    ):
+        super().__init__(app)
+        self._store: IdempotencyStore = store or InMemoryIdempotencyStore()
+        self._ttl = ttl
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request with idempotency handling."""
@@ -57,16 +90,41 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         # No key provided - proceed without caching
         if not idempotency_key:
             return await call_next(request)
+
+        # Try to derive tenant/user context from Authorization header (best effort)
+        tenant_schema = "anonymous"
+        user_id = "anonymous"
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            raw_token = auth_header.split(" ", 1)[1].strip()
+            try:
+                payload = decode_token(raw_token)
+                tenant_schema = payload.tenant_schema or tenant_schema
+                user_id = payload.user_id or user_id
+            except Exception:
+                # Invalid/expired token should not break idempotency; auth layer will handle 401
+                pass
+
+        body_bytes = await request.body()
+
+        async def _receive() -> dict:
+            return {"type": "http.request", "body": body_bytes, "more_body": False}
+
+        request._receive = _receive  # type: ignore[attr-defined]
+        body_hash = hashlib.sha256(body_bytes).hexdigest()
         
-        # Create cache key (includes path and method for uniqueness)
+        # Create cache key (tenant/user/method/path/body-hash to prevent cross-tenant/user collisions)
         cache_key = self._make_cache_key(
-            idempotency_key,
-            request.method,
-            str(request.url.path)
+            idempotency_key=idempotency_key,
+            tenant_schema=tenant_schema,
+            user_id=user_id,
+            method=request.method,
+            path=str(request.url.path),
+            body_hash=body_hash,
         )
         
         # Check for cached response
-        cached = self._get_cached_response(cache_key)
+        cached = await self._get_cached_response(cache_key)
         if cached:
             return JSONResponse(
                 content=cached["body"],
@@ -78,7 +136,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             )
         
         # Mark as in-progress to prevent race conditions
-        self._mark_in_progress(cache_key)
+        await self._mark_in_progress(cache_key)
         
         try:
             # Execute the actual request
@@ -98,11 +156,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                     body_json = {"raw": body.decode()}
                 
                 # Cache the response
-                self._cache_response(
-                    cache_key,
-                    body_json,
-                    response.status_code
-                )
+                await self._cache_response(cache_key, body_json, response.status_code)
                 
                 # Return new response with body
                 return JSONResponse(
@@ -115,19 +169,27 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             
             return response
             
-        except Exception as e:
+        except Exception:
             # Remove in-progress marker on error
-            self._remove_cache(cache_key)
+            await self._remove_cache(cache_key)
             raise
     
-    def _make_cache_key(self, key: str, method: str, path: str) -> str:
-        """Create unique cache key from idempotency key, method, and path."""
-        combined = f"{key}:{method}:{path}"
+    def _make_cache_key(
+        self,
+        *,
+        idempotency_key: str,
+        tenant_schema: str,
+        user_id: str,
+        method: str,
+        path: str,
+        body_hash: str,
+    ) -> str:
+        combined = f"{tenant_schema}:{user_id}:{method}:{path}:{body_hash}:{idempotency_key}"
         return hashlib.sha256(combined.encode()).hexdigest()
-    
-    def _get_cached_response(self, cache_key: str) -> Optional[Dict[str, Any]]:
+
+    async def _get_cached_response(self, cache_key: str) -> Optional[Dict[str, Any]]:
         """Get cached response if exists and not expired."""
-        cached = _idempotency_cache.get(cache_key)
+        cached = await self._store.get(cache_key)
         
         if not cached:
             return None
@@ -144,63 +206,32 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         
         # Check expiration
         if datetime.utcnow() > cached["expires_at"]:
-            del _idempotency_cache[cache_key]
+            await self._store.delete(cache_key)
             return None
         
         return cached
     
-    def _mark_in_progress(self, cache_key: str) -> None:
+    async def _mark_in_progress(self, cache_key: str) -> None:
         """Mark a request as in-progress."""
-        _idempotency_cache[cache_key] = {
+        await self._store.set(cache_key, {
             "in_progress": True,
             "expires_at": datetime.utcnow() + timedelta(minutes=5)
-        }
+        })
     
-    def _cache_response(
+    async def _cache_response(
         self,
         cache_key: str,
         body: Dict[str, Any],
         status_code: int
     ) -> None:
         """Cache a response."""
-        _idempotency_cache[cache_key] = {
+        await self._store.set(cache_key, {
             "body": body,
             "status_code": status_code,
-            "expires_at": datetime.utcnow() + IDEMPOTENCY_TTL,
+            "expires_at": datetime.utcnow() + self._ttl,
             "in_progress": False
-        }
-    
-    def _remove_cache(self, cache_key: str) -> None:
+        })
+
+    async def _remove_cache(self, cache_key: str) -> None:
         """Remove cache entry."""
-        _idempotency_cache.pop(cache_key, None)
-
-
-def clear_idempotency_cache() -> int:
-    """
-    Clear all idempotency cache entries.
-    Returns number of entries cleared.
-    
-    Useful for testing and maintenance.
-    """
-    count = len(_idempotency_cache)
-    _idempotency_cache.clear()
-    return count
-
-
-def cleanup_expired_entries() -> int:
-    """
-    Remove expired entries from cache.
-    Returns number of entries removed.
-    
-    Should be called periodically in production.
-    """
-    now = datetime.utcnow()
-    expired_keys = [
-        key for key, value in _idempotency_cache.items()
-        if value.get("expires_at") and now > value["expires_at"]
-    ]
-    
-    for key in expired_keys:
-        del _idempotency_cache[key]
-    
-    return len(expired_keys)
+        await self._store.delete(cache_key)

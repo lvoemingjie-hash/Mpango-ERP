@@ -35,9 +35,17 @@ class TestIdempotencyMiddleware:
     def __init__(self, app=None):
         self.app = app
     
-    def _make_cache_key(self, key: str, method: str, path: str) -> str:
-        """Create unique cache key from idempotency key, method, and path."""
-        combined = f"{key}:{method}:{path}"
+    def _make_cache_key(
+        self,
+        *,
+        idempotency_key: str,
+        tenant_schema: str,
+        user_id: str,
+        method: str,
+        path: str,
+        body_hash: str,
+    ) -> str:
+        combined = f"{tenant_schema}:{user_id}:{method}:{path}:{body_hash}:{idempotency_key}"
         return hashlib.sha256(combined.encode()).hexdigest()
     
     def _get_cached_response(self, cache_key: str) -> Optional[Dict[str, Any]]:
@@ -115,29 +123,109 @@ class TestIdempotencyMiddlewareCacheKey:
     def test_make_cache_key_unique(self):
         """Cache keys should be unique for different inputs."""
         middleware = TestIdempotencyMiddleware(app=None)
-        
-        key1 = middleware._make_cache_key("key1", "POST", "/orders")
-        key2 = middleware._make_cache_key("key2", "POST", "/orders")
-        key3 = middleware._make_cache_key("key1", "PUT", "/orders")
-        key4 = middleware._make_cache_key("key1", "POST", "/users")
+
+        body_hash1 = hashlib.sha256(b"{\"a\":1}").hexdigest()
+        body_hash2 = hashlib.sha256(b"{\"a\":2}").hexdigest()
+
+        key1 = middleware._make_cache_key(
+            idempotency_key="key1",
+            tenant_schema="t1",
+            user_id="u1",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash1,
+        )
+        key2 = middleware._make_cache_key(
+            idempotency_key="key2",
+            tenant_schema="t1",
+            user_id="u1",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash1,
+        )
+        key3 = middleware._make_cache_key(
+            idempotency_key="key1",
+            tenant_schema="t1",
+            user_id="u1",
+            method="PUT",
+            path="/orders",
+            body_hash=body_hash1,
+        )
+        key4 = middleware._make_cache_key(
+            idempotency_key="key1",
+            tenant_schema="t1",
+            user_id="u1",
+            method="POST",
+            path="/users",
+            body_hash=body_hash1,
+        )
+        key5 = middleware._make_cache_key(
+            idempotency_key="key1",
+            tenant_schema="t2",
+            user_id="u1",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash1,
+        )
+        key6 = middleware._make_cache_key(
+            idempotency_key="key1",
+            tenant_schema="t1",
+            user_id="u2",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash1,
+        )
+        key7 = middleware._make_cache_key(
+            idempotency_key="key1",
+            tenant_schema="t1",
+            user_id="u1",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash2,
+        )
         
         # All keys should be different
-        assert len({key1, key2, key3, key4}) == 4
+        assert len({key1, key2, key3, key4, key5, key6, key7}) == 7
 
     def test_make_cache_key_deterministic(self):
         """Same inputs should produce same cache key."""
         middleware = TestIdempotencyMiddleware(app=None)
-        
-        key1 = middleware._make_cache_key("test-key", "POST", "/orders")
-        key2 = middleware._make_cache_key("test-key", "POST", "/orders")
+
+        body_hash = hashlib.sha256(b"{}").hexdigest()
+
+        key1 = middleware._make_cache_key(
+            idempotency_key="test-key",
+            tenant_schema="t_abc",
+            user_id="u_123",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash,
+        )
+        key2 = middleware._make_cache_key(
+            idempotency_key="test-key",
+            tenant_schema="t_abc",
+            user_id="u_123",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash,
+        )
         
         assert key1 == key2
 
     def test_cache_key_is_sha256_hash(self):
         """Cache key should be a SHA256 hash (64 hex chars)."""
         middleware = TestIdempotencyMiddleware(app=None)
-        
-        key = middleware._make_cache_key("test", "POST", "/orders")
+
+        body_hash = hashlib.sha256(b"{}").hexdigest()
+
+        key = middleware._make_cache_key(
+            idempotency_key="test",
+            tenant_schema="t",
+            user_id="u",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash,
+        )
         
         assert len(key) == 64
         assert all(c in "0123456789abcdef" for c in key)
@@ -145,18 +233,50 @@ class TestIdempotencyMiddlewareCacheKey:
     def test_different_methods_different_keys(self):
         """Same idempotency key with different methods should produce different cache keys."""
         middleware = TestIdempotencyMiddleware(app=None)
-        
-        post_key = middleware._make_cache_key("same-key", "POST", "/orders")
-        put_key = middleware._make_cache_key("same-key", "PUT", "/orders")
+
+        body_hash = hashlib.sha256(b"{}").hexdigest()
+
+        post_key = middleware._make_cache_key(
+            idempotency_key="same-key",
+            tenant_schema="t",
+            user_id="u",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash,
+        )
+        put_key = middleware._make_cache_key(
+            idempotency_key="same-key",
+            tenant_schema="t",
+            user_id="u",
+            method="PUT",
+            path="/orders",
+            body_hash=body_hash,
+        )
         
         assert post_key != put_key
 
     def test_different_paths_different_keys(self):
         """Same idempotency key with different paths should produce different cache keys."""
         middleware = TestIdempotencyMiddleware(app=None)
-        
-        orders_key = middleware._make_cache_key("same-key", "POST", "/orders")
-        users_key = middleware._make_cache_key("same-key", "POST", "/users")
+
+        body_hash = hashlib.sha256(b"{}").hexdigest()
+
+        orders_key = middleware._make_cache_key(
+            idempotency_key="same-key",
+            tenant_schema="t",
+            user_id="u",
+            method="POST",
+            path="/orders",
+            body_hash=body_hash,
+        )
+        users_key = middleware._make_cache_key(
+            idempotency_key="same-key",
+            tenant_schema="t",
+            user_id="u",
+            method="POST",
+            path="/users",
+            body_hash=body_hash,
+        )
         
         assert orders_key != users_key
 

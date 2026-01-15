@@ -6,13 +6,22 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# Install Poetry
+RUN pip install --no-cache-dir poetry
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Configure Poetry
+ENV POETRY_NO_INTERACTION=1 \
+    POETRY_VENV_IN_PROJECT=1 \
+    POETRY_CACHE_DIR=/tmp/poetry_cache
+
+# Copy dependency files first for better caching
+COPY pyproject.toml poetry.lock ./
+
+# Install Python dependencies (main only)
+RUN poetry install --only main --no-root && rm -rf $POETRY_CACHE_DIR
 
 # Copy application code
 COPY . .
@@ -25,5 +34,9 @@ USER mpango
 # Expose port
 EXPOSE 8000
 
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
 # Command will be overridden in docker-compose
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

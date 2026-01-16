@@ -7,8 +7,10 @@ services:
     container_name: mpango_postgres
     environment:
       POSTGRES_DB: mpango_erp
-      POSTGRES_USER: mpango
-      POSTGRES_PASSWORD: mpango123
+      POSTGRES_USER: ${POSTGRES_USER:-mpango}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    env_file:
+      - ${SECRETS_DIR:-./secrets}/prod.env
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mpango -d mpango_erp"]
       interval: 10s
@@ -44,8 +46,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: mpango_backend
+    env_file:
+      - ${SECRETS_DIR:-./secrets}/prod.env
     environment:
-      - DATABASE_URL=postgresql://mpango:mpango123@postgres:5432/mpango_erp
       - REDIS_URL=redis://redis:6379/0
     ports:
       - "8000:8000"

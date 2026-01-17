@@ -10,7 +10,7 @@
 set -euo pipefail
 
 # Configuration
-TAG="v0.1.1-rc2"
+TAG="v0.1.2-rc1"
 APP_DIR="/opt/mpango/app"
 DATA_DIR="/opt/mpango/data"
 SECRETS_DIR="/opt/mpango/secrets"

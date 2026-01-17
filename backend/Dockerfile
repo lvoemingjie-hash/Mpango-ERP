@@ -14,14 +14,14 @@ RUN pip install --no-cache-dir poetry
 
 # Configure Poetry
 ENV POETRY_NO_INTERACTION=1 \
-    POETRY_VENV_IN_PROJECT=1 \
+    POETRY_VIRTUALENVS_IN_PROJECT=1 \
     POETRY_CACHE_DIR=/tmp/poetry_cache
 
 # Copy dependency files first for better caching
 COPY pyproject.toml poetry.lock ./
 
-# Install Python dependencies (main only)
-RUN poetry install --only main --no-root && rm -rf $POETRY_CACHE_DIR
+# Install Python dependencies
+RUN poetry install --no-root --no-interaction --no-ansi
 
 # Copy application code
 COPY . .
@@ -36,7 +36,7 @@ EXPOSE 8000
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+  CMD curl -f http://localhost:8000/health/ready || exit 1
 
 # Command will be overridden in docker-compose
 CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

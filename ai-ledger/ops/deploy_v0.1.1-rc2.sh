@@ -163,10 +163,10 @@ step_docker_build() {
     fi
 
     log_info "Building backend image..."
-    docker compose build backend --no-cache
+    docker-compose build backend --no-cache
 
     log_info "Building frontend image..."
-    docker compose build frontend --no-cache
+    docker-compose build frontend --no-cache
 
     log_info "✓ Docker images built"
 }
@@ -179,14 +179,14 @@ step_database_bringup() {
 
     cd "${APP_DIR}"
 
-    docker compose up -d postgres
+    docker-compose up -d postgres
 
     log_info "Waiting for PostgreSQL to be ready..."
     local max_attempts=30
     local attempt=0
 
     while [ $attempt -lt $max_attempts ]; do
-        if docker compose exec -T postgres pg_isready -U mpango -d mpango_erp 2>/dev/null; then
+        if docker-compose exec -T postgres pg_isready -U mpango -d mpango_erp 2>/dev/null; then
             log_info "✓ PostgreSQL is ready"
             return 0
         fi
@@ -196,7 +196,7 @@ step_database_bringup() {
     done
 
     log_error "PostgreSQL failed to start within ${max_attempts} attempts"
-    docker compose logs postgres
+    docker-compose logs postgres
     exit 1
 }
 
@@ -208,9 +208,9 @@ step_run_migrations() {
 
     cd "${APP_DIR}"
 
-    # Run migrations using the backend container
-    docker compose run --rm --entrypoint "" backend \
-        python -m alembic upgrade head
+    # Run migrations using the backend container (Poetry venv)
+    docker-compose run --rm --entrypoint "" backend \
+        sh -c "cd /app && poetry run alembic upgrade head"
 
     log_info "✓ Migrations completed"
 }
@@ -224,7 +224,7 @@ step_boot_stack() {
     cd "${APP_DIR}"
 
     # Start all services
-    docker compose up -d
+    docker-compose up -d
 
     log_info "Waiting for services to be healthy..."
 
@@ -247,7 +247,7 @@ step_boot_stack() {
 
     if [ $attempt -ge $max_attempts ]; then
         log_warn "Backend healthcheck timeout - checking logs..."
-        docker compose logs backend --tail=50
+        docker-compose logs backend --tail=50
     fi
 
     log_info "✓ Stack booted"
@@ -312,7 +312,7 @@ step_bootstrap_tenant() {
 
     # Check if bootstrap script exists
     if [ -f "scripts/create_wholesaler.py" ]; then
-        docker compose run --rm --entrypoint "" backend \
+        docker-compose run --rm --entrypoint "" backend \
             python scripts/create_wholesaler.py \
             --name "Mpango Demo" \
             --code "mpango_demo" \
@@ -344,7 +344,7 @@ step_generate_report() {
     local backend_image_size=$(docker images mpango_backend --format "{{.Size}}" 2>/dev/null | head -1 || echo "N/A")
     local frontend_image_id=$(docker images mpango_frontend --format "{{.ID}}" 2>/dev/null | head -1 || echo "N/A")
     local frontend_image_size=$(docker images mpango_frontend --format "{{.Size}}" 2>/dev/null | head -1 || echo "N/A")
-    local alembic_current=$(docker compose run --rm --entrypoint "" backend python -m alembic current 2>/dev/null | grep -o "([a-f0-9]*)" || echo "N/A")
+    local alembic_current=$(docker-compose run --rm --entrypoint "" backend python -m alembic current 2>/dev/null | grep -o "([a-f0-9]*)" || echo "N/A")
     local health_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000/health" 2>/dev/null || echo "FAILED")
     local openapi_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000/openapi.json" 2>/dev/null || echo "FAILED")
     local ready_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000/health/ready" 2>/dev/null || echo "FAILED")
@@ -404,7 +404,7 @@ SIZE: ${frontend_image_size}
 ## Container Status
 
 \`\`\`bash
-\$(docker compose ps 2>/dev/null || echo "N/A")
+\$(docker-compose ps 2>/dev/null || echo "N/A")
 \`\`\`
 
 ---
@@ -464,9 +464,9 @@ To rollback to previous version:
 \`\`\`bash
 cd ${APP_DIR}
 git checkout <previous_tag>
-docker compose build --no-cache
-docker compose down
-docker compose up -d
+docker-compose build --no-cache
+docker-compose down
+docker-compose up -d
 \`\`\`
 
 ---

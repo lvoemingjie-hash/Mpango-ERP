@@ -9,7 +9,15 @@
 
 ---
 
-## 0. Purpose
+## 简介 / 前言
+
+本文件是 Mpango ERP 的 Boot Contract。
+
+它是“生产级 L0.5 契约”，约束生产环境相关的 Backend / Frontend / Ops / Test / AI Agent 改动。
+
+任何面向生产环境的变更，都应当满足本契约的约束。
+
+---
 
 This document defines the **non-negotiable boot and runtime invariants** of the Mpango ERP system.
 
@@ -210,6 +218,14 @@ If a violation is detected:
 3. A corrective change MUST be made **within this contract**
 
 No exception process exists.
+
+---
+
+## 与版本号的关系
+
+vX.Y.Z-rcN：普通候选版本。
+
+vX.Y.Z-rcN-boot-validated：已按 Boot Contract L0.5 完成 checklist 检查的版本。
 
 ---
 

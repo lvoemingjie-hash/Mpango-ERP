@@ -9,6 +9,7 @@ C:\Users\Jeff0\kiro-mpango-erp\
 ├── docs/                              # 文档目录
 │   └── contracts/                     # 开发契约文档
 │       ├── architecture_contract.md   # 架构契约
+│       ├── Boot contract.md           # 系统级生产契约（L0.5），约束 Backend / Frontend / Ops / Test / AI Agent
 │       ├── database_contract.md       # 数据库契约
 │       ├── backend_contract.md        # 后端开发契约
 │       ├── frontend_contract.md       # 前端开发契约

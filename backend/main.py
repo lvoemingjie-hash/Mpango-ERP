@@ -16,7 +16,11 @@ from fastapi.openapi.utils import get_openapi
 
 from api.app import configure_app
 from core.config import get_settings
+from core.logging_config import setup_logging
 
+
+# Setup structured logging
+setup_logging(level="INFO")
 
 # Get settings
 settings = get_settings()

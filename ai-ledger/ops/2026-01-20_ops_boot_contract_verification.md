@@ -86,6 +86,8 @@ Commands run in Windows PowerShell, directories specified.
 - **Docker Deployment**: FIXED - Was (c) ops packaging error, resolved by excluding .venv from build context and forcing fresh package downloads.
 - **Final Status**: Backend meets Boot Contract locally and in Docker; startup behavior equivalent to `poetry run uvicorn main:app`.
 
+本次发布参考并更新 ai-ledger/ops/BOOT_CONTRACT_CHECKLIST_TEMPLATE.md 所定义的 Boot Contract 检查项。
+
 ---
 
 ## FIX PLAN

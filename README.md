@@ -62,3 +62,9 @@ npm run dev
 ## 开发规范
 
 请严格遵循 `docs/contracts/` 目录下的开发契约文档。
+
+## Boot Contract（生产宪法）
+
+Boot Contract 存放路径：docs/contracts/Boot contract.md。
+
+它是系统的生产级 L0.5 契约，是所有变更的共同约束。

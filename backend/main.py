@@ -12,12 +12,10 @@ import yaml
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from api.app import configure_app
 from core.config import get_settings
-from api.v1 import auth, users, roles, orders, health
-from api.middleware.idempotency import IdempotencyMiddleware
 
 
 # Get settings
@@ -77,25 +75,8 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Idempotency middleware (for safe request retries)
-app.add_middleware(IdempotencyMiddleware)
-
-
-# Include routers
-app.include_router(health.router, prefix="/health", tags=["health"])
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
-app.include_router(roles.router, prefix="/api/v1/roles", tags=["roles"])
-app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
+# Configure middleware and routers per Boot Contract layering
+configure_app(app, settings)
 
 
 # Root endpoint

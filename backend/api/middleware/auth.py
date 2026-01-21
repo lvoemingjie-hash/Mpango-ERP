@@ -1,90 +1,67 @@
-"""
-JWT Authentication middleware for Mpango ERP.
-Validates Bearer tokens and extracts user context.
+"""Authentication middleware for Mpango ERP."""
+from typing import Optional
 
-Per requirements REQ-2:
-- Validates JWT tokens on every request
-- Returns appropriate 401 error codes for invalid/expired/missing tokens
-"""
-from fastapi import Request, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from core.security import (
-    decode_token,
-    TokenPayload,
-    InvalidTokenError,
-    ExpiredTokenError
+from api.context import (
+    AuthContext,
+    TenantContext,
+    attach_auth_context,
+    attach_tenant_context,
+    clear_auth_context,
+    clear_tenant_context,
+    extract_bearer_token,
+    finalize_tenant_context,
+    resolve_auth_context,
+    resolve_tenant_context,
 )
 
+__all__ = ["AuthenticationMiddleware"]
 
-class JWTBearer(HTTPBearer):
-    """
-    JWT Bearer token authentication dependency.
-    
-    Usage:
-        @router.get("/protected")
-        async def protected_route(token: TokenPayload = Depends(JWTBearer())):
-            # token contains user_id, tenant_id, tenant_schema
-    """
-    
-    def __init__(self, auto_error: bool = True):
-        super().__init__(auto_error=auto_error)
-    
-    async def __call__(self, request: Request) -> TokenPayload:
-        """
-        Validate JWT token from Authorization header.
-        
-        Args:
-            request: FastAPI request object
-            
-        Returns:
-            TokenPayload with decoded claims
-            
-        Raises:
-            HTTPException 401: For missing, invalid, or expired tokens
-        """
-        credentials: HTTPAuthorizationCredentials = await super().__call__(request)
-        
-        if not credentials:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "MISSING_TOKEN", "message": "Authorization header required"},
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-        
-        if credentials.scheme.lower() != "bearer":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "INVALID_SCHEME", "message": "Bearer scheme required"},
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-        
+
+class AuthenticationMiddleware(BaseHTTPMiddleware):
+    """Decode JWT tokens and attach auth/tenant context to request.state."""
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        auth_ctx: Optional[AuthContext] = None
+        tenant_ctx: Optional[TenantContext] = None
+
         try:
-            payload = decode_token(credentials.credentials)
-            
-            # Validate token type is access (not refresh)
-            if payload.type != "access":
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail={"code": "INVALID_TOKEN_TYPE", "message": "Access token required"},
-                    headers={"WWW-Authenticate": "Bearer"}
-                )
-            
-            return payload
-            
-        except ExpiredTokenError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "TOKEN_EXPIRED", "message": "Token has expired"},
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-        except InvalidTokenError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "INVALID_TOKEN", "message": "Invalid token"},
-                headers={"WWW-Authenticate": "Bearer"}
+            raw_token = extract_bearer_token(request)
+
+            if raw_token:
+                auth_ctx = resolve_auth_context(raw_token)
+                attach_auth_context(request, auth_ctx)
+
+                tenant_ctx = await resolve_tenant_context(auth_ctx.token)
+                attach_tenant_context(request, tenant_ctx)
+
+            response = await call_next(request)
+
+            if tenant_ctx:
+                await finalize_tenant_context(tenant_ctx, success=response.status_code < 400)
+
+            return response
+
+        except HTTPException as exc:
+            if tenant_ctx:
+                await finalize_tenant_context(tenant_ctx, success=False)
+
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=exc.detail,
+                headers=exc.headers,
             )
 
+        except Exception:
+            if tenant_ctx:
+                await finalize_tenant_context(tenant_ctx, success=False)
+            raise
 
-# Singleton instance for convenience
-jwt_bearer = JWTBearer()
+        finally:
+            if tenant_ctx:
+                clear_tenant_context(request)
+            if auth_ctx:
+                clear_auth_context(request)

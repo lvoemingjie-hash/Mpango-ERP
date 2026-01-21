@@ -1,19 +1,8 @@
-"""
-RBAC (Role-Based Access Control) middleware for Mpango ERP.
-Enforces permission-based access control per rbac_matrix.md.
+"""RBAC (Role-Based Access Control) dependency."""
+from fastapi import HTTPException, Request, status
 
-Per requirements REQ-5 and REQ-8:
-- Checks user permissions against required Permission.code
-- Admin role bypasses all permission checks
-- Returns 403 PERMISSION_DENIED if user lacks permission
-"""
-from typing import List
-from fastapi import Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from api.dependencies import get_current_user_context, get_tenant_db_session
+from api.context import get_auth_context, get_tenant_context
 from core.security import TokenPayload
-from crud.user import get_user_with_permissions
 
 
 class RequirePermission:
@@ -40,38 +29,17 @@ class RequirePermission:
         """
         self.permission = permission
     
-    async def __call__(
-        self,
-        token: TokenPayload = Depends(get_current_user_context),
-        db: AsyncSession = Depends(get_tenant_db_session)
-    ) -> TokenPayload:
-        """
-        Check if user has required permission.
-        
-        Args:
-            token: JWT payload with user context
-            db: Tenant-scoped database session
-            
-        Returns:
-            TokenPayload if permission check passes
-            
-        Raises:
-            HTTPException 401: If user not found in database
-            HTTPException 403: If user lacks required permission
-        """
-        # Load user with roles and permissions
-        user = await get_user_with_permissions(db, token.user_id)
-        
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "USER_NOT_FOUND", "message": "User not found"}
-            )
-        
+    async def __call__(self, request: Request) -> TokenPayload:
+        """Validate that the current user has the required permission."""
+        auth_ctx = get_auth_context(request)
+        tenant_ctx = get_tenant_context(request)
+
+        user = tenant_ctx.user
+
         # Admin role has all permissions (bypass check)
         role_names = [role.name for role in user.roles]
         if "admin" in role_names:
-            return token
+            return auth_ctx.token
         
         # Collect all permissions from user's roles
         user_permissions = set()
@@ -89,4 +57,4 @@ class RequirePermission:
                 }
             )
         
-        return token
+        return auth_ctx.token

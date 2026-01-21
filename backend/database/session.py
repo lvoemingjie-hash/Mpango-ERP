@@ -63,6 +63,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Compatibility helper: yield sessions from get_db()."""
+    async for session in get_db():
+        yield session
+
+
 async def get_tenant_db(tenant_schema: str) -> AsyncGenerator[AsyncSession, None]:
     """
     Get database session with tenant schema search_path set.

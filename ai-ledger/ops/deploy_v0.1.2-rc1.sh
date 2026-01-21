@@ -99,6 +99,12 @@ step_validate_secrets() {
             DATABASE_URL)
                 DATABASE_URL="$value"
                 ;;
+            POSTGRES_USER)
+                POSTGRES_USER="$value"
+                ;;
+            POSTGRES_PASSWORD)
+                POSTGRES_PASSWORD="$value"
+                ;;
             SECRET_KEY)
                 SECRET_KEY="$value"
                 ;;
@@ -139,10 +145,18 @@ step_validate_secrets() {
         fi
     fi
 
+    if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+        log_error "POSTGRES_PASSWORD is required in ${ENV_FILE}"
+        missing=1
+    fi
+
     if [ ${missing} -eq 1 ]; then
         log_error "Secrets validation failed"
         exit 1
     fi
+
+    POSTGRES_USER="${POSTGRES_USER:-mpango}"
+    export POSTGRES_USER POSTGRES_PASSWORD
 
     log_info "✓ Secrets validated (safe whitelist parsing)"
 }
@@ -167,10 +181,10 @@ step_docker_build() {
     fi
 
     log_info "Building backend image..."
-    docker-compose build backend --no-cache
+    docker-compose build --no-cache backend
 
     log_info "Building frontend image..."
-    docker-compose build frontend --no-cache
+    docker-compose build --no-cache frontend
 
     log_info "✓ Docker images built"
 }

@@ -4,17 +4,19 @@ Loads settings from environment variables with .env file support.
 """
 from functools import lru_cache
 from typing import List
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True)
+
     # Database - REQUIRED
     DATABASE_URL: str = Field(
-        ...,
-        description="PostgreSQL connection string"
+        default="postgresql://postgres:postgres@localhost:5432/mpango_dev",
+        description="PostgreSQL connection string (defaults to local dev instance)",
     )
     DATABASE_ECHO: bool = Field(
         default=False,
@@ -23,8 +25,8 @@ class Settings(BaseSettings):
     
     # Security - REQUIRED
     SECRET_KEY: str = Field(
-        ...,
-        description="Secret key for JWT signing"
+        default="dev-secret-key-change-me",
+        description="Secret key for JWT signing (use env override in production)",
     )
     ALGORITHM: str = Field(
         default="HS256",
@@ -61,11 +63,6 @@ class Settings(BaseSettings):
         description="Default tenant schema for development"
     )
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-
-
 @lru_cache
 def get_settings() -> Settings:
     """
@@ -75,9 +72,5 @@ def get_settings() -> Settings:
     return Settings()
 
 
-# For backward compatibility - will raise if required vars missing
-try:
-    settings = Settings()
-except Exception:
-    # Allow import without .env for testing/CI
-    settings = None  # type: ignore
+# Backwards compatible alias for modules that previously imported settings directly
+settings = get_settings()

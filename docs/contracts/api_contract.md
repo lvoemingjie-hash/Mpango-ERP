@@ -49,6 +49,15 @@
 #### 2.4.2 强制要求 Idempotency-Key 的接口（MVP）
 1) 入库确认（Inbound receive / Goods receipt）
 2) 转账收款创建（Transfer payment create，method=transfer）
+3) payment rules 
+   - transaction_id MUST store M-Pesa reference.
+   - Payment creation MUST be idempotent by transaction_id.
+   - **Method Mapping**: Use `method: "transfer"` for all mobile money transactions (e.g., M-Pesa, Airtel Money).
+   - **Transaction ID**: The `transaction_id` field is MANDATORY for transfers. It must store the external provider's confirmation code (e.g., "QWE12345").
+   - The backend MUST enforce uniqueness of `transaction_id` within the tenant scope.
+   - Duplicate codes MUST return `409 CONFLICT` with `DUPLICATETRANSACTIONID`.
+   - **Idempotency**: The `Idempotency-Key` header is REQUIRED for all transfer payments to prevent double-charging on network retries.
+
 
 ---
 

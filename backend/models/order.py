@@ -18,9 +18,8 @@ class OrderStatus(str, PyEnum):
     """
     Order status enum per openapi.yaml OrderStatus schema.
     """
-    PENDING = "pending"
+    DRAFT = "draft"
     CONFIRMED = "confirmed"
-    SHIPPED = "shipped"
     CANCELLED = "cancelled"
 
 
@@ -30,17 +29,24 @@ class Order(BaseModel):
     
     Implements openapi.yaml Order schema:
     - retailer_id: UUID, NOT NULL
-    - status: enum (pending, confirmed, shipped, cancelled)
+    - status: enum (draft, confirmed, cancelled)
     - total_amount: numeric
     - notes: text, NULL
     """
     __tablename__ = "orders"
     __table_args__ = (
+        Index('ix_orders_wholesaler_id', 'wholesaler_id'),
         Index('ix_orders_retailer_id', 'retailer_id'),
         Index('ix_orders_status', 'status'),
         Index('ix_orders_created_at', 'created_at'),
     )
     
+    wholesaler_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+        comment="FK to public.wholesalers.id (not enforced in skeleton)"
+    )
     retailer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
@@ -49,7 +55,7 @@ class Order(BaseModel):
     )
     status: Mapped[OrderStatus] = mapped_column(
         Enum(OrderStatus, name="order_status"),
-        default=OrderStatus.PENDING,
+        default=OrderStatus.DRAFT,
         nullable=False,
         index=True
     )
@@ -86,7 +92,7 @@ class OrderItem(BaseModel):
     __tablename__ = "order_items"
     __table_args__ = (
         Index('ix_order_items_order_id', 'order_id'),
-        Index('ix_order_items_product_id', 'product_id'),
+        Index('ix_order_items_sku_code', 'sku_code'),
     )
     
     order_id: Mapped[uuid.UUID] = mapped_column(
@@ -95,11 +101,15 @@ class OrderItem(BaseModel):
         nullable=False,
         index=True
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+
+    product_name: Mapped[str] = mapped_column(
+        Text,
+        nullable=False
+    )
+    sku_code: Mapped[str] = mapped_column(
+        String(64),
         nullable=False,
-        index=True,
-        comment="FK to products.id (not enforced in skeleton)"
+        index=True
     )
     quantity: Mapped[int] = mapped_column(
         Integer,

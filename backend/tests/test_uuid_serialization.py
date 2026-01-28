@@ -66,6 +66,7 @@ class TestUUIDSerialization:
     
     @given(
         order_id=st.uuids(),
+        tenant_id=st.uuids(),
         retailer_id=st.uuids(),
         total=st.decimals(min_value=0, max_value=999999, places=2)
     )
@@ -73,6 +74,7 @@ class TestUUIDSerialization:
     def test_order_serializes_uuids_as_strings(
         self,
         order_id: uuid.UUID,
+        tenant_id: uuid.UUID,
         retailer_id: uuid.UUID,
         total: float
     ):
@@ -85,9 +87,10 @@ class TestUUIDSerialization:
         
         order = Order(
             id=str(order_id),
+            wholesaler_id=str(tenant_id),
             retailer_id=str(retailer_id),
             retailer_name="Test Retailer",
-            status=OrderStatus.PENDING,
+            status=OrderStatus.DRAFT,
             total_amount=total,
             items=[],
             notes=None,
@@ -103,11 +106,14 @@ class TestUUIDSerialization:
         # Verify all UUID fields are strings
         assert isinstance(data['id'], str), \
             "Order.id must serialize as string"
+        assert isinstance(data['wholesaler_id'], str), \
+            "Order.wholesaler_id must serialize as string"
         assert isinstance(data['retailer_id'], str), \
             "Order.retailer_id must serialize as string"
         
         # Verify they're valid UUID strings
         uuid.UUID(data['id'])
+        uuid.UUID(data['wholesaler_id'])
         uuid.UUID(data['retailer_id'])
     
     @given(

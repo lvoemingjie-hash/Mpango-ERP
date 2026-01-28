@@ -251,5 +251,7 @@ Mpango ERP Technical Leadership
 Effective Immediately
 
 ---
-
-
+2026-1-26
+**supplement**
+Frozen Zone 允许新增：models/* + alembic/versions/*
+Frozen Zone 禁止修改：core/, context/, middleware/, database/session.py

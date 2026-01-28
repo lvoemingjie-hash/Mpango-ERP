@@ -2,13 +2,11 @@
 Order management API endpoints.
 Implements openapi.yaml /orders/* endpoints.
 
-RBAC permissions enforced per rbac_matrix.md.
 Tenant isolation enforced via JWT-derived search_path.
 
 State Machine:
-- Draft (pending) → Confirmed → Shipped
+- Draft → Confirmed
 - Cancel only allowed in Draft or Confirmed
-- Ship only allowed after Confirm
 """
 from datetime import datetime
 from math import ceil
@@ -18,14 +16,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_tenant_db_session
-from api.middleware.rbac import RequirePermission
+from api.dependencies import get_current_user_context
 from core.security import TokenPayload
 from crud.order import (
     get_order_by_id,
     get_orders_paginated,
     create_order as crud_create_order,
     confirm_order as crud_confirm_order,
-    ship_order as crud_ship_order,
     cancel_order as crud_cancel_order,
     InvalidStateTransitionError
 )
@@ -47,6 +44,7 @@ def order_to_schema(order) -> OrderSchema:
     """Convert Order model to Order schema."""
     return OrderSchema(
         id=str(order.id),
+        wholesaler_id=str(order.wholesaler_id),
         retailer_id=str(order.retailer_id),
         retailer_name=None,  # Not loaded in MVP
         status=OrderStatus(order.status.value),
@@ -54,8 +52,8 @@ def order_to_schema(order) -> OrderSchema:
         items=[
             OrderItemSchema(
                 id=str(item.id),
-                product_id=str(item.product_id),
-                product_name=None,  # Not loaded in MVP
+                product_name=item.product_name,
+                sku_code=item.sku_code,
                 quantity=item.quantity,
                 unit_price=item.unit_price,
                 subtotal=item.subtotal
@@ -75,15 +73,13 @@ async def list_orders(
     size: int = Query(10, ge=1, le=100, description="Items per page"),
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     retailer_id: Optional[str] = Query(None, description="Filter by retailer ID"),
-    token: TokenPayload = Depends(RequirePermission("orders:read")),
+    token: TokenPayload = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
     List orders with pagination and optional filters.
     
     Implements openapi.yaml GET /orders
-    
-    Requires: orders:read permission
     
     Returns:
         OrderListResponse with paginated orders
@@ -99,12 +95,17 @@ async def list_orders(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "code": "INVALID_STATUS",
-                    "message": f"Invalid status '{status_filter}'. Valid values: pending, confirmed, shipped, cancelled"
+                    "message": f"Invalid status '{status_filter}'. Valid values: draft, confirmed, cancelled"
                 }
             )
     
     orders, total = await get_orders_paginated(
-        db, page=page, size=size, status_filter=status_enum, retailer_id=retailer_id
+        db,
+        page=page,
+        size=size,
+        wholesaler_id=token.tenant_id,
+        status_filter=status_enum,
+        retailer_id=retailer_id,
     )
     
     pages = ceil(total / size) if total > 0 else 0
@@ -127,7 +128,7 @@ async def list_orders(
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
     request: OrderCreateRequest,
-    token: TokenPayload = Depends(RequirePermission("orders:create")),
+    token: TokenPayload = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
@@ -135,15 +136,14 @@ async def create_order(
     
     Implements openapi.yaml POST /orders
     
-    Requires: orders:create permission
-    
     Returns:
         OrderResponse with created order
     """
     # Convert items to dict format for CRUD
     items = [
         {
-            "product_id": item.product_id,
+            "product_name": item.product_name,
+            "sku_code": item.sku_code,
             "quantity": item.quantity,
             "unit_price": item.unit_price,
         }
@@ -152,6 +152,7 @@ async def create_order(
     
     order = await crud_create_order(
         db=db,
+        wholesaler_id=token.tenant_id,
         retailer_id=request.retailer_id,
         items=items,
         notes=request.notes,
@@ -169,15 +170,13 @@ async def create_order(
 @router.get("/{order_id}", response_model=OrderResponse, status_code=status.HTTP_200_OK)
 async def get_order(
     order_id: str,
-    token: TokenPayload = Depends(RequirePermission("orders:read")),
+    token: TokenPayload = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
     Get order by ID.
     
     Implements openapi.yaml GET /orders/{order_id}
-    
-    Requires: orders:read permission
     
     Returns:
         OrderResponse with order data
@@ -203,15 +202,13 @@ async def get_order(
 @router.post("/{order_id}/confirm", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def confirm_order(
     order_id: str,
-    token: TokenPayload = Depends(RequirePermission("orders:confirm")),
+    token: TokenPayload = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
-    Confirm an order (pending → confirmed).
+    Confirm an order (draft → confirmed).
     
     Implements openapi.yaml POST /orders/{order_id}/confirm
-    
-    Requires: orders:confirm permission
     
     Returns:
         OrderActionResponse with updated status
@@ -249,67 +246,16 @@ async def confirm_order(
     )
 
 
-@router.post("/{order_id}/ship", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
-async def ship_order(
-    order_id: str,
-    token: TokenPayload = Depends(RequirePermission("orders:ship")),
-    db: AsyncSession = Depends(get_tenant_db_session)
-):
-    """
-    Ship an order (confirmed → shipped).
-    
-    Implements openapi.yaml POST /orders/{order_id}/ship
-    
-    Requires: orders:ship permission
-    
-    Returns:
-        OrderActionResponse with updated status
-    """
-    order = await get_order_by_id(db, order_id)
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "ORDER_NOT_FOUND",
-                "message": f"Order with ID '{order_id}' not found"
-            }
-        )
-    
-    try:
-        order = await crud_ship_order(db, order, updated_by=token.user_id)
-    except InvalidStateTransitionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "INVALID_STATE_TRANSITION",
-                "message": str(e)
-            }
-        )
-    
-    return OrderActionResponse(
-        success=True,
-        data={
-            "order_id": str(order.id),
-            "status": order.status.value
-        },
-        message="Order shipped successfully",
-        timestamp=datetime.utcnow()
-    )
-
-
 @router.post("/{order_id}/cancel", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def cancel_order(
     order_id: str,
-    token: TokenPayload = Depends(RequirePermission("orders:cancel")),
+    token: TokenPayload = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
-    Cancel an order (pending/confirmed → cancelled).
+    Cancel an order (draft/confirmed → cancelled).
     
     Implements openapi.yaml POST /orders/{order_id}/cancel
-    
-    Requires: orders:cancel permission
     
     Returns:
         OrderActionResponse with updated status

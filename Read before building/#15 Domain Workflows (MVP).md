@@ -1,6 +1,7 @@
 # Domain Workflows (MVP) — Sync vs Async Boundaries
 
 ## 0. MVP decisions (frozen)
+
 ### 0.1 Idempotency-Key policy
 - REQUIRED (client must provide `Idempotency-Key` header):
   1) Inbound receive (goods receipt)
@@ -15,13 +16,17 @@
 - create order: creates draft only, does NOT reserve or deduct inventory.
 - confirm order: deduct inventory; if insufficient inventory -> fail.
 - ship order: status change only; no inventory change.
-This aligns with Order status and InventoryLog change types already defined. [file:5]
+
+---
 
 ## 1. Architecture boundaries (MVP)
 - backend-service: synchronous HTTP APIs; performs state transitions in a single DB transaction.
-- worker-service: asynchronous Celery tasks (Redis broker + result backend) for long-running jobs (imports/sync/suggestions). [file:3]
+- worker-service: asynchronous Celery tasks (Redis broker + result backend) for long-running jobs.
+
+---
 
 ## 2. Common conventions
+
 ### 2.1 State machine enforcement
 - All transitions must be validated server-side.
 - Any invalid transition returns 409 (business/state conflict).
@@ -30,170 +35,124 @@ This aligns with Order status and InventoryLog change types already defined. [fi
 - Any inventory movement must create InventoryLog:
   - change_type in {sale, purchase, adjustment, cancel}
   - qty_change signed (+/-)
-  - reference_id points to source document id (order.id / purchase_order.id)
-  - operator_id is current user [file:5]
+  - reference_id points to source document id
+  - operator_id is current user
+  
+- **Single Warehouse Assumption (MVP)**:
+  - While the database schema includes `warehouse_id`, the system will operate effectively as single-warehouse per tenant for MVP.
+  - All inventory queries MUST aggregate quantities by `product_id`.
+  - Inter-warehouse transfers are Out of Scope for MVP.
 
 ### 2.3 Idempotency implementation rule (MVP)
 For endpoints that require Idempotency-Key:
-- Store an idempotency record keyed by:
-  - tenant_id + endpoint_name + idempotency_key
-- If the same key repeats:
-  - return the same success response without repeating side effects.
-- Keys should expire after a retention window (e.g., 24h) (MVP recommendation).
+- Store an idempotency record keyed by: tenant_id + endpoint_name + idempotency_key
+- If the same key repeats: return the same success response without repeating side effects.
+- Keys should expire after a retention window (e.g., 24h).
+
+---
 
 ## 3. Sales workflow (Order)
+
 ### 3.1 Entities & statuses
-- Order status: pending -> confirmed -> shipped -> completed, and canceled. [file:5]
-- OrderItem contains product_id, quantity, price. [file:5]
+- Order status: pending -> confirmed -> shipped -> completed, and canceled.
+- OrderItem contains product_id, quantity, price.
+
+### 3.1.1 Retailer–Wholesaler Binding Rules (MVP Clarification)
+- **Many-to-Many Model**: A Retailer MAY be bound to multiple Wholesalers. The `Binding` table governs these relationships.
+- **Order Validation**: Every Order MUST be linked to a specific `wholesaler_id`. The backend MUST validate that an active `Binding` exists between the `order.retailer_id` and `order.wholesaler_id` at the time of creation.
+- **Failure Case**: If no valid binding is found, the API MUST return `403 FORBIDDEN` with error code `BINDINGNOTFOUND`.
+
+### 3.1.2 Credit Limit Policy (MVP Hard Block)
+- **Configuration**: Credit limits are defined in `CustomerProfile` per retailer-wholesaler pair.
+- **Calculation Formula**: `Current Exposure = Sum(Unpaid Orders Total) - Sum(Payments)`.
+- **Enforcement**: When an order transitions to a strictly binding state (e.g., `confirmed`), the backend MUST check:
+  `Current Exposure + Order Total <= Credit Limit`
+- **Violation**: If the limit is exceeded, the transition MUST fail with `409 CONFLICT` and error code `CREDITLIMITEXCEEDED`. The system MUST NOT allow the order to proceed effectively blocking the shipment.
+
+### 3.1.3 Price Snapshot Rule
+- **Logic**: `Product.price` is the dynamic list price. `OrderItem.price` is the transactional snapshot.
+- **Constraint**: When an order is created, the backend MUST calculate `OrderItem.price` based on the current `Product.price`.
+- **Immutability**: Subsequent changes to the master `Product.price` MUST NOT affect existing `OrderItems`. The order price is locked at creation.
 
 ### 3.2 Actions (sync, backend-service)
+
 #### Create Order (orders:create)
-- Preconditions:
-  - Retailer exists and is allowed under wholesaler (binding rules applied). [file:5]
-- Writes (single DB transaction):
-  - orders (status=pending)
-  - order_items
+- Preconditions: Retailer exists and is allowed under wholesaler.
+- Writes: orders (status=pending), order_items
 - Inventory impact: none (MVP frozen).
 
 #### Confirm Order (orders:confirm)
-- Preconditions:
-  - order.status == pending
-  - inventory.quantity sufficient for each item
-- Writes (single DB transaction):
+- Preconditions: order.status == pending, inventory.quantity sufficient
+- Writes:
   - orders.status = confirmed
   - inventory.quantity -= item.quantity
-  - inventory_logs:
-    - change_type = sale
-    - qty_change = -quantity
-    - reference_id = order.id
-    - operator_id = current_user [file:5]
-- Retry behavior:
-  - If order already confirmed -> return success (do not double-deduct).
+  - inventory_logs: change_type = sale, qty_change = -quantity
 
 #### Ship Order (orders:ship)
-- Preconditions:
-  - order.status == confirmed
-- Writes:
-  - orders.status = shipped
+- Preconditions: order.status == confirmed
+- Writes: orders.status = shipped
 - Inventory impact: none (MVP frozen).
 
-#### Complete Order
-- Preconditions:
-  - order.status == shipped
-- Writes:
-  - orders.status = completed
-
 #### Cancel Order (orders:cancel)
-- Preconditions:
-  - allowed if status in {pending, confirmed} (MVP decision)
+- Preconditions: status in {pending, confirmed}
 - Writes:
   - orders.status = canceled
-  - If cancel from confirmed:
-    - inventory.quantity += item.quantity
-    - inventory_logs:
-      - change_type = cancel
-      - qty_change = +quantity
-      - reference_id = order.id
-      - operator_id = current_user [file:5]
-- Retry behavior:
-  - If already canceled -> return success (no repeated inventory changes).
+  - If cancel from confirmed: inventory.quantity += item.quantity, inventory_logs: change_type = cancel
+
+---
 
 ## 4. Procurement workflow (PurchaseOrder + Inbound)
+
 ### 4.1 Entities & statuses
-- PurchaseOrder status: draft -> pending -> received -> completed, and canceled. [file:5]
-- InboundLog: purchase_order_id, product_id, quantity, received_at, operator_id. [file:5][file:13]
+- PurchaseOrder status: draft -> pending -> received -> completed, and canceled.
+- InboundLog: purchase_order_id, product_id, quantity, received_at, operator_id.
 
 ### 4.2 Actions (sync, backend-service)
+
 #### Create Purchase Order (purchase_orders:create)
-- Writes:
-  - purchase_orders (status=draft)
-  - purchase_order_items
+- Writes: purchase_orders (status=draft), purchase_order_items
 
 #### Submit Purchase Order (purchase_orders:submit)
-- Preconditions:
-  - purchase_orders.status == draft
-- Writes:
-  - purchase_orders.status = pending
+- Preconditions: purchase_orders.status == draft
+- Writes: purchase_orders.status = pending
 
 #### Receive Inbound / Goods Receipt (purchase_orders:receive)
 - Idempotency-Key: REQUIRED.
-- Preconditions:
-  - purchase_orders.status == pending
-- Writes (single DB transaction):
+- Preconditions: purchase_orders.status == pending
+- Writes:
   - inbound_logs rows
   - inventory.quantity += received_qty
-  - inventory_logs:
-    - change_type = purchase
-    - qty_change = +received_qty
-    - reference_id = purchase_order.id
-    - operator_id = current_user [file:5]
+  - inventory_logs: change_type = purchase, qty_change = +received_qty
   - purchase_orders.status = received
-- Idempotency behavior:
-  - same Idempotency-Key repeats -> return same response; do not insert inbound/logs again.
 
-#### Complete Purchase Order
-- Preconditions:
-  - purchase_orders.status == received
-- Writes:
-  - purchase_orders.status = completed
-
-#### Cancel Purchase Order
-- Preconditions:
-  - status in {draft, pending}
-- Writes:
-  - purchase_orders.status = canceled
-- Inventory impact: none.
+---
 
 ## 5. Payments workflow (Payment)
+
 ### 5.1 Entities & methods
-- Payment methods: cash | transfer | credit. [file:5]
+- Payment methods: cash | transfer | credit.
 
 ### 5.2 Actions (sync, backend-service)
+
 #### Create Payment (payments:create)
 - If method == transfer:
   - Idempotency-Key: REQUIRED.
-  - transaction_id SHOULD be provided and treated as a unique identifier per tenant (recommended). [file:5]
-- Preconditions:
-  - order exists
-  - amount > 0
-- Writes:
-  - payments row (includes method, amount, transaction_id when applicable). [file:5]
-- Idempotency behavior (transfer):
-  - same Idempotency-Key repeats -> return same response; do not create a second payment row.
+  - transaction_id SHOULD be provided.
+- Preconditions: order exists, amount > 0
+- Writes: payments row
 
-#### Confirm Payment (payments:confirm)
-- MVP note:
-  - If Payment has no status field, this action can be omitted.
-  - If added, set payment.status=confirmed and store confirmed_at.
-
-#### Refund Payment (optional MVP)
-- Record refund as:
-  - new payment row with negative amount (MVP recommended),
-  - OR a separate refunds table (future).
-Pick one and standardize before implementation.
+---
 
 ## 6. Async workflows (worker-service)
+
 ### 6.1 Product catalog import (products:import)
-- Trigger:
-  - backend-service creates an import job record + stores file (e.g., S3) then enqueues Celery task. [file:3][file:13]
-- Worker responsibilities:
-  - parse file
-  - validate schema
-  - upsert products + product_attributes
-  - update job status/progress
-- Retry behavior:
-  - tasks must be idempotent by job_id (retries do not duplicate products).
+- Trigger: backend-service creates import job + enqueues Celery task.
+- Worker: parse file, validate schema, upsert products.
 
 ### 6.2 Supplier sync / import
-- Trigger:
-  - backend-service enqueues sync job (MVP: async to avoid request timeouts). [file:13]
-- Worker responsibilities:
-  - sync supplier catalog
-  - write sync status & error logs
+- Trigger: backend-service enqueues sync job.
+- Worker: sync supplier catalog, write sync status.
 
 ### 6.3 Replenishment suggestions
-- Trigger:
-  - backend-service enqueues suggestion job; API returns job_id for polling. [file:13]
-- Worker responsibilities:
-  - compute suggestions
-  - store results for API retrieval
+- Trigger: backend-service enqueues suggestion job.
+- Worker: compute suggestions, store results.

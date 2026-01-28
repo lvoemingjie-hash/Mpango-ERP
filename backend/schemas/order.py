@@ -14,9 +14,8 @@ class OrderStatus(str, Enum):
     Order status enum.
     Implements openapi.yaml OrderStatus schema.
     """
-    PENDING = "pending"
+    DRAFT = "draft"
     CONFIRMED = "confirmed"
-    SHIPPED = "shipped"
     CANCELLED = "cancelled"
 
 
@@ -29,7 +28,8 @@ class OrderItemCreate(BaseModel):
     Order item creation request.
     Implements openapi.yaml OrderItemCreate schema.
     """
-    product_id: str = Field(..., description="Product UUID")
+    product_name: str = Field(..., description="Product name snapshot")
+    sku_code: str = Field(..., description="SKU code snapshot")
     quantity: int = Field(..., ge=1, description="Item quantity")
     unit_price: Decimal = Field(..., ge=0, description="Unit price")
     
@@ -42,8 +42,8 @@ class OrderItem(BaseModel):
     Implements openapi.yaml OrderItem schema.
     """
     id: str = Field(..., description="Order item UUID")
-    product_id: str = Field(..., description="Product UUID")
-    product_name: str | None = Field(None, description="Product name")
+    product_name: str = Field(..., description="Product name snapshot")
+    sku_code: str = Field(..., description="SKU code snapshot")
     quantity: int = Field(..., description="Item quantity")
     unit_price: Decimal = Field(..., description="Unit price")
     subtotal: Decimal = Field(..., description="Line item subtotal")
@@ -77,6 +77,7 @@ class Order(BaseModel):
     Implements openapi.yaml Order schema.
     """
     id: str = Field(..., description="Order UUID")
+    wholesaler_id: str = Field(..., description="Wholesaler/Tenant UUID")
     retailer_id: str = Field(..., description="Retailer UUID")
     retailer_name: str | None = Field(None, description="Retailer name")
     status: OrderStatus = Field(..., description="Order status")

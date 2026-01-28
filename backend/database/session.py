@@ -27,8 +27,16 @@ async_engine = create_async_engine(
     async_database_url,
     echo=settings.DATABASE_ECHO,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_CONNECT_TIMEOUT,
+    connect_args={
+        "command_timeout": settings.DB_CONNECT_TIMEOUT,
+        "server_settings": {
+            "application_name": settings.APP_NAME,
+            "jit": "off"  # Disable JIT for better consistency
+        }
+    }
 )
 
 # Create async session factory

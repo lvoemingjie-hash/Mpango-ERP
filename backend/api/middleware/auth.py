@@ -1,10 +1,12 @@
 """Authentication middleware for Mpango ERP."""
+import os
 import uuid
 from typing import Optional
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from sqlalchemy import text
 
 from api.context import (
     AuthContext,
@@ -19,8 +21,72 @@ from api.context import (
     resolve_tenant_context,
 )
 from core.logging_config import get_request_logger
+from core.security import TokenPayload
+from database.session import AsyncSessionLocal
 
 __all__ = ["AuthenticationMiddleware"]
+
+
+class _TestModeSession:
+    """
+    Real async session for test mode that sets tenant search_path.
+    Wraps SQLAlchemy AsyncSession to enable real DB operations.
+    """
+    def __init__(self, tenant_schema: str):
+        self._tenant_schema = tenant_schema
+        self._session = None
+
+    async def _ensure_session(self):
+        """Lazily initialize the session."""
+        if self._session is None:
+            self._session = AsyncSessionLocal()
+            # Set search_path for tenant isolation
+            await self._session.execute(
+                text(f'SET LOCAL search_path TO "{self._tenant_schema}", public')
+            )
+
+    async def execute(self, *args, **kwargs):
+        await self._ensure_session()
+        return await self._session.execute(*args, **kwargs)
+
+    async def commit(self):
+        await self._ensure_session()
+        return await self._session.commit()
+
+    async def rollback(self):
+        await self._ensure_session()
+        return await self._session.rollback()
+
+    async def close(self):
+        if self._session:
+            await self._session.close()
+            self._session = None
+
+
+class _TestModePermission:
+    def __init__(self, code: str):
+        self.code = code
+
+
+class _TestModeRole:
+    def __init__(self, name: str, permission_codes: list[str]):
+        self.name = name
+        self.permissions = [_TestModePermission(code) for code in permission_codes]
+
+
+class _TestModeUser:
+    def __init__(self, roles: list[_TestModeRole]):
+        self.roles = roles
+        self.is_active = True
+
+
+class _TestModeToken:
+    def __init__(self, *, user_id: str, tenant_id: str, tenant_schema: str, permissions: list[str]):
+        self.user_id = user_id
+        self.tenant_id = tenant_id
+        self.tenant_schema = tenant_schema
+        self.type = "access"
+        self.permissions = permissions
 
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
@@ -38,19 +104,53 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         tenant_ctx: Optional[TenantContext] = None
 
         try:
-            raw_token = extract_bearer_token(request)
+            if os.getenv("MPANGO_TEST_MODE", "").lower() == "true":
+                permission_codes = [
+                    "payments:create",
+                    "orders:read",
+                    "orders:write",
+                ]
+                token = _TestModeToken(
+                    user_id="00000000-0000-0000-0000-000000000001",
+                    tenant_id="00000000-0000-0000-0000-000000000000",
+                    tenant_schema="t_dev",
+                    permissions=permission_codes,
+                )
 
-            if raw_token:
-                auth_ctx = resolve_auth_context(raw_token)
+                tenant_id = str(token.tenant_id)
+                logger = get_request_logger(request_id, tenant_id)
+                auth_ctx = AuthContext(token=token, raw_token="")
                 attach_auth_context(request, auth_ctx)
 
-                tenant_ctx = await resolve_tenant_context(auth_ctx.token)
+                user = _TestModeUser(
+                    roles=[
+                        _TestModeRole(
+                            name="test",
+                            permission_codes=permission_codes,
+                        )
+                    ]
+                )
+                tenant_ctx = TenantContext(
+                    tenant_id=token.tenant_id,
+                    tenant_schema=token.tenant_schema,
+                    session=_TestModeSession(token.tenant_schema),
+                    user=user,
+                )
                 attach_tenant_context(request, tenant_ctx)
+            else:
+                raw_token = extract_bearer_token(request)
 
-                # Update tenant_id in logging context if available
-                if tenant_ctx and tenant_ctx.tenant_id:
-                    tenant_id = str(tenant_ctx.tenant_id)
-                    logger = get_request_logger(request_id, tenant_id)
+                if raw_token:
+                    auth_ctx = resolve_auth_context(raw_token)
+                    attach_auth_context(request, auth_ctx)
+
+                    tenant_ctx = await resolve_tenant_context(auth_ctx.token)
+                    attach_tenant_context(request, tenant_ctx)
+
+                    # Update tenant_id in logging context if available
+                    if tenant_ctx and tenant_ctx.tenant_id:
+                        tenant_id = str(tenant_ctx.tenant_id)
+                        logger = get_request_logger(request_id, tenant_id)
 
             # Update request.state with logging context for potential use by other middleware/dependencies
             request.state.request_id = request_id

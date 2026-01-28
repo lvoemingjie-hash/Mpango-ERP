@@ -3,9 +3,8 @@ CRUD operations for Order model.
 Operates on tenant schema.
 
 Implements order state machine:
-- Draft (pending) → Confirmed → Shipped → Completed
+- Draft → Confirmed
 - Cancel only allowed in Draft or Confirmed
-- Ship only allowed after Confirm
 """
 from typing import Optional, List, Tuple
 from uuid import UUID
@@ -32,15 +31,11 @@ class InvalidStateTransitionError(Exception):
 # State machine rules
 STATE_TRANSITIONS = {
     "confirm": {
-        "allowed_from": [OrderStatus.PENDING],
+        "allowed_from": [OrderStatus.DRAFT],
         "target": OrderStatus.CONFIRMED
     },
-    "ship": {
-        "allowed_from": [OrderStatus.CONFIRMED],
-        "target": OrderStatus.SHIPPED
-    },
     "cancel": {
-        "allowed_from": [OrderStatus.PENDING, OrderStatus.CONFIRMED],
+        "allowed_from": [OrderStatus.DRAFT, OrderStatus.CONFIRMED],
         "target": OrderStatus.CANCELLED
     }
 }
@@ -101,6 +96,7 @@ async def get_orders_paginated(
     db: AsyncSession,
     page: int = 1,
     size: int = 10,
+    wholesaler_id: Optional[str] = None,
     status_filter: Optional[OrderStatus] = None,
     retailer_id: Optional[str] = None
 ) -> Tuple[List[Order], int]:
@@ -122,6 +118,14 @@ async def get_orders_paginated(
     count_query = select(func.count(Order.id)).where(Order.is_deleted == False)
     
     # Apply filters
+    if wholesaler_id:
+        try:
+            wholesaler_uuid = UUID(wholesaler_id)
+            base_query = base_query.where(Order.wholesaler_id == wholesaler_uuid)
+            count_query = count_query.where(Order.wholesaler_id == wholesaler_uuid)
+        except ValueError:
+            pass
+
     if status_filter:
         base_query = base_query.where(Order.status == status_filter)
         count_query = count_query.where(Order.status == status_filter)
@@ -154,6 +158,7 @@ async def get_orders_paginated(
 
 async def create_order(
     db: AsyncSession,
+    wholesaler_id: str,
     retailer_id: str,
     items: List[dict],
     notes: Optional[str] = None,
@@ -164,8 +169,9 @@ async def create_order(
     
     Args:
         db: Database session (tenant schema)
+        wholesaler_id: Wholesaler/Tenant UUID as string
         retailer_id: Retailer UUID as string
-        items: List of item dicts with product_id, quantity, unit_price
+        items: List of item dicts with product_name, sku_code, quantity, unit_price
         notes: Optional order notes
         created_by: UUID of user creating this order
         
@@ -178,13 +184,13 @@ async def create_order(
     
     for item in items:
         quantity = item["quantity"]
-        # For MVP, use a default unit price if not provided
-        unit_price = item.get("unit_price", Decimal("10.00"))
+        unit_price = item["unit_price"]
         subtotal = Decimal(str(quantity)) * unit_price
         total_amount += subtotal
-        
+
         order_item = OrderItem(
-            product_id=UUID(item["product_id"]),
+            product_name=item["product_name"],
+            sku_code=item["sku_code"],
             quantity=quantity,
             unit_price=unit_price,
             subtotal=subtotal
@@ -193,8 +199,9 @@ async def create_order(
     
     # Create order
     order = Order(
+        wholesaler_id=UUID(wholesaler_id),
         retailer_id=UUID(retailer_id),
-        status=OrderStatus.PENDING,
+        status=OrderStatus.DRAFT,
         total_amount=total_amount,
         notes=notes,
         items=order_items
@@ -219,7 +226,7 @@ async def confirm_order(
     updated_by: Optional[str] = None
 ) -> Order:
     """
-    Confirm an order (pending → confirmed).
+    Confirm an order (draft → confirmed).
     
     Args:
         db: Database session (tenant schema)
@@ -230,46 +237,11 @@ async def confirm_order(
         Updated Order
         
     Raises:
-        InvalidStateTransitionError: If order is not in pending status
+        InvalidStateTransitionError: If order is not in draft status
     """
     validate_state_transition(order, "confirm")
     
     order.status = OrderStatus.CONFIRMED
-    
-    if updated_by:
-        try:
-            order.updated_by = UUID(updated_by)
-        except ValueError:
-            pass
-    
-    await db.flush()
-    await db.refresh(order, ["items"])
-    
-    return order
-
-
-async def ship_order(
-    db: AsyncSession,
-    order: Order,
-    updated_by: Optional[str] = None
-) -> Order:
-    """
-    Ship an order (confirmed → shipped).
-    
-    Args:
-        db: Database session (tenant schema)
-        order: Order to ship
-        updated_by: UUID of user shipping
-        
-    Returns:
-        Updated Order
-        
-    Raises:
-        InvalidStateTransitionError: If order is not in confirmed status
-    """
-    validate_state_transition(order, "ship")
-    
-    order.status = OrderStatus.SHIPPED
     
     if updated_by:
         try:
@@ -289,7 +261,7 @@ async def cancel_order(
     updated_by: Optional[str] = None
 ) -> Order:
     """
-    Cancel an order (pending/confirmed → cancelled).
+    Cancel an order (draft/confirmed → cancelled).
     
     Args:
         db: Database session (tenant schema)
@@ -300,7 +272,7 @@ async def cancel_order(
         Updated Order
         
     Raises:
-        InvalidStateTransitionError: If order is not in pending or confirmed status
+        InvalidStateTransitionError: If order is not in draft or confirmed status
     """
     validate_state_transition(order, "cancel")
     

@@ -20,10 +20,8 @@ from core.logging_config import setup_logging
 
 
 # Setup structured logging
-setup_logging(level="INFO")
-
-# Get settings
 settings = get_settings()
+setup_logging(level=settings.LOG_LEVEL)
 
 # Version
 __version__ = "0.1.0"

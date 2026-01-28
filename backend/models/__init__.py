@@ -7,6 +7,11 @@ from models.wholesaler import Wholesaler
 from models.user import User, Role, Permission
 from models.associations import user_roles, role_permissions
 from models.order import Order, OrderItem, OrderStatus
+from models.retailer import Retailer
+from models.invitation import Invitation
+from models.binding import WholesalerRetailerBinding
+from models.sku import SKU
+from models.inventory_stock import InventoryStock
 
 __all__ = [
     # Base classes
@@ -18,6 +23,9 @@ __all__ = [
     
     # Public schema models
     "Wholesaler",
+    "Retailer",
+    "Invitation",
+    "WholesalerRetailerBinding",
     
     # Tenant schema models
     "User",
@@ -25,6 +33,8 @@ __all__ = [
     "Permission",
     "Order",
     "OrderItem",
+    "SKU",
+    "InventoryStock",
     
     # Enums
     "OrderStatus",

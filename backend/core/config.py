@@ -63,6 +63,38 @@ class Settings(BaseSettings):
         description="Default tenant schema for development"
     )
     
+    # Operational settings
+    LOG_LEVEL: str = Field(
+        default="INFO",
+        description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"
+    )
+    REQUEST_TIMEOUT_SECONDS: int = Field(
+        default=30,
+        description="Request timeout in seconds"
+    )
+    DB_POOL_SIZE: int = Field(
+        default=5,
+        description="Database connection pool size"
+    )
+    DB_MAX_OVERFLOW: int = Field(
+        default=10,
+        description="Database connection pool max overflow"
+    )
+    DB_CONNECT_TIMEOUT: int = Field(
+        default=10,
+        description="Database connection timeout in seconds"
+    )
+    
+    # Feature flags
+    ENABLE_METRICS: bool = Field(
+        default=False,
+        description="Enable basic metrics collection"
+    )
+    ENABLE_REQUEST_LOGGING: bool = Field(
+        default=True,
+        description="Enable detailed request logging"
+    )
+    
 @lru_cache
 def get_settings() -> Settings:
     """

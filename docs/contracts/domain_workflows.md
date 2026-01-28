@@ -37,6 +37,11 @@
   - qty_change signed (+/-)
   - reference_id points to source document id
   - operator_id is current user
+  
+- **Single Warehouse Assumption (MVP)**:
+  - While the database schema includes `warehouse_id`, the system will operate effectively as single-warehouse per tenant for MVP.
+  - All inventory queries MUST aggregate quantities by `product_id`.
+  - Inter-warehouse transfers are Out of Scope for MVP.
 
 ### 2.3 Idempotency implementation rule (MVP)
 For endpoints that require Idempotency-Key:
@@ -51,6 +56,23 @@ For endpoints that require Idempotency-Key:
 ### 3.1 Entities & statuses
 - Order status: pending -> confirmed -> shipped -> completed, and canceled.
 - OrderItem contains product_id, quantity, price.
+
+### 3.1.1 Retailer–Wholesaler Binding Rules (MVP Clarification)
+- **Many-to-Many Model**: A Retailer MAY be bound to multiple Wholesalers. The `Binding` table governs these relationships.
+- **Order Validation**: Every Order MUST be linked to a specific `wholesaler_id`. The backend MUST validate that an active `Binding` exists between the `order.retailer_id` and `order.wholesaler_id` at the time of creation.
+- **Failure Case**: If no valid binding is found, the API MUST return `403 FORBIDDEN` with error code `BINDINGNOTFOUND`.
+
+### 3.1.2 Credit Limit Policy (MVP Hard Block)
+- **Configuration**: Credit limits are defined in `CustomerProfile` per retailer-wholesaler pair.
+- **Calculation Formula**: `Current Exposure = Sum(Unpaid Orders Total) - Sum(Payments)`.
+- **Enforcement**: When an order transitions to a strictly binding state (e.g., `confirmed`), the backend MUST check:
+  `Current Exposure + Order Total <= Credit Limit`
+- **Violation**: If the limit is exceeded, the transition MUST fail with `409 CONFLICT` and error code `CREDITLIMITEXCEEDED`. The system MUST NOT allow the order to proceed effectively blocking the shipment.
+
+### 3.1.3 Price Snapshot Rule
+- **Logic**: `Product.price` is the dynamic list price. `OrderItem.price` is the transactional snapshot.
+- **Constraint**: When an order is created, the backend MUST calculate `OrderItem.price` based on the current `Product.price`.
+- **Immutability**: Subsequent changes to the master `Product.price` MUST NOT affect existing `OrderItems`. The order price is locked at creation.
 
 ### 3.2 Actions (sync, backend-service)
 

@@ -36,6 +36,8 @@ tags:
     description: Role management (requires roles:* permissions)
   - name: orders
     description: Sales order management (requires orders:* permissions)
+  - name: payments
+    description: Payment management (requires payments:* permissions)
 
 security:
   - BearerAuth: []
@@ -322,7 +324,7 @@ paths:
       tags: [orders]
       operationId: listOrders
       summary: List orders with pagination
-      description: Requires `orders:read` permission
+      description: Requires Bearer token authentication
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/SizeParam'
@@ -344,16 +346,14 @@ paths:
                 $ref: '#/components/schemas/OrderListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
 
     post:
       tags: [orders]
       operationId: createOrder
       summary: Create a new order
       description: |
-        Requires `orders:create` permission.
-        Creates order with status=pending. Inventory is NOT deducted at this stage (MVP).
+        Creates order with status=draft.
+        `wholesaler_id` is inferred from the authenticated token (tenant_id claim).
       requestBody:
         required: true
         content:
@@ -375,8 +375,6 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
         '404':
           description: Retailer not found
           content:
@@ -389,7 +387,7 @@ paths:
       tags: [orders]
       operationId: getOrder
       summary: Get order by ID
-      description: Requires `orders:read` permission
+      description: Requires Bearer token authentication
       parameters:
         - $ref: '#/components/parameters/OrderIdParam'
       responses:
@@ -401,8 +399,6 @@ paths:
                 $ref: '#/components/schemas/OrderResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -410,11 +406,9 @@ paths:
     post:
       tags: [orders]
       operationId: confirmOrder
-      summary: Confirm order and deduct inventory
+      summary: Confirm order
       description: |
-        Requires `orders:confirm` permission.
-        Transitions order from pending → confirmed.
-        Deducts inventory and creates inventory_logs.
+        Transitions order from draft → confirmed.
         Request body should be empty or `{}`.
       parameters:
         - $ref: '#/components/parameters/OrderIdParam'
@@ -427,35 +421,58 @@ paths:
                 $ref: '#/components/schemas/OrderActionResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Invalid state or insufficient inventory
+          description: Invalid state transition
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /orders/{order_id}/ship:
+  # ============================================================
+  # PAYMENTS ENDPOINTS
+  # ============================================================
+  /payments:
     post:
-      tags: [orders]
-      operationId: shipOrder
-      summary: Mark order as shipped
+      tags: [payments]
+      operationId: createPayment
+      summary: Create a payment
       description: |
-        Requires `orders:ship` permission.
-        Transitions order from confirmed → shipped.
-        Does NOT affect inventory (MVP).
+        Creates a payment record linked to an order.
+
+        Payment methods:
+        - cash: records a payment, no transaction_id required
+        - transfer: mobile money (e.g. M-Pesa). `transaction_id` is REQUIRED.
+          `Idempotency-Key` header is REQUIRED for transfer payments.
+        - credit: records a credit sale (increases outstanding balance exposure)
       parameters:
-        - $ref: '#/components/parameters/OrderIdParam'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreateRequest'
       responses:
-        '200':
-          description: Order shipped
+        '201':
+          description: Payment created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OrderActionResponse'
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Validation error (e.g. missing idempotency key for transfer)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -463,7 +480,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Invalid state transition
+          description: Duplicate transaction id or idempotency conflict
           content:
             application/json:
               schema:
@@ -475,9 +492,7 @@ paths:
       operationId: cancelOrder
       summary: Cancel order
       description: |
-        Requires `orders:cancel` permission.
-        Can cancel from pending or confirmed status.
-        If confirmed, rolls back inventory and creates cancel-type inventory_log.
+        Can cancel from draft or confirmed status.
       parameters:
         - $ref: '#/components/parameters/OrderIdParam'
       responses:
@@ -489,8 +504,6 @@ paths:
                 $ref: '#/components/schemas/OrderActionResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -638,6 +651,79 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/ErrorDetail'
+        timestamp:
+          type: string
+          format: date-time
+
+    # ========== Payment ==========
+    PaymentMethod:
+      type: string
+      enum: [cash, transfer, credit]
+
+    PaymentStatus:
+      type: string
+      enum: [pending, completed]
+
+    PaymentCreateRequest:
+      type: object
+      required: [order_id, amount, method]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: float
+          minimum: 0
+          exclusiveMinimum: true
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        transaction_id:
+          type: string
+          description: External transaction reference (required for transfer)
+          maxLength: 64
+
+    Payment:
+      type: object
+      required: [id, order_id, retailer_id, amount, method, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        retailer_id:
+          type: string
+          format: uuid
+        transaction_id:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          format: float
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PaymentResponse:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Payment'
+        message:
+          type: string
         timestamp:
           type: string
           format: date-time
@@ -889,15 +975,16 @@ components:
     # ========== Order ==========
     OrderStatus:
       type: string
-      enum: [pending, confirmed, shipped, cancelled]
+      enum: [draft, confirmed, cancelled]
 
     OrderItemCreate:
       type: object
-      required: [product_id, quantity, unit_price]
+      required: [product_name, sku_code, quantity, unit_price]
       properties:
-        product_id:
+        product_name:
           type: string
-          format: uuid
+        sku_code:
+          type: string
         quantity:
           type: integer
           minimum: 1
@@ -923,15 +1010,14 @@ components:
 
     OrderItem:
       type: object
-      required: [id, product_id, quantity, unit_price, subtotal]
+      required: [id, product_name, sku_code, quantity, unit_price, subtotal]
       properties:
         id:
           type: string
           format: uuid
-        product_id:
-          type: string
-          format: uuid
         product_name:
+          type: string
+        sku_code:
           type: string
         quantity:
           type: integer
@@ -944,9 +1030,12 @@ components:
 
     Order:
       type: object
-      required: [id, retailer_id, status, total_amount, items, created_at]
+      required: [id, wholesaler_id, retailer_id, status, total_amount, items, created_at]
       properties:
         id:
+          type: string
+          format: uuid
+        wholesaler_id:
           type: string
           format: uuid
         retailer_id:

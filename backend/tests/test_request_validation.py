@@ -129,8 +129,10 @@ class TestRequestValidation:
         response = client.post("/api/v1/orders", json={
             "retailer_id": "123e4567-e89b-12d3-a456-426614174000",
             "items": [{
-                "product_id": "123e4567-e89b-12d3-a456-426614174001",
-                "quantity": quantity
+                "product_name": "Test Product",
+                "sku_code": "SKU-TEST-001",
+                "quantity": quantity,
+                "unit_price": 10.0
             }]
         })
         

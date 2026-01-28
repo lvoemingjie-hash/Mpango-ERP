@@ -128,23 +128,34 @@ async def readiness_check():
 
 async def _check_database() -> dict:
     """
-    Check database connectivity.
+    Check database connectivity with timing and basic diagnostics.
     
-    Returns dict with status and optional error message.
+    Returns dict with status, latency, and optional error message.
     """
+    import time
+    start_time = time.time()
+    
     try:
         # Import here to avoid circular imports
         from database.session import async_engine
         
         async with async_engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
+            # Test tenant schema creation readiness
+            await conn.execute(text("SELECT current_schema()"))
+        
+        latency_ms = round((time.time() - start_time) * 1000, 2)
         
         return {
             "status": "healthy",
-            "latency_ms": None  # Could add timing here
+            "latency_ms": latency_ms,
+            "checks_performed": ["connectivity", "basic_query", "schema_access"]
         }
     except Exception as e:
+        latency_ms = round((time.time() - start_time) * 1000, 2)
         return {
             "status": "unhealthy",
-            "error": str(e)
+            "error": str(e),
+            "latency_ms": latency_ms,
+            "error_type": type(e).__name__
         }

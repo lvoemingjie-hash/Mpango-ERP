@@ -16,7 +16,66 @@ out/
 *.log
 logs/
 
-# Env / secrets
+# =============================================================================
+# Secrets and Environment Variables (CRITICAL - DO NOT COMMIT)
+# =============================================================================
+# All .env files except examples
 .env
 .env.*
 !.env.example
+!.env.template
+!backend/.env.example
+!frontend/.env.example
+
+# Production environment files (NEVER commit these)
+prod.env
+production.env
+*.prod.env
+*.production.env
+
+# Secrets directory (NEVER commit this)
+secrets/
+secret/
+.secrets/
+.secret/
+
+# Credential files
+credentials.json
+credentials.yml
+credentials.yaml
+service-account*.json
+*-credentials.json
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+!**/test/**/*.pem
+!**/test/**/*.key
+
+# AWS credentials
+.aws/
+aws-credentials*
+
+# SSH keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+*.ppk
+
+# Database dumps (may contain sensitive data)
+*.sql
+*.dump
+*.backup
+!**/migrations/**/*.sql
+!**/schema/**/*.sql
+
+# Backup files (may contain secrets)
+*.bak
+*.backup
+*.old
+*~

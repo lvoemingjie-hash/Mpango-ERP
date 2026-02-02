@@ -52,6 +52,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://mpango:MpangoDBV0.1.2@postgres:5432/mpango_erp
       - SECRET_KEY=MpangoSecretKeyV0.1.2
+      - MPANGO_TEST_MODE=true
     ports:
       - "8000:8000"
     depends_on:

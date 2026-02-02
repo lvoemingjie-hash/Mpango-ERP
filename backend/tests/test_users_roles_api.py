@@ -100,10 +100,6 @@ class RequirePermission:
                 detail={"code": "USER_NOT_FOUND", "message": "User not found"}
             )
         
-        role_names = [role.name for role in user.roles]
-        if "admin" in role_names:
-            return token
-        
         user_permissions: Set[str] = set()
         for role in user.roles:
             for perm in role.permissions:

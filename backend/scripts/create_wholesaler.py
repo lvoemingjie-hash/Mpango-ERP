@@ -38,8 +38,7 @@ from core.security import hash_password
 async def create_wholesaler(
     db: AsyncSession,
     name: str,
-    code: str,
-    description: str = None
+    code: str
 ) -> Wholesaler:
     """Create a new wholesaler in the public schema."""
     # Generate tenant schema name
@@ -48,10 +47,7 @@ async def create_wholesaler(
 
     wholesaler = Wholesaler(
         name=name,
-        code=code,
-        description=description or f"{name} tenant",
-        tenant_schema=tenant_schema,
-        tenant_id=tenant_id
+        code=code
     )
 
     db.add(wholesaler)
@@ -234,8 +230,7 @@ async def bootstrap_tenant(
     admin_email: str,
     admin_password: str,
     admin_first_name: str = "Admin",
-    admin_last_name: str = "User",
-    description: str = None
+    admin_last_name: str = "User"
 ):
     """Main bootstrap function."""
     print("\n" + "="*60)
@@ -246,7 +241,7 @@ async def bootstrap_tenant(
     async with AsyncSessionLocal() as db:
         # Step 1: Create wholesaler (tenant record)
         print("\n[1/5] Creating wholesaler...")
-        wholesaler = await create_wholesaler(db, name, code, description)
+        wholesaler = await create_wholesaler(db, name, code)
 
         # Step 2: Create tenant schema
         print("\n[2/5] Creating tenant schema...")
@@ -321,11 +316,6 @@ def main():
         default="User",
         help="Admin last name (default: User)"
     )
-    parser.add_argument(
-        "--description",
-        default=None,
-        help="Optional wholesaler description"
-    )
 
     args = parser.parse_args()
 
@@ -339,8 +329,7 @@ def main():
         admin_email=args.admin_email,
         admin_password=args.admin_password,
         admin_first_name=args.admin_first_name,
-        admin_last_name=args.admin_last_name,
-        description=args.description
+        admin_last_name=args.admin_last_name
     ))
 
 

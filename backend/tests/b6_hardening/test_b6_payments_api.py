@@ -26,7 +26,7 @@ class _FakeBegin:
 
 
 @pytest.mark.asyncio
-async def test_transfer_requires_idempotency_key():
+async def test_b6_transfer_requires_idempotency_key():
     req = PaymentCreateRequest(
         order_id=str(uuid.uuid4()),
         amount=Decimal("10.00"),
@@ -51,7 +51,7 @@ async def test_transfer_requires_idempotency_key():
 
 
 @pytest.mark.asyncio
-async def test_transfer_rejects_legacy_idempotency_key_header():
+async def test_b6_transfer_rejects_legacy_idempotency_key_header():
     req = PaymentCreateRequest(
         order_id=str(uuid.uuid4()),
         amount=Decimal("10.00"),
@@ -76,7 +76,7 @@ async def test_transfer_rejects_legacy_idempotency_key_header():
 
 
 @pytest.mark.asyncio
-async def test_idempotency_key_idempotent_same_payload():
+async def test_b6_idempotency_key_idempotent_same_payload():
     service = PaymentService()
 
     order = type(
@@ -158,7 +158,7 @@ async def test_idempotency_key_idempotent_same_payload():
 
 
 @pytest.mark.asyncio
-async def test_idempotency_key_conflict_returns_409():
+async def test_b6_idempotency_key_conflict_returns_409():
     service = PaymentService()
 
     existing = {
@@ -201,7 +201,7 @@ async def test_idempotency_key_conflict_returns_409():
 
 
 @pytest.mark.asyncio
-async def test_cash_does_not_update_outstanding_balance():
+async def test_b6_cash_does_not_update_outstanding_balance():
     service = PaymentService()
 
     order = type(

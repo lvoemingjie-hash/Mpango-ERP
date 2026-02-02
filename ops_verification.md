@@ -194,3 +194,35 @@ curl -s http://localhost:8000/health
 - **Business Logic:** ❌ Unverified due to auth blocks
 
 **Overall:** The Phase B5 implementation appears structurally sound but requires operational improvements to enable comprehensive testing and deployment confidence.
+
+---
+
+# B6 Hardening Verification
+
+## Summary
+
+| Check | Status | Notes |
+|-------|--------|------|
+| Tenant context enforcement (P1) | ✅ PASS | Global ORM enforcement requires tenant context unless explicitly bypassed. |
+| Payment idempotency (P3) | ✅ PASS | Transfer payments require `X-Idempotency-Key`; DB persistence via `payments.idempotency_key`. |
+| Atomic payment transaction (P2) | ✅ PASS | `PaymentService.create_payment` runs inside a single DB transaction boundary. |
+
+## Test scope
+
+- `backend/tests/b6_hardening`
+
+## How to run B6 tests
+
+Executed inside the backend container:
+
+```bash
+docker compose exec backend poetry run pytest -q backend/tests/b6_hardening
+```
+
+## Alembic invocation (tenant schema)
+
+Alembic must be invoked via Poetry inside the container:
+
+```bash
+docker compose exec backend poetry run alembic -x tenant_schema=t_b6_verify upgrade head
+```

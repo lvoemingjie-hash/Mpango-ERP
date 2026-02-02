@@ -35,11 +35,6 @@ class RequirePermission:
         tenant_ctx = get_tenant_context(request)
 
         user = tenant_ctx.user
-
-        # Admin role has all permissions (bypass check)
-        role_names = [role.name for role in user.roles]
-        if "admin" in role_names:
-            return auth_ctx.token
         
         # Collect all permissions from user's roles
         user_permissions = set()

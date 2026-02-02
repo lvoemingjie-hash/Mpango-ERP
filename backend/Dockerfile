@@ -21,7 +21,8 @@ ENV POETRY_NO_INTERACTION=1 \
 COPY pyproject.toml poetry.lock ./
 
 # Install Python dependencies
-RUN poetry install --no-root --no-interaction --no-ansi --no-cache
+ARG INSTALL_TEST_DEPS=false
+RUN if [ "$INSTALL_TEST_DEPS" = "true" ]; then poetry install --no-root --no-interaction --no-ansi --no-cache --with test; else poetry install --no-root --no-interaction --no-ansi --no-cache; fi
 
 # Copy application code
 COPY . .

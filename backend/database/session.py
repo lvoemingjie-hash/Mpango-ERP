@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from core.config import get_settings
+from db.tenant_filter import install_global_tenant_filter
 
 
 # Get settings
@@ -49,6 +50,9 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
+install_global_tenant_filter()
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Get database session for public schema operations.
@@ -62,6 +66,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     async with AsyncSessionLocal() as session:
         try:
+            session.info["tenant_schema"] = "public"
             yield session
             await session.commit()
         except Exception:
@@ -96,6 +101,7 @@ async def get_tenant_db(tenant_schema: str) -> AsyncGenerator[AsyncSession, None
     """
     async with AsyncSessionLocal() as session:
         try:
+            session.info["tenant_schema"] = tenant_schema
             # Set search_path for tenant isolation
             await session.execute(
                 text(f'SET LOCAL search_path TO "{tenant_schema}", public')

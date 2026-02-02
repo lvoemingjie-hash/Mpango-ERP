@@ -23,6 +23,7 @@ from api.context import (
 from core.logging_config import get_request_logger
 from core.security import TokenPayload
 from database.session import AsyncSessionLocal
+from db.tenant_filter import reset_current_tenant, set_current_tenant
 
 __all__ = ["AuthenticationMiddleware"]
 
@@ -40,6 +41,7 @@ class _TestModeSession:
         """Lazily initialize the session."""
         if self._session is None:
             self._session = AsyncSessionLocal()
+            self._session.info["tenant_schema"] = self._tenant_schema
             # Set search_path for tenant isolation
             await self._session.execute(
                 text(f'SET LOCAL search_path TO "{self._tenant_schema}", public')
@@ -61,6 +63,27 @@ class _TestModeSession:
         if self._session:
             await self._session.close()
             self._session = None
+
+    def begin(self):
+        """Return a transaction context manager."""
+        return _TestModeTransaction(self)
+
+
+class _TestModeTransaction:
+    """Transaction context manager for test mode session."""
+    def __init__(self, session: _TestModeSession):
+        self._session = session
+
+    async def __aenter__(self):
+        await self._session._ensure_session()
+        return self._session
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            await self._session.rollback()
+        else:
+            await self._session.commit()
+        return False
 
 
 class _TestModePermission:
@@ -102,6 +125,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         auth_ctx: Optional[AuthContext] = None
         tenant_ctx: Optional[TenantContext] = None
+        tenant_tokens = None
 
         try:
             if os.getenv("MPANGO_TEST_MODE", "").lower() == "true":
@@ -137,6 +161,10 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     user=user,
                 )
                 attach_tenant_context(request, tenant_ctx)
+                tenant_tokens = set_current_tenant(
+                    tenant_id=str(token.tenant_id),
+                    tenant_schema=token.tenant_schema,
+                )
             else:
                 raw_token = extract_bearer_token(request)
 
@@ -146,6 +174,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
                     tenant_ctx = await resolve_tenant_context(auth_ctx.token)
                     attach_tenant_context(request, tenant_ctx)
+
+                    tenant_tokens = set_current_tenant(
+                        tenant_id=str(tenant_ctx.tenant_id),
+                        tenant_schema=tenant_ctx.tenant_schema,
+                    )
 
                     # Update tenant_id in logging context if available
                     if tenant_ctx and tenant_ctx.tenant_id:
@@ -183,3 +216,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 clear_tenant_context(request)
             if auth_ctx:
                 clear_auth_context(request)
+
+            if tenant_tokens:
+                reset_current_tenant(*tenant_tokens)

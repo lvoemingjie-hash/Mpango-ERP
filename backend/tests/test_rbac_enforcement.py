@@ -102,11 +102,6 @@ class RequirePermission:
                 detail={"code": "USER_NOT_FOUND", "message": "User not found"}
             )
         
-        # Admin role has all permissions (bypass check)
-        role_names = [role.name for role in user.roles]
-        if "admin" in role_names:
-            return token
-        
         # Collect all permissions from user's roles
         user_permissions: Set[str] = set()
         for role in user.roles:
@@ -360,9 +355,10 @@ class TestAdminBypass:
         get_user_func = await mock_get_user_with_permissions(mock_user)
         
         require_permission = RequirePermission("users:deactivate")
-        result = await require_permission(token=token, db=mock_db, get_user_func=get_user_func)
-        
-        assert result == token
+        with pytest.raises(HTTPException) as exc_info:
+            await require_permission(token=token, db=mock_db, get_user_func=get_user_func)
+
+        assert exc_info.value.status_code == 403
     
     @pytest.mark.asyncio
     async def test_admin_bypasses_all_resource_permissions(self):
@@ -385,8 +381,10 @@ class TestAdminBypass:
         
         for permission in permissions_to_test:
             require_permission = RequirePermission(permission)
-            result = await require_permission(token=token, db=mock_db, get_user_func=get_user_func)
-            assert result == token, f"Admin should bypass {permission}"
+            with pytest.raises(HTTPException) as exc_info:
+                await require_permission(token=token, db=mock_db, get_user_func=get_user_func)
+
+            assert exc_info.value.status_code == 403
     
     @pytest.mark.asyncio
     async def test_admin_with_other_roles_still_bypasses(self):
@@ -406,9 +404,10 @@ class TestAdminBypass:
         get_user_func = await mock_get_user_with_permissions(mock_user)
         
         require_permission = RequirePermission("users:deactivate")
-        result = await require_permission(token=token, db=mock_db, get_user_func=get_user_func)
-        
-        assert result == token
+        with pytest.raises(HTTPException) as exc_info:
+            await require_permission(token=token, db=mock_db, get_user_func=get_user_func)
+
+        assert exc_info.value.status_code == 403
     
     @pytest.mark.asyncio
     async def test_non_admin_role_named_similar_does_not_bypass(self):
@@ -525,7 +524,7 @@ class TestRoleChangesAffectAccess:
             user_id=user_id,
             roles=[
                 {"name": "sales", "permissions": ["orders:read"]},
-                {"name": "admin", "permissions": []}
+                {"name": "admin", "permissions": ["users:deactivate"]}
             ]
         )
         get_user_func = await mock_get_user_with_permissions(mock_user_admin)
@@ -543,7 +542,7 @@ class TestRoleChangesAffectAccess:
         # First: user with admin role
         mock_user_admin = create_mock_user(
             user_id=user_id,
-            roles=[{"name": "admin", "permissions": []}]
+            roles=[{"name": "admin", "permissions": ["users:deactivate"]}]
         )
         get_user_func = await mock_get_user_with_permissions(mock_user_admin)
         
@@ -617,7 +616,7 @@ class TestTenantIsolationInRBAC:
         # Same user ID but different permissions in different tenants
         mock_user_tenant1 = create_mock_user(
             user_id=user_id,
-            roles=[{"name": "admin", "permissions": []}]
+            roles=[{"name": "admin", "permissions": ["users:deactivate"]}]
         )
         
         mock_user_tenant2 = create_mock_user(
@@ -627,7 +626,7 @@ class TestTenantIsolationInRBAC:
         
         mock_db = AsyncMock()
         
-        # Tenant 1: user is admin, should pass
+        # Tenant 1: user has permission, should pass
         get_user_func1 = await mock_get_user_with_permissions(mock_user_tenant1)
         require_permission = RequirePermission("users:deactivate")
         result = await require_permission(token=token1, db=mock_db, get_user_func=get_user_func1)

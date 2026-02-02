@@ -34,6 +34,7 @@ async def create_tenant_session(tenant_schema: str) -> AsyncSession:
     """Create tenant-scoped async session with search_path set."""
     session: AsyncSession = AsyncSessionLocal()
     try:
+        session.info["tenant_schema"] = tenant_schema
         await session.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
     except Exception:
         await session.close()

@@ -11,6 +11,38 @@ CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
 
+def _require_tenant_session(db: AsyncSession) -> None:
+    if not getattr(db, "info", None):
+        raise RuntimeError("Tenant session required")
+    if not db.info.get("tenant_schema"):
+        raise RuntimeError("Tenant session required")
+
+
+class _ScopedCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+    def __init__(self, inner: "CRUDBase[ModelType, CreateSchemaType, UpdateSchemaType]", db: AsyncSession):
+        _require_tenant_session(db)
+        self._inner = inner
+        self._db = db
+
+    async def get(self, id: UUID) -> Optional[ModelType]:
+        return await self._inner.get(self._db, id)
+
+    async def get_multi(self, *, skip: int = 0, limit: int = 100) -> List[ModelType]:
+        return await self._inner.get_multi(self._db, skip=skip, limit=limit)
+
+    async def create(self, *, obj_in: CreateSchemaType) -> ModelType:
+        return await self._inner.create(self._db, obj_in=obj_in)
+
+    async def update(self, *, db_obj: ModelType, obj_in: UpdateSchemaType | Dict[str, Any]) -> ModelType:
+        return await self._inner.update(self._db, db_obj=db_obj, obj_in=obj_in)
+
+    async def remove(self, *, id: UUID) -> Optional[ModelType]:
+        return await self._inner.remove(self._db, id=id)
+
+    async def hard_delete(self, *, id: UUID) -> bool:
+        return await self._inner.hard_delete(self._db, id=id)
+
+
 class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     def __init__(self, model: Type[ModelType]):
         """
@@ -20,6 +52,9 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         * `model`: SQLAlchemy模型类
         """
         self.model = model
+
+    def scoped(self, db: AsyncSession) -> _ScopedCRUD[ModelType, CreateSchemaType, UpdateSchemaType]:
+        return _ScopedCRUD(self, db)
 
     async def get(self, db: AsyncSession, id: UUID) -> Optional[ModelType]:
         """根据ID获取单个记录"""

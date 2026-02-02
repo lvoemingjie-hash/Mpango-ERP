@@ -10,6 +10,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class PaymentRepository:
+    async def get_by_idempotency_key(
+        self,
+        db: AsyncSession,
+        *,
+        idempotency_key: str,
+    ) -> Mapping[str, Any] | None:
+        result = await db.execute(
+            text(
+                """
+                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, created_at, updated_at
+                FROM payments
+                WHERE idempotency_key = :idempotency_key AND is_deleted IS FALSE
+                LIMIT 1
+                """
+            ),
+            {"idempotency_key": idempotency_key},
+        )
+        row = result.mappings().first()
+        return row
+
     async def get_by_transaction_id(
         self,
         db: AsyncSession,
@@ -19,7 +39,7 @@ class PaymentRepository:
         result = await db.execute(
             text(
                 """
-                SELECT id, order_id, retailer_id, transaction_id, amount, method, status, created_at, updated_at
+                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, created_at, updated_at
                 FROM payments
                 WHERE transaction_id = :transaction_id AND is_deleted IS FALSE
                 LIMIT 1
@@ -37,6 +57,7 @@ class PaymentRepository:
         order_id: uuid.UUID,
         retailer_id: uuid.UUID,
         transaction_id: str | None,
+        idempotency_key: str | None,
         amount: Decimal,
         method: str,
         status: str,
@@ -50,6 +71,7 @@ class PaymentRepository:
                     order_id,
                     retailer_id,
                     transaction_id,
+                    idempotency_key,
                     amount,
                     method,
                     status,
@@ -63,6 +85,7 @@ class PaymentRepository:
                     :order_id,
                     :retailer_id,
                     :transaction_id,
+                    :idempotency_key,
                     :amount,
                     :method,
                     :status,
@@ -72,13 +95,14 @@ class PaymentRepository:
                     :created_by,
                     :updated_by
                 )
-                RETURNING id, order_id, retailer_id, transaction_id, amount, method, status, created_at, updated_at
+                RETURNING id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, created_at, updated_at
                 """
             ),
             {
                 "order_id": order_id,
                 "retailer_id": retailer_id,
                 "transaction_id": transaction_id,
+                "idempotency_key": idempotency_key,
                 "amount": amount,
                 "method": method,
                 "status": status,

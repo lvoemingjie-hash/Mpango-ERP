@@ -25,120 +25,125 @@ class PaymentService:
         amount: Decimal,
         method: str,
         transaction_id: str | None,
+        idempotency_key: str | None,
         created_by: str | None,
     ) -> Mapping[str, Any]:
-        try:
-            order_uuid = uuid.UUID(order_id)
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"code": "INVALID_ORDER_ID", "message": "Invalid order_id"},
-            )
-
-        created_by_uuid: uuid.UUID | None = None
-        if created_by:
+        async with tenant_db.begin():
             try:
-                created_by_uuid = uuid.UUID(created_by)
+                order_uuid = uuid.UUID(order_id)
             except Exception:
-                created_by_uuid = None
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={"code": "INVALID_ORDER_ID", "message": "Invalid order_id"},
+                )
 
-        if method == "transfer" and not transaction_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"code": "MISSING_TRANSACTION_ID", "message": "transaction_id is required for transfer"},
-            )
+            created_by_uuid: uuid.UUID | None = None
+            if created_by:
+                try:
+                    created_by_uuid = uuid.UUID(created_by)
+                except Exception:
+                    created_by_uuid = None
 
-        if transaction_id:
-            existing = await self._repo.get_by_transaction_id(tenant_db, transaction_id=transaction_id)
-            if existing:
+            if method == "transfer" and not idempotency_key:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={"code": "MISSING_IDEMPOTENCY_KEY", "message": "idempotency_key is required for transfer"},
+                )
+
+            if idempotency_key:
+                existing = await self._repo.get_by_idempotency_key(tenant_db, idempotency_key=idempotency_key)
+                if existing:
+                    if (
+                        str(existing["order_id"]) == str(order_uuid)
+                        and Decimal(str(existing["amount"])) == amount
+                        and str(existing["method"]) == method
+                        and (existing.get("transaction_id") or None) == (transaction_id or None)
+                    ):
+                        return existing
+
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "code": "IDEMPOTENCY_CONFLICT",
+                            "message": "idempotency_key already used with different payload",
+                        },
+                    )
+
+            order = (
+                await tenant_db.execute(
+                    select(Order).where(Order.id == order_uuid).where(Order.is_deleted.is_(False))
+                )
+            ).scalar_one_or_none()
+            if not order:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"code": "ORDER_NOT_FOUND", "message": f"Order with ID '{order_id}' not found"},
+                )
+
+            retailer_id: uuid.UUID = order.retailer_id
+
+            payment_status = "completed" if method == "transfer" else "pending"
+            try:
+                payment = await self._repo.create(
+                    tenant_db,
+                    order_id=order_uuid,
+                    retailer_id=retailer_id,
+                    transaction_id=transaction_id,
+                    idempotency_key=idempotency_key,
+                    amount=amount,
+                    method=method,
+                    status=payment_status,
+                    created_by=created_by_uuid,
+                )
+            except IntegrityError:
+                if not idempotency_key:
+                    raise
+
+                existing = await self._repo.get_by_idempotency_key(tenant_db, idempotency_key=idempotency_key)
+                if not existing:
+                    raise
+
                 if (
                     str(existing["order_id"]) == str(order_uuid)
                     and Decimal(str(existing["amount"])) == amount
                     and str(existing["method"]) == method
+                    and (existing.get("transaction_id") or None) == (transaction_id or None)
                 ):
                     return existing
 
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
-                        "code": "DUPLICATE_TRANSACTION_ID",
-                        "message": "transaction_id already used with different payload",
+                        "code": "IDEMPOTENCY_CONFLICT",
+                        "message": "idempotency_key already used with different payload",
                     },
                 )
 
-        order = (
-            await tenant_db.execute(
-                select(Order).where(Order.id == order_uuid).where(Order.is_deleted.is_(False))
-            )
-        ).scalar_one_or_none()
-        if not order:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "ORDER_NOT_FOUND", "message": f"Order with ID '{order_id}' not found"},
-            )
+            if method == "transfer":
+                await self._apply_outstanding_balance_delta(
+                    tenant_db,
+                    wholesaler_id=order.wholesaler_id,
+                    retailer_id=retailer_id,
+                    delta=-amount,
+                )
 
-        retailer_id: uuid.UUID = order.retailer_id
+            if method == "credit":
+                await self._apply_outstanding_balance_delta(
+                    tenant_db,
+                    wholesaler_id=order.wholesaler_id,
+                    retailer_id=retailer_id,
+                    delta=amount,
+                )
 
-        payment_status = "completed" if method == "transfer" else "pending"
-        try:
-            payment = await self._repo.create(
-                tenant_db,
-                order_id=order_uuid,
-                retailer_id=retailer_id,
-                transaction_id=transaction_id,
-                amount=amount,
-                method=method,
-                status=payment_status,
-                created_by=created_by_uuid,
-            )
-        except IntegrityError:
-            if not transaction_id:
-                raise
+            if method == "cash":
+                await self._apply_outstanding_balance_delta(
+                    tenant_db,
+                    wholesaler_id=order.wholesaler_id,
+                    retailer_id=retailer_id,
+                    delta=-amount,
+                )
 
-            existing = await self._repo.get_by_transaction_id(tenant_db, transaction_id=transaction_id)
-            if not existing:
-                raise
-
-            if (
-                str(existing["order_id"]) == str(order_uuid)
-                and Decimal(str(existing["amount"])) == amount
-                and str(existing["method"]) == method
-            ):
-                return existing
-
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "DUPLICATE_TRANSACTION_ID",
-                    "message": "transaction_id already used with different payload",
-                },
-            )
-
-        if method == "transfer":
-            await self._apply_outstanding_balance_delta(
-                tenant_db,
-                wholesaler_id=order.wholesaler_id,
-                retailer_id=retailer_id,
-                delta=-amount,
-            )
-
-        if method == "credit":
-            await self._apply_outstanding_balance_delta(
-                tenant_db,
-                wholesaler_id=order.wholesaler_id,
-                retailer_id=retailer_id,
-                delta=amount,
-            )
-
-        if method == "cash":
-            await self._apply_outstanding_balance_delta(
-                tenant_db,
-                wholesaler_id=order.wholesaler_id,
-                retailer_id=retailer_id,
-                delta=-amount,
-            )
-
-        return payment
+            return payment
 
     async def _apply_outstanding_balance_delta(
         self,

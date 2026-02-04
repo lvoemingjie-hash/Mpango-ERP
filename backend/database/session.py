@@ -56,10 +56,10 @@ install_global_tenant_filter()
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Get database session for public schema operations.
-    
+
     Yields:
         AsyncSession: Database session
-        
+
     Usage:
         async with get_db() as session:
             # Use session
@@ -85,16 +85,16 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 async def get_tenant_db(tenant_schema: str) -> AsyncGenerator[AsyncSession, None]:
     """
     Get database session with tenant schema search_path set.
-    
+
     Implements multi_tenancy_spec.md section 4.2:
     Sets search_path to "<tenant_schema>", public for tenant isolation.
-    
+
     Args:
         tenant_schema: Tenant schema name (e.g., t_1234...)
-        
+
     Yields:
         AsyncSession: Database session with tenant search_path
-        
+
     Usage:
         async with get_tenant_db("t_abc123") as session:
             # Queries resolve to tenant schema first, then public
@@ -118,10 +118,10 @@ async def get_tenant_db(tenant_schema: str) -> AsyncGenerator[AsyncSession, None
 async def create_tenant_schema(tenant_schema: str) -> None:
     """
     Create a new tenant schema.
-    
+
     Args:
         tenant_schema: Schema name to create (e.g., t_abc123)
-        
+
     Raises:
         Exception: If schema creation fails
     """

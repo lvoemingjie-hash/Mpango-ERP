@@ -27,7 +27,7 @@
   - 软删除机制（is_deleted, deleted_at）
   - 外键命名规范
   - Alembic迁移策略
-  
+
 - `Read before building/#13 Multi-Tenancy Spec (MVP).md` - 多租户架构规范
   - Schema-per-tenant 策略
   - tenant_code / tenant_id / tenant_schema 标识符规范
@@ -48,13 +48,13 @@
   - 当前阶段：模块化单体
   - 核心技术栈定义
   - 模块划分：auth, users, inventory, procurement, sales, finance, core
-  
+
 - `Read before building/#6 kiro_backend_contract.md` - 后端开发规范
   - FastAPI + SQLAlchemy 2.0 + Alembic
   - 目录结构标准
   - CRUD基类模式
   - 多租户登录流程
-  
+
 - `Read before building/#7 kiro_frontend_contract.md` - 前端开发规范
   - React 18 + Vite + TypeScript
   - TailwindCSS + Zustand
@@ -83,35 +83,35 @@
   - `config.py` - Pydantic Settings配置管理
   - `security.py` - JWT生成/验证、密码哈希
   - `exceptions.py` - 统一异常定义
-  
+
 **数据层：**
 - `database/`
   - `base.py` - BaseModel基类（包含审计字段、软删除）
   - `session.py` - 异步数据库会话管理、租户schema切换
-  
+
 **模型层：**
 - `models/`
   - `wholesaler.py` - 批发商模型（public schema）
   - `user.py` - 用户、角色、权限、关联表模型（tenant schema）
-  
+
 **Schema层：**
 - `schemas/`
   - `auth.py` - 登录请求/响应、JWT载荷
   - `user.py` - 用户CRUD的Pydantic模型
   - `wholesaler.py` - 批发商CRUD的Pydantic模型
-  
+
 **CRUD层：**
 - `crud/`
   - `base.py` - 泛型CRUD基类（支持软删除）
   - `user.py` - 用户CRUD操作（包含认证、权限查询）
   - `wholesaler.py` - 批发商CRUD操作（包含schema创建）
-  
+
 **API层：**
 - `api/`
   - `dependencies.py` - JWT验证、租户DB会话、权限检查依赖
   - `v1/auth.py` - 登录、刷新令牌、登出路由
   - `v1/users.py` - 用户管理CRUD路由（带权限控制）
-  
+
 **数据库迁移：**
 - `alembic/`
   - `alembic.ini` - Alembic配置
@@ -172,7 +172,7 @@
   - redis (端口6379)
   - backend (端口8000)
   - frontend (端口5173)
-  
+
 **数据库初始化：**
 - `database/init.sql` - PostgreSQL初始化脚本
   - 启用pgcrypto扩展
@@ -605,7 +605,7 @@ frontend/
 
 ## Signature
 
-**AI Role:** Architect AI – Kiro (Claude Sonnet 3.5)  
-**Date:** 2025-01-09  
-**Ledger Version:** 1.0  
+**AI Role:** Architect AI – Kiro (Claude Sonnet 3.5)
+**Date:** 2025-01-09
+**Ledger Version:** 1.0
 **Status:** ✅ Foundation Complete, ⚠️ Requires Backend AI Follow-up

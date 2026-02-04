@@ -21,7 +21,7 @@ graph TB
         RBAC[RBAC Middleware]
         ROUTE[Route Handler]
     end
-    
+
     subgraph "Auth Service"
         LOGIN[Login Handler]
         REFRESH[Refresh Handler]
@@ -29,30 +29,30 @@ graph TB
         JWT[JWT Utils]
         PWD[Password Utils]
     end
-    
+
     subgraph "Database"
         PUBLIC[(public.wholesalers)]
         TENANT_DB[(tenant.users)]
         ROLES[(tenant.roles)]
         PERMS[(tenant.permissions)]
     end
-    
+
     REQ --> AUTH
     AUTH --> TENANT
     TENANT --> RBAC
     RBAC --> ROUTE
-    
+
     LOGIN --> PUBLIC
     LOGIN --> TENANT_DB
     LOGIN --> JWT
     LOGIN --> PWD
-    
+
     REFRESH --> JWT
     ME --> JWT
-    
+
     RBAC --> ROLES
     RBAC --> PERMS
-    
+
     TENANT --> |SET search_path| TENANT_DB
 ```
 
@@ -66,7 +66,7 @@ sequenceDiagram
     participant R as RBAC Middleware
     participant H as Route Handler
     participant DB as Database
-    
+
     C->>A: Request + Bearer Token
     A->>A: Validate JWT signature
     A->>A: Check expiration
@@ -169,22 +169,22 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 class JWTBearer(HTTPBearer):
     """JWT Bearer token authentication."""
-    
+
     async def __call__(self, request: Request) -> TokenPayload:
         credentials: HTTPAuthorizationCredentials = await super().__call__(request)
-        
+
         if not credentials:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "MISSING_TOKEN", "message": "Authorization header required"}
             )
-        
+
         if credentials.scheme != "Bearer":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "INVALID_SCHEME", "message": "Bearer scheme required"}
             )
-        
+
         try:
             payload = decode_token(credentials.credentials)
             if payload.type != "access":
@@ -225,7 +225,7 @@ async def get_tenant_db_session(
 ) -> AsyncGenerator[AsyncSession, None]:
     """
     Get database session with tenant search_path set.
-    
+
     Tenant schema is ONLY derived from JWT claims - never from headers or params.
     This ensures tenant isolation cannot be bypassed.
     """
@@ -243,10 +243,10 @@ from fastapi import Depends, HTTPException, status
 
 class RequirePermission:
     """Dependency that checks user has required permission."""
-    
+
     def __init__(self, permission: str):
         self.permission = permission
-    
+
     async def __call__(
         self,
         token: TokenPayload = Depends(get_current_user_context),
@@ -254,23 +254,23 @@ class RequirePermission:
     ) -> TokenPayload:
         # Load user with roles and permissions
         user = await get_user_with_permissions(db, token.user_id)
-        
+
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "USER_NOT_FOUND", "message": "User not found"}
             )
-        
+
         # Admin role has all permissions
         if "admin" in [r.name for r in user.roles]:
             return token
-        
+
         # Check if user has required permission
         user_permissions = set()
         for role in user.roles:
             for perm in role.permissions:
                 user_permissions.add(perm.code)
-        
+
         if self.permission not in user_permissions:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -279,7 +279,7 @@ class RequirePermission:
                     "message": f"Permission '{self.permission}' required"
                 }
             )
-        
+
         return token
 ```
 
@@ -304,32 +304,32 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db_session
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "TENANT_NOT_FOUND", "message": "Tenant not found"}
         )
-    
+
     tenant_schema = wholesaler.get_tenant_schema()
-    
+
     # 2. Switch to tenant schema and find user
     async for tenant_db in get_tenant_db(tenant_schema):
         user = await get_user_by_email(tenant_db, request.email)
-        
+
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "INVALID_CREDENTIALS", "message": "Invalid credentials"}
             )
-        
+
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={"code": "USER_INACTIVE", "message": "User account is inactive"}
             )
-        
+
         # 3. Verify password
         if not verify_password(request.password, user.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "INVALID_CREDENTIALS", "message": "Invalid credentials"}
             )
-        
+
         # 4. Generate tokens
         access_token = create_access_token(
             user_id=str(user.id),
@@ -341,7 +341,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db_session
             tenant_id=str(wholesaler.id),
             tenant_schema=tenant_schema
         )
-        
+
         return LoginResponse(
             success=True,
             data=TokenData(
@@ -362,20 +362,20 @@ async def get_current_user(
 ):
     """Get current authenticated user info from token."""
     user = await get_user_with_permissions(db, token.user_id)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "USER_NOT_FOUND", "message": "User not found"}
         )
-    
+
     # Extract role names and permission codes
     roles = [role.name for role in user.roles]
     permissions = set()
     for role in user.roles:
         for perm in role.permissions:
             permissions.add(perm.code)
-    
+
     return CurrentUserResponse(
         success=True,
         data=CurrentUserData(

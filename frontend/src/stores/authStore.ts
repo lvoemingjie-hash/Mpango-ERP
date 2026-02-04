@@ -32,17 +32,17 @@ export const useAuthStore = create<AuthStore>()(
         set({ loading: true, error: null })
         try {
           const response = await authService.login(loginData)
-          
+
           // Calculate token expiration time
-          const expiresAt = response.expires_in 
+          const expiresAt = response.expires_in
             ? Date.now() + (response.expires_in * 1000)
             : Date.now() + (3600 * 1000) // Default 1 hour if not provided
-          
+
           // 存储令牌到localStorage
           localStorage.setItem('access_token', response.access_token)
           localStorage.setItem('refresh_token', response.refresh_token)
           localStorage.setItem('token_expires_at', expiresAt.toString())
-          
+
           set({
             token: response.access_token,
             isAuthenticated: true,
@@ -54,7 +54,7 @@ export const useAuthStore = create<AuthStore>()(
 
           // Fetch user info with role
           await get().fetchUser()
-          
+
           // Set up automatic token refresh
           get().setupTokenRefresh()
         } catch (error: any) {
@@ -72,7 +72,7 @@ export const useAuthStore = create<AuthStore>()(
         localStorage.removeItem('refresh_token')
         localStorage.removeItem('token_expires_at')
         localStorage.removeItem('user_info')
-        
+
         // 重置状态
         set({
           user: null,
@@ -84,7 +84,7 @@ export const useAuthStore = create<AuthStore>()(
           tokenExpiresAt: null,
           error: null,
         })
-        
+
         // 调用后端登出接口（可选）
         authService.logout().catch(console.error)
       },
@@ -98,22 +98,22 @@ export const useAuthStore = create<AuthStore>()(
 
         try {
           const response = await authService.refreshToken(refreshToken)
-          
+
           // Calculate new expiration time
-          const expiresAt = response.expires_in 
+          const expiresAt = response.expires_in
             ? Date.now() + (response.expires_in * 1000)
             : Date.now() + (3600 * 1000) // Default 1 hour
-          
+
           localStorage.setItem('access_token', response.access_token)
           localStorage.setItem('refresh_token', response.refresh_token)
           localStorage.setItem('token_expires_at', expiresAt.toString())
-          
+
           set({
             token: response.access_token,
             isAuthenticated: true,
             tokenExpiresAt: expiresAt,
           })
-          
+
           // Set up next refresh
           get().setupTokenRefresh()
         } catch (error) {
@@ -127,7 +127,7 @@ export const useAuthStore = create<AuthStore>()(
 
         const now = Date.now()
         const timeUntilExpiry = tokenExpiresAt - now
-        
+
         // If token expires in less than 5 minutes, refresh now
         if (timeUntilExpiry < 5 * 60 * 1000) {
           get().refreshToken()
@@ -161,11 +161,11 @@ export const useAuthStore = create<AuthStore>()(
       initializeAuth: () => {
         const token = localStorage.getItem('access_token')
         const expiresAt = localStorage.getItem('token_expires_at')
-        
+
         if (token && expiresAt) {
           const expiryTime = parseInt(expiresAt)
           const now = Date.now()
-          
+
           // If token is expired or will expire soon, refresh now
           if (expiryTime <= now || (expiryTime - now) < 5 * 60 * 1000) {
             get().refreshToken()

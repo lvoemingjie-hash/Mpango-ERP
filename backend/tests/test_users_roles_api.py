@@ -81,10 +81,10 @@ class MockUser:
 
 class RequirePermission:
     """Test-local RequirePermission that mirrors the actual implementation."""
-    
+
     def __init__(self, permission: str):
         self.permission = permission
-    
+
     async def __call__(
         self,
         token: TokenPayload,
@@ -93,18 +93,18 @@ class RequirePermission:
     ) -> TokenPayload:
         """Check if user has required permission."""
         user = await get_user_func(db, token.user_id)
-        
+
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "USER_NOT_FOUND", "message": "User not found"}
             )
-        
+
         user_permissions: Set[str] = set()
         for role in user.roles:
             for perm in role.permissions:
                 user_permissions.add(perm.code)
-        
+
         if self.permission not in user_permissions:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -113,7 +113,7 @@ class RequirePermission:
                     "message": f"Permission '{self.permission}' required"
                 }
             )
-        
+
         return token
 
 
@@ -186,7 +186,7 @@ async def list_users_impl(
     await rbac_check_func(token, db)
     users, total = await get_users_func(db, page, size)
     pages = ceil(total / size) if total > 0 else 0
-    
+
     return UserListResponse(
         success=True,
         data={
@@ -209,15 +209,15 @@ async def create_user_impl(
 ) -> UserResponse:
     """Test-local create_user implementation."""
     await rbac_check_func(token, db)
-    
+
     if await email_exists_func(db, email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "EMAIL_EXISTS", "message": f"Email '{email}' is already registered"}
         )
-    
+
     user = await create_user_func(db, email, password, full_name, token.user_id)
-    
+
     return UserResponse(
         success=True,
         data=user_to_read(user),
@@ -235,14 +235,14 @@ async def get_user_impl(
 ) -> UserResponse:
     """Test-local get_user implementation."""
     await rbac_check_func(token, db)
-    
+
     user = await get_user_func(db, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "USER_NOT_FOUND", "message": f"User with ID '{user_id}' not found"}
         )
-    
+
     return UserResponse(
         success=True,
         data=user_to_read(user),
@@ -264,23 +264,23 @@ async def update_user_impl(
 ) -> UserResponse:
     """Test-local update_user implementation."""
     await rbac_check_func(token, db)
-    
+
     user = await get_user_func(db, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "USER_NOT_FOUND", "message": f"User with ID '{user_id}' not found"}
         )
-    
+
     if email and email != user.email:
         if await email_exists_func(db, email, user_id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"code": "EMAIL_EXISTS", "message": f"Email '{email}' is already registered"}
             )
-    
+
     updated = await update_user_func(db, user, email, full_name, is_active, token.user_id)
-    
+
     return UserResponse(
         success=True,
         data=user_to_read(updated),
@@ -299,20 +299,20 @@ async def delete_user_impl(
 ) -> None:
     """Test-local delete_user implementation."""
     await rbac_check_func(token, db)
-    
+
     user = await get_user_func(db, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "USER_NOT_FOUND", "message": f"User with ID '{user_id}' not found"}
         )
-    
+
     if user_id == token.user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "CANNOT_DELETE_SELF", "message": "Cannot delete your own account"}
         )
-    
+
     await soft_delete_func(db, user, token.user_id)
     return None
 
@@ -328,14 +328,14 @@ async def assign_roles_impl(
 ) -> UserResponse:
     """Test-local assign_roles implementation."""
     await rbac_check_func(token, db)
-    
+
     user = await get_user_func(db, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "USER_NOT_FOUND", "message": f"User with ID '{user_id}' not found"}
         )
-    
+
     try:
         updated = await assign_roles_func(db, user, role_ids, token.user_id)
     except ValueError as e:
@@ -343,7 +343,7 @@ async def assign_roles_impl(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "INVALID_ROLE", "message": str(e)}
         )
-    
+
     return UserResponse(
         success=True,
         data=user_to_read(updated),
@@ -360,9 +360,9 @@ async def list_roles_impl(
 ) -> RoleListResponse:
     """Test-local list_roles implementation."""
     await rbac_check_func(token, db)
-    
+
     roles = await get_all_roles_func(db)
-    
+
     return RoleListResponse(
         success=True,
         data=[RoleRead(id=str(r.id), name=r.name, description=r.description) for r in roles],
@@ -405,13 +405,13 @@ def create_role(name: str, permissions: List[str] = None) -> MockRole:
 async def make_rbac_check(permission: str, user: MockUser):
     """Create an RBAC check function."""
     rbac = RequirePermission(permission)
-    
+
     async def get_user(db, uid):
         return user
-    
+
     async def check(token, db):
         return await rbac(token, db, get_user)
-    
+
     return check
 
 
@@ -428,18 +428,18 @@ class TestUsersAPIHappyPath:
         admin_role = create_role("admin", ["users:read"])
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def get_users(db, page, size):
             return [admin_user], 1
-        
+
         rbac_check = await make_rbac_check("users:read", admin_user)
         mock_db = AsyncMock()
-        
+
         result = await list_users_impl(
             page=1, size=10, token=token, db=mock_db,
             get_users_func=get_users, rbac_check_func=rbac_check
         )
-        
+
         assert result.success is True
         assert "items" in result.data
         assert result.data["pagination"]["total"] == 1
@@ -450,24 +450,24 @@ class TestUsersAPIHappyPath:
         admin_role = create_role("admin", ["users:create"])
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         token = create_token(user_id=str(admin_user.id))
-        
+
         new_user = create_user("new@test.com", "New User", [])
-        
+
         async def email_exists(db, email):
             return False
-        
+
         async def create_user_func(db, email, password, full_name, created_by):
             return new_user
-        
+
         rbac_check = await make_rbac_check("users:create", admin_user)
         mock_db = AsyncMock()
-        
+
         result = await create_user_impl(
             email="new@test.com", password="SecurePass123!", full_name="New User",
             token=token, db=mock_db, email_exists_func=email_exists,
             create_user_func=create_user_func, rbac_check_func=rbac_check
         )
-        
+
         assert result.success is True
         assert result.message == "User created successfully"
 
@@ -477,18 +477,18 @@ class TestUsersAPIHappyPath:
         admin_role = create_role("admin", ["users:read"])
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def get_user(db, uid):
             return admin_user
-        
+
         rbac_check = await make_rbac_check("users:read", admin_user)
         mock_db = AsyncMock()
-        
+
         result = await get_user_impl(
             user_id=str(admin_user.id), token=token, db=mock_db,
             get_user_func=get_user, rbac_check_func=rbac_check
         )
-        
+
         assert result.success is True
         assert result.data.email == admin_user.email
 
@@ -499,29 +499,29 @@ class TestUsersAPIHappyPath:
         admin_role = create_role("admin", ["users:update"])
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         token = create_token(user_id=str(admin_user.id))
-        
+
         updated_user = create_user("updated@test.com", "Updated Name", [admin_role])
         updated_user.id = admin_user.id
-        
+
         async def get_user(db, uid):
             return admin_user
-        
+
         async def email_exists(db, email, exclude_id=None):
             return False
-        
+
         async def update_user(db, user, email, full_name, is_active, updated_by):
             return updated_user
-        
+
         rbac_check = await make_rbac_check("users:update", admin_user)
         mock_db = AsyncMock()
-        
+
         result = await update_user_impl(
             user_id=str(admin_user.id), email="updated@test.com", full_name="Updated Name",
             is_active=True, token=token, db=mock_db, get_user_func=get_user,
             email_exists_func=email_exists, update_user_func=update_user,
             rbac_check_func=rbac_check
         )
-        
+
         assert result.success is True
         assert result.message == "User updated successfully"
 
@@ -532,22 +532,22 @@ class TestUsersAPIHappyPath:
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         target_user = create_user("target@test.com", "Target", [])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def get_user(db, uid):
             return target_user
-        
+
         async def soft_delete(db, user, deleted_by):
             return user
-        
+
         rbac_check = await make_rbac_check("users:deactivate", admin_user)
         mock_db = AsyncMock()
-        
+
         result = await delete_user_impl(
             user_id=str(target_user.id), token=token, db=mock_db,
             get_user_func=get_user, soft_delete_func=soft_delete,
             rbac_check_func=rbac_check
         )
-        
+
         assert result is None  # 204 No Content
 
     @pytest.mark.asyncio
@@ -557,23 +557,23 @@ class TestUsersAPIHappyPath:
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         target_user = create_user("target@test.com", "Target", [])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def get_user(db, uid):
             return target_user
-        
+
         async def assign_roles(db, user, role_ids, updated_by):
             user.roles = [admin_role]
             return user
-        
+
         rbac_check = await make_rbac_check("roles:assign", admin_user)
         mock_db = AsyncMock()
-        
+
         result = await assign_roles_impl(
             user_id=str(target_user.id), role_ids=[str(admin_role.id)],
             token=token, db=mock_db, get_user_func=get_user,
             assign_roles_func=assign_roles, rbac_check_func=rbac_check
         )
-        
+
         assert result.success is True
         assert result.message == "Roles assigned successfully"
 
@@ -592,18 +592,18 @@ class TestRolesAPIHappyPath:
         viewer_role = create_role("viewer", ["roles:read"])
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def get_all_roles(db):
             return [admin_role, viewer_role]
-        
+
         rbac_check = await make_rbac_check("roles:read", admin_user)
         mock_db = AsyncMock()
-        
+
         result = await list_roles_impl(
             token=token, db=mock_db, get_all_roles_func=get_all_roles,
             rbac_check_func=rbac_check
         )
-        
+
         assert result.success is True
         assert len(result.data) == 2
         assert result.data[0].name == "admin"
@@ -623,17 +623,17 @@ class TestRBACDenial:
         guest_role = create_role("guest", [])
         guest_user = create_user("guest@test.com", "Guest", [guest_role])
         token = create_token(user_id=str(guest_user.id))
-        
+
         rbac_check = await make_rbac_check("users:create", guest_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await create_user_impl(
                 email="new@test.com", password="Pass123!", full_name="New",
                 token=token, db=mock_db, email_exists_func=AsyncMock(),
                 create_user_func=AsyncMock(), rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
         assert exc_info.value.detail["code"] == "PERMISSION_DENIED"
 
@@ -643,10 +643,10 @@ class TestRBACDenial:
         viewer_role = create_role("viewer", ["users:read"])
         viewer_user = create_user("viewer@test.com", "Viewer", [viewer_role])
         token = create_token(user_id=str(viewer_user.id))
-        
+
         rbac_check = await make_rbac_check("users:update", viewer_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await update_user_impl(
                 user_id=str(uuid.uuid4()), email="new@test.com", full_name="New",
@@ -654,7 +654,7 @@ class TestRBACDenial:
                 email_exists_func=AsyncMock(), update_user_func=AsyncMock(),
                 rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
 
     @pytest.mark.asyncio
@@ -663,17 +663,17 @@ class TestRBACDenial:
         viewer_role = create_role("viewer", ["users:read"])
         viewer_user = create_user("viewer@test.com", "Viewer", [viewer_role])
         token = create_token(user_id=str(viewer_user.id))
-        
+
         rbac_check = await make_rbac_check("users:deactivate", viewer_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await delete_user_impl(
                 user_id=str(uuid.uuid4()), token=token, db=mock_db,
                 get_user_func=AsyncMock(), soft_delete_func=AsyncMock(),
                 rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
 
     @pytest.mark.asyncio
@@ -682,17 +682,17 @@ class TestRBACDenial:
         viewer_role = create_role("viewer", ["users:read"])
         viewer_user = create_user("viewer@test.com", "Viewer", [viewer_role])
         token = create_token(user_id=str(viewer_user.id))
-        
+
         rbac_check = await make_rbac_check("roles:assign", viewer_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await assign_roles_impl(
                 user_id=str(uuid.uuid4()), role_ids=[str(uuid.uuid4())],
                 token=token, db=mock_db, get_user_func=AsyncMock(),
                 assign_roles_func=AsyncMock(), rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
 
     @pytest.mark.asyncio
@@ -701,16 +701,16 @@ class TestRBACDenial:
         guest_role = create_role("guest", [])
         guest_user = create_user("guest@test.com", "Guest", [guest_role])
         token = create_token(user_id=str(guest_user.id))
-        
+
         rbac_check = await make_rbac_check("users:read", guest_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await list_users_impl(
                 page=1, size=10, token=token, db=mock_db,
                 get_users_func=AsyncMock(), rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
 
     @pytest.mark.asyncio
@@ -719,16 +719,16 @@ class TestRBACDenial:
         guest_role = create_role("guest", [])
         guest_user = create_user("guest@test.com", "Guest", [guest_role])
         token = create_token(user_id=str(guest_user.id))
-        
+
         rbac_check = await make_rbac_check("roles:read", guest_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await list_roles_impl(
                 token=token, db=mock_db, get_all_roles_func=AsyncMock(),
                 rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -748,19 +748,19 @@ class TestCrossTenantDenial:
             user_id=str(admin_user.id),
             tenant_schema="tenant_tenant2"  # Different tenant
         )
-        
+
         async def get_user(db, uid):
             return None  # User not found in this tenant
-        
+
         rbac_check = await make_rbac_check("users:read", admin_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await get_user_impl(
                 user_id=str(uuid.uuid4()), token=token, db=mock_db,
                 get_user_func=get_user, rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
         assert exc_info.value.detail["code"] == "USER_NOT_FOUND"
 
@@ -773,13 +773,13 @@ class TestCrossTenantDenial:
             user_id=str(admin_user.id),
             tenant_schema="tenant_tenant2"
         )
-        
+
         async def get_user(db, uid):
             return None
-        
+
         rbac_check = await make_rbac_check("users:update", admin_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await update_user_impl(
                 user_id=str(uuid.uuid4()), email="new@test.com", full_name="New",
@@ -787,7 +787,7 @@ class TestCrossTenantDenial:
                 email_exists_func=AsyncMock(), update_user_func=AsyncMock(),
                 rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.asyncio
@@ -799,20 +799,20 @@ class TestCrossTenantDenial:
             user_id=str(admin_user.id),
             tenant_schema="tenant_tenant2"
         )
-        
+
         async def get_user(db, uid):
             return None
-        
+
         rbac_check = await make_rbac_check("users:deactivate", admin_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await delete_user_impl(
                 user_id=str(uuid.uuid4()), token=token, db=mock_db,
                 get_user_func=get_user, soft_delete_func=AsyncMock(),
                 rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.asyncio
@@ -824,20 +824,20 @@ class TestCrossTenantDenial:
             user_id=str(admin_user.id),
             tenant_schema="tenant_tenant2"
         )
-        
+
         async def get_user(db, uid):
             return None
-        
+
         rbac_check = await make_rbac_check("roles:assign", admin_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await assign_roles_impl(
                 user_id=str(uuid.uuid4()), role_ids=[str(uuid.uuid4())],
                 token=token, db=mock_db, get_user_func=get_user,
                 assign_roles_func=AsyncMock(), rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.asyncio
@@ -845,7 +845,7 @@ class TestCrossTenantDenial:
         """Verify tenant isolation is enforced via search_path in JWT."""
         token1 = create_token(tenant_schema="tenant_tenant1")
         token2 = create_token(tenant_schema="tenant_tenant2")
-        
+
         assert token1.tenant_schema == "tenant_tenant1"
         assert token2.tenant_schema == "tenant_tenant2"
         assert token1.tenant_schema != token2.tenant_schema
@@ -864,20 +864,20 @@ class TestEdgeCases:
         admin_role = create_role("admin", ["users:create"])
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def email_exists(db, email):
             return True  # Email already exists
-        
+
         rbac_check = await make_rbac_check("users:create", admin_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await create_user_impl(
                 email="existing@test.com", password="Pass123!", full_name="New",
                 token=token, db=mock_db, email_exists_func=email_exists,
                 create_user_func=AsyncMock(), rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_409_CONFLICT
         assert exc_info.value.detail["code"] == "EMAIL_EXISTS"
 
@@ -888,16 +888,16 @@ class TestEdgeCases:
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         target_user = create_user("target@test.com", "Target", [])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def get_user(db, uid):
             return target_user
-        
+
         async def email_exists(db, email, exclude_id=None):
             return True  # Email already taken
-        
+
         rbac_check = await make_rbac_check("users:update", admin_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await update_user_impl(
                 user_id=str(target_user.id), email="taken@test.com", full_name="New",
@@ -905,7 +905,7 @@ class TestEdgeCases:
                 email_exists_func=email_exists, update_user_func=AsyncMock(),
                 rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_409_CONFLICT
 
     @pytest.mark.asyncio
@@ -914,20 +914,20 @@ class TestEdgeCases:
         admin_role = create_role("admin", ["users:deactivate"])
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def get_user(db, uid):
             return admin_user
-        
+
         rbac_check = await make_rbac_check("users:deactivate", admin_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await delete_user_impl(
                 user_id=str(admin_user.id), token=token, db=mock_db,
                 get_user_func=get_user, soft_delete_func=AsyncMock(),
                 rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
         assert exc_info.value.detail["code"] == "CANNOT_DELETE_SELF"
 
@@ -938,23 +938,23 @@ class TestEdgeCases:
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         target_user = create_user("target@test.com", "Target", [])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def get_user(db, uid):
             return target_user
-        
+
         async def assign_roles(db, user, role_ids, updated_by):
             raise ValueError("Invalid role ID: not-a-uuid")
-        
+
         rbac_check = await make_rbac_check("roles:assign", admin_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await assign_roles_impl(
                 user_id=str(target_user.id), role_ids=["not-a-uuid"],
                 token=token, db=mock_db, get_user_func=get_user,
                 assign_roles_func=assign_roles, rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
         assert exc_info.value.detail["code"] == "INVALID_ROLE"
 
@@ -964,17 +964,17 @@ class TestEdgeCases:
         admin_role = create_role("admin", ["users:read"])
         admin_user = create_user("admin@test.com", "Admin", [admin_role])
         token = create_token(user_id=str(admin_user.id))
-        
+
         async def get_user(db, uid):
             return None  # Invalid UUID returns None
-        
+
         rbac_check = await make_rbac_check("users:read", admin_user)
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await get_user_impl(
                 user_id="not-a-valid-uuid", token=token, db=mock_db,
                 get_user_func=get_user, rbac_check_func=rbac_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND

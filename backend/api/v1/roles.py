@@ -25,16 +25,16 @@ async def list_roles(
 ):
     """
     List all roles.
-    
+
     Implements openapi.yaml GET /roles
-    
+
     Requires: roles:read permission
-    
+
     Returns:
         RoleListResponse with all roles
     """
     roles = await get_all_roles(db)
-    
+
     return RoleListResponse(
         success=True,
         data=[

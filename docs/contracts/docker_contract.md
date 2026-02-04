@@ -1,8 +1,8 @@
 # Mpango ERP – Docker Contract
 
-**Version:** 1.0  
-**Owner:** Jeff + ChatGPT + GLM  
-**Target:** KIRO Code + DevOps  
+**Version:** 1.0
+**Owner:** Jeff + ChatGPT + GLM
+**Target:** KIRO Code + DevOps
 **Stack:** FastAPI + React + PostgreSQL + Nginx + Docker Compose
 
 ---
@@ -15,7 +15,7 @@ version: '3.8'
 
 services:
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: mpango_backend

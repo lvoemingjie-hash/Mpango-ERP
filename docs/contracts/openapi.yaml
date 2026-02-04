@@ -3,16 +3,16 @@ info:
   title: Mpango ERP API
   description: |
     Multi-tenant ERP system for African wholesale-retail operations.
-    
+
     ## Authentication
     All endpoints except `/auth/login` require Bearer token authentication.
     The JWT token contains `tenant_id`, `tenant_schema`, and `user_id` claims.
-    
+
     ## Multi-Tenancy
     - Login requires `tenant_code` to identify the wholesaler
     - All subsequent requests use tenant info from JWT claims
     - Data is isolated per tenant schema
-    
+
     ## Authorization
     Endpoints are protected by RBAC permissions as defined in RBAC Matrix (MVP).
   version: 1.0.0

@@ -51,7 +51,7 @@ def is_pascal_case(name: str) -> bool:
 
 class TestORMModelStructure:
     """Property tests for ORM model structure compliance."""
-    
+
     def test_all_models_have_uuid_primary_key(self):
         """
         Property 1.1: All models must have UUID primary key named 'id'.
@@ -59,22 +59,22 @@ class TestORMModelStructure:
         """
         models = get_all_model_classes()
         assert len(models) > 0, "No models found to test"
-        
+
         for model in models:
             mapper = inspect(model)
             pk_columns = mapper.primary_key
-            
+
             assert len(pk_columns) == 1, \
                 f"{model.__name__} must have exactly one primary key column"
-            
+
             pk_col = pk_columns[0]
             assert pk_col.name == 'id', \
                 f"{model.__name__} primary key must be named 'id', got '{pk_col.name}'"
-            
+
             # Check UUID type
             assert isinstance(pk_col.type, UUID), \
                 f"{model.__name__}.id must be UUID type, got {type(pk_col.type)}"
-    
+
     def test_all_models_have_audit_columns(self):
         """
         Property 1.2: All models must have audit columns.
@@ -82,41 +82,41 @@ class TestORMModelStructure:
         """
         required_audit_columns = {'created_at', 'updated_at', 'is_deleted', 'deleted_at'}
         models = get_all_model_classes()
-        
+
         for model in models:
             mapper = inspect(model)
             column_names = {col.name for col in mapper.columns}
-            
+
             missing = required_audit_columns - column_names
             assert not missing, \
                 f"{model.__name__} missing audit columns: {missing}"
-    
+
     def test_all_models_have_explicit_tablename(self):
         """
         Property 1.3: All models must have explicit __tablename__ in snake_case plural.
         Validates: Requirement 3.2
         """
         models = get_all_model_classes()
-        
+
         for model in models:
             assert hasattr(model, '__tablename__'), \
                 f"{model.__name__} must have explicit __tablename__"
-            
+
             tablename = model.__tablename__
             assert is_snake_case_plural(tablename), \
                 f"{model.__name__}.__tablename__ '{tablename}' must be snake_case plural"
-    
+
     def test_all_model_classes_are_pascal_case(self):
         """
         Property 1.4: All model class names must be PascalCase.
         Validates: Requirement 3.3
         """
         models = get_all_model_classes()
-        
+
         for model in models:
             assert is_pascal_case(model.__name__), \
                 f"Model class name '{model.__name__}' must be PascalCase"
-    
+
     def test_base_model_has_server_default_for_id(self):
         """
         Property 1.5: BaseModel.id must have gen_random_uuid() server default.
@@ -126,7 +126,7 @@ class TestORMModelStructure:
         id_col = BaseModel.__table__.c.id
         assert id_col.server_default is not None, \
             "BaseModel.id must have server_default"
-        
+
         # The server default should contain gen_random_uuid()
         default_text = str(id_col.server_default.arg)
         assert 'gen_random_uuid()' in default_text, \
@@ -135,19 +135,19 @@ class TestORMModelStructure:
 
 class TestPublicBaseModel:
     """Tests specific to PublicBaseModel (for public schema tables)."""
-    
+
     def test_public_base_model_has_audit_columns(self):
         """PublicBaseModel must have audit columns but not user tracking."""
         required = {'created_at', 'updated_at', 'is_deleted', 'deleted_at'}
         columns = {col.name for col in PublicBaseModel.__table__.c}
-        
+
         missing = required - columns
         assert not missing, f"PublicBaseModel missing audit columns: {missing}"
-    
+
     def test_public_base_model_no_user_tracking(self):
         """PublicBaseModel should not have user tracking columns."""
         columns = {col.name for col in PublicBaseModel.__table__.c}
-        
+
         # User tracking columns should NOT be present
         assert 'created_by' not in columns, \
             "PublicBaseModel should not have created_by"

@@ -17,10 +17,10 @@ async def setup_tenant_tables(tenant_schema: str):
     """Create tables in the specified tenant schema."""
     async with AsyncSessionLocal() as db:
         print(f"Setting up tables in schema: {tenant_schema}")
-        
+
         # Set search path to tenant schema
         await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
-        
+
         # Create users table
         await db.execute(text("""
             CREATE TABLE IF NOT EXISTS users (
@@ -37,7 +37,7 @@ async def setup_tenant_tables(tenant_schema: str):
                 updated_by UUID
             )
         """))
-        
+
         # Create roles table
         await db.execute(text("""
             CREATE TABLE IF NOT EXISTS roles (
@@ -52,7 +52,7 @@ async def setup_tenant_tables(tenant_schema: str):
                 updated_by UUID
             )
         """))
-        
+
         # Create permissions table
         await db.execute(text("""
             CREATE TABLE IF NOT EXISTS permissions (
@@ -67,7 +67,7 @@ async def setup_tenant_tables(tenant_schema: str):
                 updated_by UUID
             )
         """))
-        
+
         # Create user_roles M2M table
         await db.execute(text("""
             CREATE TABLE IF NOT EXISTS user_roles (
@@ -78,7 +78,7 @@ async def setup_tenant_tables(tenant_schema: str):
                 FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
             )
         """))
-        
+
         # Create role_permissions M2M table
         await db.execute(text("""
             CREATE TABLE IF NOT EXISTS role_permissions (
@@ -89,7 +89,7 @@ async def setup_tenant_tables(tenant_schema: str):
                 FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
             )
         """))
-        
+
         # Create order_status enum if not exists
         await db.execute(text("""
             DO $$ BEGIN
@@ -98,7 +98,7 @@ async def setup_tenant_tables(tenant_schema: str):
                 WHEN duplicate_object THEN null;
             END $$;
         """))
-        
+
         # Create orders table
         await db.execute(text("""
             CREATE TABLE IF NOT EXISTS orders (
@@ -115,7 +115,7 @@ async def setup_tenant_tables(tenant_schema: str):
                 updated_by UUID
             )
         """))
-        
+
         # Create payments table (from B5 migration)
         await db.execute(text("""
             CREATE TABLE IF NOT EXISTS payments (
@@ -132,7 +132,7 @@ async def setup_tenant_tables(tenant_schema: str):
                 CONSTRAINT uq_payments_transaction_id UNIQUE (transaction_id)
             )
         """))
-        
+
         await db.commit()
         print(f"✓ Tables created in schema: {tenant_schema}")
 
@@ -142,10 +142,10 @@ async def main():
         "t_550e8400e29b41d4a716446655440000",  # TEST001
         "t_f32148fea3b74353b1c9bb095a1a0e58"   # TEST_B
     ]
-    
+
     for schema in tenant_schemas:
         await setup_tenant_tables(schema)
-    
+
     print("\n✓ All tenant schemas setup complete!")
 
 if __name__ == "__main__":

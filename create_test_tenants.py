@@ -23,25 +23,25 @@ from core.security import hash_password
 async def create_test_tenant(name: str, code: str, admin_email: str, admin_password: str):
     """Create a test tenant with admin user."""
     print(f"\nCreating tenant: {name} ({code})")
-    
+
     async with AsyncSessionLocal() as db:
         # 1. Create wholesaler
         wholesaler = Wholesaler(name=name, code=code)
         db.add(wholesaler)
         await db.commit()
         await db.refresh(wholesaler)
-        
+
         tenant_schema = wholesaler.get_tenant_schema()
         print(f"✓ Created wholesaler with schema: {tenant_schema}")
-        
+
         # 2. Create tenant schema
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{tenant_schema}"'))
         await db.commit()
         print(f"✓ Created schema: {tenant_schema}")
-        
+
         # 3. Set search path and create admin user
         await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
-        
+
         user = User(
             email=admin_email,
             hashed_password=hash_password(admin_password[:72]),  # Truncate to 72 bytes for bcrypt
@@ -54,13 +54,13 @@ async def create_test_tenant(name: str, code: str, admin_email: str, admin_passw
         await db.commit()
         await db.refresh(user)
         print(f"✓ Created admin user: {admin_email}")
-        
+
         # 4. Create admin role
         admin_role = Role(name="admin", description="Administrator with full access")
         db.add(admin_role)
         await db.commit()
         await db.refresh(admin_role)
-        
+
         # 5. Create permissions
         permissions_data = [
             ("users:read", "Read users"),
@@ -70,51 +70,51 @@ async def create_test_tenant(name: str, code: str, admin_email: str, admin_passw
             ("payments:read", "Read payments"),
             ("payments:create", "Create payments"),
         ]
-        
+
         for code, description in permissions_data:
             perm = Permission(code=code, description=description)
             db.add(perm)
-        
+
         await db.commit()
         print(f"✓ Created permissions")
-        
+
         # 6. Assign role to user and permissions to role
         await db.execute(
             text(f'INSERT INTO "{tenant_schema}".user_roles (user_id, role_id) VALUES (:user_id, :role_id)'),
             {"user_id": str(user.id), "role_id": str(admin_role.id)}
         )
-        
+
         # Get all permissions and assign to admin role
         result = await db.execute(text(f'SELECT id FROM "{tenant_schema}".permissions'))
         permissions = result.fetchall()
-        
+
         for (perm_id,) in permissions:
             await db.execute(
                 text(f'INSERT INTO "{tenant_schema}".role_permissions (role_id, permission_id) VALUES (:role_id, :perm_id)'),
                 {"role_id": str(admin_role.id), "perm_id": str(perm_id)}
             )
-        
+
         await db.commit()
         print(f"✓ Assigned role and permissions")
-        
+
         return wholesaler
 
 
 async def main():
     """Create two test tenants."""
     print("Creating test tenants for B6 verification...")
-    
+
     # Create Tenant A (use existing TEST001)
     print("Using existing TEST001 tenant as Tenant A")
-    
+
     # Create Tenant B
     tenant_b = await create_test_tenant(
-        "Test Tenant B", 
-        "TEST_B", 
-        "admin@tenant-b.com", 
+        "Test Tenant B",
+        "TEST_B",
+        "admin@tenant-b.com",
         "TestPass123"  # Shorter password
     )
-    
+
     print("\n" + "="*60)
     print("✓ Test tenants ready for verification!")
     print("="*60)

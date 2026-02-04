@@ -47,7 +47,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     def __init__(self, model: Type[ModelType]):
         """
         CRUD对象，包含默认的增删改查操作
-        
+
         **参数**
         * `model`: SQLAlchemy模型类
         """
@@ -67,10 +67,10 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         return result.scalar_one_or_none()
 
     async def get_multi(
-        self, 
-        db: AsyncSession, 
-        *, 
-        skip: int = 0, 
+        self,
+        db: AsyncSession,
+        *,
+        skip: int = 0,
         limit: int = 100
     ) -> List[ModelType]:
         """获取多个记录"""
@@ -103,10 +103,10 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             update_data = obj_in
         else:
             update_data = obj_in.dict(exclude_unset=True)
-        
+
         for field, value in update_data.items():
             setattr(db_obj, field, value)
-        
+
         await db.commit()
         await db.refresh(db_obj)
         return db_obj

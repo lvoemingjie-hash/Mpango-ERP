@@ -78,6 +78,6 @@ services:
 
 ---
 
-**Created by:** Architect AI – Kiro  
-**Date:** 2025-01-09  
+**Created by:** Architect AI – Kiro
+**Date:** 2025-01-09
 **Last Updated:** 2025-01-09

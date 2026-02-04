@@ -1,7 +1,7 @@
 # KIRO-V0 UI Integration Contract (Professional Edition)
 
-**Version:** 1.0  
-**Author:** Jeff + ChatGPT  
+**Version:** 1.0
+**Author:** Jeff + ChatGPT
 **Purpose:** Define how V0 and KIRO cooperate to build the MPANGO ERP front-end
 
 ---

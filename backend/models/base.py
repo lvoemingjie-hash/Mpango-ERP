@@ -43,12 +43,12 @@ class AuditMixin:
         DateTime(timezone=True),
         nullable=True
     )
-    
+
     def soft_delete(self) -> None:
         """Mark record as deleted without removing from database."""
         self.is_deleted = True
         self.deleted_at = datetime.utcnow()
-    
+
     def restore(self) -> None:
         """Restore a soft-deleted record."""
         self.is_deleted = False
@@ -74,14 +74,14 @@ class BaseModel(Base, AuditMixin, UserTrackingMixin):
     """
     Abstract base model with UUID primary key, audit columns, and user tracking.
     All tenant-scoped models should inherit from this.
-    
+
     Implements database_contract.md requirements:
     - UUID primary key with gen_random_uuid() default
     - Audit columns (created_at, updated_at, is_deleted, deleted_at)
     - User tracking columns (created_by, updated_by)
     """
     __abstract__ = True
-    
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
@@ -96,7 +96,7 @@ class PublicBaseModel(Base, AuditMixin):
     Does not include user tracking since users are tenant-scoped.
     """
     __abstract__ = True
-    
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,

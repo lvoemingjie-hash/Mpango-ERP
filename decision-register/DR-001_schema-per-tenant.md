@@ -132,6 +132,6 @@ async def get_tenant_db(tenant_schema: str):
 
 ---
 
-**Created by:** Architect AI  
-**Approved by:** Product Owner (implicit via L0 spec)  
+**Created by:** Architect AI
+**Approved by:** Product Owner (implicit via L0 spec)
 **Date:** 2025-01-09

@@ -6,8 +6,8 @@ interface V0ComponentProps {
   onCodeGenerated?: (code: string) => void;
 }
 
-export const V0Component: React.FC<V0ComponentProps> = ({ 
-  onCodeGenerated 
+export const V0Component: React.FC<V0ComponentProps> = ({
+  onCodeGenerated
 }) => {
   const [prompt, setPrompt] = React.useState('');
   const [isGenerating, setIsGenerating] = React.useState(false);
@@ -69,7 +69,7 @@ export const GeneratedComponent: React.FC = () => {
     </div>
   );
 };`;
-      
+
       setGeneratedCode(fallbackCode);
       onCodeGenerated?.(fallbackCode);
     } catch (err) {
@@ -82,7 +82,7 @@ export const GeneratedComponent: React.FC = () => {
   return (
     <div className="p-4 border rounded-lg bg-gray-50">
       <h3 className="text-lg font-semibold mb-4">V0 AI Component Generator</h3>
-      
+
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium mb-2">

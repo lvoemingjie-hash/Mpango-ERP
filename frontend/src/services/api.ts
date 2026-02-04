@@ -34,7 +34,7 @@ api.interceptors.response.use(
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('user_info')
-      
+
       // 重定向到登录页
       window.location.href = '/login'
     }

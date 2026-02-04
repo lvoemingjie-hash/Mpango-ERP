@@ -78,9 +78,9 @@ async def list_orders(
 ):
     """
     List orders with pagination and optional filters.
-    
+
     Implements openapi.yaml GET /orders
-    
+
     Returns:
         OrderListResponse with paginated orders
     """
@@ -98,7 +98,7 @@ async def list_orders(
                     "message": f"Invalid status '{status_filter}'. Valid values: draft, confirmed, cancelled"
                 }
             )
-    
+
     orders, total = await get_orders_paginated(
         db,
         page=page,
@@ -107,9 +107,9 @@ async def list_orders(
         status_filter=status_enum,
         retailer_id=retailer_id,
     )
-    
+
     pages = ceil(total / size) if total > 0 else 0
-    
+
     return OrderListResponse(
         success=True,
         data={
@@ -133,9 +133,9 @@ async def create_order(
 ):
     """
     Create a new order.
-    
+
     Implements openapi.yaml POST /orders
-    
+
     Returns:
         OrderResponse with created order
     """
@@ -149,7 +149,7 @@ async def create_order(
         }
         for item in request.items
     ]
-    
+
     order = await crud_create_order(
         db=db,
         wholesaler_id=token.tenant_id,
@@ -158,7 +158,7 @@ async def create_order(
         notes=request.notes,
         created_by=token.user_id
     )
-    
+
     return OrderResponse(
         success=True,
         data=order_to_schema(order),
@@ -175,14 +175,14 @@ async def get_order(
 ):
     """
     Get order by ID.
-    
+
     Implements openapi.yaml GET /orders/{order_id}
-    
+
     Returns:
         OrderResponse with order data
     """
     order = await get_order_by_id(db, order_id)
-    
+
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -191,7 +191,7 @@ async def get_order(
                 "message": f"Order with ID '{order_id}' not found"
             }
         )
-    
+
     return OrderResponse(
         success=True,
         data=order_to_schema(order),
@@ -207,14 +207,14 @@ async def confirm_order(
 ):
     """
     Confirm an order (draft → confirmed).
-    
+
     Implements openapi.yaml POST /orders/{order_id}/confirm
-    
+
     Returns:
         OrderActionResponse with updated status
     """
     order = await get_order_by_id(db, order_id)
-    
+
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -223,7 +223,7 @@ async def confirm_order(
                 "message": f"Order with ID '{order_id}' not found"
             }
         )
-    
+
     try:
         order = await crud_confirm_order(db, order, updated_by=token.user_id)
     except InvalidStateTransitionError as e:
@@ -234,7 +234,7 @@ async def confirm_order(
                 "message": str(e)
             }
         )
-    
+
     return OrderActionResponse(
         success=True,
         data={
@@ -254,14 +254,14 @@ async def cancel_order(
 ):
     """
     Cancel an order (draft/confirmed → cancelled).
-    
+
     Implements openapi.yaml POST /orders/{order_id}/cancel
-    
+
     Returns:
         OrderActionResponse with updated status
     """
     order = await get_order_by_id(db, order_id)
-    
+
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -270,7 +270,7 @@ async def cancel_order(
                 "message": f"Order with ID '{order_id}' not found"
             }
         )
-    
+
     try:
         order = await crud_cancel_order(db, order, updated_by=token.user_id)
     except InvalidStateTransitionError as e:
@@ -281,7 +281,7 @@ async def cancel_order(
                 "message": str(e)
             }
         )
-    
+
     return OrderActionResponse(
         success=True,
         data={

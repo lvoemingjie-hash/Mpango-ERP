@@ -1,62 +1,42 @@
 import os
-import sys
 import unittest
-from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from fastapi import FastAPI, Request
 
-_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
+from api.context.auth import get_auth_context
+from api.context.tenant import get_tenant_context
+from api.middleware.auth import AuthenticationMiddleware
+from auth.factory import get_auth_strategy
 
 
 class TestTestModeAuthBypass(unittest.TestCase):
     def test_payments_endpoint_callable_without_jwt_when_test_mode(self):
-        os.environ["MPANGO_TEST_MODE"] = "true"
+        os.environ["MPANGO_ENV"] = "test"
 
-        from main import app
+        app = FastAPI()
+        app.add_middleware(AuthenticationMiddleware, strategy=get_auth_strategy())
 
-        async def _fake_create_payment(
-            self,
-            *,
-            tenant_db,
-            order_id,
-            amount,
-            method,
-            transaction_id,
-            created_by,
-        ):
-            return {
-                "id": "11111111-1111-1111-1111-111111111111",
-                "order_id": order_id,
-                "retailer_id": "22222222-2222-2222-2222-222222222222",
-                "transaction_id": transaction_id,
-                "amount": amount,
-                "method": method,
-                "status": "pending",
-                "created_at": "2026-01-01T00:00:00Z",
-                "updated_at": "2026-01-01T00:00:00Z",
-            }
+        @app.get("/whoami")
+        async def _whoami(request: Request):
+            auth_ctx = get_auth_context(request)
+            return {"user_id": auth_ctx.token.user_id}
 
-        with patch(
-            "services.payment_service.PaymentService.create_payment",
-            new=_fake_create_payment,
-        ):
-            client = TestClient(app)
-            resp = client.post(
-                "/api/v1/payments",
-                json={
-                    "order_id": "550e8400-e29b-41d4-a716-446655440002",
-                    "amount": 100.0,
-                    "method": "cash",
-                },
-            )
+        @app.get("/protected")
+        async def _protected(request: Request):
+            tenant_ctx = get_tenant_context(request)
+            user_permissions = set()
+            for role in tenant_ctx.user.roles:
+                for perm in role.permissions:
+                    user_permissions.add(perm.code)
+            return {"ok": "payments:create" in user_permissions}
 
-        self.assertEqual(resp.status_code, 201)
-        payload = resp.json()
-        self.assertTrue(payload["success"])
-        self.assertEqual(payload["data"]["order_id"], "550e8400-e29b-41d4-a716-446655440002")
+        client = TestClient(app)
+
+        resp = client.get("/protected")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])
 
 
 if __name__ == "__main__":

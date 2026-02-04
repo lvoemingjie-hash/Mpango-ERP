@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class User(BaseModel):
     """
     User model - stored in tenant schema.
-    
+
     Implements database_contract.md users table:
     - email: varchar(255), UNIQUE, NOT NULL
     - password_hash: varchar(255), NOT NULL
@@ -27,7 +27,7 @@ class User(BaseModel):
     __table_args__ = (
         Index('ix_users_email', 'email', unique=True),
     )
-    
+
     email: Mapped[str] = mapped_column(
         String(255),
         unique=True,
@@ -47,7 +47,7 @@ class User(BaseModel):
         default=True,
         nullable=False
     )
-    
+
     # Relationships
     roles: Mapped[List["Role"]] = relationship(
         "Role",
@@ -60,18 +60,18 @@ class User(BaseModel):
 class Role(BaseModel):
     """
     Role model - stored in tenant schema.
-    
+
     Implements database_contract.md roles table:
     - name: varchar(100), UNIQUE, NOT NULL
     - description: text, NULL
-    
+
     Default roles per rbac_matrix.md: admin, sales, warehouse, finance
     """
     __tablename__ = "roles"
     __table_args__ = (
         Index('ix_roles_name', 'name', unique=True),
     )
-    
+
     name: Mapped[str] = mapped_column(
         String(100),
         unique=True,
@@ -82,7 +82,7 @@ class Role(BaseModel):
         Text,
         nullable=True
     )
-    
+
     # Relationships
     users: Mapped[List["User"]] = relationship(
         "User",
@@ -101,18 +101,18 @@ class Role(BaseModel):
 class Permission(BaseModel):
     """
     Permission model - stored in tenant schema.
-    
+
     Implements database_contract.md permissions table:
     - code: varchar(100), UNIQUE, NOT NULL (format: <resource>:<action>)
     - description: text, NULL
-    
+
     Permission codes per rbac_matrix.md: users:read, orders:create, etc.
     """
     __tablename__ = "permissions"
     __table_args__ = (
         Index('ix_permissions_code', 'code', unique=True),
     )
-    
+
     code: Mapped[str] = mapped_column(
         String(100),
         unique=True,
@@ -124,7 +124,7 @@ class Permission(BaseModel):
         Text,
         nullable=True
     )
-    
+
     # Relationships
     roles: Mapped[List["Role"]] = relationship(
         "Role",

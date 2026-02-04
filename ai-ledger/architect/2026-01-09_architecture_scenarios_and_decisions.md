@@ -88,13 +88,13 @@ Original ledger date was incorrect (2025-01-09). Corrected by project owner on 2
 
 #### 决策 2: 场景粒度
 **决策内容：** 每个场景文件包含一个主场景和多个边界场景（错误处理）
-**理由：** 
+**理由：**
 - 主场景定义happy path
 - 边界场景覆盖权限拒绝、数据不存在、验证失败等情况
 - 便于Backend AI实现时参考
 
 #### 决策 3: Decision Record编号策略
-**决策内容：** 
+**决策内容：**
 - 架构级决策使用 `DR-XXX` 格式（如DR-001）
 - 实现级决策使用 `DR-YYYY-MM-DD-XXX` 格式
 **理由：** 区分长期架构决策和短期实现决策
@@ -190,8 +190,8 @@ decision-register/README.md  # 添加DR-001/002/003索引
 
 ## Signature
 
-**AI Role:** Architect AI – Kiro (Claude Sonnet 3.5)  
-**Date:** 2025-01-09  
-**Ledger Version:** 1.0  
-**Status:** ✅ Scenarios Defined, Decision Records Formalized  
+**AI Role:** Architect AI – Kiro (Claude Sonnet 3.5)
+**Date:** 2025-01-09
+**Ledger Version:** 1.0
+**Status:** ✅ Scenarios Defined, Decision Records Formalized
 **Freeze & Fix:** 钢钉3已修复，钢钉1待Backend AI修复

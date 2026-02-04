@@ -1,6 +1,6 @@
 # Product Backlog & Future Roadmap
 
-> **Status**: Living Document  
+> **Status**: Living Document
 > **Purpose**: To track features, enhancements, and architectural changes that are explicitly **Out of Scope** for the MVP (Phase 1) but are planned for future iterations.
 
 ---
@@ -58,4 +58,3 @@
 *   **Audit Logging UI**: The backend records `InventoryLog` and `updated_by` fields, but there is no admin UI to view these audit trails in MVP.
 *   **Automated Reconciliation**: MVP requires manual checking of M-Pesa transaction IDs. Future scope includes an automated job to ingest M-Pesa CSV statements and reconcile against `Payment` records.
 *   **Cross-Tenant Analytics**: Super-Admin dashboard for platform owners to see aggregated stats across all Wholesalers (Data Warehouse solution).
-

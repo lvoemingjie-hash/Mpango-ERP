@@ -114,8 +114,8 @@ docker compose up -d
 
 ## 2026-01-20 – Boot Contract v1 闭环完成
 
-**Date**: 2026-01-20  
-**Scope**: Backend service boot chain (local + Docker)  
+**Date**: 2026-01-20
+**Scope**: Backend service boot chain (local + Docker)
 **Status**: ✅ COMPLETED – Boot Contract v1 closed
 
 ---
@@ -138,30 +138,30 @@ docker compose up -d
 
 ### Involved AIs & Responsibilities
 
-- **Backend AI – Boot Contract Alignment**  
+- **Backend AI – Boot Contract Alignment**
   - 按 `Boot-contract.md` 和 `2026-01-20_boot_contract_alignment.md` 要求，对 backend 启动路径进行约束与修正。[file:81][file:82]
   - 确保本地环境下：
     - FastAPI 应用入口与依赖关系无循环导入；
     - `poetry run uvicorn main:app ...` 可稳定启动；
     - `/health` 健康检查端点返回 200 并携带版本信息。[file:82][file:84]
 
-- **Ops AI – Boot Contract Verification & Packaging Fix**  
+- **Ops AI – Boot Contract Verification & Packaging Fix**
   - 在 `2026-01-20_ops_boot_contract_verification.md` 中，以 PLAN / EXECUTION / EVIDENCE 三段式重新验证：本地启动、Docker 构建与运行。[file:84][file:85]
   - 识别并修复 **(c) ops packaging error**：
-    - 问题表现：容器内 `.venv` 损坏并尝试重建时，出现  
-      `The virtual environment found in /app/.venv seems to be broken.`  
-      `Recreating virtualenv mpango-erp-backend in /app/.venv`  
+    - 问题表现：容器内 `.venv` 损坏并尝试重建时，出现
+      `The virtual environment found in /app/.venv seems to be broken.`
+      `Recreating virtualenv mpango-erp-backend in /app/.venv`
       `[Errno 5] Input/output error: 'pgproto.cp314-win_amd64.pyd'`。[file:84]
     - 根因：Windows 本地虚拟环境 / `.pyd` 文件被打入 Linux 容器，且运行时通过挂载覆盖导致 venv 损坏。[file:64][file:84]
   - 采取的修复措施：
     - 新增 `backend/.dockerignore`，显式排除 `.venv`、缓存与本地二进制文件，避免将 Windows 虚拟环境打入镜像。[file:84]
-    - 修改 `backend/Dockerfile` 将安装命令更新为：  
-      `RUN poetry install --no-root --no-interaction --no-ansi --no-cache`  
+    - 修改 `backend/Dockerfile` 将安装命令更新为：
+      `RUN poetry install --no-root --no-interaction --no-ansi --no-cache`
       以强制在 Linux 容器内重新下载干净的依赖。[file:64][file:84]
     - 重新执行：
       - `docker compose build backend`
       - `docker compose up backend`
-      - `curl http://localhost:8000/health`  
+      - `curl http://localhost:8000/health`
       并在 ledger 中记录了成功启动日志与健康检查输出。[file:84][file:85]
 
 ---

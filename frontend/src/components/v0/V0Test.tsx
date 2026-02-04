@@ -10,7 +10,7 @@ export const V0Test: React.FC = () => {
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold mb-4">V0 AI Test</h2>
-      
+
       <div className="mb-6">
         <h3 className="text-lg font-semibold mb-2">Try these sample prompts:</h3>
         <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">

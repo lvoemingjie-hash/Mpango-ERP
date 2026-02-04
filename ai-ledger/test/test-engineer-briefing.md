@@ -62,7 +62,7 @@ pending → confirmed → shipped
 # Backend API
 http://localhost:8000
 
-# Frontend Application  
+# Frontend Application
 http://localhost:5173
 
 # Test Endpoints

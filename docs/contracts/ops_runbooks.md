@@ -73,8 +73,8 @@ Use case: heavy imports / long jobs.
 
 ### 2.3 Scaling guardrails
 ```
-(backend_max_instances × backend_connections_per_instance + 
- worker_max_instances × worker_connections_per_instance) 
+(backend_max_instances × backend_connections_per_instance +
+ worker_max_instances × worker_connections_per_instance)
  <= DB_max_connections × 0.70
 ```
 

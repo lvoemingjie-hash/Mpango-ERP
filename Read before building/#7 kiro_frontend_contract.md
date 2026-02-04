@@ -1,8 +1,8 @@
 # Mpango ERP — Frontend Contract
 
-**Version:** 1.0  
-**Owner:** Jeff（Product Owner） + ChatGPT（Architect） + GLM  
-**Target Implementer:** Kiro Code + Future Developers  
+**Version:** 1.0
+**Owner:** Jeff（Product Owner） + ChatGPT（Architect） + GLM
+**Target Implementer:** Kiro Code + Future Developers
 **Tech Stack:** React + Vite + TypeScript + TailwindCSS + Zustand
 
 ---
@@ -119,16 +119,16 @@ import { User, CreateUserDTO, UpdateUserDTO } from '../types/user';
 export const userService = {
   getUsers: (page: number = 1, size: number = 10) =>
     api.get<User[]>(`/users?page=${page}&size=${size}`),
-  
+
   getUserById: (id: number) =>
     api.get<User>(`/users/${id}`),
-  
+
   createUser: (userData: CreateUserDTO) =>
     api.post<User>('/users', userData),
-  
+
   updateUser: (id: number, userData: UpdateUserDTO) =>
     api.put<User>(`/users/${id}`, userData),
-  
+
   deleteUser: (id: number) =>
     api.delete(`/users/${id}`),
 };
@@ -165,13 +165,13 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseClasses = 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
-  
+
   const variantClasses = {
     primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
     secondary: 'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500',
     danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
   };
-  
+
   const sizeClasses = {
     sm: 'px-3 py-2 text-sm',
     md: 'px-4 py-2 text-base',
@@ -248,9 +248,9 @@ export const UserListPage: React.FC = () => {
           添加用户
         </Button>
       </div>
-      
-      <UserTable 
-        users={users} 
+
+      <UserTable
+        users={users}
         onDelete={handleDelete}
       />
     </div>
@@ -473,27 +473,27 @@ export const UserForm: React.FC<UserFormProps> = ({ onSubmit, loading }) => {
         {...register('username')}
         error={errors.username?.message}
       />
-      
+
       <Input
         label="邮箱"
         type="email"
         {...register('email')}
         error={errors.email?.message}
       />
-      
+
       <Input
         label="密码"
         type="password"
         {...register('password')}
         error={errors.password?.message}
       />
-      
+
       <Input
         label="姓名"
         {...register('full_name')}
         error={errors.full_name?.message}
       />
-      
+
       <Button type="submit" loading={loading}>
         提交
       </Button>

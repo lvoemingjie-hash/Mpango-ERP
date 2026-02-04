@@ -1,7 +1,7 @@
 feat: Implement Identity & Security Layer with JWT auth and RBAC
 
 ## Summary
-Complete implementation of authentication and authorization for Mpango ERP backend, 
+Complete implementation of authentication and authorization for Mpango ERP backend,
 providing JWT-based multi-tenant authentication and role-based access control.
 
 ## Features Added

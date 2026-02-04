@@ -24,7 +24,7 @@ class LoginRequest(BaseModel):
         min_length=8,
         description="User password"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -42,7 +42,7 @@ class TokenData(BaseModel):
         ...,
         description="Tenant schema name (e.g., t_abc123...)"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -57,7 +57,7 @@ class LoginResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -67,7 +67,7 @@ class RefreshTokenRequest(BaseModel):
     Implements openapi.yaml RefreshTokenRequest schema.
     """
     refresh_token: str = Field(..., description="Refresh token to exchange")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -86,7 +86,7 @@ class CurrentUserData(BaseModel):
         default_factory=list,
         description="User permission codes"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -101,7 +101,7 @@ class CurrentUserResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -109,7 +109,7 @@ class TokenPayload(BaseModel):
     """
     JWT token payload schema.
     Used for encoding/decoding JWT claims.
-    
+
     Per multi_tenancy_spec.md section 4.1, JWT must contain:
     - user_id: UUID
     - tenant_id: UUID
@@ -122,5 +122,5 @@ class TokenPayload(BaseModel):
     tenant_schema: str = Field(..., description="Tenant schema name")
     exp: int | None = Field(None, description="Expiration timestamp")
     type: str = Field(default="access", description="Token type: access or refresh")
-    
+
     model_config = {"from_attributes": True}

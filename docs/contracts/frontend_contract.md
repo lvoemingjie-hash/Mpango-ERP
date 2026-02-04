@@ -1,8 +1,8 @@
 # Mpango ERP — Frontend Contract
 
-**Version:** 1.0  
-**Owner:** Jeff（Product Owner） + ChatGPT（Architect） + GLM  
-**Target Implementer:** Kiro Code + Future Developers  
+**Version:** 1.0
+**Owner:** Jeff（Product Owner） + ChatGPT（Architect） + GLM
+**Target Implementer:** Kiro Code + Future Developers
 **Tech Stack:** React + Vite + TypeScript + TailwindCSS + Zustand
 
 ---

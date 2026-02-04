@@ -84,7 +84,7 @@
 
 ## Definition of Done Status
 ✅ Login as Retailer - Available
-✅ Create Order - Available  
+✅ Create Order - Available
 ✅ Login as Wholesaler - Available
 ✅ Confirm → Ship → Cancel - Available
 ✅ UI blocks forbidden actions - Available

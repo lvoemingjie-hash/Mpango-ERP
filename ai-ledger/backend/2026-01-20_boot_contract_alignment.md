@@ -1,23 +1,23 @@
 # Boot Contract Alignment – Backend Startup Verification
 
-**Date**: 2026-01-20  
-**Status**: COMPLETED  
+**Date**: 2026-01-20
+**Status**: COMPLETED
 **Owner**: Backend AI
 
 ---
 
 ## PLAN
-- 阅读并确认 `boot_contract.md`、`architecture_contract.md`、`api_contract.md` 的约束；记录现有实现与契约差异。  
+- 阅读并确认 `boot_contract.md`、`architecture_contract.md`、`api_contract.md` 的约束；记录现有实现与契约差异。
 - 确认本地启动失败的根因：`DATABASE_URL`、`SECRET_KEY` 缺失导致 `Settings` 验证失败；`main.py` 直接导入 `api.v1.*` 和 `api.middleware.*` 违反 Boot Contract。
 - 规划修复路径：
-  1. 为 `Settings` 提供安全的本地默认值，保证裸环境可启动。  
-  2. 抽离应用装配逻辑到新的 `api/app.py`，让 `main.py` 仅负责构建 App 并调用装配函数，符合依赖方向。  
-  3. 恢复健康检查依赖的 `get_db_session` helper。  
+  1. 为 `Settings` 提供安全的本地默认值，保证裸环境可启动。
+  2. 抽离应用装配逻辑到新的 `api/app.py`，让 `main.py` 仅负责构建 App 并调用装配函数，符合依赖方向。
+  3. 恢复健康检查依赖的 `get_db_session` helper。
   4. 全量执行 Boot Contract 命令链验证，并记录输出作为证据。
 
 ## EXECUTION
 - 更新 `core/config.py`：
-  - 使用 `SettingsConfigDict` 指定 `.env`，并为 `DATABASE_URL`、`SECRET_KEY` 提供开发默认值。  
+  - 使用 `SettingsConfigDict` 指定 `.env`，并为 `DATABASE_URL`、`SECRET_KEY` 提供开发默认值。
   - 简化模块级 `settings` 暴露方式。
 - 新建 `api/app.py`：集中配置 CORS、`AuthenticationMiddleware`、`IdempotencyMiddleware` 以及主业务路由。
 - 调整 `main.py`：

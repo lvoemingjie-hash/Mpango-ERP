@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         default=False,
         description="Echo SQL queries for debugging"
     )
-    
+
     # Security - REQUIRED
     SECRET_KEY: str = Field(
         default="dev-secret-key-change-me",
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
         default=7,
         description="Refresh token expiration in days"
     )
-    
+
     # Application
     APP_NAME: str = Field(
         default="Mpango ERP",
@@ -50,19 +50,19 @@ class Settings(BaseSettings):
         default=False,
         description="Debug mode"
     )
-    
+
     # CORS
     CORS_ORIGINS: List[str] = Field(
         default=["http://localhost:3000", "http://localhost:5173"],
         description="Allowed CORS origins"
     )
-    
+
     # Multi-tenancy
     DEFAULT_TENANT_SCHEMA: str = Field(
         default="t_dev",
         description="Default tenant schema for development"
     )
-    
+
     # Operational settings
     LOG_LEVEL: str = Field(
         default="INFO",
@@ -84,7 +84,7 @@ class Settings(BaseSettings):
         default=10,
         description="Database connection timeout in seconds"
     )
-    
+
     # Feature flags
     ENABLE_METRICS: bool = Field(
         default=False,
@@ -94,7 +94,7 @@ class Settings(BaseSettings):
         default=True,
         description="Enable detailed request logging"
     )
-    
+
 @lru_cache
 def get_settings() -> Settings:
     """

@@ -1,8 +1,8 @@
 # Mpango ERP — Backend Development Contract
 
-**Version:** 1.0  
-**Owner:** Jeff（Product Owner）+ ChatGPT（Architect） + GLM  
-**Target:** KIRO Code + Backend Developers  
+**Version:** 1.0
+**Owner:** Jeff（Product Owner）+ ChatGPT（Architect） + GLM
+**Target:** KIRO Code + Backend Developers
 **Tech Stack:** FastAPI + PostgreSQL + Alembic + Modular Architecture
 
 ---
@@ -12,7 +12,7 @@
 本契约用于确保 AI 工具（Kiro、Cursor、Claude Code 等）在生成后端代码时：
 
 - 结构完整
-- 逻辑连续  
+- 逻辑连续
 - 无关键遗漏
 
 ## 技术栈

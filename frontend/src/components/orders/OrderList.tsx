@@ -70,7 +70,7 @@ export const OrderList: React.FC = () => {
     <div className="bg-white shadow rounded-lg">
       <div className="px-4 py-5 sm:p-6">
         <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Orders</h3>
-        
+
         {orders.length === 0 ? (
           <p className="text-gray-500">No orders found.</p>
         ) : (

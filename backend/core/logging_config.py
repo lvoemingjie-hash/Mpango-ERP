@@ -1,7 +1,14 @@
 import logging
 import json
 from typing import Any, Dict
-from pythonjsonlogger import jsonlogger
+
+try:
+    from pythonjsonlogger import jsonlogger  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    class _FallbackJsonLogger:  # noqa: N801
+        JsonFormatter = logging.Formatter
+
+    jsonlogger = _FallbackJsonLogger()
 
 
 class CustomJsonFormatter(jsonlogger.JsonFormatter):

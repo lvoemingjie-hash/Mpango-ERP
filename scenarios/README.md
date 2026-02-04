@@ -56,5 +56,5 @@ Feature: <功能名称>
 
 ---
 
-**Maintained by:** Architect AI  
+**Maintained by:** Architect AI
 **Last Updated:** 2025-01-09

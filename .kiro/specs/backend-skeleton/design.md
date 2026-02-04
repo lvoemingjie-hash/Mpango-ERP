@@ -4,7 +4,7 @@
 
 The Backend Skeleton establishes the structural foundation for Mpango ERP by proving alignment between three canonical sources of truth:
 - **OpenAPI Contract** (`docs/contracts/openapi.yaml`) - API specification
-- **Database Contract** (`docs/contracts/database_contract.md`) - Schema specification  
+- **Database Contract** (`docs/contracts/database_contract.md`) - Schema specification
 - **RBAC Matrix** (`docs/contracts/rbac_matrix.md`) - Permission definitions
 
 This skeleton implements no business logic. It creates an executable proof that the database schema, ORM models, Pydantic schemas, and FastAPI routes are structurally aligned and ready for business logic implementation.
@@ -19,23 +19,23 @@ graph TB
         DEPS[Dependencies]
         SCHEMAS[Pydantic Schemas]
     end
-    
+
     subgraph "Database Layer"
         MODELS[SQLAlchemy Models]
         SESSION[Async Session]
         ALEMBIC[Alembic Migrations]
     end
-    
+
     subgraph "Configuration"
         CONFIG[Settings]
         ENV[.env]
     end
-    
+
     subgraph "Contracts"
         OPENAPI[openapi.yaml]
         DBCONTRACT[database_contract.md]
     end
-    
+
     MAIN --> ROUTES
     ROUTES --> DEPS
     ROUTES --> SCHEMAS
@@ -110,19 +110,19 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
     DATABASE_ECHO: bool = False
-    
+
     # Application
     APP_NAME: str = "Mpango ERP"
     DEBUG: bool = False
-    
+
     # Security
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    
+
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
-    
+
     class Config:
         env_file = ".env"
         case_sensitive = True
@@ -145,11 +145,11 @@ class DatabaseSession:
     def __init__(self, database_url: str):
         self.engine = create_async_engine(database_url, echo=False)
         self.async_session = async_sessionmaker(
-            self.engine, 
-            class_=AsyncSession, 
+            self.engine,
+            class_=AsyncSession,
             expire_on_commit=False
         )
-    
+
     async def get_session(self, tenant_schema: str | None = None) -> AsyncGenerator[AsyncSession, None]:
         async with self.async_session() as session:
             if tenant_schema:
@@ -183,36 +183,36 @@ class Base(DeclarativeBase):
 class AuditMixin:
     """Mixin for audit columns required by database_contract.md"""
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), 
-        server_default=func.now(), 
+        DateTime(timezone=True),
+        server_default=func.now(),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), 
-        server_default=func.now(), 
-        onupdate=func.now(), 
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
         nullable=False
     )
     is_deleted: Mapped[bool] = mapped_column(
-        Boolean, 
-        default=False, 
+        Boolean,
+        default=False,
         nullable=False
     )
     deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), 
+        DateTime(timezone=True),
         nullable=True
     )
 
 class UserTrackingMixin:
     """Mixin for user tracking columns"""
     created_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), 
-        ForeignKey("users.id"), 
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
         nullable=True
     )
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), 
-        ForeignKey("users.id"), 
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
         nullable=True
     )
 ```
@@ -231,17 +231,17 @@ import uuid
 class Wholesaler(Base, AuditMixin):
     __tablename__ = "wholesalers"
     __table_args__ = {"schema": "public"}
-    
+
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), 
-        primary_key=True, 
+        UUID(as_uuid=True),
+        primary_key=True,
         default=uuid.uuid4,
         server_default=text("gen_random_uuid()")
     )
     code: Mapped[str] = mapped_column(
-        String(32), 
-        unique=True, 
-        nullable=False, 
+        String(32),
+        unique=True,
+        nullable=False,
         index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -255,26 +255,26 @@ class Wholesaler(Base, AuditMixin):
 ```python
 class User(Base, AuditMixin, UserTrackingMixin):
     __tablename__ = "users"
-    
+
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), 
-        primary_key=True, 
+        UUID(as_uuid=True),
+        primary_key=True,
         default=uuid.uuid4,
         server_default=text("gen_random_uuid()")
     )
     email: Mapped[str] = mapped_column(
-        String(255), 
-        unique=True, 
-        nullable=False, 
+        String(255),
+        unique=True,
+        nullable=False,
         index=True
     )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    
+
     # Relationships
     roles: Mapped[list["Role"]] = relationship(
-        secondary="user_roles", 
+        secondary="user_roles",
         back_populates="users"
     )
 ```
@@ -284,27 +284,27 @@ class User(Base, AuditMixin, UserTrackingMixin):
 ```python
 class Role(Base, AuditMixin, UserTrackingMixin):
     __tablename__ = "roles"
-    
+
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), 
-        primary_key=True, 
+        UUID(as_uuid=True),
+        primary_key=True,
         default=uuid.uuid4,
         server_default=text("gen_random_uuid()")
     )
     name: Mapped[str] = mapped_column(
-        String(100), 
-        unique=True, 
+        String(100),
+        unique=True,
         nullable=False
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    
+
     # Relationships
     users: Mapped[list["User"]] = relationship(
-        secondary="user_roles", 
+        secondary="user_roles",
         back_populates="roles"
     )
     permissions: Mapped[list["Permission"]] = relationship(
-        secondary="role_permissions", 
+        secondary="role_permissions",
         back_populates="roles"
     )
 ```
@@ -314,24 +314,24 @@ class Role(Base, AuditMixin, UserTrackingMixin):
 ```python
 class Permission(Base, AuditMixin, UserTrackingMixin):
     __tablename__ = "permissions"
-    
+
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), 
-        primary_key=True, 
+        UUID(as_uuid=True),
+        primary_key=True,
         default=uuid.uuid4,
         server_default=text("gen_random_uuid()")
     )
     code: Mapped[str] = mapped_column(
-        String(100), 
-        unique=True, 
-        nullable=False, 
+        String(100),
+        unique=True,
+        nullable=False,
         index=True
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    
+
     # Relationships
     roles: Mapped[list["Role"]] = relationship(
-        secondary="role_permissions", 
+        secondary="role_permissions",
         back_populates="permissions"
     )
 ```
@@ -371,9 +371,9 @@ def get_tenant_schema():
 
 def run_migrations_online():
     tenant_schema = get_tenant_schema()
-    
+
     connectable = create_async_engine(config.get_main_option("sqlalchemy.url"))
-    
+
     async def do_run_migrations(connection):
         if tenant_schema:
             # Create schema if not exists
@@ -383,9 +383,9 @@ def run_migrations_online():
             await connection.execute(
                 text(f'SET search_path TO "{tenant_schema}", public')
             )
-        
+
         await connection.run_sync(do_run_migrations_sync)
-    
+
     # ... async migration execution
 ```
 
@@ -455,7 +455,7 @@ class UserRead(BaseModel):
     roles: list["RoleRead"] = []
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 ```

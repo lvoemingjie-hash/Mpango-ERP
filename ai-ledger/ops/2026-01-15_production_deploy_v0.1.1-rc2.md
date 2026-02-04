@@ -175,7 +175,7 @@ Tables:
 
 **Before Risk:** Dockerfile used `requirements.txt`, pyproject.toml existed but not authoritative.
 
-**After:** 
+**After:**
 - Dockerfile uses `poetry install` with `poetry.lock`
 - pyproject.toml is single source of truth
 - poetry.lock generated and committed
@@ -358,7 +358,7 @@ The deployment artifacts demonstrate good engineering practices and comprehensiv
   ```yaml
   POSTGRES_PASSWORD: mpango123
   ```
-- **Risk:** 
+- **Risk:**
   - Database credentials exposed in version control
   - Any user with repository access can access production database
   - Violates security best practices

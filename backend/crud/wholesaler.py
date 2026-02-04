@@ -15,14 +15,14 @@ async def get_wholesaler_by_code(
 ) -> Optional[Wholesaler]:
     """
     Get wholesaler by tenant_code.
-    
+
     Queries public.wholesalers table.
     Used during login to resolve tenant_code → tenant_id → tenant_schema.
-    
+
     Args:
         db: Database session (public schema)
         code: Wholesaler code (e.g., "ACME01")
-        
+
     Returns:
         Wholesaler if found, None otherwise
     """

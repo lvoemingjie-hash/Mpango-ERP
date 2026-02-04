@@ -48,7 +48,7 @@ __all__ = [
     "MessageResponse",
     "DataResponse",
     "PaginatedResponse",
-    
+
     # Auth
     "LoginRequest",
     "LoginResponse",
@@ -57,7 +57,7 @@ __all__ = [
     "CurrentUserData",
     "CurrentUserResponse",
     "TokenPayload",
-    
+
     # User
     "UserCreateRequest",
     "UserUpdateRequest",
@@ -67,7 +67,7 @@ __all__ = [
     "AssignRolesRequest",
     "RoleRead",
     "RoleListResponse",
-    
+
     # Order
     "OrderStatus",
     "OrderItemCreate",

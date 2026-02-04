@@ -26,7 +26,7 @@ class OrderStatus(str, PyEnum):
 class Order(BaseModel):
     """
     Order model - stored in tenant schema.
-    
+
     Implements openapi.yaml Order schema:
     - retailer_id: UUID, NOT NULL
     - status: enum (draft, confirmed, cancelled)
@@ -40,7 +40,7 @@ class Order(BaseModel):
         Index('ix_orders_status', 'status'),
         Index('ix_orders_created_at', 'created_at'),
     )
-    
+
     wholesaler_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
@@ -68,7 +68,7 @@ class Order(BaseModel):
         Text,
         nullable=True
     )
-    
+
     # Relationships
     items: Mapped[List["OrderItem"]] = relationship(
         "OrderItem",
@@ -81,7 +81,7 @@ class Order(BaseModel):
 class OrderItem(BaseModel):
     """
     OrderItem model - stored in tenant schema.
-    
+
     Implements openapi.yaml OrderItem schema:
     - order_id: UUID, NOT NULL, FK to orders.id
     - product_id: UUID, NOT NULL
@@ -94,7 +94,7 @@ class OrderItem(BaseModel):
         Index('ix_order_items_order_id', 'order_id'),
         Index('ix_order_items_sku_code', 'sku_code'),
     )
-    
+
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="CASCADE"),
@@ -123,7 +123,7 @@ class OrderItem(BaseModel):
         Numeric(precision=12, scale=2),
         nullable=False
     )
-    
+
     # Relationships
     order: Mapped["Order"] = relationship(
         "Order",

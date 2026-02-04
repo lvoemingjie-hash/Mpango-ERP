@@ -1,8 +1,8 @@
 # Track S1-1: Secrets Governance Implementation Checklist
 
-**Date:** 2026-02-01  
-**Status:** IN PROGRESS  
-**Owner:** OPS AI / Security Team  
+**Date:** 2026-02-01
+**Status:** IN PROGRESS
+**Owner:** OPS AI / Security Team
 
 ---
 
@@ -422,7 +422,7 @@ cat README.md | grep -i security
 
 ---
 
-**Track S1-1 Status:** ☐ Not Started | ☐ In Progress | ☐ Complete  
-**Overall Completion:** 0%  
-**Target Completion Date:** 2026-02-08  
+**Track S1-1 Status:** ☐ Not Started | ☐ In Progress | ☐ Complete
+**Overall Completion:** 0%
+**Target Completion Date:** 2026-02-08
 **Actual Completion Date:** ________________

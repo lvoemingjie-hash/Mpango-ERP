@@ -47,7 +47,7 @@ async def list_skus(
     request_id = getattr(request.state, 'request_id', 'N/A')
     tenant_id = getattr(request.state, 'tenant_id', 'N/A')
     logger = get_request_logger(request_id, tenant_id)
-    
+
     logger.info(
         "list_skus_started",
         extra={
@@ -59,7 +59,7 @@ async def list_skus(
             "search_query": q
         }
     )
-    
+
     try:
         service = SKUService()
         items, total = await service.list_skus(db, page=page, size=size, is_active=is_active, q=q)
@@ -73,7 +73,7 @@ async def list_skus(
             },
             timestamp=datetime.utcnow(),
         )
-        
+
         logger.info(
             "list_skus_completed",
             extra={
@@ -83,9 +83,9 @@ async def list_skus(
                 "success": True
             }
         )
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(
             "list_skus_failed",
@@ -109,7 +109,7 @@ async def create_sku(
     request_id = getattr(request_obj.state, 'request_id', 'N/A')
     tenant_id = getattr(request_obj.state, 'tenant_id', 'N/A')
     logger = get_request_logger(request_id, tenant_id)
-    
+
     logger.info(
         "create_sku_started",
         extra={
@@ -119,7 +119,7 @@ async def create_sku(
             "name": request.name
         }
     )
-    
+
     try:
         service = SKUService()
         sku = await service.create_sku(
@@ -134,7 +134,7 @@ async def create_sku(
         )
 
         result = DataResponse(success=True, data=_sku_to_read(sku), timestamp=datetime.utcnow())
-        
+
         logger.info(
             "create_sku_completed",
             extra={
@@ -144,9 +144,9 @@ async def create_sku(
                 "success": True
             }
         )
-        
+
         return result
-        
+
     except HTTPException as e:
         logger.warning(
             "create_sku_failed",
@@ -182,7 +182,7 @@ async def get_sku(
     request_id = getattr(request.state, 'request_id', 'N/A')
     tenant_id = getattr(request.state, 'tenant_id', 'N/A')
     logger = get_request_logger(request_id, tenant_id)
-    
+
     logger.info(
         "get_sku_started",
         extra={
@@ -191,13 +191,13 @@ async def get_sku(
             "sku_code": sku_code
         }
     )
-    
+
     try:
         service = SKUService()
         sku = await service.get_sku(db, sku_code=sku_code)
-        
+
         result = DataResponse(success=True, data=_sku_to_read(sku), timestamp=datetime.utcnow())
-        
+
         logger.info(
             "get_sku_completed",
             extra={
@@ -207,9 +207,9 @@ async def get_sku(
                 "success": True
             }
         )
-        
+
         return result
-        
+
     except HTTPException as e:
         logger.warning(
             "get_sku_failed",
@@ -246,7 +246,7 @@ async def update_sku(
     request_id = getattr(request_obj.state, 'request_id', 'N/A')
     tenant_id = getattr(request_obj.state, 'tenant_id', 'N/A')
     logger = get_request_logger(request_id, tenant_id)
-    
+
     logger.info(
         "update_sku_started",
         extra={
@@ -255,7 +255,7 @@ async def update_sku(
             "sku_code": sku_code
         }
     )
-    
+
     try:
         service = SKUService()
         sku = await service.update_sku(
@@ -268,9 +268,9 @@ async def update_sku(
             is_active=request.is_active,
             updated_by=token.user_id,
         )
-        
+
         result = DataResponse(success=True, data=_sku_to_read(sku), timestamp=datetime.utcnow())
-        
+
         logger.info(
             "update_sku_completed",
             extra={
@@ -280,9 +280,9 @@ async def update_sku(
                 "success": True
             }
         )
-        
+
         return result
-        
+
     except HTTPException as e:
         logger.warning(
             "update_sku_failed",

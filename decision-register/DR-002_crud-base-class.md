@@ -91,7 +91,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 ```python
 class BaseModel(Base):
     __abstract__ = True
-    
+
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -99,7 +99,7 @@ class BaseModel(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(UUID, nullable=True)
     updated_by = Column(UUID, nullable=True)
-    
+
     def soft_delete(self):
         self.is_deleted = True
         self.deleted_at = datetime.utcnow()
@@ -157,5 +157,5 @@ user = CRUDUser(User)
 
 ---
 
-**Created by:** Architect AI  
+**Created by:** Architect AI
 **Date:** 2025-01-09

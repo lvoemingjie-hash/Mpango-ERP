@@ -13,10 +13,10 @@ from models.user import Role
 async def get_all_roles(db: AsyncSession) -> List[Role]:
     """
     Get all roles.
-    
+
     Args:
         db: Database session (tenant schema)
-        
+
     Returns:
         List of all roles
     """
@@ -34,11 +34,11 @@ async def get_role_by_id(
 ) -> Optional[Role]:
     """
     Get role by ID.
-    
+
     Args:
         db: Database session (tenant schema)
         role_id: Role UUID as string
-        
+
     Returns:
         Role if found, None otherwise
     """
@@ -46,7 +46,7 @@ async def get_role_by_id(
         role_uuid = UUID(role_id)
     except ValueError:
         return None
-    
+
     result = await db.execute(
         select(Role)
         .where(Role.id == role_uuid)
@@ -61,11 +61,11 @@ async def get_role_by_name(
 ) -> Optional[Role]:
     """
     Get role by name.
-    
+
     Args:
         db: Database session (tenant schema)
         name: Role name
-        
+
     Returns:
         Role if found, None otherwise
     """

@@ -18,7 +18,7 @@ uvicorn main:app --reload --port 8000 &
 BACKEND_PID=$!
 cd ..
 
-# Start frontend in background  
+# Start frontend in background
 echo "🎨 Starting frontend server..."
 cd frontend
 npm run dev &

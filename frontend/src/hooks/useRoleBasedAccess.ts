@@ -11,7 +11,7 @@ export const useRoleBasedAccess = () => {
 
   const canPerformOrderAction = (action: 'confirm' | 'ship' | 'cancel', orderStatus: string) => {
     if (!isWholesaler) return false
-    
+
     switch (orderStatus) {
       case 'pending':
         return action === 'confirm' || action === 'cancel'

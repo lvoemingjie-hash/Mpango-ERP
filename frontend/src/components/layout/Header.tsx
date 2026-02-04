@@ -20,7 +20,7 @@ export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
         <span className="sr-only">Open sidebar</span>
         <Bars3Icon className="h-6 w-6" aria-hidden="true" />
       </button>
-      
+
       <div className="flex-1 px-4 flex justify-between">
         <div className="flex-1 flex">
           <div className="w-full flex md:ml-0">
@@ -33,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
             </div>
           </div>
         </div>
-        
+
         <div className="ml-4 flex items-center md:ml-6">
           <button
             type="button"

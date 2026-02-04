@@ -13,13 +13,13 @@ jobs:
   secret-detection:
     name: Detect Secrets in Repository
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for comprehensive scan
-      
+
       - name: Check for prod.env files
         run: |
           echo "Checking for prod.env files..."
@@ -29,7 +29,7 @@ jobs:
             exit 1
           fi
           echo "✅ No prod.env files found"
-      
+
       - name: Check for secrets/ directory
         run: |
           echo "Checking for secrets/ directory..."
@@ -39,13 +39,13 @@ jobs:
             exit 1
           fi
           echo "✅ No secrets directory found"
-      
+
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optional: for Gitleaks Pro
-      
+
       - name: Run TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
@@ -53,7 +53,7 @@ jobs:
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
           extra_args: --debug --only-verified
-      
+
       - name: Run detect-secrets
         run: |
           pip install detect-secrets
@@ -63,11 +63,11 @@ jobs:
             exit 1
           fi
           echo "✅ No new secrets detected"
-      
+
       - name: Check for hardcoded credentials
         run: |
           echo "Checking for hardcoded credentials..."
-          
+
           # Check for common password patterns
           if grep -rn --include="*.py" --include="*.js" --include="*.ts" --include="*.java" \
             -E "(password|passwd|pwd|secret|token|api_key|apikey)\s*=\s*[\"'][^\"']{8,}[\"']" . \
@@ -75,7 +75,7 @@ jobs:
             echo "❌ ERROR: Potential hardcoded credentials detected!"
             exit 1
           fi
-          
+
           # Check for AWS keys
           if grep -rn --include="*.py" --include="*.js" --include="*.ts" --include="*.env*" \
             -E "(AKIA[0-9A-Z]{16}|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY)" . \
@@ -83,7 +83,7 @@ jobs:
             echo "❌ ERROR: AWS credentials detected!"
             exit 1
           fi
-          
+
           # Check for private keys
           if find . -name "*.pem" -o -name "*.key" -o -name "id_rsa" | \
             grep -v "test" | grep -v "example" | grep -q .; then
@@ -91,9 +91,9 @@ jobs:
             find . -name "*.pem" -o -name "*.key" -o -name "id_rsa" | grep -v "test" | grep -v "example"
             exit 1
           fi
-          
+
           echo "✅ No hardcoded credentials detected"
-      
+
       - name: Security scan summary
         if: always()
         run: |
@@ -112,11 +112,11 @@ jobs:
   dependency-scan:
     name: Scan Dependencies for Vulnerabilities
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Run Snyk Security Scan
         uses: snyk/actions/python@master
         continue-on-error: true
@@ -124,7 +124,7 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           args: --severity-threshold=high
-      
+
       - name: Run Safety Check (Python)
         run: |
           pip install safety

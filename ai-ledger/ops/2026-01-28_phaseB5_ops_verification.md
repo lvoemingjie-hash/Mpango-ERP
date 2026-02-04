@@ -1,7 +1,7 @@
 # Phase B5 Payments Minimal Loop - Ops Verification Ledger
 
-**Date:** 2026-01-28  
-**Role:** Ops AI – Phase B5 final verification (real DB)  
+**Date:** 2026-01-28
+**Role:** Ops AI – Phase B5 final verification (real DB)
 **Status:** ✅ PASSED
 
 ---

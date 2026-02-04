@@ -1,7 +1,7 @@
 # Mpango ERP — Database Contract
-**Version:** 1.2  
-**Scope:** Backend database schema, migrations, and ORM conventions.  
-**DB:** PostgreSQL 15+  
+**Version:** 1.2
+**Scope:** Backend database schema, migrations, and ORM conventions.
+**DB:** PostgreSQL 15+
 **Last Updated:** 2025-06-10
 
 ## 1. 目标

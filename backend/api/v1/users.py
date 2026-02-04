@@ -65,18 +65,18 @@ async def list_users(
 ):
     """
     List users with pagination.
-    
+
     Implements openapi.yaml GET /users
-    
+
     Requires: users:read permission
-    
+
     Returns:
         UserListResponse with paginated users
     """
     users, total = await get_users_paginated(db, page=page, size=size)
-    
+
     pages = ceil(total / size) if total > 0 else 0
-    
+
     return UserListResponse(
         success=True,
         data={
@@ -100,11 +100,11 @@ async def create_user_endpoint(
 ):
     """
     Create a new user.
-    
+
     Implements openapi.yaml POST /users
-    
+
     Requires: users:create permission
-    
+
     Returns:
         UserResponse with created user
     """
@@ -117,7 +117,7 @@ async def create_user_endpoint(
                 "message": f"Email '{request.email}' is already registered"
             }
         )
-    
+
     user = await create_user(
         db=db,
         email=request.email,
@@ -125,7 +125,7 @@ async def create_user_endpoint(
         full_name=request.full_name,
         created_by=token.user_id
     )
-    
+
     return UserResponse(
         success=True,
         data=user_to_read(user),
@@ -142,16 +142,16 @@ async def get_user_endpoint(
 ):
     """
     Get user by ID.
-    
+
     Implements openapi.yaml GET /users/{user_id}
-    
+
     Requires: users:read permission
-    
+
     Returns:
         UserResponse with user data
     """
     user = await get_user_by_id(db, user_id)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -160,7 +160,7 @@ async def get_user_endpoint(
                 "message": f"User with ID '{user_id}' not found"
             }
         )
-    
+
     return UserResponse(
         success=True,
         data=user_to_read(user),
@@ -177,16 +177,16 @@ async def update_user_endpoint(
 ):
     """
     Update user.
-    
+
     Implements openapi.yaml PUT /users/{user_id}
-    
+
     Requires: users:update permission
-    
+
     Returns:
         UserResponse with updated user
     """
     user = await get_user_by_id(db, user_id)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -195,7 +195,7 @@ async def update_user_endpoint(
                 "message": f"User with ID '{user_id}' not found"
             }
         )
-    
+
     # Check email uniqueness if changing email
     if request.email and request.email != user.email:
         if await email_exists(db, request.email, exclude_user_id=user_id):
@@ -206,7 +206,7 @@ async def update_user_endpoint(
                     "message": f"Email '{request.email}' is already registered"
                 }
             )
-    
+
     user = await update_user(
         db=db,
         user=user,
@@ -215,7 +215,7 @@ async def update_user_endpoint(
         is_active=request.is_active,
         updated_by=token.user_id
     )
-    
+
     return UserResponse(
         success=True,
         data=user_to_read(user),
@@ -232,16 +232,16 @@ async def delete_user_endpoint(
 ):
     """
     Soft delete user (deactivate).
-    
+
     Implements openapi.yaml DELETE /users/{user_id}
-    
+
     Requires: users:deactivate permission
-    
+
     Returns:
         204 No Content on success
     """
     user = await get_user_by_id(db, user_id)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -250,7 +250,7 @@ async def delete_user_endpoint(
                 "message": f"User with ID '{user_id}' not found"
             }
         )
-    
+
     # Prevent self-deletion
     if user_id == token.user_id:
         raise HTTPException(
@@ -260,9 +260,9 @@ async def delete_user_endpoint(
                 "message": "Cannot delete your own account"
             }
         )
-    
+
     await soft_delete_user(db, user, deleted_by=token.user_id)
-    
+
     return None
 
 
@@ -275,16 +275,16 @@ async def assign_user_roles_endpoint(
 ):
     """
     Assign roles to user.
-    
+
     Implements openapi.yaml PUT /users/{user_id}/roles
-    
+
     Requires: roles:assign permission
-    
+
     Returns:
         UserResponse with updated user roles
     """
     user = await get_user_by_id(db, user_id)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -293,7 +293,7 @@ async def assign_user_roles_endpoint(
                 "message": f"User with ID '{user_id}' not found"
             }
         )
-    
+
     try:
         user = await assign_roles_to_user(
             db=db,
@@ -309,7 +309,7 @@ async def assign_user_roles_endpoint(
                 "message": str(e)
             }
         )
-    
+
     return UserResponse(
         success=True,
         data=user_to_read(user),

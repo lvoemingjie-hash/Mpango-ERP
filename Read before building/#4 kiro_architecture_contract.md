@@ -1,6 +1,6 @@
 # Mpango ERP — Architecture Contract
-**Version:** 1.1  
-**Purpose:** 定义帝国的技术蓝图、演进路径与 AI 原生设计原则。  
+**Version:** 1.1
+**Purpose:** 定义帝国的技术蓝图、演进路径与 AI 原生设计原则。
 **Last Updated:** 2025-06-10
 
 ## 1. 愿景与目标
@@ -106,7 +106,7 @@
 ### 5.3. Multi-Tenancy
 - MVP阶段选择 Schema-per-tenant + 运行时机制
  MVP Multi-Tenancy Decision (Executable)
-- MVP uses **Schema-per-tenant** (one Wholesaler == one tenant schema). 
+- MVP uses **Schema-per-tenant** (one Wholesaler == one tenant schema).
 - Tenant registry is stored in `public.wholesalers` with `wholesalers.code` as tenant_code.
 - Tenant is resolved during login: tenant_code -> tenant_id -> tenant_schema.
 - Every authenticated request MUST derive tenant from JWT claims (tenant_id, tenant_schema).
@@ -165,7 +165,7 @@
     Celery -->|Read/Write| S3
 ```
 
-    
+
 ---
 
 ## 7. Changelog

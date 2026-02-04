@@ -1,7 +1,7 @@
 # Mpango ERP — Database Contract
-**Version:** 1.2  
-**Scope:** Backend database schema, migrations, and ORM conventions.  
-**DB:** PostgreSQL 15+  
+**Version:** 1.2
+**Scope:** Backend database schema, migrations, and ORM conventions.
+**DB:** PostgreSQL 15+
 **Last Updated:** 2025-06-10
 
 ## 1. 目标
@@ -232,7 +232,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 2. tenant provisioning：建 schema → alembic upgrade → seed roles/permissions。
 
-3. 
+3.
 ### Alembic multi-schema migrations (MVP)
 
 - 所有 tenant schema 共享一套 Alembic 迁移脚本（单一 version history）。
@@ -278,8 +278,3 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 ### v1.1 (2025-06-10)
 - Initial draft with basic RBAC models and conventions.
-
-
-
-
-

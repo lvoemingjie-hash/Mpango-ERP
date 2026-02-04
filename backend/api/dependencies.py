@@ -1,5 +1,5 @@
-"""
-FastAPI dependencies for Mpango ERP.
+"""FastAPI dependencies for Mpango ERP.
+
 Provides dependency injection for database sessions and authentication.
 
 Per multi_tenancy_spec.md section 4.2:
@@ -7,7 +7,6 @@ Per multi_tenancy_spec.md section 4.2:
 - Never from headers or request parameters
 - This ensures tenant isolation cannot be bypassed
 """
-import os
 from typing import AsyncGenerator
 
 from fastapi import Request
@@ -21,7 +20,7 @@ from database.session import get_db
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency for public schema database session.
-    
+
     Usage:
         @app.get("/endpoint")
         async def endpoint(db: AsyncSession = Depends(get_db_session)):
@@ -33,13 +32,6 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 def get_current_user_context(request: Request) -> TokenPayload:
     """Return the decoded JWT payload from request state."""
-    if os.getenv("MPANGO_TEST_MODE", "").lower() == "true":
-        return TokenPayload(
-            user_id="00000000-0000-0000-0000-000000000001",
-            tenant_id="00000000-0000-0000-0000-000000000000",
-            tenant_schema="t_dev",
-            type="access",
-        )
     return get_auth_context(request).token
 
 

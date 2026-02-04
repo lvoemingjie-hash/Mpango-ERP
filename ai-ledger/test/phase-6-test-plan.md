@@ -24,7 +24,7 @@
     "password": "test123"
   },
   "wholesaler": {
-    "tenant_code": "wholesale-tenant-1", 
+    "tenant_code": "wholesale-tenant-1",
     "email": "wholesaler@test.com",
     "password": "test123"
   }

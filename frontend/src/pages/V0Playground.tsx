@@ -16,9 +16,9 @@ export const V0Playground: React.FC = () => {
           Generate React components using Vercel's V0 AI. Describe what you want in natural language and get working TypeScript code.
         </p>
       </div>
-      
+
       <V0Component onCodeGenerated={handleCodeGenerated} />
-      
+
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="p-4 bg-blue-50 rounded-lg">
           <h3 className="font-semibold mb-2 text-blue-900">💡 Pro Tips:</h3>
@@ -29,7 +29,7 @@ export const V0Playground: React.FC = () => {
             <li>Describe responsive behavior</li>
           </ul>
         </div>
-        
+
         <div className="p-4 bg-green-50 rounded-lg">
           <h3 className="font-semibold mb-2 text-green-900">🚀 Getting Started:</h3>
           <ol className="list-decimal list-inside space-y-1 text-sm text-green-800">

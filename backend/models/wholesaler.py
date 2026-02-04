@@ -13,10 +13,10 @@ from models.base import PublicBaseModel
 class Wholesaler(PublicBaseModel):
     """
     Wholesaler model - stored in public schema as tenant registry.
-    
+
     Each wholesaler represents a tenant with their own schema.
     The tenant_schema is derived from the wholesaler's UUID.
-    
+
     Implements database_contract.md:
     - public.wholesalers table
     - code: varchar(32), UNIQUE, NOT NULL, regex ^[A-Z0-9]+$
@@ -30,7 +30,7 @@ class Wholesaler(PublicBaseModel):
         Index('ix_wholesalers_code', 'code', unique=True),
         {"schema": "public"}
     )
-    
+
     code: Mapped[str] = mapped_column(
         String(32),
         unique=True,
@@ -54,24 +54,24 @@ class Wholesaler(PublicBaseModel):
         String(50),
         nullable=True
     )
-    
+
     def get_tenant_schema(self) -> str:
         """
         Get the tenant schema name derived from wholesaler UUID.
         Format: t_<uuid_without_dashes>
-        
+
         Per multi_tenancy_spec.md section 2.2
         """
         return f"t_{str(self.id).replace('-', '')}"
-    
+
     @staticmethod
     def derive_schema_from_id(tenant_id: str) -> str:
         """
         Derive tenant schema name from tenant_id UUID string.
-        
+
         Args:
             tenant_id: UUID string (with or without dashes)
-            
+
         Returns:
             Schema name in format t_<uuid_without_dashes>
         """

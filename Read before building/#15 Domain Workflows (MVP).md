@@ -37,7 +37,7 @@
   - qty_change signed (+/-)
   - reference_id points to source document id
   - operator_id is current user
-  
+
 - **Single Warehouse Assumption (MVP)**:
   - While the database schema includes `warehouse_id`, the system will operate effectively as single-warehouse per tenant for MVP.
   - All inventory queries MUST aggregate quantities by `product_id`.

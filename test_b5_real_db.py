@@ -79,12 +79,12 @@ def http_post(url, json_body, headers=None):
 
 def test_cash_payment():
     log("=== TEST A: Cash Payment ===")
-    
+
     balance_before = get_binding_balance()
     count_before = get_payments_count()
     log(f"Balance before: {balance_before}")
     log(f"Payments count before: {count_before}")
-    
+
     resp = http_post(
         API_URL,
         json_body={
@@ -93,31 +93,31 @@ def test_cash_payment():
             "method": "cash"
         }
     )
-    
+
     log(f"Response: {json.dumps(resp['body'], indent=2)}")
-    
+
     assert resp["body"].get("success") == True, f"Cash payment failed: {resp['body']}"
-    
+
     balance_after = get_binding_balance()
     count_after = get_payments_count()
     log(f"Balance after: {balance_after}")
     log(f"Payments count after: {count_after}")
-    
+
     assert balance_after == balance_before - 40, f"Balance should reduce by 40, got {balance_before} -> {balance_after}"
     assert count_after == count_before + 1, "Should have created 1 payment"
-    
+
     log("✅ Cash payment PASSED")
     return balance_after
 
 
 def test_transfer_payment_first():
     log("=== TEST B: Transfer Payment (First) ===")
-    
+
     balance_before = get_binding_balance()
     count_before = get_payments_count()
     log(f"Balance before: {balance_before}")
     log(f"Payments count before: {count_before}")
-    
+
     resp = http_post(
         API_URL,
         json_body={
@@ -128,31 +128,31 @@ def test_transfer_payment_first():
         },
         headers={"Idempotency-Key": "tx-001"}
     )
-    
+
     log(f"Response: {json.dumps(resp['body'], indent=2)}")
-    
+
     assert resp["body"].get("success") == True, f"Transfer payment failed: {resp['body']}"
-    
+
     balance_after = get_binding_balance()
     count_after = get_payments_count()
     log(f"Balance after: {balance_after}")
     log(f"Payments count after: {count_after}")
-    
+
     assert balance_after == balance_before - 30, f"Balance should reduce by 30, got {balance_before} -> {balance_after}"
     assert count_after == count_before + 1, "Should have created 1 payment"
-    
+
     log("✅ Transfer payment (first) PASSED")
     return balance_after
 
 
 def test_idempotent_replay():
     log("=== TEST C: Idempotent Replay ===")
-    
+
     balance_before = get_binding_balance()
     count_before = get_payments_count()
     log(f"Balance before: {balance_before}")
     log(f"Payments count before: {count_before}")
-    
+
     resp = http_post(
         API_URL,
         json_body={
@@ -163,31 +163,31 @@ def test_idempotent_replay():
         },
         headers={"Idempotency-Key": "tx-001"}
     )
-    
+
     log(f"Response: {json.dumps(resp['body'], indent=2)}")
-    
+
     assert resp["body"].get("success") == True, f"Idempotent replay failed: {resp['body']}"
-    
+
     balance_after = get_binding_balance()
     count_after = get_payments_count()
     log(f"Balance after: {balance_after}")
     log(f"Payments count after: {count_after}")
-    
+
     # Balance and count should NOT change on replay
     assert balance_after == balance_before, f"Balance should NOT change on replay, got {balance_before} -> {balance_after}"
     assert count_after == count_before, f"Payment count should NOT change on replay, got {count_before} -> {count_after}"
-    
+
     log("✅ Idempotent replay PASSED")
 
 
 def test_idempotency_violation():
     log("=== TEST D: Idempotency Violation ===")
-    
+
     balance_before = get_binding_balance()
     count_before = get_payments_count()
     log(f"Balance before: {balance_before}")
     log(f"Payments count before: {count_before}")
-    
+
     resp = http_post(
         API_URL,
         json_body={
@@ -198,21 +198,21 @@ def test_idempotency_violation():
         },
         headers={"Idempotency-Key": "tx-001"}
     )
-    
+
     log(f"Response: {json.dumps(resp['body'], indent=2)}")
-    
+
     # Should return error (not success)
     assert resp["body"].get("success") != True, f"Expected failure, got success: {resp['body']}"
-    
+
     balance_after = get_binding_balance()
     count_after = get_payments_count()
     log(f"Balance after: {balance_after}")
     log(f"Payments count after: {count_after}")
-    
+
     # Balance and count should NOT change
     assert balance_after == balance_before, f"Balance should NOT change on violation, got {balance_before} -> {balance_after}"
     assert count_after == count_before, f"Payment count should NOT change on violation, got {count_before} -> {count_after}"
-    
+
     log("✅ Idempotency violation PASSED")
 
 
@@ -220,28 +220,28 @@ def main():
     log("Phase B5 Payments Minimal Loop - Ops Verification")
     log(f"Base URL: {BASE_URL}")
     log(f"Order ID: {ORDER_ID}\n")
-    
+
     try:
         # Reset test data
         reset_test_data()
-        
+
         # Step A: Cash payment
         balance_after_cash = test_cash_payment()
-        
+
         # Step B: Transfer payment (first)
         balance_after_transfer = test_transfer_payment_first()
-        
+
         # Step C: Idempotent replay
         test_idempotent_replay()
-        
+
         # Step D: Idempotency violation
         test_idempotency_violation()
-        
+
         log("=" * 50)
         log("🎉 ALL PHASE B5 TESTS PASSED")
         log("=" * 50)
         log(f"Balance progression: 50 → {balance_after_cash} → {balance_after_transfer}")
-        
+
     except AssertionError as e:
         log(f"❌ TEST FAILED: {e}")
         sys.exit(1)

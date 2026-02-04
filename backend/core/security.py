@@ -4,7 +4,7 @@ Implements JWT token handling and password hashing.
 
 Per multi_tenancy_spec.md section 4.1, JWT claims must contain:
 - user_id: UUID
-- tenant_id: UUID  
+- tenant_id: UUID
 - tenant_schema: string
 - exp: expiration timestamp
 - type: "access" or "refresh"
@@ -54,23 +54,23 @@ def create_access_token(
 ) -> str:
     """
     Create JWT access token with tenant claims.
-    
+
     Args:
         user_id: User UUID as string
         tenant_id: Tenant UUID as string
         tenant_schema: Tenant schema name (e.g., "t_abc123...")
         expires_delta: Optional custom expiration time
-        
+
     Returns:
         Encoded JWT string
     """
     settings = get_settings()
-    
+
     if expires_delta is None:
         expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
     expire = datetime.utcnow() + expires_delta
-    
+
     payload = {
         "user_id": user_id,
         "tenant_id": tenant_id,
@@ -78,7 +78,7 @@ def create_access_token(
         "exp": expire,
         "type": "access"
     }
-    
+
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
@@ -90,23 +90,23 @@ def create_refresh_token(
 ) -> str:
     """
     Create JWT refresh token with tenant claims.
-    
+
     Args:
         user_id: User UUID as string
         tenant_id: Tenant UUID as string
         tenant_schema: Tenant schema name (e.g., "t_abc123...")
         expires_delta: Optional custom expiration time
-        
+
     Returns:
         Encoded JWT string
     """
     settings = get_settings()
-    
+
     if expires_delta is None:
         expires_delta = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    
+
     expire = datetime.utcnow() + expires_delta
-    
+
     payload = {
         "user_id": user_id,
         "tenant_id": tenant_id,
@@ -114,26 +114,26 @@ def create_refresh_token(
         "exp": expire,
         "type": "refresh"
     }
-    
+
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 def decode_token(token: str) -> TokenPayload:
     """
     Decode and validate JWT token.
-    
+
     Args:
         token: JWT token string
-        
+
     Returns:
         TokenPayload with decoded claims
-        
+
     Raises:
         ExpiredTokenError: If token has expired
         InvalidTokenError: If token is invalid (bad signature, malformed)
     """
     settings = get_settings()
-    
+
     try:
         payload = jwt.decode(
             token,
@@ -151,10 +151,10 @@ def decode_token(token: str) -> TokenPayload:
 def hash_password(password: str) -> str:
     """
     Hash password using bcrypt.
-    
+
     Args:
         password: Plain text password
-        
+
     Returns:
         Hashed password string
     """
@@ -165,11 +165,11 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verify password against hash.
-    
+
     Args:
         plain_password: Plain text password to verify
         hashed_password: Stored password hash
-        
+
     Returns:
         True if password matches, False otherwise
     """

@@ -19,9 +19,10 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.middleware.auth import AuthenticationMiddleware
     from api.middleware.idempotency import IdempotencyMiddleware
     from api.middleware.metrics import BasicMetricsMiddleware
+    from auth.factory import get_auth_strategy
 
     app.add_middleware(BasicMetricsMiddleware)
-    app.add_middleware(AuthenticationMiddleware)
+    app.add_middleware(AuthenticationMiddleware, strategy=get_auth_strategy())
     app.add_middleware(IdempotencyMiddleware)
 
     # Routers

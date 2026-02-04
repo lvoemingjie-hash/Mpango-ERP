@@ -155,7 +155,7 @@ def validate_state_transition(order: MockOrder, action: str) -> None:
     """Validate that a state transition is allowed."""
     if action not in STATE_TRANSITIONS:
         raise ValueError(f"Unknown action: {action}")
-    
+
     rules = STATE_TRANSITIONS[action]
     if order.status not in rules["allowed_from"]:
         raise InvalidStateTransitionError(
@@ -260,10 +260,10 @@ async def list_orders_impl(
 ) -> OrderListResponse:
     """Test-local list_orders implementation."""
     await auth_check_func(token, db)
-    
+
     orders, total = await get_orders_func(db, page, size, status_filter, retailer_id)
     pages = ceil(total / size) if total > 0 else 0
-    
+
     return OrderListResponse(
         success=True,
         data={
@@ -285,9 +285,9 @@ async def create_order_impl(
 ) -> OrderResponse:
     """Test-local create_order implementation."""
     await auth_check_func(token, db)
-    
+
     order = await create_order_func(db, token.tenant_id, retailer_id, items, notes, token.user_id)
-    
+
     return OrderResponse(
         success=True,
         data=order_to_schema(order),
@@ -305,14 +305,14 @@ async def get_order_impl(
 ) -> OrderResponse:
     """Test-local get_order implementation."""
     await auth_check_func(token, db)
-    
+
     order = await get_order_func(db, order_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "ORDER_NOT_FOUND", "message": f"Order with ID '{order_id}' not found"}
         )
-    
+
     return OrderResponse(
         success=True,
         data=order_to_schema(order),
@@ -330,14 +330,14 @@ async def confirm_order_impl(
 ) -> OrderActionResponse:
     """Test-local confirm_order implementation."""
     await auth_check_func(token, db)
-    
+
     order = await get_order_func(db, order_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "ORDER_NOT_FOUND", "message": f"Order with ID '{order_id}' not found"}
         )
-    
+
     try:
         order = await confirm_func(db, order, token.user_id)
     except InvalidStateTransitionError as e:
@@ -345,7 +345,7 @@ async def confirm_order_impl(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "INVALID_STATE_TRANSITION", "message": str(e)}
         )
-    
+
     return OrderActionResponse(
         success=True,
         data={"order_id": str(order.id), "status": order.status.value},
@@ -364,14 +364,14 @@ async def cancel_order_impl(
 ) -> OrderActionResponse:
     """Test-local cancel_order implementation."""
     await auth_check_func(token, db)
-    
+
     order = await get_order_func(db, order_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "ORDER_NOT_FOUND", "message": f"Order with ID '{order_id}' not found"}
         )
-    
+
     try:
         order = await cancel_func(db, order, token.user_id)
     except InvalidStateTransitionError as e:
@@ -379,7 +379,7 @@ async def cancel_order_impl(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "INVALID_STATE_TRANSITION", "message": str(e)}
         )
-    
+
     return OrderActionResponse(
         success=True,
         data={"order_id": str(order.id), "status": order.status.value},
@@ -453,20 +453,20 @@ class TestOrdersAPIHappyPath:
     async def test_list_orders_success(self):
         """GET /orders returns paginated orders list."""
         token = create_token()
-        
+
         order = create_order()
-        
+
         async def get_orders(db, page, size, status_filter, retailer_id):
             return [order], 1
-        
+
         mock_db = AsyncMock()
-        
+
         result = await list_orders_impl(
             page=1, size=10, status_filter=None, retailer_id=None,
             token=token, db=mock_db, get_orders_func=get_orders,
             auth_check_func=auth_check
         )
-        
+
         assert result.success is True
         assert "items" in result.data
         assert result.data["pagination"]["total"] == 1
@@ -475,14 +475,14 @@ class TestOrdersAPIHappyPath:
     async def test_create_order_success(self):
         """POST /orders creates new order."""
         token = create_token()
-        
+
         new_order = create_order()
-        
+
         async def create_order_func(db, wholesaler_id, retailer_id, items, notes, created_by):
             return new_order
-        
+
         mock_db = AsyncMock()
-        
+
         result = await create_order_impl(
             retailer_id=str(uuid.uuid4()),
             items=[{"product_name": "Test Product", "sku_code": "SKU-TEST-001", "quantity": 2, "unit_price": Decimal("10.00")}],
@@ -490,7 +490,7 @@ class TestOrdersAPIHappyPath:
             token=token, db=mock_db, create_order_func=create_order_func,
             auth_check_func=auth_check
         )
-        
+
         assert result.success is True
         assert result.message == "Order created successfully"
 
@@ -498,19 +498,19 @@ class TestOrdersAPIHappyPath:
     async def test_get_order_by_id_success(self):
         """GET /orders/{order_id} returns order."""
         token = create_token()
-        
+
         order = create_order()
-        
+
         async def get_order(db, oid):
             return order
-        
+
         mock_db = AsyncMock()
-        
+
         result = await get_order_impl(
             order_id=str(order.id), token=token, db=mock_db,
             get_order_func=get_order, auth_check_func=auth_check
         )
-        
+
         assert result.success is True
         assert result.data.id == str(order.id)
 
@@ -520,22 +520,22 @@ class TestOrdersAPIHappyPath:
         token = create_token()
 
         order = create_order(status=OrderStatus.DRAFT)
-        
+
         async def get_order(db, oid):
             return order
-        
+
         async def confirm_func(db, o, updated_by):
             o.status = OrderStatus.CONFIRMED
             return o
-        
+
         mock_db = AsyncMock()
-        
+
         result = await confirm_order_impl(
             order_id=str(order.id), token=token, db=mock_db,
             get_order_func=get_order, confirm_func=confirm_func,
             auth_check_func=auth_check
         )
-        
+
         assert result.success is True
         assert result.data["status"] == "confirmed"
         assert result.message == "Order confirmed successfully"
@@ -546,22 +546,22 @@ class TestOrdersAPIHappyPath:
         token = create_token()
 
         order = create_order(status=OrderStatus.DRAFT)
-        
+
         async def get_order(db, oid):
             return order
-        
+
         async def cancel_func(db, o, updated_by):
             o.status = OrderStatus.CANCELLED
             return o
-        
+
         mock_db = AsyncMock()
-        
+
         result = await cancel_order_impl(
             order_id=str(order.id), token=token, db=mock_db,
             get_order_func=get_order, cancel_func=cancel_func,
             auth_check_func=auth_check
         )
-        
+
         assert result.success is True
         assert result.data["status"] == "cancelled"
 
@@ -577,18 +577,18 @@ class TestOrdersCrossTenantDenial:
     async def test_get_order_cross_tenant_not_found(self):
         """GET /orders/{order_id} returns 404 for order in different tenant."""
         token = create_token(tenant_schema="tenant_tenant2")
-        
+
         async def get_order(db, oid):
             return None  # Order not found in this tenant
-        
+
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await get_order_impl(
                 order_id=str(uuid.uuid4()), token=token, db=mock_db,
                 get_order_func=get_order, auth_check_func=auth_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
         assert exc_info.value.detail["code"] == "ORDER_NOT_FOUND"
 
@@ -596,19 +596,19 @@ class TestOrdersCrossTenantDenial:
     async def test_cancel_order_cross_tenant_not_found(self):
         """POST /orders/{order_id}/cancel returns 404 for order in different tenant."""
         token = create_token(tenant_schema="tenant_tenant2")
-        
+
         async def get_order(db, oid):
             return None
-        
+
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await cancel_order_impl(
                 order_id=str(uuid.uuid4()), token=token, db=mock_db,
                 get_order_func=get_order, cancel_func=AsyncMock(),
                 auth_check_func=auth_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -623,26 +623,26 @@ class TestOrdersStateMachineViolations:
     async def test_confirm_already_confirmed_order_fails(self):
         """POST /orders/{order_id}/confirm returns 409 for already confirmed order."""
         token = create_token()
-        
+
         order = create_order(status=OrderStatus.CONFIRMED)
-        
+
         async def get_order(db, oid):
             return order
-        
+
         async def confirm_func(db, o, updated_by):
             validate_state_transition(o, "confirm")
             o.status = OrderStatus.CONFIRMED
             return o
-        
+
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await confirm_order_impl(
                 order_id=str(order.id), token=token, db=mock_db,
                 get_order_func=get_order, confirm_func=confirm_func,
                 auth_check_func=auth_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_409_CONFLICT
         assert exc_info.value.detail["code"] == "INVALID_STATE_TRANSITION"
 
@@ -650,50 +650,50 @@ class TestOrdersStateMachineViolations:
     async def test_confirm_cancelled_order_fails(self):
         """POST /orders/{order_id}/confirm returns 409 for cancelled order."""
         token = create_token()
-        
+
         order = create_order(status=OrderStatus.CANCELLED)
-        
+
         async def get_order(db, oid):
             return order
-        
+
         async def confirm_func(db, o, updated_by):
             validate_state_transition(o, "confirm")
             o.status = OrderStatus.CONFIRMED
             return o
-        
+
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await confirm_order_impl(
                 order_id=str(order.id), token=token, db=mock_db,
                 get_order_func=get_order, confirm_func=confirm_func,
                 auth_check_func=auth_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_409_CONFLICT
 
     @pytest.mark.asyncio
     async def test_cancel_already_cancelled_order_fails(self):
         """POST /orders/{order_id}/cancel returns 409 for already cancelled order."""
         token = create_token()
-        
+
         order = create_order(status=OrderStatus.CANCELLED)
-        
+
         async def get_order(db, oid):
             return order
-        
+
         async def cancel_func(db, o, updated_by):
             validate_state_transition(o, "cancel")
             o.status = OrderStatus.CANCELLED
             return o
- 
+
         mock_db = AsyncMock()
-        
+
         with pytest.raises(HTTPException) as exc_info:
             await cancel_order_impl(
                 order_id=str(order.id), token=token, db=mock_db,
                 get_order_func=get_order, cancel_func=cancel_func,
                 auth_check_func=auth_check
             )
-        
+
         assert exc_info.value.status_code == status.HTTP_409_CONFLICT

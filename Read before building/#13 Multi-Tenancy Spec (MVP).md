@@ -135,7 +135,7 @@ alembic upgrade head -x tenant_schema=<tenant_schema>
 
 - Run Alembic migrations for this tenant schema using
   `alembic upgrade head -x tenant_schema=<schema_name>` (see "Alembic multi-schema migrations (MVP)" section for details).
-  
+
   种子数据 (Seed RBAC):
 
 插入默认角色：admin, sales, warehouse, finance
@@ -206,4 +206,3 @@ Tenant schema 的动态迁移或合并
 text
 
 ***
-

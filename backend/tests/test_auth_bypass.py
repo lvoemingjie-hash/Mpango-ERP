@@ -1,165 +1,128 @@
 """
-Test authentication bypass in MPANGO_TEST_MODE.
+Test authentication behavior under strategy selection.
 
-This test verifies that when MPANGO_TEST_MODE=true:
-1. Authentication is bypassed (no JWT required)
-2. RBAC permission checks still function
-3. Standard auth fails when TEST_MODE is off
+This test verifies that:
+1. MPANGO_ENV=test uses MockAuthStrategy (no JWT required)
+2. MPANGO_ENV=production uses JwtAuthStrategy (JWT required)
 """
 import os
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app
+from fastapi import FastAPI, Request
+
+from api.context.auth import get_auth_context
+from api.context.tenant import get_tenant_context
+from api.middleware.auth import AuthenticationMiddleware
+from auth.factory import get_auth_strategy
 
 
-@pytest.fixture
-def client():
-    """Create a test client for the FastAPI app."""
+def _build_client(*, env: str) -> TestClient:
+    os.environ["MPANGO_ENV"] = env
+
+    app = FastAPI()
+    app.add_middleware(AuthenticationMiddleware, strategy=get_auth_strategy())
+
+    @app.get("/health")
+    async def _health():
+        return {"status": "healthy"}
+
+    @app.get("/whoami")
+    async def _whoami(request: Request):
+        auth_ctx = get_auth_context(request)
+        return {"user_id": auth_ctx.token.user_id, "tenant_id": auth_ctx.token.tenant_id}
+
+    @app.get("/protected")
+    async def _protected(request: Request):
+        tenant_ctx = get_tenant_context(request)
+
+        user_permissions = set()
+        for role in tenant_ctx.user.roles:
+            for perm in role.permissions:
+                user_permissions.add(perm.code)
+
+        if "payments:create" not in user_permissions:
+            return {"ok": False}
+
+        return {"ok": True}
+
     return TestClient(app)
 
 
-def test_auth_bypass_enabled(client):
+@pytest.fixture
+def client_test_env():
+    return _build_client(env="test")
+
+
+@pytest.fixture
+def client_production_env():
+    return _build_client(env="production")
+
+
+def test_auth_bypass_enabled(client_test_env):
     """
-    Test that TEST_MODE bypasses authentication but preserves RBAC.
-    
-    Setup: Set MPANGO_TEST_MODE=true
+    Test that MPANGO_ENV=test bypasses authentication but preserves RBAC.
+
+    Setup: Set MPANGO_ENV=test
     Action: POST /api/v1/payments without Authorization header
     Assertion: Should fail with 422 (validation error) not 401 (auth error)
     """
-    # Enable test mode
-    original_value = os.environ.get("MPANGO_TEST_MODE")
-    os.environ["MPANGO_TEST_MODE"] = "true"
-    
-    try:
-        # Attempt to create payment without auth header
-        response = client.post(
-            "/api/v1/payments",
-            json={},  # Empty payload to trigger validation
-        )
-        
-        # Should get validation error (422), not auth error (401)
-        assert response.status_code == 422, f"Expected 422, got {response.status_code}: {response.text}"
-        
-        # Verify it's a validation error, not auth error
-        data = response.json()
-        assert "detail" in data
-        assert isinstance(data["detail"], list)
-        
-        # Check that required fields are mentioned in validation errors
-        error_fields = [err["loc"][-1] for err in data["detail"]]
-        assert "order_id" in error_fields or "amount" in error_fields or "method" in error_fields
-        
-    finally:
-        # Restore original value
-        if original_value is None:
-            os.environ.pop("MPANGO_TEST_MODE", None)
-        else:
-            os.environ["MPANGO_TEST_MODE"] = original_value
+    response = client_test_env.get("/whoami")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user_id"]
+    assert payload["tenant_id"]
 
 
-def test_auth_bypass_with_valid_payload(client):
+def test_auth_bypass_with_valid_payload(client_test_env):
     """
-    Test that TEST_MODE allows valid requests through with proper permissions.
-    
-    Setup: Set MPANGO_TEST_MODE=true
+    Test that MPANGO_ENV=test allows requests through (health endpoint).
+
+    Setup: Set MPANGO_ENV=test
     Action: GET /api/v1/health (simple endpoint that doesn't require DB)
     Assertion: Should succeed without auth header
     """
-    # Enable test mode
-    original_value = os.environ.get("MPANGO_TEST_MODE")
-    os.environ["MPANGO_TEST_MODE"] = "true"
-    
-    try:
-        # Use health endpoint which doesn't require database access
-        response = client.get("/api/v1/health")
-        
-        # Should succeed without auth
-        assert response.status_code == 200, \
-            f"Health check failed in TEST_MODE: {response.status_code} - {response.text}"
-        
-        # Verify response structure
-        data = response.json()
-        assert "status" in data
-        assert data["status"] == "healthy"
-        
-    finally:
-        # Restore original value
-        if original_value is None:
-            os.environ.pop("MPANGO_TEST_MODE", None)
-        else:
-            os.environ["MPANGO_TEST_MODE"] = original_value
+    # Use health endpoint which doesn't require database access
+    response = client_test_env.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
 
 
-def test_auth_bypass_disabled(client):
+def test_auth_bypass_disabled(client_production_env):
     """
-    Test that standard auth fails when TEST_MODE is off.
-    
-    Setup: Ensure MPANGO_TEST_MODE is not set or false
+    Test that production strategy requires JWT.
+
+    Setup: Set MPANGO_ENV=production
     Action: POST /api/v1/payments without Authorization header
-    Assertion: Should fail with 401 (auth required) or similar
+    Assertion: Should fail with 401 (auth required)
     """
-    # Disable test mode
-    original_value = os.environ.get("MPANGO_TEST_MODE")
-    os.environ.pop("MPANGO_TEST_MODE", None)
-    
-    try:
-        # Attempt to create payment without auth header
-        response = client.post(
-            "/api/v1/payments",
-            json={
-                "order_id": "00000000-0000-0000-0000-000000000001",
-                "amount": 100.0,
-                "method": "transfer",
-                "transaction_id": "TEST-NO-AUTH-001"
-            },
-            headers={"X-Idempotency-Key": "TEST-NO-AUTH-001"}
-        )
-        
-        # Without auth, should get validation error (422) because middleware
-        # doesn't attach auth context, so the endpoint can't access it
-        # The actual behavior depends on how the app handles missing auth
-        assert response.status_code == 422, \
-            f"Expected validation error (422), got {response.status_code}: {response.text}"
-        
-    finally:
-        # Restore original value
-        if original_value is not None:
-            os.environ["MPANGO_TEST_MODE"] = original_value
+    response = client_production_env.get("/whoami")
+
+    assert response.status_code == 401, \
+        f"Expected auth error (401), got {response.status_code}: {response.text}"
 
 
-def test_rbac_still_enforced_in_test_mode(client):
+def test_jwt_strategy_rejects_invalid_auth_scheme(client_production_env):
+    """Prove JwtAuthStrategy is active in production by rejecting a non-bearer auth scheme."""
+
+    response = client_production_env.get("/health", headers={"Authorization": "Basic abc"})
+
+    assert response.status_code == 401
+    payload = response.json()
+    assert payload.get("code") == "INVALID_AUTH_SCHEME"
+
+
+def test_rbac_still_enforced_in_test_mode(client_test_env):
     """
-    Test that RBAC permission checks are still enforced in TEST_MODE.
-    
+    Test that RBAC permission checks are still enforced in MPANGO_ENV=test.
+
     This test verifies that even though auth is bypassed, the permission
     system still validates that the mock user has the required permissions.
-    
+
     Note: This test assumes the test mode user has payments:create but
     may not have other permissions. Adjust based on actual implementation.
     """
-    # Enable test mode
-    original_value = os.environ.get("MPANGO_TEST_MODE")
-    os.environ["MPANGO_TEST_MODE"] = "true"
-    
-    try:
-        # Test an endpoint that requires payments:create (should work)
-        response = client.post(
-            "/api/v1/payments",
-            json={},  # Will fail validation, but should pass auth/permission
-        )
-        
-        # Should NOT get 403 (permission denied) for payments:create
-        assert response.status_code != 403, \
-            f"Permission denied for payments:create in TEST_MODE: {response.text}"
-        
-        # Should get 422 (validation error) instead
-        assert response.status_code == 422, \
-            f"Expected validation error (422), got {response.status_code}: {response.text}"
-        
-    finally:
-        # Restore original value
-        if original_value is None:
-            os.environ.pop("MPANGO_TEST_MODE", None)
-        else:
-            os.environ["MPANGO_TEST_MODE"] = original_value
+    response = client_test_env.get("/protected")
+    assert response.status_code == 200
+    assert response.json()["ok"] is True

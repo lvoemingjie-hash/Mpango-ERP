@@ -1,8 +1,8 @@
 # Mpango ERP – Test Contract
 
-**Version:** 1.0  
-**Owner:** Jeff + ChatGPT + GLM  
-**Target:** KIRO Code + Dev Team  
+**Version:** 1.0
+**Owner:** Jeff + ChatGPT + GLM
+**Target:** KIRO Code + Dev Team
 **Test Frameworks:** pytest + httpx + pytest-asyncio
 
 ---
@@ -74,10 +74,10 @@ async def async_client(async_session):
         return async_session
 
     app.dependency_overrides[get_db] = override_get_db
-    
+
     async with AsyncClient(app=app, base_url="http://test") as ac:
         yield ac
-    
+
     app.dependency_overrides.clear()
 
 @pytest.fixture
@@ -108,7 +108,7 @@ from fastapi import status
 @pytest.mark.asyncio
 async def test_create_user_success(async_client: AsyncClient, sample_user_data):
     response = await async_client.post("/api/v1/users", json=sample_user_data)
-    
+
     assert response.status_code == status.HTTP_201_CREATED
     data = response.json()
     assert data["success"] is True
@@ -119,7 +119,7 @@ async def test_create_user_success(async_client: AsyncClient, sample_user_data):
 async def test_create_user_duplicate_email(async_client: AsyncClient, sample_user_data):
     await async_client.post("/api/v1/users", json=sample_user_data)
     response = await async_client.post("/api/v1/users", json=sample_user_data)
-    
+
     assert response.status_code == status.HTTP_409_CONFLICT
     data = response.json()
     assert data["success"] is False
@@ -145,7 +145,7 @@ def test_user_creation(db_session):
     )
     db_session.add(user)
     db_session.commit()
-    
+
     assert user.id is not None
     assert user.username == "testuser"
 ```
@@ -159,9 +159,9 @@ async def test_create_user(db_session):
         email="test@example.com",
         password="testpassword123"
     )
-    
+
     user = await user_crud.create(db_session, obj_in=user_data)
-    
+
     assert user.username == user_data.username
     assert user.hashed_password != user_data.password
 ```
@@ -181,7 +181,7 @@ testpaths = tests
 python_files = test_*.py
 python_classes = Test*
 python_functions = test_*
-addopts = 
+addopts =
     --cov=.
     --cov-report=html
     --cov-report=term-missing

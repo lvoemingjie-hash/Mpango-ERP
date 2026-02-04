@@ -7,8 +7,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import TokenPayload
-from crud.user import get_user_with_permissions
-from database.session import AsyncSessionLocal
 
 _TENANT_CONTEXT_ATTR = "tenant_context"
 
@@ -32,6 +30,8 @@ class TenantContext:
 
 async def create_tenant_session(tenant_schema: str) -> AsyncSession:
     """Create tenant-scoped async session with search_path set."""
+    from database.session import AsyncSessionLocal
+
     session: AsyncSession = AsyncSessionLocal()
     try:
         session.info["tenant_schema"] = tenant_schema
@@ -44,6 +44,8 @@ async def create_tenant_session(tenant_schema: str) -> AsyncSession:
 
 async def resolve_tenant_context(token: TokenPayload) -> TenantContext:
     """Build tenant context from JWT claims."""
+    from crud.user import get_user_with_permissions
+
     if not token.tenant_schema:
         raise _http_exc("MISSING_TENANT", "Tenant schema missing from token")
 

@@ -1,8 +1,8 @@
 # Mpango ERP – Docker Contract
 
-**Version:** 1.0  
-**Owner:** Jeff + ChatGPT + GLM  
-**Target:** KIRO Code + DevOps  
+**Version:** 1.0
+**Owner:** Jeff + ChatGPT + GLM
+**Target:** KIRO Code + DevOps
 **Stack:** FastAPI + React + PostgreSQL + Nginx + Docker Compose
 
 ---
@@ -15,7 +15,7 @@ version: '3.8'
 
 services:
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: mpango_backend
@@ -294,7 +294,7 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            
+
             # CORS 头部
             add_header Access-Control-Allow-Origin *;
             add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";

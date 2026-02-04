@@ -23,7 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_wholesalers_code ON public.wholesalers(code);
 CREATE INDEX IF NOT EXISTS idx_wholesalers_is_deleted ON public.wholesalers(is_deleted);
 
 -- Insert sample wholesaler for development
-INSERT INTO public.wholesalers (code, name, address, contact, plan_type) 
+INSERT INTO public.wholesalers (code, name, address, contact, plan_type)
 VALUES ('DEV001', 'Development Wholesaler', '123 Dev Street', 'dev@mpango.com', 'premium')
 ON CONFLICT (code) DO NOTHING;
 

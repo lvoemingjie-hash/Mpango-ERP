@@ -47,7 +47,7 @@ class ReadinessStatus(BaseModel):
 async def health_check():
     """
     Basic health check endpoint.
-    
+
     Returns 200 OK if the service is running.
     Does not check external dependencies.
     """
@@ -69,7 +69,7 @@ async def health_check():
 async def liveness_check():
     """
     Kubernetes liveness probe endpoint.
-    
+
     Returns 200 OK if the service process is alive.
     Should be fast and not check external dependencies.
     """
@@ -94,21 +94,21 @@ async def liveness_check():
 async def readiness_check():
     """
     Kubernetes readiness probe endpoint.
-    
+
     Checks:
     - Database connectivity
-    
+
     Returns 200 if all checks pass, 503 if any fail.
     """
     checks = {}
     overall_status = "healthy"
-    
+
     # Check database connectivity
     db_status = await _check_database()
     checks["database"] = db_status
     if db_status["status"] != "healthy":
         overall_status = "unhealthy"
-    
+
     response = ReadinessStatus(
         status=overall_status,
         service="mpango-erp-backend",
@@ -116,36 +116,36 @@ async def readiness_check():
         timestamp=datetime.utcnow(),
         checks=checks
     )
-    
+
     if overall_status != "healthy":
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=response.model_dump(mode="json")
         )
-    
+
     return response
 
 
 async def _check_database() -> dict:
     """
     Check database connectivity with timing and basic diagnostics.
-    
+
     Returns dict with status, latency, and optional error message.
     """
     import time
     start_time = time.time()
-    
+
     try:
         # Import here to avoid circular imports
         from database.session import async_engine
-        
+
         async with async_engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
             # Test tenant schema creation readiness
             await conn.execute(text("SELECT current_schema()"))
-        
+
         latency_ms = round((time.time() - start_time) * 1000, 2)
-        
+
         return {
             "status": "healthy",
             "latency_ms": latency_ms,

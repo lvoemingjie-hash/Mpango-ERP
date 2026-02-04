@@ -18,86 +18,86 @@ async def apply_migration():
         password=os.getenv("POSTGRES_PASSWORD", "mpango_dev_pass"),
         database=os.getenv("POSTGRES_DB", "mpango_erp")
     )
-    
+
     try:
         # Set search_path to t_dev
         await conn.execute('SET search_path TO t_dev, public')
-        
+
         # Check if payments table exists
         table_exists = await conn.fetchval(
             """
             SELECT EXISTS (
-                SELECT 1 FROM information_schema.tables 
+                SELECT 1 FROM information_schema.tables
                 WHERE table_schema = 't_dev' AND table_name = 'payments'
             )
             """
         )
-        
+
         if not table_exists:
             print("❌ Payments table does not exist in t_dev schema")
             return False
-        
+
         print("✅ Payments table exists in t_dev schema")
-        
+
         # Check if idempotency_key column exists
         column_exists = await conn.fetchval(
             """
             SELECT EXISTS (
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_schema = 't_dev' 
-                AND table_name = 'payments' 
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 't_dev'
+                AND table_name = 'payments'
                 AND column_name = 'idempotency_key'
             )
             """
         )
-        
+
         if not column_exists:
             print("Adding idempotency_key column...")
             await conn.execute(
                 """
-                ALTER TABLE t_dev.payments 
+                ALTER TABLE t_dev.payments
                 ADD COLUMN idempotency_key VARCHAR(64)
                 """
             )
             print("✅ Added idempotency_key column")
         else:
             print("✅ idempotency_key column already exists")
-        
+
         # Check if index exists
         index_exists = await conn.fetchval(
             """
             SELECT EXISTS (
-                SELECT 1 FROM pg_indexes 
-                WHERE schemaname = 't_dev' 
+                SELECT 1 FROM pg_indexes
+                WHERE schemaname = 't_dev'
                 AND indexname = 'uq_payments_idempotency_key'
             )
             """
         )
-        
+
         if not index_exists:
             print("Creating unique index on idempotency_key...")
             await conn.execute(
                 """
-                CREATE UNIQUE INDEX uq_payments_idempotency_key 
-                ON t_dev.payments (idempotency_key) 
+                CREATE UNIQUE INDEX uq_payments_idempotency_key
+                ON t_dev.payments (idempotency_key)
                 WHERE idempotency_key IS NOT NULL
                 """
             )
             print("✅ Created unique index uq_payments_idempotency_key")
         else:
             print("✅ Index uq_payments_idempotency_key already exists")
-        
+
         # Verify the changes
         columns = await conn.fetch(
             """
-            SELECT column_name, data_type, character_maximum_length 
-            FROM information_schema.columns 
-            WHERE table_schema = 't_dev' 
+            SELECT column_name, data_type, character_maximum_length
+            FROM information_schema.columns
+            WHERE table_schema = 't_dev'
             AND table_name = 'payments'
             ORDER BY ordinal_position
             """
         )
-        
+
         print("\n✅ B6 migration applied successfully to t_dev schema")
         print("\nPayments table columns:")
         for col in columns:
@@ -106,9 +106,9 @@ async def apply_migration():
                 print(f"({col['character_maximum_length']})")
             else:
                 print()
-        
+
         return True
-        
+
     finally:
         await conn.close()
 

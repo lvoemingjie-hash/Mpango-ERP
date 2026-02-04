@@ -1,21 +1,21 @@
 # Independent Test AI Report - Mpango ERP Release Candidate Validation
 
-**Test AI**: Independent Test AI  
-**Date**: 2026-01-14  
-**Mission**: Release-candidate validation after frontend file rename error  
-**Approach**: Black-box and gray-box testing against LIVE system  
+**Test AI**: Independent Test AI
+**Date**: 2026-01-14
+**Mission**: Release-candidate validation after frontend file rename error
+**Approach**: Black-box and gray-box testing against LIVE system
 **Status**: COMPLETED ✅
 
 ---
 
 ## Executive Summary
 
-**Test Scope**: 7 critical areas  
-**Total Tests Executed**: 28  
-**Passed**: 24  
-**Failed**: 4  
-**Critical Issues**: 2  
-**Major Issues**: 2  
+**Test Scope**: 7 critical areas
+**Total Tests Executed**: 28
+**Passed**: 24
+**Failed**: 4
+**Critical Issues**: 2
+**Major Issues**: 2
 **Minor Issues**: 0
 
 **Overall Assessment**: ⚠️ **NOT READY FOR PRODUCTION** - Critical security and idempotency issues found
@@ -32,7 +32,7 @@
 2. Enter valid retailer credentials
 3. Submit login form
 
-**Expected**: Successful login, JWT stored, role fetched from `/auth/me`  
+**Expected**: Successful login, JWT stored, role fetched from `/auth/me`
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -55,7 +55,7 @@
 2. Enter invalid credentials
 3. Submit login form
 
-**Expected**: Error message displayed, no token stored  
+**Expected**: Error message displayed, no token stored
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -73,7 +73,7 @@
 2. Wait for token to expire (simulate by modifying token)
 3. Attempt to access protected route
 
-**Expected**: Token refresh attempted, user logged out if refresh fails  
+**Expected**: Token refresh attempted, user logged out if refresh fails
 **Actual**: ⚠️ **PARTIAL IMPLEMENTATION**
 
 **Root Cause**:
@@ -87,7 +87,7 @@
 - Token refresh only happens if manually called
 - No proactive refresh before expiry
 
-**Severity**: MAJOR  
+**Severity**: MAJOR
 **Impact**: Users may be logged out unexpectedly if token expires
 
 ---
@@ -100,7 +100,7 @@
 2. Modify JWT token in localStorage
 3. Attempt API call
 
-**Expected**: 401 error, redirect to login  
+**Expected**: 401 error, redirect to login
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -122,7 +122,7 @@
 2. Attempt to access `/users`
 3. Attempt to call `POST /orders/{id}/confirm`
 
-**Expected**: Access denied, 403 error  
+**Expected**: Access denied, 403 error
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -146,7 +146,7 @@
 2. Access `/users`
 3. Access order management features
 
-**Expected**: Access granted  
+**Expected**: Access granted
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -164,7 +164,7 @@
 2. Check if wholesaler buttons are hidden in UI
 3. Attempt to call API directly (bypass UI)
 
-**Expected**: UI hides buttons, API rejects requests  
+**Expected**: UI hides buttons, API rejects requests
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -186,7 +186,7 @@
 2. Attempt to access data from Tenant B
 3. Modify order_id to reference order from different tenant
 
-**Expected**: Access denied, 404 or 403 error  
+**Expected**: Access denied, 404 or 403 error
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -206,7 +206,7 @@
 2. Modify tenant_id in localStorage
 3. Attempt API call
 
-**Expected**: Backend rejects, uses tenant from JWT  
+**Expected**: Backend rejects, uses tenant from JWT
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -228,7 +228,7 @@
 2. Confirm order (status: confirmed)
 3. Ship order (status: shipped)
 
-**Expected**: All transitions succeed  
+**Expected**: All transitions succeed
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -252,7 +252,7 @@ pending → confirmed → shipped
 1. Ship order (status: shipped)
 2. Attempt to cancel
 
-**Expected**: Request rejected, 409 or 403 error  
+**Expected**: Request rejected, 409 or 403 error
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -269,7 +269,7 @@ pending → confirmed → shipped
 1. Confirm order (status: confirmed)
 2. Attempt to confirm again
 
-**Expected**: Request rejected, 409 error  
+**Expected**: Request rejected, 409 error
 **Actual**: ❌ **NO CLIENT-SIDE PROTECTION**
 
 **Root Cause**:
@@ -282,7 +282,7 @@ pending → confirmed → shipped
 - `POST /orders/{id}/confirm` - Backend likely rejects with 409
 - But UI doesn't prevent the second click
 
-**Severity**: CRITICAL  
+**Severity**: CRITICAL
 **Impact**: User can trigger duplicate API calls, potential race conditions
 
 **Steps to Reproduce**:
@@ -291,7 +291,7 @@ pending → confirmed → shipped
 3. Click 'Confirm' button
 4. Before modal closes, click 'Confirm' button again rapidly
 
-**Expected Behavior**: Button should be disabled after first click  
+**Expected Behavior**: Button should be disabled after first click
 **Actual Behavior**: Button can be clicked multiple times
 
 ---
@@ -303,12 +303,12 @@ pending → confirmed → shipped
 1. Cancel order (status: cancelled)
 2. Attempt to cancel again
 
-**Expected**: Request rejected, 409 error  
+**Expected**: Request rejected, 409 error
 **Actual**: ❌ **NO CLIENT-SIDE PROTECTION**
 
 **Root Cause**: Same as Test 4.3 - no button state management after action
 
-**Severity**: CRITICAL  
+**Severity**: CRITICAL
 **Impact**: Duplicate API calls, potential race conditions
 
 ---
@@ -322,7 +322,7 @@ pending → confirmed → shipped
 1. Open order with 'pending' status
 2. Rapidly double-click 'Confirm' button
 
-**Expected**: Only one API call, button disabled during request  
+**Expected**: Only one API call, button disabled during request
 **Actual**: ❌ **MULTIPLE API CALLS POSSIBLE**
 
 **Root Cause**:
@@ -336,7 +336,7 @@ pending → confirmed → shipped
 const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
   setLoading(true)  // Set loading state
   setError(null)
-  
+
   try {
     // API call happens here
     await orderService.confirmOrder(order.id)
@@ -351,7 +351,7 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 
 **Problem**: If user clicks twice before `setLoading(true)` executes, both clicks proceed
 
-**Severity**: CRITICAL  
+**Severity**: CRITICAL
 **Impact**: Duplicate order confirmations, potential business logic violations
 
 **API Calls**:
@@ -368,12 +368,12 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 1. Open order with 'confirmed' status
 2. Rapidly double-click 'Ship' button
 
-**Expected**: Only one API call  
+**Expected**: Only one API call
 **Actual**: ❌ **MULTIPLE API CALLS POSSIBLE**
 
 **Root Cause**: Same as Test 5.1
 
-**Severity**: CRITICAL  
+**Severity**: CRITICAL
 **Impact**: Duplicate shipments, inventory issues
 
 ---
@@ -385,7 +385,7 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 1. Fill out create order form
 2. Rapidly double-click 'Create Order' button
 
-**Expected**: Only one order created  
+**Expected**: Only one order created
 **Actual**: ⚠️ **MULTIPLE ORDERS POSSIBLE**
 
 **Root Cause**:
@@ -406,7 +406,7 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 
 **Problem**: Same race condition as order actions
 
-**Severity**: MAJOR  
+**Severity**: MAJOR
 **Impact**: Duplicate orders, potential billing issues
 
 **API Calls**:
@@ -424,7 +424,7 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 1. Compare CreateOrderForm fields with API schema
 2. Compare OrderDetailModal fields with API response
 
-**Expected**: UI fields match API schema exactly  
+**Expected**: UI fields match API schema exactly
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -444,7 +444,7 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 2. Verify all data is sent to API
 3. Verify all data is displayed in UI
 
-**Expected**: No data drops, all fields preserved  
+**Expected**: No data drops, all fields preserved
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -463,7 +463,7 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 1. Login as retailer
 2. Attempt to access wholesaler-only endpoint
 
-**Expected**: 403 error displayed in UI  
+**Expected**: 403 error displayed in UI
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -480,7 +480,7 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 1. Attempt to access non-existent order
 2. Attempt to access non-existent user
 
-**Expected**: 404 error displayed in UI  
+**Expected**: 404 error displayed in UI
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -496,7 +496,7 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 1. Attempt invalid order state transition
 2. Attempt duplicate operation
 
-**Expected**: 409 error displayed in UI  
+**Expected**: 409 error displayed in UI
 **Actual**: ✅ Works correctly
 
 **Evidence**:
@@ -509,8 +509,8 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 ## Critical Issues Summary
 
 ### Issue #1: Order Action Idempotency (CRITICAL)
-**Test Case**: 4.3, 4.4, 5.1, 5.2  
-**Severity**: CRITICAL  
+**Test Case**: 4.3, 4.4, 5.1, 5.2
+**Severity**: CRITICAL
 **Impact**: Duplicate API calls, business logic violations
 
 **Root Cause**: No protection against rapid double-clicks on order action buttons
@@ -527,8 +527,8 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 ---
 
 ### Issue #2: Create Order Idempotency (MAJOR)
-**Test Case**: 5.3  
-**Severity**: MAJOR  
+**Test Case**: 5.3
+**Severity**: MAJOR
 **Impact**: Duplicate orders, billing issues
 
 **Root Cause**: No protection against rapid double-clicks on submit button
@@ -544,8 +544,8 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 ---
 
 ### Issue #3: Token Expiration Handling (MAJOR)
-**Test Case**: 1.3  
-**Severity**: MAJOR  
+**Test Case**: 1.3
+**Severity**: MAJOR
 **Impact**: Users logged out unexpectedly
 
 **Root Cause**: No proactive token refresh, no expiration time tracking
@@ -648,10 +648,10 @@ const handleAction = async (action: 'confirm' | 'ship' | 'cancel') => {
 
 ## Sign-off
 
-**Test AI**: Independent Test AI  
-**Signature**: [INDEPENDENT-TEST-AI-20260114-1000]  
-**Date**: 2026-01-14  
-**Time**: 10:00 UTC+08:00  
+**Test AI**: Independent Test AI
+**Signature**: [INDEPENDENT-TEST-AI-20260114-1000]
+**Date**: 2026-01-14
+**Time**: 10:00 UTC+08:00
 
 **Final Recommendation**: ❌ **DO NOT DEPLOY TO PRODUCTION**
 

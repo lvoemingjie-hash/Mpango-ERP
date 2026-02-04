@@ -1,8 +1,8 @@
 # Mpango ERP – Test Contract
 
-**Version:** 1.0  
-**Owner:** Jeff + ChatGPT + GLM  
-**Target:** KIRO Code + Dev Team  
+**Version:** 1.0
+**Owner:** Jeff + ChatGPT + GLM
+**Target:** KIRO Code + Dev Team
 **Test Frameworks:** pytest + httpx + pytest-asyncio
 
 ---
@@ -78,10 +78,10 @@ async def async_client(async_session):
         return async_session
 
     app.dependency_overrides[get_db] = override_get_db
-    
+
     async with AsyncClient(app=app, base_url="http://test") as ac:
         yield ac
-    
+
     # 清理依赖覆盖
     app.dependency_overrides.clear()
 
@@ -134,7 +134,7 @@ from fastapi import status
 async def test_create_user_success(async_client: AsyncClient, sample_user_data):
     """测试成功创建用户"""
     response = await async_client.post("/api/v1/users", json=sample_user_data)
-    
+
     assert response.status_code == status.HTTP_201_CREATED
     data = response.json()
     assert data["success"] is True
@@ -147,10 +147,10 @@ async def test_create_user_duplicate_email(async_client: AsyncClient, sample_use
     """测试重复邮箱创建用户"""
     # 先创建一个用户
     await async_client.post("/api/v1/users", json=sample_user_data)
-    
+
     # 尝试创建相同邮箱的用户
     response = await async_client.post("/api/v1/users", json=sample_user_data)
-    
+
     assert response.status_code == status.HTTP_409_CONFLICT
     data = response.json()
     assert data["success"] is False
@@ -164,9 +164,9 @@ async def test_create_user_invalid_data(async_client: AsyncClient):
         "email": "invalid-email",  # 无效邮箱
         "password": "123"  # 太短
     }
-    
+
     response = await async_client.post("/api/v1/users", json=invalid_data)
-    
+
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     data = response.json()
     assert data["success"] is False
@@ -176,7 +176,7 @@ async def test_create_user_invalid_data(async_client: AsyncClient):
 async def test_get_users_unauthorized(async_client: AsyncClient):
     """测试未授权访问用户列表"""
     response = await async_client.get("/api/v1/users")
-    
+
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 @pytest.mark.asyncio
@@ -184,7 +184,7 @@ async def test_get_users_authorized(async_client: AsyncClient, admin_token):
     """测试授权访问用户列表"""
     headers = {"Authorization": admin_token}
     response = await async_client.get("/api/v1/users", headers=headers)
-    
+
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["success"] is True
@@ -218,7 +218,7 @@ def test_user_creation(db_session):
     )
     db_session.add(user)
     db_session.commit()
-    
+
     assert user.id is not None
     assert user.username == "testuser"
     assert user.email == "test@example.com"
@@ -228,10 +228,10 @@ def test_user_unique_email(db_session):
     """测试邮箱唯一性约束"""
     user1 = User(username="user1", email="test@example.com", hashed_password="hash1")
     user2 = User(username="user2", email="test@example.com", hashed_password="hash2")
-    
+
     db_session.add(user1)
     db_session.commit()
-    
+
     db_session.add(user2)
     with pytest.raises(IntegrityError):
         db_session.commit()
@@ -252,9 +252,9 @@ async def test_create_user(db_session):
         email="test@example.com",
         password="testpassword123"
     )
-    
+
     user = await user_crud.create(db_session, obj_in=user_data)
-    
+
     assert user.username == user_data.username
     assert user.email == user_data.email
     assert user.hashed_password != user_data.password  # 确保密码已加密
@@ -264,10 +264,10 @@ async def test_get_user_by_email(db_session, sample_user_data):
     """测试通过邮箱获取用户"""
     # 先创建用户
     created_user = await user_crud.create(db_session, obj_in=sample_user_data)
-    
+
     # 通过邮箱查找
     found_user = await user_crud.get_by_email(db_session, email=sample_user_data["email"])
-    
+
     assert found_user is not None
     assert found_user.id == created_user.id
     assert found_user.email == sample_user_data["email"]
@@ -290,26 +290,26 @@ async def test_user_registration_and_login_workflow(async_client: AsyncClient):
         "email": "newuser@example.com",
         "password": "securepassword123"
     }
-    
+
     register_response = await async_client.post("/api/v1/auth/register", json=user_data)
     assert register_response.status_code == 201
-    
+
     # 2. 登录用户
     login_data = {
         "username": user_data["username"],
         "password": user_data["password"]
     }
-    
+
     login_response = await async_client.post("/api/v1/auth/login", json=login_data)
     assert login_response.status_code == 200
-    
+
     token_data = login_response.json()
     assert "access_token" in token_data["data"]
-    
+
     # 3. 使用 token 访问受保护资源
     headers = {"Authorization": f"Bearer {token_data['data']['access_token']}"}
     profile_response = await async_client.get("/api/v1/users/me", headers=headers)
-    
+
     assert profile_response.status_code == 200
     profile_data = profile_response.json()
     assert profile_data["data"]["username"] == user_data["username"]
@@ -329,13 +329,13 @@ from services.email_service import send_email
 async def test_send_email_success(mock_smtp):
     """测试邮件发送成功"""
     mock_smtp.send_message = AsyncMock(return_value=True)
-    
+
     result = await send_email(
         to="test@example.com",
         subject="Test Subject",
         body="Test Body"
     )
-    
+
     assert result is True
     mock_smtp.send_message.assert_called_once()
 
@@ -344,13 +344,13 @@ async def test_send_email_success(mock_smtp):
 async def test_send_email_failure(mock_smtp):
     """测试邮件发送失败"""
     mock_smtp.send_message = AsyncMock(side_effect=Exception("SMTP Error"))
-    
+
     result = await send_email(
         to="test@example.com",
         subject="Test Subject",
         body="Test Body"
     )
-    
+
     assert result is False
 ```
 
@@ -369,7 +369,7 @@ testpaths = tests
 python_files = test_*.py
 python_classes = Test*
 python_functions = test_*
-addopts = 
+addopts =
     --cov=.
     --cov-report=html
     --cov-report=term-missing
@@ -427,7 +427,7 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15
@@ -441,22 +441,22 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install dependencies
       run: |
         pip install poetry
         poetry install # ruff 会被自动安装
-    
+
     - name: Run tests
       run: |
         make ci
 
-    
+
     - name: Upload coverage
       uses: codecov/codecov-action@v3
 ```

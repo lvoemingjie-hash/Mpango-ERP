@@ -1,6 +1,6 @@
 # Mpango ERP — CI/CD Contract
-**Version:** 1.1  
-**Purpose:** 定义帝国自动化兵工厂的构建、测试、部署策略与质量门槛，并融入 AI 审查机制。  
+**Version:** 1.1
+**Purpose:** 定义帝国自动化兵工厂的构建、测试、部署策略与质量门槛，并融入 AI 审查机制。
 **Last Updated:** 2025-06-10
 
 ## 1. 总体原则

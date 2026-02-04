@@ -205,6 +205,6 @@ VALUES ('22222222-2222-2222-2222-222222222222', '33333333-3333-3333-3333-3333333
 
 ---
 
-**Created by:** Architect AI  
-**Date:** 2025-01-09  
+**Created by:** Architect AI
+**Date:** 2025-01-09
 **Status:** 📝 Defined

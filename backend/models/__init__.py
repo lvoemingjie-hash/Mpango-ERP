@@ -20,13 +20,13 @@ __all__ = [
     "PublicBaseModel",
     "AuditMixin",
     "UserTrackingMixin",
-    
+
     # Public schema models
     "Wholesaler",
     "Retailer",
     "Invitation",
     "WholesalerRetailerBinding",
-    
+
     # Tenant schema models
     "User",
     "Role",
@@ -35,10 +35,10 @@ __all__ = [
     "OrderItem",
     "SKU",
     "InventoryStock",
-    
+
     # Enums
     "OrderStatus",
-    
+
     # Association tables
     "user_roles",
     "role_permissions",

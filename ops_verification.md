@@ -1,13 +1,13 @@
 # Phase B5 Payments Minimal Loop - Ops Verification Report
 
-**Date:** 2026-01-28  
-**Status:** IN PROGRESS  
+**Date:** 2026-01-28
+**Status:** IN PROGRESS
 
 ## Environment Setup
 
 ### Docker Stack Status
 - ✅ Backend container built and running
-- ✅ PostgreSQL database running  
+- ✅ PostgreSQL database running
 - ✅ Redis cache running
 - ✅ All health checks passing
 
@@ -46,10 +46,10 @@ When `MPANGO_TEST_MODE=true`:
 ### Created Test Records
 ```sql
 -- Wholesaler (tenant)
-INSERT INTO public.wholesalers (id, code, name, created_at, updated_at) VALUES 
+INSERT INTO public.wholesalers (id, code, name, created_at, updated_at) VALUES
 ('550e8400-e29b-41d4-a716-446655440000', 'TEST001', 'Test Wholesaler', now(), now());
 
--- User (in tenant schema)  
+-- User (in tenant schema)
 INSERT INTO t_dev.users (id, email, password_hash, full_name, created_at, updated_at) VALUES
 ('550e8400-e29b-41d4-a716-446655440001', 'admin@test.com', 'hashed_password', 'Admin User', now(), now());
 
@@ -90,7 +90,7 @@ curl -s http://localhost:8000/health
 ```json
 {
   "order_id": "UUID (required)",
-  "amount": "number > 0 (required)", 
+  "amount": "number > 0 (required)",
   "method": "cash|transfer|credit (required)",
   "transaction_id": "string (optional, required for transfer)"
 }

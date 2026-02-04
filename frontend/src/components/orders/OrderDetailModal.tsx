@@ -48,7 +48,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
           await orderService.cancelOrder(order.id)
           break
       }
-      
+
       onUpdate()
       onClose()
     } catch (err: any) {

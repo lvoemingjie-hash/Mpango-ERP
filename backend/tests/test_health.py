@@ -68,7 +68,7 @@ async def readiness_check_impl(db_healthy: bool = True) -> ReadinessStatus:
     """Test-local readiness check implementation."""
     db_status = {"status": "healthy"} if db_healthy else {"status": "unhealthy", "error": "Connection refused"}
     overall_status = "healthy" if db_healthy else "unhealthy"
-    
+
     return ReadinessStatus(
         status=overall_status,
         service="mpango-erp-backend",
@@ -89,7 +89,7 @@ class TestHealthEndpoints:
     async def test_health_check_returns_healthy(self):
         """GET /health returns healthy status."""
         result = await health_check_impl()
-        
+
         assert result.status == "healthy"
         assert result.service == "mpango-erp-backend"
         assert result.version == "0.1.0"
@@ -99,7 +99,7 @@ class TestHealthEndpoints:
     async def test_liveness_check_returns_healthy(self):
         """GET /health/live returns healthy status."""
         result = await liveness_check_impl()
-        
+
         assert result.status == "healthy"
         assert result.service == "mpango-erp-backend"
 
@@ -107,7 +107,7 @@ class TestHealthEndpoints:
     async def test_readiness_check_healthy_when_db_ok(self):
         """GET /health/ready returns healthy when DB is connected."""
         result = await readiness_check_impl(db_healthy=True)
-        
+
         assert result.status == "healthy"
         assert result.checks["database"]["status"] == "healthy"
 
@@ -115,7 +115,7 @@ class TestHealthEndpoints:
     async def test_readiness_check_unhealthy_when_db_fails(self):
         """GET /health/ready returns unhealthy when DB check fails."""
         result = await readiness_check_impl(db_healthy=False)
-        
+
         assert result.status == "unhealthy"
         assert result.checks["database"]["status"] == "unhealthy"
         assert "error" in result.checks["database"]
@@ -131,7 +131,7 @@ class TestHealthSchemas:
             service="test-service",
             version="1.0.0"
         )
-        
+
         assert status.status == "healthy"
         assert status.service == "test-service"
         assert status.version == "1.0.0"
@@ -143,7 +143,7 @@ class TestHealthSchemas:
             status="healthy",
             checks={"database": {"status": "healthy"}}
         )
-        
+
         assert status.status == "healthy"
         assert status.checks["database"]["status"] == "healthy"
         assert isinstance(status.timestamp, datetime)
@@ -151,7 +151,7 @@ class TestHealthSchemas:
     def test_health_status_defaults(self):
         """HealthStatus should have sensible defaults."""
         status = HealthStatus(status="healthy")
-        
+
         assert status.service == "mpango-erp-backend"
         assert status.version == "0.1.0"
 
@@ -165,6 +165,6 @@ class TestHealthSchemas:
                 "external_api": {"status": "healthy"}
             }
         )
-        
+
         assert len(status.checks) == 3
         assert status.checks["redis"]["status"] == "unhealthy"

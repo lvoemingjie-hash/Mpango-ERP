@@ -1,8 +1,8 @@
 # Mpango ERP – API Contract
 
-**Version:** 1.1 (MVP frozen)  
-**Owner:** Jeff（Product Owner）+ ChatGPT（Architect） + GLM  
-**Target:** KIRO Code + Backend Developers + Frontend Developers  
+**Version:** 1.1 (MVP frozen)
+**Owner:** Jeff（Product Owner）+ ChatGPT（Architect） + GLM
+**Target:** KIRO Code + Backend Developers + Frontend Developers
 **Tech Stack:** FastAPI + PostgreSQL + Pydantic + JWT
 
 ---
@@ -49,7 +49,7 @@
 #### 2.4.2 强制要求 Idempotency-Key 的接口（MVP）
 1) 入库确认（Inbound receive / Goods receipt）
 2) 转账收款创建（Transfer payment create，method=transfer）
-3) payment rules 
+3) payment rules
    - transaction_id MUST store M-Pesa reference.
    - Payment creation MUST be idempotent by transaction_id.
    - **Method Mapping**: Use `method: "transfer"` for all mobile money transactions (e.g., M-Pesa, Airtel Money).

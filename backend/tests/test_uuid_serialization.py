@@ -22,7 +22,7 @@ from schemas.order import Order, OrderItem
 
 class TestUUIDSerialization:
     """Property tests for UUID serialization to strings."""
-    
+
     @given(
         user_id=st.uuids(),
         email=st.emails(),
@@ -37,7 +37,7 @@ class TestUUIDSerialization:
     ):
         """
         Property 6.1: UserRead serializes UUID id field as string.
-        
+
         For any UUID, when serialized in UserRead, it must be a string.
         """
         user = UserRead(
@@ -49,21 +49,21 @@ class TestUUIDSerialization:
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
-        
+
         # Serialize to JSON
         json_str = user.model_dump_json()
         data = json.loads(json_str)
-        
+
         # Verify id is a string in JSON
         assert isinstance(data['id'], str), \
             f"UUID field 'id' must serialize as string, got {type(data['id'])}"
-        
+
         # Verify it's a valid UUID string
         try:
             uuid.UUID(data['id'])
         except ValueError:
             pytest.fail(f"Serialized id '{data['id']}' is not a valid UUID string")
-    
+
     @given(
         order_id=st.uuids(),
         tenant_id=st.uuids(),
@@ -80,11 +80,11 @@ class TestUUIDSerialization:
     ):
         """
         Property 6.2: Order serializes all UUID fields as strings.
-        
+
         For any Order with UUID fields, all UUIDs must serialize as strings.
         """
         from models.order import OrderStatus
-        
+
         order = Order(
             id=str(order_id),
             wholesaler_id=str(tenant_id),
@@ -98,11 +98,11 @@ class TestUUIDSerialization:
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
-        
+
         # Serialize to JSON
         json_str = order.model_dump_json()
         data = json.loads(json_str)
-        
+
         # Verify all UUID fields are strings
         assert isinstance(data['id'], str), \
             "Order.id must serialize as string"
@@ -110,12 +110,12 @@ class TestUUIDSerialization:
             "Order.wholesaler_id must serialize as string"
         assert isinstance(data['retailer_id'], str), \
             "Order.retailer_id must serialize as string"
-        
+
         # Verify they're valid UUID strings
         uuid.UUID(data['id'])
         uuid.UUID(data['wholesaler_id'])
         uuid.UUID(data['retailer_id'])
-    
+
     @given(
         user_id=st.uuids(),
         tenant_id=st.uuids()
@@ -128,7 +128,7 @@ class TestUUIDSerialization:
     ):
         """
         Property 6.3: TokenData serializes UUID fields as strings.
-        
+
         JWT token data must have UUIDs as strings for JSON compatibility.
         """
         token_data = TokenData(
@@ -139,37 +139,37 @@ class TestUUIDSerialization:
             tenant_id=str(tenant_id),
             tenant_schema=f"t_{str(tenant_id).replace('-', '')}"
         )
-        
+
         # Serialize to JSON
         json_str = token_data.model_dump_json()
         data = json.loads(json_str)
-        
+
         # Verify UUID fields are strings
         assert isinstance(data['user_id'], str), \
             "TokenData.user_id must serialize as string"
         assert isinstance(data['tenant_id'], str), \
             "TokenData.tenant_id must serialize as string"
-        
+
         # Verify they're valid UUID strings
         uuid.UUID(data['user_id'])
         uuid.UUID(data['tenant_id'])
-    
+
     def test_uuid_field_type_annotation_is_string(self):
         """
         Property 6.4: UUID fields in response schemas are annotated as str.
-        
+
         This ensures Pydantic knows to serialize them as strings.
         """
         # Check UserRead
         assert UserRead.model_fields['id'].annotation == str, \
             "UserRead.id should be annotated as str"
-        
+
         # Check Order
         assert Order.model_fields['id'].annotation == str, \
             "Order.id should be annotated as str"
         assert Order.model_fields['retailer_id'].annotation == str, \
             "Order.retailer_id should be annotated as str"
-        
+
         # Check TokenData
         assert TokenData.model_fields['user_id'].annotation == str, \
             "TokenData.user_id should be annotated as str"
@@ -179,13 +179,13 @@ class TestUUIDSerialization:
 
 class TestUUIDRoundTrip:
     """Test UUID round-trip serialization/deserialization."""
-    
+
     @given(st.uuids())
     @settings(max_examples=20)  # Reduced from 100 for faster execution
     def test_uuid_round_trip_through_schema(self, test_uuid: uuid.UUID):
         """
         Property: UUID can round-trip through schema serialization.
-        
+
         UUID -> str -> JSON -> str -> UUID should preserve the value.
         """
         # Create schema with UUID
@@ -198,18 +198,18 @@ class TestUUIDRoundTrip:
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
-        
+
         # Serialize to JSON and back
         json_str = user.model_dump_json()
         data = json.loads(json_str)
-        
+
         # Deserialize back to schema
         user_restored = UserRead.model_validate(data)
-        
+
         # Verify UUID is preserved
         assert user_restored.id == str(test_uuid), \
             "UUID should be preserved through serialization round-trip"
-        
+
         # Verify we can convert back to UUID
         restored_uuid = uuid.UUID(user_restored.id)
         assert restored_uuid == test_uuid, \

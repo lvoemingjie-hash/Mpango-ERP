@@ -222,4 +222,3 @@ relations:
   - Retailer has_one CustomerProfile
   - Product has_many ProductAttribute
   - Wholesaler has_many Supplier
-

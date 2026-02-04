@@ -1,6 +1,6 @@
 # Mpango-ERP 后端代码审查与分析报告
 
-项目仓库: lvoemingjie-hash/Mpango-ERP 审查分支: backend 报告日期: 2026-01-12 
+项目仓库: lvoemingjie-hash/Mpango-ERP 审查分支: backend 报告日期: 2026-01-12
 
 ## 执行摘要
 
@@ -131,7 +131,7 @@ def get_db(tenant_schema: str = Depends(get_tenant_schema_from_token)):
 
 从版本库中删除 requirements.txt ，并将 pyproject.toml 和 poetry.lock 提交。
 
-2. 配置质量工具: 在 pyproject.toml 中添加 Black, Ruff, Mypy 的配置，严格遵循 kiro_coding_style_contract 附录中的示例。 
+2. 配置质量工具: 在 pyproject.toml 中添加 Black, Ruff, Mypy 的配置，严格遵循 kiro_coding_style_contract 附录中的示例。
 [tool.poetry]
 name = "mpango-erp-backend"
 version = "0.1.0"
@@ -187,7 +187,7 @@ backend/app/db/base_class.py (定义的 `Base`)
 
 解决方案
 
-1. 创建规范的 `BaseModel`: 在项目中创建一个新的基类文件，例如 app/models/base.py ，并定义符合规范的 `BaseModel`。 
+1. 创建规范的 `BaseModel`: 在项目中创建一个新的基类文件，例如 app/models/base.py ，并定义符合规范的 `BaseModel`。
 import uuid
 from sqlalchemy import Column, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
@@ -200,14 +200,14 @@ class BaseModel:
     is_deleted = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
     # created_by 和 updated_by 最好在 CRUD 操作中自动填充
     # created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     # updated_by = Column(UUID(as-uuid=True), ForeignKey("users.id"))
 
     __name__: str
 
-2. 更新所有模型: 修改所有现有模型，使其继承自新的 `BaseModel`，并移除重复定义的 `id`, `created_at` 等字段。 
+2. 更新所有模型: 修改所有现有模型，使其继承自新的 `BaseModel`，并移除重复定义的 `id`, `created_at` 等字段。
 # app/models/user.py
 from sqlalchemy import Column, String, Boolean
 from .base import BaseModel # 导入新的基类
@@ -316,7 +316,7 @@ backend/app/api/v1/users.py (及所有其他业务路由文件)
 
 解决方案
 
-1. 实现权限检查依赖: 在 core/security.py 或一个新的依赖文件中，创建一个名为 `require_permission` 的依赖项工厂。 
+1. 实现权限检查依赖: 在 core/security.py 或一个新的依赖文件中，创建一个名为 `require_permission` 的依赖项工厂。
 # core/security.py 或 api/deps.py
 from fastapi import Depends, HTTPException, status
 
@@ -341,7 +341,7 @@ def require_permission(permission_code: str):
         return current_user
     return permission_checker
 
-2. 应用权限依赖到路由: 在每个需要保护的 API 路由上，添加 `Depends(require_permission("..."))`。 
+2. 应用权限依赖到路由: 在每个需要保护的 API 路由上，添加 `Depends(require_permission("..."))`。
 # api/v1/users.py
 from app.api.deps import require_permission
 
@@ -391,7 +391,7 @@ backend/app/api/v1/sales.py (订单相关逻辑)
 
 5. 更新订单状态为 `confirmed`。
 
-2. 实现幂等性检查: 为需要幂等性的接口创建一个依赖项，用于处理 `Idempotency-Key`。 
+2. 实现幂等性检查: 为需要幂等性的接口创建一个依赖项，用于处理 `Idempotency-Key`。
 # api/deps.py
 from fastapi import Header, HTTPException, status
 
@@ -428,12 +428,12 @@ docker-compose.yml:  缺少对 `backend` 和 `db` 服务的 `healthcheck` 配置
 
 代码定位
 
-backend/Dockerfile 
+backend/Dockerfile
  docker-compose.yml
 
 解决方案
 
-1. 优化 Dockerfile: 遵循 `kiro_docker_contract` 中的生产环境 Dockerfile 示例，使用多阶段构建，通过 Poetry 安装依赖，并创建非 root 用户运行应用。 
+1. 优化 Dockerfile: 遵循 `kiro_docker_contract` 中的生产环境 Dockerfile 示例，使用多阶段构建，通过 Poetry 安装依赖，并创建非 root 用户运行应用。
 # 生产环境 Dockerfile
 FROM python:3.11-slim
 
@@ -459,7 +459,7 @@ EXPOSE 8000
 
 CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-2. 添加 Healthchecks 到 docker-compose.yml: 为 `backend` 和 `db` 服务添加健康检查，并让 `backend` 依赖于 `db` 的健康状态。 
+2. 添加 Healthchecks 到 docker-compose.yml: 为 `backend` 和 `db` 服务添加健康检查，并让 `backend` 依赖于 `db` 的健康状态。
 services:
   db:
     image: postgres:15-alpine
@@ -736,8 +736,8 @@ Mpango-ERP 后端项目已经从原始报告中的"严重问题"状态显著改�
 
 ---
 
-**审查完成时间**: 2026-01-14  
-**审查人**: 独立代码审查 AI  
+**审查完成时间**: 2026-01-14
+**审查人**: 独立代码审查 AI
 **总体评级**: 🟢 **良好**
 
 ---

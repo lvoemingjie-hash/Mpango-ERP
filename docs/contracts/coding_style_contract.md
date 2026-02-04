@@ -1,6 +1,6 @@
 # Mpango ERP — Coding Style Contract
-**Version:** 1.1  
-**Purpose:** 定义帝国工匠的行为准则，确保代码质量、可维护性，并最大化 AI 辅助开发效率。  
+**Version:** 1.1
+**Purpose:** 定义帝国工匠的行为准则，确保代码质量、可维护性，并最大化 AI 辅助开发效率。
 **Last Updated:** 2025-06-10
 
 ## 1. 总体原则

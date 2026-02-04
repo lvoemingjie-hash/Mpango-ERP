@@ -49,7 +49,7 @@ async def list_stock(
     request_id = getattr(request.state, 'request_id', 'N/A')
     tenant_id = getattr(request.state, 'tenant_id', 'N/A')
     logger = get_request_logger(request_id, tenant_id)
-    
+
     logger.info(
         "list_stock_started",
         extra={
@@ -61,7 +61,7 @@ async def list_stock(
             "is_active": is_active
         }
     )
-    
+
     try:
         service = InventoryService()
         rows, total = await service.list_stock(db, page=page, size=size, sku_code=sku_code, is_active=is_active)
@@ -75,7 +75,7 @@ async def list_stock(
             },
             timestamp=datetime.utcnow(),
         )
-        
+
         logger.info(
             "list_stock_completed",
             extra={
@@ -85,9 +85,9 @@ async def list_stock(
                 "success": True
             }
         )
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(
             "list_stock_failed",
@@ -111,7 +111,7 @@ async def get_stock_by_sku(
     request_id = getattr(request.state, 'request_id', 'N/A')
     tenant_id = getattr(request.state, 'tenant_id', 'N/A')
     logger = get_request_logger(request_id, tenant_id)
-    
+
     logger.info(
         "get_stock_by_sku_started",
         extra={
@@ -120,13 +120,13 @@ async def get_stock_by_sku(
             "sku_code": sku_code
         }
     )
-    
+
     try:
         service = InventoryService()
         sku, stock = await service.get_stock_by_sku_code(db, sku_code=sku_code)
-        
+
         result = DataResponse(success=True, data=_to_stock_view(sku, stock), timestamp=datetime.utcnow())
-        
+
         logger.info(
             "get_stock_by_sku_completed",
             extra={
@@ -138,9 +138,9 @@ async def get_stock_by_sku(
                 "success": True
             }
         )
-        
+
         return result
-        
+
     except HTTPException as e:
         logger.warning(
             "get_stock_by_sku_failed",
@@ -176,7 +176,7 @@ async def stock_view_for_order(
     request_id = getattr(request.state, 'request_id', 'N/A')
     tenant_id = getattr(request.state, 'tenant_id', 'N/A')
     logger = get_request_logger(request_id, tenant_id)
-    
+
     logger.info(
         "stock_view_for_order_started",
         extra={
@@ -185,7 +185,7 @@ async def stock_view_for_order(
             "order_id": order_id
         }
     )
-    
+
     try:
         service = InventoryService()
         items = await service.stock_view_for_order(db, order_id=order_id)
@@ -198,7 +198,7 @@ async def stock_view_for_order(
             },
             timestamp=datetime.utcnow(),
         )
-        
+
         logger.info(
             "stock_view_for_order_completed",
             extra={
@@ -208,9 +208,9 @@ async def stock_view_for_order(
                 "success": True
             }
         )
-        
+
         return result
-        
+
     except HTTPException as e:
         logger.warning(
             "stock_view_for_order_failed",

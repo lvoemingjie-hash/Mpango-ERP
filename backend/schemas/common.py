@@ -19,7 +19,7 @@ class Pagination(BaseModel):
     size: int = Field(..., ge=1, le=100, description="Items per page")
     total: int = Field(..., ge=0, description="Total number of items")
     pages: int = Field(..., ge=0, description="Total number of pages")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -31,7 +31,7 @@ class ErrorDetail(BaseModel):
     field: Optional[str] = Field(None, description="Field that caused the error")
     message: str = Field(..., description="Error message")
     meta: Optional[dict[str, Any]] = Field(None, description="Additional error metadata")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -49,7 +49,7 @@ class ErrorResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Error timestamp"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -64,7 +64,7 @@ class MessageResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -72,7 +72,7 @@ class DataResponse(BaseModel, Generic[T]):
     """
     Generic data response wrapper.
     Wraps response data with success flag and timestamp.
-    
+
     Used for all successful API responses per openapi.yaml pattern.
     """
     success: bool = Field(True, description="Always true for successful responses")
@@ -82,7 +82,7 @@ class DataResponse(BaseModel, Generic[T]):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -100,5 +100,5 @@ class PaginatedResponse(BaseModel, Generic[T]):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}

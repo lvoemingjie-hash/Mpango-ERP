@@ -31,10 +31,10 @@ IDEMPOTENCY_TTL = timedelta(hours=24)
 
 class TestIdempotencyMiddleware:
     """Test-local IdempotencyMiddleware that mirrors actual implementation."""
-    
+
     def __init__(self, app=None):
         self.app = app
-    
+
     def _make_cache_key(
         self,
         *,
@@ -47,28 +47,28 @@ class TestIdempotencyMiddleware:
     ) -> str:
         combined = f"{tenant_schema}:{user_id}:{method}:{path}:{body_hash}:{idempotency_key}"
         return hashlib.sha256(combined.encode()).hexdigest()
-    
+
     def _get_cached_response(self, cache_key: str) -> Optional[Dict[str, Any]]:
         """Get cached response if exists and not expired."""
         cached = _test_idempotency_cache.get(cache_key)
-        
+
         if not cached:
             return None
-        
+
         # Check expiration
         if datetime.utcnow() > cached["expires_at"]:
             del _test_idempotency_cache[cache_key]
             return None
-        
+
         return cached
-    
+
     def _mark_in_progress(self, cache_key: str) -> None:
         """Mark a request as in-progress."""
         _test_idempotency_cache[cache_key] = {
             "in_progress": True,
             "expires_at": datetime.utcnow() + timedelta(minutes=5)
         }
-    
+
     def _cache_response(
         self,
         cache_key: str,
@@ -82,7 +82,7 @@ class TestIdempotencyMiddleware:
             "expires_at": datetime.utcnow() + IDEMPOTENCY_TTL,
             "in_progress": False
         }
-    
+
     def _remove_cache(self, cache_key: str) -> None:
         """Remove cache entry."""
         _test_idempotency_cache.pop(cache_key, None)
@@ -102,10 +102,10 @@ def cleanup_expired_entries() -> int:
         key for key, value in _test_idempotency_cache.items()
         if value.get("expires_at") and now > value["expires_at"]
     ]
-    
+
     for key in expired_keys:
         del _test_idempotency_cache[key]
-    
+
     return len(expired_keys)
 
 
@@ -183,7 +183,7 @@ class TestIdempotencyMiddlewareCacheKey:
             path="/orders",
             body_hash=body_hash2,
         )
-        
+
         # All keys should be different
         assert len({key1, key2, key3, key4, key5, key6, key7}) == 7
 
@@ -209,7 +209,7 @@ class TestIdempotencyMiddlewareCacheKey:
             path="/orders",
             body_hash=body_hash,
         )
-        
+
         assert key1 == key2
 
     def test_cache_key_is_sha256_hash(self):
@@ -226,7 +226,7 @@ class TestIdempotencyMiddlewareCacheKey:
             path="/orders",
             body_hash=body_hash,
         )
-        
+
         assert len(key) == 64
         assert all(c in "0123456789abcdef" for c in key)
 
@@ -252,7 +252,7 @@ class TestIdempotencyMiddlewareCacheKey:
             path="/orders",
             body_hash=body_hash,
         )
-        
+
         assert post_key != put_key
 
     def test_different_paths_different_keys(self):
@@ -277,7 +277,7 @@ class TestIdempotencyMiddlewareCacheKey:
             path="/users",
             body_hash=body_hash,
         )
-        
+
         assert orders_key != users_key
 
 
@@ -293,9 +293,9 @@ class TestIdempotencyMiddlewareCaching:
         middleware = TestIdempotencyMiddleware(app=None)
         cache_key = "test-cache-key"
         body = {"success": True, "data": {"id": "123"}}
-        
+
         middleware._cache_response(cache_key, body, 201)
-        
+
         cached = _test_idempotency_cache.get(cache_key)
         assert cached is not None
         assert cached["body"] == body
@@ -307,9 +307,9 @@ class TestIdempotencyMiddlewareCaching:
         middleware = TestIdempotencyMiddleware(app=None)
         cache_key = "test-cache-key"
         body = {"success": True}
-        
+
         middleware._cache_response(cache_key, body, 200)
-        
+
         cached = middleware._get_cached_response(cache_key)
         assert cached is not None
         assert cached["body"] == body
@@ -317,7 +317,7 @@ class TestIdempotencyMiddlewareCaching:
     def test_get_cached_response_returns_none_when_missing(self):
         """Should return None when no cached response."""
         middleware = TestIdempotencyMiddleware(app=None)
-        
+
         cached = middleware._get_cached_response("nonexistent-key")
         assert cached is None
 
@@ -325,9 +325,9 @@ class TestIdempotencyMiddlewareCaching:
         """Should mark request as in-progress."""
         middleware = TestIdempotencyMiddleware(app=None)
         cache_key = "test-key"
-        
+
         middleware._mark_in_progress(cache_key)
-        
+
         cached = _test_idempotency_cache.get(cache_key)
         assert cached is not None
         assert cached["in_progress"] is True
@@ -336,10 +336,10 @@ class TestIdempotencyMiddlewareCaching:
         """Should remove cache entry."""
         middleware = TestIdempotencyMiddleware(app=None)
         cache_key = "test-key"
-        
+
         middleware._cache_response(cache_key, {"test": True}, 200)
         assert cache_key in _test_idempotency_cache
-        
+
         middleware._remove_cache(cache_key)
         assert cache_key not in _test_idempotency_cache
 
@@ -354,22 +354,22 @@ class TestIdempotencyCacheManagement:
     def test_clear_idempotency_cache(self):
         """Should clear all cache entries."""
         middleware = TestIdempotencyMiddleware(app=None)
-        
+
         # Add some entries
         middleware._cache_response("key1", {"a": 1}, 200)
         middleware._cache_response("key2", {"b": 2}, 201)
-        
+
         assert len(_test_idempotency_cache) == 2
-        
+
         count = clear_test_cache()
-        
+
         assert count == 2
         assert len(_test_idempotency_cache) == 0
 
     def test_cleanup_expired_entries(self):
         """Should remove expired entries."""
         middleware = TestIdempotencyMiddleware(app=None)
-        
+
         # Add an expired entry
         _test_idempotency_cache["expired-key"] = {
             "body": {"test": True},
@@ -377,14 +377,14 @@ class TestIdempotencyCacheManagement:
             "expires_at": datetime.utcnow() - timedelta(hours=1),
             "in_progress": False
         }
-        
+
         # Add a valid entry
         middleware._cache_response("valid-key", {"test": True}, 200)
-        
+
         assert len(_test_idempotency_cache) == 2
-        
+
         count = cleanup_expired_entries()
-        
+
         assert count == 1
         assert "expired-key" not in _test_idempotency_cache
         assert "valid-key" in _test_idempotency_cache

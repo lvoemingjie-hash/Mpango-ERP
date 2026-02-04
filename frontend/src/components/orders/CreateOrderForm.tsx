@@ -33,7 +33,7 @@ export const CreateOrderForm: React.FC<CreateOrderFormProps> = ({ onSuccess }) =
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!canCreateOrder) {
       setError('You do not have permission to create orders')
       return
@@ -63,11 +63,11 @@ export const CreateOrderForm: React.FC<CreateOrderFormProps> = ({ onSuccess }) =
       }
 
       await orderService.createOrder(orderData)
-      
+
       // Reset form
       setItems([{ product_id: '', quantity: 1, unit_price: 0 }])
       setNotes('')
-      
+
       onSuccess?.()
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to create order')
@@ -88,7 +88,7 @@ export const CreateOrderForm: React.FC<CreateOrderFormProps> = ({ onSuccess }) =
   return (
     <div className="bg-white shadow rounded-lg p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Create New Order</h2>
-      
+
       {error && (
         <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
           {error}

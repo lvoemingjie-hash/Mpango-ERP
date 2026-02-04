@@ -3,4 +3,4 @@ version: '3.8'
 services:
   backend:
     environment:
-      - MPANGO_TEST_MODE=true
+      - MPANGO_ENV=test

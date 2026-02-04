@@ -1,7 +1,7 @@
 """Initial schema - public.wholesalers and tenant tables
 
 Revision ID: 001_initial_schema
-Revises: 
+Revises:
 Create Date: 2026-01-12
 
 Implements database_contract.md:
@@ -24,7 +24,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """
     Create initial schema.
-    
+
     If no tenant_schema is specified, creates public.wholesalers only.
     If tenant_schema is specified, creates tenant-scoped tables.
     """
@@ -32,12 +32,12 @@ def upgrade() -> None:
     conn = op.get_bind()
     result = conn.execute(sa.text("SHOW search_path"))
     search_path = result.scalar()
-    
+
     is_tenant_migration = any(
-        part.strip().startswith('t_') 
+        part.strip().startswith('t_')
         for part in search_path.split(',')
     )
-    
+
     if not is_tenant_migration:
         # PUBLIC SCHEMA MIGRATION
         create_public_schema()
@@ -48,7 +48,7 @@ def upgrade() -> None:
 
 def create_public_schema() -> None:
     """Create public schema tables (wholesalers)."""
-    
+
     # Create wholesalers table
     op.create_table(
         'wholesalers',
@@ -71,7 +71,7 @@ def create_public_schema() -> None:
 
 def create_tenant_schema() -> None:
     """Create tenant schema tables."""
-    
+
     # Create users table
     op.create_table(
         'users',
@@ -90,7 +90,7 @@ def create_tenant_schema() -> None:
         sa.UniqueConstraint('email')
     )
     op.create_index('ix_users_email', 'users', ['email'], unique=True)
-    
+
     # Create roles table
     op.create_table(
         'roles',
@@ -107,7 +107,7 @@ def create_tenant_schema() -> None:
         sa.UniqueConstraint('name')
     )
     op.create_index('ix_roles_name', 'roles', ['name'], unique=True)
-    
+
     # Create permissions table
     op.create_table(
         'permissions',
@@ -124,7 +124,7 @@ def create_tenant_schema() -> None:
         sa.UniqueConstraint('code')
     )
     op.create_index('ix_permissions_code', 'permissions', ['code'], unique=True)
-    
+
     # Create user_roles M2M table
     op.create_table(
         'user_roles',
@@ -136,7 +136,7 @@ def create_tenant_schema() -> None:
     )
     op.create_index('ix_user_roles_user_id', 'user_roles', ['user_id'])
     op.create_index('ix_user_roles_role_id', 'user_roles', ['role_id'])
-    
+
     # Create role_permissions M2M table
     op.create_table(
         'role_permissions',
@@ -148,10 +148,10 @@ def create_tenant_schema() -> None:
     )
     op.create_index('ix_role_permissions_role_id', 'role_permissions', ['role_id'])
     op.create_index('ix_role_permissions_permission_id', 'role_permissions', ['permission_id'])
-    
+
     # Create order_status enum
     op.execute("CREATE TYPE order_status AS ENUM ('pending', 'confirmed', 'shipped', 'cancelled')")
-    
+
     # Create orders table
     op.create_table(
         'orders',
@@ -171,7 +171,7 @@ def create_tenant_schema() -> None:
     op.create_index('ix_orders_retailer_id', 'orders', ['retailer_id'])
     op.create_index('ix_orders_status', 'orders', ['status'])
     op.create_index('ix_orders_created_at', 'orders', ['created_at'])
-    
+
     # Create order_items table
     op.create_table(
         'order_items',
@@ -199,12 +199,12 @@ def downgrade() -> None:
     conn = op.get_bind()
     result = conn.execute(sa.text("SHOW search_path"))
     search_path = result.scalar()
-    
+
     is_tenant_migration = any(
-        part.strip().startswith('t_') 
+        part.strip().startswith('t_')
         for part in search_path.split(',')
     )
-    
+
     if not is_tenant_migration:
         # Drop public schema tables
         op.drop_index('ix_wholesalers_code', table_name='wholesalers', schema='public')
@@ -214,27 +214,27 @@ def downgrade() -> None:
         op.drop_index('ix_order_items_product_id', table_name='order_items')
         op.drop_index('ix_order_items_order_id', table_name='order_items')
         op.drop_table('order_items')
-        
+
         op.drop_index('ix_orders_created_at', table_name='orders')
         op.drop_index('ix_orders_status', table_name='orders')
         op.drop_index('ix_orders_retailer_id', table_name='orders')
         op.drop_table('orders')
-        
+
         op.execute("DROP TYPE order_status")
-        
+
         op.drop_index('ix_role_permissions_permission_id', table_name='role_permissions')
         op.drop_index('ix_role_permissions_role_id', table_name='role_permissions')
         op.drop_table('role_permissions')
-        
+
         op.drop_index('ix_user_roles_role_id', table_name='user_roles')
         op.drop_index('ix_user_roles_user_id', table_name='user_roles')
         op.drop_table('user_roles')
-        
+
         op.drop_index('ix_permissions_code', table_name='permissions')
         op.drop_table('permissions')
-        
+
         op.drop_index('ix_roles_name', table_name='roles')
         op.drop_table('roles')
-        
+
         op.drop_index('ix_users_email', table_name='users')
         op.drop_table('users')

@@ -72,17 +72,17 @@ def get_tenant_schema():
 
 def do_run_migrations(connection: Connection):
     tenant_schema = get_tenant_schema()
-    
+
     # 设置搜索路径
     connection.execute(f'SET LOCAL search_path TO "{tenant_schema}", public')
-    
+
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
         version_table_schema="public",  # 版本表在public
         include_schemas=True,
     )
-    
+
     with context.begin_transaction():
         context.run_migrations()
 ```
@@ -108,7 +108,7 @@ async def migrate_all_tenants():
             select(Wholesaler).where(Wholesaler.is_deleted == False)
         )
         wholesalers = result.scalars().all()
-    
+
     for w in wholesalers:
         schema = w.get_tenant_schema()
         subprocess.run([
@@ -122,14 +122,14 @@ async def migrate_all_tenants():
 async def provision_tenant(code: str, name: str):
     # 1. 创建wholesaler记录
     wholesaler = await crud.wholesaler.create(db, WholesalerCreate(code=code, name=name))
-    
+
     # 2. 创建schema
     schema = wholesaler.get_tenant_schema()
     await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-    
+
     # 3. 执行迁移
     subprocess.run(["alembic", "upgrade", "head", "-x", f"tenant_schema={schema}"])
-    
+
     # 4. 插入种子数据（角色、权限、admin用户）
     await seed_rbac(schema)
 ```
@@ -152,5 +152,5 @@ async def provision_tenant(code: str, name: str):
 
 ---
 
-**Created by:** Architect AI  
+**Created by:** Architect AI
 **Date:** 2025-01-09

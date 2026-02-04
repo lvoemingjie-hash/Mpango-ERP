@@ -48,17 +48,17 @@ app = FastAPI(
 def custom_openapi():
     """
     Load and serve OpenAPI specification from canonical source.
-    
+
     Implements requirement 4.1: Load OpenAPI spec from docs/contracts/openapi.yaml
     """
     if app.openapi_schema:
         return app.openapi_schema
-    
+
     try:
         # Load canonical OpenAPI spec
         with open("docs/contracts/openapi.yaml", "r") as f:
             openapi_schema = yaml.safe_load(f)
-        
+
         # Cache the schema
         app.openapi_schema = openapi_schema
         return app.openapi_schema

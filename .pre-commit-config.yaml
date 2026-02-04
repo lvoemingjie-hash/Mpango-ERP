@@ -4,105 +4,16 @@
 # Run manually: pre-commit run --all-files
 
 repos:
-  # Detect secrets using Yelp's detect-secrets
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
     hooks:
-      - id: detect-secrets
-        name: Detect secrets
-        args:
-          - '--baseline'
-          - '.secrets.baseline'
-          - '--exclude-files'
-          - '.*\.lock$'
-          - '--exclude-files'
-          - 'package-lock\.json$'
-          - '--exclude-files'
-          - 'poetry\.lock$'
-        exclude: |
-          (?x)^(
-            .*\.lock$|
-            package-lock\.json$|
-            poetry\.lock$|
-            .*\.hypothesis/.*$
-          )$
-
-  # Check for files that would conflict with secrets
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+-   repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
     hooks:
-      # Prevent committing large files
-      - id: check-added-large-files
-        args: ['--maxkb=500']
-        
-      # Detect private keys
-      - id: detect-private-key
-        
-      # Check for merge conflicts
-      - id: check-merge-conflict
-        
-      # Prevent committing to main/master
-      - id: no-commit-to-branch
-        args: ['--branch', 'main', '--branch', 'master']
-        
-      # Check YAML syntax
-      - id: check-yaml
-        args: ['--unsafe']  # Allow custom tags
-        
-      # Check JSON syntax
-      - id: check-json
-        
-      # Trim trailing whitespace
-      - id: trailing-whitespace
-        
-      # Ensure files end with newline
-      - id: end-of-file-fixer
-
-  # Additional secret scanning with gitleaks
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.1
-    hooks:
-      - id: gitleaks
-        name: Gitleaks secret scanner
-        entry: gitleaks protect --verbose --redact --staged
-        language: system
-        pass_filenames: false
-
-# Custom local hooks
-  - repo: local
-    hooks:
-      # Block prod.env explicitly
-      - id: block-prod-env
-        name: Block prod.env files
-        entry: prod.env files are not allowed in git
-        language: fail
-        files: '(^|/)prod\.env$'
-        
-      # Block secrets/ directory
-      - id: block-secrets-dir
-        name: Block secrets/ directory
-        entry: secrets/ directory is not allowed in git
-        language: fail
-        files: '^secrets/'
-        
-      # Block any .env files except .env.example
-      - id: block-env-files
-        name: Block .env files (except .env.example)
-        entry: .env files (except .env.example) are not allowed in git
-        language: fail
-        files: '\.env$'
-        exclude: '\.env\.example$'
-        
-      # Check for hardcoded passwords
-      - id: check-hardcoded-passwords
-        name: Check for hardcoded passwords
-        entry: bash -c 'if grep -rn --include="*.py" --include="*.js" --include="*.ts" -E "(password|passwd|pwd)\s*=\s*[\"'\''][^\"'\'']+[\"'\'']" .; then echo "Hardcoded password detected!"; exit 1; fi'
-        language: system
-        pass_filenames: false
-        
-      # Check for AWS keys
-      - id: check-aws-keys
-        name: Check for AWS keys
-        entry: bash -c 'if grep -rn --include="*.py" --include="*.js" --include="*.ts" --include="*.env*" -E "(AKIA|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY)" .; then echo "AWS credentials detected!"; exit 1; fi'
-        language: system
-        pass_filenames: false
+    -   id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json

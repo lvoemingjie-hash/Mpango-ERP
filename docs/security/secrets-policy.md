@@ -1,9 +1,9 @@
 # Secrets Management Policy
 
-**Version:** 1.0  
-**Effective Date:** 2026-02-01  
-**Owner:** Security Team  
-**Status:** MANDATORY  
+**Version:** 1.0
+**Effective Date:** 2026-02-01
+**Owner:** Security Team
+**Status:** MANDATORY
 
 ---
 
@@ -396,8 +396,8 @@ This policy will be reviewed and updated:
 - When new tools or practices emerge
 - Upon regulatory requirement changes
 
-**Last Updated:** 2026-02-01  
-**Next Review:** 2027-02-01  
+**Last Updated:** 2026-02-01
+**Next Review:** 2027-02-01
 
 ---
 
@@ -405,9 +405,9 @@ This policy will be reviewed and updated:
 
 By contributing to Mpango ERP repositories, you acknowledge that you have read, understood, and agree to comply with this Secrets Management Policy.
 
-**Signature:** _________________________  
-**Date:** _________________________  
-**Name:** _________________________  
+**Signature:** _________________________
+**Date:** _________________________
+**Name:** _________________________
 
 ---
 

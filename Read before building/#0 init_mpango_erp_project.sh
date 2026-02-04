@@ -39,8 +39,8 @@ touch database/schema.sql infra/docker-compose.yml infra/Dockerfile
 cat <<EOT >> README.md
 # Mpango ERP System
 
-**版本：** 1.0.0  
-**作者：** Jeff Lee + GPT-5  
+**版本：** 1.0.0
+**作者：** Jeff Lee + GPT-5
 **描述：** 基于 Spec-Kit 构建的批发零售 ERP 系统，用于支持非洲市场的多租户数字化运营。
 
 ## 快速启动
@@ -57,16 +57,16 @@ npm install && npm run dev
 
 ## 模块说明
 
-- **销售管理 (Sales)**  
+- **销售管理 (Sales)**
   零售商下单、订单跟踪、批发商发货管理。
 
-- **客户关系管理 (CRM)**  
+- **客户关系管理 (CRM)**
   批发商邀请、客户档案、信用额度管理。
 
-- **库存管理 (Inventory)**  
+- **库存管理 (Inventory)**
   库存同步、商品录入、库存调整。
 
-- **采购管理 (Procurement)**  
+- **采购管理 (Procurement)**
   供应商管理、采购单、入库记录。
 ```
 

@@ -44,7 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, setOpen }) => {
   ]
 
   // Choose navigation based on role
-  const navigation = role === 'wholesaler' 
+  const navigation = role === 'wholesaler'
     ? [...wholesalerNavigation, ...devNavigation]
     : role === 'retailer'
     ? [...retailerNavigation, ...devNavigation]

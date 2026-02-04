@@ -76,5 +76,5 @@ YYYY-MM-DD_<short-description>.md
 
 ---
 
-**Maintained by:** Architect AI  
+**Maintained by:** Architect AI
 **Last Updated:** 2025-01-09

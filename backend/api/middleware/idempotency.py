@@ -55,11 +55,11 @@ class InMemoryIdempotencyStore:
 class IdempotencyMiddleware(BaseHTTPMiddleware):
     """
     Middleware to handle idempotency keys for safe request retries.
-    
+
     Usage:
         Client sends: X-Idempotency-Key: <unique-key>
         Server returns cached response for duplicate keys.
-    
+
     Behavior:
         - GET requests: ignored (naturally idempotent)
         - POST/PUT/PATCH/DELETE: checked for idempotency key
@@ -76,17 +76,17 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._store: IdempotencyStore = store or InMemoryIdempotencyStore()
         self._ttl = ttl
-    
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request with idempotency handling."""
-        
+
         # Skip non-mutating methods
         if request.method not in IDEMPOTENT_METHODS:
             return await call_next(request)
-        
+
         # Get idempotency key from header
         idempotency_key = request.headers.get("X-Idempotency-Key")
-        
+
         # No key provided - proceed without caching
         if not idempotency_key:
             return await call_next(request)
@@ -112,7 +112,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 
         request._receive = _receive  # type: ignore[attr-defined]
         body_hash = hashlib.sha256(body_bytes).hexdigest()
-        
+
         # Create cache key (tenant/user/method/path/body-hash to prevent cross-tenant/user collisions)
         cache_key = self._make_cache_key(
             idempotency_key=idempotency_key,
@@ -122,7 +122,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             path=str(request.url.path),
             body_hash=body_hash,
         )
-        
+
         # Check for cached response
         cached = await self._get_cached_response(cache_key)
         if cached:
@@ -134,30 +134,30 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                     "X-Idempotency-Key": idempotency_key
                 }
             )
-        
+
         # Mark as in-progress to prevent race conditions
         await self._mark_in_progress(cache_key)
-        
+
         try:
             # Execute the actual request
             response = await call_next(request)
-            
+
             # Cache successful responses (2xx status codes)
             if 200 <= response.status_code < 300:
                 # Read response body
                 body = b""
                 async for chunk in response.body_iterator:
                     body += chunk
-                
+
                 # Parse JSON body
                 try:
                     body_json = json.loads(body.decode())
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     body_json = {"raw": body.decode()}
-                
+
                 # Cache the response
                 await self._cache_response(cache_key, body_json, response.status_code)
-                
+
                 # Return new response with body
                 return JSONResponse(
                     content=body_json,
@@ -166,14 +166,14 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                         "X-Idempotency-Key": idempotency_key
                     }
                 )
-            
+
             return response
-            
+
         except Exception:
             # Remove in-progress marker on error
             await self._remove_cache(cache_key)
             raise
-    
+
     def _make_cache_key(
         self,
         *,
@@ -190,10 +190,10 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
     async def _get_cached_response(self, cache_key: str) -> Optional[Dict[str, Any]]:
         """Get cached response if exists and not expired."""
         cached = await self._store.get(cache_key)
-        
+
         if not cached:
             return None
-        
+
         # Check if in-progress (concurrent request)
         if cached.get("in_progress"):
             raise HTTPException(
@@ -203,21 +203,21 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                     "message": "A request with this idempotency key is already in progress"
                 }
             )
-        
+
         # Check expiration
         if datetime.utcnow() > cached["expires_at"]:
             await self._store.delete(cache_key)
             return None
-        
+
         return cached
-    
+
     async def _mark_in_progress(self, cache_key: str) -> None:
         """Mark a request as in-progress."""
         await self._store.set(cache_key, {
             "in_progress": True,
             "expires_at": datetime.utcnow() + timedelta(minutes=5)
         })
-    
+
     async def _cache_response(
         self,
         cache_key: str,

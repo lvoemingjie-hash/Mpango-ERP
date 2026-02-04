@@ -32,7 +32,7 @@ class OrderItemCreate(BaseModel):
     sku_code: str = Field(..., description="SKU code snapshot")
     quantity: int = Field(..., ge=1, description="Item quantity")
     unit_price: Decimal = Field(..., ge=0, description="Unit price")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -47,7 +47,7 @@ class OrderItem(BaseModel):
     quantity: int = Field(..., description="Item quantity")
     unit_price: Decimal = Field(..., description="Unit price")
     subtotal: Decimal = Field(..., description="Line item subtotal")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -67,7 +67,7 @@ class OrderCreateRequest(BaseModel):
         description="Order items"
     )
     notes: str | None = Field(None, description="Order notes")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -87,7 +87,7 @@ class Order(BaseModel):
     created_by: str | None = Field(None, description="Creator user UUID")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -103,7 +103,7 @@ class OrderResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -121,7 +121,7 @@ class OrderListResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -140,5 +140,5 @@ class OrderActionResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}

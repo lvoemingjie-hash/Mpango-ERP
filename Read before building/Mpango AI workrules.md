@@ -4,9 +4,9 @@
 
 # Status: Active / Enforced
 
-> 本文件是 Mpango ERP 项目的 **AI 工程工作宪章（Engineering Charter）**。  
-> 适用于所有参与本项目的 AI 工程师（包括但不限于 Kiro / Claude / Gemini / GLM / CodeRabbit 等）。  
->  
+> 本文件是 Mpango ERP 项目的 **AI 工程工作宪章（Engineering Charter）**。
+> 适用于所有参与本项目的 AI 工程师（包括但不限于 Kiro / Claude / Gemini / GLM / CodeRabbit 等）。
+>
 > **任何 AI 在开始工作前，必须阅读并遵守本文件。违反规则的产出视为无效。**
 
 ---
@@ -29,22 +29,22 @@
 所有 AI 输出必须显式引用以下规范层级：
 
 #### L0（最高优先级，不可绕过）
-- 11-kiro_api_contract-v1.1.md  
-- 5-kiro_database_contract.md  
-- 13-Multi-Tenancy-Spec-MVP.md  
-- 14-RBAC-Matrix-MVP.md  
+- 11-kiro_api_contract-v1.1.md
+- 5-kiro_database_contract.md
+- 13-Multi-Tenancy-Spec-MVP.md
+- 14-RBAC-Matrix-MVP.md
 
 #### L1（业务与运行规范）
-- 15-Domain-Workflows-MVP.md  
-- 16-Ops-Runbooks-MVP.md  
-- 17-Non-functional-Ops-Spec-MVP.yaml  
+- 15-Domain-Workflows-MVP.md
+- 16-Ops-Runbooks-MVP.md
+- 17-Non-functional-Ops-Spec-MVP.yaml
 
 #### L2（实现与风格规范）
-- 6-kiro_backend_contract.md  
-- 7-kiro_frontend_contract.md  
-- 8-kiro_coding-style-contract.md  
-- 10-kiro_test_contract.md  
-- 12-KIRO-V0-UI-Integration-Contract.md  
+- 6-kiro_backend_contract.md
+- 7-kiro_frontend_contract.md
+- 8-kiro_coding-style-contract.md
+- 10-kiro_test_contract.md
+- 12-KIRO-V0-UI-Integration-Contract.md
 
 ---
 
@@ -188,4 +188,3 @@ YYYY-MM-DD_<scope>_<short-description>.md
   * 以 scenario 是否成立作为“是否可用”的判断依据
 
 ---
-

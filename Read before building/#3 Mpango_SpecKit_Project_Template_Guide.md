@@ -1,8 +1,8 @@
 # Mpango ERP Spec-Kit 项目初始化模板结构说明
 
-**版本：** 1.0.0  
-**作者：** Jeff Lee + GPT-5  
-**日期：** 2025年10月  
+**版本：** 1.0.0
+**作者：** Jeff Lee + GPT-5
+**日期：** 2025年10月
 
 ---
 
@@ -88,13 +88,13 @@ npm start
 
 ## 四、后续建议
 
-1️⃣ **版本控制**：立即创建 GitHub / GitLab 仓库，命名 `mpango-erp`。  
-2️⃣ **持续文档同步**：将 `PRD_v1.0` 与 `spec-kit.yaml` 放入 `/docs`。  
-3️⃣ **从销售模块开始**：让 Kiro 生成第一个 API 与模型。  
-4️⃣ **API 测试建议**：可使用 Postman，我可辅助你设计请求与验证流程。  
+1️⃣ **版本控制**：立即创建 GitHub / GitLab 仓库，命名 `mpango-erp`。
+2️⃣ **持续文档同步**：将 `PRD_v1.0` 与 `spec-kit.yaml` 放入 `/docs`。
+3️⃣ **从销售模块开始**：让 Kiro 生成第一个 API 与模型。
+4️⃣ **API 测试建议**：可使用 Postman，我可辅助你设计请求与验证流程。
 
 ---
 
-**下一步建议：**  
-✅ 将此模板文件与 `spec-kit.yaml` 一同导入 Kiro 或本地目录，执行 `spec-kit init` 命令。  
+**下一步建议：**
+✅ 将此模板文件与 `spec-kit.yaml` 一同导入 Kiro 或本地目录，执行 `spec-kit init` 命令。
 这将为你的 Mpango ERP 创建可直接启动的项目骨架。

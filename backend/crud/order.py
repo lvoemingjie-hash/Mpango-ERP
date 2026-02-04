@@ -44,17 +44,17 @@ STATE_TRANSITIONS = {
 def validate_state_transition(order: Order, action: str) -> None:
     """
     Validate that a state transition is allowed.
-    
+
     Args:
         order: Order to validate
         action: Action to perform (confirm, ship, cancel)
-        
+
     Raises:
         InvalidStateTransitionError: If transition is not allowed
     """
     if action not in STATE_TRANSITIONS:
         raise ValueError(f"Unknown action: {action}")
-    
+
     rules = STATE_TRANSITIONS[action]
     if order.status not in rules["allowed_from"]:
         raise InvalidStateTransitionError(
@@ -70,11 +70,11 @@ async def get_order_by_id(
 ) -> Optional[Order]:
     """
     Get order by ID with items loaded.
-    
+
     Args:
         db: Database session (tenant schema)
         order_id: Order UUID as string
-        
+
     Returns:
         Order with items loaded, None if not found
     """
@@ -82,7 +82,7 @@ async def get_order_by_id(
         order_uuid = UUID(order_id)
     except ValueError:
         return None
-    
+
     result = await db.execute(
         select(Order)
         .where(Order.id == order_uuid)
@@ -102,21 +102,21 @@ async def get_orders_paginated(
 ) -> Tuple[List[Order], int]:
     """
     Get paginated list of orders with optional filters.
-    
+
     Args:
         db: Database session (tenant schema)
         page: Page number (1-based)
         size: Items per page
         status_filter: Optional status filter
         retailer_id: Optional retailer ID filter
-        
+
     Returns:
         Tuple of (orders list, total count)
     """
     # Build base query
     base_query = select(Order).where(Order.is_deleted == False)
     count_query = select(func.count(Order.id)).where(Order.is_deleted == False)
-    
+
     # Apply filters
     if wholesaler_id:
         try:
@@ -129,7 +129,7 @@ async def get_orders_paginated(
     if status_filter:
         base_query = base_query.where(Order.status == status_filter)
         count_query = count_query.where(Order.status == status_filter)
-    
+
     if retailer_id:
         try:
             retailer_uuid = UUID(retailer_id)
@@ -137,11 +137,11 @@ async def get_orders_paginated(
             count_query = count_query.where(Order.retailer_id == retailer_uuid)
         except ValueError:
             pass
-    
+
     # Get total count
     count_result = await db.execute(count_query)
     total = count_result.scalar_one()
-    
+
     # Get paginated orders
     offset = (page - 1) * size
     result = await db.execute(
@@ -152,7 +152,7 @@ async def get_orders_paginated(
         .limit(size)
     )
     orders = list(result.scalars().all())
-    
+
     return orders, total
 
 
@@ -166,7 +166,7 @@ async def create_order(
 ) -> Order:
     """
     Create a new order with items.
-    
+
     Args:
         db: Database session (tenant schema)
         wholesaler_id: Wholesaler/Tenant UUID as string
@@ -174,14 +174,14 @@ async def create_order(
         items: List of item dicts with product_name, sku_code, quantity, unit_price
         notes: Optional order notes
         created_by: UUID of user creating this order
-        
+
     Returns:
         Created Order object with items
     """
     # Calculate total
     total_amount = Decimal("0.00")
     order_items = []
-    
+
     for item in items:
         quantity = item["quantity"]
         unit_price = item["unit_price"]
@@ -196,7 +196,7 @@ async def create_order(
             subtotal=subtotal
         )
         order_items.append(order_item)
-    
+
     # Create order
     order = Order(
         wholesaler_id=UUID(wholesaler_id),
@@ -206,17 +206,17 @@ async def create_order(
         notes=notes,
         items=order_items
     )
-    
+
     if created_by:
         try:
             order.created_by = UUID(created_by)
         except ValueError:
             pass
-    
+
     db.add(order)
     await db.flush()
     await db.refresh(order, ["items"])
-    
+
     return order
 
 
@@ -227,31 +227,31 @@ async def confirm_order(
 ) -> Order:
     """
     Confirm an order (draft → confirmed).
-    
+
     Args:
         db: Database session (tenant schema)
         order: Order to confirm
         updated_by: UUID of user confirming
-        
+
     Returns:
         Updated Order
-        
+
     Raises:
         InvalidStateTransitionError: If order is not in draft status
     """
     validate_state_transition(order, "confirm")
-    
+
     order.status = OrderStatus.CONFIRMED
-    
+
     if updated_by:
         try:
             order.updated_by = UUID(updated_by)
         except ValueError:
             pass
-    
+
     await db.flush()
     await db.refresh(order, ["items"])
-    
+
     return order
 
 
@@ -262,29 +262,29 @@ async def cancel_order(
 ) -> Order:
     """
     Cancel an order (draft/confirmed → cancelled).
-    
+
     Args:
         db: Database session (tenant schema)
         order: Order to cancel
         updated_by: UUID of user cancelling
-        
+
     Returns:
         Updated Order
-        
+
     Raises:
         InvalidStateTransitionError: If order is not in draft or confirmed status
     """
     validate_state_transition(order, "cancel")
-    
+
     order.status = OrderStatus.CANCELLED
-    
+
     if updated_by:
         try:
             order.updated_by = UUID(updated_by)
         except ValueError:
             pass
-    
+
     await db.flush()
     await db.refresh(order, ["items"])
-    
+
     return order

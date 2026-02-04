@@ -193,6 +193,6 @@ And the response body contains:
 
 ---
 
-**Created by:** Architect AI  
-**Date:** 2025-01-09  
+**Created by:** Architect AI
+**Date:** 2025-01-09
 **Status:** 📝 Defined

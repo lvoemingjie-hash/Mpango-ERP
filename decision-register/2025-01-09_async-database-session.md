@@ -107,7 +107,7 @@ async def get_tenant_db_session(
 ## Known Risks
 1. **性能开销**: 每个请求都执行SET LOCAL
    - **缓解**: PostgreSQL的SET LOCAL开销极小（<1ms）
-   
+
 2. **连接池管理**: 异步会话需要正确配置连接池
    - **缓解**: 使用SQLAlchemy默认连接池配置
 
@@ -125,7 +125,7 @@ async def get_tenant_db_session(
 
 ---
 
-**Created by:** Architect AI – Kiro  
-**Date:** 2025-01-09  
-**Last Updated:** 2025-01-09  
+**Created by:** Architect AI – Kiro
+**Date:** 2025-01-09
+**Last Updated:** 2025-01-09
 **Authority:** L0 Multi-Tenancy Spec + L0 Database Contract

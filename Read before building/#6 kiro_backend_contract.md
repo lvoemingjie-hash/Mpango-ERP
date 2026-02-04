@@ -1,8 +1,8 @@
 # Mpango ERP — Backend Development Contract
 
-**Version:** 1.0  
-**Owner:** Jeff（Product Owner）+ ChatGPT（Architect） + GLM  
-**Target:** KIRO Code + Backend Developers  
+**Version:** 1.0
+**Owner:** Jeff（Product Owner）+ ChatGPT（Architect） + GLM
+**Target:** KIRO Code + Backend Developers
 **Tech Stack:** FastAPI + PostgreSQL + Alembic + Modular Architecture
 
 ---
@@ -12,7 +12,7 @@
 本契约用于确保 AI 工具（Kiro、Cursor、Claude Code 等）在生成后端代码时：
 
 - 结构完整
-- 逻辑连续  
+- 逻辑连续
 - 无关键遗漏
 
 ## 技术栈
@@ -97,14 +97,14 @@ Base = declarative_base()
 
 class BaseModel(Base):
     __abstract__ = True
-    
+
     id = UUID PRIMARY KEY DEFAULT gen_random_uuid()
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     created_by UUID REFERENCES users(id),
     updated_by UUID REFERENCES users(id),
     is_deleted BOOLEAN DEFAULT false
-    
+
 ```
 
 ### 3. 数据库初始化
@@ -131,7 +131,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
+
     class Config:
         env_file = ".env"
 
@@ -180,7 +180,7 @@ from sqlalchemy import Column, String
 
 class User(BaseModel):
     __tablename__ = "users"
-    
+
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
 ```
@@ -196,10 +196,10 @@ ModelType = TypeVar("ModelType", bound=BaseModel)
 class CRUDBase(Generic[ModelType]):
     def __init__(self, model: Type[ModelType]):
         self.model = model
-    
+
     def get(self, db: Session, id: int) -> Optional[ModelType]:
         return db.query(self.model).filter(self.model.id == id).first()
-    
+
     def get_multi(self, db: Session, skip: int = 0, limit: int = 100) -> List[ModelType]:
         return db.query(self.model).offset(skip).limit(limit).all()
 ```

@@ -24,7 +24,7 @@ class UserCreateRequest(BaseModel):
         max_length=100,
         description="User full name"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -40,7 +40,7 @@ class UserUpdateRequest(BaseModel):
         description="User full name"
     )
     is_active: bool | None = Field(None, description="User active status")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -48,13 +48,13 @@ class RoleRead(BaseModel):
     """
     Role read schema.
     Implements openapi.yaml Role schema.
-    
+
     NOTE: password_hash is NEVER included in read schemas per requirement 5.3
     """
     id: str = Field(..., description="Role UUID")
     name: str = Field(..., description="Role name")
     description: str | None = Field(None, description="Role description")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -62,7 +62,7 @@ class UserRead(BaseModel):
     """
     User read schema.
     Implements openapi.yaml User schema.
-    
+
     CRITICAL: password_hash is NEVER included per requirement 5.3
     """
     id: str = Field(..., description="User UUID")
@@ -72,7 +72,7 @@ class UserRead(BaseModel):
     roles: List[RoleRead] = Field(default_factory=list, description="User roles")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -88,7 +88,7 @@ class UserResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -106,7 +106,7 @@ class UserListResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -120,7 +120,7 @@ class AssignRolesRequest(BaseModel):
         min_length=1,
         description="List of role UUIDs to assign"
     )
-    
+
     model_config = {"from_attributes": True}
 
 
@@ -139,5 +139,5 @@ class RoleListResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="Response timestamp"
     )
-    
+
     model_config = {"from_attributes": True}

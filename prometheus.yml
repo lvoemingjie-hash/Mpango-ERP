@@ -1,0 +1,38 @@
+# Prometheus configuration for Mpango ERP
+# S2-3: Prometheus metrics scraping
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'mpango-erp'
+
+# Alertmanager configuration (placeholder for future alerts)
+alerting:
+  alertmanagers: []
+
+# Rule files (placeholder for future alerting rules)
+rule_files: []
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Mpango ERP Backend metrics endpoint
+  # S2-3: Scrapes /metrics endpoint on port 8000
+  - job_name: 'mpango-backend'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    # Health checks - ensure backend is ready before scraping
+    # Relies on /readyz endpoint returning 200
+
+  # Optional: Node exporter (if running on host network)
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['node-exporter:9100']

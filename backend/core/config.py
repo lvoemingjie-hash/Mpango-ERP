@@ -1,19 +1,35 @@
 """
 Configuration module for Mpango ERP Backend.
 Loads settings from environment variables with .env file support.
+
+S2-1: Implements strict validation and fail-fast behavior for production secrets.
 """
+import os
+import sys
 from functools import lru_cache
-from typing import List
-from pydantic import Field
+from typing import List, Literal
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Application settings loaded from environment variables.
+    
+    S2-1 Compliance:
+    - Validates required secrets on startup
+    - Fails fast if production secrets are missing
+    - Enforces MPANGO_ENV constraints
+    """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True)
 
-    # Database - REQUIRED
+    # Environment - REQUIRED (S2-1)
+    MPANGO_ENV: Literal["production", "test"] = Field(
+        default="production",
+        description="Environment mode: production or test"
+    )
+
+    # Database - REQUIRED (S2-1)
     DATABASE_URL: str = Field(
         default="postgresql://postgres:postgres@localhost:5432/mpango_dev",
         description="PostgreSQL connection string (defaults to local dev instance)",
@@ -23,7 +39,13 @@ class Settings(BaseSettings):
         description="Echo SQL queries for debugging"
     )
 
-    # Security - REQUIRED
+    # Redis - REQUIRED (S2-1)
+    REDIS_URL: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis connection string for caching and sessions"
+    )
+
+    # Security - REQUIRED (S2-1)
     SECRET_KEY: str = Field(
         default="dev-secret-key-change-me",
         description="Secret key for JWT signing (use env override in production)",
@@ -95,13 +117,127 @@ class Settings(BaseSettings):
         description="Enable detailed request logging"
     )
 
+    @field_validator("MPANGO_ENV")
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
+        """Validate MPANGO_ENV is one of allowed values."""
+        if v not in ("production", "test"):
+            raise ValueError(
+                f"MPANGO_ENV must be 'production' or 'test', got '{v}'"
+            )
+        return v
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def validate_database_url(cls, v: str) -> str:
+        """Validate DATABASE_URL format."""
+        if not v.startswith(("postgresql://", "postgres://")):
+            raise ValueError(
+                "DATABASE_URL must start with 'postgresql://' or 'postgres://'"
+            )
+        return v
+
+    @field_validator("REDIS_URL")
+    @classmethod
+    def validate_redis_url(cls, v: str) -> str:
+        """Validate REDIS_URL format."""
+        if not v.startswith("redis://"):
+            raise ValueError("REDIS_URL must start with 'redis://'")
+        return v
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        """Validate SECRET_KEY meets minimum security requirements."""
+        if len(v) < 32:
+            raise ValueError(
+                f"SECRET_KEY must be at least 32 characters, got {len(v)}"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """S2-1: Fail fast if production secrets are using default values.
+        
+        In production mode, we MUST NOT allow default/dev secrets.
+        This prevents accidental deployment with insecure defaults.
+        """
+        if self.MPANGO_ENV == "production":
+            # Check for default DATABASE_URL
+            if "postgres:postgres@localhost" in self.DATABASE_URL:
+                print("❌ FATAL: Production mode detected with default DATABASE_URL", file=sys.stderr)
+                print("   Set DATABASE_URL environment variable to production database", file=sys.stderr)
+                raise ValueError(
+                    "Production mode requires non-default DATABASE_URL. "
+                    "Default dev database URL detected."
+                )
+            
+            # Check for default REDIS_URL
+            if self.REDIS_URL == "redis://localhost:6379/0":
+                print("❌ FATAL: Production mode detected with default REDIS_URL", file=sys.stderr)
+                print("   Set REDIS_URL environment variable to production Redis", file=sys.stderr)
+                raise ValueError(
+                    "Production mode requires non-default REDIS_URL. "
+                    "Default dev Redis URL detected."
+                )
+            
+            # Check for default SECRET_KEY
+            if "dev-secret-key" in self.SECRET_KEY or "change-me" in self.SECRET_KEY:
+                print("❌ FATAL: Production mode detected with default SECRET_KEY", file=sys.stderr)
+                print("   Set SECRET_KEY environment variable to a secure random key", file=sys.stderr)
+                raise ValueError(
+                    "Production mode requires non-default SECRET_KEY. "
+                    "Default dev secret key detected."
+                )
+        
+        return self
+
+
 @lru_cache
 def get_settings() -> Settings:
     """
     Get cached settings instance.
-    Raises ValidationError if required config is missing.
+    
+    S2-1 Compliance:
+    - Raises ValidationError if required config is missing
+    - Raises ValueError if production secrets are using defaults
+    - Application will CRASH on startup if validation fails
     """
     return Settings()
+
+
+def validate_startup_config() -> Settings:
+    """S2-1: Validate configuration on application startup.
+    
+    This function is called during app startup to ensure all required
+    secrets are present and valid. If validation fails, the application
+    will crash immediately (fail fast).
+    
+    Returns:
+        Settings: Validated settings instance
+        
+    Raises:
+        ValidationError: If required config is missing or invalid
+        ValueError: If production secrets are using default values
+    """
+    try:
+        settings = get_settings()
+        
+        # Log successful validation
+        print(f"✅ Configuration validated successfully")
+        print(f"   Environment: {settings.MPANGO_ENV}")
+        print(f"   Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
+        print(f"   Redis: {settings.REDIS_URL.split('@')[1] if '@' in settings.REDIS_URL else 'configured'}")
+        print(f"   Secret Key: {'*' * 32} (length: {len(settings.SECRET_KEY)})")
+        
+        return settings
+        
+    except Exception as e:
+        print(f"\n❌ CONFIGURATION VALIDATION FAILED", file=sys.stderr)
+        print(f"   Error: {str(e)}", file=sys.stderr)
+        print(f"\n   Application startup aborted.", file=sys.stderr)
+        print(f"   Please check your .env file or environment variables.\n", file=sys.stderr)
+        raise
 
 
 # Backwards compatible alias for modules that previously imported settings directly

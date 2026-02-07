@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_current_user_context, get_db_session
+from api.middleware.rbac import RequirePermission  # S2.5: Added RBAC import
 from core.security import TokenPayload
 from schemas.common import DataResponse
 from schemas.invitation import InvitationCreateRequest, InvitationData, InvitationLookupData
@@ -30,7 +31,7 @@ def _invitation_to_data(invitation) -> InvitationData:
 @router.post("/invitations", response_model=DataResponse[InvitationData], status_code=status.HTTP_201_CREATED)
 async def create_invitation(
     request: InvitationCreateRequest,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("invitations:create")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_db_session),
 ):
     try:

@@ -66,7 +66,7 @@ async def liveness_probe():
 
 # S2-4: Kubernetes-style readiness probe
 @router.get(
-    "y",  # /ready (will be /readyz when combined with /health prefix)
+    "y",  # /healthy when combined with /health prefix
     response_model=ReadinessStatus,
     responses={
         200: {"description": "Service is ready"},

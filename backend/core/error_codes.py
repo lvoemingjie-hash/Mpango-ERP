@@ -186,7 +186,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         extra={
             "error_code": error_code.value,
             "status_code": exc.status_code,
-            "message": message
+            "error_message": message
         }
     )
     
@@ -236,8 +236,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     S2-6: Handler for unhandled exceptions.
+    S2.5 Batch B: Never expose internal error details in production.
     
     Catches all other exceptions and returns standard error response.
+    Production: Returns generic message only.
+    Non-production: Returns exception type and message for debugging.
     """
     request_id = getattr(request.state, 'request_id', None)
     
@@ -250,14 +253,21 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
         }
     )
     
-    # Don't expose internal error details in production
+    # S2.5 Batch B: Never expose stack traces, exception types, or database errors in production
     from core.config import get_settings
     settings = get_settings()
     
     if settings.MPANGO_ENV == "production":
-        message = "An internal server error occurred"
+        # Production: Generic message only, no internal details
+        message = "An internal server error occurred. Please contact support."
+        details = None
     else:
+        # Non-production: Include exception details for debugging
         message = f"{type(exc).__name__}: {str(exc)}"
+        details = {
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc)
+        }
     
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -265,7 +275,8 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
             error_code=ErrorCode.INTERNAL_SERVER_ERROR,
             message=message,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            request_id=request_id
+            request_id=request_id,
+            details=details
         )
     )
 

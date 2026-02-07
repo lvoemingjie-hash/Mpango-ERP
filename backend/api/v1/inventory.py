@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_current_user_context, get_tenant_db_session
+from api.middleware.rbac import RequirePermission  # S2.5: Added RBAC import
 from core.logging_config import get_request_logger
 from core.security import TokenPayload
 from schemas.common import DataResponse, Pagination
@@ -42,7 +43,7 @@ async def list_stock(
     size: int = Query(10, ge=1, le=100, description="Items per page"),
     sku_code: Optional[str] = Query(None, description="Filter by sku_code"),
     is_active: Optional[bool] = Query(None, description="Filter by SKU active flag"),
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("inventory:read")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     # Get request context for logging
@@ -104,7 +105,7 @@ async def list_stock(
 async def get_stock_by_sku(
     sku_code: str,
     request: Request,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("inventory:read")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     # Get request context for logging
@@ -169,7 +170,7 @@ async def get_stock_by_sku(
 async def stock_view_for_order(
     order_id: str,
     request: Request,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("inventory:read")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     # Get request context for logging

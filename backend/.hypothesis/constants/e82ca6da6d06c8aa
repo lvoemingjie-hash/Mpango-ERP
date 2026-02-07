@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\middleware\sql_profiling.py
+# hypothesis_version: 6.150.2
+
+[500, '-', '/', '/api/v1/', '/health', '/metrics', 'X-SQL-Duration-Ms', 'X-SQL-Query-Count', 'method', 'request_id', 'route', 'sql_query_count', 'sql_slow_query_count', 'tenant', 'tenant_id', 'threshold_queries', 'unknown', '{id}']

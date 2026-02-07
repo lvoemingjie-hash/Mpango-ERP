@@ -19,6 +19,46 @@ _tenant_schema_ctx: ContextVar[Optional[str]] = ContextVar('tenant_schema', defa
 _user_id_ctx: ContextVar[Optional[str]] = ContextVar('user_id', default=None)
 _route_ctx: ContextVar[Optional[str]] = ContextVar('route', default=None)
 _method_ctx: ContextVar[Optional[str]] = ContextVar('method', default=None)
+# S3-A Part 3: Span ID for enhanced traceability
+_span_id_ctx: ContextVar[Optional[str]] = ContextVar('span_id', default=None)
+
+# S2.5 Batch B: Sensitive field patterns for log sanitization
+SENSITIVE_FIELD_PATTERNS = {
+    'password', 'passwd', 'pwd',
+    'token', 'access_token', 'refresh_token', 'api_key', 'apikey',
+    'secret', 'secret_key', 'client_secret',
+    'authorization', 'auth',
+    'credit_card', 'card_number', 'cvv', 'ccv',
+    'ssn', 'social_security',
+    'private_key', 'priv_key'
+}
+
+MASK_VALUE = "******"
+
+
+def sanitize_log_data(data: Any) -> Any:
+    """
+    S2.5 Batch B: Recursively sanitize sensitive data in log entries.
+    
+    Masks values for keys matching sensitive patterns.
+    Handles nested dictionaries and lists.
+    """
+    if isinstance(data, dict):
+        sanitized = {}
+        for key, value in data.items():
+            # Check if key matches sensitive pattern (case-insensitive)
+            key_lower = key.lower()
+            if any(pattern in key_lower for pattern in SENSITIVE_FIELD_PATTERNS):
+                sanitized[key] = MASK_VALUE
+            else:
+                sanitized[key] = sanitize_log_data(value)
+        return sanitized
+    elif isinstance(data, list):
+        return [sanitize_log_data(item) for item in data]
+    elif isinstance(data, tuple):
+        return tuple(sanitize_log_data(item) for item in data)
+    else:
+        return data
 
 
 class StructuredJsonFormatter(logging.Formatter):
@@ -75,6 +115,11 @@ class StructuredJsonFormatter(logging.Formatter):
         if method:
             log_entry["method"] = method
         
+        # S3-A Part 3: Add span_id for SQL query correlation
+        span_id = _span_id_ctx.get()
+        if span_id:
+            log_entry["span_id"] = span_id
+        
         # Add exception info if present
         if record.exc_info:
             log_entry["exception"] = {
@@ -83,14 +128,19 @@ class StructuredJsonFormatter(logging.Formatter):
                 "traceback": self.formatException(record.exc_info) if record.exc_info else None
             }
         
-        # Add extra fields from record
+        # Add extra fields from record (S2.5 Batch B: sanitize sensitive data)
         for key, value in record.__dict__.items():
             if key not in ['name', 'msg', 'args', 'created', 'filename', 'funcName', 
                           'levelname', 'levelno', 'lineno', 'module', 'msecs', 
                           'message', 'pathname', 'process', 'processName', 
                           'relativeCreated', 'thread', 'threadName', 'exc_info', 
                           'exc_text', 'stack_info']:
-                log_entry[key] = value
+                # Check if key matches sensitive pattern (case-insensitive)
+                key_lower = key.lower()
+                if any(pattern in key_lower for pattern in SENSITIVE_FIELD_PATTERNS):
+                    log_entry[key] = MASK_VALUE
+                else:
+                    log_entry[key] = sanitize_log_data(value)
         
         return json.dumps(log_entry)
 
@@ -129,10 +179,12 @@ def set_request_context(
     tenant_schema: Optional[str] = None,
     user_id: Optional[str] = None,
     route: Optional[str] = None,
-    method: Optional[str] = None
+    method: Optional[str] = None,
+    span_id: Optional[str] = None  # S3-A Part 3
 ) -> None:
     """
     S2-2: Set request context for structured logging.
+    S3-A Part 3: Added span_id for SQL query correlation.
     
     Called by middleware to inject context into all logs for this request.
     """
@@ -146,11 +198,14 @@ def set_request_context(
         _route_ctx.set(route)
     if method is not None:
         _method_ctx.set(method)
+    if span_id is not None:
+        _span_id_ctx.set(span_id)
 
 
 def clear_request_context() -> None:
     """
     S2-2: Clear request context after request completes.
+    S3-A Part 3: Also clear span_id.
     
     Called by middleware in finally block.
     """
@@ -159,6 +214,7 @@ def clear_request_context() -> None:
     _user_id_ctx.set(None)
     _route_ctx.set(None)
     _method_ctx.set(None)
+    _span_id_ctx.set(None)
 
 
 def get_logger(name: str) -> logging.Logger:

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_current_user_context, get_db_session
+from api.middleware.rbac import RequirePermission  # S2.5: Added RBAC import
 from core.security import TokenPayload
 from schemas.common import DataResponse
 from schemas.retailer import (
@@ -82,7 +83,7 @@ async def register_retailer_with_invitation(
     status_code=status.HTTP_200_OK,
 )
 async def list_bindings_for_current_wholesaler(
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("retailers:read")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_db_session),
 ):
     try:

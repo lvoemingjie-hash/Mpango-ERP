@@ -1,11 +1,37 @@
 """
 User, Role, Permission Pydantic schemas.
 Implements openapi.yaml user component schemas.
+
+S2.5: Enhanced input validation to prevent XSS and injection attacks.
 """
 from typing import List
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from uuid import UUID
+import re
+
+
+# S2.5: Regex patterns for input validation
+SAFE_TEXT_PATTERN = re.compile(r'^[a-zA-Z0-9\s\-_.,!?@()]+$')
+SAFE_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9\s\-_.]+$')
+
+
+def validate_no_html_tags(v: str) -> str:
+    """S2.5: Prevent HTML/script tags in text fields."""
+    if v and ('<' in v or '>' in v or 'script' in v.lower()):
+        raise ValueError("HTML tags and script content are not allowed")
+    return v
+
+
+def validate_no_sql_chars(v: str) -> str:
+    """S2.5: Prevent common SQL injection patterns."""
+    if v:
+        dangerous_patterns = ["'", '"', ';', '--', '/*', '*/', 'xp_', 'sp_', 'DROP', 'DELETE', 'INSERT', 'UPDATE']
+        v_upper = v.upper()
+        for pattern in dangerous_patterns:
+            if pattern.upper() in v_upper:
+                raise ValueError(f"Potentially dangerous SQL pattern detected: {pattern}")
+    return v
 
 
 # ============================================================================
@@ -16,14 +42,27 @@ class UserCreateRequest(BaseModel):
     """
     User creation request.
     Implements openapi.yaml UserCreateRequest schema.
+    
+    S2.5: Enhanced validation to prevent injection attacks.
     """
     email: EmailStr = Field(..., description="User email")
-    password: str = Field(..., min_length=8, description="User password")
+    password: str = Field(..., min_length=8, max_length=128, description="User password")
     full_name: str | None = Field(
         None,
+        min_length=1,
         max_length=100,
         description="User full name"
     )
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str | None) -> str | None:
+        """S2.5: Validate full_name for XSS/injection."""
+        if v:
+            v = validate_no_html_tags(v)
+            if not SAFE_NAME_PATTERN.match(v):
+                raise ValueError("Full name contains invalid characters")
+        return v
 
     model_config = {"from_attributes": True}
 
@@ -32,14 +71,27 @@ class UserUpdateRequest(BaseModel):
     """
     User update request.
     Implements openapi.yaml UserUpdateRequest schema.
+    
+    S2.5: Enhanced validation to prevent injection attacks.
     """
     email: EmailStr | None = Field(None, description="User email")
     full_name: str | None = Field(
         None,
+        min_length=1,
         max_length=100,
         description="User full name"
     )
     is_active: bool | None = Field(None, description="User active status")
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str | None) -> str | None:
+        """S2.5: Validate full_name for XSS/injection."""
+        if v:
+            v = validate_no_html_tags(v)
+            if not SAFE_NAME_PATTERN.match(v):
+                raise ValueError("Full name contains invalid characters")
+        return v
 
     model_config = {"from_attributes": True}
 

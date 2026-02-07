@@ -49,6 +49,9 @@ __version__ = "0.1.0"
 SHUTDOWN_GRACE_PERIOD = 10  # seconds
 _shutdown_event = asyncio.Event()
 
+# S4-A: Job queue singleton
+_job_queue = None
+
 
 async def graceful_shutdown():
     """
@@ -57,9 +60,10 @@ async def graceful_shutdown():
     Sequence:
     1. Stop accepting new connections
     2. Wait for in-flight requests to complete (grace period)
-    3. Close database connections
-    4. Close Redis connections
-    5. Exit
+    3. Stop job queue and drain pending jobs
+    4. Close database connections
+    5. Close Redis connections
+    6. Exit
     """
     logger.info(
         "Graceful shutdown initiated",
@@ -74,6 +78,15 @@ async def graceful_shutdown():
     # Wait for grace period to allow in-flight requests to complete
     logger.info(f"Waiting {SHUTDOWN_GRACE_PERIOD}s for in-flight requests to complete")
     await asyncio.sleep(SHUTDOWN_GRACE_PERIOD)
+    
+    # S4-A: Stop job queue
+    global _job_queue
+    if _job_queue:
+        try:
+            await _job_queue.stop()
+            logger.info("Job queue stopped")
+        except Exception as e:
+            logger.error(f"Error stopping job queue: {e}", exc_info=e)
     
     # Close database connections
     try:
@@ -90,6 +103,14 @@ async def graceful_shutdown():
         logger.info("Redis connections closed")
     except Exception as e:
         logger.error(f"Error closing Redis connections: {e}", exc_info=e)
+    
+    # S3-C: Close cache Redis connections
+    try:
+        from core.cache import close_redis_client
+        await close_redis_client()
+        logger.info("Cache Redis connections closed")
+    except Exception as e:
+        logger.error(f"Error closing cache Redis connections: {e}", exc_info=e)
     
     logger.info("Graceful shutdown complete")
 
@@ -129,6 +150,15 @@ async def lifespan(app: FastAPI):
     
     # Setup signal handlers for graceful shutdown
     setup_signal_handlers()
+    
+    # S4-A: Initialize and start job queue
+    global _job_queue
+    from core.jobs import LocalJobQueue
+    # Import job handlers to register them
+    import core.jobs.handlers  # noqa: F401
+    _job_queue = LocalJobQueue(max_workers=5)
+    await _job_queue.start()
+    logger.info("Job queue started")
     
     yield
     

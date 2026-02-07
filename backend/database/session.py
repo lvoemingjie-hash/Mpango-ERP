@@ -40,6 +40,11 @@ async_engine = create_async_engine(
     }
 )
 
+# S3-A: Install SQL profiling event listeners
+if settings.ENABLE_SQL_PROFILING:
+    from core.sql_profiling import install_sql_profiling
+    install_sql_profiling(async_engine)
+
 # Create async session factory
 AsyncSessionLocal = async_sessionmaker(
     async_engine,

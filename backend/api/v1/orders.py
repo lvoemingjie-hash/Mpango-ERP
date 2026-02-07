@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_tenant_db_session
 from api.dependencies import get_current_user_context
+from api.middleware.rbac import RequirePermission  # S2.5: Added RBAC import
 from core.security import TokenPayload
 from crud.order import (
     get_order_by_id,
@@ -73,7 +74,7 @@ async def list_orders(
     size: int = Query(10, ge=1, le=100, description="Items per page"),
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     retailer_id: Optional[str] = Query(None, description="Filter by retailer ID"),
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("orders:read")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
@@ -128,7 +129,7 @@ async def list_orders(
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
     request: OrderCreateRequest,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("orders:create")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
@@ -170,7 +171,7 @@ async def create_order(
 @router.get("/{order_id}", response_model=OrderResponse, status_code=status.HTTP_200_OK)
 async def get_order(
     order_id: str,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("orders:read")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
@@ -202,7 +203,7 @@ async def get_order(
 @router.post("/{order_id}/confirm", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def confirm_order(
     order_id: str,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
@@ -249,7 +250,7 @@ async def confirm_order(
 @router.post("/{order_id}/cancel", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def cancel_order(
     order_id: str,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """

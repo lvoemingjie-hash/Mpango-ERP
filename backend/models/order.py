@@ -17,10 +17,20 @@ from models.base import BaseModel
 class OrderStatus(str, PyEnum):
     """
     Order status enum per openapi.yaml OrderStatus schema.
+    
+    Extended for S5-A Order State Machine with additional states:
+    - PARTIALLY_PAID: Order has received partial payment
+    - PAID: Order is fully paid
+    - FULFILLED: Order has been delivered/completed
+    - VOIDED: Order was voided before any payment (clean cancellation)
     """
     DRAFT = "draft"
     CONFIRMED = "confirmed"
+    PARTIALLY_PAID = "partially_paid"
+    PAID = "paid"
+    FULFILLED = "fulfilled"
     CANCELLED = "cancelled"
+    VOIDED = "voided"
 
 
 class Order(BaseModel):
@@ -54,7 +64,7 @@ class Order(BaseModel):
         comment="FK to retailers.id (not enforced in skeleton)"
     )
     status: Mapped[OrderStatus] = mapped_column(
-        Enum(OrderStatus, name="order_status"),
+        Enum(OrderStatus, name="order_status", values_callable=lambda x: [e.value for e in x]),
         default=OrderStatus.DRAFT,
         nullable=False,
         index=True

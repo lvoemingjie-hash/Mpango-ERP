@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\v1\metrics.py
+# hypothesis_version: 6.150.2
+
+['0.1.0', 'Get service metrics', 'METRICS_DISABLED', 'METRICS_ERROR', 'METRICS_RESET_ERROR', 'METRICS_UNAVAILABLE', 'Metrics data', 'Metrics timestamp', 'N/A', 'Reset metrics', 'Service name', 'Service version', '__name__', '_metrics_middleware', 'action', 'code', 'error', 'error_type', 'get_metrics', 'message', 'metrics_accessed', 'metrics_failed', 'metrics_reset', 'metrics_reset_failed', 'mpango-erp-backend', 'request_id', 'reset_metrics', 'tenant_id', 'user_id']

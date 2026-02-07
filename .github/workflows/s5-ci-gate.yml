@@ -1,0 +1,450 @@
+name: S5 Order State Machine & Ledger CI Gate
+
+# S5-OPS: CI gate for Track S5 (Order State Machine & Financial Ledger)
+# Must pass ALL S5 tests before allowing merge
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+env:
+  MPANGO_ENV: test
+  DATABASE_URL: postgresql://mpango:mpango_test@localhost:5432/mpango_test
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: ci-test-secret-key-min-32-chars-long-for-jwt-signing
+  ALGORITHM: HS256
+  ACCESS_TOKEN_EXPIRE_MINUTES: 30
+  REFRESH_TOKEN_EXPIRE_DAYS: 7
+  APP_NAME: Mpango ERP CI
+  DEBUG: "false"
+  LOG_LEVEL: INFO
+  CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+  DEFAULT_TENANT_SCHEMA: t_dev
+  ENABLE_METRICS: "true"
+  ENABLE_REQUEST_LOGGING: "true"
+
+jobs:
+  # ============================================
+  # Gate 1: S5-A Order State Machine Tests
+  # ============================================
+  s5-order-state-machine:
+    name: S5-A Order State Machine Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: mpango
+          POSTGRES_PASSWORD: mpango_test
+          POSTGRES_DB: mpango_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        working-directory: backend
+        run: poetry install --no-interaction --no-root
+
+      - name: Prepare test database (t_test schema + migrations)
+        working-directory: backend
+        run: |
+          echo "Preparing t_test schema and running migrations..."
+          poetry run python -c "
+import asyncio, os
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+url = os.environ['DATABASE_URL'].replace('postgresql://', 'postgresql+asyncpg://')
+engine = create_async_engine(url)
+
+async def setup():
+    async with engine.begin() as conn:
+        await conn.execute(text('CREATE SCHEMA IF NOT EXISTS t_test'))
+    await engine.dispose()
+
+asyncio.run(setup())
+print('t_test schema created')
+"
+          poetry run alembic upgrade head || echo "Alembic upgrade skipped (may need tenant context)"
+
+      - name: Run S5-A Order State Machine Tests
+        working-directory: backend
+        run: |
+          echo "Running S5-A Order State Machine tests..."
+          poetry run pytest tests/test_s5_order_state_machine.py -v --tb=short
+
+      - name: S5-A summary
+        if: always()
+        run: |
+          echo "## S5-A: Order State Machine Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Cases:" >> $GITHUB_STEP_SUMMARY
+          echo "- Happy path: DRAFT → CONFIRMED → PAID → FULFILLED" >> $GITHUB_STEP_SUMMARY
+          echo "- Illegal transitions rejected" >> $GITHUB_STEP_SUMMARY
+          echo "- Invariant violations caught" >> $GITHUB_STEP_SUMMARY
+          echo "- Terminal states enforced" >> $GITHUB_STEP_SUMMARY
+          echo "- VOID vs CANCEL rules" >> $GITHUB_STEP_SUMMARY
+          echo "- Row locking for concurrency" >> $GITHUB_STEP_SUMMARY
+          echo "- Audit trail (updated_by)" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Gate 2: S5-B Financial Ledger Tests
+  # ============================================
+  s5-financial-ledger:
+    name: S5-B Financial Ledger Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: mpango
+          POSTGRES_PASSWORD: mpango_test
+          POSTGRES_DB: mpango_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        working-directory: backend
+        run: poetry install --no-interaction --no-root
+
+      - name: Prepare test database (t_test schema + migrations)
+        working-directory: backend
+        run: |
+          echo "Preparing t_test schema and running migrations..."
+          poetry run python -c "
+import asyncio, os
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+url = os.environ['DATABASE_URL'].replace('postgresql://', 'postgresql+asyncpg://')
+engine = create_async_engine(url)
+
+async def setup():
+    async with engine.begin() as conn:
+        await conn.execute(text('CREATE SCHEMA IF NOT EXISTS t_test'))
+    await engine.dispose()
+
+asyncio.run(setup())
+print('t_test schema created')
+"
+          poetry run alembic upgrade head || echo "Alembic upgrade skipped (may need tenant context)"
+
+      - name: Run S5-B Financial Ledger Tests
+        working-directory: backend
+        run: |
+          echo "Running S5-B Financial Ledger tests..."
+          poetry run pytest tests/test_s5_ledger.py -v --tb=short
+
+      - name: S5-B summary
+        if: always()
+        run: |
+          echo "## S5-B: Financial Ledger Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Cases:" >> $GITHUB_STEP_SUMMARY
+          echo "- Post single ledger entry" >> $GITHUB_STEP_SUMMARY
+          echo "- Balanced transactions (debits = credits)" >> $GITHUB_STEP_SUMMARY
+          echo "- Reject unbalanced transactions" >> $GITHUB_STEP_SUMMARY
+          echo "- Account balance calculation" >> $GITHUB_STEP_SUMMARY
+          echo "- Order lifecycle accounting" >> $GITHUB_STEP_SUMMARY
+          echo "- Ledger immutability" >> $GITHUB_STEP_SUMMARY
+          echo "- Balance projection as-of-date" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Gate 3: S5.5 Ledger Hardening Tests
+  # ============================================
+  s5-5-ledger-hardening:
+    name: S5.5 Ledger Hardening Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: mpango
+          POSTGRES_PASSWORD: mpango_test
+          POSTGRES_DB: mpango_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        working-directory: backend
+        run: poetry install --no-interaction --no-root
+
+      - name: Prepare test database (t_test schema + migrations including triggers)
+        working-directory: backend
+        run: |
+          echo "Preparing t_test schema and running all migrations (including 010 triggers)..."
+          poetry run python -c "
+          import asyncio, os
+          from sqlalchemy import text
+          from sqlalchemy.ext.asyncio import create_async_engine
+          url = os.environ['DATABASE_URL'].replace('postgresql://', 'postgresql+asyncpg://')
+          engine = create_async_engine(url)
+          async def setup():
+              async with engine.begin() as conn:
+                  await conn.execute(text('CREATE SCHEMA IF NOT EXISTS t_test'))
+              await engine.dispose()
+          asyncio.run(setup())
+          print('t_test schema created')
+          "
+          poetry run alembic upgrade head || echo "Alembic upgrade skipped"
+
+      - name: Run S5.5 Ledger Hardening Tests
+        working-directory: backend
+        run: |
+          echo "Running S5.5 Ledger Hardening tests (10 tests)..."
+          poetry run pytest tests/test_s5_5_ledger_hardening.py -v --tb=short
+
+      - name: S5.5 summary
+        if: always()
+        run: |
+          echo "## S5.5: Ledger Hardening Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Cases:" >> $GITHUB_STEP_SUMMARY
+          echo "- Database trigger blocks UPDATE" >> $GITHUB_STEP_SUMMARY
+          echo "- Database trigger blocks DELETE" >> $GITHUB_STEP_SUMMARY
+          echo "- Unbalanced transactions rejected" >> $GITHUB_STEP_SUMMARY
+          echo "- entry_version column defaults to 1" >> $GITHUB_STEP_SUMMARY
+          echo "- hash column exists and nullable" >> $GITHUB_STEP_SUMMARY
+          echo "- Balanced transactions still work (regression)" >> $GITHUB_STEP_SUMMARY
+          echo "- Trigger function exists in public schema" >> $GITHUB_STEP_SUMMARY
+          echo "- Trigger attached to ledger_entries" >> $GITHUB_STEP_SUMMARY
+          echo "- Zero-amount entries allowed if balanced" >> $GITHUB_STEP_SUMMARY
+          echo "- High-precision amounts balanced correctly" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Gate 4: Migration Safety Check
+  # ============================================
+  s5-migration-check:
+    name: S5 Migration Safety Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify S5-B migration has search_path safety
+        run: |
+          echo "Checking S5-B migration for search_path safety..."
+
+          MIGRATION="backend/alembic/versions/009_s5_b_financial_ledger.py"
+
+          if [ ! -f "$MIGRATION" ]; then
+            echo "FAIL: Migration file not found: $MIGRATION"
+            exit 1
+          fi
+
+          if grep -q "SHOW search_path" "$MIGRATION"; then
+            echo "PASS: Migration checks search_path before running"
+          else
+            echo "FAIL: Migration missing search_path safety check"
+            exit 1
+          fi
+
+          if grep -q "is_tenant_migration" "$MIGRATION"; then
+            echo "PASS: Migration has tenant schema guard"
+          else
+            echo "FAIL: Migration missing tenant schema guard"
+            exit 1
+          fi
+
+          echo ""
+          echo "All S5-B migration safety checks passed"
+
+      - name: Verify S5.5 migration has trigger function
+        run: |
+          echo "Checking S5.5 migration for trigger safety..."
+
+          MIGRATION="backend/alembic/versions/010_s5_5_ledger_hardening.py"
+
+          if [ ! -f "$MIGRATION" ]; then
+            echo "FAIL: Migration file not found: $MIGRATION"
+            exit 1
+          fi
+
+          if grep -q "prevent_ledger_modification" "$MIGRATION"; then
+            echo "PASS: Migration creates immutability trigger function"
+          else
+            echo "FAIL: Migration missing trigger function"
+            exit 1
+          fi
+
+          if grep -q "prevent_ledger_modification_trigger" "$MIGRATION"; then
+            echo "PASS: Migration attaches trigger to ledger_entries"
+          else
+            echo "FAIL: Migration missing trigger attachment"
+            exit 1
+          fi
+
+          if grep -q "entry_version" "$MIGRATION"; then
+            echo "PASS: Migration adds entry_version column"
+          else
+            echo "FAIL: Migration missing entry_version column"
+            exit 1
+          fi
+
+          echo ""
+          echo "All S5.5 migration safety checks passed"
+
+      - name: Migration check summary
+        if: always()
+        run: |
+          echo "## S5 Migration Safety Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Checks:" >> $GITHUB_STEP_SUMMARY
+          echo "- search_path safety in 009_s5_b_financial_ledger.py" >> $GITHUB_STEP_SUMMARY
+          echo "- Tenant schema guard present" >> $GITHUB_STEP_SUMMARY
+          echo "- Immutability trigger in 010_s5_5_ledger_hardening.py" >> $GITHUB_STEP_SUMMARY
+          echo "- Trigger attachment to ledger_entries" >> $GITHUB_STEP_SUMMARY
+          echo "- entry_version column added" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Final S5 Gate Summary
+  # ============================================
+  s5-gate-summary:
+    name: S5 CI Gate Summary
+    runs-on: ubuntu-latest
+    needs: [s5-order-state-machine, s5-financial-ledger, s5-5-ledger-hardening, s5-migration-check]
+    if: always()
+
+    steps:
+      - name: Generate S5 gate summary
+        run: |
+          echo "# S5 Order State Machine & Ledger - CI Gate" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          OSM_STATUS="${{ needs.s5-order-state-machine.result }}"
+          LED_STATUS="${{ needs.s5-financial-ledger.result }}"
+          HARD_STATUS="${{ needs.s5-5-ledger-hardening.result }}"
+          MIG_STATUS="${{ needs.s5-migration-check.result }}"
+
+          if [ "$OSM_STATUS" == "success" ] && [ "$LED_STATUS" == "success" ] && [ "$HARD_STATUS" == "success" ] && [ "$MIG_STATUS" == "success" ]; then
+            echo "## 🔒 ALL S5 GATES PASSED - LEDGER LOCKED & SECURED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ SOME S5 GATES FAILED - DO NOT MERGE" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "| Gate | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| S5-A Order State Machine | $OSM_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| S5-B Financial Ledger | $LED_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| S5.5 Ledger Hardening | $HARD_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Migration Safety | $MIG_STATUS |" >> $GITHUB_STEP_SUMMARY

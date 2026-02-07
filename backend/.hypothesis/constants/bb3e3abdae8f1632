@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\core\config.py
+# hypothesis_version: 6.150.2
+
+[100, '.env', '123456', 'Allowed CORS origins', 'Application name', 'DATABASE_URL', 'Debug mode', 'HS256', 'INFO', 'MPANGO_ENV', 'Mpango ERP', 'REDIS_URL', 'SECRET_KEY', 'Settings', 'abc123', 'admin', 'after', 'change-me', 'changeme', 'default', 'demo', 'dev-secret-key', 'example', 'letmein', 'monkey', 'password', 'postgres://', 'postgresql://', 'production', 'qwerty', 'redis://', 'sample', 'secret', 't_dev', 'test', 'utf-8', 'welcome']

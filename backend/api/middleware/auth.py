@@ -9,6 +9,7 @@ from api.context.auth import AuthContext, attach_auth_context, clear_auth_contex
 from api.middleware.request_logging import update_request_context_with_auth
 from auth.strategy import AuthStrategy
 from core.structured_logging import get_logger
+from core.error_codes import ErrorCode, MpangoAPIException
 from db.tenant_filter import reset_current_tenant, set_current_tenant
 
 __all__ = ["AuthenticationMiddleware"]
@@ -50,6 +51,21 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     tenant_id=str(tenant_ctx.tenant_id),
                     tenant_schema=tenant_ctx.tenant_schema,
                 )
+                
+                # S2.5 Batch B: Enforce tenant isolation - fail-safe check
+                if not tenant_ctx.tenant_schema:
+                    logger.critical(
+                        "Tenant isolation violation: tenant_schema is missing for authenticated request",
+                        extra={
+                            "tenant_id": str(tenant_ctx.tenant_id),
+                            "auth_context": str(auth_ctx)
+                        }
+                    )
+                    raise MpangoAPIException(
+                        error_code=ErrorCode.INTERNAL_SERVER_ERROR,
+                        message="Tenant isolation check failed",
+                        status_code=500
+                    )
 
                 # S2-2: Update logging context with tenant and user
                 if tenant_ctx:

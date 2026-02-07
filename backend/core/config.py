@@ -116,6 +116,16 @@ class Settings(BaseSettings):
         default=True,
         description="Enable detailed request logging"
     )
+    
+    # S3-A: SQL Profiling Configuration
+    SLOW_QUERY_THRESHOLD_MS: int = Field(
+        default=100,
+        description="Threshold in milliseconds for slow query warnings"
+    )
+    ENABLE_SQL_PROFILING: bool = Field(
+        default=True,
+        description="Enable SQL query profiling and metrics"
+    )
 
     @field_validator("MPANGO_ENV")
     @classmethod
@@ -148,11 +158,35 @@ class Settings(BaseSettings):
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
-        """Validate SECRET_KEY meets minimum security requirements."""
+        """S2.5: Validate SECRET_KEY meets strict security requirements.
+        
+        Requirements:
+        - Minimum 32 characters
+        - No weak/common substrings
+        - High entropy required for production
+        """
+        # Check minimum length
         if len(v) < 32:
             raise ValueError(
                 f"SECRET_KEY must be at least 32 characters, got {len(v)}"
             )
+        
+        # S2.5: Check for weak/common substrings
+        weak_patterns = [
+            "secret", "default", "password", "123456", "change-me", 
+            "changeme", "admin", "test", "demo", "example", "sample",
+            "qwerty", "abc123", "letmein", "welcome", "monkey"
+        ]
+        
+        v_lower = v.lower()
+        for pattern in weak_patterns:
+            if pattern in v_lower:
+                raise ValueError(
+                    f"SECRET_KEY contains weak substring '{pattern}'. "
+                    f"Use a cryptographically secure random key. "
+                    f"Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+                )
+        
         return v
 
     @model_validator(mode="after")

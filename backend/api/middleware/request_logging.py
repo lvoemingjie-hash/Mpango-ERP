@@ -38,6 +38,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Store in request state for other middleware
         request.state.request_id = request_id
         
+        # S3-A Part 3: Generate span ID for SQL query correlation
+        span_id = str(uuid.uuid4())
+        request.state.span_id = span_id
+        
         # Extract route and method
         route = request.url.path
         method = request.method
@@ -46,7 +50,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         set_request_context(
             request_id=request_id,
             route=route,
-            method=method
+            method=method,
+            span_id=span_id  # S3-A Part 3
         )
         
         # Log request start

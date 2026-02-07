@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+# S2.5 Batch C: Use immutable SHA256 digest instead of mutable tag
+# This prevents supply chain attacks where tags can be overwritten
+FROM python:3.11-slim@sha256:db27ce7778e5f581d5d97812ee577a01a9fffbfa612c47fc521fa684e3389c9b
 
 WORKDIR /app
 
@@ -27,7 +29,8 @@ RUN if [ "$INSTALL_TEST_DEPS" = "true" ]; then poetry install --no-root --no-int
 # Copy application code
 COPY . .
 
-# Create non-root user
+# S2.5 Batch C: Create non-root user for security
+# Container should NOT run as root
 RUN useradd --create-home --shell /bin/bash mpango
 RUN chown -R mpango:mpango /app
 USER mpango

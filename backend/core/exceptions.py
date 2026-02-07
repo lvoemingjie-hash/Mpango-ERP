@@ -31,6 +31,16 @@ class InvalidCredentialsException(MpangoException):
     pass
 
 
+class LedgerIntegrityError(MpangoException):
+    """
+    Ledger integrity violation exception.
+    
+    Raised when a ledger transaction violates double-entry bookkeeping rules.
+    Philosophy: "The Ledger is write-only. No exceptions."
+    """
+    pass
+
+
 # HTTP 异常映射
 def tenant_not_found():
     return HTTPException(

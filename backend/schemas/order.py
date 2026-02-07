@@ -1,12 +1,27 @@
 """
 Order Pydantic schemas.
 Implements openapi.yaml order component schemas.
+
+S2.5: Enhanced input validation to prevent XSS and injection attacks.
 """
 from typing import List
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+import re
+
+
+# S2.5: Regex patterns for input validation
+SAFE_TEXT_PATTERN = re.compile(r'^[a-zA-Z0-9\s\-_.,!?@()]+$')
+SAFE_CODE_PATTERN = re.compile(r'^[a-zA-Z0-9\-_]+$')
+
+
+def validate_no_html_tags(v: str) -> str:
+    """S2.5: Prevent HTML/script tags in text fields."""
+    if v and ('<' in v or '>' in v or 'script' in v.lower()):
+        raise ValueError("HTML tags and script content are not allowed")
+    return v
 
 
 class OrderStatus(str, Enum):
@@ -27,11 +42,30 @@ class OrderItemCreate(BaseModel):
     """
     Order item creation request.
     Implements openapi.yaml OrderItemCreate schema.
+    
+    S2.5: Enhanced validation to prevent injection attacks.
     """
-    product_name: str = Field(..., description="Product name snapshot")
-    sku_code: str = Field(..., description="SKU code snapshot")
-    quantity: int = Field(..., ge=1, description="Item quantity")
-    unit_price: Decimal = Field(..., ge=0, description="Unit price")
+    product_name: str = Field(..., min_length=1, max_length=255, description="Product name snapshot")
+    sku_code: str = Field(..., min_length=1, max_length=64, description="SKU code snapshot")
+    quantity: int = Field(..., ge=1, le=10000, description="Item quantity")
+    unit_price: Decimal = Field(..., ge=0, le=Decimal('999999.99'), description="Unit price")
+
+    @field_validator("product_name")
+    @classmethod
+    def validate_product_name(cls, v: str) -> str:
+        """S2.5: Validate product_name for XSS/injection."""
+        v = validate_no_html_tags(v)
+        if not SAFE_TEXT_PATTERN.match(v):
+            raise ValueError("Product name contains invalid characters")
+        return v
+
+    @field_validator("sku_code")
+    @classmethod
+    def validate_sku_code(cls, v: str) -> str:
+        """S2.5: Validate sku_code format."""
+        if not SAFE_CODE_PATTERN.match(v):
+            raise ValueError("SKU code contains invalid characters")
+        return v
 
     model_config = {"from_attributes": True}
 
@@ -59,14 +93,25 @@ class OrderCreateRequest(BaseModel):
     """
     Order creation request.
     Implements openapi.yaml OrderCreateRequest schema.
+    
+    S2.5: Enhanced validation to prevent injection attacks.
     """
-    retailer_id: str = Field(..., description="Retailer UUID")
+    retailer_id: str = Field(..., min_length=36, max_length=36, description="Retailer UUID")
     items: List[OrderItemCreate] = Field(
         ...,
         min_length=1,
+        max_length=100,
         description="Order items"
     )
-    notes: str | None = Field(None, description="Order notes")
+    notes: str | None = Field(None, max_length=1000, description="Order notes")
+
+    @field_validator("notes")
+    @classmethod
+    def validate_notes(cls, v: str | None) -> str | None:
+        """S2.5: Validate notes for XSS/injection."""
+        if v:
+            v = validate_no_html_tags(v)
+        return v
 
     model_config = {"from_attributes": True}
 

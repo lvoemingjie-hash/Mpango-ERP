@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\middleware\idempotency.py
+# hypothesis_version: 6.150.2
+
+[200, 300, 'Authorization', 'DELETE', 'IDEMPOTENCY_CONFLICT', 'PATCH', 'POST', 'PUT', 'X-Idempotency-Key', 'anonymous', 'bearer ', 'body', 'code', 'expires_at', 'http.request', 'in_progress', 'message', 'more_body', 'raw', 'status_code', 'true', 'type']

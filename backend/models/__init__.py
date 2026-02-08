@@ -12,6 +12,7 @@ from models.invitation import Invitation
 from models.binding import WholesalerRetailerBinding
 from models.sku import SKU
 from models.inventory_stock import InventoryStock
+from models.reporting import MvSalesDaily, RptSalesDaily, RptReceivablesSummary, RptCashFlowDaily
 
 __all__ = [
     # Base classes
@@ -42,4 +43,10 @@ __all__ = [
     # Association tables
     "user_roles",
     "role_permissions",
+
+    # S6-1/S6-2: Reporting Read Models (views & materialized views)
+    "MvSalesDaily",
+    "RptSalesDaily",
+    "RptReceivablesSummary",
+    "RptCashFlowDaily",
 ]

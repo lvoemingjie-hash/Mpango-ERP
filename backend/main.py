@@ -53,10 +53,17 @@ _shutdown_event = asyncio.Event()
 _job_queue = None
 
 
+def get_job_queue():
+    """Get the S4 job queue singleton. Used by API endpoints to enqueue jobs."""
+    if _job_queue is None:
+        raise RuntimeError("Job queue not initialized. Is the app running?")
+    return _job_queue
+
+
 async def graceful_shutdown():
     """
     S2 Batch 3: Graceful shutdown handler.
-    
+
     Sequence:
     1. Stop accepting new connections
     2. Wait for in-flight requests to complete (grace period)
@@ -71,14 +78,14 @@ async def graceful_shutdown():
             "grace_period_seconds": SHUTDOWN_GRACE_PERIOD
         }
     )
-    
+
     # Signal shutdown event
     _shutdown_event.set()
-    
+
     # Wait for grace period to allow in-flight requests to complete
     logger.info(f"Waiting {SHUTDOWN_GRACE_PERIOD}s for in-flight requests to complete")
     await asyncio.sleep(SHUTDOWN_GRACE_PERIOD)
-    
+
     # S4-A: Stop job queue
     global _job_queue
     if _job_queue:
@@ -87,7 +94,7 @@ async def graceful_shutdown():
             logger.info("Job queue stopped")
         except Exception as e:
             logger.error(f"Error stopping job queue: {e}", exc_info=e)
-    
+
     # Close database connections
     try:
         from database.session import async_engine
@@ -95,7 +102,7 @@ async def graceful_shutdown():
         logger.info("Database connections closed")
     except Exception as e:
         logger.error(f"Error closing database connections: {e}", exc_info=e)
-    
+
     # Close Redis connections
     try:
         from core.rate_limiter import close_rate_limiter
@@ -103,7 +110,7 @@ async def graceful_shutdown():
         logger.info("Redis connections closed")
     except Exception as e:
         logger.error(f"Error closing Redis connections: {e}", exc_info=e)
-    
+
     # S3-C: Close cache Redis connections
     try:
         from core.cache import close_redis_client
@@ -111,14 +118,14 @@ async def graceful_shutdown():
         logger.info("Cache Redis connections closed")
     except Exception as e:
         logger.error(f"Error closing cache Redis connections: {e}", exc_info=e)
-    
+
     logger.info("Graceful shutdown complete")
 
 
 def setup_signal_handlers():
     """
     S2 Batch 3: Setup signal handlers for graceful shutdown.
-    
+
     Captures SIGTERM and SIGINT to trigger graceful shutdown.
     """
     def signal_handler(signum, frame):
@@ -128,11 +135,11 @@ def setup_signal_handlers():
         )
         # Create task for graceful shutdown
         asyncio.create_task(graceful_shutdown())
-    
+
     # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
-    
+
     logger.info("Signal handlers registered for graceful shutdown")
 
 
@@ -147,21 +154,23 @@ async def lifespan(app: FastAPI):
         }
     )
     logger.info("Loading OpenAPI spec from docs/contracts/openapi.yaml")
-    
+
     # Setup signal handlers for graceful shutdown
     setup_signal_handlers()
-    
+
     # S4-A: Initialize and start job queue
     global _job_queue
     from core.jobs import LocalJobQueue
     # Import job handlers to register them
     import core.jobs.handlers  # noqa: F401
+    import jobs.reporting_jobs  # noqa: F401  # S6-2: MV refresh handler
+    import jobs.export_jobs  # noqa: F401  # S6-4: Export worker
     _job_queue = LocalJobQueue(max_workers=5)
     await _job_queue.start()
     logger.info("Job queue started")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Mpango ERP Backend shutting down")
     await graceful_shutdown()

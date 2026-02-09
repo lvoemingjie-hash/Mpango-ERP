@@ -89,6 +89,20 @@
 
 ---
 
+## Phase 7: Governance & Operations
+
+| Track | Title | Status | Ledger |
+|-------|-------|--------|--------|
+| **P7-0** | **Governance Baseline (BI Asset Modeling & URN)** | **✅ COMPLETE** | [**backend/s7-0_governance_model.md**](backend/s7-0_governance_model.md) |
+| **S7-1** | **BI Policy Engine (The Law)** | **✅ COMPLETE** | [**backend/s7-1_policy_engine.md**](backend/s7-1_policy_engine.md) |
+| **S7-2** | **Enforcement Layer (The Police)** | **✅ COMPLETE** | [**backend/s7-2_enforcement_layer.md**](backend/s7-2_enforcement_layer.md) |
+| **S7-3** | **Audit Trail (The Recorder)** | **✅ COMPLETE** | [**backend/s7-3_audit_trail.md**](backend/s7-3_audit_trail.md) |
+| **S7-4** | **Tenant-Scoped Assets (User-Defined Content)** | **✅ COMPLETE** | [**backend/s7-4_tenant_scoped_assets.md**](backend/s7-4_tenant_scoped_assets.md) |
+| **S7-5** | **Operational Views (Headless BI Schema)** | **✅ COMPLETE** | [**backend/s7-5_operational_views.md**](backend/s7-5_operational_views.md) |
+| **S7-Final** | **Phase 7 Product Acceptance** | **✅ ACCEPTED** | [**backend/s7-final_phase7_summary.md**](backend/s7-final_phase7_summary.md) |
+
+---
+
 ## Ops & Deployment
 
 | Track | Title | Status | Ledger |

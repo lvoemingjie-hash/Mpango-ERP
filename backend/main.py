@@ -169,6 +169,14 @@ async def lifespan(app: FastAPI):
     await _job_queue.start()
     logger.info("Job queue started")
 
+    # S7-4-T3: Register DbAssetResolver for dynamic tenant asset resolution
+    from core.governance.db_resolver import DbAssetResolver
+    from core.governance.registry import register_resolver
+    from database.session import AsyncSessionLocal
+    db_resolver = DbAssetResolver(session_factory=AsyncSessionLocal)
+    register_resolver(db_resolver)
+    logger.info("DbAssetResolver registered for tenant asset resolution")
+
     yield
 
     # Shutdown

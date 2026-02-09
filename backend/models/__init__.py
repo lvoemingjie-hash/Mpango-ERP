@@ -13,6 +13,8 @@ from models.binding import WholesalerRetailerBinding
 from models.sku import SKU
 from models.inventory_stock import InventoryStock
 from models.reporting import MvSalesDaily, RptSalesDaily, RptReceivablesSummary, RptCashFlowDaily
+from models.audit import SysAuditLog
+from models.report import SysReport
 
 __all__ = [
     # Base classes
@@ -49,4 +51,10 @@ __all__ = [
     "RptSalesDaily",
     "RptReceivablesSummary",
     "RptCashFlowDaily",
+
+    # S7-3: Audit Trail
+    "SysAuditLog",
+
+    # S7-4: Tenant-Scoped Reports
+    "SysReport",
 ]

@@ -130,4 +130,8 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.v1.exports import exports_router
     app.include_router(exports_router, prefix="/api/v1/exports", tags=["exports"])
 
+    # S7-4-T3: Tenant-Scoped BI Assets CRUD
+    from api.v1.bi_assets import bi_assets_router
+    app.include_router(bi_assets_router, prefix="/api/bi/assets", tags=["bi-assets"])
+
     logger.info("All routers registered")

@@ -1,9 +1,9 @@
 # S8-SEC: Aikido 安全扫描修复报告
 
-**日期**：2026-02-10  
-**触发来源**：Aikido Security SAST 扫描（仓库 #1520606）  
-**原始报告**：[`ai-ledger/test/2026-2-10_Mpango‑ERP aikido report.md`](../test/2026-2-10_Mpango‑ERP%20aikido%20report.md)  
-**修复执行**：Cascade AI + CPO 审核  
+**日期**：2026-02-10
+**触发来源**：Aikido Security SAST 扫描（仓库 #1520606）
+**原始报告**：[`ai-ledger/test/2026-2-10_Mpango‑ERP aikido report.md`](../test/2026-2-10_Mpango‑ERP%20aikido%20report.md)
+**修复执行**：Cascade AI + CPO 审核
 **状态**：✅ 全部可修复项已完成
 
 ---
@@ -17,7 +17,7 @@
 | **Medium** (CI Action + 文件包含) | 4 条 | ✅ 1 | ⚠️ 3 | 0 |
 | **Low** (测试密钥 + assert) | 8 条 | ✅ 7 | 0 | 1 |
 
-> **代码修复**：18 个文件变更，0 个新增依赖。  
+> **代码修复**：18 个文件变更，0 个新增依赖。
 > **待手动处理**：Git 历史清理、密钥轮换、GitHub Actions 锁定。
 
 ---

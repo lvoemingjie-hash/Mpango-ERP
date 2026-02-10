@@ -31,20 +31,20 @@ async def setup_test_schema():
         # Create t_test schema if it doesn't exist
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS t_test"))
         print("✓ Created t_test schema")
-        
+
         # Set search path to t_test
         await conn.execute(text("SET search_path TO t_test, public"))
-        
+
         # Create order_status enum (in t_test schema, but without schema prefix in type name)
         await conn.execute(text("""
             DO $$ BEGIN
                 CREATE TYPE order_status AS ENUM (
-                    'draft', 
-                    'confirmed', 
-                    'partially_paid', 
-                    'paid', 
-                    'fulfilled', 
-                    'cancelled', 
+                    'draft',
+                    'confirmed',
+                    'partially_paid',
+                    'paid',
+                    'fulfilled',
+                    'cancelled',
                     'voided'
                 );
             EXCEPTION
@@ -52,7 +52,7 @@ async def setup_test_schema():
             END $$;
         """))
         print("✓ Created order_status enum")
-        
+
         # Create orders table (enum type will be found in search_path)
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS t_test.orders (
@@ -71,7 +71,7 @@ async def setup_test_schema():
             )
         """))
         print("✓ Created orders table")
-        
+
         # Create indexes
         await conn.execute(text("""
             CREATE INDEX IF NOT EXISTS ix_orders_wholesaler_id ON t_test.orders(wholesaler_id)
@@ -86,7 +86,7 @@ async def setup_test_schema():
             CREATE INDEX IF NOT EXISTS ix_orders_created_at ON t_test.orders(created_at)
         """))
         print("✓ Created indexes")
-        
+
         # Create order_items table
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS t_test.order_items (
@@ -106,7 +106,7 @@ async def setup_test_schema():
             )
         """))
         print("✓ Created order_items table")
-        
+
         # Create order_items indexes
         await conn.execute(text("""
             CREATE INDEX IF NOT EXISTS ix_order_items_order_id ON t_test.order_items(order_id)
@@ -115,7 +115,7 @@ async def setup_test_schema():
             CREATE INDEX IF NOT EXISTS ix_order_items_sku_code ON t_test.order_items(sku_code)
         """))
         print("✓ Created order_items indexes")
-        
+
         # Create account_type enum for ledger
         await conn.execute(text("""
             DO $$ BEGIN
@@ -125,7 +125,7 @@ async def setup_test_schema():
             END $$;
         """))
         print("✓ Created account_type enum")
-        
+
         # Create ledger_entries table (S5.5: Added entry_version and hash columns)
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS t_test.ledger_entries (
@@ -147,7 +147,7 @@ async def setup_test_schema():
             )
         """))
         print("✓ Created ledger_entries table")
-        
+
         # S5.5: Create trigger function for ledger immutability
         await conn.execute(text("""
             CREATE OR REPLACE FUNCTION public.prevent_ledger_modification()
@@ -158,19 +158,19 @@ async def setup_test_schema():
                         USING ERRCODE = 'integrity_constraint_violation',
                               HINT = 'Ledger entries cannot be modified after creation. Create a correction entry instead.';
                 END IF;
-                
+
                 IF TG_OP = 'DELETE' THEN
                     RAISE EXCEPTION 'Ledger entries are immutable. DELETE operations are not allowed.'
                         USING ERRCODE = 'integrity_constraint_violation',
                               HINT = 'Ledger entries cannot be deleted. Create a reversal entry instead.';
                 END IF;
-                
+
                 RETURN OLD;
             END;
             $$ LANGUAGE plpgsql;
         """))
         print("✓ Created prevent_ledger_modification() trigger function")
-        
+
         # S5.5: Attach trigger to ledger_entries table
         await conn.execute(text("""
             DROP TRIGGER IF EXISTS prevent_ledger_modification_trigger ON t_test.ledger_entries
@@ -182,7 +182,7 @@ async def setup_test_schema():
             EXECUTE FUNCTION public.prevent_ledger_modification()
         """))
         print("✓ Attached immutability trigger to ledger_entries")
-        
+
         # Create ledger_entries indexes
         await conn.execute(text("""
             CREATE INDEX IF NOT EXISTS ix_ledger_entries_reference ON t_test.ledger_entries(reference_type, reference_id)
@@ -194,7 +194,7 @@ async def setup_test_schema():
             CREATE INDEX IF NOT EXISTS ix_ledger_entries_transaction_date ON t_test.ledger_entries(transaction_date)
         """))
         print("✓ Created ledger_entries indexes")
-        
+
     print("\n✅ Test schema setup complete!")
     print("   Schema: t_test")
     print("   Tables: orders, order_items, ledger_entries")

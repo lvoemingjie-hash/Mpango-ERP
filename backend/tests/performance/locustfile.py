@@ -13,14 +13,14 @@ SLA Targets:
 Usage:
     # Install locust
     poetry add --group dev locust
-    
+
     # Run locally
     locust -f tests/performance/locustfile.py --host=http://localhost:8000
-    
+
     # Run headless (1 minute, 50 users)
     locust -f tests/performance/locustfile.py --host=http://localhost:8000 \\
            --users 50 --spawn-rate 10 --run-time 1m --headless
-    
+
     # Run with HTML report
     locust -f tests/performance/locustfile.py --host=http://localhost:8000 \\
            --users 50 --spawn-rate 10 --run-time 1m --headless \\
@@ -40,7 +40,7 @@ SLA_ERROR_RATE_PERCENT = 0.1
 class MpangoERPUser(HttpUser):
     """
     Simulated user for Mpango ERP.
-    
+
     User Behavior:
     1. Login (Get Token)
     2. View Profile (Cached - GET /auth/me)
@@ -48,30 +48,30 @@ class MpangoERPUser(HttpUser):
     4. Create Order (Write operation - POST /orders)
     5. View Order Detail (GET /orders/{id})
     """
-    
+
     # Wait time between tasks (1-3 seconds)
     wait_time = between(1, 3)
-    
+
     # S8-SEC: User credentials from environment (never hardcode)
     import os as _os
     test_email = _os.environ.get("LOCUST_TEST_EMAIL", "admin@test.com")
     test_password = _os.environ.get("LOCUST_TEST_PASSWORD", "CHANGE_ME")
-    
+
     # Authentication token
     token = None
     tenant_id = None
-    
+
     def on_start(self):
         """
         Called when a user starts.
         Performs login to get authentication token.
         """
         self.login()
-    
+
     def login(self):
         """
         S3-C: Login and get authentication token.
-        
+
         This is a write operation (not cached).
         """
         response = self.client.post(
@@ -82,7 +82,7 @@ class MpangoERPUser(HttpUser):
             },
             name="/api/v1/auth/login"
         )
-        
+
         if response.status_code == 200:
             data = response.json()
             self.token = data["data"]["access_token"]
@@ -90,18 +90,18 @@ class MpangoERPUser(HttpUser):
         else:
             # Login failed - stop this user
             self.environment.runner.quit()
-    
+
     def get_headers(self):
         """Get headers with authentication token."""
         if self.token:
             return {"Authorization": f"Bearer {self.token}"}
         return {}
-    
+
     @task(10)
     def view_profile(self):
         """
         S3-C: View user profile (GET /auth/me).
-        
+
         This endpoint should be cached (TTL: 30s).
         High frequency check - weight: 10
         """
@@ -110,12 +110,12 @@ class MpangoERPUser(HttpUser):
             headers=self.get_headers(),
             name="/api/v1/auth/me (cached)"
         )
-    
+
     @task(5)
     def list_orders(self):
         """
         S3-C: List orders (GET /orders).
-        
+
         This uses indexed DB query (not cached yet).
         Medium frequency - weight: 5
         """
@@ -124,12 +124,12 @@ class MpangoERPUser(HttpUser):
             headers=self.get_headers(),
             name="/api/v1/orders (indexed)"
         )
-    
+
     @task(2)
     def create_order(self):
         """
         S3-C: Create order (POST /orders).
-        
+
         This is a write operation (not cached).
         Low frequency - weight: 2
         """
@@ -145,24 +145,24 @@ class MpangoERPUser(HttpUser):
             ],
             "notes": "Performance test order"
         }
-        
+
         response = self.client.post(
             "/api/v1/orders",
             json=order_data,
             headers=self.get_headers(),
             name="/api/v1/orders (write)"
         )
-        
+
         # If order created successfully, view it
         if response.status_code == 201:
             data = response.json()
             order_id = data["data"]["id"]
             self.view_order_detail(order_id)
-    
+
     def view_order_detail(self, order_id: str):
         """
         View order detail (GET /orders/{id}).
-        
+
         This uses indexed DB query with eager loading.
         """
         self.client.get(
@@ -170,12 +170,12 @@ class MpangoERPUser(HttpUser):
             headers=self.get_headers(),
             name="/api/v1/orders/{id} (detail)"
         )
-    
+
     @task(3)
     def list_skus(self):
         """
         S3-C: List SKUs/Products (GET /skus).
-        
+
         This endpoint should be cached (TTL: 1 min).
         Product catalog is read-heavy.
         Medium frequency - weight: 3
@@ -185,12 +185,12 @@ class MpangoERPUser(HttpUser):
             headers=self.get_headers(),
             name="/api/v1/skus (catalog)"
         )
-    
+
     @task(1)
     def health_check(self):
         """
         Health check (GET /health).
-        
+
         Low frequency - weight: 1
         """
         self.client.get(
@@ -205,28 +205,28 @@ class MpangoERPUser(HttpUser):
 def on_test_stop(environment, **kwargs):
     """
     S3-C: Validate SLA after test completion.
-    
+
     Checks:
     - P95 latency < 300ms
     - Error rate < 0.1%
     """
     stats = environment.stats
-    
+
     print("\n" + "="*80)
     print("S3-C: SLA VALIDATION")
     print("="*80)
-    
+
     # Calculate overall stats
     total_requests = stats.total.num_requests
     total_failures = stats.total.num_failures
     error_rate = (total_failures / total_requests * 100) if total_requests > 0 else 0
-    
+
     # Get P95 latency
     p95_latency = stats.total.get_response_time_percentile(0.95)
-    
+
     # Check SLA compliance
     sla_passed = True
-    
+
     print(f"\nPerformance Metrics:")
     print(f"  Total Requests: {total_requests}")
     print(f"  Total Failures: {total_failures}")
@@ -234,45 +234,45 @@ def on_test_stop(environment, **kwargs):
     print(f"  P95 Latency: {p95_latency:.2f}ms")
     print(f"  Avg Response Time: {stats.total.avg_response_time:.2f}ms")
     print(f"  Requests/sec: {stats.total.total_rps:.2f}")
-    
+
     print(f"\nSLA Targets:")
     print(f"  P95 Latency: < {SLA_P95_LATENCY_MS}ms")
     print(f"  Error Rate: < {SLA_ERROR_RATE_PERCENT}%")
-    
+
     print(f"\nSLA Compliance:")
-    
+
     # Check P95 latency
     if p95_latency > SLA_P95_LATENCY_MS:
         print(f"  ❌ P95 Latency: {p95_latency:.2f}ms > {SLA_P95_LATENCY_MS}ms (FAILED)")
         sla_passed = False
     else:
         print(f"  ✅ P95 Latency: {p95_latency:.2f}ms < {SLA_P95_LATENCY_MS}ms (PASSED)")
-    
+
     # Check error rate
     if error_rate > SLA_ERROR_RATE_PERCENT:
         print(f"  ❌ Error Rate: {error_rate:.2f}% > {SLA_ERROR_RATE_PERCENT}% (FAILED)")
         sla_passed = False
     else:
         print(f"  ✅ Error Rate: {error_rate:.2f}% < {SLA_ERROR_RATE_PERCENT}% (PASSED)")
-    
+
     print("\n" + "="*80)
     if sla_passed:
         print("✅ ALL SLAs PASSED")
     else:
         print("❌ SLA VIOLATION DETECTED")
     print("="*80 + "\n")
-    
+
     # Print per-endpoint stats
     print("\nPer-Endpoint Performance:")
     print(f"{'Endpoint':<40} {'Requests':<10} {'Failures':<10} {'Avg (ms)':<10} {'P95 (ms)':<10}")
     print("-" * 80)
-    
+
     for name, stat in stats.entries.items():
         if stat.num_requests > 0:
             p95 = stat.get_response_time_percentile(0.95)
             print(f"{name:<40} {stat.num_requests:<10} {stat.num_failures:<10} "
                   f"{stat.avg_response_time:<10.2f} {p95:<10.2f}")
-    
+
     # Exit with error code if SLA failed
     if not sla_passed and isinstance(environment.runner, MasterRunner):
         environment.process_exit_code = 1
@@ -282,13 +282,13 @@ def on_test_stop(environment, **kwargs):
 class StepLoadShape:
     """
     Custom load shape for step-wise load increase.
-    
+
     Ramps up users in steps to find breaking point.
     """
-    
+
     def tick(self):
         run_time = self.get_run_time()
-        
+
         if run_time < 60:
             # 0-60s: 10 users
             return (10, 2)
@@ -309,20 +309,20 @@ class StepLoadShape:
 if __name__ == "__main__":
     print("""
     S3-C: Mpango ERP Performance Benchmark
-    
+
     Usage:
         # Run with Web UI
         locust -f locustfile.py --host=http://localhost:8000
-        
+
         # Run headless (1 minute, 50 users)
         locust -f locustfile.py --host=http://localhost:8000 \\
                --users 50 --spawn-rate 10 --run-time 1m --headless
-        
+
         # Run with HTML report
         locust -f locustfile.py --host=http://localhost:8000 \\
                --users 50 --spawn-rate 10 --run-time 1m --headless \\
                --html=performance_report.html
-    
+
     SLA Targets:
         - P95 Latency < 300ms
         - Error Rate < 0.1%

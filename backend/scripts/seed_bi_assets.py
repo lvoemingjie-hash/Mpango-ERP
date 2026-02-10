@@ -344,7 +344,8 @@ def validate_all() -> None:
         # Round-trip: serialize → deserialize to prove JSON compatibility
         json_str = config.model_dump_json()
         restored = ReportConfig.model_validate_json(json_str)
-        assert restored == config, f"Round-trip failed for {report['title']}"
+        if restored != config:
+            raise RuntimeError(f"Round-trip failed for {report['title']}")
         print(f"  ✓ {report['title']}: {len(config.widgets)} widgets, valid")
     print(f"\nAll {len(GOLDEN_REPORTS)} golden reports validated successfully.")
 

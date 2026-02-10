@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from core.config import get_settings
+from db.sql_safety import validate_identifier
 from db.tenant_filter import install_global_tenant_filter
 
 
@@ -104,6 +105,7 @@ async def get_tenant_db(tenant_schema: str) -> AsyncGenerator[AsyncSession, None
         async with get_tenant_db("t_abc123") as session:
             # Queries resolve to tenant schema first, then public
     """
+    validate_identifier(tenant_schema, "tenant_schema")
     async with AsyncSessionLocal() as session:
         try:
             session.info["tenant_schema"] = tenant_schema
@@ -130,6 +132,7 @@ async def create_tenant_schema(tenant_schema: str) -> None:
     Raises:
         Exception: If schema creation fails
     """
+    validate_identifier(tenant_schema, "tenant_schema")
     async with AsyncSessionLocal() as session:
         try:
             await session.execute(

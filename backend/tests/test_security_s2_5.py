@@ -97,16 +97,19 @@ class TestWeakKeyPrevention:
     
     def test_secret_key_strong_accepted(self):
         """Test that a strong SECRET_KEY is accepted."""
+        # S8-SEC: Generate a deterministic test key instead of hardcoding
+        import hashlib
+        strong_key = hashlib.sha256(b"test-validator-accepts-strong-key").hexdigest()
         # This should not raise an exception
         settings = Settings(
-            SECRET_KEY="kJ8mN2pQ5rT9vX3zA6bC4dF7gH1jK0lM",  # Strong random key
+            SECRET_KEY=strong_key,
             DATABASE_URL="postgresql://user:pass@localhost:5432/test",
             REDIS_URL="redis://localhost:6379/0",
             MPANGO_ENV="test"
         )
         
         assert len(settings.SECRET_KEY) >= 32
-        assert settings.SECRET_KEY == "kJ8mN2pQ5rT9vX3zA6bC4dF7gH1jK0lM"
+        assert settings.SECRET_KEY == strong_key
 
 
 class TestXSSPrevention:

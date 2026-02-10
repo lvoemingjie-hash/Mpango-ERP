@@ -1,6 +1,6 @@
 # Mpango ERP — AI Ledger Index
 
-**Last Updated**: 2026-02-07
+**Last Updated**: 2026-02-10
 **Purpose**: Central index of all AI-generated technical ledger documents.
 
 ---
@@ -100,6 +100,14 @@
 | **S7-4** | **Tenant-Scoped Assets (User-Defined Content)** | **✅ COMPLETE** | [**backend/s7-4_tenant_scoped_assets.md**](backend/s7-4_tenant_scoped_assets.md) |
 | **S7-5** | **Operational Views (Headless BI Schema)** | **✅ COMPLETE** | [**backend/s7-5_operational_views.md**](backend/s7-5_operational_views.md) |
 | **S7-Final** | **Phase 7 Product Acceptance** | **✅ ACCEPTED** | [**backend/s7-final_phase7_summary.md**](backend/s7-final_phase7_summary.md) |
+
+---
+
+## Phase 8: Security Remediation
+
+| Track | Title | Status | Ledger |
+|-------|-------|--------|--------|
+| **S8-SEC** | **Aikido SAST 安全扫描修复** | **✅ COMPLETE** | [**backend/s8-sec_aikido_remediation.md**](backend/s8-sec_aikido_remediation.md) |
 
 ---
 

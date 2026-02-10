@@ -1,7 +1,9 @@
 import asyncio
 import os
-os.environ.setdefault("DATABASE_URL", "postgresql://mpango:MpangoDBV0.1.2@127.0.0.1:5432/mpango_erp")
-os.environ.setdefault("SECRET_KEY", "kJ8mN2pQ5rT9vX3zA6bC4dF7gH1jK0lM")
+if "DATABASE_URL" not in os.environ:
+    raise RuntimeError("DATABASE_URL environment variable must be set")
+if "SECRET_KEY" not in os.environ:
+    raise RuntimeError("SECRET_KEY environment variable must be set")
 
 from sqlalchemy import text
 from database.session import async_engine

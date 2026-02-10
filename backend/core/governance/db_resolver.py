@@ -39,6 +39,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from db.sql_safety import validate_identifier
+
 from core.governance.models import (
     BIAsset,
     BIDomain,
@@ -104,6 +106,7 @@ class DbAssetResolver:
             from models.wholesaler import Wholesaler
 
             tenant_schema = Wholesaler.derive_schema_from_id(tenant_id)
+            validate_identifier(tenant_schema, "tenant_schema")
 
             async with self._session_factory() as session:
                 from sqlalchemy import text
@@ -155,6 +158,7 @@ class DbAssetResolver:
             from models.wholesaler import Wholesaler
 
             tenant_schema = Wholesaler.derive_schema_from_id(tenant_id)
+            validate_identifier(tenant_schema, "tenant_schema")
 
             async with self._session_factory() as session:
                 from sqlalchemy import text

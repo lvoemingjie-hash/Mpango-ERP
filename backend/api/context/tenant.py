@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import TokenPayload
+from db.sql_safety import validate_identifier
 
 _TENANT_CONTEXT_ATTR = "tenant_context"
 
@@ -34,6 +35,7 @@ async def create_tenant_session(tenant_schema: str) -> AsyncSession:
 
     session: AsyncSession = AsyncSessionLocal()
     try:
+        validate_identifier(tenant_schema, "tenant_schema")
         session.info["tenant_schema"] = tenant_schema
         await session.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
     except Exception:

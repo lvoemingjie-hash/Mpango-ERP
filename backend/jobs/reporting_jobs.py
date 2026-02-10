@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.jobs.base import job_handler
 from core.structured_logging import get_logger
 from database.session import AsyncSessionLocal
+from db.sql_safety import validate_identifier
 
 logger = get_logger(__name__)
 
@@ -28,7 +29,6 @@ logger = get_logger(__name__)
 MATERIALIZED_VIEWS = [
     "mv_sales_daily",
 ]
-
 
 @job_handler("refresh_materialized_views")
 async def refresh_materialized_views(payload: dict) -> None:
@@ -69,10 +69,14 @@ async def refresh_materialized_views(payload: dict) -> None:
         skipped = 0
 
         for schema in tenant_schemas:
+            # S8-SEC: Validate schema name before any SQL interpolation
+            validate_identifier(schema, "tenant_schema")
+
             # Step 1: Try to acquire advisory lock for this schema
             # hashtext returns a stable int32 hash — unique per schema name
             lock_result = await session.execute(
-                text(f"SELECT pg_try_advisory_lock(hashtext('mv_refresh_{schema}'))")
+                text("SELECT pg_try_advisory_lock(hashtext(:lock_key))"),
+                {"lock_key": f"mv_refresh_{schema}"},
             )
             got_lock = lock_result.scalar()
 
@@ -85,13 +89,19 @@ async def refresh_materialized_views(payload: dict) -> None:
                 continue
 
             try:
-                # Step 2: Set search_path
+                # Step 2: Set search_path (identifier validated above)
                 await session.execute(
                     text(f'SET LOCAL search_path TO "{schema}", public')
                 )
 
                 # Step 3: Refresh each materialized view
                 for view_name in target_views:
+                    # S8-SEC: Only allow whitelisted view names
+                    if view_name not in MATERIALIZED_VIEWS:
+                        raise ValueError(
+                            f"View {view_name!r} not in MATERIALIZED_VIEWS whitelist"
+                        )
+                    validate_identifier(view_name, "view_name")
                     try:
                         await session.execute(
                             text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view_name}")
@@ -117,7 +127,8 @@ async def refresh_materialized_views(payload: dict) -> None:
             finally:
                 # Step 4: Release advisory lock (always, even on error)
                 await session.execute(
-                    text(f"SELECT pg_advisory_unlock(hashtext('mv_refresh_{schema}'))")
+                    text("SELECT pg_advisory_unlock(hashtext(:lock_key))"),
+                    {"lock_key": f"mv_refresh_{schema}"},
                 )
                 await session.commit()
 

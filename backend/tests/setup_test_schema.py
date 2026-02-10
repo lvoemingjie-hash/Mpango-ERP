@@ -8,9 +8,14 @@ import sys
 import os
 from pathlib import Path
 
-# Set test environment variables before importing
-os.environ.setdefault("DATABASE_URL", "postgresql://mpango:MpangoDBV0.1.2@127.0.0.1:5432/mpango_erp")
-os.environ.setdefault("SECRET_KEY", "kJ8mN2pQ5rT9vX3zA6bC4dF7gH1jK0lM")  # Strong key for testing
+# S8-SEC: Never hardcode real credentials — use env vars or generate test-only values
+import hashlib as _hashlib
+os.environ.setdefault("DATABASE_URL", os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql://mpango:${POSTGRES_PASSWORD}@127.0.0.1:5432/mpango_erp"
+))
+_TEST_SECRET = _hashlib.sha256(b"mpango-test-runner-key-not-for-production").hexdigest()
+os.environ.setdefault("SECRET_KEY", _TEST_SECRET)
 os.environ.setdefault("MPANGO_ENV", "test")
 
 # Add backend to path

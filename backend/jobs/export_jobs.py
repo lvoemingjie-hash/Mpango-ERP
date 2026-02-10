@@ -30,6 +30,7 @@ Security:
 """
 import csv
 import os
+import re
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -313,6 +314,34 @@ async def _write_xlsx_streaming(result, columns: list[str], file_path: Path) -> 
 # Metadata Sidecar
 # ---------------------------------------------------------------------------
 
+# S8-SEC: Safe file_id pattern — prevents path traversal in metadata sidecar.
+_SAFE_FILE_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
+
+
+def _validate_file_id(file_id: str) -> str:
+    """Validate file_id to prevent path traversal attacks.
+
+    Raises ValueError if file_id contains path separators, dots, or
+    other characters that could escape the export directory.
+    """
+    if not _SAFE_FILE_ID_RE.match(file_id):
+        raise ValueError(
+            f"Unsafe file_id: {file_id!r} — must match {_SAFE_FILE_ID_RE.pattern}"
+        )
+    return file_id
+
+
+def _safe_meta_path(file_id: str) -> Path:
+    """Build a validated metadata path within EXPORT_DIR."""
+    _validate_file_id(file_id)
+    export_dir = _ensure_export_dir()
+    meta_path = (export_dir / f"{file_id}.meta.json").resolve()
+    # Belt-and-suspenders: verify resolved path is inside export dir
+    if not str(meta_path).startswith(str(export_dir.resolve())):
+        raise ValueError(f"Path traversal detected: {meta_path}")
+    return meta_path
+
+
 def _write_metadata(file_id: str, metadata: dict) -> None:
     """
     Write a JSON metadata sidecar for the export file.
@@ -321,7 +350,7 @@ def _write_metadata(file_id: str, metadata: dict) -> None:
     """
     import json
 
-    meta_path = _ensure_export_dir() / f"{file_id}.meta.json"
+    meta_path = _safe_meta_path(file_id)
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
 
@@ -334,7 +363,7 @@ def read_metadata(file_id: str) -> Optional[dict]:
     """
     import json
 
-    meta_path = _ensure_export_dir() / f"{file_id}.meta.json"
+    meta_path = _safe_meta_path(file_id)
     if not meta_path.exists():
         return None
 

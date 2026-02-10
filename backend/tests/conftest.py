@@ -10,9 +10,15 @@ import pytest
 import pytest_asyncio
 
 # S2.5: Set test environment variables before importing settings
-# Use a strong SECRET_KEY that passes validation
-os.environ.setdefault("DATABASE_URL", "postgresql://mpango:MpangoDBV0.1.2@127.0.0.1:5432/mpango_erp")
-os.environ.setdefault("SECRET_KEY", "kJ8mN2pQ5rT9vX3zA6bC4dF7gH1jK0lM")  # Strong key for testing
+# S8-SEC: Never hardcode real credentials — use env vars or generate test-only values
+os.environ.setdefault("DATABASE_URL", os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql://mpango:${POSTGRES_PASSWORD}@127.0.0.1:5432/mpango_erp"
+))
+# Generate a deterministic but non-real test SECRET_KEY (passes 32-char + no-weak-substring validation)
+import hashlib as _hashlib
+_TEST_SECRET = _hashlib.sha256(b"mpango-test-runner-key-not-for-production").hexdigest()
+os.environ.setdefault("SECRET_KEY", _TEST_SECRET)
 os.environ.setdefault("MPANGO_ENV", "test")
 os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:6379/0")
 

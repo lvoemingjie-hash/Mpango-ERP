@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from core.config import get_settings
+from db.sql_safety import validate_identifier
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -129,6 +130,7 @@ async def get_reporting_session(
     async with ReportingSessionLocal() as session:
         try:
             if tenant_schema:
+                validate_identifier(tenant_schema, "tenant_schema")
                 await session.execute(
                     text(f'SET LOCAL search_path TO "{tenant_schema}", public')
                 )

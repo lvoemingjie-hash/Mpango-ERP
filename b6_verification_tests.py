@@ -11,18 +11,19 @@ from pathlib import Path
 import uuid
 import requests
 from datetime import datetime
+import os as _os
 
 # Test configuration
 BASE_URL = "http://localhost:8000/api/v1"
 TENANT_A = {
     "code": "TEST001",
     "email": "admin@test.com",
-    "password": "testpassword"
+    "password": _os.environ.get("B6_TENANT_A_PASSWORD", "CHANGE_ME"),
 }
 TENANT_B = {
     "code": "TEST_B",
     "email": "admin@tenant-b.com",
-    "password": "TestPass123"
+    "password": _os.environ.get("B6_TENANT_B_PASSWORD", "CHANGE_ME"),
 }
 
 class B6VerificationTests:

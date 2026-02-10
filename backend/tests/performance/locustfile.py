@@ -52,9 +52,10 @@ class MpangoERPUser(HttpUser):
     # Wait time between tasks (1-3 seconds)
     wait_time = between(1, 3)
     
-    # User credentials (test mode)
-    test_email = "admin@test.com"
-    test_password = "admin123"
+    # S8-SEC: User credentials from environment (never hardcode)
+    import os as _os
+    test_email = _os.environ.get("LOCUST_TEST_EMAIL", "admin@test.com")
+    test_password = _os.environ.get("LOCUST_TEST_PASSWORD", "CHANGE_ME")
     
     # Authentication token
     token = None

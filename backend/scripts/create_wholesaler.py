@@ -33,6 +33,7 @@ from models.wholesaler import Wholesaler
 from models.user import User, Role, Permission
 from models.associations import user_roles, role_permissions
 from core.security import hash_password
+from db.sql_safety import validate_identifier as _validate_identifier
 
 
 async def create_wholesaler(
@@ -60,6 +61,7 @@ async def create_wholesaler(
 
 async def create_tenant_schema(db: AsyncSession, tenant_schema: str):
     """Create the tenant schema if it doesn't exist."""
+    _validate_identifier(tenant_schema, "tenant_schema")
     await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{tenant_schema}"'))
     await db.commit()
     print(f"✓ Created tenant schema: {tenant_schema}")
@@ -74,12 +76,15 @@ async def create_admin_user(
     last_name: str = "User"
 ) -> User:
     """Create an admin user in the tenant schema."""
+    # S8-SEC: Validate schema name before SQL interpolation
+    _validate_identifier(tenant_schema, "tenant_schema")
+
     # Set search path to tenant schema
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
-    # Check if user already exists
+    # Check if user already exists (uses search_path, no schema prefix needed)
     result = await db.execute(
-        text(f'SELECT * FROM "{tenant_schema}".users WHERE email = :email'),
+        text('SELECT * FROM users WHERE email = :email'),
         {"email": email}
     )
     existing = result.fetchone()
@@ -111,12 +116,15 @@ async def create_admin_role(
     user_id: uuid.UUID
 ) -> Role:
     """Create admin role and assign to user."""
+    # S8-SEC: Validate schema name before SQL interpolation
+    _validate_identifier(tenant_schema, "tenant_schema")
+
     # Set search path
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
-    # Check if admin role exists
+    # Check if admin role exists (uses search_path, no schema prefix needed)
     result = await db.execute(
-        text(f'SELECT * FROM "{tenant_schema}".roles WHERE name = :name'),
+        text('SELECT * FROM roles WHERE name = :name'),
         {"name": "admin"}
     )
     existing_role = result.fetchone()
@@ -134,9 +142,9 @@ async def create_admin_role(
     await db.commit()
     await db.refresh(admin_role)
 
-    # Assign role to user
+    # Assign role to user (uses search_path, no schema prefix needed)
     await db.execute(
-        text(f'INSERT INTO "{tenant_schema}".user_roles (user_id, role_id) VALUES (:user_id, :role_id)'),
+        text('INSERT INTO user_roles (user_id, role_id) VALUES (:user_id, :role_id)'),
         {"user_id": str(user_id), "role_id": str(admin_role.id)}
     )
     await db.commit()
@@ -147,6 +155,9 @@ async def create_admin_role(
 
 async def create_permissions(db: AsyncSession, tenant_schema: str):
     """Create all permissions for the system."""
+    # S8-SEC: Validate schema name before SQL interpolation
+    _validate_identifier(tenant_schema, "tenant_schema")
+
     # Set search path
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
@@ -174,7 +185,7 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
 
     for code, description in permissions_data:
         result = await db.execute(
-            text(f'SELECT * FROM "{tenant_schema}".permissions WHERE code = :code'),
+            text('SELECT * FROM permissions WHERE code = :code'),
             {"code": code}
         )
         if not result.fetchone():
@@ -187,12 +198,15 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
 
 async def assign_all_permissions_to_admin(db: AsyncSession, tenant_schema: str):
     """Assign all permissions to admin role."""
+    # S8-SEC: Validate schema name before SQL interpolation
+    _validate_identifier(tenant_schema, "tenant_schema")
+
     # Set search path
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
-    # Get admin role
+    # Get admin role (uses search_path, no schema prefix needed)
     result = await db.execute(
-        text(f'SELECT id FROM "{tenant_schema}".roles WHERE name = :name'),
+        text('SELECT id FROM roles WHERE name = :name'),
         {"name": "admin"}
     )
     role = result.fetchone()
@@ -203,20 +217,20 @@ async def assign_all_permissions_to_admin(db: AsyncSession, tenant_schema: str):
 
     role_id = role[0]
 
-    # Get all permissions
-    result = await db.execute(text(f'SELECT id FROM "{tenant_schema}".permissions'))
+    # Get all permissions (uses search_path, no schema prefix needed)
+    result = await db.execute(text('SELECT id FROM permissions'))
     permissions = result.fetchall()
 
     # Assign all permissions to admin role
     for (perm_id,) in permissions:
         # Check if already assigned
         check = await db.execute(
-            text(f'SELECT * FROM "{tenant_schema}".role_permissions WHERE role_id = :role_id AND permission_id = :perm_id'),
+            text('SELECT * FROM role_permissions WHERE role_id = :role_id AND permission_id = :perm_id'),
             {"role_id": str(role_id), "perm_id": str(perm_id)}
         )
         if not check.fetchone():
             await db.execute(
-                text(f'INSERT INTO "{tenant_schema}".role_permissions (role_id, permission_id) VALUES (:role_id, :perm_id)'),
+                text('INSERT INTO role_permissions (role_id, permission_id) VALUES (:role_id, :perm_id)'),
                 {"role_id": str(role_id), "perm_id": str(perm_id)}
             )
             print(f"✓ Assigned permission to admin role")

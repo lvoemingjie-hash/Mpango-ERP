@@ -46,6 +46,7 @@ from services.reporting.semantic_layer import (
     ViewRegistration,
 )
 from core.structured_logging import get_logger
+from db.sql_safety import validate_identifier
 
 logger = get_logger(__name__)
 
@@ -105,6 +106,7 @@ class SemanticQueryBuilder:
         """
         if not self._scope_applied:
             #[Constraint Check] Rule #1: SET LOCAL search_path before ANY query execution
+            validate_identifier(self._tenant_schema, "tenant_schema")
             await self._session.execute(
                 text(f'SET LOCAL search_path TO "{self._tenant_schema}", public')
             )

@@ -83,7 +83,7 @@ rm test-secret.env
 DATABASE_URL = "postgresql://user:password123@localhost/db"
 
 # Hardcoded API key
-API_KEY = "sk_live_abc123xyz"
+API_KEY = "YOUR_API_KEY_HERE"
 ```
 
 ### ✅ DO THIS INSTEAD:

@@ -22,9 +22,13 @@ down_revision = '010_s5_5_ledger_hardening'
 branch_labels = None
 depends_on = None
 
-# Reporting user password — in production, inject via environment variable.
-# This placeholder is for dev/staging only.
-REPORTING_USER_PASSWORD = "RptR3adOnly_S6P!"
+# S8-SEC: Reporting user password — MUST be injected via environment variable.
+import os as _os
+REPORTING_USER_PASSWORD = _os.environ.get("REPORTING_USER_PASSWORD")
+if not REPORTING_USER_PASSWORD:
+    raise RuntimeError(
+        "REPORTING_USER_PASSWORD environment variable must be set before running this migration"
+    )
 
 
 def upgrade() -> None:

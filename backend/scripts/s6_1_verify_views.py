@@ -1,10 +1,16 @@
 """S6-1: Verify Read Models exist and comply with S6-P constraints."""
 import asyncio
+import os
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
-DB_URL = "postgresql+asyncpg://mpango:MpangoDBV0.1.2@127.0.0.1:5432/mpango_erp"
-RPT_URL = "postgresql+asyncpg://reporting_user:RptR3adOnly_S6P!@127.0.0.1:5432/mpango_erp"
+# S8-SEC: Never hardcode credentials — read from environment
+DB_URL = os.environ.get("DATABASE_URL", "").replace("postgresql://", "postgresql+asyncpg://")
+if not DB_URL:
+    raise RuntimeError("DATABASE_URL environment variable must be set")
+RPT_URL = os.environ.get("REPORTING_DATABASE_URL", "").replace("postgresql://", "postgresql+asyncpg://")
+if not RPT_URL:
+    raise RuntimeError("REPORTING_DATABASE_URL environment variable must be set")
 
 VIEWS = ["rpt_sales_daily", "rpt_receivables_summary", "rpt_cash_flow_daily"]
 

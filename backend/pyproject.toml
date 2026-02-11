@@ -47,6 +47,7 @@ psycopg2-binary = "2.9.11"
 # Authentication & Security
 # S2.5 Batch C: Updated to fix CVE-2026-24486
 python-jose = {extras = ["cryptography"], version = "3.5.0"}
+cryptography = ">=46.0.5"  # S8-SEC: Pin to fix CVE-2026-26007 (EC key validation defect)
 passlib = {extras = ["bcrypt"], version = "1.7.4"}
 python-multipart = "0.0.22"  # Fixed CVE-2026-24486
 # Note: ecdsa 0.19.1 has CVE-2024-23342 but is locked by python-jose

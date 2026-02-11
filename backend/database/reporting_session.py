@@ -67,9 +67,10 @@ def _build_reporting_url() -> str:
     else:
         host_part = "localhost:5432/mpango_erp"
 
-    reporting_password = os.environ.get(
-        "REPORTING_USER_PASSWORD", "RptR3adOnly_S6P!"
-    )
+    # S8-SEC: Never hardcode credentials — require env var
+    reporting_password = os.environ.get("REPORTING_USER_PASSWORD")
+    if not reporting_password:
+        raise RuntimeError("REPORTING_USER_PASSWORD environment variable must be set")
     return f"postgresql+asyncpg://reporting_user:{reporting_password}@{host_part}"
 
 

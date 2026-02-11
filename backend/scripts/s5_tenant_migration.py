@@ -6,10 +6,14 @@ indexes) to all tenant schemas that are missing the table.
 Safe to run multiple times (idempotent).
 """
 import asyncio
+import os
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-DB_URL = "postgresql+asyncpg://mpango:MpangoDBV0.1.2@127.0.0.1:5432/mpango_erp"
+# S8-SEC: Never hardcode credentials — read from environment
+DB_URL = os.environ.get("DATABASE_URL", "").replace("postgresql://", "postgresql+asyncpg://")
+if not DB_URL:
+    raise RuntimeError("DATABASE_URL environment variable must be set")
 
 
 async def apply_tenant_migration():

@@ -80,3 +80,4 @@ id_ed25519.pub
 *.old
 *~
 .env
+ai-ledger/

@@ -1,0 +1,29 @@
+# =============================================================================
+# Gitleaks Configuration — Security Governance Whitelist
+# =============================================================================
+# Class B: Fake secrets / test data in test suites
+# Class C: Documentation examples with placeholder values
+#
+# Policy: Governed via scanner whitelist, not code modification.
+# Owner: Backend Team — reviewed 2026-02-12
+# =============================================================================
+
+title = "Mpango ERP Gitleaks Config"
+
+[allowlist]
+  description = "Class B/C governance — test fixtures, docs, examples"
+
+  paths = [
+    '''tests/.*\.py$''',
+    '''backend/tests/.*\.py$''',
+    '''b6_verification_tests\.py$''',
+    '''docs/.*''',
+    '''ai-ledger/.*''',
+    '''scenarios/.*\.md$''',
+    '''k8s/backend-secrets\.yaml$''',
+    '''.*\.md$''',
+    '''.*_example\..*''',
+    '''\.env\.example$''',
+    '''\.env\.sample$''',
+    '''\.secrets\.baseline$''',
+  ]

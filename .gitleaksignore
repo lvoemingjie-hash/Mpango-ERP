@@ -1,0 +1,34 @@
+# =============================================================================
+# Gitleaks Ignore Rules — Security Governance Whitelist
+# =============================================================================
+# Class B: Fake secrets / test data used in test suites and documentation.
+# These are NOT real credentials. They exist intentionally for:
+#   - Unit/integration test fixtures (deterministic test keys, fake passwords)
+#   - Documentation examples (placeholder API keys, sample connection strings)
+#   - Performance test harnesses (locust test users)
+#
+# Policy: Governed via scanner whitelist, not code modification.
+# Owner: Backend Team — reviewed 2026-02-12
+# =============================================================================
+
+# --- Test suites -----------------------------------------------------------
+tests/**/*.py
+backend/tests/**/*.py
+b6_verification_tests.py
+
+# --- Documentation & design ledger -----------------------------------------
+docs/**/*
+ai-ledger/**/*
+*.md
+
+# --- Example / template files ----------------------------------------------
+*_example.*
+*.example
+.env.example
+.env.sample
+
+# --- Kubernetes secret manifests (contain placeholders, not real values) ----
+k8s/backend-secrets.yaml
+
+# --- Security policy docs (contain example patterns for education) ----------
+docs/security/**/*

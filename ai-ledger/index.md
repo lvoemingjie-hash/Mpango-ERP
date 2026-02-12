@@ -1,6 +1,6 @@
 ﻿# Mpango ERP — AI Ledger Index
 
-**Last Updated**: 2026-02-11
+**Last Updated**: 2026-02-12
 **Purpose**: Central index of all AI-generated technical ledger documents.
 
 ---
@@ -130,7 +130,8 @@
 | Track B6 | Hardening Patch Sprint | [backend/2026-01-31_track_b6_hardening_patch_sprint.md](backend/2026-01-31_track_b6_hardening_patch_sprint.md) |
 | B6 | Verification & Test Mode | [backend/2026-02-01_b6_verification_test_mode_implementation.md](backend/2026-02-01_b6_verification_test_mode_implementation.md) |
 | S5-5 | Summary | [backend/2026-02-06_s5_5_summary.md](backend/2026-02-06_s5_5_summary.md) |
-| Analysis | Backend Analysis (Work 0112) | [backend/2026-1-13_mpango_erp_backend_analysis_based_on_work0112.md](backend/2026-1-13_mpango_erp_backend_analysis_based_on_work0112.md) |
+| Analysis | Backend Analysis (Work 0112) |
+| S8-GOV | Track C Readiness | [backend/s8-gov_track_c_readiness.md](backend/s8-gov_track_c_readiness.md) | [backend/2026-1-13_mpango_erp_backend_analysis_based_on_work0112.md](backend/2026-1-13_mpango_erp_backend_analysis_based_on_work0112.md) |
 
 ---
 

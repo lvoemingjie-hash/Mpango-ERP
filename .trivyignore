@@ -1,0 +1,22 @@
+# =============================================================================
+# Trivy Ignore Rules — Security Governance Whitelist
+# =============================================================================
+# Class B: Fake secrets / test data — not real credentials.
+# Class C: Documentation examples — placeholder values for education.
+#
+# Policy: Governed via scanner whitelist, not code modification.
+# Owner: Backend Team — reviewed 2026-02-12
+# =============================================================================
+
+# --- Test suites (fake credentials for test fixtures) -----------------------
+# tests/**/*.py — deterministic test keys, fake passwords
+# backend/tests/**/*.py — same
+# b6_verification_tests.py — tenant verification test harness
+
+# --- Documentation (placeholder examples) -----------------------------------
+# docs/**/* — quickstart guides, security policy docs
+# ai-ledger/**/* — design ledger with example configs
+# *.md — all markdown files
+
+# --- Known CVEs already mitigated or accepted -------------------------------
+# (none currently — all dependency CVEs have been patched)

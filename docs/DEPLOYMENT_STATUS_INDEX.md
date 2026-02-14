@@ -201,7 +201,64 @@ docker compose up -d
 
 - **Issue classification**:
   - 初始问题：Backend 启动失败（循环导入 + 环境配置混乱）。[file:17][file:65]
-  - 最终阻塞点：`(c) ops packaging error` – Windows `.venv` / `.pyd` 与 Linux 容器不兼容导致虚拟环境损坏。[file:84]
+  - 最终阻塞点：**(c) ops packaging error** – Windows `.venv` / `.pyd` 与 Linux 容器不兼容导致虚拟环境损坏。[file:84]
 - **Process improvements**:
   - 引入 `Boot-contract.md` 与 PLAN / EXECUTION / EVIDENCE 三段式 ledger 作为所有 Backend / Ops 修复的强制约束。[file:81][file:82][file:84]
   - 将本次事件标记为：**“Boot Contract v1 – Backend + Ops 联合闭环完成”**，作为后续版本（v0.1.2 及以后）的启动行为基线。
+
+---
+
+## 2026-02-14 – Track D: Staging Containerization (v0.1.9-contract-polish)
+
+**Date**: 2026-02-14
+**Scope**: Full-stack Docker containerization for staging environment
+**Status**: COMPLETE — All containers defined, compose validated
+**Codebase**: Frozen at v0.1.9-contract-polish (NO logic changes)
+
+---
+
+### Files Created / Modified
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `backend/Dockerfile` | Modified | Python 3.11-slim, Poetry 1.8.4, runtime deps only, non-root, Alembic migration → Uvicorn |
+| `frontend/Dockerfile` | Modified | Multi-stage: Node 18 + pnpm build → nginx:alpine SPA serving |
+| `frontend/nginx.conf` | Created | SPA-aware config: `try_files $uri $uri/ /index.html` + gzip + security headers |
+| `nginx/gateway.conf` | Created | Reverse proxy: `/api/` → backend:8000, `/` → frontend:80 + health/metrics passthrough |
+| `docker-compose.yml` | Modified | Staging-grade: postgres, redis, backend, frontend, gateway (+ optional prometheus) |
+| `docker-compose.override.yml` | Modified | Dev override: exposes individual service ports for debugging |
+| `deploy/init_staging.sh` | Pending | Staging bootstrap script (next step) |
+
+### Architecture
+
+```
+[Browser] → :80 gateway (nginx)
+              ├── /api/*    → backend:8000 (FastAPI)
+              └── /*        → frontend:80  (React SPA)
+            backend → postgres:5432 + redis:6379
+```
+
+### Validation
+
+- `docker compose -f docker-compose.yml config` — Passes (valid syntax)
+- All services have healthchecks
+- Gateway waits for backend healthy + frontend started before accepting traffic
+- Prometheus gated behind `monitoring` profile
+
+### Quick Start
+
+```bash
+# Minimal .env
+echo 'POSTGRES_PASSWORD=ChangeMeStrong123!' > .env
+echo 'SECRET_KEY=<run: python -c "import secrets; print(secrets.token_urlsafe(32))">' >> .env
+
+# Build & launch
+docker compose up -d --build
+
+# Verify
+curl http://localhost/health/live
+```
+
+### Full Documentation
+
+- `ai-ledger/ops/2026-02-14_DEPLOYMENT-v0.1.9.md` — Complete deployment guide

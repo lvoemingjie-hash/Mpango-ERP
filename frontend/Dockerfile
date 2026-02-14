@@ -1,24 +1,46 @@
-FROM node:18-alpine
+# =============================================================================
+# Stage 1: Build (Node 18 + pnpm)
+# =============================================================================
+FROM node:18-alpine AS builder
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Ensure devDependencies (tsc, vite) are installed in builder stage
+ENV NODE_ENV=development
 
-# Install dependencies
-RUN npm install
+# Copy dependency manifests first for layer caching
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
-# Copy source code
+# Copy source and build
 COPY . .
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
-RUN chown -R nextjs:nodejs /app
-USER nextjs
+# Build with relative API URL — gateway will proxy /api/ to backend
+ARG VITE_API_URL=/api/v1
+ENV VITE_API_URL=${VITE_API_URL}
+ENV NODE_ENV=production
+RUN pnpm build
 
-# Expose port
-EXPOSE 5173
+# =============================================================================
+# Stage 2: Runtime (nginx:alpine serving static SPA)
+# =============================================================================
+FROM nginx:alpine AS runner
 
-# Command will be overridden in docker-compose
-CMD ["npm", "run", "dev"]
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy custom SPA-aware nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy build artifacts from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Run as non-root (nginx alpine already runs worker as nginx user)
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD wget -qO- http://localhost:80/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,122 +1,160 @@
-version: '3.8'
+# =============================================================================
+# Mpango ERP — Staging Docker Compose
+# Version: v0.1.9-contract-polish
+#
+# Usage:
+#   cp .env.example .env   # then fill in secrets
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# Architecture:
+#   [Browser] → :80 gateway (nginx)
+#                ├── /api/*    → backend:8000 (FastAPI + Uvicorn)
+#                └── /*        → frontend:80  (React SPA via nginx)
+#              backend depends on postgres + redis
+# =============================================================================
 
 services:
-  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 15
+  # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: mpango_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mpango_erp}
       POSTGRES_USER: ${POSTGRES_USER:-mpango}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
-    env_file:
-      - ${SECRETS_DIR:-./secrets}/prod.env
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U mpango -d mpango_erp" ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mpango} -d ${POSTGRES_DB:-mpango_erp}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - mpango_network
 
-  # Redis for caching and Celery
+  # ---------------------------------------------------------------------------
+  # Redis 7
+  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: mpango_redis
+    restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
       - mpango_network
 
-  # Backend API (FastAPI)
+  # ---------------------------------------------------------------------------
+  # Backend (FastAPI)
+  # ---------------------------------------------------------------------------
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: mpango_backend
+    restart: unless-stopped
     environment:
-      # S2-1 COMPLIANCE: All REQUIRED environment variables must be set
-      # Environment mode (production/test)
+      # Environment
       - MPANGO_ENV=${MPANGO_ENV:-test}
-      # Database connection (REQUIRED - app crashes if missing)
+      # Database (REQUIRED)
       - DATABASE_URL=${DATABASE_URL:-postgresql://mpango:${POSTGRES_PASSWORD}@postgres:5432/mpango_erp}
       - DATABASE_ECHO=${DATABASE_ECHO:-false}
-      # Redis connection (REQUIRED - app crashes if missing)
+      # Redis (REQUIRED)
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      # Security settings (REQUIRED - app crashes if using defaults in production)
+      # Security (REQUIRED)
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set}
       - ALGORITHM=${ALGORITHM:-HS256}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
-      # Application settings
+      # Application
       - APP_NAME=${APP_NAME:-Mpango ERP}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # CORS settings
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173"]}
+      # CORS — handled by pydantic-settings default; gateway makes CORS unnecessary
       # Multi-tenancy
       - DEFAULT_TENANT_SCHEMA=${DEFAULT_TENANT_SCHEMA:-t_dev}
-      # Observability (S2-2, S2-3)
+      # Observability
       - ENABLE_METRICS=${ENABLE_METRICS:-true}
       - ENABLE_REQUEST_LOGGING=${ENABLE_REQUEST_LOGGING:-true}
-      # Operational settings
+      - ENABLE_SQL_PROFILING=${ENABLE_SQL_PROFILING:-false}
+      - SLOW_QUERY_THRESHOLD_MS=${SLOW_QUERY_THRESHOLD_MS:-100}
+      # Reporting (required by migration 011_s6_p_reporting_role)
+      - REPORTING_USER_PASSWORD=${REPORTING_USER_PASSWORD:-ReportingPass_staging_2026}
+      # Pool & Timeout
       - REQUEST_TIMEOUT_SECONDS=${REQUEST_TIMEOUT_SECONDS:-30}
       - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-10}
       - DB_CONNECT_TIMEOUT=${DB_CONNECT_TIMEOUT:-10}
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      # S2-4: Kubernetes-style health probes
-      # Liveness probe - checks if process is alive (/healthz)
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/healthz" ]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/live"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 40s
     networks:
       - mpango_network
-    command: poetry run uvicorn main:app --host 0.0.0.0 --port 8000
-    #uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-    # Frontend (React + Vite)
+  # ---------------------------------------------------------------------------
+  # Frontend (React SPA — built & served by nginx)
+  # ---------------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: mpango_frontend
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+    restart: unless-stopped
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     networks:
       - mpango_network
-    environment:
-      - VITE_API_URL=http://localhost:8000/api/v1
-    command: npm run dev
 
-  # Prometheus - Metrics scraping (S2-3)
+  # ---------------------------------------------------------------------------
+  # Gateway (nginx reverse proxy — single entry point)
+  # ---------------------------------------------------------------------------
+  gateway:
+    image: nginx:alpine
+    container_name: mpango_gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-80}:80"
+    volumes:
+      - ./nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    networks:
+      - mpango_network
+
+  # ---------------------------------------------------------------------------
+  # Prometheus (optional — metrics scraping)
+  # ---------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:latest
     container_name: mpango_prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
     ports:
       - "9090:9090"
     volumes:
@@ -128,16 +166,15 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle'
-    networks:
-      - mpango_network
     depends_on:
       - backend
+    networks:
+      - mpango_network
 
 volumes:
   postgres_data:
   redis_data:
   prometheus_data:
-
 
 networks:
   mpango_network:

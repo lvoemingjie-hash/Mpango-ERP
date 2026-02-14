@@ -1,46 +1,48 @@
-# S2.5 Batch C: Use immutable SHA256 digest instead of mutable tag
-# This prevents supply chain attacks where tags can be overwritten
-FROM python:3.11-slim@sha256:db27ce7778e5f581d5d97812ee577a01a9fffbfa612c47fc521fa684e3389c9b
+# Staging backend image (Python 3.11 to match pyproject constraint >=3.11)
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_INSTALLER_MAX_WORKERS=4
+
+# Replace default sources with Aliyun mirrors (optimized for China)
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources || \
+    sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+
+# System dependencies required by asyncpg/psycopg builds and healthcheck probing
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install --no-cache-dir poetry
+# Install Poetry in global env (virtualenv disabled above)
+# Use Aliyun PyPI mirror for China network optimization
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com poetry==2.2.1
 
-# Configure Poetry
-ENV POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_IN_PROJECT=1 \
-    POETRY_CACHE_DIR=/tmp/poetry_cache
-
-# Copy dependency files first for better caching
+# Install only runtime dependencies first for better layer caching
 COPY pyproject.toml poetry.lock ./
+ENV POETRY_PYPI_MIRROR_URL=https://mirrors.aliyun.com/pypi/simple/
+RUN poetry install --no-root --only main --no-ansi
 
-# Install Python dependencies
-ARG INSTALL_TEST_DEPS=false
-RUN if [ "$INSTALL_TEST_DEPS" = "true" ]; then poetry install --no-root --no-interaction --no-ansi --no-cache --with test; else poetry install --no-root --no-interaction --no-ansi --no-cache; fi
-
-# Copy application code
+# Copy source code
 COPY . .
 
-# S2.5 Batch C: Create non-root user for security
-# Container should NOT run as root
-RUN useradd --create-home --shell /bin/bash mpango
-RUN chown -R mpango:mpango /app
+# Make entrypoint executable
+RUN chmod +x docker-entrypoint.sh
+
+# Run as non-root for staging hardening
+RUN useradd --create-home --shell /bin/bash mpango \
+    && chown -R mpango:mpango /app
 USER mpango
 
-# Expose port
 EXPOSE 8000
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --retries=5 \
+  CMD curl -fsS http://localhost:8000/health/live || exit 1
 
-# Command will be overridden in docker-compose
-CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["./docker-entrypoint.sh"]

@@ -1,34 +1,16 @@
 -- Mpango ERP Database Initialization Script
--- This script sets up the basic database structure
+-- Only sets up prerequisites that Alembic migrations depend on.
+-- All table creation is owned by Alembic — do NOT create tables here.
 
--- Enable UUID extension
+-- Enable UUID extension (required by migrations)
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Create public schema tables (tenant registry)
-CREATE TABLE IF NOT EXISTS public.wholesalers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    code VARCHAR(32) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    address TEXT,
-    contact TEXT,
-    plan_type VARCHAR(50),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    deleted_at TIMESTAMPTZ
+-- Pre-create alembic_version with wider column (default is VARCHAR(32),
+-- but this project uses long descriptive revision IDs up to ~50 chars)
+CREATE TABLE IF NOT EXISTS public.alembic_version (
+    version_num VARCHAR(128) NOT NULL,
+    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
 );
 
--- Create indexes for wholesalers
-CREATE INDEX IF NOT EXISTS idx_wholesalers_code ON public.wholesalers(code);
-CREATE INDEX IF NOT EXISTS idx_wholesalers_is_deleted ON public.wholesalers(is_deleted);
-
--- Insert sample wholesaler for development
-INSERT INTO public.wholesalers (code, name, address, contact, plan_type)
-VALUES ('DEV001', 'Development Wholesaler', '123 Dev Street', 'dev@mpango.com', 'premium')
-ON CONFLICT (code) DO NOTHING;
-
--- Create development tenant schema
+-- Create development tenant schema (Alembic migrations may reference it)
 CREATE SCHEMA IF NOT EXISTS "t_dev";
-
--- Note: Actual tenant tables will be created via Alembic migrations
--- This script only sets up the basic structure and sample data

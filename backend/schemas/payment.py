@@ -5,6 +5,7 @@ from decimal import Decimal
 from enum import Enum
 
 from pydantic import BaseModel, Field
+from schemas.base import CamelModel
 
 
 class PaymentMethod(str, Enum):
@@ -27,7 +28,8 @@ class PaymentCreateRequest(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class PaymentData(BaseModel):
+class PaymentData(CamelModel):
+    """v0.1.9: CamelModel adapter (accepts camelCase input)"""
     id: str
     order_id: str
     retailer_id: str
@@ -37,8 +39,6 @@ class PaymentData(BaseModel):
     status: PaymentStatus
     created_at: datetime
     updated_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class PaymentResponse(BaseModel):

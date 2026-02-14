@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from schemas.base import CamelModel
 
 
 class InvitationCreateRequest(BaseModel):
@@ -13,7 +14,8 @@ class InvitationCreateRequest(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class InvitationData(BaseModel):
+class InvitationData(CamelModel):
+    """v0.1.9: CamelModel adapter (accepts camelCase input)"""
     code: str = Field(..., description="Invitation code")
     status: str = Field(..., description="Invitation status")
     wholesaler_id: str = Field(..., description="Inviting wholesaler id")
@@ -21,10 +23,9 @@ class InvitationData(BaseModel):
     expires_at: Optional[datetime] = Field(None, description="Expiration timestamp")
     created_at: datetime = Field(..., description="Created timestamp")
 
-    model_config = {"from_attributes": True}
 
-
-class InvitationLookupData(BaseModel):
+class InvitationLookupData(CamelModel):
+    """v0.1.9: CamelModel adapter (accepts camelCase input)"""
     code: str = Field(..., description="Invitation code")
     usable: bool = Field(..., description="Whether invitation can be used")
     reason: Optional[str] = Field(None, description="Reason if not usable")
@@ -32,5 +33,3 @@ class InvitationLookupData(BaseModel):
     wholesaler_id: Optional[str] = Field(None, description="Inviting wholesaler id")
     wholesaler_name: Optional[str] = Field(None, description="Inviting wholesaler name")
     expires_at: Optional[datetime] = Field(None, description="Expiration timestamp")
-
-    model_config = {"from_attributes": True}

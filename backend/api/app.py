@@ -90,6 +90,7 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.v1 import (
         auth, users, roles, orders, health, invitations,
         retailers, skus, inventory, metrics, payments, prometheus,
+        wholesalers,
         profiling_test,  # S3-A Part 4
         jobs_test  # S4-A
     )
@@ -117,6 +118,7 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
     app.include_router(skus.router, prefix="/api/v1/skus", tags=["skus"])
     app.include_router(inventory.router, prefix="/api/v1/inventory", tags=["inventory"])
+    app.include_router(wholesalers.router, prefix="/api/v1/wholesalers", tags=["wholesalers"])
     app.include_router(invitations.router, prefix="/api/v1", tags=["invitations"])
     app.include_router(retailers.router, prefix="/api/v1", tags=["retailers"])
     app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])

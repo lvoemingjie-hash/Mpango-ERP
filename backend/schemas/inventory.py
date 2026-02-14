@@ -4,9 +4,11 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
+from schemas.base import CamelModel
 
 
-class StockViewRead(BaseModel):
+class StockViewRead(CamelModel):
+    """v0.1.9: CamelModel adapter (accepts camelCase input)"""
     sku_id: str
     sku_code: str
     sku_name: str
@@ -14,5 +16,3 @@ class StockViewRead(BaseModel):
     quantity_reserved: Decimal
     quantity_available: Decimal
     updated_at: datetime
-
-    model_config = {"from_attributes": True}

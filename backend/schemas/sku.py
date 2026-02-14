@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from schemas.base import CamelModel
 
 
 class SKUCreateRequest(BaseModel):
@@ -23,7 +24,8 @@ class SKUUpdateRequest(BaseModel):
     is_active: Optional[bool] = None
 
 
-class SKURead(BaseModel):
+class SKURead(CamelModel):
+    """v0.1.9: CamelModel adapter (accepts camelCase input)"""
     id: str
     sku_code: str
     name: str
@@ -33,5 +35,3 @@ class SKURead(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-
-    model_config = {"from_attributes": True}

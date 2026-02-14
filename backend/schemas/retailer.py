@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional, List
 
 from pydantic import BaseModel, Field
+from schemas.base import CamelModel
 
 
 class RetailerRegisterRequest(BaseModel):
@@ -16,24 +17,22 @@ class RetailerRegisterRequest(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class RetailerData(BaseModel):
+class RetailerData(CamelModel):
+    """v0.1.9: CamelModel adapter (accepts camelCase input)"""
     id: str = Field(..., description="Retailer id")
     phone: str = Field(..., description="Retailer phone")
     name: Optional[str] = Field(None, description="Retailer name")
     email: Optional[str] = Field(None, description="Retailer email")
     address: Optional[str] = Field(None, description="Retailer address")
 
-    model_config = {"from_attributes": True}
 
-
-class BindingData(BaseModel):
+class BindingData(CamelModel):
+    """v0.1.9: CamelModel adapter (accepts camelCase input)"""
     id: str = Field(..., description="Binding id")
     wholesaler_id: str = Field(..., description="Wholesaler id")
     retailer_id: str = Field(..., description="Retailer id")
     status: str = Field(..., description="Binding status")
     created_at: datetime = Field(..., description="Created timestamp")
-
-    model_config = {"from_attributes": True}
 
 
 class RetailerRegisterResponseData(BaseModel):

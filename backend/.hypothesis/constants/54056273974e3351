@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\schemas\retailer.py
+# hypothesis_version: 6.150.2
+
+['Binding id', 'Binding status', 'Created timestamp', 'Invitation code', 'Retailer address', 'Retailer email', 'Retailer id', 'Retailer name', 'Retailer phone', 'Wholesaler id', 'from_attributes']

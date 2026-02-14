@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\models\job.py
+# hypothesis_version: 6.150.2
+
+[255, 'attempts', 'completed_at', 'created_at', 'id', 'job_name', 'last_error', 'max_retries', 'payload', 'pending', 'public', 'schema', 'started_at', 'status', 'sys_jobs', 'updated_at']

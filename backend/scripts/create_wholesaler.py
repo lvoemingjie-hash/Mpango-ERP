@@ -168,6 +168,9 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
         ("users:create", "Create users"),
         ("users:update", "Update users"),
         ("users:deactivate", "Deactivate users"),
+        # Wholesaler permissions
+        ("wholesalers:read", "Read wholesalers"),
+        ("wholesalers:write", "Create/update/delete wholesalers"),
         # Role permissions
         ("roles:read", "Read roles"),
         ("roles:create", "Create roles"),

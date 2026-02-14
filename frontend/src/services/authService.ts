@@ -1,18 +1,22 @@
-import api from './api'
-import { LoginRequest, LoginResponse } from '../types/auth'
+import { api } from '@/services/api';
+import type {
+  LoginRequest,
+  LoginResponse,
+  CurrentUserResponse,
+} from '@/types/auth';
 
+/**
+ * Auth API service — thin wrapper over api.ts.
+ * No business logic here (per frontend_contract.md §3).
+ */
 export const authService = {
-  login: async (loginData: LoginRequest): Promise<LoginResponse> => {
-    const response = await api.post('/auth/login', loginData)
-    return response.data
-  },
+  login: (payload: LoginRequest) =>
+    api.post<LoginResponse>('/auth/login', payload),
 
-  refreshToken: async (refreshToken: string): Promise<LoginResponse> => {
-    const response = await api.post('/auth/refresh', { refresh_token: refreshToken })
-    return response.data
-  },
+  refresh: (refreshToken: string) =>
+    api.post<LoginResponse>('/auth/refresh', { refresh_token: refreshToken }),
 
-  logout: async (): Promise<void> => {
-    await api.post('/auth/logout')
-  },
-}
+  me: () => api.get<CurrentUserResponse>('/auth/me'),
+
+  logout: () => api.post('/auth/logout'),
+};

@@ -9,6 +9,7 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from uuid import UUID
 import re
+from schemas.base import CamelModel
 
 
 # S2.5: Regex patterns for input validation
@@ -42,7 +43,7 @@ class UserCreateRequest(BaseModel):
     """
     User creation request.
     Implements openapi.yaml UserCreateRequest schema.
-    
+
     S2.5: Enhanced validation to prevent injection attacks.
     """
     email: EmailStr = Field(..., description="User email")
@@ -71,7 +72,7 @@ class UserUpdateRequest(BaseModel):
     """
     User update request.
     Implements openapi.yaml UserUpdateRequest schema.
-    
+
     S2.5: Enhanced validation to prevent injection attacks.
     """
     email: EmailStr | None = Field(None, description="User email")
@@ -96,10 +97,11 @@ class UserUpdateRequest(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class RoleRead(BaseModel):
+class RoleRead(CamelModel):
     """
     Role read schema.
     Implements openapi.yaml Role schema.
+    v0.1.9: CamelModel adapter (accepts camelCase input)
 
     NOTE: password_hash is NEVER included in read schemas per requirement 5.3
     """
@@ -107,13 +109,12 @@ class RoleRead(BaseModel):
     name: str = Field(..., description="Role name")
     description: str | None = Field(None, description="Role description")
 
-    model_config = {"from_attributes": True}
 
-
-class UserRead(BaseModel):
+class UserRead(CamelModel):
     """
     User read schema.
     Implements openapi.yaml User schema.
+    v0.1.9: CamelModel adapter (accepts camelCase input)
 
     CRITICAL: password_hash is NEVER included per requirement 5.3
     """
@@ -124,8 +125,6 @@ class UserRead(BaseModel):
     roles: List[RoleRead] = Field(default_factory=list, description="User roles")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-
-    model_config = {"from_attributes": True}
 
 
 class UserResponse(BaseModel):

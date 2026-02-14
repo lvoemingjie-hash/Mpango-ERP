@@ -81,3 +81,4 @@ id_ed25519.pub
 *~
 .env
 ai-ledger/
+backend/.hypothesis/

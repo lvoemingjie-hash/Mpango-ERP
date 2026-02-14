@@ -2,6 +2,7 @@
 Mpango ERP Pydantic Schemas.
 Exports all schema classes for easy importing.
 """
+from schemas.base import CamelModel
 from schemas.common import (
     Pagination,
     ErrorDetail,
@@ -39,8 +40,18 @@ from schemas.order import (
     OrderListResponse,
     OrderActionResponse
 )
+from schemas.wholesaler import (
+    WholesalerCreate,
+    WholesalerUpdate,
+    WholesalerRead,
+    WholesalerResponse,
+    WholesalerListResponse
+)
 
 __all__ = [
+    # Base
+    "CamelModel",
+
     # Common
     "Pagination",
     "ErrorDetail",
@@ -77,4 +88,11 @@ __all__ = [
     "OrderResponse",
     "OrderListResponse",
     "OrderActionResponse",
+
+    # Wholesaler
+    "WholesalerCreate",
+    "WholesalerUpdate",
+    "WholesalerRead",
+    "WholesalerResponse",
+    "WholesalerListResponse",
 ]

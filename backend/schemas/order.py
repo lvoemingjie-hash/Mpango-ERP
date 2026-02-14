@@ -10,6 +10,7 @@ from decimal import Decimal
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 import re
+from schemas.base import CamelModel
 
 
 # S2.5: Regex patterns for input validation
@@ -42,7 +43,7 @@ class OrderItemCreate(BaseModel):
     """
     Order item creation request.
     Implements openapi.yaml OrderItemCreate schema.
-    
+
     S2.5: Enhanced validation to prevent injection attacks.
     """
     product_name: str = Field(..., min_length=1, max_length=255, description="Product name snapshot")
@@ -70,10 +71,11 @@ class OrderItemCreate(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class OrderItem(BaseModel):
+class OrderItem(CamelModel):
     """
     Order item read schema.
     Implements openapi.yaml OrderItem schema.
+    v0.1.9: CamelModel adapter (accepts camelCase input)
     """
     id: str = Field(..., description="Order item UUID")
     product_name: str = Field(..., description="Product name snapshot")
@@ -81,8 +83,6 @@ class OrderItem(BaseModel):
     quantity: int = Field(..., description="Item quantity")
     unit_price: Decimal = Field(..., description="Unit price")
     subtotal: Decimal = Field(..., description="Line item subtotal")
-
-    model_config = {"from_attributes": True}
 
 
 # ============================================================================
@@ -93,7 +93,7 @@ class OrderCreateRequest(BaseModel):
     """
     Order creation request.
     Implements openapi.yaml OrderCreateRequest schema.
-    
+
     S2.5: Enhanced validation to prevent injection attacks.
     """
     retailer_id: str = Field(..., min_length=36, max_length=36, description="Retailer UUID")
@@ -116,10 +116,11 @@ class OrderCreateRequest(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class Order(BaseModel):
+class Order(CamelModel):
     """
     Order read schema.
     Implements openapi.yaml Order schema.
+    v0.1.9: CamelModel adapter (accepts camelCase input)
     """
     id: str = Field(..., description="Order UUID")
     wholesaler_id: str = Field(..., description="Wholesaler/Tenant UUID")
@@ -132,8 +133,6 @@ class Order(BaseModel):
     created_by: str | None = Field(None, description="Creator user UUID")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-
-    model_config = {"from_attributes": True}
 
 
 class OrderResponse(BaseModel):

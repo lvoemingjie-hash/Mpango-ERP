@@ -1,6 +1,6 @@
 ﻿# Mpango ERP — AI Ledger Index
 
-**Last Updated**: 2026-02-12
+**Last Updated**: 2026-02-13
 **Purpose**: Central index of all AI-generated technical ledger documents.
 
 ---
@@ -131,8 +131,15 @@
 | B6 | Verification & Test Mode | [backend/2026-02-01_b6_verification_test_mode_implementation.md](backend/2026-02-01_b6_verification_test_mode_implementation.md) |
 | S5-5 | Summary | [backend/2026-02-06_s5_5_summary.md](backend/2026-02-06_s5_5_summary.md) |
 | Analysis | Backend Analysis (Work 0112) |
-| S8-GOV | Track C Readiness | [backend/s8-gov_track_c_readiness.md](backend/s8-gov_track_c_readiness.md) | [backend/2026-1-13_mpango_erp_backend_analysis_based_on_work0112.md](backend/2026-1-13_mpango_erp_backend_analysis_based_on_work0112.md) |
+| S8-GOV | Track C Readiness |
+| C0 | Frontend Init | [frontend/phase_c0_init.md](frontend/phase_c0_init.md) |
+| C1 | Auth & Session | [frontend/phase_c1_auth.md](frontend/phase_c1_auth.md) |
+| C2 | App Layout | [frontend/phase_c2_layout.md](frontend/phase_c2_layout.md) |
+| C3 | Tenants CRUD | [frontend/phase_c3_tenants.md](frontend/phase_c3_tenants.md) | [backend/s8-gov_track_c_readiness.md](backend/s8-gov_track_c_readiness.md) | [backend/2026-1-13_mpango_erp_backend_analysis_based_on_work0112.md](backend/2026-1-13_mpango_erp_backend_analysis_based_on_work0112.md) |
 
+| 2026-02-13 | Wholesaler CRUD Blocker | [backend/2026-02-13_wholesaler_crud_endpoints_blocker.md](backend/2026-02-13_wholesaler_crud_endpoints_blocker.md) |
+| 2026-02-13 | Frontend Greenlight (Wholesaler CRUD) | [backend/2026-02-13_frontend_greenlight_wholesaler_crud.md](backend/2026-02-13_frontend_greenlight_wholesaler_crud.md) |
+| C3-Feedback | API Consumer Audit | [frontend/phase_c3_feedback.md](frontend/phase_c3_feedback.md) |
 ---
 
 *This index is maintained by Backend AI. Update when new ledger documents are created.*

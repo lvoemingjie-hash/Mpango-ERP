@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\core\jobs\local_queue.py
+# hypothesis_version: 6.150.2
+
+[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 'Job queue stopped', 'Total jobs enqueued', 'Total jobs failed', 'attempt', 'attempts', 'completed', 'completed_at', 'delay_seconds', 'duration_seconds', 'enqueued', 'enqueued_at', 'error', 'failed', 'job_id', 'job_name', 'jobs_completed_total', 'jobs_enqueued_total', 'jobs_failed_total', 'jobs_pending', 'jobs_running', 'max_retries', 'max_workers', 'payload', 'pending', 'public', 'queue_size', 'running', 'started_at', 'stats', 'status', 'tenant_schema', 'total_jobs', 'worker_id']

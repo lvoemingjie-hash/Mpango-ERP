@@ -1,0 +1,133 @@
+# =============================================================================
+# Mpango ERP — Production-like Docker Compose (Track E2)
+#
+# NO development mounts. Strict env vars. Health checks on all services.
+#
+# Usage:
+#   cp .env.example .env.prod   # fill in secrets
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 15
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: mpango_prod_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - mpango_network
+
+  # ---------------------------------------------------------------------------
+  # Redis 7
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: mpango_prod_redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+    networks:
+      - mpango_network
+
+  # ---------------------------------------------------------------------------
+  # Backend (FastAPI) — production image, no source mounts
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mpango_prod_backend
+    restart: always
+    environment:
+      # Environment (REQUIRED)
+      - MPANGO_ENV=${MPANGO_ENV:?MPANGO_ENV must be set}
+      # Database (REQUIRED)
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - DATABASE_ECHO=false
+      # Redis (REQUIRED)
+      - REDIS_URL=redis://redis:6379/0
+      # Security (REQUIRED)
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set}
+      - ALGORITHM=${ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      # Application
+      - APP_NAME=${APP_NAME:-Mpango ERP}
+      - DEBUG=false
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Multi-tenancy
+      - DEFAULT_TENANT_SCHEMA=${DEFAULT_TENANT_SCHEMA:-t_dev}
+      # Observability
+      - ENABLE_METRICS=true
+      - ENABLE_REQUEST_LOGGING=true
+      - ENABLE_SQL_PROFILING=false
+      - SLOW_QUERY_THRESHOLD_MS=${SLOW_QUERY_THRESHOLD_MS:-100}
+      # Reporting migration
+      - REPORTING_USER_PASSWORD=${REPORTING_USER_PASSWORD:?REPORTING_USER_PASSWORD must be set}
+      # Pool & Timeout
+      - REQUEST_TIMEOUT_SECONDS=${REQUEST_TIMEOUT_SECONDS:-30}
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_CONNECT_TIMEOUT=${DB_CONNECT_TIMEOUT:-10}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - mpango_network
+
+  # ---------------------------------------------------------------------------
+  # Gateway (nginx reverse proxy)
+  # ---------------------------------------------------------------------------
+  gateway:
+    image: nginx:alpine
+    container_name: mpango_prod_gateway
+    restart: always
+    ports:
+      - "${GATEWAY_PORT:-80}:80"
+    volumes:
+      - ./nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - mpango_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  mpango_network:
+    driver: bridge

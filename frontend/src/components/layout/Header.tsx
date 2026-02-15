@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom';
 import { ChevronRightIcon } from '@heroicons/react/20/solid';
 import { UserCircleIcon } from '@heroicons/react/24/solid';
+import { BuildingOffice2Icon } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
 
 /**
@@ -23,6 +24,7 @@ function useBreadcrumbs() {
 
 export function Header() {
   const user = useAuthStore((s) => s.user);
+  const tenantCode = useAuthStore((s) => s.tenantCode);
   const breadcrumbs = useBreadcrumbs();
 
   return (
@@ -47,20 +49,28 @@ export function Header() {
         ))}
       </nav>
 
-      {/* User Info */}
-      {user && (
-        <div className="flex items-center gap-2">
-          <UserCircleIcon className="h-8 w-8 text-gray-400" />
-          <div className="text-right">
-            <p className="text-sm font-medium text-gray-900">
-              {user.full_name || user.email}
-            </p>
-            <p className="text-xs text-gray-500">
-              {user.roles[0] || 'User'}
-            </p>
+      {/* Tenant + User Info */}
+      <div className="flex items-center gap-4">
+        {tenantCode && (
+          <div className="flex items-center gap-1.5 rounded-md bg-primary-50 px-2.5 py-1">
+            <BuildingOffice2Icon className="h-4 w-4 text-primary-600" />
+            <span className="text-xs font-semibold text-primary-700">{tenantCode}</span>
           </div>
-        </div>
-      )}
+        )}
+        {user && (
+          <div className="flex items-center gap-2">
+            <UserCircleIcon className="h-8 w-8 text-gray-400" />
+            <div className="text-right">
+              <p className="text-sm font-medium text-gray-900">
+                {user.full_name || user.email}
+              </p>
+              <p className="text-xs text-gray-500">
+                {user.roles[0] || 'User'}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </header>
   );
 }

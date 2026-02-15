@@ -21,12 +21,17 @@ class Settings(BaseSettings):
     - Enforces MPANGO_ENV constraints
     """
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
     # Environment - REQUIRED (S2-1)
-    MPANGO_ENV: Literal["production", "test"] = Field(
+    MPANGO_ENV: Literal["production", "staging", "test"] = Field(
         default="production",
-        description="Environment mode: production or test"
+        description="Environment mode: production, staging, or test"
     )
 
     # Database - REQUIRED (S2-1)
@@ -131,9 +136,9 @@ class Settings(BaseSettings):
     @classmethod
     def validate_environment(cls, v: str) -> str:
         """Validate MPANGO_ENV is one of allowed values."""
-        if v not in ("production", "test"):
+        if v not in ("production", "staging", "test"):
             raise ValueError(
-                f"MPANGO_ENV must be 'production' or 'test', got '{v}'"
+                f"MPANGO_ENV must be 'production', 'staging', or 'test', got '{v}'"
             )
         return v
 

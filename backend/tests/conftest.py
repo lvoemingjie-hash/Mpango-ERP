@@ -6,15 +6,57 @@ S5-OPS: Session-scoped event loop and robust async_session fixture to prevent
         "Event loop closed" errors in complex transaction tests (S5-A/S5-B).
 """
 import os
+from pathlib import Path
+from urllib.parse import quote_plus
+
 import pytest
 import pytest_asyncio
+from dotenv import dotenv_values
 
-# S2.5: Set test environment variables before importing settings
-# S8-SEC: Never hardcode real credentials — use env vars or generate test-only values
-os.environ.setdefault("DATABASE_URL", os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql://mpango:${POSTGRES_PASSWORD}@127.0.0.1:5432/mpango_erp"
-))
+def _load_test_env_defaults() -> None:
+    backend_dir = Path(__file__).resolve().parents[1]
+    project_root = backend_dir.parent
+    env_candidates = (
+        backend_dir / ".env.test",
+        backend_dir / ".env",
+        project_root / ".env",
+    )
+    for env_path in env_candidates:
+        if not env_path.is_file():
+            continue
+        for key, value in dotenv_values(env_path).items():
+            if value is not None:
+                os.environ.setdefault(key, value)
+
+
+def _build_database_url_from_postgres_env() -> str:
+    user = os.environ.get("POSTGRES_USER", "postgres")
+    password = os.environ.get("POSTGRES_PASSWORD", "postgres")
+    host = os.environ.get("POSTGRES_HOST", "127.0.0.1")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    database = os.environ.get("POSTGRES_DB", "mpango_erp")
+    return (
+        f"postgresql://{quote_plus(user)}:{quote_plus(password)}"
+        f"@{host}:{port}/{database}"
+    )
+
+
+def _resolve_test_database_url() -> str:
+    if os.environ.get("TEST_DATABASE_URL"):
+        return os.environ["TEST_DATABASE_URL"]
+    if os.environ.get("POSTGRES_USER") or os.environ.get("POSTGRES_PASSWORD"):
+        return _build_database_url_from_postgres_env()
+    if os.environ.get("DATABASE_URL"):
+        return os.environ["DATABASE_URL"]
+    return _build_database_url_from_postgres_env()
+
+
+# S2.5: Set test environment variables before importing settings.
+# S8-SEC: Load local test env defaults, then resolve the final DB URL.
+_load_test_env_defaults()
+os.environ["DATABASE_URL"] = _resolve_test_database_url()
+# S5/E1: deterministic tenant context used by tenant-guarded order/ledger tests
+os.environ.setdefault("TEST_TENANT_SCHEMA", "t_test")
 # Generate a deterministic but non-real test SECRET_KEY (passes 32-char + no-weak-substring validation)
 import hashlib as _hashlib
 _TEST_SECRET = _hashlib.sha256(b"mpango-test-runner-key-not-for-production").hexdigest()
@@ -26,15 +68,168 @@ os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:6379/0")
 import asyncio
 from typing import AsyncGenerator
 from sqlalchemy import text, event
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.session import async_engine, AsyncSessionLocal
+from database.session import AsyncSessionLocal
+
+
+TEST_TENANT_SCHEMA = os.environ.get("TEST_TENANT_SCHEMA", "t_test")
+TEST_TENANT_ID = os.environ.get("TEST_TENANT_ID", "11111111-1111-1111-1111-111111111111")
+
+
+async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: str) -> None:
+    """Ensure tenant test schema/tables exist for S5 order+ledger integration tests."""
+    await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{tenant_schema}"'))
+    await session.execute(text(f'SET search_path TO "{tenant_schema}", public'))
+
+    await session.execute(text("""
+        DO $$ BEGIN
+            CREATE TYPE order_status AS ENUM (
+                'draft',
+                'confirmed',
+                'partially_paid',
+                'paid',
+                'fulfilled',
+                'cancelled',
+                'voided'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """))
+
+    await session.execute(text("""
+        DO $$ BEGIN
+            CREATE TYPE account_type AS ENUM ('receivable', 'revenue', 'cash', 'liability');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """))
+
+    await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".orders (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            wholesaler_id UUID NOT NULL,
+            retailer_id UUID NOT NULL,
+            status order_status NOT NULL DEFAULT 'draft',
+            total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+            notes TEXT,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".order_items (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL REFERENCES "{tenant_schema}".orders(id) ON DELETE CASCADE,
+            product_name TEXT NOT NULL,
+            sku_code VARCHAR(64) NOT NULL,
+            quantity INTEGER NOT NULL,
+            unit_price NUMERIC(12, 2) NOT NULL,
+            subtotal NUMERIC(12, 2) NOT NULL,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".ledger_entries (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            transaction_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            account_type account_type NOT NULL,
+            amount NUMERIC(20, 4) NOT NULL,
+            reference_type VARCHAR(50) NOT NULL,
+            reference_id UUID NOT NULL,
+            description TEXT,
+            entry_version INTEGER NOT NULL DEFAULT 1,
+            hash VARCHAR(64),
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_orders_wholesaler_id ON "{tenant_schema}".orders(wholesaler_id)
+    """))
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_orders_retailer_id ON "{tenant_schema}".orders(retailer_id)
+    """))
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_orders_status ON "{tenant_schema}".orders(status)
+    """))
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_orders_created_at ON "{tenant_schema}".orders(created_at)
+    """))
+
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_order_items_order_id ON "{tenant_schema}".order_items(order_id)
+    """))
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_order_items_sku_code ON "{tenant_schema}".order_items(sku_code)
+    """))
+
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_ledger_entries_reference
+        ON "{tenant_schema}".ledger_entries(reference_type, reference_id)
+    """))
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_ledger_entries_account_type
+        ON "{tenant_schema}".ledger_entries(account_type)
+    """))
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_ledger_entries_transaction_date
+        ON "{tenant_schema}".ledger_entries(transaction_date)
+    """))
+
+    await session.execute(text("""
+        CREATE OR REPLACE FUNCTION public.prevent_ledger_modification()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            IF TG_OP = 'UPDATE' THEN
+                RAISE EXCEPTION 'Ledger entries are immutable. UPDATE operations are not allowed.'
+                    USING ERRCODE = 'integrity_constraint_violation',
+                          HINT = 'Ledger entries cannot be modified after creation. Create a correction entry instead.';
+            END IF;
+
+            IF TG_OP = 'DELETE' THEN
+                RAISE EXCEPTION 'Ledger entries are immutable. DELETE operations are not allowed.'
+                    USING ERRCODE = 'integrity_constraint_violation',
+                          HINT = 'Ledger entries cannot be deleted. Create a reversal entry instead.';
+            END IF;
+
+            RETURN OLD;
+        END;
+        $$ LANGUAGE plpgsql;
+    """))
+
+    await session.execute(text(f"""
+        DROP TRIGGER IF EXISTS prevent_ledger_modification_trigger
+        ON "{tenant_schema}".ledger_entries
+    """))
+    await session.execute(text(f"""
+        CREATE TRIGGER prevent_ledger_modification_trigger
+        BEFORE UPDATE OR DELETE ON "{tenant_schema}".ledger_entries
+        FOR EACH ROW
+        EXECUTE FUNCTION public.prevent_ledger_modification()
+    """))
 
 
 # ---------------------------------------------------------------------------
 # S5-OPS FIX 1: Session-scoped event loop
 # ---------------------------------------------------------------------------
-# pytest-asyncio creates a new event loop per test by default.  When
 # SQLAlchemy's async engine holds connections that outlive that loop the
 # engine raises "Event loop is closed".  A session-scoped loop keeps a
 # single loop alive for the entire test run so the engine's pool is always
@@ -76,14 +271,24 @@ async def async_session() -> AsyncGenerator[AsyncSession, None]:
     - Event loop stays alive across the full test suite (session-scoped loop)
     """
     async with AsyncSessionLocal() as session:
-        tenant_schema = "t_test"
+        tenant_schema = TEST_TENANT_SCHEMA
+        tenant_id = TEST_TENANT_ID
 
         # Store tenant info on the session for middleware / helpers
         session.info["tenant_schema"] = tenant_schema
+        session.info["tenant_id"] = tenant_id
 
-        # Ensure the tenant schema exists (idempotent)
+        # Ensure schema + S5 tables/types/triggers exist (idempotent)
+        await _bootstrap_tenant_test_schema(session, tenant_schema)
+
+        # Hard test isolation: remove S5 state machine / ledger rows per test
         await session.execute(
-            text(f'CREATE SCHEMA IF NOT EXISTS "{tenant_schema}"')
+            text(
+                f'TRUNCATE TABLE "{tenant_schema}".order_items, '
+                f'"{tenant_schema}".ledger_entries, '
+                f'"{tenant_schema}".orders '
+                "RESTART IDENTITY CASCADE"
+            )
         )
         await session.commit()
 

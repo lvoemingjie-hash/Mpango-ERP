@@ -5,6 +5,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.tenant_filter import run_as_system
 from repositories.binding_repository import BindingRepository
 from repositories.invitation_repository import InvitationRepository
 from repositories.retailer_repository import RetailerRepository
@@ -31,54 +32,57 @@ class RetailerService:
         email: str | None = None,
         address: str | None = None,
     ):
-        invitation = await self._invitation_repo.get_by_code(db, code=invitation_code)
-        if not invitation:
-            return None, None, None, "INVITATION_NOT_FOUND"
+        # Public endpoint flow: registration by invitation code is intentionally
+        # system-scoped and cannot rely on authenticated tenant context.
+        with run_as_system(reason="public_retailer_registration_by_invitation"):
+            invitation = await self._invitation_repo.get_by_code(db, code=invitation_code)
+            if not invitation:
+                return None, None, None, "INVITATION_NOT_FOUND"
 
-        now = datetime.utcnow()
+            now = datetime.utcnow()
 
-        if invitation.status != "active":
-            return invitation, None, None, "INVITATION_NOT_ACTIVE"
+            if invitation.status != "active":
+                return invitation, None, None, "INVITATION_NOT_ACTIVE"
 
-        if invitation.expires_at and invitation.expires_at < now:
-            return invitation, None, None, "INVITATION_EXPIRED"
+            if invitation.expires_at and invitation.expires_at < now:
+                return invitation, None, None, "INVITATION_EXPIRED"
 
-        if invitation.retailer_phone and invitation.retailer_phone != phone:
-            return invitation, None, None, "INVITATION_PHONE_MISMATCH"
+            if invitation.retailer_phone and invitation.retailer_phone != phone:
+                return invitation, None, None, "INVITATION_PHONE_MISMATCH"
 
-        retailer = await self._retailer_repo.get_by_phone(db, phone=phone)
-        if not retailer:
-            retailer = await self._retailer_repo.create(
-                db,
-                phone=phone,
-                name=name,
-                email=email,
-                address=address,
-            )
+            retailer = await self._retailer_repo.get_by_phone(db, phone=phone)
+            if not retailer:
+                retailer = await self._retailer_repo.create(
+                    db,
+                    phone=phone,
+                    name=name,
+                    email=email,
+                    address=address,
+                )
 
-        existing = await self._binding_repo.get_binding(
-            db,
-            wholesaler_id=invitation.wholesaler_id,
-            retailer_id=retailer.id,
-        )
-        if not existing:
-            binding = await self._binding_repo.create(
+            existing = await self._binding_repo.get_binding(
                 db,
                 wholesaler_id=invitation.wholesaler_id,
                 retailer_id=retailer.id,
-                status="active",
             )
-        else:
-            binding = existing
+            if not existing:
+                binding = await self._binding_repo.create(
+                    db,
+                    wholesaler_id=invitation.wholesaler_id,
+                    retailer_id=retailer.id,
+                    status="active",
+                )
+            else:
+                binding = existing
 
-        await self._invitation_repo.mark_used(
-            db,
-            invitation_id=invitation.id,
-            retailer_id=retailer.id,
-            used_at=now,
-        )
+            await self._invitation_repo.mark_used(
+                db,
+                invitation_id=invitation.id,
+                retailer_id=retailer.id,
+                used_at=now,
+            )
 
-        return invitation, retailer, binding, None
+            return invitation, retailer, binding, None
 
     async def list_bindings_for_wholesaler(
         self,

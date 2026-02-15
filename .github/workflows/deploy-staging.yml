@@ -1,0 +1,174 @@
+# =============================================================================
+# Track E2: Staging Deployment Pipeline
+#
+# Triggers on push to main. Runs backend tests as gatekeeper.
+# If tests pass, builds production Docker image and (mock) deploys.
+# =============================================================================
+name: Deploy Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gate: Backend Tests (must pass before any deployment)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Backend Tests (Gatekeeper)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d test_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry==2.2.1
+
+      - name: Install dependencies
+        working-directory: backend
+        run: poetry install --no-interaction --no-ansi
+
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            echo "Waiting for postgres..."
+            sleep 2
+          done
+
+      - name: Bootstrap test DB
+        working-directory: backend
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d test_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+          psql -h localhost -U postgres -d test_db -c "CREATE SCHEMA IF NOT EXISTS t_dev;"
+          psql -h localhost -U postgres -d test_db -c "CREATE SCHEMA IF NOT EXISTS t_test;"
+
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          MPANGO_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: ci-test-secret-key-minimum-32-characters-long
+          REPORTING_USER_PASSWORD: ReportingPass_ci_2026
+        run: |
+          poetry run pytest \
+            --ignore=tests/test_s3c_cache.py \
+            --ignore=tests/test_s3c_integration.py \
+            --ignore=tests/test_s6_p_reporting_constraints.py \
+            --ignore=tests/test_b5_real_db.py \
+            --ignore=tests/test_reliability.py \
+            --ignore=tests/test_s3_profiling.py \
+            -q --tb=short
+
+  # ---------------------------------------------------------------------------
+  # Build: Docker image
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=staging-
+            type=raw,value=staging-latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Deploy: (mock) — outputs instructions for manual staging deploy
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Staging deployment summary
+        run: |
+          echo "============================================="
+          echo "  Mpango ERP — Staging Deployment Ready"
+          echo "============================================="
+          echo ""
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-latest"
+          echo "Commit: ${{ github.sha }}"
+          echo ""
+          echo "To deploy manually:"
+          echo "  1. SSH into staging server"
+          echo "  2. docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-latest"
+          echo "  3. docker compose -f docker-compose.prod.yml up -d"
+          echo "  4. bash scripts/reset-staging.sh  # (first time only)"
+          echo ""
+          echo "Or use the production-like local run:"
+          echo "  docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build"
+          echo ""

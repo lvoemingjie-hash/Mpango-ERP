@@ -27,6 +27,13 @@ from core.domain.order_state import (
 )
 
 
+def _tenant_wholesaler_id(async_session) -> uuid.UUID:
+    tenant_id = async_session.info.get("tenant_id")
+    if tenant_id is None:
+        raise AssertionError("async_session fixture must provide tenant_id")
+    return uuid.UUID(str(tenant_id))
+
+
 # ============================================================================
 # Unit Tests: State Machine Logic
 # ============================================================================
@@ -81,7 +88,7 @@ def test_terminal_states():
 @pytest.fixture
 async def sample_order(async_session):
     """Create a sample order for testing."""
-    wholesaler_id = uuid.uuid4()
+    wholesaler_id = _tenant_wholesaler_id(async_session)
     retailer_id = uuid.uuid4()
     
     order = Order(
@@ -192,7 +199,7 @@ async def test_invariant_violation_confirm_zero_total(async_session):
     
     # Create order with zero total
     order = Order(
-        wholesaler_id=uuid.uuid4(),
+        wholesaler_id=_tenant_wholesaler_id(async_session),
         retailer_id=uuid.uuid4(),
         status=OrderStatus.DRAFT,
         total_amount=Decimal("0.00"),
@@ -262,7 +269,7 @@ async def test_void_vs_cancel_rules(async_session, sample_order):
     
     # Test 1: VOID from DRAFT (should succeed)
     order1 = Order(
-        wholesaler_id=uuid.uuid4(),
+        wholesaler_id=_tenant_wholesaler_id(async_session),
         retailer_id=uuid.uuid4(),
         status=OrderStatus.DRAFT,
         total_amount=Decimal("100.00")

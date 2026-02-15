@@ -31,11 +31,13 @@ Security:
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.context.tenant import TenantContext, get_tenant_context
+from api.middleware.rbac import RequirePermission
+from core.security import TokenPayload
 from api.schemas.dashboard import (
     SemanticQueryRequest,
     KpiCard,
@@ -122,7 +124,10 @@ def _build_builder(
         "Empty materialized views return 0 (graceful degradation)."
     ),
 )
-async def get_kpi_summary(request: Request) -> JSONResponse:
+async def get_kpi_summary(
+    request: Request,
+    token: TokenPayload = Depends(RequirePermission("dashboards:read")),
+) -> JSONResponse:
     """
     TIER 1: Hardcoded KPI summary.
 
@@ -208,6 +213,7 @@ async def get_sales_trend(
     granularity: TimeGranularity = Query(
         default=TimeGranularity.DAY, description="day, week, or month"
     ),
+    token: TokenPayload = Depends(RequirePermission("dashboards:read")),
 ) -> JSONResponse:
     """
     TIER 2: Sales trend chart.
@@ -269,6 +275,7 @@ async def get_cash_flow_trend(
     granularity: TimeGranularity = Query(
         default=TimeGranularity.DAY, description="day, week, or month"
     ),
+    token: TokenPayload = Depends(RequirePermission("dashboards:read")),
 ) -> JSONResponse:
     """TIER 2: Cash flow trend chart. Metric hardcoded to NET_CASH_CHANGE."""
     tenant_ctx: TenantContext = _extract_tenant(request)
@@ -326,6 +333,7 @@ async def get_cash_flow_trend(
 async def analyze_report(
     request: Request,
     body: SemanticQueryRequest,
+    token: TokenPayload = Depends(RequirePermission("reports:analyze")),
 ) -> JSONResponse:
     """
     TIER 3: Ad-hoc analysis via SemanticQueryBuilder.
@@ -431,7 +439,10 @@ async def analyze_report(
         "Frontend uses this to build dynamic query forms."
     ),
 )
-async def get_view_schema(view_scope: ViewScope) -> JSONResponse:
+async def get_view_schema(
+    view_scope: ViewScope,
+    token: TokenPayload = Depends(RequirePermission("reports:read")),
+) -> JSONResponse:
     """
     Returns the semantic schema for a view — what can be queried.
 

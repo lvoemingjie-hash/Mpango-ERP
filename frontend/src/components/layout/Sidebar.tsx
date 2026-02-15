@@ -5,6 +5,8 @@ import {
   UsersIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
+  ClipboardDocumentListIcon,
+  CubeIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -16,6 +18,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: HomeIcon },
+  { label: 'Orders', path: '/orders', icon: ClipboardDocumentListIcon },
+  { label: 'Inventory', path: '/inventory', icon: CubeIcon },
   { label: 'Tenants', path: '/tenants', icon: BuildingOfficeIcon },
   { label: 'Users', path: '/users', icon: UsersIcon },
   { label: 'Settings', path: '/settings', icon: Cog6ToothIcon },

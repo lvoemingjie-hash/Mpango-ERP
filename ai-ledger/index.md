@@ -1,6 +1,6 @@
 ﻿# Mpango ERP — AI Ledger Index
 
-**Last Updated**: 2026-02-13
+**Last Updated**: 2026-02-15
 **Purpose**: Central index of all AI-generated technical ledger documents.
 
 ---

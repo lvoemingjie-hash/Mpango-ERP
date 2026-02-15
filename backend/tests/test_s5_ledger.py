@@ -27,6 +27,13 @@ from core.domain.order_state import OrderState
 from core.exceptions import LedgerIntegrityError
 
 
+def _tenant_wholesaler_id(async_session) -> uuid.UUID:
+    tenant_id = async_session.info.get("tenant_id")
+    if tenant_id is None:
+        raise AssertionError("async_session fixture must provide tenant_id")
+    return uuid.UUID(str(tenant_id))
+
+
 # ============================================================================
 # Unit Tests: Ledger Service
 # ============================================================================
@@ -192,7 +199,7 @@ async def test_get_entries_for_reference(async_session):
 @pytest.fixture
 async def sample_order_for_ledger(async_session):
     """Create a sample order for ledger testing."""
-    wholesaler_id = uuid.uuid4()
+    wholesaler_id = _tenant_wholesaler_id(async_session)
     retailer_id = uuid.uuid4()
     
     order = Order(
@@ -460,7 +467,7 @@ async def test_multiple_orders_accounting(async_session):
     orders = []
     for i in range(2):
         order = Order(
-            wholesaler_id=uuid.uuid4(),
+            wholesaler_id=_tenant_wholesaler_id(async_session),
             retailer_id=uuid.uuid4(),
             status=OrderStatus.DRAFT,
             total_amount=Decimal("100.00"),

@@ -3,7 +3,9 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import { useAuthStore } from '@/stores/authStore';
+import { useToastStore } from '@/stores/toastStore';
 import type { LoginResponse } from '@/types/auth';
+import type { ApiErrorResponse } from '@/types/api';
 
 /**
  * Singleton Axios instance for all API calls.
@@ -67,13 +69,46 @@ function processQueue(error: unknown, token: string | null) {
 
 api.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError) => {
+  async (error: AxiosError<ApiErrorResponse>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
     };
+    const status = error.response?.status;
+    const detail = error.response?.data;
+    const errorCode = detail && 'error' in detail ? detail.error.code : '';
+    const errorMsg = detail && 'error' in detail ? detail.error.message : error.message;
+
+    // -----------------------------------------------------------------------
+    // Guardrail-aware error toasts (Track E3)
+    // -----------------------------------------------------------------------
+    if (status === 500 && (errorCode === 'TENANT_CONTEXT_MISSING' || errorMsg?.includes('tenant'))) {
+      useToastStore.getState().addToast({
+        type: 'error',
+        title: 'Security Alert: Tenant Context Lost',
+        message: 'Your session context was lost. Please refresh the page or log in again.',
+      });
+    } else if (status === 403) {
+      useToastStore.getState().addToast({
+        type: 'warning',
+        title: 'Access Denied',
+        message: errorMsg || 'You do not have permission to perform this action.',
+      });
+    } else if (status === 409) {
+      useToastStore.getState().addToast({
+        type: 'warning',
+        title: 'Action Not Allowed',
+        message: errorMsg || 'This action conflicts with the current state.',
+      });
+    } else if (status && status >= 500) {
+      useToastStore.getState().addToast({
+        type: 'error',
+        title: 'Server Error',
+        message: errorMsg || 'An unexpected server error occurred. Please try again.',
+      });
+    }
 
     // Only handle 401 — and only once per request
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    if (status !== 401 || originalRequest._retry) {
       return Promise.reject(error);
     }
 

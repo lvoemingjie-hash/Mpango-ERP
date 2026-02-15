@@ -7,6 +7,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.tenant_filter import run_as_system
 from repositories.invitation_repository import InvitationRepository
 from repositories.wholesaler_repository import WholesalerRepository
 
@@ -47,15 +48,17 @@ class InvitationService:
         *,
         code: str,
     ):
-        invitation = await self._invitation_repo.get_by_code(db, code=code)
-        if not invitation:
-            return None, False, "INVITATION_NOT_FOUND"
+        # Public endpoint flow: invitation lookup by code is intentionally system-scoped.
+        with run_as_system(reason="public_invitation_lookup"):
+            invitation = await self._invitation_repo.get_by_code(db, code=code)
+            if not invitation:
+                return None, False, "INVITATION_NOT_FOUND"
 
-        now = datetime.utcnow()
-        if invitation.status != "active":
-            return invitation, False, "INVITATION_NOT_ACTIVE"
+            now = datetime.utcnow()
+            if invitation.status != "active":
+                return invitation, False, "INVITATION_NOT_ACTIVE"
 
-        if invitation.expires_at and invitation.expires_at < now:
-            return invitation, False, "INVITATION_EXPIRED"
+            if invitation.expires_at and invitation.expires_at < now:
+                return invitation, False, "INVITATION_EXPIRED"
 
-        return invitation, True, None
+            return invitation, True, None

@@ -14,7 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
-    
+
     S2-1 Compliance:
     - Validates required secrets on startup
     - Fails fast if production secrets are missing
@@ -121,7 +121,7 @@ class Settings(BaseSettings):
         default=True,
         description="Enable detailed request logging"
     )
-    
+
     # S3-A: SQL Profiling Configuration
     SLOW_QUERY_THRESHOLD_MS: int = Field(
         default=100,
@@ -164,7 +164,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
         """S2.5: Validate SECRET_KEY meets strict security requirements.
-        
+
         Requirements:
         - Minimum 32 characters
         - No weak/common substrings
@@ -175,14 +175,14 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"SECRET_KEY must be at least 32 characters, got {len(v)}"
             )
-        
+
         # S2.5: Check for weak/common substrings
         weak_patterns = [
-            "secret", "default", "password", "123456", "change-me", 
+            "secret", "default", "password", "123456", "change-me",
             "changeme", "admin", "test", "demo", "example", "sample",
             "qwerty", "abc123", "letmein", "welcome", "monkey"
         ]
-        
+
         v_lower = v.lower()
         for pattern in weak_patterns:
             if pattern in v_lower:
@@ -191,13 +191,13 @@ class Settings(BaseSettings):
                     f"Use a cryptographically secure random key. "
                     f"Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
                 )
-        
+
         return v
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
         """S2-1: Fail fast if production secrets are using default values.
-        
+
         In production mode, we MUST NOT allow default/dev secrets.
         This prevents accidental deployment with insecure defaults.
         """
@@ -210,7 +210,7 @@ class Settings(BaseSettings):
                     "Production mode requires non-default DATABASE_URL. "
                     "Default dev database URL detected."
                 )
-            
+
             # Check for default REDIS_URL
             if self.REDIS_URL == "redis://localhost:6379/0":
                 print("❌ FATAL: Production mode detected with default REDIS_URL", file=sys.stderr)
@@ -219,7 +219,7 @@ class Settings(BaseSettings):
                     "Production mode requires non-default REDIS_URL. "
                     "Default dev Redis URL detected."
                 )
-            
+
             # Check for default SECRET_KEY
             if "dev-secret-key" in self.SECRET_KEY or "change-me" in self.SECRET_KEY:
                 print("❌ FATAL: Production mode detected with default SECRET_KEY", file=sys.stderr)
@@ -228,7 +228,7 @@ class Settings(BaseSettings):
                     "Production mode requires non-default SECRET_KEY. "
                     "Default dev secret key detected."
                 )
-        
+
         return self
 
 
@@ -236,7 +236,7 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """
     Get cached settings instance.
-    
+
     S2-1 Compliance:
     - Raises ValidationError if required config is missing
     - Raises ValueError if production secrets are using defaults
@@ -247,30 +247,30 @@ def get_settings() -> Settings:
 
 def validate_startup_config() -> Settings:
     """S2-1: Validate configuration on application startup.
-    
+
     This function is called during app startup to ensure all required
     secrets are present and valid. If validation fails, the application
     will crash immediately (fail fast).
-    
+
     Returns:
         Settings: Validated settings instance
-        
+
     Raises:
         ValidationError: If required config is missing or invalid
         ValueError: If production secrets are using default values
     """
     try:
         settings = get_settings()
-        
+
         # Log successful validation
         print(f"✅ Configuration validated successfully")
         print(f"   Environment: {settings.MPANGO_ENV}")
         print(f"   Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
         print(f"   Redis: {settings.REDIS_URL.split('@')[1] if '@' in settings.REDIS_URL else 'configured'}")
         print(f"   Secret Key: {'*' * 32} (length: {len(settings.SECRET_KEY)})")
-        
+
         return settings
-        
+
     except Exception as e:
         print(f"\n❌ CONFIGURATION VALIDATION FAILED", file=sys.stderr)
         print(f"   Error: {str(e)}", file=sys.stderr)

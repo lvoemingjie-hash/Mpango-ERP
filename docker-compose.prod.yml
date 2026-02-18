@@ -103,6 +103,23 @@ services:
       - mpango_network
 
   # ---------------------------------------------------------------------------
+  # Frontend (React SPA via nginx)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mpango_prod_frontend
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - mpango_network
+
+  # ---------------------------------------------------------------------------
   # Gateway (nginx reverse proxy)
   # ---------------------------------------------------------------------------
   gateway:
@@ -116,8 +133,10 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      frontend:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/health"]
       interval: 30s
       timeout: 5s
       retries: 3

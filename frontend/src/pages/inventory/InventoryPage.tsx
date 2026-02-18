@@ -60,7 +60,7 @@ export function InventoryPage() {
         <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {stocks.map((s) => (
             <div
-              key={s.id}
+              key={s.sku_id}
               className="relative flex flex-col justify-between rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
             >
               <div>

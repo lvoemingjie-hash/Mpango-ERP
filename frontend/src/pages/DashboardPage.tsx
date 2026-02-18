@@ -17,7 +17,7 @@ export function DashboardPage() {
 
   // Legacy data (orders table + status breakdown)
   const [orders, setOrders] = useState<Order[]>([]);
-  const [stocks, setStocks] = useState<StockView[]>([]);
+  const [_stocks, setStocks] = useState<StockView[]>([]);
 
   // BI data (from S6-3 Dashboard API)
   const [kpiCards, setKpiCards] = useState<KpiCardType[]>([]);
@@ -128,7 +128,7 @@ export function DashboardPage() {
               </div>
               <div className="mt-2 flex justify-between text-xs text-gray-400">
                 {salesTrend.map((p, i) => (
-                  <span key={i}>{p.label}</span>
+                  <span key={i}>{p.date}</span>
                 ))}
               </div>
             </div>
@@ -174,10 +174,10 @@ export function DashboardPage() {
                 <tbody className="divide-y divide-gray-200">
                   {orders.slice(0, 5).map((o) => (
                     <tr key={o.id}>
-                      <td className="px-6 py-4 font-medium text-gray-900">{o.code}</td>
-                      <td className="px-6 py-4 text-gray-500">{o.customer_name}</td>
+                      <td className="px-6 py-4 font-medium text-gray-900">{o.id.slice(0, 8)}</td>
+                      <td className="px-6 py-4 text-gray-500">{o.retailer_name ?? '—'}</td>
                       <td className="px-6 py-4 text-gray-500">
-                        {o.currency} {o.total_amount.toLocaleString()}
+                        {currency} {o.total_amount.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span

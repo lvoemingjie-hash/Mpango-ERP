@@ -6,7 +6,6 @@ import { useToastStore } from '@/stores/toastStore';
 import { PageHeader } from '@/components/layout/PageHeader';
 import type { Order, OrderStatus } from '@/types/order';
 import {
-  ORDER_STATUS_LABELS,
   ALLOWED_TRANSITIONS,
 } from '@/types/order';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -186,10 +185,10 @@ export function OrderListPage() {
               {orders.map((o) => (
                 <tr key={o.id} className="hover:bg-gray-50">
                   <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
-                    {o.code}
+                    {o.id.slice(0, 8)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {o.customer_name}
+                    {o.retailer_name ?? '—'}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                     {new Date(o.created_at).toLocaleDateString()}
@@ -198,7 +197,7 @@ export function OrderListPage() {
                     <StatusBadge status={o.status} />
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {o.currency} {o.total_amount.toLocaleString()}
+                    KES {o.total_amount.toLocaleString()}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">

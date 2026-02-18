@@ -32,8 +32,8 @@ RUN poetry install --no-root --only main --no-ansi
 # Copy source code
 COPY . .
 
-# Make entrypoint executable
-RUN chmod +x docker-entrypoint.sh
+# Fix Windows CRLF line endings and make entrypoint executable
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
 # Run as non-root for staging hardening
 RUN useradd --create-home --shell /bin/bash mpango \

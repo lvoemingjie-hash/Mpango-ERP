@@ -126,6 +126,7 @@
 |-------|-------|--------|--------|
 | v0.1.1-rc2 | Deployment Status Index | ✅ COMPLETE | [ops/DEPLOYMENT_STATUS_INDEX.md](ops/DEPLOYMENT_STATUS_INDEX.md) |
 | **E2-OPS** | **DevOps Audit — Deployment Artifacts** | **⚠️ WARN** | [**ops/2026-02-15_22-23_devops_audit_deployment_artifacts.md**](ops/2026-02-15_22-23_devops_audit_deployment_artifacts.md) |
+| **Track U** | **Staging Deployment (v0.2.0 UI)** | **✅ DEPLOYED** | [**ops/2026-02-18_19-12_track_u_staging_deployment.md**](ops/2026-02-18_19-12_track_u_staging_deployment.md) |
 
 ---
 

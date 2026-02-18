@@ -1,196 +1,155 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { financeService } from '@/services/financeService';
 import type { FinancialSummary, ReceivableItem } from '@/services/financeService';
-import { useToastStore } from '@/stores/toastStore';
-
-/**
- * FinancePage — GAP 2 Finance Dashboard
- *
- * Shows:
- *  - Financial Summary KPIs (revenue, cash, receivables)
- *  - Accounts Receivable table with aging
- *
- * Permission: finance:read
- * Uses existing UI patterns from DashboardPage and OrderListPage.
- */
-
-function formatCurrency(n: number): string {
-    return new Intl.NumberFormat('en-KE', {
-        style: 'currency',
-        currency: 'KES',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-    }).format(n);
-}
+import { PageHeader } from '@/components/layout/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { DashboardSkeleton } from '@/components/skeletons/DashboardSkeleton';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { BanknotesIcon } from '@heroicons/react/24/outline';
 
 export function FinancePage() {
     const [summary, setSummary] = useState<FinancialSummary | null>(null);
     const [receivables, setReceivables] = useState<ReceivableItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(0);
+    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        loadData();
-    }, [page]);
-
-    async function loadData() {
+    const load = useCallback(async () => {
         setLoading(true);
+        setError(null);
         try {
-            const [summaryRes, arRes] = await Promise.all([
+            const [summaryRes, receivablesRes] = await Promise.all([
                 financeService.getSummary(),
-                financeService.getReceivables(page, 10),
+                financeService.getReceivables(1, 100), // Fetch up to 100 for now
             ]);
-
             setSummary(summaryRes.data.data);
-            setReceivables(arRes.data.data.items);
-            setTotalPages(arRes.data.data.pagination.pages);
+            // The API returns paginated data structure
+            setReceivables(receivablesRes.data.data.items);
         } catch {
-            useToastStore.getState().addToast({
-                type: 'error',
-                title: 'Failed to load finance data',
-                message: 'Could not fetch financial summary. Please try again.',
-            });
+            setError('Failed to load financial data.');
         } finally {
             setLoading(false);
         }
-    }
+    }, []);
+
+    useEffect(() => { load(); }, [load]);
+
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('en-KE', {
+            style: 'currency',
+            currency: 'KES',
+        }).format(amount);
+    };
 
     if (loading && !summary) {
         return (
-            <div className="flex items-center justify-center py-20">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+            <div>
+                <PageHeader
+                    title="Money"
+                    description="Loading financial data..."
+                />
+                <DashboardSkeleton />
             </div>
         );
     }
 
-    const kpiCards = summary
-        ? [
-            { label: 'Total Revenue', value: formatCurrency(summary.total_revenue), color: 'bg-emerald-50 text-emerald-700' },
-            { label: 'Cash Received', value: formatCurrency(summary.total_cash_received), color: 'bg-blue-50 text-blue-700' },
-            { label: 'Outstanding AR', value: formatCurrency(summary.outstanding_receivables), color: 'bg-amber-50 text-amber-700' },
-            { label: 'Overdue (>30d)', value: String(summary.overdue_receivables_count), color: summary.overdue_receivables_count > 0 ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600' },
-            { label: 'Total Orders', value: String(summary.total_orders), color: 'bg-indigo-50 text-indigo-700' },
-        ]
-        : [];
-
     return (
         <div>
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Finance</h1>
-                <span className="text-xs text-gray-400">
-                    {summary ? `Generated: ${new Date(summary.generated_at).toLocaleString()}` : ''}
-                </span>
-            </div>
+            <PageHeader
+                title="Money"
+                description={
+                    summary?.generated_at
+                        ? `Overview generated on ${new Date(summary.generated_at).toLocaleString()}`
+                        : 'Financial overview'
+                }
+                action={
+                    <button onClick={load} disabled={loading} className="btn-secondary text-sm">
+                        Refresh
+                    </button>
+                }
+            />
 
-            {/* KPI Cards */}
-            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                {kpiCards.map((card, i) => (
-                    <div
-                        key={i}
-                        className={`rounded-xl border border-gray-200 p-5 ${card.color}`}
-                    >
-                        <p className="text-xs font-medium uppercase tracking-wide opacity-70">{card.label}</p>
-                        <p className="mt-1 text-2xl font-bold">{card.value}</p>
+            {error && <p className="mt-6 text-sm text-red-600">{error}</p>}
+
+            {summary && (
+                <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                        <p className="text-sm font-medium text-gray-500">Total Revenue</p>
+                        <p className="mt-2 text-2xl font-bold text-gray-900">
+                            {formatCurrency(summary.total_revenue)}
+                        </p>
                     </div>
-                ))}
-            </div>
-
-            {/* Order Status Breakdown */}
-            {summary && Object.keys(summary.order_counts).length > 0 && (
-                <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5">
-                    <h2 className="text-sm font-semibold text-gray-700">Order Status Breakdown</h2>
-                    <div className="mt-3 flex flex-wrap gap-3">
-                        {Object.entries(summary.order_counts).map(([status, count]) => (
-                            <span
-                                key={status}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700"
-                            >
-                                {status}: <strong>{count}</strong>
-                            </span>
-                        ))}
+                    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                        <p className="text-sm font-medium text-gray-500">Cash Received</p>
+                        <p className="mt-2 text-2xl font-bold text-green-600">
+                            {formatCurrency(summary.total_cash_received)}
+                        </p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                        <p className="text-sm font-medium text-gray-500">Outstanding AR</p>
+                        <p className="mt-2 text-2xl font-bold text-amber-600">
+                            {formatCurrency(summary.outstanding_receivables)}
+                        </p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                        <p className="text-sm font-medium text-gray-500">Total Orders</p>
+                        <p className="mt-2 text-2xl font-bold text-gray-900">
+                            {summary.total_orders}
+                        </p>
                     </div>
                 </div>
             )}
 
-            {/* Accounts Receivable Table */}
-            <div className="mt-8">
-                <h2 className="text-lg font-semibold text-gray-900">Accounts Receivable</h2>
-                <p className="text-sm text-gray-500">
-                    Orders with outstanding balances (confirmed, partially paid, or paid).
-                </p>
-
-                <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white">
-                    <table className="min-w-full divide-y divide-gray-200">
+            {!loading && receivables.length === 0 ? (
+                <div className="mt-8">
+                    <EmptyState
+                        icon={BanknotesIcon}
+                        title="No transactions recorded yet"
+                        description="Financial records will appear here once orders are processed."
+                    />
+                </div>
+            ) : (
+                <div className="mt-8 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                    <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
+                        <h3 className="text-base font-semibold text-gray-900">Outstanding Invoices</h3>
+                    </div>
+                    <table className="min-w-full divide-y divide-gray-200 text-sm">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Order ID</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Total</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Paid</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Balance Due</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Age (days)</th>
+                                <th className="px-6 py-3 text-left font-medium text-gray-500">Order ID</th>
+                                <th className="px-6 py-3 text-left font-medium text-gray-500">Status</th>
+                                <th className="px-6 py-3 text-right font-medium text-gray-500">Total</th>
+                                <th className="px-6 py-3 text-right font-medium text-gray-500">Paid</th>
+                                <th className="px-6 py-3 text-right font-medium text-gray-500">Balance</th>
+                                <th className="px-6 py-3 text-right font-medium text-gray-500">Age</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {receivables.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
-                                        No outstanding receivables 🎉
+                        <tbody className="divide-y divide-gray-200">
+                            {receivables.map((r) => (
+                                <tr key={r.order_id} className="hover:bg-gray-50">
+                                    <td className="px-6 py-4 font-mono text-xs text-gray-600">
+                                        {r.order_id.slice(0, 8)}...
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <StatusBadge status={r.status} />
+                                    </td>
+                                    <td className="px-6 py-4 text-right text-gray-900">
+                                        {formatCurrency(r.total_amount)}
+                                    </td>
+                                    <td className="px-6 py-4 text-right text-green-600">
+                                        {formatCurrency(r.total_paid)}
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-medium text-red-600">
+                                        {formatCurrency(r.balance_due)}
+                                    </td>
+                                    <td className="px-6 py-4 text-right text-gray-500">
+                                        {r.age_days}d
                                     </td>
                                 </tr>
-                            ) : (
-                                receivables.map((r) => (
-                                    <tr key={r.order_id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-4 py-3 text-sm font-mono text-gray-700">
-                                            {r.order_id.slice(0, 8)}…
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${r.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
-                                                    r.status === 'partially_paid' ? 'bg-yellow-100 text-yellow-700' :
-                                                        'bg-green-100 text-green-700'
-                                                }`}>
-                                                {r.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-sm text-gray-700">{formatCurrency(r.total_amount)}</td>
-                                        <td className="px-4 py-3 text-right text-sm text-gray-700">{formatCurrency(r.total_paid)}</td>
-                                        <td className="px-4 py-3 text-right text-sm font-semibold text-amber-700">{formatCurrency(r.balance_due)}</td>
-                                        <td className="px-4 py-3 text-right text-sm">
-                                            <span className={r.age_days > 30 ? 'text-red-600 font-semibold' : 'text-gray-500'}>
-                                                {r.age_days}d
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
+                            ))}
                         </tbody>
                     </table>
                 </div>
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                    <div className="mt-4 flex items-center justify-between">
-                        <button
-                            onClick={() => setPage((p) => Math.max(1, p - 1))}
-                            disabled={page <= 1}
-                            className="rounded bg-gray-200 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-300 disabled:opacity-50"
-                        >
-                            Previous
-                        </button>
-                        <span className="text-sm text-gray-500">
-                            Page {page} of {totalPages}
-                        </span>
-                        <button
-                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={page >= totalPages}
-                            className="rounded bg-gray-200 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-300 disabled:opacity-50"
-                        >
-                            Next
-                        </button>
-                    </div>
-                )}
-            </div>
+            )}
         </div>
     );
 }

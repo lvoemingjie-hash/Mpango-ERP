@@ -1,6 +1,6 @@
 ﻿# Mpango ERP — AI Ledger Index
 
-**Last Updated**: 2026-02-15
+**Last Updated**: 2026-02-18
 **Purpose**: Central index of all AI-generated technical ledger documents.
 
 ---
@@ -111,11 +111,21 @@
 
 ---
 
+## QA & Test
+
+| Track | Title | Status | Ledger |
+|-------|-------|--------|--------|
+| E1-SEC | Cross-Tenant Exploit Guardrail | ✅ PASS | [test/2026-02-15_22-15_cross_tenant_exploit_guardrail.md](test/2026-02-15_22-15_cross_tenant_exploit_guardrail.md) |
+| **v0.2.0-QA** | **Acceptance Test (RBAC + Financial Loop + Docker)** | **⚠️ WARN** | [**test/2026-02-18_12-31_v0.2.0_acceptance_test.md**](test/2026-02-18_12-31_v0.2.0_acceptance_test.md) |
+
+---
+
 ## Ops & Deployment
 
 | Track | Title | Status | Ledger |
 |-------|-------|--------|--------|
 | v0.1.1-rc2 | Deployment Status Index | ✅ COMPLETE | [ops/DEPLOYMENT_STATUS_INDEX.md](ops/DEPLOYMENT_STATUS_INDEX.md) |
+| **E2-OPS** | **DevOps Audit — Deployment Artifacts** | **⚠️ WARN** | [**ops/2026-02-15_22-23_devops_audit_deployment_artifacts.md**](ops/2026-02-15_22-23_devops_audit_deployment_artifacts.md) |
 
 ---
 

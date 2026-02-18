@@ -43,7 +43,7 @@ setup_structured_logging(level=settings.LOG_LEVEL)
 logger = get_logger(__name__)
 
 # Version
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Graceful shutdown configuration
 SHUTDOWN_GRACE_PERIOD = 10  # seconds

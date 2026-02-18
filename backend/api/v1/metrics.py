@@ -20,7 +20,7 @@ router = APIRouter()
 class MetricsResponse(BaseModel):
     """Metrics response schema."""
     service: str = Field(default="mpango-erp-backend", description="Service name")
-    version: str = Field(default="0.1.0", description="Service version")
+    version: str = Field(default="0.2.0", description="Service version")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Metrics timestamp")
     metrics_enabled: bool = Field(description="Whether metrics collection is enabled")
     data: dict = Field(description="Metrics data")
@@ -89,7 +89,7 @@ async def get_metrics(
 
         return MetricsResponse(
             service="mpango-erp-backend",
-            version="0.1.0",
+            version="0.2.0",
             timestamp=datetime.utcnow(),
             metrics_enabled=True,
             data=metrics_data

@@ -27,7 +27,7 @@ class HealthStatus(BaseModel):
     """Health check response schema."""
     status: str = Field(..., description="Health status")
     service: str = Field(default="mpango-erp-backend", description="Service name")
-    version: str = Field(default="0.1.0", description="Service version")
+    version: str = Field(default="0.2.0", description="Service version")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Check timestamp")
 
 
@@ -35,7 +35,7 @@ class ReadinessStatus(BaseModel):
     """Readiness check response schema."""
     status: str = Field(..., description="Readiness status")
     service: str = Field(default="mpango-erp-backend", description="Service name")
-    version: str = Field(default="0.1.0", description="Service version")
+    version: str = Field(default="0.2.0", description="Service version")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Check timestamp")
     checks: dict = Field(default_factory=dict, description="Individual check results")
 
@@ -49,7 +49,7 @@ async def health_check_impl() -> HealthStatus:
     return HealthStatus(
         status="healthy",
         service="mpango-erp-backend",
-        version="0.1.0",
+        version="0.2.0",
         timestamp=datetime.utcnow()
     )
 
@@ -59,7 +59,7 @@ async def liveness_check_impl() -> HealthStatus:
     return HealthStatus(
         status="healthy",
         service="mpango-erp-backend",
-        version="0.1.0",
+        version="0.2.0",
         timestamp=datetime.utcnow()
     )
 
@@ -72,7 +72,7 @@ async def readiness_check_impl(db_healthy: bool = True) -> ReadinessStatus:
     return ReadinessStatus(
         status=overall_status,
         service="mpango-erp-backend",
-        version="0.1.0",
+        version="0.2.0",
         timestamp=datetime.utcnow(),
         checks={"database": db_status}
     )
@@ -92,7 +92,7 @@ class TestHealthEndpoints:
 
         assert result.status == "healthy"
         assert result.service == "mpango-erp-backend"
-        assert result.version == "0.1.0"
+        assert result.version == "0.2.0"
         assert isinstance(result.timestamp, datetime)
 
     @pytest.mark.asyncio
@@ -153,7 +153,7 @@ class TestHealthSchemas:
         status = HealthStatus(status="healthy")
 
         assert status.service == "mpango-erp-backend"
-        assert status.version == "0.1.0"
+        assert status.version == "0.2.0"
 
     def test_readiness_status_with_multiple_checks(self):
         """ReadinessStatus should support multiple checks."""

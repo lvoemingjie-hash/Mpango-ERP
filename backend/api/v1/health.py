@@ -26,7 +26,7 @@ class HealthStatus(BaseModel):
     """Health check response schema."""
     status: str = Field(..., description="Health status: healthy, degraded, unhealthy")
     service: str = Field(default="mpango-erp-backend", description="Service name")
-    version: str = Field(default="0.1.0", description="Service version")
+    version: str = Field(default="0.2.0", description="Service version")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Check timestamp")
 
 
@@ -34,7 +34,7 @@ class ReadinessStatus(BaseModel):
     """Readiness check response schema."""
     status: str = Field(..., description="Readiness status")
     service: str = Field(default="mpango-erp-backend", description="Service name")
-    version: str = Field(default="0.1.0", description="Service version")
+    version: str = Field(default="0.2.0", description="Service version")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Check timestamp")
     checks: dict = Field(default_factory=dict, description="Individual check results")
 
@@ -53,13 +53,13 @@ async def liveness_probe():
 
     Returns 200 OK if the service process is alive.
     Should be fast and not check external dependencies.
-    
+
     Use this for Kubernetes livenessProbe configuration.
     """
     return HealthStatus(
         status="healthy",
         service="mpango-erp-backend",
-        version="0.1.0",
+        version="0.2.0",
         timestamp=datetime.utcnow()
     )
 
@@ -84,7 +84,7 @@ async def readiness_probe():
     - Redis connectivity (PING)
 
     Returns 200 if all checks pass, 503 if any fail.
-    
+
     Use this for Kubernetes readinessProbe configuration.
     """
     checks = {}
@@ -105,7 +105,7 @@ async def readiness_probe():
     response = ReadinessStatus(
         status=overall_status,
         service="mpango-erp-backend",
-        version="0.1.0",
+        version="0.2.0",
         timestamp=datetime.utcnow(),
         checks=checks
     )
@@ -133,13 +133,13 @@ async def health_check():
 
     Returns 200 OK if the service is running.
     Does not check external dependencies.
-    
+
     Prefer /healthz for new implementations.
     """
     return HealthStatus(
         status="healthy",
         service="mpango-erp-backend",
-        version="0.1.0",
+        version="0.2.0",
         timestamp=datetime.utcnow()
     )
 
@@ -157,13 +157,13 @@ async def liveness_check():
 
     Returns 200 OK if the service process is alive.
     Should be fast and not check external dependencies.
-    
+
     Prefer /healthz for new implementations.
     """
     return HealthStatus(
         status="healthy",
         service="mpango-erp-backend",
-        version="0.1.0",
+        version="0.2.0",
         timestamp=datetime.utcnow()
     )
 
@@ -187,7 +187,7 @@ async def readiness_check():
     - Redis connectivity
 
     Returns 200 if all checks pass, 503 if any fail.
-    
+
     Prefer /readyz for new implementations.
     """
     return await readiness_probe()
@@ -240,18 +240,18 @@ async def _check_redis() -> dict:
     try:
         import redis.asyncio as redis
         from core.config import get_settings
-        
+
         settings = get_settings()
-        
+
         # Create Redis client
         client = redis.from_url(settings.REDIS_URL, decode_responses=True)
-        
+
         # Perform PING check
         pong = await client.ping()
-        
+
         # Close connection
         await client.close()
-        
+
         latency_ms = round((time.time() - start_time) * 1000, 2)
 
         return {

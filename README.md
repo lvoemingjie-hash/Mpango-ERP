@@ -152,4 +152,4 @@ Please follow the contracts in `docs/contracts/`:
 
 ## 📋 Changelog
 
-See [`docs/CHANGELOG_v0.1.9.md`](docs/CHANGELOG_v0.1.9.md) for version history.
+See [`docs/CHANGELOG_v0.2.0.md`](docs/CHANGELOG_v0.2.0.md) for version history.

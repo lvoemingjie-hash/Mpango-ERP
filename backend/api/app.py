@@ -123,6 +123,13 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(retailers.router, prefix="/api/v1", tags=["retailers"])
     app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 
+    # GAP 2: Finance — Invoices, AR, Financial Summary
+    from api.v1.finance import router as finance_router
+    # Invoice endpoint lives under /orders (it's an order projection)
+    app.include_router(finance_router, prefix="/api/v1", tags=["finance"])
+    # Receivables & summary live under /finance
+    app.include_router(finance_router, prefix="/api/v1/finance", tags=["finance"])
+
     # S6-3: Dashboard & Reporting API (Controlled BI Facade)
     from api.v1.dashboards import dashboards_router, reports_router
     app.include_router(dashboards_router, prefix="/api/v1/dashboards", tags=["dashboards"])
@@ -131,6 +138,10 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     # S6-4: Async Export Engine
     from api.v1.exports import exports_router
     app.include_router(exports_router, prefix="/api/v1/exports", tags=["exports"])
+
+    # Phase P-B: Streaming CSV Data Export
+    from api.v1.data_export import router as data_export_router
+    app.include_router(data_export_router, prefix="/api/v1", tags=["data-export"])
 
     # S7-4-T3: Tenant-Scoped BI Assets CRUD
     from api.v1.bi_assets import bi_assets_router

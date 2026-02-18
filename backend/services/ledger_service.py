@@ -315,3 +315,45 @@ class LedgerService:
             reference_type='order',
             reference_id=order_id
         )
+
+    async def post_order_return(
+        self,
+        order_id: UUID,
+        amount: Decimal,
+        description: Optional[str] = None
+    ) -> List[LedgerEntry]:
+        """
+        Post ledger entries for a full order return.
+        
+        Reverses the original confirmation + payment entries:
+        - Debit REVENUE (reverse the original credit — we un-earn revenue)
+        - Credit CASH (we refund money back to the customer)
+        
+        Net effect:
+        - REVENUE balance decreases by amount
+        - CASH balance decreases by amount
+        
+        Args:
+            order_id: Order UUID
+            amount: Order total being returned
+            description: Optional description
+        
+        Returns:
+            List of posted entries
+        """
+        return await self.post_transaction(
+            entries=[
+                {
+                    'account_type': AccountType.REVENUE,
+                    'amount': amount,  # Debit (positive — reverses original credit)
+                    'description': description or f'Revenue reversal for returned order {order_id}'
+                },
+                {
+                    'account_type': AccountType.CASH,
+                    'amount': -amount,  # Credit (negative — money leaves us)
+                    'description': description or f'Refund issued for returned order {order_id}'
+                }
+            ],
+            reference_type='refund',
+            reference_id=order_id
+        )

@@ -1,4 +1,4 @@
-export type OrderStatus = 'draft' | 'confirmed' | 'partially_paid' | 'paid' | 'fulfilled' | 'cancelled' | 'voided';
+export type OrderStatus = 'draft' | 'confirmed' | 'partially_paid' | 'paid' | 'fulfilled' | 'cancelled' | 'voided' | 'returned';
 
 export interface OrderItem {
   id: string;
@@ -31,6 +31,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   fulfilled: 'Fulfilled',
   cancelled: 'Cancelled',
   voided: 'Voided',
+  returned: 'Returned',
 };
 
 export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
@@ -41,6 +42,7 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
   fulfilled: 'green',
   cancelled: 'red',
   voided: 'red',
+  returned: 'yellow',
 };
 
 /** Legal transitions from the backend state machine */
@@ -49,7 +51,8 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   confirmed: ['paid', 'cancelled'],
   partially_paid: ['paid', 'cancelled'],
   paid: ['fulfilled'],
-  fulfilled: [],
+  fulfilled: ['returned'],
   cancelled: [],
   voided: [],
+  returned: [],
 };

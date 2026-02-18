@@ -41,7 +41,32 @@ class LedgerIntegrityError(MpangoException):
     pass
 
 
-# HTTP 异常映射
+class InventoryShortageError(MpangoException):
+    """
+    Raised when a stock deduction exceeds available inventory.
+
+    Callers should catch this and return HTTP 409 with code INVENTORY_SHORTAGE.
+    See docs/policies/exception_strategy.md §3.
+    """
+    def __init__(self, sku_code: str, available, requested):
+        self.sku_code = sku_code
+        self.available = available
+        self.requested = requested
+        super().__init__(
+            f"Insufficient stock for SKU '{sku_code}'. "
+            f"Available: {available}, requested: {requested}."
+        )
+
+
+class StaleVersionError(MpangoException):
+    """
+    Raised when an optimistic lock version check fails.
+    HTTP 409 with code STALE_VERSION.
+    """
+    pass
+
+
+
 def tenant_not_found():
     return HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -75,4 +100,17 @@ def invalid_credentials():
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid credentials",
         headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def business_conflict(code: str, message: str):
+    """
+    Standard 409 helper for business logic conflicts.
+    
+    Usage:
+        raise business_conflict("INVENTORY_SHORTAGE", "Available: 5, requested: 10")
+    """
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"code": code, "message": message},
     )

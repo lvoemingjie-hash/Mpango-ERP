@@ -184,6 +184,12 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
         ("orders:confirm", "Confirm orders"),
         ("orders:ship", "Ship orders"),
         ("orders:cancel", "Cancel orders"),
+        # Finance permissions (GAP 2)
+        ("finance:read", "View invoices, receivables, financial summary"),
+        # Security-hardened permissions (Phase P-A Security)
+        ("system:admin", "Full system administration (job queues, debug endpoints)"),
+        ("metrics:admin", "Reset application metrics"),
+        ("exports:create", "Request data exports"),
     ]
 
     for code, description in permissions_data:

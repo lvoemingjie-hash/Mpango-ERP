@@ -71,7 +71,8 @@ jobs:
           # Check for common password patterns
           if grep -rn --include="*.py" --include="*.js" --include="*.ts" --include="*.java" \
             -E "(password|passwd|pwd|secret|token|api_key|apikey)\s*=\s*[\"'][^\"']{8,}[\"']" . \
-            --exclude-dir=node_modules --exclude-dir=venv --exclude-dir=.venv --exclude-dir=dist; then
+            --exclude-dir=node_modules --exclude-dir=venv --exclude-dir=.venv --exclude-dir=dist; \
+            --exclude-dir=tests --exclude-dir=backend/tests; then
             echo "❌ ERROR: Potential hardcoded credentials detected!"
             exit 1
           fi

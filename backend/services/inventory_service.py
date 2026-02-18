@@ -4,8 +4,12 @@ import uuid
 from decimal import Decimal
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.exceptions import InventoryShortageError
+from models.inventory_stock import InventoryStock
+from models.sku import SKU
 from repositories.inventory_repository import InventoryRepository
 
 
@@ -55,3 +59,80 @@ class InventoryService:
             sku, stock = await self.get_stock_by_sku_code(db, sku_code=code)
             items.append((sku, stock))
         return items
+
+    # ------------------------------------------------------------------
+    # GAP 5 §3: Concurrency-safe stock deduction (SELECT FOR UPDATE)
+    # ------------------------------------------------------------------
+
+    async def deduct_stock(
+        self,
+        db: AsyncSession,
+        *,
+        sku_id: uuid.UUID,
+        quantity: Decimal,
+        sku_code: str = "UNKNOWN",
+    ) -> InventoryStock:
+        """
+        Atomically deduct stock.  Must be called inside a transaction.
+
+        Uses SELECT FOR UPDATE to acquire a row-level lock, preventing
+        concurrent overselling.
+
+        Raises:
+            InventoryShortageError  when available < quantity
+        """
+        result = await db.execute(
+            select(InventoryStock)
+            .where(InventoryStock.sku_id == sku_id)
+            .where(InventoryStock.is_deleted.is_(False))
+            .with_for_update()
+        )
+        stock = result.scalar_one_or_none()
+
+        if stock is None:
+            stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku_id)
+            # Re-lock the newly created row
+            result = await db.execute(
+                select(InventoryStock)
+                .where(InventoryStock.id == stock.id)
+                .with_for_update()
+            )
+            stock = result.scalar_one()
+
+        available = stock.quantity_on_hand - stock.quantity_reserved
+        if available < quantity:
+            raise InventoryShortageError(
+                sku_code=sku_code,
+                available=float(available),
+                requested=float(quantity),
+            )
+
+        stock.quantity_reserved = stock.quantity_reserved + quantity
+        await db.flush()
+        return stock
+
+    async def restock(
+        self,
+        db: AsyncSession,
+        *,
+        sku_id: uuid.UUID,
+        quantity: Decimal,
+    ) -> InventoryStock:
+        """
+        Atomically restock (e.g. after a return).  Uses SELECT FOR UPDATE.
+        Increases on_hand, decreases reserved.
+        """
+        result = await db.execute(
+            select(InventoryStock)
+            .where(InventoryStock.sku_id == sku_id)
+            .where(InventoryStock.is_deleted.is_(False))
+            .with_for_update()
+        )
+        stock = result.scalar_one_or_none()
+        if stock is None:
+            stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku_id)
+
+        stock.quantity_on_hand = stock.quantity_on_hand + quantity
+        await db.flush()
+        return stock
+

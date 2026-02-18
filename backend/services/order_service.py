@@ -138,6 +138,9 @@ class OrderService:
             }
         )
         
+        # Phase P-B: Fire-and-forget notifications on key transitions
+        await self._send_transition_notifications(order, target_state)
+        
         # S5-2 (Optional): Emit domain event via job queue
         # TODO: Implement when job queue integration is ready
         # await self._emit_state_changed_event(order, current_state, target_state, reason)
@@ -195,6 +198,14 @@ class OrderService:
                     f"Cannot fulfill order in {from_state.value} state. "
                     "Order must be PAID before fulfillment."
                 )
+        
+        # Rule 5: Cannot return order unless it is FULFILLED
+        if to_state == OrderState.RETURNED:
+            if from_state != OrderState.FULFILLED:
+                raise OrderInvariantViolation(
+                    f"Cannot return order in {from_state.value} state. "
+                    "Order must be FULFILLED before return."
+                )
     
     def _map_state_to_status(self, state: OrderState) -> "OrderStatus":
         """
@@ -217,6 +228,7 @@ class OrderService:
             OrderState.FULFILLED: OrderStatus.FULFILLED,
             OrderState.CANCELLED: OrderStatus.CANCELLED,
             OrderState.VOIDED: OrderStatus.VOIDED,
+            OrderState.RETURNED: OrderStatus.RETURNED,
         }
         
         return mapping[state]
@@ -262,6 +274,14 @@ class OrderService:
                 amount=order.total_amount,
                 description=f"Payment received for order {order.id} - Amount: {order.total_amount}"
             )
+        
+        elif to_state == OrderState.RETURNED:
+            # Full return: reverse the original confirmation entries
+            await ledger_service.post_order_return(
+                order_id=order.id,
+                amount=order.total_amount,
+                description=f"Full return for order {order.id} - Refund: {order.total_amount}"
+            )
     
     async def _emit_state_changed_event(
         self,
@@ -300,3 +320,53 @@ class OrderService:
         #     }
         # )
         pass
+
+    async def _send_transition_notifications(
+        self,
+        order: Order,
+        target_state: OrderState,
+    ) -> None:
+        """
+        Phase P-B: Fire-and-forget notifications for order state changes.
+
+        Rules:
+          - CONFIRMED → Send email "Order #{id} Confirmed"
+          - FULFILLED (shipped) → Send SMS "Order #{id} is on the way"
+
+        Failures are logged but never raise — notifications must not block
+        the atomic transition.
+        """
+        try:
+            from services.notification_service import notification_service
+
+            short_id = str(order.id)[:8]
+
+            if target_state == OrderState.CONFIRMED:
+                await notification_service.send_email(
+                    to=f"retailer-{order.retailer_id}@placeholder.local",
+                    subject=f"Order #{short_id} Confirmed",
+                    body=(
+                        f"Your order #{short_id} for KES {order.total_amount:,.2f} "
+                        f"has been confirmed. Thank you for your business!"
+                    ),
+                )
+
+            elif target_state == OrderState.FULFILLED:
+                await notification_service.send_sms(
+                    phone=f"+254000000000",  # placeholder — real phone from retailer profile
+                    message=(
+                        f"Order #{short_id} is on the way! "
+                        f"Amount: KES {order.total_amount:,.2f}"
+                    ),
+                )
+
+        except Exception as exc:
+            logger.warning(
+                "notification_dispatch_failed",
+                extra={
+                    "order_id": str(order.id),
+                    "target_state": target_state.value,
+                    "error": str(exc),
+                },
+            )
+

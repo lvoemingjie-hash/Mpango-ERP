@@ -7,6 +7,7 @@ import {
   ArrowRightOnRectangleIcon,
   ClipboardDocumentListIcon,
   CubeIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -20,6 +21,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: HomeIcon },
   { label: 'Orders', path: '/orders', icon: ClipboardDocumentListIcon },
   { label: 'Inventory', path: '/inventory', icon: CubeIcon },
+  { label: 'Finance', path: '/finance', icon: BanknotesIcon },
   { label: 'Tenants', path: '/tenants', icon: BuildingOfficeIcon },
   { label: 'Users', path: '/users', icon: UsersIcon },
   { label: 'Settings', path: '/settings', icon: Cog6ToothIcon },
@@ -52,11 +54,10 @@ export function Sidebar() {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                active
+              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active
                   ? 'bg-primary-50 text-primary-700'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
+                }`}
             >
               <item.icon className="h-5 w-5 shrink-0" />
               {item.label}

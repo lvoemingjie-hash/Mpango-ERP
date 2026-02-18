@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_current_user_context
+from api.middleware.rbac import RequirePermission
 from core.config import get_settings
 from core.logging_config import get_request_logger
 from core.security import TokenPayload
@@ -120,7 +121,7 @@ async def get_metrics(
 )
 async def reset_metrics(
     request: Request,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("metrics:admin")),
 ):
     """
     Reset all collected metrics.

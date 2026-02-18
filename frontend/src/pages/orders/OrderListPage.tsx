@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { orderService } from '@/services/orderService';
+import { financeService } from '@/services/financeService';
 import { useAuthStore } from '@/stores/authStore';
 import { Badge } from '@/components/ui/Badge';
 import { useToastStore } from '@/stores/toastStore';
@@ -70,11 +71,58 @@ export function OrderListPage() {
     }
   };
 
+  const handleReturn = async (id: string) => {
+    if (!window.confirm('Are you sure you want to process a full return for this order? This will reverse ledger entries.')) return;
+    setActionLoading(id);
+    try {
+      await orderService.returnOrder(id);
+      useToastStore.getState().addToast({
+        type: 'success',
+        title: 'Order Returned',
+        message: `Order ${id.slice(0, 8)}… has been returned. Refund entries posted.`,
+      });
+      await load();
+    } catch {
+      // Error toast handled by global interceptor
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const canConfirm = (status: OrderStatus) =>
     ALLOWED_TRANSITIONS[status]?.includes('confirmed');
 
   const canCancelOrder = (status: OrderStatus) =>
     ALLOWED_TRANSITIONS[status]?.includes('cancelled');
+
+  const canReturn = (status: OrderStatus) =>
+    ALLOWED_TRANSITIONS[status]?.includes('returned');
+
+  const canInvoice = (status: OrderStatus) => {
+    const noInvoice: OrderStatus[] = ['draft', 'cancelled', 'voided'];
+    return !noInvoice.includes(status);
+  };
+
+  const handleDownloadInvoice = async (orderId: string) => {
+    try {
+      const res = await financeService.getInvoice(orderId);
+      const invoice = res.data.data;
+      const blob = new Blob([JSON.stringify(invoice, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${invoice.invoice_number}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      useToastStore.getState().addToast({
+        type: 'success',
+        title: 'Invoice Downloaded',
+        message: `Downloaded ${invoice.invoice_number}`,
+      });
+    } catch {
+      // Error toast handled by global interceptor
+    }
+  };
 
   return (
     <div>
@@ -117,11 +165,11 @@ export function OrderListPage() {
                     <Badge
                       variant={
                         ORDER_STATUS_COLORS[o.status] as
-                          | 'green'
-                          | 'gray'
-                          | 'red'
-                          | 'blue'
-                          | 'yellow'
+                        | 'green'
+                        | 'gray'
+                        | 'red'
+                        | 'blue'
+                        | 'yellow'
                       }
                     >
                       {ORDER_STATUS_LABELS[o.status]}
@@ -157,10 +205,27 @@ export function OrderListPage() {
                           {actionLoading === o.id ? '…' : 'Cancel'}
                         </button>
                       )}
-                      {!canConfirm(o.status) && !canCancelOrder(o.status) && (
+                      {canWrite && canReturn(o.status) && (
+                        <button
+                          onClick={() => handleReturn(o.id)}
+                          disabled={actionLoading === o.id}
+                          className="rounded bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                        >
+                          {actionLoading === o.id ? '…' : 'Return'}
+                        </button>
+                      )}
+                      {!canConfirm(o.status) && !canCancelOrder(o.status) && !canReturn(o.status) && (
                         <span className="text-xs text-gray-400">No actions</span>
                       )}
-                      {!canWrite && (canConfirm(o.status) || canCancelOrder(o.status)) && (
+                      {canInvoice(o.status) && (
+                        <button
+                          onClick={() => handleDownloadInvoice(o.id)}
+                          className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700"
+                        >
+                          Invoice
+                        </button>
+                      )}
+                      {!canWrite && (canConfirm(o.status) || canCancelOrder(o.status) || canReturn(o.status)) && (
                         <span className="text-xs text-gray-400" title="Missing orders:write permission">
                           Read-only
                         </span>

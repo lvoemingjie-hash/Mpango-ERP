@@ -10,7 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.dependencies_jobs import get_job_queue
+from api.middleware.rbac import RequirePermission
 from core.jobs import JobQueue
+from core.security import TokenPayload
 from schemas.common import DataResponse, MessageResponse
 
 router = APIRouter()
@@ -48,6 +50,7 @@ class QueueStatusResponse(BaseModel):
 @router.post("/email", response_model=DataResponse[EnqueueJobResponse], status_code=status.HTTP_202_ACCEPTED)
 async def enqueue_test_email(
     request: EnqueueJobRequest,
+    token: TokenPayload = Depends(RequirePermission("system:admin")),
     queue: JobQueue = Depends(get_job_queue)
 ):
     """
@@ -88,6 +91,7 @@ async def enqueue_test_email(
 @router.post("/slow-job", response_model=DataResponse[EnqueueJobResponse], status_code=status.HTTP_202_ACCEPTED)
 async def enqueue_slow_job(
     request: SlowJobRequest,
+    token: TokenPayload = Depends(RequirePermission("system:admin")),
     queue: JobQueue = Depends(get_job_queue)
 ):
     """
@@ -125,6 +129,7 @@ async def enqueue_slow_job(
 @router.post("/failing-job", response_model=DataResponse[EnqueueJobResponse], status_code=status.HTTP_202_ACCEPTED)
 async def enqueue_failing_job(
     error_message: str = "Simulated failure",
+    token: TokenPayload = Depends(RequirePermission("system:admin")),
     queue: JobQueue = Depends(get_job_queue)
 ):
     """
@@ -157,7 +162,10 @@ async def enqueue_failing_job(
 
 
 @router.get("/status", response_model=DataResponse[QueueStatusResponse], status_code=status.HTTP_200_OK)
-async def get_queue_status(queue: JobQueue = Depends(get_job_queue)):
+async def get_queue_status(
+    token: TokenPayload = Depends(RequirePermission("system:admin")),
+    queue: JobQueue = Depends(get_job_queue)
+):
     """
     S4-A: Get job queue status.
     
@@ -181,6 +189,7 @@ async def get_queue_status(queue: JobQueue = Depends(get_job_queue)):
 @router.get("/job/{job_id}", response_model=DataResponse[dict], status_code=status.HTTP_200_OK)
 async def get_job_status(
     job_id: str,
+    token: TokenPayload = Depends(RequirePermission("system:admin")),
     queue: JobQueue = Depends(get_job_queue)
 ):
     """

@@ -23,6 +23,7 @@ class OrderStatus(str, PyEnum):
     - PAID: Order is fully paid
     - FULFILLED: Order has been delivered/completed
     - VOIDED: Order was voided before any payment (clean cancellation)
+    - RETURNED: Order was returned after fulfillment (full return)
     """
     DRAFT = "draft"
     CONFIRMED = "confirmed"
@@ -31,6 +32,7 @@ class OrderStatus(str, PyEnum):
     FULFILLED = "fulfilled"
     CANCELLED = "cancelled"
     VOIDED = "voided"
+    RETURNED = "returned"
 
 
 class Order(BaseModel):

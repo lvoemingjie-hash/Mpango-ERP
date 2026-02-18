@@ -1,6 +1,6 @@
 ﻿# Mpango ERP — AI Ledger Index
 
-**Last Updated**: 2026-02-15
+**Last Updated**: 2026-02-16
 **Purpose**: Central index of all AI-generated technical ledger documents.
 
 ---
@@ -108,6 +108,14 @@
 | Track | Title | Status | Ledger |
 |-------|-------|--------|--------|
 | **S8-SEC** | **Aikido SAST 安全扫描修复** | **✅ COMPLETE** | [**backend/s8-sec_aikido_remediation.md**](backend/s8-sec_aikido_remediation.md) |
+
+---
+
+## CTO Reviews & Analysis
+
+| Track | Title | Status | Ledger |
+|-------|-------|--------|--------|
+| PRD | PRD v1.0 Gap Analysis (15 Areas) | 📋 PENDING REVIEW | [cto/2026-02-16_PRD_v10_gap_analysis.md](cto/2026-02-16_PRD_v10_gap_analysis.md) |
 
 ---
 

@@ -7,6 +7,7 @@ import { OrderListPage } from '@/pages/orders/OrderListPage';
 import { InventoryPage } from '@/pages/inventory/InventoryPage';
 import { TenantListPage } from '@/pages/tenants/TenantListPage';
 import { InvitePage } from '@/pages/invite/InvitePage';
+import { FinancePage } from '@/pages/finance/FinancePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 const router = createBrowserRouter([
@@ -31,6 +32,7 @@ const router = createBrowserRouter([
           { path: '/orders', element: <OrderListPage /> },
           { path: '/inventory', element: <InventoryPage /> },
           { path: '/tenants', element: <TenantListPage /> },
+          { path: '/finance', element: <FinancePage /> },
         ],
       },
     ],

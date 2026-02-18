@@ -25,6 +25,7 @@ from crud.order import (
     create_order as crud_create_order,
     confirm_order as crud_confirm_order,
     cancel_order as crud_cancel_order,
+    return_order as crud_return_order,
     InvalidStateTransitionError
 )
 from schemas.order import (
@@ -290,5 +291,76 @@ async def cancel_order(
             "status": order.status.value
         },
         message="Order cancelled successfully",
+        timestamp=datetime.utcnow()
+    )
+
+
+@router.post("/{order_id}/return", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
+async def return_order(
+    order_id: str,
+    token: TokenPayload = Depends(RequirePermission("orders:update")),
+    db: AsyncSession = Depends(get_tenant_db_session)
+):
+    """
+    Process a full return on a fulfilled order (fulfilled → returned).
+
+    This endpoint:
+    1. Validates order is in "fulfilled" status
+    2. Transitions order status to "returned"
+    3. Posts reversal ledger entries (via OrderService)
+    4. Restocking is manual in MVP — inventory is NOT auto-adjusted
+
+    Returns:
+        OrderActionResponse with updated status
+    """
+    order = await get_order_by_id(db, order_id)
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "ORDER_NOT_FOUND",
+                "message": f"Order with ID '{order_id}' not found"
+            }
+        )
+
+    try:
+        # Use OrderService for atomic transition + ledger posting
+        from services.order_service import OrderService
+        from core.domain.order_state import OrderState
+
+        order_service = OrderService(db)
+        order = await order_service.transition(
+            order_id=order.id,
+            target_state=OrderState.RETURNED,
+            reason="Full return requested",
+            updated_by=token.user_id
+        )
+    except InvalidStateTransitionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "INVALID_STATE_TRANSITION",
+                "message": str(e)
+            }
+        )
+    except Exception as e:
+        if "Invalid state transition" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "INVALID_STATE_TRANSITION",
+                    "message": str(e)
+                }
+            )
+        raise
+
+    return OrderActionResponse(
+        success=True,
+        data={
+            "order_id": str(order.id),
+            "status": order.status.value
+        },
+        message="Order returned successfully. Refund ledger entries posted.",
         timestamp=datetime.utcnow()
     )

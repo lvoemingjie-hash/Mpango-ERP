@@ -31,11 +31,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 
 from api.context.tenant import TenantContext, get_tenant_context
+from api.middleware.rbac import RequirePermission
 from api.schemas.dashboard import make_success, make_error
+from core.security import TokenPayload
 from api.schemas.jobs import (
     ExportRequest,
     ExportJobPayload,
@@ -85,6 +87,7 @@ def _extract_tenant(request: Request) -> TenantContext:
 async def create_export(
     request: Request,
     body: ExportRequest,
+    token: TokenPayload = Depends(RequirePermission("exports:create")),
 ) -> JSONResponse:
     """
     Enqueue an export job via the S4 Job Queue.

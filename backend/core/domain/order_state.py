@@ -10,7 +10,8 @@ State Graph:
     CONFIRMED → PAID, PARTIALLY_PAID, CANCELLED
     PAID → FULFILLED, CANCELLED (with refund)
     PARTIALLY_PAID → PAID, CANCELLED
-    FULFILLED → (Terminal)
+    FULFILLED → RETURNED
+    RETURNED → (Terminal)
     CANCELLED → (Terminal)
     VOIDED → (Terminal)
 """
@@ -30,6 +31,7 @@ class OrderState(str, PyEnum):
     - FULFILLED: Order has been delivered/completed
     - CANCELLED: Order was cancelled (may have refund implications)
     - VOIDED: Order was voided before any payment (clean cancellation)
+    - RETURNED: Order was returned after fulfillment (full return)
     """
     DRAFT = "draft"
     CONFIRMED = "confirmed"
@@ -38,6 +40,7 @@ class OrderState(str, PyEnum):
     FULFILLED = "fulfilled"
     CANCELLED = "cancelled"
     VOIDED = "voided"
+    RETURNED = "returned"
 
 
 # S5-1: State Transition Matrix
@@ -61,7 +64,10 @@ STATE_TRANSITION_MATRIX: Dict[OrderState, Set[OrderState]] = {
         OrderState.FULFILLED,
         OrderState.CANCELLED,  # With refund logic
     },
-    OrderState.FULFILLED: set(),  # Terminal state
+    OrderState.FULFILLED: {
+        OrderState.RETURNED,      # Full return after delivery
+    },
+    OrderState.RETURNED: set(),   # Terminal state
     OrderState.CANCELLED: set(),  # Terminal state
     OrderState.VOIDED: set(),     # Terminal state
 }

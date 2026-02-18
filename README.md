@@ -1,70 +1,155 @@
 # Mpango ERP System
 
-**版本：** 1.0.0
-**作者：** Jeff Lee + GPT-5
-**描述：** 基于 Spec-Kit 构建的批发零售 ERP 系统，用于支持非洲市场的多租户数字化运营。
+**Version:** 0.2.0
+**Author:** Jeff Lee + AI Engineering
+**Description:** Multi-tenant wholesale-retail ERP system built for the African market. Supports digital operations for Kenyan wholesalers and their retailer networks.
 
-## 架构概览
+---
 
-- **当前阶段**: 模块化单体架构 (FastAPI + React + PostgreSQL)
-- **多租户**: Schema-per-tenant 策略
-- **认证**: JWT + RBAC 权限控制
+## 🚀 Quick Start (Demo Mode)
 
-## 技术栈
-
-### 后端
-- **框架**: FastAPI (Python 3.11+)
-- **数据库**: PostgreSQL 15+
-- **ORM**: SQLAlchemy 2.0 (async)
-- **迁移**: Alembic
-- **缓存**: Redis + Celery
-
-### 前端
-- **框架**: React 18 + Vite + TypeScript
-- **样式**: TailwindCSS
-- **状态管理**: Zustand
-- **表单**: React Hook Form + Zod
-
-## 快速启动
+The fastest way to see the system in action. Resets the database, runs migrations, and seeds demo data.
 
 ```bash
-# 启动数据库和Redis
+# Prerequisites: Docker Compose running (postgres + redis)
 docker compose up -d postgres redis
 
-# 启动后端 (端口8000)
+# One-command staging reset (creates demo tenant + seed data)
+bash scripts/reset-staging.sh
+
+# Login credentials:
+#   Email:    admin@mpango.demo
+#   Password: DemoAdmin2026!
+```
+
+After reset, the backend is available at `http://localhost:8000` and the frontend at `http://localhost:5173`.
+
+For manual setup, see [Full Setup](#full-setup) below.
+
+---
+
+## ✅ Feature Status (v0.2.0)
+
+| Module | Status | Key Capabilities |
+|---|---|---|
+| **Authentication** | ✅ Production | JWT + refresh tokens, multi-tenant login, tenant isolation |
+| **User & Role Management** | ✅ Production | RBAC with 22+ permissions, role CRUD, user lifecycle |
+| **Order Management** | ✅ Production | Full state machine (Draft → Confirmed → Paid → Fulfilled), returns |
+| **Inventory** | ✅ Production | SKU catalog, stock levels, `SELECT FOR UPDATE` concurrency |
+| **Payments** | ✅ Production | Payment recording, idempotency, ledger integration |
+| **Finance** | ✅ Production | Invoice generation (JSON), accounts receivable, financial summary |
+| **Dashboard & BI** | ✅ Production | KPI endpoints, chart data, ad-hoc analysis, semantic query layer |
+| **Notifications** | ⚡ Stub | Email/SMS logged to file (provider-agnostic interface ready) |
+| **Data Export** | ✅ Production | Streaming CSV (orders, inventory) + async job-based exports |
+| **Audit Trail** | ✅ Production | Structured logging, operation tracking |
+| **Security** | ✅ Hardened | RBAC on all endpoints, tenant isolation, environment guards |
+| **M-Pesa Integration** | 🔲 Planned | STK Push webhook + reconciliation (Phase 2) |
+| **Multi-Warehouse** | 🔲 Planned | Single warehouse per tenant in MVP (Phase 2) |
+| **Offline Mode** | 🔲 Planned | Requires PWA framework (Phase 3) |
+
+> See [`docs/MVP_LIMITATIONS.md`](docs/MVP_LIMITATIONS.md) for detailed limitations and timelines.
+
+---
+
+## 🏗️ Architecture Overview
+
+- **Pattern**: Modular Monolith (FastAPI + React + PostgreSQL)
+- **Multi-Tenant**: Schema-per-tenant isolation (JWT-derived `search_path`)
+- **Auth**: JWT + RBAC permission checks on every endpoint
+- **State Machine**: Accounting-grade order lifecycle with row-level locking
+
+## Tech Stack
+
+### Backend
+- **Framework**: FastAPI (Python 3.11+)
+- **Database**: PostgreSQL 15+
+- **ORM**: SQLAlchemy 2.0 (async)
+- **Migrations**: Alembic
+- **Job Queue**: In-process async (Redis-backed in production)
+
+### Frontend
+- **Framework**: React 18 + Vite + TypeScript
+- **Styling**: TailwindCSS
+- **State Management**: Zustand
+- **Forms**: React Hook Form + Zod
+
+---
+
+## 📦 Full Setup
+
+```bash
+# 1. Start infrastructure
+docker compose up -d postgres redis
+
+# 2. Backend (port 8000)
 cd backend
 pip install -r requirements.txt
 alembic upgrade head
 uvicorn main:app --reload
 
-# 启动前端 (端口5173，避免3000端口冲突)
+# 3. Frontend (port 5173)
 cd frontend
 npm install
 npm run dev
 ```
 
-## 模块说明
+---
 
-- **认证模块 (auth)**: JWT认证、多租户登录
-- **用户管理 (users)**: RBAC权限、角色管理
-- **销售管理 (sales)**: 零售商下单、订单跟踪、批发商发货管理
-- **客户关系管理 (CRM)**: 批发商邀请、客户档案、信用额度管理
-- **库存管理 (inventory)**: 库存同步、商品录入、库存调整
-- **采购管理 (procurement)**: 供应商管理、采购单、入库记录
-- **财务管理 (finance)**: 支付记录、账单管理
+## 📂 Project Structure
 
-## 多租户架构
+```
+Mpango/
+├── backend/              # FastAPI application
+│   ├── api/v1/           # API routes (orders, users, finance, exports, etc.)
+│   ├── core/             # Config, security, domain logic
+│   ├── models/           # SQLAlchemy models
+│   ├── services/         # Business logic (OrderService, NotificationService, etc.)
+│   ├── crud/             # Data access layer
+│   └── scripts/          # Tenant onboarding, seeders
+├── frontend/             # React + Vite application
+│   ├── src/pages/        # Page components (Orders, Finance, Dashboard)
+│   ├── src/services/     # API client layer
+│   └── src/components/   # Shared UI components
+├── scripts/              # DevOps scripts (reset-staging.sh)
+├── docs/                 # Project documentation
+│   ├── RBAC_MATRIX_v0.2.0.md
+│   ├── MVP_LIMITATIONS.md
+│   └── policies/         # Exception strategy, security policies
+└── ai-ledger/            # Architectural decision records
+```
 
-- **租户标识**: tenant_code (登录用) + tenant_schema (数据隔离)
-- **数据隔离**: 每个批发商独立的PostgreSQL schema
-- **权限控制**: 基于JWT claims的租户级RBAC
+---
 
-## 开发规范
+## 🔒 Security & RBAC
 
-请严格遵循 `docs/contracts/` 目录下的开发契约文档。
+All API endpoints are protected by the `RequirePermission` RBAC middleware. Permissions are:
+- **Seeded** during tenant onboarding (22+ permission codes)
+- **Assigned** to roles (`admin`, `sales`, `warehouse`, `finance`)
+- **Checked** per-request from JWT token claims
 
-## Boot Contract（生产宪法）
+> See [`docs/RBAC_MATRIX_v0.2.0.md`](docs/RBAC_MATRIX_v0.2.0.md) for the full permission matrix.
 
-Boot Contract 存放路径：docs/contracts/Boot contract.md。
+---
 
-它是系统的生产级 L0.5 契约，是所有变更的共同约束。
+## 🏛️ Multi-Tenant Architecture
+
+- **Tenant Identifier**: `tenant_code` (login) + `tenant_schema` (data isolation)
+- **Data Isolation**: Each wholesaler gets an independent PostgreSQL schema (`t_{wholesaler_id}`)
+- **Permission Control**: JWT claims carry `tenant_schema` + `permissions[]` → enforced at middleware level
+- **Cross-Tenant Access**: Structurally impossible (no URL parameter or header overrides schema)
+
+---
+
+## 📜 Development Contracts
+
+Please follow the contracts in `docs/contracts/`:
+
+- **Boot Contract** (`docs/contracts/Boot contract.md`): Production-grade L0.5 constraints
+- **API Contract** (`docs/API_CONTRACT_v0.1.7.md`): REST conventions and response formats
+- **Exception Strategy** (`docs/policies/exception_strategy.md`): Error codes, timeouts, concurrency
+
+---
+
+## 📋 Changelog
+
+See [`docs/CHANGELOG_v0.1.9.md`](docs/CHANGELOG_v0.1.9.md) for version history.

@@ -37,6 +37,10 @@ STATE_TRANSITIONS = {
     "cancel": {
         "allowed_from": [OrderStatus.DRAFT, OrderStatus.CONFIRMED],
         "target": OrderStatus.CANCELLED
+    },
+    "return": {
+        "allowed_from": [OrderStatus.FULFILLED],
+        "target": OrderStatus.RETURNED
     }
 }
 
@@ -277,6 +281,45 @@ async def cancel_order(
     validate_state_transition(order, "cancel")
 
     order.status = OrderStatus.CANCELLED
+
+    if updated_by:
+        try:
+            order.updated_by = UUID(updated_by)
+        except ValueError:
+            pass
+
+    await db.flush()
+    await db.refresh(order, ["items"])
+
+    return order
+
+
+async def return_order(
+    db: AsyncSession,
+    order: Order,
+    updated_by: Optional[str] = None
+) -> Order:
+    """
+    Process a full return on a fulfilled order (fulfilled → returned).
+
+    This function handles status change only. Ledger entries and inventory
+    restocking are handled by OrderService.transition() when used via the
+    API layer.
+
+    Args:
+        db: Database session (tenant schema)
+        order: Order to return
+        updated_by: UUID of user processing the return
+
+    Returns:
+        Updated Order
+
+    Raises:
+        InvalidStateTransitionError: If order is not in fulfilled status
+    """
+    validate_state_transition(order, "return")
+
+    order.status = OrderStatus.RETURNED
 
     if updated_by:
         try:

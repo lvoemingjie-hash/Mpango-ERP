@@ -33,6 +33,7 @@ class OrderStatus(str, Enum):
     DRAFT = "draft"
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
+    RETURNED = "returned"
 
 
 # ============================================================================

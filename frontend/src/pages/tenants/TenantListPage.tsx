@@ -6,6 +6,7 @@ import { normalizeApiError } from '@/utils/errorHandling';
 import { Badge } from '@/components/ui/Badge';
 import { Pagination } from '@/components/ui/Pagination';
 import { TenantFormModal } from '@/pages/tenants/TenantFormModal';
+import { PageHeader } from '@/components/layout/PageHeader';
 import type { Tenant, CreateTenantRequest, UpdateTenantRequest } from '@/types/tenant';
 
 export function TenantListPage() {
@@ -106,23 +107,21 @@ export function TenantListPage() {
   // ── Render ─────────────────────────────────────────────────────────
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Tenants</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage wholesaler tenants and their configurations.
-          </p>
-        </div>
-        <button
-          onClick={openCreate}
-          disabled={!canWrite}
-          className="btn-primary inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          title={canWrite ? 'Create a new tenant' : 'You need wholesalers:write permission'}
-        >
-          <PlusIcon className="h-4 w-4" />
-          Create Tenant
-        </button>
-      </div>
+      <PageHeader
+        title={user?.roles.includes('super_admin') ? 'System Tenants' : 'Customers'}
+        description="Manage wholesaler tenants and their configurations."
+        action={
+          <button
+            onClick={openCreate}
+            disabled={!canWrite}
+            className="btn-primary inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={canWrite ? 'Create a new customer' : 'You need wholesalers:write permission'}
+          >
+            <PlusIcon className="h-4 w-4" />
+            Create Customer
+          </button>
+        }
+      />
 
       {/* Error Banner */}
       {loadError && (

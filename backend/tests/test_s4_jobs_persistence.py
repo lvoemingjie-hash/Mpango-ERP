@@ -34,17 +34,17 @@ async def handle_failing_job_with_retry(payload: dict):
     # Use a global counter to track attempts
     if not hasattr(handle_failing_job_with_retry, "attempt_count"):
         handle_failing_job_with_retry.attempt_count = {}
-    
+
     job_key = payload.get("job_key", "default")
-    
+
     if job_key not in handle_failing_job_with_retry.attempt_count:
         handle_failing_job_with_retry.attempt_count[job_key] = 0
-    
+
     handle_failing_job_with_retry.attempt_count[job_key] += 1
-    
+
     if handle_failing_job_with_retry.attempt_count[job_key] == 1:
         raise Exception("First attempt failure")
-    
+
     # Second attempt succeeds
     await asyncio.sleep(0.1)
     return {"status": "success", "attempt": handle_failing_job_with_retry.attempt_count[job_key]}
@@ -61,7 +61,7 @@ async def handle_always_failing_job(payload: dict):
 async def test_job_persistence_happy_path(async_session):
     """
     Test Case 1: Happy path - job completes, DB status is "completed"
-    
+
     Verifies:
     - Job is created in database with status "pending"
     - Job status updates to "running" when execution starts
@@ -72,7 +72,7 @@ async def test_job_persistence_happy_path(async_session):
     # Create and start queue
     queue = LocalJobQueue(max_workers=2)
     await queue.start()
-    
+
     try:
         # Enqueue job
         job_id = await queue.enqueue(
@@ -80,16 +80,16 @@ async def test_job_persistence_happy_path(async_session):
             payload={"test": "data"},
             max_retries=3
         )
-        
+
         # Wait for job to complete
         await asyncio.sleep(0.5)
-        
+
         # Verify job in database
         result = await async_session.execute(
             select(Job).where(Job.id == uuid.UUID(job_id))
         )
         job = result.scalar_one()
-        
+
         # Assertions
         assert job.job_name == "test_success_job"
         assert job.payload == {"test": "data"}
@@ -102,7 +102,7 @@ async def test_job_persistence_happy_path(async_session):
         assert job.started_at is not None
         assert job.completed_at is not None
         assert job.completed_at > job.started_at
-        
+
     finally:
         await queue.stop()
 
@@ -111,7 +111,7 @@ async def test_job_persistence_happy_path(async_session):
 async def test_job_retry_on_failure(async_session):
     """
     Test Case 2: Retry - job fails first attempt, succeeds on second
-    
+
     Verifies:
     - Job fails on first attempt
     - Job is automatically retried
@@ -123,11 +123,11 @@ async def test_job_retry_on_failure(async_session):
     # Reset attempt counter
     if hasattr(handle_failing_job_with_retry, "attempt_count"):
         handle_failing_job_with_retry.attempt_count = {}
-    
+
     # Create and start queue
     queue = LocalJobQueue(max_workers=2)
     await queue.start()
-    
+
     try:
         # Enqueue job with unique key
         job_key = f"test_{uuid.uuid4()}"
@@ -136,23 +136,23 @@ async def test_job_retry_on_failure(async_session):
             payload={"job_key": job_key},
             max_retries=3
         )
-        
+
         # Wait for job to complete (including retry)
         await asyncio.sleep(1.0)
-        
+
         # Verify job in database
         result = await async_session.execute(
             select(Job).where(Job.id == uuid.UUID(job_id))
         )
         job = result.scalar_one()
-        
+
         # Assertions
         assert job.job_name == "test_failing_job_with_retry"
         assert job.status == "completed"
         assert job.attempts == 2  # Failed once, succeeded on second attempt
         assert job.max_retries == 3
         assert job.completed_at is not None
-        
+
     finally:
         await queue.stop()
 
@@ -161,7 +161,7 @@ async def test_job_retry_on_failure(async_session):
 async def test_job_max_retries_reached(async_session):
     """
     Test Case 3: Max retries - job fails all attempts, verify status="failed"
-    
+
     Verifies:
     - Job fails on all attempts
     - Job is retried up to max_retries
@@ -172,7 +172,7 @@ async def test_job_max_retries_reached(async_session):
     # Create and start queue
     queue = LocalJobQueue(max_workers=2)
     await queue.start()
-    
+
     try:
         # Enqueue job with max_retries=2
         job_id = await queue.enqueue(
@@ -180,16 +180,16 @@ async def test_job_max_retries_reached(async_session):
             payload={"test": "data"},
             max_retries=2
         )
-        
+
         # Wait for all retry attempts to complete
         await asyncio.sleep(1.5)
-        
+
         # Verify job in database
         result = await async_session.execute(
             select(Job).where(Job.id == uuid.UUID(job_id))
         )
         job = result.scalar_one()
-        
+
         # Assertions
         assert job.job_name == "test_always_failing_job"
         assert job.status == "failed"
@@ -198,7 +198,7 @@ async def test_job_max_retries_reached(async_session):
         assert job.last_error is not None
         assert "Job always fails" in job.last_error
         assert job.completed_at is not None
-        
+
     finally:
         await queue.stop()
 
@@ -207,7 +207,7 @@ async def test_job_max_retries_reached(async_session):
 async def test_job_record_persistence(async_session):
     """
     Test Case 4: Job record persistence - verify all fields are correctly stored
-    
+
     Verifies:
     - Job ID is a valid UUID
     - Job name is stored correctly
@@ -219,7 +219,7 @@ async def test_job_record_persistence(async_session):
     # Create and start queue
     queue = LocalJobQueue(max_workers=2)
     await queue.start()
-    
+
     try:
         # Enqueue job with complex payload
         complex_payload = {
@@ -229,25 +229,25 @@ async def test_job_record_persistence(async_session):
             "array": [1, 2, 3],
             "nested": {"key": "value"}
         }
-        
+
         job_id = await queue.enqueue(
             job_name="test_success_job",
             payload=complex_payload,
             max_retries=5
         )
-        
+
         # Verify job ID is valid UUID
         assert uuid.UUID(job_id)
-        
+
         # Wait for job to complete
         await asyncio.sleep(0.5)
-        
+
         # Verify job in database
         result = await async_session.execute(
             select(Job).where(Job.id == uuid.UUID(job_id))
         )
         job = result.scalar_one()
-        
+
         # Assertions
         assert str(job.id) == job_id
         assert job.job_name == "test_success_job"
@@ -256,17 +256,17 @@ async def test_job_record_persistence(async_session):
         assert job.attempts == 1
         assert job.max_retries == 5
         assert job.last_error is None
-        
+
         # Verify timestamps
         assert isinstance(job.created_at, datetime)
         assert isinstance(job.updated_at, datetime)
         assert isinstance(job.started_at, datetime)
         assert isinstance(job.completed_at, datetime)
-        
+
         # Verify timestamp order
         assert job.created_at <= job.started_at
         assert job.started_at <= job.completed_at
-        
+
     finally:
         await queue.stop()
 
@@ -275,7 +275,7 @@ async def test_job_record_persistence(async_session):
 async def test_multiple_jobs_persistence(async_session):
     """
     Test Case 5: Multiple jobs - verify all jobs are tracked independently
-    
+
     Verifies:
     - Multiple jobs can be enqueued
     - Each job has its own database record
@@ -285,7 +285,7 @@ async def test_multiple_jobs_persistence(async_session):
     # Create and start queue
     queue = LocalJobQueue(max_workers=3)
     await queue.start()
-    
+
     try:
         # Enqueue multiple jobs
         job_ids = []
@@ -296,21 +296,21 @@ async def test_multiple_jobs_persistence(async_session):
                 max_retries=3
             )
             job_ids.append(job_id)
-        
+
         # Wait for all jobs to complete
         await asyncio.sleep(1.0)
-        
+
         # Verify all jobs in database
         for i, job_id in enumerate(job_ids):
             result = await async_session.execute(
                 select(Job).where(Job.id == uuid.UUID(job_id))
             )
             job = result.scalar_one()
-            
+
             assert job.job_name == "test_success_job"
             assert job.payload == {"index": i}
             assert job.status == "completed"
             assert job.attempts == 1
-        
+
     finally:
         await queue.stop()

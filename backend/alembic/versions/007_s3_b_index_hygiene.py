@@ -30,7 +30,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """
     S3-B: Add missing indexes for query performance.
-    
+
     Critical indexes for multi-tenancy and common queries:
     1. is_deleted - Used in almost every WHERE clause
     2. Foreign keys - Used in JOINs
@@ -51,55 +51,55 @@ def upgrade() -> None:
         op.create_index('ix_users_is_deleted', 'users', ['is_deleted'], unique=False)
         op.create_index('ix_users_is_active', 'users', ['is_active'], unique=False)
         op.create_index('ix_users_created_at', 'users', ['created_at'], unique=False)
-        
+
         # Roles table
         op.create_index('ix_roles_is_deleted', 'roles', ['is_deleted'], unique=False)
         op.create_index('ix_roles_created_at', 'roles', ['created_at'], unique=False)
-        
+
         # Permissions table
         op.create_index('ix_permissions_is_deleted', 'permissions', ['is_deleted'], unique=False)
         op.create_index('ix_permissions_created_at', 'permissions', ['created_at'], unique=False)
-        
+
         # Orders table
         op.create_index('ix_orders_is_deleted', 'orders', ['is_deleted'], unique=False)
-        
+
         # Order Items table
         op.create_index('ix_order_items_is_deleted', 'order_items', ['is_deleted'], unique=False)
         op.create_index('ix_order_items_created_at', 'order_items', ['created_at'], unique=False)
-        
+
         # SKUs table
         op.create_index('ix_skus_is_deleted', 'skus', ['is_deleted'], unique=False)
-        
+
         # Inventory Stocks table
         op.create_index('ix_inventory_stocks_is_deleted', 'inventory_stocks', ['is_deleted'], unique=False)
         op.create_index('ix_inventory_stocks_created_at', 'inventory_stocks', ['created_at'], unique=False)
-        
+
         # Payments table
         op.create_index('ix_payments_is_deleted', 'payments', ['is_deleted'], unique=False)
         op.create_index('ix_payments_status', 'payments', ['status'], unique=False)
         op.create_index('ix_payments_created_at', 'payments', ['created_at'], unique=False)
-        
+
         # Association tables
         op.create_index('ix_user_roles_is_deleted', 'user_roles', ['is_deleted'], unique=False)
         op.create_index('ix_role_permissions_is_deleted', 'role_permissions', ['is_deleted'], unique=False)
-    
+
     # ========================================
     # Public Schema Indexes (always run)
     # ========================================
-    
+
     # Wholesalers table
     op.create_index('ix_wholesalers_is_deleted', 'wholesalers', ['is_deleted'], unique=False, schema='public')
     op.create_index('ix_wholesalers_created_at', 'wholesalers', ['created_at'], unique=False, schema='public')
-    
+
     # Retailers table
     op.create_index('ix_retailers_is_deleted', 'retailers', ['is_deleted'], unique=False, schema='public')
     op.create_index('ix_retailers_created_at', 'retailers', ['created_at'], unique=False, schema='public')
-    
+
     # Invitations table
     op.create_index('ix_invitations_is_deleted', 'invitations', ['is_deleted'], unique=False, schema='public')
     op.create_index('ix_invitations_status', 'invitations', ['status'], unique=False, schema='public')
     op.create_index('ix_invitations_created_at', 'invitations', ['created_at'], unique=False, schema='public')
-    
+
     # Bindings table
     op.create_index('ix_bindings_is_deleted', 'wholesaler_retailer_bindings', ['is_deleted'], unique=False, schema='public')
     op.create_index('ix_bindings_created_at', 'wholesaler_retailer_bindings', ['created_at'], unique=False, schema='public')
@@ -124,7 +124,7 @@ def downgrade() -> None:
     op.drop_index('ix_retailers_is_deleted', table_name='retailers', schema='public')
     op.drop_index('ix_wholesalers_created_at', table_name='wholesalers', schema='public')
     op.drop_index('ix_wholesalers_is_deleted', table_name='wholesalers', schema='public')
-    
+
     # Tenant schema indexes (only when running with tenant schema)
     if is_tenant_migration:
         op.drop_index('ix_role_permissions_is_deleted', table_name='role_permissions')

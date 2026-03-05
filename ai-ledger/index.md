@@ -103,6 +103,15 @@
 
 ---
 
+## Architecture Fixes
+
+| Track | Title | Status | Ledger |
+|-------|-------|--------|--------|
+| **H-Fix-01** | **Backend: Decouple Identity from Tenant Context** | **✅ COMPLETE** | [**backend/2026-03-04_track_h_fix_01_decouple_identity_from_tenant.md**](backend/2026-03-04_track_h_fix_01_decouple_identity_from_tenant.md) |
+| **H-Fix-01** | **Frontend: Two-Phase Auth UI & Routing** | **✅ COMPLETE** | [**frontend/2026-03-04_track_h_fix_01_frontend_decouple_identity.md**](frontend/2026-03-04_track_h_fix_01_frontend_decouple_identity.md) |
+
+---
+
 ## Phase 8: Security Remediation
 
 | Track | Title | Status | Ledger |
@@ -127,6 +136,16 @@
 | v0.1.1-rc2 | Deployment Status Index | ✅ COMPLETE | [ops/DEPLOYMENT_STATUS_INDEX.md](ops/DEPLOYMENT_STATUS_INDEX.md) |
 | **E2-OPS** | **DevOps Audit — Deployment Artifacts** | **⚠️ WARN** | [**ops/2026-02-15_22-23_devops_audit_deployment_artifacts.md**](ops/2026-02-15_22-23_devops_audit_deployment_artifacts.md) |
 | **Track U** | **Staging Deployment (v0.2.0 UI)** | **✅ DEPLOYED** | [**ops/2026-02-18_19-12_track_u_staging_deployment.md**](ops/2026-02-18_19-12_track_u_staging_deployment.md) |
+| **Track H** | **VPS Safe Cleanup (Sing-Box Protection)** | **✅ COMPLETE** | [**ops/2026-02-18_23-33_track_h_vps_safe_cleanup.md**](ops/2026-02-18_23-33_track_h_vps_safe_cleanup.md) |
+
+---
+
+## Documentation & Test Data
+
+| Track | Title | Status | File |
+|-------|-------|--------|------|
+| **Track H** | **Test Data Personas (17 SKUs, 4 retailers, 3 suppliers)** | **✅ COMPLETE** | [**docs/TEST_DATA_PERSONAS.md**](../docs/TEST_DATA_PERSONAS.md) |
+| **Track H** | **用户使用手册 v0.2.0 (Word .docx)** | **✅ COMPLETE** | [**docs/Mpango_ERP_v0.2.0_用户使用手册.docx**](../docs/Mpango_ERP_v0.2.0_用户使用手册.docx) |
 
 ---
 

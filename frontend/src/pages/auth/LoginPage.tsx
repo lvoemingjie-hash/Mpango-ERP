@@ -44,7 +44,7 @@ export function LoginPage() {
       // 1. Identity Phase — get identity tokens + available tenants
       const loginRes = await authService.login(formData);
       const identityData = loginRes.data.data;
-      
+
       // Temporarily set identity token so we can query /me and /select-tenant
       useAuthStore.getState().updateTokens({
         access_token: identityData.access_token,
@@ -65,7 +65,7 @@ export function LoginPage() {
         const tenant = identityData.available_tenants[0];
         const ctxRes = await authService.selectTenant({ tenant_id: tenant.id });
         const ctxTokens = ctxRes.data.data;
-        
+
         useAuthStore.getState().updateTokens({
           access_token: ctxTokens.access_token,
           refresh_token: ctxTokens.refresh_token,
@@ -84,7 +84,7 @@ export function LoginPage() {
           if (matchedTenant) {
             const ctxRes = await authService.selectTenant({ tenant_id: matchedTenant.id });
             const ctxTokens = ctxRes.data.data;
-            
+
             useAuthStore.getState().updateTokens({
               access_token: ctxTokens.access_token,
               refresh_token: ctxTokens.refresh_token,
@@ -99,7 +99,7 @@ export function LoginPage() {
 
         // Save the available tenants in state so the selector page can use them
         // For now, we'll pass them via navigate state
-        navigate('/select-workspace', { 
+        navigate('/select-workspace', {
           replace: true,
           state: { availableTenants: identityData.available_tenants }
         });

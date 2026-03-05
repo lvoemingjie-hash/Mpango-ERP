@@ -142,6 +142,25 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build Integrity Gate (Verify Scripts Exist)
+        run: |
+          IMAGE="${{ steps.meta.outputs.tags }}"
+          echo "Verifying critical files in $IMAGE..."
+          
+          # Verify seed_demo_data.py exists (required for staging data seeding)
+          echo "Checking /app/scripts/seed_demo_data.py..."
+          docker run --rm $IMAGE ls -la /app/scripts/seed_demo_data.py
+          
+          # Verify create_wholesaler.py exists (required for tenant creation)
+          echo "Checking /app/scripts/create_wholesaler.py..."
+          docker run --rm $IMAGE ls -la /app/scripts/create_wholesaler.py
+          
+          # Verify onboard_tenant.py exists (required for tenant onboarding)
+          echo "Checking /app/scripts/onboard_tenant.py..."
+          docker run --rm $IMAGE ls -la /app/scripts/onboard_tenant.py
+          
+          echo "✅ Build integrity gate passed - all critical scripts verified"
+
   # ---------------------------------------------------------------------------
   # Deploy: (mock) — outputs instructions for manual staging deploy
   # ---------------------------------------------------------------------------

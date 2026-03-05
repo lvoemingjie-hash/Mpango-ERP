@@ -1,14 +1,13 @@
 """
 Authentication API endpoints.
-Implements openapi.yaml /auth/* endpoints.
 
-Per multi_tenancy_spec.md section 4.1:
-- Login validates tenant_code → tenant_id → tenant_schema
-- JWT contains user_id, tenant_id, tenant_schema claims
-- Tokens signed with HS256 algorithm
+H-Fix-01: Decoupled Identity from Tenant Context.
+- POST /auth/login  → email + password only → Identity JWT + available_tenants
+- POST /auth/select-tenant → tenant_id → Contextual JWT
+- POST /auth/refresh → works for both Identity and Contextual refresh tokens
 """
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_tenant_db_session, get_current_user_context
@@ -16,18 +15,28 @@ from core.cache import cache
 from core.security import (
     create_access_token,
     create_refresh_token,
+    create_identity_token,
+    create_contextual_token,
     decode_token,
     verify_password,
     TokenPayload,
     InvalidTokenError,
     ExpiredTokenError
 )
-from crud.wholesaler import get_wholesaler_by_code
-from crud.user import get_user_by_email, get_user_with_permissions
+from crud.wholesaler import get_wholesaler_by_code, get_wholesaler_by_id
+from crud.user import (
+    get_user_by_email,
+    get_user_with_permissions,
+    find_user_across_tenants,
+)
 from database.session import get_tenant_db
 from schemas.auth import (
     LoginRequest,
     LoginResponse,
+    IdentityLoginResponse,
+    IdentityTokenData,
+    SelectTenantRequest,
+    TenantInfo,
     RefreshTokenRequest,
     CurrentUserResponse,
     TokenData,
@@ -38,36 +47,114 @@ from schemas.common import MessageResponse
 router = APIRouter()
 
 
-@router.post("/login", response_model=LoginResponse, status_code=status.HTTP_200_OK)
+# ---------------------------------------------------------------------------
+# POST /auth/login  (Identity phase)
+# ---------------------------------------------------------------------------
+
+@router.post("/login", response_model=IdentityLoginResponse, status_code=status.HTTP_200_OK)
 async def login(
     request: LoginRequest,
     db: AsyncSession = Depends(get_db_session)
 ):
     """
-    Multi-tenant login endpoint.
-
-    Implements openapi.yaml POST /auth/login
+    Identity login endpoint (H-Fix-01).
 
     Flow:
-    1. Validate tenant_code against public.wholesalers
-    2. Derive tenant_schema from wholesaler.id
-    3. Authenticate user in tenant schema
-    4. Return JWT with tenant claims
+    1. Accept email + password (no tenant_code).
+    2. Scan all active tenant schemas for the email.
+    3. Verify password.
+    4. Return Identity JWT + list of available tenants.
+
+    The Identity JWT contains NO tenant context.  Frontend should call
+    POST /auth/select-tenant to obtain a Contextual JWT.
+
+    Returns:
+        IdentityLoginResponse with identity tokens and available_tenants.
+
+    Raises:
+        HTTPException 401: Invalid credentials.
+    """
+    verified_user_id, matches = await find_user_across_tenants(
+        db, request.email, request.password
+    )
+
+    if verified_user_id is None or len(matches) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "INVALID_CREDENTIALS", "message": "Invalid credentials"}
+        )
+
+    # Aggregate unique roles across all tenants
+    all_roles = sorted({r for m in matches for r in m.roles})
+
+    # Build available tenants list
+    available_tenants = [
+        TenantInfo(
+            id=str(m.wholesaler.id),
+            code=m.wholesaler.code,
+            name=m.wholesaler.name,
+        )
+        for m in matches
+    ]
+
+    # Create identity tokens (no tenant context)
+    access_token = create_identity_token(
+        user_id=verified_user_id,
+        roles=all_roles,
+        token_type="access",
+    )
+    refresh_token = create_identity_token(
+        user_id=verified_user_id,
+        roles=all_roles,
+        token_type="refresh",
+    )
+
+    return IdentityLoginResponse(
+        success=True,
+        data=IdentityTokenData(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            user_id=verified_user_id,
+            roles=all_roles,
+            available_tenants=available_tenants,
+        ),
+        timestamp=datetime.utcnow(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/select-tenant  (Context phase)
+# ---------------------------------------------------------------------------
+
+@router.post("/select-tenant", response_model=LoginResponse, status_code=status.HTTP_200_OK)
+async def select_tenant(
+    request: SelectTenantRequest,
+    token: TokenPayload = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Upgrade an Identity JWT to a Contextual JWT.
+
+    Flow:
+    1. Validate the caller holds a valid Identity (or Contextual) JWT.
+    2. Verify the requested tenant exists and user has access.
+    3. Return a Contextual JWT scoped to the selected tenant.
 
     Args:
-        request: LoginRequest with tenant_code, email, password
+        request: SelectTenantRequest with tenant_id
+        token: Current JWT payload (identity or contextual)
         db: Public schema database session
 
     Returns:
-        LoginResponse with access_token and refresh_token
+        LoginResponse with contextual access + refresh tokens.
 
     Raises:
-        HTTPException 404: If tenant_code not found
-        HTTPException 401: If credentials invalid
-        HTTPException 400: If user inactive
+        HTTPException 404: Tenant not found.
+        HTTPException 403: User has no access to this tenant.
     """
-    # 1. Find wholesaler by tenant_code in public schema
-    wholesaler = await get_wholesaler_by_code(db, request.tenant_code)
+    # 1. Find the wholesaler
+    wholesaler = await get_wholesaler_by_id(db, request.tenant_id)
     if not wholesaler:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -76,40 +163,34 @@ async def login(
 
     tenant_schema = wholesaler.get_tenant_schema()
 
-    # 2. Switch to tenant schema and find user
+    # 2. Verify user exists in this tenant schema
     async for tenant_db in get_tenant_db(tenant_schema):
-        user = await get_user_by_email(tenant_db, request.email)
-
-        if not user:
+        user = await get_user_with_permissions(tenant_db, token.user_id)
+        if not user or not user.is_active:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "INVALID_CREDENTIALS", "message": "Invalid credentials"}
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "TENANT_ACCESS_DENIED",
+                    "message": "You do not have access to this tenant"
+                }
             )
 
-        # 3. Check if user is active
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"code": "USER_INACTIVE", "message": "User account is inactive"}
-            )
+        roles = [role.name for role in user.roles]
 
-        # 4. Verify password
-        if not verify_password(request.password, user.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "INVALID_CREDENTIALS", "message": "Invalid credentials"}
-            )
-
-        # 5. Generate tokens
-        access_token = create_access_token(
+        # 3. Issue contextual tokens
+        access_token = create_contextual_token(
             user_id=str(user.id),
+            roles=roles,
             tenant_id=str(wholesaler.id),
-            tenant_schema=tenant_schema
+            tenant_schema=tenant_schema,
+            token_type="access",
         )
-        refresh_token = create_refresh_token(
+        refresh_token = create_contextual_token(
             user_id=str(user.id),
+            roles=roles,
             tenant_id=str(wholesaler.id),
-            tenant_schema=tenant_schema
+            tenant_schema=tenant_schema,
+            token_type="refresh",
         )
 
         return LoginResponse(
@@ -120,66 +201,100 @@ async def login(
                 token_type="bearer",
                 user_id=str(user.id),
                 tenant_id=str(wholesaler.id),
-                tenant_schema=tenant_schema
+                tenant_schema=tenant_schema,
+                roles=roles,
             ),
-            timestamp=datetime.utcnow()
+            timestamp=datetime.utcnow(),
         )
 
+
+# ---------------------------------------------------------------------------
+# POST /auth/refresh
+# ---------------------------------------------------------------------------
 
 @router.post("/refresh", response_model=LoginResponse, status_code=status.HTTP_200_OK)
 async def refresh_token(request: RefreshTokenRequest):
     """
     Refresh access token endpoint.
 
-    Implements openapi.yaml POST /auth/refresh
-
-    Validates refresh token and issues new access + refresh tokens.
-    Preserves tenant_id and tenant_schema from original token.
-
-    Args:
-        request: RefreshTokenRequest with refresh_token
+    Works for both Identity and Contextual refresh tokens.
+    - Identity refresh → new Identity tokens
+    - Contextual refresh → new Contextual tokens (preserves tenant claims)
 
     Returns:
-        LoginResponse with new access_token and refresh_token
+        LoginResponse with new access_token and refresh_token.
 
     Raises:
-        HTTPException 401: If refresh token invalid, expired, or wrong type
+        HTTPException 401: If refresh token invalid, expired, or wrong type.
     """
     try:
-        # Decode refresh token
         payload = decode_token(request.refresh_token)
 
-        # Validate token type is refresh (not access)
         if payload.type != "refresh":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "INVALID_TOKEN_TYPE", "message": "Refresh token required"}
             )
 
-        # Generate new tokens with same claims
-        access_token = create_access_token(
-            user_id=payload.user_id,
-            tenant_id=payload.tenant_id,
-            tenant_schema=payload.tenant_schema
-        )
-        new_refresh_token = create_refresh_token(
-            user_id=payload.user_id,
-            tenant_id=payload.tenant_id,
-            tenant_schema=payload.tenant_schema
-        )
-
-        return LoginResponse(
-            success=True,
-            data=TokenData(
-                access_token=access_token,
-                refresh_token=new_refresh_token,
-                token_type="bearer",
+        if payload.is_identity_only:
+            # Identity refresh — re-issue identity tokens
+            access_token = create_identity_token(
                 user_id=payload.user_id,
+                roles=payload.roles,
+                token_type="access",
+            )
+            new_refresh = create_identity_token(
+                user_id=payload.user_id,
+                roles=payload.roles,
+                token_type="refresh",
+            )
+            # For identity-only refresh we still return LoginResponse
+            # but with placeholder tenant fields — the frontend should
+            # call select-tenant to get a full contextual token.
+            # We return the identity tokens wrapped in the contextual schema
+            # by using sentinel values.
+            return IdentityLoginResponse(
+                success=True,
+                data=IdentityTokenData(
+                    access_token=access_token,
+                    refresh_token=new_refresh,
+                    token_type="bearer",
+                    user_id=payload.user_id,
+                    roles=payload.roles,
+                    available_tenants=[],
+                ),
+                timestamp=datetime.utcnow(),
+            )
+        else:
+            # Contextual refresh — preserve tenant claims
+            access_token = create_contextual_token(
+                user_id=payload.user_id,
+                roles=payload.roles,
                 tenant_id=payload.tenant_id,
-                tenant_schema=payload.tenant_schema
-            ),
-            timestamp=datetime.utcnow()
-        )
+                tenant_schema=payload.tenant_schema,
+                token_type="access",
+            )
+            new_refresh = create_contextual_token(
+                user_id=payload.user_id,
+                roles=payload.roles,
+                tenant_id=payload.tenant_id,
+                tenant_schema=payload.tenant_schema,
+                token_type="refresh",
+            )
+
+            return LoginResponse(
+                success=True,
+                data=TokenData(
+                    access_token=access_token,
+                    refresh_token=new_refresh,
+                    token_type="bearer",
+                    user_id=payload.user_id,
+                    tenant_id=payload.tenant_id,
+                    tenant_schema=payload.tenant_schema,
+                    roles=payload.roles,
+                ),
+                timestamp=datetime.utcnow(),
+            )
 
     except ExpiredTokenError:
         raise HTTPException(
@@ -252,31 +367,41 @@ async def _get_user_with_permissions_cached(user_id: str, db: AsyncSession):
 
 @router.get("/me", response_model=CurrentUserResponse, status_code=status.HTTP_200_OK)
 async def get_current_user(
+    request: Request,
     token: TokenPayload = Depends(get_current_user_context),
-    db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
     Get current authenticated user info.
 
-    Implements openapi.yaml GET /auth/me
+    H-Fix-01: Works for both identity-only and contextual JWTs.
+    - Identity JWT: returns user_id and roles from JWT claims (no DB query).
+    - Contextual JWT: queries tenant DB for full user data with permissions.
 
-    Returns user info from JWT claims with roles and permissions.
-    
-    S3-C: Cached with 30s TTL to reduce DB load for frequent permission checks.
-
-    Args:
-        token: JWT payload from Authorization header
-        db: Tenant-scoped database session
-
-    Returns:
-        CurrentUserResponse with user data, roles, and permissions
-
-    Raises:
-        HTTPException 401: If user not found in database
+    S3-C: Cached with 30s TTL for contextual tokens.
     """
-    # S3-C: Use cached helper function
+    if token.is_identity_only:
+        # Identity-only JWT: return minimal info from JWT claims.
+        return CurrentUserResponse(
+            success=True,
+            data=CurrentUserData(
+                id=token.user_id,
+                email="",  # Not available in identity JWT
+                full_name=None,
+                tenant_id=None,
+                tenant_schema=None,
+                roles=token.roles,
+                permissions=[],
+            ),
+            timestamp=datetime.utcnow(),
+        )
+
+    # Contextual JWT: get tenant session from request state (set by middleware).
+    from api.context.tenant import get_tenant_context as _get_tc
+    tenant_ctx = _get_tc(request)
+    db: AsyncSession = tenant_ctx.session
+
     user_data = await _get_user_with_permissions_cached(token.user_id, db)
-    
+
     if not user_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

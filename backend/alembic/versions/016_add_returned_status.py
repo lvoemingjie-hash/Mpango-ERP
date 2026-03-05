@@ -8,6 +8,7 @@ Adds the RETURNED status to the PostgreSQL order_status enum for the
 returns feature. This is a non-destructive change — existing data is untouched.
 """
 from alembic import op
+from sqlalchemy import text
 
 
 # revision identifiers, used by Alembic.
@@ -19,19 +20,21 @@ depends_on = None
 
 def upgrade() -> None:
     """Add 'returned' value to the order_status PostgreSQL enum."""
-    # First check if the enum type exists; if not, create it
-    # This handles production DBs that may not have the enum yet
     conn = op.get_bind()
     result = conn.execute(
-        __import__('sqlalchemy').text("SELECT typname FROM pg_type WHERE typname = 'order_status'")
+        text("SELECT 1 FROM pg_type WHERE typname = 'order_status'")
     ).fetchone()
-    
+
     if result is None:
-        # Enum doesn't exist yet - create it with all values including 'returned'
-        op.execute("CREATE TYPE order_status AS ENUM ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'returned')")
+        op.execute(
+            text("CREATE TYPE order_status AS ENUM "
+                 "('pending', 'confirmed', 'processing', 'shipped', "
+                 "'delivered', 'cancelled', 'returned')")
+        )
     else:
-        # Enum exists - add 'returned' value if not present
-        op.execute("ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'returned'")
+        op.execute(
+            text("ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'returned'")
+        )
 
 
 def downgrade() -> None:

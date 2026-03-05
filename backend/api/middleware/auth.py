@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     """
     Decode JWT tokens and attach auth/tenant context to request.state.
-    
+
     S2-2: Updates logging context with tenant and user information.
     """
 
@@ -55,7 +55,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                         tenant_id=str(tenant_ctx.tenant_id),
                         tenant_schema=tenant_ctx.tenant_schema,
                     )
-                    
+
                     # S2.5 Batch B: Enforce tenant isolation - fail-safe check
                     if not tenant_ctx.tenant_schema:
                         logger.critical(
@@ -76,7 +76,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                         tenant_schema=tenant_ctx.tenant_schema,
                         user_id=str(tenant_ctx.tenant_id)
                     )
-                    
+
                     # Also update request.state for metrics
                     request.state.tenant_id = tenant_ctx.tenant_schema
 
@@ -100,7 +100,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             if tenant_ctx:
                 from api.context.tenant import finalize_tenant_context
                 await finalize_tenant_context(tenant_ctx, success=False)
-            
+
             logger.error(f"Authentication middleware error: {type(e).__name__}", exc_info=e)
             raise
 

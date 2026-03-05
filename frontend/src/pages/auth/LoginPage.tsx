@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -9,10 +9,6 @@ import { authService } from '@/services/authService';
 import type { ApiErrorResponse } from '@/types/api';
 
 const loginSchema = z.object({
-  tenant_code: z
-    .string()
-    .min(1, 'Tenant code is required')
-    .max(32, 'Tenant code must be 32 characters or less'),
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
@@ -21,9 +17,13 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const login = useAuthStore((s) => s.login);
-  const tenantCode = useAuthStore((s) => s.tenantCode);
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // Extract tenant code from URL query string
+  const queryParams = new URLSearchParams(location.search);
+  const urlTenantCode = queryParams.get('tenant_code');
 
   const {
     register,
@@ -32,7 +32,6 @@ export function LoginPage() {
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      tenant_code: tenantCode ?? '',
       email: '',
       password: '',
     },
@@ -42,25 +41,74 @@ export function LoginPage() {
     setServerError(null);
 
     try {
-      // 1. Login — get tokens
+      // 1. Identity Phase — get identity tokens + available tenants
       const loginRes = await authService.login(formData);
-      const tokens = loginRes.data.data;
-
-      // 2. Fetch user profile with the new token
-      // Temporarily set token so the /me request is authenticated
+      const identityData = loginRes.data.data;
+      
+      // Temporarily set identity token so we can query /me and /select-tenant
       useAuthStore.getState().updateTokens({
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
+        access_token: identityData.access_token,
+        refresh_token: identityData.refresh_token,
       });
 
-      const meRes = await authService.me();
-      const user = meRes.data.data;
+      // Task 2: Routing Logic
+      if (identityData.roles.includes('super_admin')) {
+        // Condition A: Super Admin goes directly to dashboard (which handles system perms)
+        const meRes = await authService.me();
+        login(identityData, meRes.data.data, null);
+        navigate('/', { replace: true });
+        return;
+      }
 
-      // 3. Commit to store (persisted)
-      login(tokens, user, formData.tenant_code);
+      if (identityData.available_tenants.length === 1) {
+        // Condition B: Single Tenant -> auto select
+        const tenant = identityData.available_tenants[0];
+        const ctxRes = await authService.selectTenant({ tenant_id: tenant.id });
+        const ctxTokens = ctxRes.data.data;
+        
+        useAuthStore.getState().updateTokens({
+          access_token: ctxTokens.access_token,
+          refresh_token: ctxTokens.refresh_token,
+        });
 
-      // 4. Navigate to dashboard
-      navigate('/', { replace: true });
+        const meRes = await authService.me();
+        login(ctxTokens, meRes.data.data, tenant.code);
+        navigate('/', { replace: true });
+        return;
+      }
+
+      if (identityData.available_tenants.length > 1) {
+        // Condition C: Multi-Tenant -> handle invite code auto-resolution or redirect to workspace selector
+        if (urlTenantCode) {
+          const matchedTenant = identityData.available_tenants.find(t => t.code === urlTenantCode);
+          if (matchedTenant) {
+            const ctxRes = await authService.selectTenant({ tenant_id: matchedTenant.id });
+            const ctxTokens = ctxRes.data.data;
+            
+            useAuthStore.getState().updateTokens({
+              access_token: ctxTokens.access_token,
+              refresh_token: ctxTokens.refresh_token,
+            });
+
+            const meRes = await authService.me();
+            login(ctxTokens, meRes.data.data, matchedTenant.code);
+            navigate('/', { replace: true });
+            return;
+          }
+        }
+
+        // Save the available tenants in state so the selector page can use them
+        // For now, we'll pass them via navigate state
+        navigate('/select-workspace', { 
+          replace: true,
+          state: { availableTenants: identityData.available_tenants }
+        });
+        return;
+      }
+
+      // Condition D: Cold Start -> no tenants
+      navigate('/onboarding/create-tenant', { replace: true });
+
     } catch (err) {
       const axiosErr = err as AxiosError<ApiErrorResponse>;
       const detail = axiosErr.response?.data;
@@ -98,29 +146,6 @@ export function LoginPage() {
               {serverError}
             </div>
           )}
-
-          {/* Tenant Code */}
-          <div>
-            <label
-              htmlFor="tenant_code"
-              className="mb-1 block text-sm font-medium text-gray-700"
-            >
-              Tenant Code
-            </label>
-            <input
-              id="tenant_code"
-              type="text"
-              autoComplete="organization"
-              placeholder="e.g. ACME01"
-              className="input-field"
-              {...register('tenant_code')}
-            />
-            {errors.tenant_code && (
-              <p className="mt-1 text-xs text-red-600">
-                {errors.tenant_code.message}
-              </p>
-            )}
-          </div>
 
           {/* Email */}
           <div>

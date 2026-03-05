@@ -2,6 +2,8 @@ import { api } from '@/services/api';
 import type {
   LoginRequest,
   LoginResponse,
+  IdentityLoginResponse,
+  SelectTenantRequest,
   CurrentUserResponse,
 } from '@/types/auth';
 
@@ -11,7 +13,10 @@ import type {
  */
 export const authService = {
   login: (payload: LoginRequest) =>
-    api.post<LoginResponse>('/auth/login', payload),
+    api.post<IdentityLoginResponse>('/auth/login', payload),
+
+  selectTenant: (payload: SelectTenantRequest) =>
+    api.post<LoginResponse>('/auth/select-tenant', payload),
 
   refresh: (refreshToken: string) =>
     api.post<LoginResponse>('/auth/refresh', { refresh_token: refreshToken }),

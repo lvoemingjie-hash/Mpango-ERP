@@ -62,15 +62,15 @@ def upgrade() -> None:
     """)
     
     # =========================================================================
-    # Step 2: Get all tenant schemas
+    # Step 2: Get tenant schemas that have ledger_entries table
     # =========================================================================
-    # Query to find all schemas that start with 't_' (tenant schemas)
     connection = op.get_bind()
     result = connection.execute(sa.text("""
-        SELECT schema_name 
-        FROM information_schema.schemata 
-        WHERE schema_name LIKE 't_%'
-        ORDER BY schema_name
+        SELECT DISTINCT table_schema
+        FROM information_schema.tables
+        WHERE table_schema LIKE 't_%'
+          AND table_name = 'ledger_entries'
+        ORDER BY table_schema
     """))
     tenant_schemas = [row[0] for row in result]
     

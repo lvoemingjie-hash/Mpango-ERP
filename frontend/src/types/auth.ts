@@ -4,9 +4,33 @@
  */
 
 export interface LoginRequest {
-  tenant_code: string;
   email: string;
   password: string;
+}
+
+export interface TenantInfo {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface IdentityTokenData {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  user_id: string;
+  roles: string[];
+  available_tenants: TenantInfo[];
+}
+
+export interface IdentityLoginResponse {
+  success: boolean;
+  data: IdentityTokenData;
+  timestamp: string;
+}
+
+export interface SelectTenantRequest {
+  tenant_id: string;
 }
 
 export interface TokenData {
@@ -16,6 +40,7 @@ export interface TokenData {
   user_id: string;
   tenant_id: string;
   tenant_schema: string;
+  roles: string[];
 }
 
 export interface LoginResponse {
@@ -32,8 +57,8 @@ export interface CurrentUserData {
   id: string;
   email: string;
   full_name: string | null;
-  tenant_id: string;
-  tenant_schema: string;
+  tenant_id: string | null;
+  tenant_schema: string | null;
   roles: string[];
   permissions: string[];
 }

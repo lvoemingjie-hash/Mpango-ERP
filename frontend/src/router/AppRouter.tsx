@@ -2,6 +2,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { ProtectedRoute, PublicRoute } from '@/router/guards';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
+import { WorkspaceSelectorPage } from '@/pages/auth/WorkspaceSelectorPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { OrderListPage } from '@/pages/orders/OrderListPage';
 import { InventoryPage } from '@/pages/inventory/InventoryPage';
@@ -16,6 +17,11 @@ const router = createBrowserRouter([
     children: [
       { path: '/login', element: <LoginPage /> },
     ],
+  },
+  // Workspace selector — after login, but before app
+  {
+    path: '/select-workspace',
+    element: <WorkspaceSelectorPage />,
   },
   // Invite page — public, no auth required
   {

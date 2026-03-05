@@ -101,12 +101,13 @@ def upgrade() -> None:
     """
     connection = op.get_bind()
 
-    # Discover all tenant schemas
+    # Discover tenant schemas that have ledger_entries (required by rpt_* views)
     result = connection.execute(sa.text("""
-        SELECT schema_name
-        FROM information_schema.schemata
-        WHERE schema_name LIKE 't_%'
-        ORDER BY schema_name
+        SELECT DISTINCT table_schema
+        FROM information_schema.tables
+        WHERE table_schema LIKE 't_%'
+          AND table_name = 'ledger_entries'
+        ORDER BY table_schema
     """))
     tenant_schemas = [row[0] for row in result]
 

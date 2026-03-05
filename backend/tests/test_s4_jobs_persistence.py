@@ -22,36 +22,36 @@ from models.job import Job
 
 # Test job handlers
 @job_handler("test_success_job")
-async def test_success_job(payload: dict):
+async def handle_success_job(payload: dict):
     """Job that always succeeds."""
     await asyncio.sleep(0.1)
     return {"status": "success", "data": payload}
 
 
 @job_handler("test_failing_job_with_retry")
-async def test_failing_job_with_retry(payload: dict):
+async def handle_failing_job_with_retry(payload: dict):
     """Job that fails on first attempt, succeeds on second."""
     # Use a global counter to track attempts
-    if not hasattr(test_failing_job_with_retry, "attempt_count"):
-        test_failing_job_with_retry.attempt_count = {}
+    if not hasattr(handle_failing_job_with_retry, "attempt_count"):
+        handle_failing_job_with_retry.attempt_count = {}
     
     job_key = payload.get("job_key", "default")
     
-    if job_key not in test_failing_job_with_retry.attempt_count:
-        test_failing_job_with_retry.attempt_count[job_key] = 0
+    if job_key not in handle_failing_job_with_retry.attempt_count:
+        handle_failing_job_with_retry.attempt_count[job_key] = 0
     
-    test_failing_job_with_retry.attempt_count[job_key] += 1
+    handle_failing_job_with_retry.attempt_count[job_key] += 1
     
-    if test_failing_job_with_retry.attempt_count[job_key] == 1:
+    if handle_failing_job_with_retry.attempt_count[job_key] == 1:
         raise Exception("First attempt failure")
     
     # Second attempt succeeds
     await asyncio.sleep(0.1)
-    return {"status": "success", "attempt": test_failing_job_with_retry.attempt_count[job_key]}
+    return {"status": "success", "attempt": handle_failing_job_with_retry.attempt_count[job_key]}
 
 
 @job_handler("test_always_failing_job")
-async def test_always_failing_job(payload: dict):
+async def handle_always_failing_job(payload: dict):
     """Job that always fails."""
     await asyncio.sleep(0.1)
     raise Exception("Job always fails")
@@ -121,8 +121,8 @@ async def test_job_retry_on_failure(async_session):
     - last_error is set during failure but job still completes
     """
     # Reset attempt counter
-    if hasattr(test_failing_job_with_retry, "attempt_count"):
-        test_failing_job_with_retry.attempt_count = {}
+    if hasattr(handle_failing_job_with_retry, "attempt_count"):
+        handle_failing_job_with_retry.attempt_count = {}
     
     # Create and start queue
     queue = LocalJobQueue(max_workers=2)

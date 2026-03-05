@@ -24,11 +24,6 @@ depends_on = None
 
 # S8-SEC: Reporting user password — MUST be injected via environment variable.
 import os as _os
-REPORTING_USER_PASSWORD = _os.environ.get("REPORTING_USER_PASSWORD")
-if not REPORTING_USER_PASSWORD:
-    raise RuntimeError(
-        "REPORTING_USER_PASSWORD environment variable must be set before running this migration"
-    )
 
 
 def upgrade() -> None:
@@ -44,6 +39,12 @@ def upgrade() -> None:
     6. Set default_transaction_read_only = on (belt-and-suspenders)
     7. Create reporting_user with LOGIN, member of reporting_role
     """
+    REPORTING_USER_PASSWORD = _os.environ.get("REPORTING_USER_PASSWORD")
+    if not REPORTING_USER_PASSWORD:
+        raise RuntimeError(
+            "REPORTING_USER_PASSWORD environment variable must be set before running this migration"
+        )
+
     connection = op.get_bind()
     db_name = connection.engine.url.database
 

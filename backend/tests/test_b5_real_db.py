@@ -4,6 +4,7 @@ Phase B5 Payments Minimal Loop - Real DB Verification
 Uses FastAPI TestClient with MPANGO_ENV=test for auth strategy selection.
 """
 import os
+import shutil
 import sys
 import unittest
 
@@ -81,6 +82,7 @@ def get_payments_count():
     return None
 
 
+@unittest.skipUnless(shutil.which("docker"), "docker CLI not available (running inside container)")
 class TestB5RealDB(unittest.TestCase):
 
     @classmethod

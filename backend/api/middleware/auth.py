@@ -44,34 +44,37 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     finalize_tenant_context,
                 )
 
+                # H-Fix-01: resolve_tenant_context returns None for
+                # identity-only JWTs (no tenant_id/tenant_schema).
                 tenant_ctx = await self._strategy.resolve_tenant_context(auth_ctx)
-                attach_tenant_context(request, tenant_ctx)
 
-                tenant_tokens = set_current_tenant(
-                    tenant_id=str(tenant_ctx.tenant_id),
-                    tenant_schema=tenant_ctx.tenant_schema,
-                )
-                
-                # S2.5 Batch B: Enforce tenant isolation - fail-safe check
-                if not tenant_ctx.tenant_schema:
-                    logger.critical(
-                        "Tenant isolation violation: tenant_schema is missing for authenticated request",
-                        extra={
-                            "tenant_id": str(tenant_ctx.tenant_id),
-                            "auth_context": str(auth_ctx)
-                        }
-                    )
-                    raise MpangoAPIException(
-                        error_code=ErrorCode.INTERNAL_SERVER_ERROR,
-                        message="Tenant isolation check failed",
-                        status_code=500
-                    )
+                if tenant_ctx is not None:
+                    attach_tenant_context(request, tenant_ctx)
 
-                # S2-2: Update logging context with tenant and user
-                if tenant_ctx:
+                    tenant_tokens = set_current_tenant(
+                        tenant_id=str(tenant_ctx.tenant_id),
+                        tenant_schema=tenant_ctx.tenant_schema,
+                    )
+                    
+                    # S2.5 Batch B: Enforce tenant isolation - fail-safe check
+                    if not tenant_ctx.tenant_schema:
+                        logger.critical(
+                            "Tenant isolation violation: tenant_schema is missing for authenticated request",
+                            extra={
+                                "tenant_id": str(tenant_ctx.tenant_id),
+                                "auth_context": str(auth_ctx)
+                            }
+                        )
+                        raise MpangoAPIException(
+                            error_code=ErrorCode.INTERNAL_SERVER_ERROR,
+                            message="Tenant isolation check failed",
+                            status_code=500
+                        )
+
+                    # S2-2: Update logging context with tenant and user
                     update_request_context_with_auth(
                         tenant_schema=tenant_ctx.tenant_schema,
-                        user_id=str(tenant_ctx.tenant_id)  # or extract user_id from auth_ctx
+                        user_id=str(tenant_ctx.tenant_id)
                     )
                     
                     # Also update request.state for metrics

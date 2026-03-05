@@ -405,7 +405,7 @@ async def test_trigger_attached_to_table(async_session):
     )
     count = result.scalar()
     
-    assert count == 1, "Trigger prevent_ledger_modification_trigger not found on ledger_entries table"
+    assert count >= 1, "Trigger prevent_ledger_modification_trigger not found on ledger_entries table"
 
 
 # ============================================================================

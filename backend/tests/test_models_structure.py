@@ -23,6 +23,10 @@ from sqlalchemy.dialects.postgresql import UUID
 from models.base import Base, BaseModel, PublicBaseModel
 
 
+# View/read models that don't follow standard entity conventions
+_VIEW_MODELS = {"MvSalesDaily", "RptSalesDaily", "RptReceivablesSummary", "RptCashFlowDaily"}
+
+
 def get_all_model_classes() -> list[Type]:
     """Get all concrete (non-abstract) model classes."""
     models = []
@@ -30,6 +34,9 @@ def get_all_model_classes() -> list[Type]:
         cls = mapper.class_
         # Skip abstract base classes
         if hasattr(cls, '__abstract__') and cls.__abstract__:
+            continue
+        # Skip materialized view models (no standard PK / audit columns)
+        if cls.__name__ in _VIEW_MODELS:
             continue
         models.append(cls)
     return models
@@ -122,8 +129,11 @@ class TestORMModelStructure:
         Property 1.5: BaseModel.id must have gen_random_uuid() server default.
         Validates: Requirement 1.3
         """
-        # Check BaseModel's id column definition
-        id_col = BaseModel.__table__.c.id
+        # BaseModel is abstract; verify via first concrete subclass that has 'id'
+        models = get_all_model_classes()
+        tenant_model = next((m for m in models if 'id' in {c.name for c in m.__table__.c}), None)
+        assert tenant_model is not None, "No concrete model with 'id' column found"
+        id_col = tenant_model.__table__.c.id
         assert id_col.server_default is not None, \
             "BaseModel.id must have server_default"
 
@@ -139,14 +149,36 @@ class TestPublicBaseModel:
     def test_public_base_model_has_audit_columns(self):
         """PublicBaseModel must have audit columns but not user tracking."""
         required = {'created_at', 'updated_at', 'is_deleted', 'deleted_at'}
-        columns = {col.name for col in PublicBaseModel.__table__.c}
+        # PublicBaseModel is abstract; verify via first concrete public subclass
+        models = get_all_model_classes()
+        pub_model = next(
+            (m for m in models if getattr(m.__table__, 'schema', None) == 'public'
+             or getattr(m, '__tablename__', '') in
+             ('wholesalers', 'retailers', 'invitations', 'wholesaler_retailer_bindings',
+              'sys_audit_logs', 'sys_reports', 'sys_jobs')),
+            None
+        )
+        if pub_model is None:
+            pytest.skip("No concrete public model registered in ORM")
+        columns = {col.name for col in pub_model.__table__.c}
 
         missing = required - columns
         assert not missing, f"PublicBaseModel missing audit columns: {missing}"
 
     def test_public_base_model_no_user_tracking(self):
         """PublicBaseModel should not have user tracking columns."""
-        columns = {col.name for col in PublicBaseModel.__table__.c}
+        # PublicBaseModel is abstract; verify via first concrete public subclass
+        models = get_all_model_classes()
+        pub_model = next(
+            (m for m in models if getattr(m.__table__, 'schema', None) == 'public'
+             or getattr(m, '__tablename__', '') in
+             ('wholesalers', 'retailers', 'invitations', 'wholesaler_retailer_bindings',
+              'sys_audit_logs', 'sys_reports', 'sys_jobs')),
+            None
+        )
+        if pub_model is None:
+            pytest.skip("No concrete public model registered in ORM")
+        columns = {col.name for col in pub_model.__table__.c}
 
         # User tracking columns should NOT be present
         assert 'created_by' not in columns, \

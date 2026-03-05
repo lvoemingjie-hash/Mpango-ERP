@@ -33,6 +33,19 @@ class _MockToken:
     tenant_id: str
     tenant_schema: str
     type: str = "access"
+    roles: list[str] = None
+
+    def __post_init__(self):
+        if self.roles is None:
+            self.roles = []
+
+    @property
+    def is_identity_only(self) -> bool:
+        return self.tenant_id is None or self.tenant_schema is None
+
+    @property
+    def is_super_admin(self) -> bool:
+        return "super_admin" in self.roles
 
 
 class MockAuthStrategy(AuthStrategy):

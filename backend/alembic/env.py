@@ -8,6 +8,7 @@ Usage:
 - Specific tenant: alembic upgrade head -x tenant_schema=t_abc123
 """
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool, text
@@ -25,6 +26,16 @@ config = context.config
 # Interpret the config file for Python logging
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Override sqlalchemy.url from DATABASE_URL env var if available.
+# This allows alembic to work inside Docker where the DB host is
+# a service name (e.g. 'postgres') rather than '127.0.0.1'.
+_db_url = os.environ.get("DATABASE_URL")
+if _db_url:
+    # Alembic needs the async driver prefix
+    if _db_url.startswith("postgresql://"):
+        _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    config.set_main_option("sqlalchemy.url", _db_url)
 
 # Target metadata for autogenerate
 target_metadata = Base.metadata

@@ -1,15 +1,86 @@
 """
 CRUD operations for User model.
 Operates on tenant schema.
+
+H-Fix-01: Added find_user_across_tenants for tenant-agnostic login.
 """
+from dataclasses import dataclass
 from typing import Optional, List, Tuple
 from uuid import UUID
+
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from models.user import User, Role
-from core.security import hash_password
+from models.wholesaler import Wholesaler
+from core.security import hash_password, verify_password
+from db.tenant_filter import run_as_system
+
+
+@dataclass
+class TenantUserMatch:
+    """Result of cross-tenant user lookup."""
+    wholesaler: Wholesaler
+    user: User
+    roles: List[str]
+
+
+async def find_user_across_tenants(
+    db_public: AsyncSession,
+    email: str,
+    password: str,
+) -> Tuple[Optional[str], List[TenantUserMatch]]:
+    """
+    Scan all active tenant schemas to find a user by email and verify password.
+
+    H-Fix-01: Decouples identity verification from tenant selection.
+
+    Returns:
+        Tuple of (verified_user_id, list_of_TenantUserMatch).
+        verified_user_id is set once password matches in *any* tenant.
+        The list contains every tenant where this email exists.
+        If the password is wrong in all tenants, returns (None, []).
+    """
+    from database.session import get_tenant_db
+
+    with run_as_system(reason="cross_tenant_login_scan"):
+        result = await db_public.execute(
+            select(Wholesaler)
+            .where(Wholesaler.is_deleted == False)
+            .order_by(Wholesaler.created_at)
+        )
+        wholesalers = list(result.scalars().all())
+
+    matches: List[TenantUserMatch] = []
+    verified_user_id: Optional[str] = None
+
+    for ws in wholesalers:
+        tenant_schema = ws.get_tenant_schema()
+        try:
+            async for tenant_db in get_tenant_db(tenant_schema):
+                user = await get_user_by_email(tenant_db, email)
+                if user is None:
+                    continue
+                if not user.is_active:
+                    continue
+
+                # Verify password (only once — all tenant copies share same email)
+                if verified_user_id is None:
+                    if not verify_password(password, user.password_hash):
+                        return (None, [])
+                    verified_user_id = str(user.id)
+
+                role_names = [r.name for r in user.roles] if user.roles else []
+                matches.append(TenantUserMatch(
+                    wholesaler=ws,
+                    user=user,
+                    roles=role_names,
+                ))
+        except Exception:
+            continue
+
+    return (verified_user_id, matches)
 
 
 async def get_user_by_email(

@@ -32,7 +32,7 @@ def _load_test_env_defaults() -> None:
 def _build_database_url_from_postgres_env() -> str:
     user = os.environ.get("POSTGRES_USER", "postgres")
     password = os.environ.get("POSTGRES_PASSWORD", "postgres")
-    host = os.environ.get("POSTGRES_HOST", "127.0.0.1")
+    host = os.environ.get("POSTGRES_HOST", "postgres")
     port = os.environ.get("POSTGRES_PORT", "5432")
     database = os.environ.get("POSTGRES_DB", "mpango_erp")
     return (
@@ -62,7 +62,7 @@ import hashlib as _hashlib
 _TEST_SECRET = _hashlib.sha256(b"mpango-test-runner-key-not-for-production").hexdigest()
 os.environ.setdefault("SECRET_KEY", _TEST_SECRET)
 os.environ.setdefault("MPANGO_ENV", "test")
-os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:6379/0")
+os.environ.setdefault("REDIS_URL", f"redis://{os.environ.get('REDIS_HOST', 'redis')}:6379/0")
 
 
 import asyncio

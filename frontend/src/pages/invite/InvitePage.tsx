@@ -130,7 +130,7 @@ export function InvitePage() {
                   Code: <span className="font-mono">{data.code}</span>
                 </p>
                 <Link
-                  to="/login"
+                  to={`/login?tenant_code=${data.code}`}
                   className="btn-primary inline-block text-sm"
                 >
                   Continue to Login

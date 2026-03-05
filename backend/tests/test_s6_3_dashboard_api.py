@@ -352,8 +352,9 @@ async def test_query_builder_reporting_user_access():
     """
     import os
     _rpt_pw = os.environ.get("REPORTING_USER_PASSWORD", "CHANGE_ME")
+    _db_host = os.environ.get("POSTGRES_HOST", "postgres")
     engine = create_async_engine(
-        f"postgresql+asyncpg://reporting_user:{_rpt_pw}@127.0.0.1:5432/mpango_erp"
+        f"postgresql+asyncpg://reporting_user:{_rpt_pw}@{_db_host}:5432/mpango_erp"
     )
     factory = async_sessionmaker(engine, class_=AsyncSession)
 

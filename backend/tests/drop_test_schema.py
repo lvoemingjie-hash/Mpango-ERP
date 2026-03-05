@@ -7,7 +7,7 @@ from pathlib import Path
 import hashlib as _hashlib
 os.environ.setdefault("DATABASE_URL", os.environ.get(
     "TEST_DATABASE_URL",
-    "postgresql://mpango:${POSTGRES_PASSWORD}@127.0.0.1:5432/mpango_erp"
+    f"postgresql://mpango:{{POSTGRES_PASSWORD}}@{os.environ.get('POSTGRES_HOST', 'postgres')}:5432/mpango_erp"
 ))
 _TEST_SECRET = _hashlib.sha256(b"mpango-test-runner-key-not-for-production").hexdigest()
 os.environ.setdefault("SECRET_KEY", _TEST_SECRET)

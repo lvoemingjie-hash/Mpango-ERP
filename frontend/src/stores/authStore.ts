@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { CurrentUserData, TokenData } from '@/types/auth';
+import type { CurrentUserData, TokenData, IdentityTokenData } from '@/types/auth';
 
 interface AuthState {
   accessToken: string | null;
@@ -10,7 +10,7 @@ interface AuthState {
 }
 
 interface AuthActions {
-  login: (tokens: TokenData, user: CurrentUserData, tenantCode: string) => void;
+  login: (tokens: TokenData | IdentityTokenData, user: CurrentUserData, tenantCode: string | null) => void;
   logout: () => void;
   updateTokens: (tokens: Pick<TokenData, 'access_token' | 'refresh_token'>) => void;
   setUser: (user: CurrentUserData) => void;

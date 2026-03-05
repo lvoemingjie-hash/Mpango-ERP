@@ -10,7 +10,7 @@ Per multi_tenancy_spec.md section 4.1, JWT claims must contain:
 - type: "access" or "refresh"
 """
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import List, Optional
 
 from jose import jwt, JWTError, ExpiredSignatureError
 from passlib.context import CryptContext
@@ -37,85 +37,154 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class TokenPayload(BaseModel):
     """
     JWT token payload schema.
-    Per multi_tenancy_spec.md section 4.1.
+
+    Two token modes:
+    - Identity token: user_id + roles only (tenant_id/tenant_schema are None)
+    - Contextual token: user_id + roles + tenant_id + tenant_schema
+
+    Identity tokens are issued at login before tenant selection.
+    Contextual tokens are issued after POST /auth/select-tenant.
     """
     user_id: str
-    tenant_id: str
-    tenant_schema: str
+    tenant_id: Optional[str] = None
+    tenant_schema: Optional[str] = None
+    roles: List[str] = []
     exp: Optional[int] = None
     type: str = "access"  # "access" or "refresh"
+
+    @property
+    def is_identity_only(self) -> bool:
+        """True if this token has no tenant context."""
+        return self.tenant_id is None or self.tenant_schema is None
+
+    @property
+    def is_super_admin(self) -> bool:
+        """True if the token carries the super_admin role."""
+        return "super_admin" in self.roles
+
+
+def create_identity_token(
+    user_id: str,
+    roles: List[str],
+    *,
+    token_type: str = "access",
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    """
+    Create an Identity JWT — no tenant context.
+
+    Issued at login before tenant selection.  Contains user_id and roles
+    so the frontend can show tenant picker / super-admin UI.
+
+    Args:
+        user_id: User UUID as string
+        roles: Aggregated role names across all tenants (or ["super_admin"])
+        token_type: "access" or "refresh"
+        expires_delta: Optional custom expiration time
+    """
+    settings = get_settings()
+    if expires_delta is None:
+        expires_delta = (
+            timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            if token_type == "access"
+            else timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        )
+    expire = datetime.utcnow() + expires_delta
+    payload = {
+        "user_id": user_id,
+        "roles": roles,
+        "exp": expire,
+        "type": token_type,
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def create_contextual_token(
+    user_id: str,
+    roles: List[str],
+    tenant_id: str,
+    tenant_schema: str,
+    *,
+    token_type: str = "access",
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    """
+    Create a Contextual JWT — includes tenant context.
+
+    Issued after POST /auth/select-tenant.  The existing Tenant Guardrail
+    (ORM filtering) reads tenant_id / tenant_schema from this token.
+
+    Args:
+        user_id: User UUID as string
+        roles: Role names for this user **within** the selected tenant
+        tenant_id: Tenant (wholesaler) UUID as string
+        tenant_schema: Tenant schema name (e.g., "t_abc123...")
+        token_type: "access" or "refresh"
+        expires_delta: Optional custom expiration time
+    """
+    settings = get_settings()
+    if expires_delta is None:
+        expires_delta = (
+            timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            if token_type == "access"
+            else timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        )
+    expire = datetime.utcnow() + expires_delta
+    payload = {
+        "user_id": user_id,
+        "roles": roles,
+        "tenant_id": tenant_id,
+        "tenant_schema": tenant_schema,
+        "exp": expire,
+        "type": token_type,
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 def create_access_token(
     user_id: str,
     tenant_id: str,
     tenant_schema: str,
-    expires_delta: Optional[timedelta] = None
+    expires_delta: Optional[timedelta] = None,
+    roles: Optional[List[str]] = None,
 ) -> str:
     """
     Create JWT access token with tenant claims.
 
-    Args:
-        user_id: User UUID as string
-        tenant_id: Tenant UUID as string
-        tenant_schema: Tenant schema name (e.g., "t_abc123...")
-        expires_delta: Optional custom expiration time
-
-    Returns:
-        Encoded JWT string
+    Legacy wrapper — delegates to create_contextual_token.
+    Kept for backward compatibility with existing callers.
     """
-    settings = get_settings()
-
-    if expires_delta is None:
-        expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-
-    expire = datetime.utcnow() + expires_delta
-
-    payload = {
-        "user_id": user_id,
-        "tenant_id": tenant_id,
-        "tenant_schema": tenant_schema,
-        "exp": expire,
-        "type": "access"
-    }
-
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return create_contextual_token(
+        user_id=user_id,
+        roles=roles or [],
+        tenant_id=tenant_id,
+        tenant_schema=tenant_schema,
+        token_type="access",
+        expires_delta=expires_delta,
+    )
 
 
 def create_refresh_token(
     user_id: str,
     tenant_id: str,
     tenant_schema: str,
-    expires_delta: Optional[timedelta] = None
+    expires_delta: Optional[timedelta] = None,
+    roles: Optional[List[str]] = None,
 ) -> str:
     """
     Create JWT refresh token with tenant claims.
 
-    Args:
-        user_id: User UUID as string
-        tenant_id: Tenant UUID as string
-        tenant_schema: Tenant schema name (e.g., "t_abc123...")
-        expires_delta: Optional custom expiration time
-
-    Returns:
-        Encoded JWT string
+    Legacy wrapper — delegates to create_contextual_token.
+    Kept for backward compatibility with existing callers.
     """
-    settings = get_settings()
-
-    if expires_delta is None:
-        expires_delta = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-
-    expire = datetime.utcnow() + expires_delta
-
-    payload = {
-        "user_id": user_id,
-        "tenant_id": tenant_id,
-        "tenant_schema": tenant_schema,
-        "exp": expire,
-        "type": "refresh"
-    }
-
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return create_contextual_token(
+        user_id=user_id,
+        roles=roles or [],
+        tenant_id=tenant_id,
+        tenant_schema=tenant_schema,
+        token_type="refresh",
+        expires_delta=expires_delta,
+    )
 
 
 def decode_token(token: str) -> TokenPayload:

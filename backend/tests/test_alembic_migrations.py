@@ -87,13 +87,21 @@ class TestMigrationFileStructure:
     def test_initial_migration_exists(self):
         """Initial migration file must exist."""
         import os
-        migration_file = "backend/alembic/versions/001_initial_schema.py"
+        migration_file = os.path.join(
+            os.path.dirname(__file__), "..", "alembic", "versions", "001_initial_schema.py"
+        )
         assert os.path.exists(migration_file), \
             f"Initial migration not found: {migration_file}"
 
     def test_initial_migration_has_required_functions(self):
         """Initial migration must have upgrade and downgrade functions."""
-        from alembic.versions import initial_schema_001
+        import importlib.util, os
+        spec_path = os.path.join(
+            os.path.dirname(__file__), "..", "alembic", "versions", "001_initial_schema.py"
+        )
+        spec = importlib.util.spec_from_file_location("initial_schema_001", spec_path)
+        initial_schema_001 = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(initial_schema_001)
 
         assert hasattr(initial_schema_001, 'upgrade'), \
             "Migration must have upgrade() function"
@@ -106,7 +114,13 @@ class TestMigrationFileStructure:
 
     def test_migration_has_revision_identifiers(self):
         """Migration must have proper revision identifiers."""
-        from alembic.versions import initial_schema_001
+        import importlib.util, os
+        spec_path = os.path.join(
+            os.path.dirname(__file__), "..", "alembic", "versions", "001_initial_schema.py"
+        )
+        spec = importlib.util.spec_from_file_location("initial_schema_001", spec_path)
+        initial_schema_001 = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(initial_schema_001)
 
         assert hasattr(initial_schema_001, 'revision'), \
             "Migration must have revision identifier"

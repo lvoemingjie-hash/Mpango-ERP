@@ -19,10 +19,19 @@ depends_on = None
 
 def upgrade() -> None:
     """Add 'returned' value to the order_status PostgreSQL enum."""
-    # PostgreSQL ALTER TYPE ... ADD VALUE is transactional in PG 12+
-    # but cannot be run inside a multi-command transaction block in older PG.
-    # We execute outside the current transaction just in case.
-    op.execute("ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'returned'")
+    # First check if the enum type exists; if not, create it
+    # This handles production DBs that may not have the enum yet
+    conn = op.get_bind()
+    result = conn.execute(
+        __import__('sqlalchemy').text("SELECT typname FROM pg_type WHERE typname = 'order_status'")
+    ).fetchone()
+    
+    if result is None:
+        # Enum doesn't exist yet - create it with all values including 'returned'
+        op.execute("CREATE TYPE order_status AS ENUM ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'returned')")
+    else:
+        # Enum exists - add 'returned' value if not present
+        op.execute("ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'returned'")
 
 
 def downgrade() -> None:

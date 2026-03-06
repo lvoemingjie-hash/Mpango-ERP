@@ -15,13 +15,18 @@ export const authService = {
   login: (payload: LoginRequest) =>
     api.post<IdentityLoginResponse>('/auth/login', payload),
 
-  selectTenant: (payload: SelectTenantRequest) =>
-    api.post<LoginResponse>('/auth/select-tenant', payload),
+  selectTenant: (payload: SelectTenantRequest, token?: string) =>
+    api.post<LoginResponse>('/auth/select-tenant', payload,
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+    ),
 
   refresh: (refreshToken: string) =>
     api.post<LoginResponse>('/auth/refresh', { refresh_token: refreshToken }),
 
-  me: () => api.get<CurrentUserResponse>('/auth/me'),
+  me: (token?: string) =>
+    api.get<CurrentUserResponse>('/auth/me',
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+    ),
 
   logout: () => api.post('/auth/logout'),
 };

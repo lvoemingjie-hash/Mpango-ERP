@@ -45,16 +45,15 @@ export function LoginPage() {
       const loginRes = await authService.login(formData);
       const identityData = loginRes.data.data;
 
-      // Temporarily set identity token so we can query /me and /select-tenant
-      useAuthStore.getState().updateTokens({
-        access_token: identityData.access_token,
-        refresh_token: identityData.refresh_token,
-      });
+      // Keep identity token in a local variable — do NOT store in global
+      // auth store yet, because ProtectedRoute checks accessToken and would
+      // render dashboard components before tenant selection completes.
+      const idToken = identityData.access_token;
 
       // Task 2: Routing Logic
       if (identityData.roles.includes('super_admin')) {
         // Condition A: Super Admin goes directly to dashboard (which handles system perms)
-        const meRes = await authService.me();
+        const meRes = await authService.me(idToken);
         login(identityData, meRes.data.data, null);
         navigate('/', { replace: true });
         return;
@@ -63,15 +62,10 @@ export function LoginPage() {
       if (identityData.available_tenants.length === 1) {
         // Condition B: Single Tenant -> auto select
         const tenant = identityData.available_tenants[0];
-        const ctxRes = await authService.selectTenant({ tenant_id: tenant.id });
+        const ctxRes = await authService.selectTenant({ tenant_id: tenant.id }, idToken);
         const ctxTokens = ctxRes.data.data;
 
-        useAuthStore.getState().updateTokens({
-          access_token: ctxTokens.access_token,
-          refresh_token: ctxTokens.refresh_token,
-        });
-
-        const meRes = await authService.me();
+        const meRes = await authService.me(ctxTokens.access_token);
         login(ctxTokens, meRes.data.data, tenant.code);
         navigate('/', { replace: true });
         return;
@@ -82,23 +76,23 @@ export function LoginPage() {
         if (urlTenantCode) {
           const matchedTenant = identityData.available_tenants.find(t => t.code === urlTenantCode);
           if (matchedTenant) {
-            const ctxRes = await authService.selectTenant({ tenant_id: matchedTenant.id });
+            const ctxRes = await authService.selectTenant({ tenant_id: matchedTenant.id }, idToken);
             const ctxTokens = ctxRes.data.data;
 
-            useAuthStore.getState().updateTokens({
-              access_token: ctxTokens.access_token,
-              refresh_token: ctxTokens.refresh_token,
-            });
-
-            const meRes = await authService.me();
+            const meRes = await authService.me(ctxTokens.access_token);
             login(ctxTokens, meRes.data.data, matchedTenant.code);
             navigate('/', { replace: true });
             return;
           }
         }
 
-        // Save the available tenants in state so the selector page can use them
-        // For now, we'll pass them via navigate state
+        // Store identity token only for workspace selector navigation —
+        // this is the one case where we need the token in the store before
+        // tenant selection, but the target page is /select-workspace, not /.
+        useAuthStore.getState().updateTokens({
+          access_token: identityData.access_token,
+          refresh_token: identityData.refresh_token,
+        });
         navigate('/select-workspace', {
           replace: true,
           state: { availableTenants: identityData.available_tenants }

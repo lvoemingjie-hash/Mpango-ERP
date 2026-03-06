@@ -29,10 +29,17 @@ class OrderStatus(str, Enum):
     """
     Order status enum.
     Implements openapi.yaml OrderStatus schema.
+
+    Extended for S5-A Order State Machine with additional states.
+    Must stay in sync with models.order.OrderStatus.
     """
     DRAFT = "draft"
     CONFIRMED = "confirmed"
+    PARTIALLY_PAID = "partially_paid"
+    PAID = "paid"
+    FULFILLED = "fulfilled"
     CANCELLED = "cancelled"
+    VOIDED = "voided"
     RETURNED = "returned"
 
 

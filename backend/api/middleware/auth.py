@@ -93,8 +93,15 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 from api.context.tenant import finalize_tenant_context
                 await finalize_tenant_context(tenant_ctx, success=False)
 
-            # S2-6: Let global exception handler handle this
-            raise
+            # BaseHTTPMiddleware cannot propagate HTTPException to FastAPI's
+            # exception handlers — re-raising would produce an unhandled 500.
+            # Return a JSONResponse directly with the correct status code.
+            detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=detail,
+                headers=getattr(exc, "headers", None),
+            )
 
         except Exception as e:
             if tenant_ctx:

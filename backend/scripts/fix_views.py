@@ -142,18 +142,22 @@ async def fix_views() -> None:
             await db.execute(text(MV_UNIQUE_INDEX))
             print(f"    + mv_sales_daily (materialized view + unique index)")
 
-            # --- Step 4: Grant to reporting_role ---
+            # --- Step 4: Grant schema USAGE + SELECT to reporting_role ---
+            # Migration 011 grants these for schemas that exist at migration time.
+            # For schemas created AFTER migrations (by seed script), we must
+            # grant them here. Without USAGE, search_path is useless.
             try:
                 await db.execute(text(
-                    f'GRANT SELECT ON "{schema}".rpt_receivables_summary TO reporting_role'
+                    f'GRANT USAGE ON SCHEMA "{schema}" TO reporting_role'
                 ))
                 await db.execute(text(
-                    f'GRANT SELECT ON "{schema}".rpt_cash_flow_daily TO reporting_role'
+                    f'GRANT SELECT ON ALL TABLES IN SCHEMA "{schema}" TO reporting_role'
                 ))
                 await db.execute(text(
-                    f'GRANT SELECT ON "{schema}".mv_sales_daily TO reporting_role'
+                    f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" '
+                    f'GRANT SELECT ON TABLES TO reporting_role'
                 ))
-                print(f"    + GRANT SELECT to reporting_role")
+                print(f"    + GRANT USAGE + SELECT ON ALL TABLES to reporting_role")
             except Exception as e:
                 print(f"    ! GRANT failed (reporting_role may not exist): {e}")
 

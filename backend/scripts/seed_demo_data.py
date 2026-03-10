@@ -119,7 +119,15 @@ DEMO_ORDERS = [
 
 
 def _add_backend_to_path() -> None:
-    backend_dir = Path(__file__).resolve().parents[1] / "backend"
+    # Script location: backend/scripts/seed_demo_data.py (local) or /app/scripts/seed_demo_data.py (Docker)
+    # In Docker, backend code is at /app/ directly, not /app/backend/
+    script_dir = Path(__file__).resolve().parent
+    backend_dir = script_dir.parent  # backend/ locally, /app/ in Docker
+    
+    # Verify this is the backend root by checking for main.py or database/
+    if not (backend_dir / "main.py").exists() and (backend_dir / "backend" / "main.py").exists():
+        backend_dir = backend_dir / "backend"
+    
     if str(backend_dir) not in sys.path:
         sys.path.insert(0, str(backend_dir))
 

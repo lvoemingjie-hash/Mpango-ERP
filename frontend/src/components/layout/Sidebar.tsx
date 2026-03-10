@@ -2,8 +2,6 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   HomeIcon,
   BuildingOfficeIcon,
-  UsersIcon,
-  Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
   ClipboardDocumentListIcon,
   CubeIcon,
@@ -20,11 +18,13 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Home', path: '/', icon: HomeIcon },
   { label: 'Sales', path: '/orders', icon: ClipboardDocumentListIcon },
+  { label: 'Products', path: '/skus', icon: CubeIcon },
   { label: 'Stock', path: '/inventory', icon: CubeIcon },
   { label: 'Money', path: '/finance', icon: BanknotesIcon },
-  { label: 'Customers', path: '/tenants', icon: BuildingOfficeIcon },
-  { label: 'Team', path: '/users', icon: UsersIcon },
-  { label: 'Settings', path: '/settings', icon: Cog6ToothIcon },
+  { label: 'Customers', path: '/retailers', icon: BuildingOfficeIcon },
+  // Temporarily hidden to avoid 404s until implemented
+  // { label: 'Team', path: '/users', icon: UsersIcon },
+  // { label: 'Settings', path: '/settings', icon: Cog6ToothIcon },
 ];
 
 export function Sidebar() {

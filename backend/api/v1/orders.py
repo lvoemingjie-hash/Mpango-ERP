@@ -6,7 +6,10 @@ Tenant isolation enforced via JWT-derived search_path.
 
 State Machine:
 - Draft → Confirmed
+- Confirmed → Paid
+- Paid → Fulfilled (with inventory auto-deduction)
 - Cancel only allowed in Draft or Confirmed
+- Return only allowed in Fulfilled
 """
 from datetime import datetime
 from math import ceil
@@ -24,6 +27,8 @@ from crud.order import (
     get_orders_paginated,
     create_order as crud_create_order,
     confirm_order as crud_confirm_order,
+    pay_order as crud_pay_order,
+    fulfill_order as crud_fulfill_order,
     cancel_order as crud_cancel_order,
     return_order as crud_return_order,
     InvalidStateTransitionError
@@ -244,6 +249,166 @@ async def confirm_order(
             "status": order.status.value
         },
         message="Order confirmed successfully",
+        timestamp=datetime.utcnow()
+    )
+
+
+@router.post("/{order_id}/pay", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
+async def pay_order(
+    order_id: str,
+    token: TokenPayload = Depends(RequirePermission("orders:update")),
+    db: AsyncSession = Depends(get_tenant_db_session)
+):
+    """
+    Mark an order as paid (confirmed → paid).
+
+    Implements POST /orders/{order_id}/pay
+    Uses OrderService.transition() for atomic state change + ledger entries.
+
+    Returns:
+        OrderActionResponse with updated status
+    """
+    order = await get_order_by_id(db, order_id)
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "ORDER_NOT_FOUND",
+                "message": f"Order with ID '{order_id}' not found"
+            }
+        )
+
+    try:
+        from services.order_service import OrderService
+        from core.domain.order_state import OrderState
+
+        order_service = OrderService(db)
+        order = await order_service.transition(
+            order_id=order.id,
+            target_state=OrderState.PAID,
+            reason="Payment confirmed",
+            updated_by=token.user_id
+        )
+    except InvalidStateTransitionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "INVALID_STATE_TRANSITION",
+                "message": str(e)
+            }
+        )
+    except Exception as e:
+        if "Invalid state transition" in str(e) or "invariant" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "INVALID_STATE_TRANSITION",
+                    "message": str(e)
+                }
+            )
+        raise
+
+    return OrderActionResponse(
+        success=True,
+        data={
+            "order_id": str(order.id),
+            "status": order.status.value
+        },
+        message="Order marked as paid",
+        timestamp=datetime.utcnow()
+    )
+
+
+@router.post("/{order_id}/fulfill", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
+async def fulfill_order(
+    order_id: str,
+    token: TokenPayload = Depends(RequirePermission("orders:update")),
+    db: AsyncSession = Depends(get_tenant_db_session)
+):
+    """
+    Fulfill an order (paid → fulfilled) with inventory auto-deduction.
+
+    Implements POST /orders/{order_id}/fulfill
+    Uses OrderService.transition() for atomic state change + ledger entries,
+    then deducts inventory_stocks.quantity_on_hand for each order item.
+
+    Returns:
+        OrderActionResponse with updated status
+    """
+    order = await get_order_by_id(db, order_id)
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "ORDER_NOT_FOUND",
+                "message": f"Order with ID '{order_id}' not found"
+            }
+        )
+
+    try:
+        from services.order_service import OrderService
+        from core.domain.order_state import OrderState
+
+        order_service = OrderService(db)
+        order = await order_service.transition(
+            order_id=order.id,
+            target_state=OrderState.FULFILLED,
+            reason="Order fulfilled",
+            updated_by=token.user_id
+        )
+
+        # Inventory auto-deduction: deduct quantity_on_hand for each order item
+        from sqlalchemy import select as sa_select, update as sa_update
+        from models.sku import SKU
+        from models.inventory_stock import InventoryStock
+
+        await db.refresh(order, ["items"])
+        for item in order.items:
+            # Look up the SKU by sku_code to get its id
+            sku_result = await db.execute(
+                sa_select(SKU.id).where(SKU.sku_code == item.sku_code)
+            )
+            sku_row = sku_result.first()
+            if sku_row:
+                sku_id = sku_row[0]
+                await db.execute(
+                    sa_update(InventoryStock)
+                    .where(InventoryStock.sku_id == sku_id)
+                    .values(
+                        quantity_on_hand=InventoryStock.quantity_on_hand - item.quantity
+                    )
+                )
+
+        await db.flush()
+
+    except InvalidStateTransitionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "INVALID_STATE_TRANSITION",
+                "message": str(e)
+            }
+        )
+    except Exception as e:
+        if "Invalid state transition" in str(e) or "invariant" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "INVALID_STATE_TRANSITION",
+                    "message": str(e)
+                }
+            )
+        raise
+
+    return OrderActionResponse(
+        success=True,
+        data={
+            "order_id": str(order.id),
+            "status": order.status.value
+        },
+        message="Order fulfilled. Inventory deducted.",
         timestamp=datetime.utcnow()
     )
 

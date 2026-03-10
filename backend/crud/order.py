@@ -4,7 +4,10 @@ Operates on tenant schema.
 
 Implements order state machine:
 - Draft → Confirmed
+- Confirmed → Paid
+- Paid → Fulfilled (with inventory deduction at API layer)
 - Cancel only allowed in Draft or Confirmed
+- Return only allowed in Fulfilled
 """
 from typing import Optional, List, Tuple
 from uuid import UUID
@@ -33,6 +36,14 @@ STATE_TRANSITIONS = {
     "confirm": {
         "allowed_from": [OrderStatus.DRAFT],
         "target": OrderStatus.CONFIRMED
+    },
+    "pay": {
+        "allowed_from": [OrderStatus.CONFIRMED],
+        "target": OrderStatus.PAID
+    },
+    "fulfill": {
+        "allowed_from": [OrderStatus.PAID],
+        "target": OrderStatus.FULFILLED
     },
     "cancel": {
         "allowed_from": [OrderStatus.DRAFT, OrderStatus.CONFIRMED],
@@ -246,6 +257,79 @@ async def confirm_order(
     validate_state_transition(order, "confirm")
 
     order.status = OrderStatus.CONFIRMED
+
+    if updated_by:
+        try:
+            order.updated_by = UUID(updated_by)
+        except ValueError:
+            pass
+
+    await db.flush()
+    await db.refresh(order, ["items"])
+
+    return order
+
+
+async def pay_order(
+    db: AsyncSession,
+    order: Order,
+    updated_by: Optional[str] = None
+) -> Order:
+    """
+    Mark an order as paid (confirmed → paid).
+
+    Args:
+        db: Database session (tenant schema)
+        order: Order to mark as paid
+        updated_by: UUID of user marking payment
+
+    Returns:
+        Updated Order
+
+    Raises:
+        InvalidStateTransitionError: If order is not in confirmed status
+    """
+    validate_state_transition(order, "pay")
+
+    order.status = OrderStatus.PAID
+
+    if updated_by:
+        try:
+            order.updated_by = UUID(updated_by)
+        except ValueError:
+            pass
+
+    await db.flush()
+    await db.refresh(order, ["items"])
+
+    return order
+
+
+async def fulfill_order(
+    db: AsyncSession,
+    order: Order,
+    updated_by: Optional[str] = None
+) -> Order:
+    """
+    Fulfill an order (paid → fulfilled).
+
+    Note: Inventory deduction is handled at the API layer via OrderService,
+    not in this CRUD function.
+
+    Args:
+        db: Database session (tenant schema)
+        order: Order to fulfill
+        updated_by: UUID of user fulfilling
+
+    Returns:
+        Updated Order
+
+    Raises:
+        InvalidStateTransitionError: If order is not in paid status
+    """
+    validate_state_transition(order, "fulfill")
+
+    order.status = OrderStatus.FULFILLED
 
     if updated_by:
         try:

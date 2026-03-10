@@ -20,9 +20,7 @@ export function OrderListPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const canWrite = user?.permissions.includes('orders:write') ||
-    user?.permissions.includes('orders:update') ||
-    user?.roles.includes('admin');
+  const hasUpdatePermission = user?.permissions.includes('orders:update') || user?.roles.includes('admin');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,6 +73,41 @@ export function OrderListPage() {
     }
   };
 
+  const handlePay = async (id: string) => {
+    setActionLoading(id);
+    try {
+      await orderService.pay(id);
+      useToastStore.getState().addToast({
+        type: 'success',
+        title: 'Payment Recorded',
+        message: `Order ${id.slice(0, 8)}… marked as paid.`,
+      });
+      await load();
+    } catch {
+      // Error toast handled by global interceptor
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleFulfill = async (id: string) => {
+    if (!window.confirm(`Fulfill Order #${id.slice(0, 8)}? This will deduct inventory.`)) return;
+    setActionLoading(id);
+    try {
+      await orderService.fulfill(id);
+      useToastStore.getState().addToast({
+        type: 'success',
+        title: 'Order Fulfilled',
+        message: `Order ${id.slice(0, 8)}… fulfilled. Inventory deducted.`,
+      });
+      await load();
+    } catch {
+      // Error toast handled by global interceptor
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleReturn = async (id: string) => {
     if (!window.confirm('Are you sure you want to process a full return for this order? This will reverse ledger entries.')) return;
     setActionLoading(id);
@@ -98,6 +131,12 @@ export function OrderListPage() {
 
   const canCancelOrder = (status: OrderStatus) =>
     ALLOWED_TRANSITIONS[status]?.includes('cancelled');
+
+  const canPay = (status: OrderStatus) =>
+    ALLOWED_TRANSITIONS[status]?.includes('paid');
+
+  const canFulfill = (status: OrderStatus) =>
+    ALLOWED_TRANSITIONS[status]?.includes('fulfilled');
 
   const canReturn = (status: OrderStatus) =>
     ALLOWED_TRANSITIONS[status]?.includes('returned');
@@ -201,29 +240,52 @@ export function OrderListPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">
-                      {canWrite && canConfirm(o.status) && (
+                      {canConfirm(o.status) && (
                         <button
                           onClick={() => handleConfirm(o.id)}
-                          disabled={!!actionLoading}
-                          className="text-blue-600 hover:text-blue-900 disabled:opacity-50"
+                          disabled={!!actionLoading || !hasUpdatePermission}
+                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Confirm
                         </button>
                       )}
-                      {canWrite && canCancelOrder(o.status) && (
+                      {canPay(o.status) && (
+                        <button
+                          onClick={() => handlePay(o.id)}
+                          disabled={!!actionLoading || !hasUpdatePermission}
+                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Mark Paid
+                        </button>
+                      )}
+                      {canFulfill(o.status) && (
+                        <button
+                          onClick={() => handleFulfill(o.id)}
+                          disabled={!!actionLoading || !hasUpdatePermission}
+                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          className="text-emerald-600 hover:text-emerald-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Fulfill
+                        </button>
+                      )}
+                      {canCancelOrder(o.status) && (
                         <button
                           onClick={() => handleCancel(o.id)}
-                          disabled={!!actionLoading}
-                          className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                          disabled={!!actionLoading || !hasUpdatePermission}
+                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Cancel
                         </button>
                       )}
-                      {canWrite && canReturn(o.status) && (
+                      {canReturn(o.status) && (
                         <button
                           onClick={() => handleReturn(o.id)}
-                          disabled={!!actionLoading}
-                          className="text-amber-600 hover:text-amber-900 disabled:opacity-50"
+                          disabled={!!actionLoading || !hasUpdatePermission}
+                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          className="text-amber-600 hover:text-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Return
                         </button>

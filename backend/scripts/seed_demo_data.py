@@ -33,7 +33,7 @@ DEMO_RETAILER_PHONE = "+254700000001"
 DEMO_RETAILER_NAME = "Nairobi Central Duka"
 
 ADMIN_EMAIL = "admin@mpango.demo"
-ADMIN_PASSWORD = "DemoAdmin2026!"
+ADMIN_PASSWORD = "DemoAdmin2026!"  # pragma: allowlist secret (demo credential)
 ADMIN_FULL_NAME = "Demo Administrator"
 
 PERMISSION_CODES = [
@@ -381,6 +381,35 @@ async def _seed_skus(db, ts: str) -> None:
     print(f"  + SKUs: {created} created, {len(DEMO_SKUS) - created} already existed")
 
 
+async def _seed_inventory(db, ts: str) -> None:
+    """Seed inventory stocks for all SKUs (100 units each)."""
+    from sqlalchemy import text
+
+    db.info["tenant_schema"] = ts
+    db.info["tenant_id"] = str(DEMO_WHOLESALER_ID)
+    await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
+
+    # Get all SKU IDs
+    sku_rows = (await db.execute(
+        text("SELECT id FROM skus WHERE is_deleted = false")
+    )).fetchall()
+
+    created = 0
+    for (sku_id,) in sku_rows:
+        # Insert inventory stock record with 100 units on hand
+        result = await db.execute(text(
+            "INSERT INTO inventory_stocks (sku_id, quantity_on_hand, quantity_reserved) "
+            "VALUES (:sku_id, 100, 0) "
+            "ON CONFLICT (sku_id) DO UPDATE SET quantity_on_hand = 100 "
+            "WHERE inventory_stocks.quantity_on_hand = 0"
+        ), {"sku_id": sku_id})
+        if result.rowcount > 0:
+            created += 1
+
+    await db.commit()
+    print(f"  + Inventory: {created} stocks seeded with 100 units each")
+
+
 async def _seed_orders(db, ts: str) -> None:
     """Seed orders using ORM + OrderService.transition (exercises guardrail)."""
     from sqlalchemy import text, select
@@ -478,6 +507,10 @@ async def seed(*, allow_production: bool) -> None:
     print("[4/5] SKUs (10 products via SKUService)...")
     async with AsyncSessionLocal() as db:
         await _seed_skus(db, ts)
+
+    print("[4.5/5] Inventory (100 units per SKU)...")
+    async with AsyncSessionLocal() as db:
+        await _seed_inventory(db, ts)
 
     print("[5/5] Orders (5 orders via OrderService)...")
     async with AsyncSessionLocal() as db:

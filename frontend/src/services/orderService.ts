@@ -17,6 +17,12 @@ export const orderService = {
   cancel: (id: string) =>
     api.post<ApiResponse<{ order_id: string; status: string }>>(`/orders/${id}/cancel`),
 
+  pay: (id: string) =>
+    api.post<ApiResponse<{ order_id: string; status: string }>>(`/orders/${id}/pay`),
+
+  fulfill: (id: string) =>
+    api.post<ApiResponse<{ order_id: string; status: string }>>(`/orders/${id}/fulfill`),
+
   returnOrder: (id: string) =>
     api.post<ApiResponse<{ order_id: string; status: string }>>(`/orders/${id}/return`),
 };

@@ -12,4 +12,4 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MPANGO_ENV=test
+      - MPANGO_ENV=production

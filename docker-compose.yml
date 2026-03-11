@@ -65,7 +65,7 @@ services:
     restart: unless-stopped
     environment:
       # Environment
-      - MPANGO_ENV=${MPANGO_ENV:-test}
+      - MPANGO_ENV=production
       # Database (REQUIRED)
       - DATABASE_URL=${DATABASE_URL:-postgresql://mpango:${POSTGRES_PASSWORD}@postgres:5432/mpango_erp}
       - DATABASE_ECHO=${DATABASE_ECHO:-false}
@@ -121,7 +121,7 @@ services:
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
       interval: 30s
       timeout: 5s
       retries: 3

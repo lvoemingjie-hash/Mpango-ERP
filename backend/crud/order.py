@@ -9,10 +9,10 @@ Implements order state machine:
 - Cancel only allowed in Draft or Confirmed
 - Return only allowed in Fulfilled
 """
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 from uuid import UUID
 from decimal import Decimal
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -77,6 +77,33 @@ def validate_state_transition(order: Order, action: str) -> None:
             action=action,
             allowed_statuses=[s.value for s in rules["allowed_from"]]
         )
+
+
+async def batch_retailer_names(
+    db: AsyncSession,
+    retailer_ids: List[UUID],
+) -> Dict[str, str]:
+    """
+    Batch-fetch retailer names from public.retailers.
+
+    Args:
+        db: Database session
+        retailer_ids: List of retailer UUIDs
+
+    Returns:
+        Dict mapping retailer_id (str) -> name (str)
+    """
+    if not retailer_ids:
+        return {}
+    unique_ids = list(set(retailer_ids))
+    result = await db.execute(
+        text(
+            "SELECT id, name FROM public.retailers "
+            "WHERE id = ANY(:ids) AND is_deleted IS FALSE"
+        ),
+        {"ids": unique_ids},
+    )
+    return {str(row.id): (row.name or "—") for row in result.fetchall()}
 
 
 async def get_order_by_id(

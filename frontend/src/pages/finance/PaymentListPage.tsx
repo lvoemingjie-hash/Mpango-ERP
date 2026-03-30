@@ -1,0 +1,137 @@
+import { useEffect, useState, useCallback } from 'react';
+import { paymentService, type PaymentData } from '@/services/paymentService';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
+import { BanknotesIcon } from '@heroicons/react/24/outline';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Pagination } from '@/components/ui/Pagination';
+
+export function PaymentListPage() {
+  const [payments, setPayments] = useState<PaymentData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [page, setPage] = useState(1);
+  const [size] = useState(20);
+  const [total, setTotal] = useState(0);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await paymentService.getAll(page, size);
+      setPayments(res.data.data.items);
+      setTotal(res.data.data.pagination.total);
+    } catch {
+      setError('Failed to load payments. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, size]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-KE', {
+      style: 'currency',
+      currency: 'KES',
+    }).format(amount);
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Payments"
+        description="View all payment records."
+        action={
+          <button onClick={load} disabled={loading} className="btn-secondary text-sm">
+            Refresh
+          </button>
+        }
+      />
+
+      {loading && <TableSkeleton />}
+
+      {error && (
+        <div className="mt-6 rounded-md bg-red-50 p-4">
+          <div className="text-sm text-red-700">{error}</div>
+        </div>
+      )}
+
+      {!loading && !error && payments.length === 0 && (
+        <EmptyState
+          icon={BanknotesIcon}
+          title="No payments found"
+          description="Payment records will appear here once orders are paid."
+        />
+      )}
+
+      {!loading && !error && payments.length > 0 && (
+        <div className="mt-6 flex flex-col gap-4">
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Date
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Order ID
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Method
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Transaction ID
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Amount
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                {payments.map((p) => (
+                  <tr key={p.id} className="hover:bg-gray-50">
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                      {new Date(p.created_at).toLocaleString()}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm font-mono text-gray-600">
+                      {p.order_id.slice(0, 8)}...
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900 capitalize">
+                      {p.method}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                      {p.transaction_id || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-right text-gray-900">
+                      {formatCurrency(p.amount)}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        p.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {p.status.charAt(0).toUpperCase() + p.status.slice(1)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <Pagination
+            page={page}
+            totalPages={Math.ceil(total / size)}
+            onPageChange={setPage}
+          />
+        </div>
+      )}
+    </div>
+  );
+}

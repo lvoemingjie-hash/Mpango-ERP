@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import InventoryShortageError
 from models.inventory_stock import InventoryStock
+from models.inventory_movement import InventoryMovement
 from models.sku import SKU
 from repositories.inventory_repository import InventoryRepository
 
@@ -110,6 +111,115 @@ class InventoryService:
         stock.quantity_reserved = stock.quantity_reserved + quantity
         await db.flush()
         return stock
+
+    async def adjust_stock(
+        self,
+        db: AsyncSession,
+        *,
+        sku_code: str,
+        quantity: Decimal,
+        reason: str,
+        adjusted_by: str | None = None,
+    ) -> tuple["InventoryStock", "InventoryMovement"]:
+        """
+        Manual stock adjustment (stocktake / damage / correction).
+        Positive quantity = add stock, negative = remove stock.
+        Creates a movement journal entry for audit trail.
+        Uses SELECT FOR UPDATE to prevent concurrent issues.
+        """
+        # Look up SKU
+        row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
+            )
+        sku, stock = row
+        if stock is None:
+            stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
+
+        # Lock row
+        result = await db.execute(
+            select(InventoryStock)
+            .where(InventoryStock.id == stock.id)
+            .with_for_update()
+        )
+        stock = result.scalar_one()
+
+        qty_before = stock.quantity_on_hand
+        qty_after = qty_before + quantity
+
+        if qty_after < Decimal("0.00"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "NEGATIVE_STOCK",
+                    "message": f"Adjustment would result in negative stock ({qty_after})",
+                },
+            )
+
+        stock.quantity_on_hand = qty_after
+
+        # Create movement log
+        adjusted_by_uuid = None
+        if adjusted_by:
+            try:
+                adjusted_by_uuid = uuid.UUID(adjusted_by)
+            except Exception:
+                pass
+
+        movement = InventoryMovement(
+            sku_id=sku.id,
+            movement_type="adjustment",
+            quantity=quantity,
+            quantity_before=qty_before,
+            quantity_after=qty_after,
+            reason=reason,
+            reference_type="manual",
+            created_by=adjusted_by_uuid,
+        )
+        db.add(movement)
+        await db.flush()
+
+        return stock, movement
+
+    async def list_movements(
+        self,
+        db: AsyncSession,
+        *,
+        page: int = 1,
+        size: int = 20,
+        sku_code: str | None = None,
+        movement_type: str | None = None,
+    ) -> tuple[list, int]:
+        """
+        Paginated inventory movement log with optional filters.
+        """
+        from sqlalchemy import func as sa_func
+
+        stmt = (
+            select(InventoryMovement, SKU.sku_code)
+            .join(SKU, SKU.id == InventoryMovement.sku_id)
+            .where(InventoryMovement.is_deleted.is_(False))
+        )
+
+        if sku_code:
+            stmt = stmt.where(SKU.sku_code == sku_code)
+        if movement_type:
+            stmt = stmt.where(InventoryMovement.movement_type == movement_type)
+
+        count_stmt = select(sa_func.count()).select_from(stmt.subquery())
+        total = int((await db.execute(count_stmt)).scalar() or 0)
+
+        stmt = (
+            stmt
+            .order_by(InventoryMovement.created_at.desc())
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+        result = await db.execute(stmt)
+        rows = result.all()
+        return rows, total
 
     async def restock(
         self,

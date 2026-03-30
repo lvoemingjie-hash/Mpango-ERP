@@ -50,6 +50,67 @@ class PaymentRepository:
         row = result.mappings().first()
         return row
 
+    async def list_paginated(
+        self,
+        db: AsyncSession,
+        *,
+        page: int = 1,
+        size: int = 20,
+        order_id: str | None = None,
+        method: str | None = None,
+        status: str | None = None,
+    ) -> tuple[list[Mapping[str, Any]], int]:
+        filters = ["is_deleted IS FALSE"]
+        params: dict[str, Any] = {}
+        if order_id:
+            filters.append("order_id = :order_id")
+            params["order_id"] = uuid.UUID(order_id)
+        if method:
+            filters.append("method = :method")
+            params["method"] = method
+        if status:
+            filters.append("status = :pstatus")
+            params["pstatus"] = status
+
+        where = " AND ".join(filters)
+
+        count_result = await db.execute(
+            text(f"SELECT COUNT(*) FROM payments WHERE {where}"),
+            params,
+        )
+        total = int(count_result.scalar() or 0)
+
+        offset = (page - 1) * size
+        params["limit"] = size
+        params["offset"] = offset
+        result = await db.execute(
+            text(
+                f"SELECT id, order_id, retailer_id, transaction_id, "
+                f"idempotency_key, amount, method, status, created_at, updated_at "
+                f"FROM payments WHERE {where} "
+                f"ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+            ),
+            params,
+        )
+        rows = [dict(r) for r in result.mappings().all()]
+        return rows, total
+
+    async def get_by_id(
+        self,
+        db: AsyncSession,
+        *,
+        payment_id: uuid.UUID,
+    ) -> Mapping[str, Any] | None:
+        result = await db.execute(
+            text(
+                "SELECT id, order_id, retailer_id, transaction_id, "
+                "idempotency_key, amount, method, status, created_at, updated_at "
+                "FROM payments WHERE id = :pid AND is_deleted IS FALSE LIMIT 1"
+            ),
+            {"pid": payment_id},
+        )
+        return result.mappings().first()
+
     async def create(
         self,
         db: AsyncSession,

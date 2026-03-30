@@ -105,3 +105,48 @@ class RetailerService:
             retailer = await self._retailer_repo.get_by_id(db, retailer_id=binding.retailer_id)
             results.append((binding, retailer))
         return results
+
+    async def list_retailers_for_wholesaler(
+        self,
+        db: AsyncSession,
+        *,
+        wholesaler_id: uuid.UUID,
+        page: int = 1,
+        size: int = 20,
+    ) -> tuple[list[tuple[object, object]], int]:
+        """
+        Paginated list of retailers bound to a wholesaler.
+        Returns list of (retailer, binding) tuples and total count.
+        """
+        bindings = await self._binding_repo.list_by_wholesaler(db, wholesaler_id=wholesaler_id)
+        total = len(bindings)
+        start = (page - 1) * size
+        page_bindings = bindings[start:start + size]
+
+        results: list[tuple[object, object]] = []
+        for binding in page_bindings:
+            retailer = await self._retailer_repo.get_by_id(db, retailer_id=binding.retailer_id)
+            if retailer:
+                results.append((retailer, binding))
+        return results, total
+
+    async def get_retailer_for_wholesaler(
+        self,
+        db: AsyncSession,
+        *,
+        wholesaler_id: uuid.UUID,
+        retailer_id: uuid.UUID,
+    ) -> tuple[object, object] | None:
+        """
+        Get a single retailer detail, only if bound to the given wholesaler.
+        Returns (retailer, binding) or None.
+        """
+        binding = await self._binding_repo.get_binding(
+            db, wholesaler_id=wholesaler_id, retailer_id=retailer_id
+        )
+        if not binding:
+            return None
+        retailer = await self._retailer_repo.get_by_id(db, retailer_id=retailer_id)
+        if not retailer:
+            return None
+        return retailer, binding

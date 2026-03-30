@@ -17,6 +17,42 @@ class PaymentService:
     def __init__(self) -> None:
         self._repo = PaymentRepository()
 
+    async def list_payments(
+        self,
+        *,
+        tenant_db: AsyncSession,
+        page: int = 1,
+        size: int = 20,
+        order_id: str | None = None,
+        method: str | None = None,
+        status: str | None = None,
+    ) -> tuple[list, int]:
+        return await self._repo.list_paginated(
+            tenant_db, page=page, size=size,
+            order_id=order_id, method=method, status=status,
+        )
+
+    async def get_payment_by_id(
+        self,
+        *,
+        tenant_db: AsyncSession,
+        payment_id: str,
+    ):
+        try:
+            pid = uuid.UUID(payment_id)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "INVALID_PAYMENT_ID", "message": "Invalid payment_id"},
+            )
+        row = await self._repo.get_by_id(tenant_db, payment_id=pid)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "PAYMENT_NOT_FOUND", "message": f"Payment '{payment_id}' not found"},
+            )
+        return row
+
     async def create_payment(
         self,
         *,

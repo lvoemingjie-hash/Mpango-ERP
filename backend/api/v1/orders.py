@@ -31,6 +31,7 @@ from crud.order import (
     fulfill_order as crud_fulfill_order,
     cancel_order as crud_cancel_order,
     return_order as crud_return_order,
+    batch_retailer_names,
     InvalidStateTransitionError
 )
 from schemas.order import (
@@ -47,13 +48,13 @@ from schemas.common import Pagination
 router = APIRouter()
 
 
-def order_to_schema(order) -> OrderSchema:
+def order_to_schema(order, retailer_name: str | None = None) -> OrderSchema:
     """Convert Order model to Order schema."""
     return OrderSchema(
         id=str(order.id),
         wholesaler_id=str(order.wholesaler_id),
         retailer_id=str(order.retailer_id),
-        retailer_name=None,  # Not loaded in MVP
+        retailer_name=retailer_name,
         status=OrderStatus(order.status.value),
         total_amount=order.total_amount,
         items=[
@@ -115,12 +116,19 @@ async def list_orders(
         retailer_id=retailer_id,
     )
 
+    # Batch-fetch retailer names to avoid N+1
+    rids = [o.retailer_id for o in orders]
+    name_map = await batch_retailer_names(db, rids)
+
     pages = ceil(total / size) if total > 0 else 0
 
     return OrderListResponse(
         success=True,
         data={
-            "items": [order_to_schema(o) for o in orders],
+            "items": [
+                order_to_schema(o, retailer_name=name_map.get(str(o.retailer_id)))
+                for o in orders
+            ],
             "pagination": Pagination(
                 page=page,
                 size=size,
@@ -199,9 +207,11 @@ async def get_order(
             }
         )
 
+    name_map = await batch_retailer_names(db, [order.retailer_id])
+
     return OrderResponse(
         success=True,
-        data=order_to_schema(order),
+        data=order_to_schema(order, retailer_name=name_map.get(str(order.retailer_id))),
         timestamp=datetime.utcnow()
     )
 

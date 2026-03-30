@@ -53,3 +53,20 @@ class BindingListData(BaseModel):
     items: List[BindingListItem] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+
+class RetailerWithBinding(BaseModel):
+    """Retailer data enriched with binding metadata for CRM list."""
+    retailer: RetailerData
+    binding_status: str = Field(..., description="Binding status (active / inactive)")
+    bound_at: datetime = Field(..., description="When the retailer was bound")
+
+    model_config = {"from_attributes": True}
+
+
+class RetailerListData(BaseModel):
+    """Paginated list of retailers bound to the current wholesaler."""
+    items: List[RetailerWithBinding] = Field(default_factory=list)
+    pagination: dict = Field(default_factory=dict)
+
+    model_config = {"from_attributes": True}

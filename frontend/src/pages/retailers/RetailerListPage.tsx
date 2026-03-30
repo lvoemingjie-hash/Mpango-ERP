@@ -1,27 +1,34 @@
 import { useEffect, useState, useCallback } from 'react';
-import { retailerService, type RetailerBindingItem } from '@/services/retailerService';
+import { retailerService, type RetailerWithBinding } from '@/services/retailerService';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { UsersIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Pagination } from '@/components/ui/Pagination';
 
 export function RetailerListPage() {
-  const [bindings, setBindings] = useState<RetailerBindingItem[]>([]);
+  const [retailers, setRetailers] = useState<RetailerWithBinding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [size] = useState(20);
+  const [total, setTotal] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await retailerService.getBindings();
-      setBindings(res.data.data.items);
+      const res = await retailerService.getAll(page, size);
+      setRetailers(res.data.data.items);
+      setTotal(res.data.data.pagination.total);
     } catch {
       setError('Failed to load customers. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, size]);
 
   useEffect(() => {
     load();
@@ -47,7 +54,7 @@ export function RetailerListPage() {
         </div>
       )}
 
-      {!loading && !error && bindings.length === 0 && (
+      {!loading && !error && retailers.length === 0 && (
         <EmptyState
           icon={UsersIcon}
           title="No customers yet"
@@ -55,60 +62,68 @@ export function RetailerListPage() {
         />
       )}
 
-      {!loading && !error && bindings.length > 0 && (
-        <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Name
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Phone
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Email
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Address
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Joined
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {bindings.map(({ binding, retailer }) => (
-                <tr key={binding.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
-                    {retailer?.name || '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                    {retailer?.phone || '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {retailer?.email || '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500 truncate max-w-xs">
-                    {retailer?.address || '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {new Date(binding.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      binding.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {binding.status.charAt(0).toUpperCase() + binding.status.slice(1)}
-                    </span>
-                  </td>
+      {!loading && !error && retailers.length > 0 && (
+        <div className="mt-6 flex flex-col gap-4">
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Name
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Phone
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Email
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Address
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Joined
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Status
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                {retailers.map(({ retailer, binding_status, bound_at }) => (
+                  <tr key={retailer.id} className="hover:bg-gray-50">
+                    <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
+                      {retailer.name || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                      {retailer.phone || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                      {retailer.email || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500 truncate max-w-xs">
+                      {retailer.address || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                      {new Date(bound_at).toLocaleDateString()}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        binding_status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {binding_status.charAt(0).toUpperCase() + binding_status.slice(1)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          
+          <Pagination
+            page={page}
+            totalPages={Math.ceil(total / size)}
+            onPageChange={setPage}
+          />
         </div>
       )}
     </div>

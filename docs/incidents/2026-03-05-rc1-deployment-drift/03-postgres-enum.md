@@ -7,7 +7,7 @@ SELECT typname FROM pg_type WHERE typname='order_status';
 
 Result:
 ```
-typname    
+typname
 --------------
  order_status
 (1 row)
@@ -16,15 +16,15 @@ typname
 
 ## Check enum values
 ```sql
-SELECT enumlabel 
-FROM pg_enum 
-JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+SELECT enumlabel
+FROM pg_enum
+JOIN pg_type ON pg_enum.enumtypid = pg_type.oid
 WHERE typname = 'order_status';
 ```
 
 Result:
 ```
-enumlabel  
+enumlabel
 ------------
  pending
  confirmed

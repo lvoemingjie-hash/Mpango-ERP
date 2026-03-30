@@ -1,7 +1,7 @@
 # Mpango ERP — VPS Deployment Guide
 
-**Version**: v0.2.0  
-**Target**: Ubuntu 22.04 VPS (143.110.177.2)  
+**Version**: v0.2.0
+**Target**: Ubuntu 22.04 VPS (143.110.177.2)
 **Method**: Local script → SSH → GitHub Pull → Docker Compose
 
 ---
@@ -221,7 +221,7 @@ ssh root@143.110.177.2 "bash ~/safe_cleanup_vps.sh --project-dir ~/mpango-erp"
 ```
 Internet → :80 → [gateway (nginx)] → /api/*  → [backend :8000]
                                     → /*      → [frontend :80]
-                                    
+
                   [backend] → [postgres :5432]
                             → [redis :6379]
 ```

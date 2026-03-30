@@ -202,13 +202,13 @@ log "Step 5/7 — Building and starting services..."
 remote "bash -s" <<DEPLOY_CMD
   set -e
   cd ${PROJECT_DIR}
-  
+
   # Stop existing containers gracefully (if any)
   docker compose -f ${COMPOSE_FILE} --env-file .env down --timeout 30 2>/dev/null || true
-  
+
   # Build and start all services
   docker compose -f ${COMPOSE_FILE} --env-file .env up -d --build
-  
+
   echo "Waiting for services to become healthy..."
   sleep 10
 DEPLOY_CMD

@@ -255,6 +255,20 @@ async def _bootstrap_tenant_schema(db, ts: str) -> None:
         "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
         "created_by UUID, updated_by UUID)",
 
+        f'CREATE TABLE IF NOT EXISTS "{ts}".inventory_movements ('
+        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        f'sku_id UUID NOT NULL REFERENCES "{ts}".skus(id) ON DELETE CASCADE,'
+        "movement_type VARCHAR(32) NOT NULL,"
+        "quantity NUMERIC(12,2) NOT NULL,"
+        "quantity_before NUMERIC(12,2) NOT NULL,"
+        "quantity_after NUMERIC(12,2) NOT NULL,"
+        "reason TEXT,"
+        "reference_type VARCHAR(50),"
+        "reference_id UUID,"
+        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
+        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
+        "created_by UUID, updated_by UUID)",
+
         f'CREATE TABLE IF NOT EXISTS "{ts}".orders ('
         "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
         "wholesaler_id UUID NOT NULL, retailer_id UUID NOT NULL,"

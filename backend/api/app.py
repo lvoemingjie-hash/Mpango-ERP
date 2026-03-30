@@ -147,4 +147,10 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.v1.bi_assets import bi_assets_router
     app.include_router(bi_assets_router, prefix="/api/bi/assets", tags=["bi-assets"])
 
+    # Client API — Retailer-facing endpoints (v0.3.0)
+    from api.v1.client.products import router as client_products_router
+    from api.v1.client.orders import router as client_orders_router
+    app.include_router(client_products_router, prefix="/api/v1/client/products", tags=["client-products"])
+    app.include_router(client_orders_router, prefix="/api/v1/client/orders", tags=["client-orders"])
+
     logger.info("All routers registered")

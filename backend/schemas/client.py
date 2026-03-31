@@ -50,10 +50,10 @@ class ClientProductSummary(BaseModel):
     sku_code: str
     category: Optional[str] = None
     unit: str
-    price: Decimal = Field(..., description="Selling price visible to retailer")
+    price: Optional[Decimal] = Field(None, description="Selling price visible to retailer (null if not priced)")
     in_stock: bool
     stock_level: StockLevel
-    can_order: bool = Field(..., description="True if active AND in stock")
+    can_order: bool = Field(..., description="True if active AND in stock AND has price")
 
     model_config = {"from_attributes": True}
 
@@ -66,7 +66,7 @@ class ClientProductDetail(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     unit: str
-    price: Decimal
+    price: Optional[Decimal] = Field(None, description="Selling price (null if not priced for this retailer)")
     in_stock: bool
     stock_level: StockLevel
     can_order: bool

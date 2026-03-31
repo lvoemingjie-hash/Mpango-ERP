@@ -12,6 +12,7 @@ from models.invitation import Invitation
 from models.binding import WholesalerRetailerBinding
 from models.sku import SKU
 from models.inventory_stock import InventoryStock
+from models.retailer_price import RetailerPrice
 from models.reporting import MvSalesDaily, RptSalesDaily, RptReceivablesSummary, RptCashFlowDaily
 from models.audit import SysAuditLog
 from models.report import SysReport
@@ -38,6 +39,7 @@ __all__ = [
     "OrderItem",
     "SKU",
     "InventoryStock",
+    "RetailerPrice",
 
     # Enums
     "OrderStatus",

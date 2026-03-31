@@ -194,6 +194,55 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
         ON "{tenant_schema}".ledger_entries(transaction_date)
     """))
 
+    # Phase 3: SKUs, inventory, and retailer pricing tables
+    await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".skus (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            sku_code VARCHAR(64) NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT,
+            unit VARCHAR(32) NOT NULL DEFAULT 'piece',
+            category VARCHAR(128),
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".inventory_stocks (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            sku_id UUID NOT NULL,
+            quantity_on_hand NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".retailer_prices (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            retailer_id UUID NOT NULL,
+            sku_id UUID NOT NULL,
+            price NUMERIC(12, 2) NOT NULL CHECK (price > 0),
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (retailer_id, sku_id)
+        )
+    """))
+
     await session.execute(text("""
         CREATE OR REPLACE FUNCTION public.prevent_ledger_modification()
         RETURNS TRIGGER AS $$

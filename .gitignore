@@ -2,6 +2,13 @@
 .vscode/
 .idea/
 
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
 # Python / Node / 通用依赖目录（以后有的话就会被自动忽略）
 venv/
 env/

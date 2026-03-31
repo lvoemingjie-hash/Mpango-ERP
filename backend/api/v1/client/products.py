@@ -69,7 +69,7 @@ async def list_products(
     count_result = await db.execute(text(count_sql), params)
     total = count_result.scalar_one()
 
-    # Paginated query — join inventory_stocks for stock info
+    # Paginated query — join inventory_stocks for stock, retailer_prices for price
     offset = (page - 1) * size
     data_sql = f"""
         SELECT
@@ -79,13 +79,19 @@ async def list_products(
             s.category,
             s.unit,
             s.description,
-            COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand
+            COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
+            rp.price AS sell_price
         FROM skus s
         LEFT JOIN inventory_stocks i ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
+        LEFT JOIN retailer_prices rp
+            ON rp.sku_id = s.id
+            AND rp.retailer_id = :retailer_id
+            AND rp.is_deleted IS NOT TRUE
         WHERE {where_clause}
         ORDER BY COALESCE(i.quantity_on_hand, 0) DESC, s.name ASC
         OFFSET :offset LIMIT :limit
     """
+    params["retailer_id"] = client.retailer_id
     params["offset"] = offset
     params["limit"] = size
 
@@ -97,6 +103,8 @@ async def list_products(
         qty = Decimal(str(row.quantity_on_hand))
         stock_level = compute_stock_level(qty)
         in_stock = qty > 0
+        sell_price = Decimal(str(row.sell_price)) if row.sell_price is not None else None
+        has_price = sell_price is not None
 
         items.append(
             ClientProductSummary(
@@ -105,10 +113,10 @@ async def list_products(
                 sku_code=row.sku_code,
                 category=row.category,
                 unit=row.unit,
-                price=Decimal("0.00"),  # TODO: implement selling price from pricing model
+                price=sell_price,
                 in_stock=in_stock,
                 stock_level=stock_level,
-                can_order=in_stock,
+                can_order=in_stock and has_price,
             ).model_dump()
         )
 
@@ -155,14 +163,19 @@ async def get_product(
             s.category,
             s.unit,
             s.is_active,
-            COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand
+            COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
+            rp.price AS sell_price
         FROM skus s
         LEFT JOIN inventory_stocks i ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
+        LEFT JOIN retailer_prices rp
+            ON rp.sku_id = s.id
+            AND rp.retailer_id = :retailer_id
+            AND rp.is_deleted IS NOT TRUE
         WHERE s.id = :product_id
           AND s.is_deleted IS NOT TRUE
         LIMIT 1
     """
-    result = await db.execute(text(sql), {"product_id": product_id})
+    result = await db.execute(text(sql), {"product_id": product_id, "retailer_id": client.retailer_id})
     row = result.fetchone()
 
     if row is None:
@@ -180,6 +193,8 @@ async def get_product(
     qty = Decimal(str(row.quantity_on_hand))
     stock_level = compute_stock_level(qty)
     in_stock = qty > 0
+    sell_price = Decimal(str(row.sell_price)) if row.sell_price is not None else None
+    has_price = sell_price is not None
 
     detail = ClientProductDetail(
         id=str(row.id),
@@ -188,10 +203,10 @@ async def get_product(
         description=row.description,
         category=row.category,
         unit=row.unit,
-        price=Decimal("0.00"),  # TODO: implement selling price from pricing model
+        price=sell_price,
         in_stock=in_stock,
         stock_level=stock_level,
-        can_order=in_stock,
+        can_order=in_stock and has_price,
     )
 
     return DataResponse(

@@ -104,19 +104,26 @@ async def create_order(
 
     sku_sql = f"""
         SELECT
+            s.id AS sku_id,
             s.sku_code,
             s.name,
             s.is_active,
-            COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand
+            COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
+            rp.price AS sell_price
         FROM skus s
         LEFT JOIN inventory_stocks i ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
+        LEFT JOIN retailer_prices rp
+            ON rp.sku_id = s.id
+            AND rp.retailer_id = :retailer_id
+            AND rp.is_deleted IS NOT TRUE
         WHERE s.sku_code IN ({placeholders})
           AND s.is_deleted IS NOT TRUE
     """
+    sku_params["retailer_id"] = client.retailer_id
     result = await db.execute(text(sku_sql), sku_params)
     sku_rows = {row.sku_code: row for row in result.fetchall()}
 
-    # Validate each requested item
+    # Validate each requested item and resolve server-side pricing
     errors = []
     order_items = []
     for item in request.items:
@@ -135,11 +142,28 @@ async def create_order(
             )
             continue
 
+        # P0: Price is resolved server-side from retailer_prices, NEVER from client
+        if sku_row.sell_price is None:
+            errors.append(
+                f"No price configured for '{item.sku_code}'. "
+                f"Please contact your supplier."
+            )
+            continue
+
+        resolved_price = Decimal(str(sku_row.sell_price))
+
+        if resolved_price <= 0:
+            errors.append(
+                f"Invalid price for '{item.sku_code}'. "
+                f"Please contact your supplier."
+            )
+            continue
+
         order_items.append({
             "product_name": sku_row.name,
             "sku_code": item.sku_code,
             "quantity": item.quantity,
-            "unit_price": Decimal("0.00"),  # TODO: resolve from pricing model
+            "unit_price": resolved_price,
         })
 
     if errors:

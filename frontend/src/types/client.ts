@@ -13,7 +13,7 @@ export interface ClientProduct {
   sku_code: string;
   category: string | null;
   unit: string;
-  price: number;
+  price: number | null;
   in_stock: boolean;
   stock_level: StockLevel;
   can_order: boolean;

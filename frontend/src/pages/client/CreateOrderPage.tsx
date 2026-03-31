@@ -10,6 +10,7 @@ interface OrderLineItem {
   sku_code: string;
   name: string;
   quantity: number;
+  price?: number | null;
 }
 
 export function CreateOrderPage() {
@@ -63,7 +64,12 @@ export function CreateOrderPage() {
           : i
       ));
     } else {
-      setItems([...items, { sku_code: product.sku_code, name: product.name, quantity: 1 }]);
+      setItems([...items, {
+        sku_code: product.sku_code,
+        name: product.name,
+        quantity: 1,
+        price: product.price
+      }]);
     }
     setShowPicker(false);
   };
@@ -100,6 +106,19 @@ export function CreateOrderPage() {
     }
   };
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-KE', {
+      style: 'currency',
+      currency: 'KES',
+    }).format(amount);
+  };
+
+  const calculateTotal = () => {
+    return items.reduce((total, item) => {
+      return total + ((item.price || 0) * item.quantity);
+    }, 0);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -134,7 +153,14 @@ export function CreateOrderPage() {
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                <p className="text-xs text-gray-400 font-mono">{item.sku_code}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-xs text-gray-400 font-mono">{item.sku_code}</p>
+                  {item.price !== undefined && item.price !== null && (
+                    <span className="text-xs font-medium text-gray-600">
+                      {formatCurrency(item.price)}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-1.5">
@@ -223,6 +249,11 @@ export function CreateOrderPage() {
                     {p.stock_level === 'HIGH' ? 'In Stock' :
                      p.stock_level === 'MEDIUM' ? 'Limited' : 'Low'}
                   </span>
+                  {p.price !== null && (
+                    <span className="text-sm font-medium text-gray-900">
+                      {formatCurrency(p.price)}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -243,6 +274,16 @@ export function CreateOrderPage() {
           className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition resize-none"
         />
       </div>
+
+      {/* Order Total */}
+      {items.length > 0 && (
+        <div className="rounded-xl bg-gray-50 p-4 flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-700">Estimated Total</span>
+          <span className="text-lg font-bold text-gray-900">
+            {formatCurrency(calculateTotal())}
+          </span>
+        </div>
+      )}
 
       {/* Submit */}
       <button

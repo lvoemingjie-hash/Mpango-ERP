@@ -106,13 +106,24 @@ export function ProductListPage() {
                     <ShoppingBagIcon className="h-8 w-8" />
                   </div>
 
-                  {/* Name */}
-                  <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-primary-600 transition-colors">
-                    {product.name}
-                  </h3>
+                  {/* Name & Price */}
+                  <div className="flex justify-between items-start gap-2">
+                    <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-primary-600 transition-colors">
+                      {product.name}
+                    </h3>
+                    {product.price !== null ? (
+                      <span className="text-sm font-bold text-gray-900 whitespace-nowrap">
+                        KES {product.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium text-gray-500 italic whitespace-nowrap mt-0.5">
+                        Contact Supplier
+                      </span>
+                    )}
+                  </div>
 
                   {/* SKU */}
-                  <p className="mt-0.5 text-xs text-gray-400 font-mono">
+                  <p className="mt-1 text-xs text-gray-400 font-mono">
                     {product.sku_code}
                   </p>
 

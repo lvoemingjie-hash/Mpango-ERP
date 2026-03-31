@@ -41,7 +41,12 @@ export function ProductDetailPage() {
     if (!product) return;
     navigate('/client/orders/new', {
       state: {
-        items: [{ sku_code: product.sku_code, name: product.name, quantity }],
+        items: [{
+          sku_code: product.sku_code,
+          name: product.name,
+          quantity,
+          price: product.price
+        }],
       },
     });
   };
@@ -93,10 +98,23 @@ export function ProductDetailPage() {
         <ShoppingBagIcon className="h-16 w-16" />
       </div>
 
-      {/* Product Info */}
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">{product.name}</h1>
-        <p className="mt-0.5 text-sm font-mono text-gray-400">{product.sku_code}</p>
+      {/* Product Info & Price */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">{product.name}</h1>
+          <p className="mt-0.5 text-sm font-mono text-gray-400">{product.sku_code}</p>
+        </div>
+        <div className="text-right">
+          {product.price !== null ? (
+            <div className="text-2xl font-bold text-gray-900">
+              KES {product.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+          ) : (
+            <div className="text-sm font-medium text-gray-500 italic mt-1.5">
+              Contact Supplier for Price
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Stock & Category */}
@@ -145,6 +163,15 @@ export function ProductDetailPage() {
             </div>
           </div>
 
+          {product.price !== null && (
+            <div className="flex justify-between items-center py-2 border-t border-gray-100">
+              <span className="text-sm text-gray-600">Subtotal</span>
+              <span className="text-base font-bold text-gray-900">
+                KES {(product.price * quantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
+
           <button
             onClick={handleAddToOrder}
             className="w-full rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition"
@@ -155,7 +182,9 @@ export function ProductDetailPage() {
       ) : (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
           <p className="text-sm font-medium text-red-700">
-            This product is currently unavailable for ordering
+            {product.price === null
+              ? "Cannot order: No price configured. Please contact your supplier."
+              : "This product is currently out of stock"}
           </p>
         </div>
       )}

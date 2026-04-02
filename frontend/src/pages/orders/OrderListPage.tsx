@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { orderService } from '@/services/orderService';
 import { financeService } from '@/services/financeService';
 import { useAuthStore } from '@/stores/authStore';
@@ -15,12 +16,14 @@ import { ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 
 export function OrderListPage() {
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const hasUpdatePermission = user?.permissions.includes('orders:update') || user?.roles.includes('admin');
+  const hasCreatePermission = user?.permissions.includes('orders:create') || user?.roles.includes('admin');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -173,9 +176,19 @@ export function OrderListPage() {
         title="Sales"
         description={loading ? 'Loading orders...' : `${orders.length} order${orders.length !== 1 ? 's' : ''} found`}
         action={
-          <button onClick={load} disabled={loading} className="btn-secondary text-sm">
-            Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={load} disabled={loading} className="btn-secondary text-sm">
+              Refresh
+            </button>
+            <button
+              onClick={() => navigate('/orders/new')}
+              className="btn-primary text-sm"
+              disabled={!hasCreatePermission}
+              title={!hasCreatePermission ? "Permission Denied" : undefined}
+            >
+              Create Order
+            </button>
+          </div>
         }
       />
 
@@ -186,9 +199,14 @@ export function OrderListPage() {
         <EmptyState
           icon={ClipboardDocumentListIcon}
           title="Ready to make your first sale?"
-          description="Share your catalog link to get orders."
+          description="Share your catalog link or create an order manually."
           action={
-            <button className="btn-primary text-sm" disabled title="Manual order creation coming soon">
+            <button
+              onClick={() => navigate('/orders/new')}
+              className="btn-primary text-sm"
+              disabled={!hasCreatePermission}
+              title={!hasCreatePermission ? "Permission Denied" : undefined}
+            >
               Create Order
             </button>
           }

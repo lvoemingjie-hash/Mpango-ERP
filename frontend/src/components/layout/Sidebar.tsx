@@ -7,6 +7,7 @@ import {
   CubeIcon,
   BanknotesIcon,
   CreditCardIcon,
+  CurrencyDollarIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -24,6 +25,7 @@ const navItems: NavItem[] = [
   { label: 'Money', path: '/finance', icon: BanknotesIcon },
   { label: 'Payments', path: '/payments', icon: CreditCardIcon },
   { label: 'Customers', path: '/retailers', icon: BuildingOfficeIcon },
+  { label: 'Pricing', path: '/pricing', icon: CurrencyDollarIcon },
   // Temporarily hidden to avoid 404s until implemented
   // { label: 'Team', path: '/users', icon: UsersIcon },
   // { label: 'Settings', path: '/settings', icon: Cog6ToothIcon },

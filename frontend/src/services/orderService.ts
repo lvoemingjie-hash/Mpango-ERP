@@ -1,6 +1,6 @@
 import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
-import type { Order } from '@/types/order';
+import type { Order, WholesalerOrderCreateRequest } from '@/types/order';
 
 export const orderService = {
   getAll: (page = 1, size = 50, status?: string) =>
@@ -10,6 +10,9 @@ export const orderService = {
 
   getById: (id: string) =>
     api.get<ApiResponse<Order>>(`/orders/${id}`),
+
+  create: (data: WholesalerOrderCreateRequest) =>
+    api.post<ApiResponse<Order>>('/orders', data),
 
   confirm: (id: string) =>
     api.post<ApiResponse<{ order_id: string; status: string }>>(`/orders/${id}/confirm`),

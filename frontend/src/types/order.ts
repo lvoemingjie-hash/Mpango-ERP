@@ -1,5 +1,16 @@
 export type OrderStatus = 'draft' | 'confirmed' | 'partially_paid' | 'paid' | 'fulfilled' | 'cancelled' | 'voided' | 'returned';
 
+export interface WholesalerOrderItemCreate {
+  sku_code: string;
+  quantity: number;
+}
+
+export interface WholesalerOrderCreateRequest {
+  retailer_id: string;
+  items: WholesalerOrderItemCreate[];
+  notes?: string | null;
+}
+
 export interface OrderItem {
   id: string;
   product_name: string;

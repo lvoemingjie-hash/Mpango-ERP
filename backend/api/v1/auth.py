@@ -7,29 +7,27 @@ H-Fix-01: Decoupled Identity from Tenant Context.
 - POST /auth/refresh → works for both Identity and Contextual refresh tokens
 """
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import UUID
 
-from api.dependencies import get_db_session, get_tenant_db_session, get_current_user_context
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from api.dependencies import get_db_session, get_current_user_context
 from core.cache import cache
 from core.security import (
-    create_access_token,
-    create_refresh_token,
-    create_identity_token,
     create_contextual_token,
+    create_identity_token,
     decode_token,
-    verify_password,
     TokenPayload,
     InvalidTokenError,
     ExpiredTokenError
 )
-from crud.wholesaler import get_wholesaler_by_code, get_wholesaler_by_id
-from crud.user import (
-    get_user_by_email,
-    get_user_with_permissions,
-    find_user_across_tenants,
-)
+from crud.wholesaler import get_wholesaler_by_id
+from crud.user import find_user_across_tenants, get_user_with_permissions
 from database.session import get_tenant_db
+from models.user import User, Role
 from schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -163,49 +161,54 @@ async def select_tenant(
 
     tenant_schema = wholesaler.get_tenant_schema()
 
-    # 2. Verify user exists in this tenant schema
-    async for tenant_db in get_tenant_db(tenant_schema):
-        user = await get_user_with_permissions(tenant_db, token.user_id)
-        if not user or not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": "TENANT_ACCESS_DENIED",
-                    "message": "You do not have access to this tenant"
-                }
-            )
+    # 2. Verify user exists in this tenant schema using a raw query to bypass the ORM filter.
+    user_query = text(f'SELECT id, is_active FROM "{tenant_schema}".users WHERE id = :user_id')
+    user_result = await db.execute(user_query, {"user_id": UUID(token.user_id)})
+    user = user_result.fetchone()
 
-        roles = [role.name for role in user.roles]
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "TENANT_ACCESS_DENIED",
+                "message": "You do not have access to this tenant"
+            }
+        )
 
-        # 3. Issue contextual tokens
-        access_token = create_contextual_token(
+    # Fetch roles for the user in the target tenant
+    roles_query = text(f'SELECT r.name FROM "{tenant_schema}".roles r JOIN "{tenant_schema}".user_role ur ON r.id = ur.role_id WHERE ur.user_id = :user_id')
+    roles_result = await db.execute(roles_query, {"user_id": UUID(token.user_id)})
+    roles = [row[0] for row in roles_result.fetchall()]
+
+    # 3. Issue contextual tokens
+    access_token = create_contextual_token(
+        user_id=str(user.id),
+        roles=roles,
+        tenant_id=str(wholesaler.id),
+        tenant_schema=tenant_schema,
+        token_type="access",
+    )
+    refresh_token = create_contextual_token(
+        user_id=str(user.id),
+        roles=roles,
+        tenant_id=str(wholesaler.id),
+        tenant_schema=tenant_schema,
+        token_type="refresh",
+    )
+
+    return LoginResponse(
+        success=True,
+        data=TokenData(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
             user_id=str(user.id),
-            roles=roles,
             tenant_id=str(wholesaler.id),
             tenant_schema=tenant_schema,
-            token_type="access",
-        )
-        refresh_token = create_contextual_token(
-            user_id=str(user.id),
             roles=roles,
-            tenant_id=str(wholesaler.id),
-            tenant_schema=tenant_schema,
-            token_type="refresh",
-        )
-
-        return LoginResponse(
-            success=True,
-            data=TokenData(
-                access_token=access_token,
-                refresh_token=refresh_token,
-                token_type="bearer",
-                user_id=str(user.id),
-                tenant_id=str(wholesaler.id),
-                tenant_schema=tenant_schema,
-                roles=roles,
-            ),
-            timestamp=datetime.utcnow(),
-        )
+        ),
+        timestamp=datetime.utcnow(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -335,27 +338,27 @@ async def logout(token: TokenPayload = Depends(get_current_user_context)):
 async def _get_user_with_permissions_cached(user_id: str, db: AsyncSession):
     """
     S3-C: Cached helper for getting user with permissions.
-    
+
     Cache Key: auth_me:{user_id}
     TTL: 30 seconds
-    
+
     Rationale: User profile data changes infrequently, but /auth/me is called
     frequently for permission checks. Caching reduces DB load by 90%.
     """
     user = await get_user_with_permissions(db, user_id)
-    
+
     if not user:
         return None
-    
+
     # Extract role names
     roles = [role.name for role in user.roles]
-    
+
     # Extract permission codes from all roles
     permissions = set()
     for role in user.roles:
         for perm in role.permissions:
             permissions.add(perm.code)
-    
+
     return {
         "id": str(user.id),
         "email": user.email,

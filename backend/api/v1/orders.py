@@ -36,6 +36,7 @@ from crud.order import (
 )
 from schemas.order import (
     OrderCreateRequest,
+    WholesalerOrderCreateRequest,
     OrderResponse,
     OrderListResponse,
     OrderActionResponse,
@@ -142,34 +143,137 @@ async def list_orders(
 
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
-    request: OrderCreateRequest,
+    request: WholesalerOrderCreateRequest,
     token: TokenPayload = Depends(RequirePermission("orders:create")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
-    Create a new order.
+    Create a new order with server-resolved pricing.
 
-    Implements openapi.yaml POST /orders
+    Phase 4: Price authority is enforced server-side.
+    The request contains only sku_code + quantity per item.
+    product_name and unit_price are resolved from the SKU catalog
+    and retailer_prices table respectively. Any client-supplied
+    price is structurally impossible (not in the request schema).
 
     Returns:
         OrderResponse with created order
     """
-    # Convert items to dict format for CRUD
-    items = [
-        {
-            "product_name": item.product_name,
+    from sqlalchemy import text as sa_text
+
+    # ---------------------------------------------------------------
+    # Step 1: Validate retailer binding exists for this tenant
+    # ---------------------------------------------------------------
+    binding_sql = """
+        SELECT id FROM public.wholesaler_retailer_bindings
+        WHERE wholesaler_id = :tenant_id
+          AND retailer_id = :retailer_id
+          AND status = 'active'
+        LIMIT 1
+    """
+    binding_result = await db.execute(
+        sa_text(binding_sql),
+        {"tenant_id": token.tenant_id, "retailer_id": request.retailer_id},
+    )
+    if binding_result.fetchone() is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "RETAILER_NOT_BOUND",
+                "message": "Retailer is not bound to this wholesaler or binding is inactive",
+            },
+        )
+
+    # ---------------------------------------------------------------
+    # Step 2: Resolve SKU data + retailer-specific pricing server-side
+    # ---------------------------------------------------------------
+    sku_codes = [item.sku_code for item in request.items]
+    placeholders = ", ".join([f":sku_{i}" for i in range(len(sku_codes))])
+    sku_params = {f"sku_{i}": code for i, code in enumerate(sku_codes)}
+
+    sku_sql = f"""
+        SELECT
+            s.id   AS sku_id,
+            s.sku_code,
+            s.name,
+            s.is_active,
+            COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
+            rp.price AS sell_price
+        FROM skus s
+        LEFT JOIN inventory_stocks i
+            ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
+        LEFT JOIN retailer_prices rp
+            ON rp.sku_id = s.id
+            AND rp.retailer_id = :retailer_id
+            AND rp.is_deleted IS NOT TRUE
+        WHERE s.sku_code IN ({placeholders})
+          AND s.is_deleted IS NOT TRUE
+    """
+    sku_params["retailer_id"] = request.retailer_id
+    result = await db.execute(sa_text(sku_sql), sku_params)
+    sku_rows = {row.sku_code: row for row in result.fetchall()}
+
+    # ---------------------------------------------------------------
+    # Step 3: Validate each item and build server-resolved order items
+    # ---------------------------------------------------------------
+    errors = []
+    order_items = []
+    for item in request.items:
+        sku_row = sku_rows.get(item.sku_code)
+        if sku_row is None:
+            errors.append(f"Product '{item.sku_code}' not found")
+            continue
+        if not sku_row.is_active:
+            errors.append(f"Product '{item.sku_code}' is no longer available")
+            continue
+
+        qty_available = float(sku_row.quantity_on_hand)
+        if qty_available < item.quantity:
+            errors.append(
+                f"Insufficient stock for '{item.sku_code}': "
+                f"requested {item.quantity}, available {int(qty_available)}"
+            )
+            continue
+
+        if sku_row.sell_price is None:
+            errors.append(
+                f"No price configured for '{item.sku_code}' for this retailer. "
+                f"Set a price before creating orders."
+            )
+            continue
+
+        resolved_price = Decimal(str(sku_row.sell_price))
+        if resolved_price <= 0:
+            errors.append(
+                f"Invalid price for '{item.sku_code}'. Price must be positive."
+            )
+            continue
+
+        order_items.append({
+            "product_name": sku_row.name,
             "sku_code": item.sku_code,
             "quantity": item.quantity,
-            "unit_price": item.unit_price,
-        }
-        for item in request.items
-    ]
+            "unit_price": resolved_price,
+        })
 
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "ORDER_VALIDATION_FAILED",
+                "message": "Some items cannot be ordered",
+                "errors": errors,
+            },
+        )
+
+    # ---------------------------------------------------------------
+    # Step 4: Create order via existing CRUD (all prices server-resolved)
+    # ---------------------------------------------------------------
     order = await crud_create_order(
         db=db,
         wholesaler_id=token.tenant_id,
         retailer_id=request.retailer_id,
-        items=items,
+        items=order_items,
         notes=request.notes,
         created_by=token.user_id
     )

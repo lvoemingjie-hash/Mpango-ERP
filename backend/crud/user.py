@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from models.user import User, Role
 from models.wholesaler import Wholesaler
 from core.security import hash_password, verify_password
-from db.tenant_filter import run_as_system
+from db.tenant_filter import run_as_system, mark_session_as_system
 
 
 @dataclass
@@ -44,11 +44,16 @@ async def find_user_across_tenants(
     """
     from database.session import get_tenant_db
 
+    # Mark session as system scope to bypass tenant filter for cross-tenant scan
+    mark_session_as_system(db_public, reason="cross_tenant_login_scan")
+
     with run_as_system(reason="cross_tenant_login_scan"):
+        # Set execution options on session to bypass tenant filter
         result = await db_public.execute(
             select(Wholesaler)
             .where(Wholesaler.is_deleted == False)
-            .order_by(Wholesaler.created_at)
+            .order_by(Wholesaler.created_at),
+            execution_options={"ignore_tenant": True}
         )
         wholesalers = list(result.scalars().all())
 

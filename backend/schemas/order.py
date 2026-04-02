@@ -103,6 +103,9 @@ class OrderCreateRequest(BaseModel):
     Implements openapi.yaml OrderCreateRequest schema.
 
     S2.5: Enhanced validation to prevent injection attacks.
+
+    DEPRECATED for wholesaler use — use WholesalerOrderCreateRequest instead.
+    Retained for backward compatibility with any internal callers.
     """
     retailer_id: str = Field(..., min_length=36, max_length=36, description="Retailer UUID")
     items: List[OrderItemCreate] = Field(
@@ -117,6 +120,59 @@ class OrderCreateRequest(BaseModel):
     @classmethod
     def validate_notes(cls, v: str | None) -> str | None:
         """S2.5: Validate notes for XSS/injection."""
+        if v:
+            v = validate_no_html_tags(v)
+        return v
+
+    model_config = {"from_attributes": True}
+
+
+# ============================================================================
+# Phase 4: Pricing-Safe Wholesaler Order Schemas
+# ============================================================================
+
+class WholesalerOrderItemCreate(BaseModel):
+    """
+    Wholesaler order item — pricing-safe.
+
+    Phase 4: The frontend sends ONLY sku_code + quantity.
+    product_name and unit_price are resolved server-side from
+    the SKU catalog and retailer_prices table respectively.
+    Any client-supplied price is structurally impossible.
+    """
+    sku_code: str = Field(..., min_length=1, max_length=64, description="SKU code")
+    quantity: int = Field(..., ge=1, le=10000, description="Item quantity")
+
+    @field_validator("sku_code")
+    @classmethod
+    def validate_sku_code(cls, v: str) -> str:
+        if not SAFE_CODE_PATTERN.match(v):
+            raise ValueError("SKU code contains invalid characters")
+        return v
+
+    model_config = {"from_attributes": True}
+
+
+class WholesalerOrderCreateRequest(BaseModel):
+    """
+    Wholesaler order creation request — pricing-safe.
+
+    Phase 4: Price authority lives in the backend.
+    The request contains retailer_id, items (sku_code + quantity), and notes.
+    No unit_price or product_name accepted from the client.
+    """
+    retailer_id: str = Field(..., min_length=36, max_length=36, description="Retailer UUID")
+    items: List[WholesalerOrderItemCreate] = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Order line items (sku_code + quantity only)"
+    )
+    notes: str | None = Field(None, max_length=1000, description="Order notes")
+
+    @field_validator("notes")
+    @classmethod
+    def validate_notes(cls, v: str | None) -> str | None:
         if v:
             v = validate_no_html_tags(v)
         return v

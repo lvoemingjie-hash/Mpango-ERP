@@ -147,6 +147,10 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.v1.bi_assets import bi_assets_router
     app.include_router(bi_assets_router, prefix="/api/bi/assets", tags=["bi-assets"])
 
+    # Phase 4: Admin Pricing API
+    from api.v1.pricing import router as pricing_router
+    app.include_router(pricing_router, prefix="/api/v1/pricing", tags=["pricing"])
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router
@@ -154,3 +158,18 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(client_orders_router, prefix="/api/v1/client/orders", tags=["client-orders"])
 
     logger.info("All routers registered")
+
+
+def create_app() -> FastAPI:
+    """Create and configure the FastAPI application."""
+    settings = Settings()
+    app = FastAPI(
+        title=settings.APP_NAME,
+        version="1.0.0",
+        description="Mpango ERP API",
+    )
+    configure_app(app, settings)
+    return app
+
+
+app = create_app()

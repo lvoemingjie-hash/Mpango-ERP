@@ -31,7 +31,7 @@
 | **No billing** | Purely operational/administrative audit trail |
 | **Information model alignment** | Already proposed in the information model draft (Section 3.2) |
 | **Distinct from sys_audit_logs** | `sys_audit_logs` tracks BI access patterns (product track); `platform_audit_logs` tracks platform admin actions (platform track) — different domain, different retention |
-| **Clear bounded scope** | One table, one model, one write endpoint (insert only), one read endpoint |
+| **Clear bounded scope** | One table, one model, internal appender service (no external write endpoint), read-only query API |
 | **CTO checkpoint alignment** | PLATFORM_PROPOSAL_CTO_REVIEW explicitly mentions audit logging as a safe early platform feature |
 
 ### Why Not the Alternatives
@@ -81,12 +81,12 @@ created_at      TIMESTAMPTZ, NOT NULL, auto-generated
 | GET | `/api/v1/platform/audit/` | Query audit log (paginated, filterable by wholesaler_id/action/actor_type) | No |
 | GET | `/api/v1/platform/audit/{log_id}` | Single audit entry | No |
 
-Write side (appender service) will NOT be exposed as an endpoint in this slice. Platform code that needs to write audit entries will import and call the service function directly. This keeps the API surface read-only and prevents external actors from forging audit entries.
+**Write surface**: NO external write endpoint. Only an internal Python appender service function for platform code to call directly. Platform code that needs to write audit entries will import and call the service function directly. This keeps the API surface read-only and prevents external actors from forging audit entries.
 
 ### Migration impact
 
 - Single new table in public schema
-- No FK to wholesalers (nullable reference, index only — keeping it simple for first iteration)
+- Nullable FK to public.wholesalers.id — retains referential integrity when present, NULL allowed for global (non-tenant) actions
 - No changes to any existing table
 - Downgrade: drop table only
 

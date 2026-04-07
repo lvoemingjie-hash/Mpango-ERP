@@ -1,9 +1,10 @@
-# Platform Track P0 — Next Slice Proposal
+# Platform Track P0 — Next Slice Proposal (Corrected)
 
 **Date**: 2026-04-07
 **Agent**: Platform AI (Vibecoder)
 **Branch**: platform-dev
 **Track**: Platform P0 - Next slice proposal
+**Status**: Corrected — awaiting CTO approval
 
 ---
 
@@ -11,24 +12,23 @@
 
 **Platform Audit Log Boundary** — `public.platform_audit_logs`
 
-An append-only, public-schema table for platform-level administrative actions, with a read-only query API.
+An append-only, public-schema table for platform-level administrative actions, with a read-only query API and internal appender service.
 
-## Why This Is the Safest/Highest-Value Next Step
+## CTO-Approved Contract (Corrected)
 
-1. **Simplest write pattern** — append-only, no UPDATE, no DELETE
-2. **No tenant schema involvement** — public schema only
-3. **No auth changes** — does not touch JWT, login, RBAC
-4. **No billing** — purely operational audit trail
-5. **Already in information model draft** — Section 3.2 proposed this table
-6. **Clear domain separation from sys_audit_logs** — admin actions vs BI access
-7. **Single table, bounded API surface** — minimal blast radius
+| Aspect | Rule |
+|--------|------|
+| External API | Read-only only (GET list + GET detail) |
+| Write surface | Internal appender service only — NO external write endpoint |
+| wholesaler_id | Nullable FK to public.wholesalers.id (NULL for global actions) |
+| Auth | No changes |
+| Billing | No changes |
+| Tenant schema | No changes |
 
-## Alternatives Rejected
+## Corrections Applied (P1)
 
-- Read-only tenant list refinement → cosmetic, low value
-- Tenant lifecycle write endpoints → requires provisioning coordination
-- Billing/subscription → explicitly blocked
-- Quota/limits → no approved model
+1. **Removed write endpoint ambiguity** — proposal previously mentioned "one write endpoint" in scope summary; corrected to "internal appender service, no external write endpoint"
+2. **Added FK to wholesaler_id** — previously proposed "no FK to keep it simple"; corrected to nullable FK preserving referential integrity
 
 ## Proposal Location
 
@@ -36,4 +36,4 @@ An append-only, public-schema table for platform-level administrative actions, w
 
 ## Status
 
-PROPOSAL — awaiting CTO approval before implementation.
+IMPLEMENTATION-BLOCKED — awaiting CTO approval of corrected proposal.

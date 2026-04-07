@@ -2,9 +2,10 @@
 Wholesaler model - Tenant registry in public schema.
 Implements database_contract.md public.wholesalers table.
 """
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Text, Index
+from sqlalchemy import String, Text, DateTime, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from models.base import PublicBaseModel
@@ -53,6 +54,30 @@ class Wholesaler(PublicBaseModel):
     plan_type: Mapped[Optional[str]] = mapped_column(
         String(50),
         nullable=True
+    )
+
+    # Platform P0 lifecycle fields
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="active",
+        server_default="active",
+        comment="Platform-facing tenant state: active, suspended, provisioning, deactivated"
+    )
+    provisioned_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="When tenant schema provisioning completed"
+    )
+    suspended_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="When tenant was suspended"
+    )
+    suspension_reason: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Human-readable reason for suspension"
     )
 
     def get_tenant_schema(self) -> str:

@@ -147,6 +147,11 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.v1.bi_assets import bi_assets_router
     app.include_router(bi_assets_router, prefix="/api/bi/assets", tags=["bi-assets"])
 
+    # Platform Track P0 - isolated routing scaffold
+    from api.v1.platform.health import router as platform_router
+    app.include_router(platform_router, tags=["platform"])
+    logger.info("Platform router registered (Track P0 scaffold)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

@@ -44,7 +44,7 @@ def upgrade() -> None:
     op.create_table(
         'platform_tenants',
         sa.Column('id', postgresql.UUID(as_uuid=True), server_default=sa.text('gen_random_uuid()'), nullable=False),
-        sa.Column('wholesaler_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('wholesaler_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('public.wholesalers.id'), nullable=False),
         sa.Column('provisioning_status', sa.String(20), nullable=False, server_default='pending'),
         sa.Column('provisioning_log', postgresql.JSONB, nullable=True, server_default='{}'),
         sa.Column('activated_at', sa.DateTime(timezone=True), nullable=True),

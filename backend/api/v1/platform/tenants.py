@@ -6,7 +6,7 @@ tenant lifecycle status WITHOUT allowing mutations.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,7 +57,8 @@ async def get_tenant(wholesaler_id: str, db: AsyncSession = Depends(get_db)):
     )
     w = result.scalar_one_or_none()
     if w is None:
-        return {"error": "Tenant not found"}, 404
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"error": "Tenant not found"})
 
     pt_result = await db.execute(
         select(PlatformTenant).where(PlatformTenant.wholesaler_id == w.id)

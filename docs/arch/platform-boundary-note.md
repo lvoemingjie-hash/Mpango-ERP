@@ -2,7 +2,7 @@
 
 **Track**: Platform P0 - Alignment/Foundation  
 **Date**: 2026-04-07  
-**Status**: Initial boundary mapping  
+**Status**: Initial boundary mapping (revised 2026-04-07 per CTO review)  
 **Decision authority**: CTO
 
 ---
@@ -47,10 +47,18 @@ Examples:
 - All current product-line tables
 
 **Rule**: Platform work MUST NOT:
-1. Read or write tenant schema data for cross-tenant purposes
+1. Perform uncontrolled cross-tenant reads or writes against tenant schemas
 2. Modify tenant schema table structures
 3. Add columns to tenant-scoped models
 4. Create migrations that touch tenant schemas
+
+**Exception — Guarded cross-tenant read access**:
+Platform work MAY perform cross-tenant reads when operationally required (e.g., platform monitoring, statistics, health dashboards), but ONLY through:
+- Explicit system-scope mechanisms (bypassing tenant guardrails by design, not by accident)
+- Guarded, read-only query paths
+- Approved and documented access patterns
+
+This is NOT a blanket ban on reading tenant data. It is a requirement that all cross-tenant access be intentional, scoped, and auditable. Uncontrolled or implicit cross-tenant access remains forbidden.
 
 ## 4. Frozen Zones
 
@@ -70,3 +78,12 @@ Before any platform work expands beyond Track P0:
 2. New platform tables need formal decision records (DR-xxx)
 3. Migration ownership must be explicitly assigned
 4. Impact on product bootability must be verified
+
+## 6. Canonical Ledger Path
+
+All platform track ledgers must use the canonical path:
+```
+ai-ledger/platform/
+```
+
+Do NOT use mixed-case variants (e.g., `ai-ledger/Platform/`, `ai-ledger/Platform/viber/`). This convention must be followed by all agents and machines to ensure clean dual-machine collaboration.

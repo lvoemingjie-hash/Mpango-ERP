@@ -158,6 +158,9 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.v1.platform.audit import router as platform_audit_router
     app.include_router(platform_audit_router, tags=["platform-audit"])
     logger.info("Platform audit router registered (read-only)")
+    from api.v1.platform.stats import router as platform_stats_router
+    app.include_router(platform_stats_router, tags=["platform-stats"])
+    logger.info("Platform stats router registered (read-only)")
 
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router

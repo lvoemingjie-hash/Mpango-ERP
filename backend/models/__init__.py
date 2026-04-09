@@ -17,6 +17,7 @@ from models.reporting import MvSalesDaily, RptSalesDaily, RptReceivablesSummary,
 from models.audit import SysAuditLog
 from models.report import SysReport
 from models.platform_tenant import PlatformTenant
+from models.platform_audit_log import PlatformAuditLog
 
 __all__ = [
     # Base classes

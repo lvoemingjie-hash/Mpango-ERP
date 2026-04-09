@@ -59,3 +59,30 @@
 - Retention policy enforcement
 - Tenant lifecycle write endpoints
 - Billing/subscription
+
+---
+
+## P1 Closeout: Request-Level API Tests (2026-04-09)
+
+### What was missing
+CTO found that tests only covered model structure/FK/nullability. No request-level API coverage.
+
+### What was added
+- `backend/tests/test_platform_audit_api.py` — 15 request-level tests
+  - 6 list endpoint tests (empty list, pagination, 3 filters, response shape)
+  - 1 detail 404 test
+  - 8 read-only contract tests (POST/PUT/PATCH/DELETE on list + detail)
+
+### Test approach
+- Uses `FastAPI.dependency_overrides` to mock `get_db` — no real DB needed
+- Uses synchronous `TestClient` — no async event loop complexity
+- Tests prove external API contract without infrastructure dependencies
+
+### Final test count
+- test_platform_audit.py: 17 tests (model shape, FK, append-only contract)
+- test_platform_audit_api.py: 15 tests (request-level API, read-only contract)
+- test_platform_p0.py: 13 tests (tenant lifecycle model)
+- **Total: 45/45 passed**
+
+### Slice Status
+**CLOSED** — platform_audit_logs slice is complete at both model and contract level.

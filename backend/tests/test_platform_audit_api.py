@@ -1,22 +1,26 @@
 """
 Request-level API tests for Platform Track P0 — platform_audit_logs.
 
-Uses synchronous TestClient with FastAPI dependency override for get_db.
-Tests the external read-only API contract without real database.
+Tests the external read-only API contract including new time-range filtering
+and summary endpoints.
 """
 import pytest
+from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
 def _make_empty_list_result():
-    """Mock result set: count=0, items=[]."""
+    """Mock result set: count=0, items=[], summary=empty."""
     count_result = MagicMock()
     count_result.scalar.return_value = 0
     list_result = MagicMock()
     list_result.scalars.return_value.all.return_value = []
-    return [count_result, list_result]
+    # For summary endpoint
+    summary_result = MagicMock()
+    summary_result.all.return_value = []
+    return [count_result, list_result, summary_result]
 
 
 def _make_404_result():
@@ -48,7 +52,7 @@ def _list_client():
     return TestClient(_make_app(mock_db))
 
 
-# === List endpoint ===
+# === List endpoint with time-range ===
 
 class TestAuditListEndpoint:
 
@@ -85,6 +89,78 @@ class TestAuditListEndpoint:
         assert "total" in data
         assert "limit" in data
         assert "offset" in data
+        assert "since" in data
+        assert "before" in data
+
+
+class TestAuditTimeRangeFiltering:
+
+    def test_since_param(self):
+        resp = _list_client().get("/api/v1/platform/audit/?since=2026-04-01T00:00:00Z")
+        assert resp.status_code == 200
+
+    def test_before_param(self):
+        resp = _list_client().get("/api/v1/platform/audit/?before=2026-04-14T00:00:00Z")
+        assert resp.status_code == 200
+
+    def test_since_and_before_params(self):
+        resp = _list_client().get("/api/v1/platform/audit/?since=2026-04-01T00:00:00Z&before=2026-04-14T00:00:00Z")
+        assert resp.status_code == 200
+
+    def test_invalid_since_format(self):
+        resp = _list_client().get("/api/v1/platform/audit/?since=invalid")
+        assert resp.status_code == 400
+        assert "since" in resp.json()["detail"].lower()
+
+    def test_invalid_before_format(self):
+        resp = _list_client().get("/api/v1/platform/audit/?before=invalid")
+        assert resp.status_code == 400
+        assert "before" in resp.json()["detail"].lower()
+
+    def test_since_after_before(self):
+        resp = _list_client().get("/api/v1/platform/audit/?since=2026-04-14T00:00:00Z&before=2026-04-01T00:00:00Z")
+        assert resp.status_code == 400
+        assert "earlier" in resp.json()["detail"].lower()
+
+    def test_range_exceeds_max(self):
+        # 91 days exceeds 90-day max
+        resp = _list_client().get("/api/v1/platform/audit/?since=2026-01-01T00:00:00Z&before=2026-04-14T00:00:00Z")
+        assert resp.status_code == 400
+        assert "90" in resp.json()["detail"]
+
+
+# === Summary endpoint ===
+
+class TestAuditSummaryEndpoint:
+
+    def test_summary_empty(self):
+        resp = _list_client().get("/api/v1/platform/audit/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "period" in data
+        assert "action_counts" in data
+        assert "total" in data
+        assert data["total"] == 0
+        assert data["action_counts"] == {}
+
+    def test_summary_with_time_range(self):
+        resp = _list_client().get("/api/v1/platform/audit/summary?since=2026-04-01T00:00:00Z&before=2026-04-14T00:00:00Z")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["period"]["since"] is not None
+        assert data["period"]["before"] is not None
+
+    def test_summary_invalid_since(self):
+        resp = _list_client().get("/api/v1/platform/audit/summary?since=bad")
+        assert resp.status_code == 400
+
+    def test_summary_invalid_range(self):
+        resp = _list_client().get("/api/v1/platform/audit/summary?since=2026-04-14T00:00:00Z&before=2026-04-01T00:00:00Z")
+        assert resp.status_code == 400
+
+    def test_summary_range_exceeds_max(self):
+        resp = _list_client().get("/api/v1/platform/audit/summary?since=2026-01-01T00:00:00Z&before=2026-04-14T00:00:00Z")
+        assert resp.status_code == 400
 
 
 # === Detail endpoint ===
@@ -108,12 +184,20 @@ class TestReadOnlyContract:
         resp = _list_client().post("/api/v1/platform/audit/", json={})
         assert resp.status_code == 405
 
+    def test_no_post_on_summary(self):
+        resp = _list_client().post("/api/v1/platform/audit/summary", json={})
+        assert resp.status_code == 405
+
     def test_no_post_on_detail(self):
         resp = _list_client().post("/api/v1/platform/audit/some-id", json={})
         assert resp.status_code == 405
 
     def test_no_put_on_list(self):
         resp = _list_client().put("/api/v1/platform/audit/", json={})
+        assert resp.status_code == 405
+
+    def test_no_put_on_summary(self):
+        resp = _list_client().put("/api/v1/platform/audit/summary", json={})
         assert resp.status_code == 405
 
     def test_no_put_on_detail(self):
@@ -124,12 +208,20 @@ class TestReadOnlyContract:
         resp = _list_client().patch("/api/v1/platform/audit/", json={})
         assert resp.status_code == 405
 
+    def test_no_patch_on_summary(self):
+        resp = _list_client().patch("/api/v1/platform/audit/summary", json={})
+        assert resp.status_code == 405
+
     def test_no_patch_on_detail(self):
         resp = _list_client().patch("/api/v1/platform/audit/some-id", json={})
         assert resp.status_code == 405
 
     def test_no_delete_on_list(self):
         resp = _list_client().delete("/api/v1/platform/audit/")
+        assert resp.status_code == 405
+
+    def test_no_delete_on_summary(self):
+        resp = _list_client().delete("/api/v1/platform/audit/summary")
         assert resp.status_code == 405
 
     def test_no_delete_on_detail(self):

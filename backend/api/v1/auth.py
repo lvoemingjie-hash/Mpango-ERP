@@ -176,7 +176,12 @@ async def select_tenant(
         )
 
     # Fetch roles for the user in the target tenant
-    roles_query = text(f'SELECT r.name FROM "{tenant_schema}".roles r JOIN "{tenant_schema}".user_role ur ON r.id = ur.role_id WHERE ur.user_id = :user_id')
+    roles_query = text(
+        f'SELECT r.name FROM "{tenant_schema}".roles r '
+        f'JOIN "{tenant_schema}".user_roles ur ON r.id = ur.role_id '
+        f'WHERE ur.user_id = :user_id'
+    )
+
     roles_result = await db.execute(roles_query, {"user_id": UUID(token.user_id)})
     roles = [row[0] for row in roles_result.fetchall()]
 
@@ -388,7 +393,7 @@ async def get_current_user(
             success=True,
             data=CurrentUserData(
                 id=token.user_id,
-                email="",  # Not available in identity JWT
+                email=None,
                 full_name=None,
                 tenant_id=None,
                 tenant_schema=None,
@@ -397,6 +402,7 @@ async def get_current_user(
             ),
             timestamp=datetime.utcnow(),
         )
+
 
     # Contextual JWT: get tenant session from request state (set by middleware).
     from api.context.tenant import get_tenant_context as _get_tc

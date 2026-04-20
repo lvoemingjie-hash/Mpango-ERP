@@ -130,8 +130,9 @@ class CurrentUserData(BaseModel):
     Current user data in /auth/me response.
     """
     id: str = Field(..., description="User UUID")
-    email: EmailStr = Field(..., description="User email")
+    email: EmailStr | None = Field(None, description="User email")
     full_name: str | None = Field(None, description="User full name")
+
     tenant_id: Optional[str] = Field(None, description="Tenant UUID (None for identity-only)")
     tenant_schema: Optional[str] = Field(None, description="Tenant schema name")
     roles: List[str] = Field(default_factory=list, description="User role names")

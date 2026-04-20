@@ -55,8 +55,9 @@ export interface RefreshTokenRequest {
 
 export interface CurrentUserData {
   id: string;
-  email: string;
+  email: string | null;
   full_name: string | null;
+
   tenant_id: string | null;
   tenant_schema: string | null;
   roles: string[];

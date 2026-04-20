@@ -29,4 +29,7 @@ export const paymentService = {
 
   getById: (id: string) =>
     api.get<ApiResponse<PaymentData>>(`/payments/${id}`),
+
+  getByOrder: (orderId: string, page = 1, size = 100) =>
+    api.get<ApiResponse<PaymentListData>>(`/payments?order_id=${orderId}&page=${page}&size=${size}`),
 };

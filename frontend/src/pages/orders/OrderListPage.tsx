@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { orderService } from '@/services/orderService';
+import type { PayOrderData } from '@/services/orderService';
 import { financeService } from '@/services/financeService';
 import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/stores/toastStore';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { PaymentRecordModal } from '@/components/ui/PaymentRecordModal';
+import { paymentService } from '@/services/paymentService';
 import type { Order, OrderStatus } from '@/types/order';
 import {
   ALLOWED_TRANSITIONS,
@@ -21,6 +24,9 @@ export function OrderListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Phase 5: payment modal state
+  const [payModalOrder, setPayModalOrder] = useState<Order | null>(null);
 
   const hasUpdatePermission = user?.permissions.includes('orders:update') || user?.roles.includes('admin');
   const hasCreatePermission = user?.permissions.includes('orders:create') || user?.roles.includes('admin');
@@ -47,7 +53,7 @@ export function OrderListPage() {
       useToastStore.getState().addToast({
         type: 'success',
         title: 'Order Confirmed',
-        message: `Order ${id.slice(0, 8)}… has been confirmed.`,
+        message: `Order ${id.slice(0, 8)}... has been confirmed.`,
       });
       await load();
     } catch {
@@ -76,18 +82,25 @@ export function OrderListPage() {
     }
   };
 
-  const handlePay = async (id: string) => {
-    setActionLoading(id);
+  // Phase 5: structured payment recording via modal
+  const handlePaySubmit = async (data: PayOrderData) => {
+    if (!payModalOrder) return;
+    const orderId = payModalOrder.id;
+    setActionLoading(orderId);
     try {
-      await orderService.pay(id);
+      const res = await orderService.pay(orderId, data);
+      const resp = res.data.data;
       useToastStore.getState().addToast({
         type: 'success',
         title: 'Payment Recorded',
-        message: `Order ${id.slice(0, 8)}… marked as paid.`,
+        message: resp.payment_id
+          ? `KES ${Number(resp.payment_amount).toLocaleString()} via ${resp.payment_method}. Order ${orderId.slice(0, 8)}... -> ${resp.status}.`
+          : `Order ${orderId.slice(0, 8)}... marked as ${resp.status}.`,
       });
+      setPayModalOrder(null);
       await load();
     } catch {
-      // Error toast handled by global interceptor
+      // Error toast handled by global interceptor -- leave modal open so user can retry
     } finally {
       setActionLoading(null);
     }
@@ -101,7 +114,7 @@ export function OrderListPage() {
       useToastStore.getState().addToast({
         type: 'success',
         title: 'Order Fulfilled',
-        message: `Order ${id.slice(0, 8)}… fulfilled. Inventory deducted.`,
+        message: `Order ${id.slice(0, 8)}... fulfilled. Inventory deducted.`,
       });
       await load();
     } catch {
@@ -119,7 +132,7 @@ export function OrderListPage() {
       useToastStore.getState().addToast({
         type: 'success',
         title: 'Order Returned',
-        message: `Order ${id.slice(0, 8)}… has been returned. Refund entries posted.`,
+        message: `Order ${id.slice(0, 8)}... has been returned. Refund entries posted.`,
       });
       await load();
     } catch {
@@ -135,14 +148,31 @@ export function OrderListPage() {
   const canCancelOrder = (status: OrderStatus) =>
     ALLOWED_TRANSITIONS[status]?.includes('cancelled');
 
+  /** Phase 5: can pay from confirmed or partially_paid */
   const canPay = (status: OrderStatus) =>
-    ALLOWED_TRANSITIONS[status]?.includes('paid');
+    ALLOWED_TRANSITIONS[status]?.includes('paid') || status === 'partially_paid';
 
   const canFulfill = (status: OrderStatus) =>
     ALLOWED_TRANSITIONS[status]?.includes('fulfilled');
 
   const canReturn = (status: OrderStatus) =>
     ALLOWED_TRANSITIONS[status]?.includes('returned');
+
+  const [payRemaining, setPayRemaining] = useState<number | null>(null);
+
+  const handleOpenPayModal = async (order: Order) => {
+    setPayModalOrder(order);
+    // Fetch prior payments to compute true remaining balance
+    try {
+      const res = await paymentService.getByOrder(order.id);
+      const items = res.data.data.items;
+      const totalPaid = items.reduce((sum, p) => sum + Number(p.amount), 0);
+      setPayRemaining(order.total_amount - totalPaid);
+    } catch {
+      // Fallback to full order total if payments can't be fetched
+      setPayRemaining(order.total_amount);
+    }
+  };
 
   const canInvoice = (status: OrderStatus) => {
     const noInvoice: OrderStatus[] = ['draft', 'cancelled', 'voided'];
@@ -245,7 +275,7 @@ export function OrderListPage() {
                     {o.id.slice(0, 8)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {o.retailer_name ?? '—'}
+                    {o.retailer_name ?? '--'}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                     {new Date(o.created_at).toLocaleDateString()}
@@ -270,12 +300,12 @@ export function OrderListPage() {
                       )}
                       {canPay(o.status) && (
                         <button
-                          onClick={() => handlePay(o.id)}
-                          disabled={!!actionLoading || !hasUpdatePermission}
-                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          onClick={() => handleOpenPayModal(o)}
+                          disabled={!hasUpdatePermission}
+                          title={!hasUpdatePermission ? "Permission Denied" : "Record Payment"}
                           className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Mark Paid
+                          Record Payment
                         </button>
                       )}
                       {canFulfill(o.status) && (
@@ -324,8 +354,20 @@ export function OrderListPage() {
             </tbody>
           </table>
         </div>
-      )
-      }
-    </div >
+      )}
+
+      {/* Phase 5: Payment recording modal */}
+      {payModalOrder && (
+        <PaymentRecordModal
+          open={!!payModalOrder}
+          onClose={() => setPayModalOrder(null)}
+          onSubmit={handlePaySubmit}
+          orderId={payModalOrder.id}
+          orderTotal={payModalOrder.total_amount}
+          remainingAmount={payRemaining ?? payModalOrder.total_amount}
+          loading={actionLoading === payModalOrder.id}
+        />
+      )}
+    </div>
   );
 }

@@ -5,9 +5,9 @@ Implements openapi.yaml /orders/* endpoints.
 Tenant isolation enforced via JWT-derived search_path.
 
 State Machine:
-- Draft → Confirmed
-- Confirmed → Paid
-- Paid → Fulfilled (with inventory auto-deduction)
+- Draft - Confirmed
+- Confirmed - Paid
+- Paid - Fulfilled (with inventory auto-deduction)
 - Cancel only allowed in Draft or Confirmed
 - Return only allowed in Fulfilled
 """
@@ -327,7 +327,7 @@ async def confirm_order(
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
-    Confirm an order (draft → confirmed).
+    Confirm an order (draft - confirmed).
 
     Implements openapi.yaml POST /orders/{order_id}/confirm
 
@@ -371,68 +371,218 @@ async def confirm_order(
 async def pay_order(
     order_id: str,
     token: TokenPayload = Depends(RequirePermission("orders:update")),
-    db: AsyncSession = Depends(get_tenant_db_session)
+    db: AsyncSession = Depends(get_tenant_db_session),
+    payment_input: Optional["PayOrderRequest"] = None,
 ):
     """
-    Mark an order as paid (confirmed → paid).
+    Record a payment against an order and transition state.
 
-    Implements POST /orders/{order_id}/pay
-    Uses OrderService.transition() for atomic state change + ledger entries.
+    Phase 5: Extended to support optional structured payment recording.
 
-    Returns:
-        OrderActionResponse with updated status
+    Backward compatible:
+    - No body -> state-only transition (confirmed -> paid), same as before
+    - With body (method + amount) -> creates Payment record + transitions state
+
+    Transactional safety (P0 repair):
+    - Both payment creation and order state transition execute inside
+      a single `async with db.begin()` block.
+    - If either step fails, the entire transaction rolls back: no
+      orphaned payment, no stale order state.
     """
-    order = await get_order_by_id(db, order_id)
 
+    # -- Validate order exists (outside transaction for cheap read) --
+    order = await get_order_by_id(db, order_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": "ORDER_NOT_FOUND",
-                "message": f"Order with ID '{order_id}' not found"
-            }
+                "message": f"Order with ID '{order_id}' not found",
+            },
         )
 
-    try:
-        from services.order_service import OrderService
-        from core.domain.order_state import OrderState
+    # -- Determine what we need to do --
+    from core.domain.order_state import OrderState
 
-        order_service = OrderService(db)
-        order = await order_service.transition(
-            order_id=order.id,
-            target_state=OrderState.PAID,
-            reason="Payment confirmed",
-            updated_by=token.user_id
-        )
-    except InvalidStateTransitionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "INVALID_STATE_TRANSITION",
-                "message": str(e)
-            }
-        )
-    except Exception as e:
-        if "Invalid state transition" in str(e) or "invariant" in str(e).lower():
+    if payment_input and payment_input.amount is not None:
+        # Structured payment path
+        if not payment_input.method:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "PAYMENT_METHOD_REQUIRED",
+                    "message": "method is required when amount is provided",
+                },
+            )
+
+        pay_amount = Decimal(str(payment_input.amount))
+        order_total = order.total_amount
+
+        # Phase 5 repair: compute TRUE outstanding balance from prior payments
+        from repositories.payment_repository import PaymentRepository
+        payment_repo = PaymentRepository()
+        prior_paid = await payment_repo.get_order_paid_total(db, order_id=order.id)
+        remaining_balance = order_total - prior_paid
+
+        if pay_amount > remaining_balance:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "PAYMENT_EXCEEDS_REMAINING",
+                    "message": (
+                        f"Payment amount ({pay_amount}) exceeds "
+                        f"remaining balance ({remaining_balance}). "
+                        f"Order total: {order_total}, already paid: {prior_paid}."
+                    ),
+                },
+            )
+
+        current_state = OrderState(order.status.value)
+        if current_state not in (OrderState.CONFIRMED, OrderState.PARTIALLY_PAID):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "code": "INVALID_STATE_TRANSITION",
-                    "message": str(e)
-                }
+                    "message": (
+                        f"Cannot record payment on order in "
+                        f"'{order.status.value}' state. "
+                        f"Order must be 'confirmed' or 'partially_paid'."
+                    ),
+                },
             )
-        raise
+
+        # Determine target state from CUMULATIVE settlement
+        cumulative_after_payment = prior_paid + pay_amount
+        target_state = (
+            OrderState.PAID
+            if cumulative_after_payment >= order_total
+            else OrderState.PARTIALLY_PAID
+        )
+
+    else:
+        # Legacy empty-body path: confirmed -> paid, no payment record
+        target_state = OrderState.PAID
+        prior_paid = None
+        remaining_balance = None
+        payment_repo = None
+
+    # -- Single atomic transaction: payment + state transition --
+    from services.order_service import OrderService
+
+    order_service = OrderService(db)
+
+    if payment_input and payment_input.amount is not None:
+        # Structured path: wrap both in one transaction
+        try:
+            async with db.begin():
+                payment_record = await payment_repo.create(
+                    db,
+                    order_id=order.id,
+                    retailer_id=order.retailer_id,
+                    transaction_id=payment_input.transaction_id,
+                    idempotency_key=None,
+                    amount=pay_amount,
+                    method=payment_input.method,
+                    status=(
+                        "completed"
+                        if payment_input.method == "transfer"
+                        else "pending"
+                    ),
+                    created_by=(
+                        token.user_id
+                        if token.user_id
+                        else None
+                    ),
+                )
+
+                # Apply outstanding balance delta for cash/credit/transfer
+                from services.payment_service import PaymentService
+                payment_svc = PaymentService()
+                await payment_svc._apply_outstanding_balance_delta(
+                    db,
+                    wholesaler_id=order.wholesaler_id,
+                    retailer_id=order.retailer_id,
+                    delta=-pay_amount,
+                )
+
+                order = await order_service.transition(
+                    order_id=order.id,
+                    target_state=target_state,
+                    reason=(
+                        f"Payment recorded: {payment_input.method} "
+                        f"{payment_input.amount}"
+                    ),
+                    updated_by=token.user_id,
+                )
+        except InvalidStateTransitionError as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "INVALID_STATE_TRANSITION",
+                    "message": str(e),
+                },
+            )
+        except Exception as e:
+            if "Invalid state transition" in str(e) or "invariant" in str(e).lower():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "INVALID_STATE_TRANSITION",
+                        "message": str(e),
+                    },
+                )
+            raise
+
+    else:
+        # Legacy path: state transition only (no new transaction needed;
+        # FastAPI session commit handles it)
+        try:
+            order = await order_service.transition(
+                order_id=order.id,
+                target_state=target_state,
+                reason="Payment confirmed",
+                updated_by=token.user_id,
+            )
+        except InvalidStateTransitionError as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "INVALID_STATE_TRANSITION",
+                    "message": str(e),
+                },
+            )
+        except Exception as e:
+            if "Invalid state transition" in str(e) or "invariant" in str(e).lower():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "INVALID_STATE_TRANSITION",
+                        "message": str(e),
+                    },
+                )
+            raise
+        payment_record = None
+
+    # -- Build response --
+    response_data = {
+        "order_id": str(order.id),
+        "status": order.status.value,
+    }
+    if payment_record:
+        response_data["payment_id"] = str(payment_record["id"])
+        response_data["payment_amount"] = str(payment_record["amount"])
+        response_data["payment_method"] = payment_record["method"]
 
     return OrderActionResponse(
         success=True,
-        data={
-            "order_id": str(order.id),
-            "status": order.status.value
-        },
-        message="Order marked as paid",
-        timestamp=datetime.utcnow()
+        data=response_data,
+        message=(
+            "Payment recorded and order updated"
+            if payment_record
+            else "Order marked as paid"
+        ),
+        timestamp=datetime.utcnow(),
     )
-
 
 @router.post("/{order_id}/fulfill", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def fulfill_order(
@@ -441,7 +591,7 @@ async def fulfill_order(
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
-    Fulfill an order (paid → fulfilled) with inventory auto-deduction.
+    Fulfill an order (paid - fulfilled) with inventory auto-deduction.
 
     Implements POST /orders/{order_id}/fulfill
     Uses OrderService.transition() for atomic state change + ledger entries,
@@ -534,7 +684,7 @@ async def cancel_order(
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
-    Cancel an order (draft/confirmed → cancelled).
+    Cancel an order (draft/confirmed - cancelled).
 
     Implements openapi.yaml POST /orders/{order_id}/cancel
 
@@ -581,13 +731,13 @@ async def return_order(
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
-    Process a full return on a fulfilled order (fulfilled → returned).
+    Process a full return on a fulfilled order (fulfilled - returned).
 
     This endpoint:
     1. Validates order is in "fulfilled" status
     2. Transitions order status to "returned"
     3. Posts reversal ledger entries (via OrderService)
-    4. Restocking is manual in MVP — inventory is NOT auto-adjusted
+    4. Restocking is manual in MVP - inventory is NOT auto-adjusted
 
     Returns:
         OrderActionResponse with updated status

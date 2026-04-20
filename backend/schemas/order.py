@@ -1,10 +1,11 @@
 """
 Order Pydantic schemas.
-Implements openapi.yaml order component schemas.
+Implements openapi.yaml /orders/* endpoints.
 
 S2.5: Enhanced input validation to prevent XSS and injection attacks.
+Phase 5: Added PayOrderRequest for structured payment recording on order pay.
 """
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -104,7 +105,7 @@ class OrderCreateRequest(BaseModel):
 
     S2.5: Enhanced validation to prevent injection attacks.
 
-    DEPRECATED for wholesaler use — use WholesalerOrderCreateRequest instead.
+    DEPRECATED for wholesaler use -- use WholesalerOrderCreateRequest instead.
     Retained for backward compatibility with any internal callers.
     """
     retailer_id: str = Field(..., min_length=36, max_length=36, description="Retailer UUID")
@@ -133,7 +134,7 @@ class OrderCreateRequest(BaseModel):
 
 class WholesalerOrderItemCreate(BaseModel):
     """
-    Wholesaler order item — pricing-safe.
+    Wholesaler order item -- pricing-safe.
 
     Phase 4: The frontend sends ONLY sku_code + quantity.
     product_name and unit_price are resolved server-side from
@@ -155,7 +156,7 @@ class WholesalerOrderItemCreate(BaseModel):
 
 class WholesalerOrderCreateRequest(BaseModel):
     """
-    Wholesaler order creation request — pricing-safe.
+    Wholesaler order creation request -- pricing-safe.
 
     Phase 4: Price authority lives in the backend.
     The request contains retailer_id, items (sku_code + quantity), and notes.
@@ -169,6 +170,53 @@ class WholesalerOrderCreateRequest(BaseModel):
         description="Order line items (sku_code + quantity only)"
     )
     notes: str | None = Field(None, max_length=1000, description="Order notes")
+
+    @field_validator("notes")
+    @classmethod
+    def validate_notes(cls, v: str | None) -> str | None:
+        if v:
+            v = validate_no_html_tags(v)
+        return v
+
+    model_config = {"from_attributes": True}
+
+
+# ============================================================================
+# Phase 5: Structured Payment Recording on Order Pay
+# ============================================================================
+
+class PayOrderRequest(BaseModel):
+    """
+    Optional structured payment input for POST /orders/{order_id}/pay.
+
+    Phase 5: All fields are optional. When provided, a Payment record is
+    created alongside the order state transition. When omitted, the endpoint
+    behaves exactly as before (state-only transition, backward compatible).
+
+    Validation rules:
+    - If `amount` is provided, it must be > 0
+    - If `amount` is provided, `method` must also be provided
+    - `transaction_id` is only meaningful for transfer method
+    """
+    method: Optional[str] = Field(
+        None,
+        description="Payment method: cash, transfer, mobile_money",
+    )
+    amount: Optional[Decimal] = Field(
+        None,
+        gt=0,
+        description="Payment amount (must be > 0)",
+    )
+    transaction_id: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="External transaction reference (for transfer/mobile_money)",
+    )
+    notes: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="Payment notes",
+    )
 
     @field_validator("notes")
     @classmethod

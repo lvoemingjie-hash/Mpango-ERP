@@ -111,6 +111,23 @@ class PaymentRepository:
         )
         return result.mappings().first()
 
+    async def get_order_paid_total(
+        self,
+        db: AsyncSession,
+        *,
+        order_id: uuid.UUID,
+    ) -> Decimal:
+        """Return the sum of all non-deleted payments for an order."""
+        result = await db.execute(
+            text(
+                "SELECT COALESCE(SUM(amount), 0) "
+                "FROM payments "
+                "WHERE order_id = :order_id AND is_deleted IS FALSE"
+            ),
+            {"order_id": order_id},
+        )
+        return Decimal(str(result.scalar() or 0))
+
     async def create(
         self,
         db: AsyncSession,

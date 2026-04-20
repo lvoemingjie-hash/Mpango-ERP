@@ -93,3 +93,7 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+.gitnexus
+.claude/
+AGENTS.md
+CLAUDE.md

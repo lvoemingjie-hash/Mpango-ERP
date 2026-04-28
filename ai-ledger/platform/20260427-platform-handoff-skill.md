@@ -70,3 +70,48 @@ Files not found (listed in task but absent from repo):
 - All referenced files verified to exist in repo (except the 3 noted above)
 - Self-check gates match permanent operating rules
 - Boundary map matches platform-boundary-note.md
+
+---
+
+## 2026-04-28 Alignment Update
+
+**Agent**: OpenCode (CTO directive)
+**Status**: Boot sequence realigned with canonical shared-memory model
+
+### What Changed
+
+1. **SKILL.md boot sequence restructured** into 3 phases:
+   - Phase 0: `git fetch && git pull` — sync before reading
+   - Phase 1: `docs/ai/README.md` → `docs/ai/PROJECT_MEMORY.md` (canonical entry point)
+   - Phase 2: CTO_COCKPIT → CTO_CONTEXT → AGENT_DELEGATION → DUAL_MACHINE_PROTOCOL (governance)
+   - Phase 3: platform-boundary-note → STARTUP_CHECKLIST → permanent_rules → PROJECT_HANDOFF (constraints)
+
+2. **`docs/ai/PROJECT.md` identified as GAP** — does not exist, noted in boot sequence and reference map. When created, insert as Step 2 between README.md and PROJECT_MEMORY.md.
+
+3. **`docs/PROJECT_HANDOFF.md` repositioned** as supplementary operational state document (Step 10), not boot entry point. Added role declaration and updated "How to Use" section.
+
+4. **Canonical Reference Map expanded** — added README.md as entry point, DUAL_MACHINE_DEVELOPMENT_PROTOCOL, PROJECT_HANDOFF, Boot contract, AI workrules. Marked PROJECT.md gap.
+
+5. **Session Workflow updated** — git sync is now Phase 0 before any reading.
+
+### Why — Visibility Push Needed
+
+The platform handoff skill previously started directly at CTO_COCKPIT.md, bypassing the canonical entry point (`docs/ai/README.md`) established by the project's shared-memory model. This created two problems:
+
+1. **Agents could miss the canonical read order** defined in README.md, leading to incomplete context
+2. **No git sync before reading** meant agents could operate on stale governance docs
+
+The realignment ensures every platform agent boot follows the same entry path as all other AI agents, with platform-specific extensions layered on top.
+
+### Visibility Push Required
+
+- [ ] `docs/ai/README.md` does not yet reference the platform handoff skill — should be added to its read order or as a platform-specific appendix
+- [ ] `docs/ai/CTO_CONTEXT.md` should acknowledge the platform handoff skill exists
+- [ ] Product-track agents on Machine A need awareness that `docs/PROJECT_HANDOFF.md` exists and is the platform operational baseline
+- [ ] `docs/ai/PROJECT.md` gap needs resolution — either create it or remove references
+
+### Files Touched
+
+- Modified: `.claude/skills/generated/mpango-platform-handoff/SKILL.md`
+- Modified: `docs/PROJECT_HANDOFF.md`
+- Modified: `ai-ledger/platform/20260427-platform-handoff-skill.md` (this file)

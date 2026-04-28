@@ -7,25 +7,52 @@ description: Use when a platform-track agent boots on the Mpango ERP platform-de
 
 ## Overview
 
-Orientation skill for platform-track agents working on the `platform-dev` branch of Mpango ERP. Provides the minimal boot sequence, hard boundary rules, and canonical reference map so a new agent can become productive without violating multi-tenant isolation or product continuity.
+Orientation skill for platform-track agents working on the `platform-dev` branch of Mpango ERP. Provides the minimal boot sequence (sync → entry → governance → constraints), hard boundary rules, and canonical reference map so a new agent can become productive without violating multi-tenant isolation or product continuity.
 
 **Core principle**: Platform work extends the SaaS layer without forcing the product core to adapt.
 
+**Canonical entry point**: All agents must start from `docs/ai/README.md` and follow its read order. The boot sequence below is the platform-specific extension of that canonical path.
+
 ## Boot Sequence
 
-Read in this exact order before any implementation:
+### Phase 0 — Sync
+
+```
+git fetch origin
+git pull origin platform-dev
+```
+
+Platform docs may have been updated on the other machine or by CTO remotely.
+Always sync before reading to avoid stale context.
+
+### Phase 1 — Canonical Entry Point
 
 | Step | File | Purpose |
 |------|------|---------|
-| 1 | `docs/ai/CTO_COCKPIT.md` | Decision hierarchy, escalation triggers, alignment definition |
-| 2 | `docs/ai/CTO_CONTEXT.md` | North star, non-negotiables, current risk areas |
-| 3 | `docs/ai/PROJECT_MEMORY.md` | Strategic intent, product boundary, delivery tradeoff principle |
-| 4 | `docs/ai/AGENT_DELEGATION_PROTOCOL.md` | Delegation sequence, task brief template, output contract |
-| 5 | `docs/arch/platform-boundary-note.md` | Boundary mapping, frozen zones, approval gates |
-| 6 | `docs/ai/PLATFORM_TRACK_STARTUP_CHECKLIST.md` | Phase-by-phase startup gate |
-| 7 | `ai-ledger/platform/2026-04-09_permanent_operating_rules.md` | 6 permanent operating rules |
+| 1 | `docs/ai/README.md` | Canonical entry point; defines the read order for all AI agents |
+| 2 | `docs/ai/PROJECT_MEMORY.md` | Strategic intent, product boundary, delivery tradeoff principle |
 
-Do NOT start coding until all 7 are read.
+**GAP**: `docs/ai/PROJECT.md` does not exist yet. When created, insert as Step 2 and shift PROJECT_MEMORY to Step 3.
+
+### Phase 2 — Governance Documents
+
+| Step | File | Purpose |
+|------|------|---------|
+| 3 | `docs/ai/CTO_COCKPIT.md` | Decision hierarchy, escalation triggers, alignment definition |
+| 4 | `docs/ai/CTO_CONTEXT.md` | North star, non-negotiables, current risk areas |
+| 5 | `docs/ai/AGENT_DELEGATION_PROTOCOL.md` | Delegation sequence, task brief template, output contract |
+| 6 | `docs/ai/DUAL_MACHINE_DEVELOPMENT_PROTOCOL.md` | Two-machine rules, branch protocol, shared memory surfaces |
+
+### Phase 3 — Platform-Specific Constraints
+
+| Step | File | Purpose |
+|------|------|---------|
+| 7 | `docs/arch/platform-boundary-note.md` | Boundary mapping, frozen zones, approval gates |
+| 8 | `docs/ai/PLATFORM_TRACK_STARTUP_CHECKLIST.md` | Phase-by-phase startup gate |
+| 9 | `ai-ledger/platform/2026-04-09_permanent_operating_rules.md` | 6 permanent operating rules |
+| 10 | `docs/PROJECT_HANDOFF.md` | Operational state: what's built, test counts, API surface |
+
+Do NOT start coding until all 10 are read.
 
 ## Hard Boundary Rules
 
@@ -109,24 +136,32 @@ Run before every commit. All must PASS.
 
 | Need | Location |
 |------|----------|
+| **Entry point (read first)** | `docs/ai/README.md` |
+| Strategic memory | `docs/ai/PROJECT_MEMORY.md` |
+| **GAP — project overview** | `docs/ai/PROJECT.md` (not yet created) |
 | Decision hierarchy | `docs/ai/CTO_COCKPIT.md` |
 | Current priorities | `docs/ai/CTO_CONTEXT.md` |
-| Strategic memory | `docs/ai/PROJECT_MEMORY.md` |
 | Delegation protocol | `docs/ai/AGENT_DELEGATION_PROTOCOL.md` |
+| Dual-machine protocol | `docs/ai/DUAL_MACHINE_DEVELOPMENT_PROTOCOL.md` |
 | Boundary rules | `docs/arch/platform-boundary-note.md` |
 | Startup checklist | `docs/ai/PLATFORM_TRACK_STARTUP_CHECKLIST.md` |
 | Platform proposal | `docs/ai/PLATFORM_PROPOSAL_CTO_REVIEW_2026-03-30.md` |
+| Operational state | `docs/PROJECT_HANDOFF.md` |
 | Tenancy architecture | `decision-register/DR-001_schema-per-tenant.md` |
 | Tenancy spec | `docs/contracts/multi_tenancy_spec.md` |
 | Permanent rules | `ai-ledger/platform/2026-04-09_permanent_operating_rules.md` |
-| Dual-machine protocol | `docs/ai/DUAL_MACHINE_DEVELOPMENT_PROTOCOL.md` |
 | Session audit trail | `ai-ledger/platform/` |
 | Decision records | `decision-register/` |
+| Boot contract | `docs/contracts/Boot contract.md` |
+| AI workrules | `docs/contracts/AI workrules.md` |
 
 ## Session Workflow
 
 ```
-Boot → Read 7 docs → Sync (git pull)
+Phase 0: git fetch && git pull
+Phase 1: Read README.md + PROJECT_MEMORY.md (canonical entry)
+Phase 2: Read CTO_COCKPIT + CTO_CONTEXT + AGENT_DELEGATION + DUAL_MACHINE_PROTOCOL (governance)
+Phase 3: Read platform-boundary-note + STARTUP_CHECKLIST + permanent_rules + PROJECT_HANDOFF (constraints)
   → Write proposal to ai-ledger/platform/
   → Implement bounded slice
   → Run 8 self-check gates

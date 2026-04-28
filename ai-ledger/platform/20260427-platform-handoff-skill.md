@@ -61,7 +61,8 @@ Files not found (listed in task but absent from repo):
 
 ## Risks
 
-- Skill references files that don't exist yet (PROJECT.md, AI_TEAM_OPERATING_RULES.md, general mpango-handoff) — will need updates if those are created
+- Skill references files that don't exist yet (AI_TEAM_OPERATING_RULES.md, general mpango-handoff) — will need updates if those are created
+- ~~`docs/ai/PROJECT.md` GAP~~ — RESOLVED 2026-04-28: created and integrated into boot sequence
 - Skill is untested against actual platform agents — should be validated in next session
 
 ## Validation
@@ -86,7 +87,7 @@ Files not found (listed in task but absent from repo):
    - Phase 2: CTO_COCKPIT → CTO_CONTEXT → AGENT_DELEGATION → DUAL_MACHINE_PROTOCOL (governance)
    - Phase 3: platform-boundary-note → STARTUP_CHECKLIST → permanent_rules → PROJECT_HANDOFF (constraints)
 
-2. **`docs/ai/PROJECT.md` identified as GAP** — does not exist, noted in boot sequence and reference map. When created, insert as Step 2 between README.md and PROJECT_MEMORY.md.
+2. **`docs/ai/PROJECT.md` identified as GAP** — does not exist, noted in boot sequence and reference map. When created, insert as Step 2 between README.md and PROJECT_MEMORY.md. **RESOLVED 2026-04-28**: PROJECT.md created, GAP description removed from SKILL.md.
 
 3. **`docs/PROJECT_HANDOFF.md` repositioned** as supplementary operational state document (Step 10), not boot entry point. Added role declaration and updated "How to Use" section.
 
@@ -108,7 +109,7 @@ The realignment ensures every platform agent boot follows the same entry path as
 - [ ] `docs/ai/README.md` does not yet reference the platform handoff skill — should be added to its read order or as a platform-specific appendix
 - [ ] `docs/ai/CTO_CONTEXT.md` should acknowledge the platform handoff skill exists
 - [ ] Product-track agents on Machine A need awareness that `docs/PROJECT_HANDOFF.md` exists and is the platform operational baseline
-- [ ] `docs/ai/PROJECT.md` gap needs resolution — either create it or remove references
+- [x] `docs/ai/PROJECT.md` gap needs resolution — either create it or remove references — **RESOLVED 2026-04-28: created**
 
 ### Files Touched
 

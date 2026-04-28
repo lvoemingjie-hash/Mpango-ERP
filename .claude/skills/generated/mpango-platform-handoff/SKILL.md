@@ -30,29 +30,28 @@ Always sync before reading to avoid stale context.
 | Step | File | Purpose |
 |------|------|---------|
 | 1 | `docs/ai/README.md` | Canonical entry point; defines the read order for all AI agents |
-| 2 | `docs/ai/PROJECT_MEMORY.md` | Strategic intent, product boundary, delivery tradeoff principle |
-
-**GAP**: `docs/ai/PROJECT.md` does not exist yet. When created, insert as Step 2 and shift PROJECT_MEMORY to Step 3.
+| 2 | `docs/ai/PROJECT.md` | Project overview: architecture, development tracks, constraints |
+| 3 | `docs/ai/PROJECT_MEMORY.md` | Strategic intent, product boundary, delivery tradeoff principle |
 
 ### Phase 2 — Governance Documents
 
 | Step | File | Purpose |
 |------|------|---------|
-| 3 | `docs/ai/CTO_COCKPIT.md` | Decision hierarchy, escalation triggers, alignment definition |
-| 4 | `docs/ai/CTO_CONTEXT.md` | North star, non-negotiables, current risk areas |
-| 5 | `docs/ai/AGENT_DELEGATION_PROTOCOL.md` | Delegation sequence, task brief template, output contract |
-| 6 | `docs/ai/DUAL_MACHINE_DEVELOPMENT_PROTOCOL.md` | Two-machine rules, branch protocol, shared memory surfaces |
+| 4 | `docs/ai/CTO_COCKPIT.md` | Decision hierarchy, escalation triggers, alignment definition |
+| 5 | `docs/ai/CTO_CONTEXT.md` | North star, non-negotiables, current risk areas |
+| 6 | `docs/ai/AGENT_DELEGATION_PROTOCOL.md` | Delegation sequence, task brief template, output contract |
+| 7 | `docs/ai/DUAL_MACHINE_DEVELOPMENT_PROTOCOL.md` | Two-machine rules, branch protocol, shared memory surfaces |
 
 ### Phase 3 — Platform-Specific Constraints
 
 | Step | File | Purpose |
 |------|------|---------|
-| 7 | `docs/arch/platform-boundary-note.md` | Boundary mapping, frozen zones, approval gates |
-| 8 | `docs/ai/PLATFORM_TRACK_STARTUP_CHECKLIST.md` | Phase-by-phase startup gate |
-| 9 | `ai-ledger/platform/2026-04-09_permanent_operating_rules.md` | 6 permanent operating rules |
-| 10 | `docs/PROJECT_HANDOFF.md` | Operational state: what's built, test counts, API surface |
+| 8 | `docs/arch/platform-boundary-note.md` | Boundary mapping, frozen zones, approval gates |
+| 9 | `docs/ai/PLATFORM_TRACK_STARTUP_CHECKLIST.md` | Phase-by-phase startup gate |
+| 10 | `ai-ledger/platform/2026-04-09_permanent_operating_rules.md` | 6 permanent operating rules |
+| 11 | `docs/PROJECT_HANDOFF.md` | Operational state: what's built, test counts, API surface |
 
-Do NOT start coding until all 10 are read.
+Do NOT start coding until all 11 are read.
 
 ## Hard Boundary Rules
 
@@ -138,7 +137,7 @@ Run before every commit. All must PASS.
 |------|----------|
 | **Entry point (read first)** | `docs/ai/README.md` |
 | Strategic memory | `docs/ai/PROJECT_MEMORY.md` |
-| **GAP — project overview** | `docs/ai/PROJECT.md` (not yet created) |
+| Project overview | `docs/ai/PROJECT.md` |
 | Decision hierarchy | `docs/ai/CTO_COCKPIT.md` |
 | Current priorities | `docs/ai/CTO_CONTEXT.md` |
 | Delegation protocol | `docs/ai/AGENT_DELEGATION_PROTOCOL.md` |
@@ -159,7 +158,7 @@ Run before every commit. All must PASS.
 
 ```
 Phase 0: git fetch && git pull
-Phase 1: Read README.md + PROJECT_MEMORY.md (canonical entry)
+Phase 1: Read README.md + PROJECT.md + PROJECT_MEMORY.md (canonical entry)
 Phase 2: Read CTO_COCKPIT + CTO_CONTEXT + AGENT_DELEGATION + DUAL_MACHINE_PROTOCOL (governance)
 Phase 3: Read platform-boundary-note + STARTUP_CHECKLIST + permanent_rules + PROJECT_HANDOFF (constraints)
   → Write proposal to ai-ledger/platform/

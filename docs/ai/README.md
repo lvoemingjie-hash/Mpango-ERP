@@ -4,14 +4,15 @@ This folder is the canonical starting point for Codex and other AI coding agents
 
 ## Read Order
 
-1. `docs/ai/CTO_COCKPIT.md`
-2. `docs/ai/CTO_CONTEXT.md`
-3. `docs/ai/PROJECT_MEMORY.md`
-4. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
-5. `docs/contracts/Boot contract.md`
-6. `docs/contracts/AI workrules.md`
-7. `docs/mpango_erp_v0_3_development_master_plan.md`
-8. `decision-register/README.md`
+1. `docs/ai/PROJECT.md`
+2. `docs/ai/CTO_COCKPIT.md`
+3. `docs/ai/CTO_CONTEXT.md`
+4. `docs/ai/PROJECT_MEMORY.md`
+5. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
+6. `docs/contracts/Boot contract.md`
+7. `docs/contracts/AI workrules.md`
+8. `docs/mpango_erp_v0_3_development_master_plan.md`
+9. `decision-register/README.md`
 
 ## Purpose
 

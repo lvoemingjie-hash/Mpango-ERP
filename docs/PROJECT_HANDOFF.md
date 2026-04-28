@@ -2,7 +2,7 @@
 
 **Purpose**: This document captures the essential state, decisions, and context for the Platform Track. Read this first in any new conversation to understand where we are, what we've built, and what matters.
 
-**Role**: This is a **supplementary operational state document**. It is NOT the boot entry point. The canonical boot sequence starts at `docs/ai/README.md` and follows the `mpango-platform-handoff` skill. This document is consumed as Step 10 of the platform boot sequence to establish current operational baseline.
+**Role**: This is a **supplementary operational state document**. It is NOT the boot entry point. The canonical boot sequence starts at `docs/ai/README.md` and follows the `mpango-platform-handoff` skill. This document is consumed as Step 11 of the platform boot sequence to establish current operational baseline.
 
 **Last Updated**: 2026-04-28
 **Branch**: `platform-dev`
@@ -205,7 +205,7 @@ Total: **55 tests** (all read-only contract tests)
 ### Starting a New Conversation
 
 1. **Follow the platform handoff skill boot sequence** (`.claude/skills/generated/mpango-platform-handoff/SKILL.md`)
-2. This document is **Step 10** of the boot sequence — read after governance and constraint docs
+2. This document is **Step 11** of the boot sequence — read after governance and constraint docs
 3. Check `ai-ledger/platform/` for the most recent work (may be newer than this file)
 4. Identify what you need to do (new slice vs. enhancement)
 5. Follow the working rules above

@@ -6,12 +6,13 @@ This folder is the canonical starting point for Codex and other AI coding agents
 
 1. `docs/ai/CTO_COCKPIT.md`
 2. `docs/ai/CTO_CONTEXT.md`
-3. `docs/ai/PROJECT_MEMORY.md`
-4. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
-5. `docs/contracts/Boot contract.md`
-6. `docs/contracts/AI workrules.md`
-7. `docs/mpango_erp_v0_3_development_master_plan.md`
-8. `decision-register/README.md`
+3. `docs/ai/PROJECT.md`
+4. `docs/ai/PROJECT_MEMORY.md`
+5. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
+6. `docs/contracts/Boot contract.md`
+7. `docs/contracts/AI workrules.md`
+8. `docs/mpango_erp_v0_3_development_master_plan.md`
+9. `decision-register/README.md`
 
 ## Purpose
 
@@ -24,6 +25,19 @@ This folder is the canonical starting point for Codex and other AI coding agents
 
 - Strategic or cross-module decisions must also be recorded in `decision-register/`
 - Each meaningful AI implementation session should leave a ledger entry in `ai-ledger/`
+- After each meaningful phase or branch-state change, update `PROJECT.md`
 - When priorities change, update `CTO_CONTEXT.md` first
 - When hidden assumptions from old chats are recovered, add them to `PROJECT_MEMORY.md`
 - When team operating rules for AI agents change, update `AGENT_DELEGATION_PROTOCOL.md`
+
+## Multi-Agent Sync Rules
+
+- Before starting a new task, fetch/pull the latest branch state and reread:
+  - `docs/ai/README.md`
+  - `docs/ai/PROJECT.md`
+  - `docs/ai/PROJECT_MEMORY.md`
+- If a task changes branch ownership, accepted status, current blockers, or next action, update `PROJECT.md` in the same work cycle.
+- Distinguish clearly between:
+  - visibility push: push so another machine / CTO can inspect the work
+  - approval push: push after CTO has approved the slice for continuation or merge
+- Do not assume local chat memory is shared memory. If a fact matters to another agent, it must land in repo docs or a ledger.

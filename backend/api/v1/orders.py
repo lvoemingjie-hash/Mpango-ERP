@@ -42,7 +42,8 @@ from schemas.order import (
     OrderActionResponse,
     OrderStatus,
     Order as OrderSchema,
-    OrderItem as OrderItemSchema
+    OrderItem as OrderItemSchema,
+    PayOrderRequest,
 )
 from schemas.common import Pagination
 
@@ -372,7 +373,7 @@ async def pay_order(
     order_id: str,
     token: TokenPayload = Depends(RequirePermission("orders:update")),
     db: AsyncSession = Depends(get_tenant_db_session),
-    payment_input: Optional["PayOrderRequest"] = None,
+    payment_input: Optional[PayOrderRequest] = None,
 ):
     """
     Record a payment against an order and transition state.
@@ -472,48 +473,48 @@ async def pay_order(
     order_service = OrderService(db)
 
     if payment_input and payment_input.amount is not None:
-        # Structured path: wrap both in one transaction
+        # Structured path: payment + state transition
+        # Transaction is managed by get_tenant_db_session dependency
         try:
-            async with db.begin():
-                payment_record = await payment_repo.create(
-                    db,
-                    order_id=order.id,
-                    retailer_id=order.retailer_id,
-                    transaction_id=payment_input.transaction_id,
-                    idempotency_key=None,
-                    amount=pay_amount,
-                    method=payment_input.method,
-                    status=(
-                        "completed"
-                        if payment_input.method == "transfer"
-                        else "pending"
-                    ),
-                    created_by=(
-                        token.user_id
-                        if token.user_id
-                        else None
-                    ),
-                )
+            payment_record = await payment_repo.create(
+                db,
+                order_id=order.id,
+                retailer_id=order.retailer_id,
+                transaction_id=payment_input.transaction_id,
+                idempotency_key=None,
+                amount=pay_amount,
+                method=payment_input.method,
+                status=(
+                    "completed"
+                    if payment_input.method == "transfer"
+                    else "pending"
+                ),
+                created_by=(
+                    token.user_id
+                    if token.user_id
+                    else None
+                ),
+            )
 
-                # Apply outstanding balance delta for cash/credit/transfer
-                from services.payment_service import PaymentService
-                payment_svc = PaymentService()
-                await payment_svc._apply_outstanding_balance_delta(
-                    db,
-                    wholesaler_id=order.wholesaler_id,
-                    retailer_id=order.retailer_id,
-                    delta=-pay_amount,
-                )
+            # Apply outstanding balance delta for cash/credit/transfer
+            from services.payment_service import PaymentService
+            payment_svc = PaymentService()
+            await payment_svc._apply_outstanding_balance_delta(
+                db,
+                wholesaler_id=order.wholesaler_id,
+                retailer_id=order.retailer_id,
+                delta=-pay_amount,
+            )
 
-                order = await order_service.transition(
-                    order_id=order.id,
-                    target_state=target_state,
-                    reason=(
-                        f"Payment recorded: {payment_input.method} "
-                        f"{payment_input.amount}"
-                    ),
-                    updated_by=token.user_id,
-                )
+            order = await order_service.transition(
+                order_id=order.id,
+                target_state=target_state,
+                reason=(
+                    f"Payment recorded: {payment_input.method} "
+                    f"{payment_input.amount}"
+                ),
+                updated_by=token.user_id,
+            )
         except InvalidStateTransitionError as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

@@ -200,7 +200,7 @@ class PayOrderRequest(BaseModel):
     """
     method: Optional[str] = Field(
         None,
-        description="Payment method: cash, transfer, mobile_money",
+        description="Payment method: cash, transfer, credit",
     )
     amount: Optional[Decimal] = Field(
         None,

@@ -117,12 +117,18 @@ class PaymentRepository:
         *,
         order_id: uuid.UUID,
     ) -> Decimal:
-        """Return the sum of all non-deleted payments for an order."""
+        """Return the sum of cash and transfer payments for an order.
+
+        Credit payments are excluded because they represent receivable
+        increases, not actual settlement.  Only cash and transfer count
+        toward the paid-total used for order state calculations.
+        """
         result = await db.execute(
             text(
                 "SELECT COALESCE(SUM(amount), 0) "
                 "FROM payments "
-                "WHERE order_id = :order_id AND is_deleted IS FALSE"
+                "WHERE order_id = :order_id AND is_deleted IS FALSE "
+                "AND method IN ('cash', 'transfer')"
             ),
             {"order_id": order_id},
         )

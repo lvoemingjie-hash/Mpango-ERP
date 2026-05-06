@@ -452,8 +452,15 @@ async def pay_order(
                 },
             )
 
-        # Determine target state from CUMULATIVE settlement
-        cumulative_after_payment = prior_paid + pay_amount
+        # Determine target state from CUMULATIVE settlement.
+        # Credit payments do NOT count toward cumulative settlement —
+        # only cash/transfer represent actual money received.
+        settlement_amount = (
+            Decimal("0")
+            if payment_input.method == "credit"
+            else pay_amount
+        )
+        cumulative_after_payment = prior_paid + settlement_amount
         target_state = (
             OrderState.PAID
             if cumulative_after_payment >= order_total
@@ -496,14 +503,21 @@ async def pay_order(
                 ),
             )
 
-            # Apply outstanding balance delta for cash/credit/transfer
+            # Apply outstanding balance delta (method-dependent):
+            #   cash/transfer: -amount (receivable decreases)
+            #   credit:        +amount (new receivable created)
             from services.payment_service import PaymentService
             payment_svc = PaymentService()
+            balance_delta = (
+                pay_amount
+                if payment_input.method == "credit"
+                else -pay_amount
+            )
             await payment_svc._apply_outstanding_balance_delta(
                 db,
                 wholesaler_id=order.wholesaler_id,
                 retailer_id=order.retailer_id,
-                delta=-pay_amount,
+                delta=balance_delta,
             )
 
             order = await order_service.transition(

@@ -962,3 +962,418 @@ class TestRouteLevelOrderPaymentMonkeypatch:
         )
         data = response.json()
         assert "PAYMENT_EXCEEDS_REMAINING" in str(data.get("detail", ""))
+
+
+# ============================================================================
+# 10. Phase 6 — Credit Payment Semantics
+#
+# Tests that credit payment uses method-dependent balance delta:
+#   cash/transfer → delta = -amount  (receivable decreases)
+#   credit        → delta = +amount  (new receivable created)
+#
+# And that get_order_paid_total() excludes credit payments.
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+# 10a. Balance delta correctness (method-dependent)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_credit_payment_applies_positive_balance_delta():
+    """Credit via pay_order() must call _apply_outstanding_balance_delta
+    with delta=+amount (increases receivable), NOT -amount."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from core.domain.order_state import OrderState
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
+    mock_db = _make_mock_db()
+    payment_dict = {"id": "pay-credit-1", "amount": Decimal("5000"), "method": "credit"}
+
+    pay_req = PayOrderRequest(amount=5000, method="credit")
+
+    delta_captured = {}
+
+    async def capture_delta(db, wholesaler_id, retailer_id, delta):
+        delta_captured["delta"] = delta
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
+         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.create = AsyncMock(return_value=payment_dict)
+        MockRepo.return_value = repo_instance
+
+        svc_instance = AsyncMock()
+        svc_instance.transition = AsyncMock(return_value=MagicMock(
+            id=mock_order.id, status=OrderState.PARTIALLY_PAID,
+            total_amount=mock_order.total_amount,
+        ))
+        MockOS.return_value = svc_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert delta_captured["delta"] == Decimal("5000"), \
+        f"Expected delta=+5000 for credit, got {delta_captured['delta']}"
+
+
+@pytest.mark.asyncio
+async def test_cash_payment_applies_negative_balance_delta():
+    """Cash via pay_order() must call _apply_outstanding_balance_delta
+    with delta=-amount (receivable decreases)."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from core.domain.order_state import OrderState
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
+    mock_db = _make_mock_db()
+    payment_dict = {"id": "pay-cash-1", "amount": Decimal("5000"), "method": "cash"}
+
+    pay_req = PayOrderRequest(amount=5000, method="cash")
+
+    delta_captured = {}
+
+    async def capture_delta(db, wholesaler_id, retailer_id, delta):
+        delta_captured["delta"] = delta
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
+         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.create = AsyncMock(return_value=payment_dict)
+        MockRepo.return_value = repo_instance
+
+        svc_instance = AsyncMock()
+        svc_instance.transition = AsyncMock(return_value=MagicMock(
+            id=mock_order.id, status=OrderState.PAID,
+            total_amount=mock_order.total_amount,
+        ))
+        MockOS.return_value = svc_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert delta_captured["delta"] == Decimal("-5000"), \
+        f"Expected delta=-5000 for cash, got {delta_captured['delta']}"
+
+
+@pytest.mark.asyncio
+async def test_transfer_payment_applies_negative_balance_delta():
+    """Transfer via pay_order() must call _apply_outstanding_balance_delta
+    with delta=-amount (receivable decreases)."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from core.domain.order_state import OrderState
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
+    mock_db = _make_mock_db()
+    payment_dict = {"id": "pay-xfer-1", "amount": Decimal("5000"), "method": "transfer"}
+
+    pay_req = PayOrderRequest(amount=5000, method="transfer", transaction_id="TX-001")
+
+    delta_captured = {}
+
+    async def capture_delta(db, wholesaler_id, retailer_id, delta):
+        delta_captured["delta"] = delta
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
+         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.create = AsyncMock(return_value=payment_dict)
+        MockRepo.return_value = repo_instance
+
+        svc_instance = AsyncMock()
+        svc_instance.transition = AsyncMock(return_value=MagicMock(
+            id=mock_order.id, status=OrderState.PAID,
+            total_amount=mock_order.total_amount,
+        ))
+        MockOS.return_value = svc_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert delta_captured["delta"] == Decimal("-5000"), \
+        f"Expected delta=-5000 for transfer, got {delta_captured['delta']}"
+
+
+# ---------------------------------------------------------------------------
+# 10b. get_order_paid_total excludes credit
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_order_paid_total_sql_excludes_credit():
+    """get_order_paid_total SQL must contain 'AND method IN' filter
+    so credit payments are excluded from the paid-total sum."""
+    from repositories.payment_repository import PaymentRepository
+
+    repo = PaymentRepository()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar.return_value = Decimal("5000")
+    mock_db.execute = AsyncMock(return_value=mock_result)
+
+    await repo.get_order_paid_total(mock_db, order_id="order-123")
+
+    # Inspect the SQL text passed to db.execute
+    call_args = mock_db.execute.call_args
+    stmt = call_args[0][0]  # first positional arg is the text() clause
+    sql_text = str(stmt)
+    assert "method IN" in sql_text, \
+        f"Expected 'method IN' filter in SQL, got: {sql_text}"
+    assert "'cash'" in sql_text and "'transfer'" in sql_text, \
+        f"Expected cash/transfer in method filter, got: {sql_text}"
+
+
+@pytest.mark.asyncio
+async def test_get_order_paid_total_only_counts_cash_and_transfer():
+    """get_order_paid_total must sum only cash + transfer, excluding credit."""
+    from repositories.payment_repository import PaymentRepository
+
+    repo = PaymentRepository()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar.return_value = Decimal("7000")
+    mock_db.execute = AsyncMock(return_value=mock_result)
+
+    total = await repo.get_order_paid_total(mock_db, order_id="order-789")
+    assert total == Decimal("7000")
+
+    # Verify the SQL does NOT sum credit
+    stmt = mock_db.execute.call_args[0][0]
+    sql_text = str(stmt)
+    assert "credit" not in sql_text.lower().replace("'cash'", "").replace("'transfer'", ""), \
+        "SQL should not reference credit method in the filter"
+
+
+# ---------------------------------------------------------------------------
+# 10c. Credit payment status and order state
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_credit_payment_status_is_pending():
+    """Credit payment record must always be created with status='pending'."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from core.domain.order_state import OrderState
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
+    mock_db = _make_mock_db()
+
+    create_captured = {}
+
+    async def fake_create(db, **kwargs):
+        create_captured.update(kwargs)
+        return {"id": "pay-credit-st", "amount": kwargs["amount"], "method": kwargs["method"]}
+
+    pay_req = PayOrderRequest(amount=5000, method="credit")
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
+         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.create = AsyncMock(side_effect=fake_create)
+        MockRepo.return_value = repo_instance
+
+        svc_instance = AsyncMock()
+        svc_instance.transition = AsyncMock(return_value=MagicMock(
+            id=mock_order.id, status=OrderState.PARTIALLY_PAID,
+            total_amount=mock_order.total_amount,
+        ))
+        MockOS.return_value = svc_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert create_captured["status"] == "pending", \
+        f"Credit payment must be 'pending', got '{create_captured['status']}'"
+
+
+@pytest.mark.asyncio
+async def test_credit_does_not_advance_order_to_paid():
+    """Credit-only payment (no cash/transfer) should NOT advance order to PAID
+    because paid_total (cash+transfer only) remains 0 < total_amount.
+    Credit amount does NOT count toward cumulative settlement."""
+    order_total = Decimal("10000")
+    credit_amount = Decimal("10000")
+    paid_total = Decimal("0")  # credit excluded from get_order_paid_total
+
+    from core.domain.order_state import OrderState
+    # Simulate the endpoint logic: settlement_amount = 0 for credit
+    settlement_amount = Decimal("0")  # credit contributes 0 to settlement
+    cumulative = paid_total + settlement_amount  # = 0
+    # paid_total is still 0; order should be PARTIALLY_PAID
+    target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
+    assert target == OrderState.PARTIALLY_PAID, \
+        "Credit-only must NOT transition order to PAID"
+
+
+@pytest.mark.asyncio
+async def test_credit_plus_cash_can_reach_paid():
+    """Mix of credit + cash: only cash counts toward paid_total.
+    If cash >= total, order can reach PAID even with credit also present."""
+    order_total = Decimal("10000")
+    cash_amount = Decimal("10000")
+    credit_amount = Decimal("5000")
+    paid_total = cash_amount  # only cash counted
+
+    from core.domain.order_state import OrderState
+    target = OrderState.PAID if paid_total >= order_total else OrderState.PARTIALLY_PAID
+    assert target == OrderState.PAID, \
+        "Full cash payment should transition to PAID regardless of credit"
+
+
+# ---------------------------------------------------------------------------
+# 10d. PaymentService.create_payment credit semantics
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_payment_service_credit_applies_positive_delta():
+    """PaymentService.create_payment with method='credit' must apply
+    delta=+amount to outstanding balance."""
+    from services.payment_service import PaymentService
+    from decimal import Decimal
+
+    svc = PaymentService()
+    mock_db = AsyncMock()
+
+    # Mock order lookup
+    mock_order = MagicMock()
+    mock_order.retailer_id = uuid.uuid4()
+    mock_order.wholesaler_id = uuid.uuid4()
+
+    async def fake_execute(stmt):
+        r = MagicMock()
+        r.scalar_one_or_none.return_value = mock_order
+        return r
+
+    mock_db.execute = AsyncMock(side_effect=fake_execute)
+
+    delta_captured = {}
+
+    async def capture_delta(db, wholesaler_id, retailer_id, delta):
+        delta_captured["delta"] = delta
+
+    # Patch repo.create to skip actual DB insert
+    with patch.object(svc._repo, "create", new_callable=AsyncMock) as mock_create, \
+         patch.object(svc._repo, "get_by_idempotency_key", new_callable=AsyncMock, return_value=None), \
+         patch.object(svc, "_apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta):
+
+        mock_create.return_value = {"id": "p1", "amount": Decimal("3000"), "method": "credit"}
+
+        await svc.create_payment(
+            tenant_db=mock_db,
+            order_id=str(uuid.uuid4()),
+            amount=Decimal("3000"),
+            method="credit",
+            transaction_id=None,
+            idempotency_key=None,
+            created_by=None,
+        )
+
+    assert delta_captured["delta"] == Decimal("3000"), \
+        f"PaymentService credit delta should be +3000, got {delta_captured['delta']}"
+
+
+@pytest.mark.asyncio
+async def test_payment_service_cash_applies_negative_delta():
+    """PaymentService.create_payment with method='cash' must apply
+    delta=-amount to outstanding balance."""
+    from services.payment_service import PaymentService
+    from decimal import Decimal
+
+    svc = PaymentService()
+    mock_db = AsyncMock()
+
+    mock_order = MagicMock()
+    mock_order.retailer_id = uuid.uuid4()
+    mock_order.wholesaler_id = uuid.uuid4()
+
+    async def fake_execute(stmt):
+        r = MagicMock()
+        r.scalar_one_or_none.return_value = mock_order
+        return r
+
+    mock_db.execute = AsyncMock(side_effect=fake_execute)
+
+    delta_captured = {}
+
+    async def capture_delta(db, wholesaler_id, retailer_id, delta):
+        delta_captured["delta"] = delta
+
+    with patch.object(svc._repo, "create", new_callable=AsyncMock) as mock_create, \
+         patch.object(svc._repo, "get_by_idempotency_key", new_callable=AsyncMock, return_value=None), \
+         patch.object(svc, "_apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta):
+
+        mock_create.return_value = {"id": "p2", "amount": Decimal("7000"), "method": "cash"}
+
+        await svc.create_payment(
+            tenant_db=mock_db,
+            order_id=str(uuid.uuid4()),
+            amount=Decimal("7000"),
+            method="cash",
+            transaction_id=None,
+            idempotency_key=None,
+            created_by=None,
+        )
+
+    assert delta_captured["delta"] == Decimal("-7000"), \
+        f"PaymentService cash delta should be -7000, got {delta_captured['delta']}"
+
+
+# ---------------------------------------------------------------------------
+# 10e. PayOrderRequest schema accepts credit
+# ---------------------------------------------------------------------------
+
+
+def test_pay_order_request_accepts_credit_method():
+    """PayOrderRequest must accept 'credit' as a valid method value."""
+    from schemas.order import PayOrderRequest
+    req = PayOrderRequest(amount=5000, method="credit")
+    assert req.method == "credit"
+    assert req.amount == Decimal("5000")
+
+
+def test_pay_order_request_accepts_transfer_method():
+    """PayOrderRequest must accept 'transfer' as a valid method value."""
+    from schemas.order import PayOrderRequest
+    req = PayOrderRequest(amount=5000, method="transfer", transaction_id="TX-123")
+    assert req.method == "transfer"

@@ -1007,12 +1007,13 @@ async def test_credit_payment_applies_positive_balance_delta():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_order_payments = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
         svc_instance.transition = AsyncMock(return_value=MagicMock(
-            id=mock_order.id, status=OrderState.PARTIALLY_PAID,
+            id=mock_order.id, status=OrderState.PAID,
             total_amount=mock_order.total_amount,
         ))
         MockOS.return_value = svc_instance
@@ -1205,12 +1206,13 @@ async def test_credit_payment_status_is_pending():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_order_payments = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(side_effect=fake_create)
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
         svc_instance.transition = AsyncMock(return_value=MagicMock(
-            id=mock_order.id, status=OrderState.PARTIALLY_PAID,
+            id=mock_order.id, status=OrderState.PAID,
             total_amount=mock_order.total_amount,
         ))
         MockOS.return_value = svc_instance
@@ -1227,37 +1229,52 @@ async def test_credit_payment_status_is_pending():
 
 
 @pytest.mark.asyncio
-async def test_credit_does_not_advance_order_to_paid():
-    """Credit-only payment (no cash/transfer) should NOT advance order to PAID
-    because paid_total (cash+transfer only) remains 0 < total_amount.
-    Credit amount does NOT count toward cumulative settlement."""
+async def test_credit_full_amount_advances_order_to_paid():
+    """CTO correction: credit payment for the full order amount transitions
+    the order to PAID from a lifecycle perspective, even though paid_total
+    (cash+transfer only) remains 0. Credit closes the order lifecycle."""
     order_total = Decimal("10000")
     credit_amount = Decimal("10000")
     paid_total = Decimal("0")  # credit excluded from get_order_paid_total
 
     from core.domain.order_state import OrderState
-    # Simulate the endpoint logic: settlement_amount = 0 for credit
-    settlement_amount = Decimal("0")  # credit contributes 0 to settlement
-    cumulative = paid_total + settlement_amount  # = 0
-    # paid_total is still 0; order should be PARTIALLY_PAID
+    # The endpoint computes: cumulative = paid_total + pay_amount
+    # For credit: cumulative = 0 + 10000 = 10000 >= 10000 -> PAID
+    cumulative = paid_total + credit_amount
+    target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
+    assert target == OrderState.PAID, \
+        "Full credit payment MUST close the order lifecycle to PAID"
+
+
+@pytest.mark.asyncio
+async def test_credit_partial_amount_stays_partially_paid():
+    """Partial credit payment: credit < total -> PARTIALLY_PAID."""
+    order_total = Decimal("10000")
+    credit_amount = Decimal("5000")
+    paid_total = Decimal("0")
+
+    from core.domain.order_state import OrderState
+    cumulative = paid_total + credit_amount
     target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
     assert target == OrderState.PARTIALLY_PAID, \
-        "Credit-only must NOT transition order to PAID"
+        "Partial credit must leave order as PARTIALLY_PAID"
 
 
 @pytest.mark.asyncio
 async def test_credit_plus_cash_can_reach_paid():
-    """Mix of credit + cash: only cash counts toward paid_total.
-    If cash >= total, order can reach PAID even with credit also present."""
+    """Mix of credit + cash: cumulative settlement includes both.
+    paid_total (for financial reporting) counts only cash/transfer,
+    but order state considers all payment methods."""
     order_total = Decimal("10000")
     cash_amount = Decimal("10000")
     credit_amount = Decimal("5000")
-    paid_total = cash_amount  # only cash counted
+    # Cumulative for state: prior_cash + credit = 10000 + 5000 = 15000
+    cumulative = cash_amount + credit_amount
 
     from core.domain.order_state import OrderState
-    target = OrderState.PAID if paid_total >= order_total else OrderState.PARTIALLY_PAID
+    target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
     assert target == OrderState.PAID, \
-        "Full cash payment should transition to PAID regardless of credit"
+        "Cash + credit combination should reach PAID"
 
 
 # ---------------------------------------------------------------------------
@@ -1377,3 +1394,92 @@ def test_pay_order_request_accepts_transfer_method():
     from schemas.order import PayOrderRequest
     req = PayOrderRequest(amount=5000, method="transfer", transaction_id="TX-123")
     assert req.method == "transfer"
+
+
+# ---------------------------------------------------------------------------
+# 10f. Duplicate credit prevention regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_duplicate_credit_payment_rejected():
+    """Regression: a credit-paid order must not accept a second credit payment.
+    pay_order() queries count_order_payments(method='credit') and raises 409
+    if a credit payment already exists for the order."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from fastapi import HTTPException
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("10000"))
+    mock_db = _make_mock_db()
+
+    pay_req = PayOrderRequest(amount=5000, method="credit")
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         pytest.raises(HTTPException) as exc_info:
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        # Simulate: a credit payment already exists for this order
+        repo_instance.count_order_payments = AsyncMock(return_value=1)
+        MockRepo.return_value = repo_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "DUPLICATE_CREDIT_PAYMENT" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_first_credit_payment_allowed():
+    """First credit payment on an order (count=0) is allowed through."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from core.domain.order_state import OrderState
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
+    mock_db = _make_mock_db()
+    payment_dict = {"id": "pay-credit-first", "amount": Decimal("5000"), "method": "credit"}
+
+    pay_req = PayOrderRequest(amount=5000, method="credit")
+
+    delta_captured = {}
+
+    async def capture_delta(db, wholesaler_id, retailer_id, delta):
+        delta_captured["delta"] = delta
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
+         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_order_payments = AsyncMock(return_value=0)
+        repo_instance.create = AsyncMock(return_value=payment_dict)
+        MockRepo.return_value = repo_instance
+
+        svc_instance = AsyncMock()
+        svc_instance.transition = AsyncMock(return_value=MagicMock(
+            id=mock_order.id, status=OrderState.PAID,
+            total_amount=mock_order.total_amount,
+        ))
+        MockOS.return_value = svc_instance
+
+        resp = await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert resp.success is True
+    assert resp.data["status"] == "paid"
+    assert delta_captured["delta"] == Decimal("5000")

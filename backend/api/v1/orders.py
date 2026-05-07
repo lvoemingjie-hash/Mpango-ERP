@@ -453,14 +453,26 @@ async def pay_order(
             )
 
         # Determine target state from CUMULATIVE settlement.
-        # Credit payments do NOT count toward cumulative settlement —
-        # only cash/transfer represent actual money received.
-        settlement_amount = (
-            Decimal("0")
-            if payment_input.method == "credit"
-            else pay_amount
-        )
-        cumulative_after_payment = prior_paid + settlement_amount
+        # Credit closes the order lifecycle (PAID) but does NOT inflate
+        # paid_total (which counts only cash/transfer for financial reporting).
+        # Guard: only one credit payment allowed per order.
+        if payment_input.method == "credit":
+            credit_count = await payment_repo.count_order_payments(
+                db, order_id=order.id, method="credit",
+            )
+            if credit_count > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "DUPLICATE_CREDIT_PAYMENT",
+                        "message": (
+                            "A credit payment already exists for this order. "
+                            "Only one credit payment is allowed per order."
+                        ),
+                    },
+                )
+
+        cumulative_after_payment = prior_paid + pay_amount
         target_state = (
             OrderState.PAID
             if cumulative_after_payment >= order_total

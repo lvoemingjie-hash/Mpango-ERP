@@ -111,6 +111,24 @@ class PaymentRepository:
         )
         return result.mappings().first()
 
+    async def count_order_payments(
+        self,
+        db: AsyncSession,
+        *,
+        order_id: uuid.UUID,
+        method: str,
+    ) -> int:
+        """Return count of non-deleted payments for an order with the given method."""
+        result = await db.execute(
+            text(
+                "SELECT COUNT(*) FROM payments "
+                "WHERE order_id = :order_id AND is_deleted IS FALSE "
+                "AND method = :method"
+            ),
+            {"order_id": order_id, "method": method},
+        )
+        return int(result.scalar() or 0)
+
     async def get_order_paid_total(
         self,
         db: AsyncSession,

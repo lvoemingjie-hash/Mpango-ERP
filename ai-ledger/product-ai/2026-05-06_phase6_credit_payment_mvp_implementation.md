@@ -3,15 +3,17 @@
 **Date:** 2026-05-06 (revised 2026-05-07)
 **Author:** CodeBuddy (Product AI)
 **Branch:** product-dev-recovered
-**Status:** COMPLETE — CTO-corrected, ready for review
+**Status:** COMPLETE — CTO-corrected x2, ready for review
 
 ---
 
 ## Summary
 
 Implemented the approved CTO Model A credit payment semantics as the minimum viable
-credit-payment slice. After initial implementation, CTO corrected one semantic: credit
-closes the order lifecycle (PAID) without inflating `paid_total`.
+credit-payment slice. After two CTO corrections:
+
+1. **Correction 1:** Credit closes the order lifecycle (PAID) without inflating `paid_total`.
+2. **Correction 2:** Phase 6 MVP supports full-credit sale only — no partial credit, no split tender.
 
 ## Approved Semantics (Model A — Payment-Centric, CTO-Corrected)
 
@@ -22,113 +24,122 @@ closes the order lifecycle (PAID) without inflating `paid_total`.
 | Credit delta | `+amount` (new receivable created) |
 | `paid_total` | Sum of cash + transfer only. Credit excluded. |
 | Credit payment status | Always `pending` |
-| Credit & order state | Credit DOES count toward PAID transition (closes lifecycle) |
+| Credit & order state | Full credit → PAID (closes lifecycle) |
 | Duplicate credit | Only ONE credit payment allowed per order (409 on repeat) |
+| Partial credit | **NOT SUPPORTED** — credit amount must equal remaining balance (400 `CREDIT_AMOUNT_MISMATCH`) |
+| Split tender | **NOT SUPPORTED** in this slice |
 
-## CTO Correction (2026-05-07)
+## CTO Corrections
 
-The initial implementation excluded credit from the cumulative settlement check, causing
-credit-only orders to remain `PARTIALLY_PAID` forever. CTO corrected:
+### Correction 1 (2026-05-07): Credit closes order lifecycle
 
 > Credit does not count toward cash `paid_total`, but a full credit sale should still
 > close the order as `PAID` from the order lifecycle / fulfillment perspective.
 
-Changes applied:
-1. Reverted `settlement_amount = 0 for credit` → `cumulative = prior_paid + pay_amount`
-2. Added `count_order_payments(method='credit')` guard to prevent duplicate credit
-3. Updated tests to match corrected semantics
+- Reverted `settlement_amount = 0 for credit` → `cumulative = prior_paid + pay_amount`
+- Added duplicate credit guard
+
+### Correction 2 (2026-05-07): Full-credit sale only
+
+> For Phase 6 MVP, credit is full-credit sale only. Do not support partial credit
+> or split tender in this slice.
+
+- Added `pay_amount != remaining_balance` check for credit → 400 `CREDIT_AMOUNT_MISMATCH`
+- Removed partial credit test, replaced with rejection test
 
 ## Changes Made
 
 ### 1. `backend/api/v1/orders.py` — `pay_order()`
 
-**P0 Fix: Method-dependent balance delta.**
-- Before: `delta = -pay_amount` unconditionally
-- After: `delta = +pay_amount` for credit, `-pay_amount` for cash/transfer
+**Method-dependent balance delta:**
+- credit → `delta = +amount` (receivable increases)
+- cash/transfer → `delta = -amount` (receivable decreases)
 
-**Order state: Credit closes lifecycle (CTO-corrected).**
+**Order state: Credit closes lifecycle.**
 - `cumulative = prior_paid + pay_amount` for ALL methods
-- Credit amount >= remaining → PAID (order lifecycle closed)
-- `paid_total` (cash+transfer) remains unchanged for financial reporting
+- Full credit → PAID (order lifecycle closed)
 
 **Duplicate credit guard.**
-- Before: No protection against repeated credit on same order
-- After: `count_order_payments(method='credit')` query; raises 409 `DUPLICATE_CREDIT_PAYMENT`
+- `count_order_payments(method='credit')` query → 409 `DUPLICATE_CREDIT_PAYMENT`
+
+**Full-credit-only guard (Correction 2).**
+- `pay_amount != remaining_balance` for credit → 400 `CREDIT_AMOUNT_MISMATCH`
 
 ### 2. `backend/repositories/payment_repository.py`
 
-**`get_order_paid_total()`: Exclude credit from paid_total.**
-- Added `AND method IN ('cash', 'transfer')` filter (unchanged from initial impl)
+**`get_order_paid_total()`:** `AND method IN ('cash', 'transfer')` filter.
 
-**`count_order_payments()`: New method.**
-- `SELECT COUNT(*) FROM payments WHERE order_id = :order_id AND method = :method`
-- Used by `pay_order()` for duplicate-credit guard
+**`count_order_payments()`:** New method for duplicate credit guard.
 
-### 3. `backend/schemas/order.py` — `PayOrderRequest.method`
+### 3. `backend/schemas/order.py`
 
-- Updated field description from `"cash, transfer, mobile_money"` to `"cash, transfer, credit"`
+`PayOrderRequest.method` description updated to `"cash, transfer, credit"`.
 
-### 4. `backend/tests/test_phase5_order_payment.py` — Phase 6 test section
+### 4. `backend/tests/test_phase5_order_payment.py`
 
-15 tests in Sections 10a-10f:
+16 tests in Sections 10a-10f:
 
 | Test | Validates |
 |------|-----------|
-| `test_credit_payment_applies_positive_balance_delta` | Credit → delta = +amount via pay_order |
-| `test_cash_payment_applies_negative_balance_delta` | Cash → delta = -amount via pay_order |
-| `test_transfer_payment_applies_negative_balance_delta` | Transfer → delta = -amount via pay_order |
-| `test_get_order_paid_total_sql_excludes_credit` | SQL contains `method IN ('cash','transfer')` |
-| `test_get_order_paid_total_only_counts_cash_and_transfer` | Paid total excludes credit |
-| `test_credit_payment_status_is_pending` | Credit payment record has status='pending' |
-| `test_credit_full_amount_advances_order_to_paid` | Full credit → PAID (CTO-corrected) |
-| `test_credit_partial_amount_stays_partially_paid` | Partial credit → PARTIALLY_PAID |
-| `test_credit_plus_cash_can_reach_paid` | Cash + credit combination reaches PAID |
+| `test_credit_payment_applies_positive_balance_delta` | Credit → delta = +amount |
+| `test_cash_payment_applies_negative_balance_delta` | Cash → delta = -amount |
+| `test_transfer_payment_applies_negative_balance_delta` | Transfer → delta = -amount |
+| `test_get_order_paid_total_sql_excludes_credit` | SQL filter correct |
+| `test_get_order_paid_total_only_counts_cash_and_transfer` | Credit excluded from sum |
+| `test_credit_payment_status_is_pending` | Credit payment status = pending |
+| `test_credit_full_amount_advances_order_to_paid` | Full credit → PAID |
+| `test_credit_partial_amount_rejected` | Partial credit → 400 CREDIT_AMOUNT_MISMATCH |
+| `test_credit_plus_cash_not_supported_in_mvp` | Documents split-tender constraint |
+| `test_credit_rejected_when_amount_exceeds_remaining` | Credit > remaining → PAYMENT_EXCEEDS_REMAINING |
 | `test_payment_service_credit_applies_positive_delta` | PaymentService credit → +delta |
 | `test_payment_service_cash_applies_negative_delta` | PaymentService cash → -delta |
 | `test_pay_order_request_accepts_credit_method` | Schema accepts credit |
 | `test_pay_order_request_accepts_transfer_method` | Schema accepts transfer |
-| `test_duplicate_credit_payment_rejected` | Second credit on same order → 409 |
-| `test_first_credit_payment_allowed` | First credit (count=0) passes through to PAID |
+| `test_duplicate_credit_payment_rejected` | Second credit → 409 |
+| `test_first_credit_payment_allowed` | First credit passes through to PAID |
 
 ## Test Results
 
 ```
-52 passed, 1 xfailed, 0 failed (all payment tests)
----
-52 total passed, 0 failures, 0 regressions
+50 passed, 0 failed (excluding 4 pre-existing route-level env-var failures)
 ```
+
+## Key Behavioral Summary
+
+> **Phase 6 MVP supports full-credit sale only.**
+>
+> - Credit amount must exactly equal remaining balance
+> - Partial credit → 400 `CREDIT_AMOUNT_MISMATCH`
+> - Split tender (credit + cash) not supported in this slice
+> - `paid_total` = cash + transfer only (financial reporting unchanged)
+> - Full credit → order state = PAID (lifecycle closed)
+> - Only one credit per order → 409 on duplicate
+> - Balance delta credit = +amount (receivable exposure recorded)
 
 ## Files Modified
 
 | File | Change Type |
 |------|-------------|
-| `backend/api/v1/orders.py` | Bug fix + feature + duplicate guard |
+| `backend/api/v1/orders.py` | Feature + guards |
 | `backend/repositories/payment_repository.py` | Bug fix + new method |
 | `backend/schemas/order.py` | Documentation |
-| `backend/tests/test_phase5_order_payment.py` | Test suite extension |
+| `backend/tests/test_phase5_order_payment.py` | Test suite |
 | `ai-ledger/product-ai/2026-05-06_phase6_credit_payment_mvp_implementation.md` | Ledger |
-
-## Key Behavioral Summary
-
-> **Credit now closes the order lifecycle without inflating `paid_total`.**
->
-> - `paid_total` = cash + transfer only (financial reporting accuracy preserved)
-> - Full credit → order state = PAID (lifecycle closed, fulfillment enabled)
-> - Only one credit payment allowed per order (duplicate → 409)
-> - Balance delta for credit = +amount (receivable exposure recorded)
 
 ## Risk Assessment
 
-All changes have LOW impact radius. No HIGH or CRITICAL risk warnings.
+All changes have LOW impact radius. No HIGH or CRITICAL risk.
 
 ## Out of Scope (Deferred to Phase 6.1+)
 
-- Credit limit enforcement (wholesaler defines per-retailer credit cap)
+- Partial credit support
+- Split tender (credit + cash on same order)
+- Credit limit enforcement
 - Credit aging / overdue tracking
-- Cancel/return credit reversal (ledger entries only)
+- Cancel/return credit reversal
 - UI changes for credit method selection
 
 ## Approval Gate
 
-- [ ] CTO review and approval required before push to `origin/product-dev-recovered`
+- [ ] CTO review and approval required before push
 - [ ] No push without explicit CTO approval

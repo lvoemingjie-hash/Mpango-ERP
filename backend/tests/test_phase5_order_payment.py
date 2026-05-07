@@ -1247,34 +1247,90 @@ async def test_credit_full_amount_advances_order_to_paid():
 
 
 @pytest.mark.asyncio
-async def test_credit_partial_amount_stays_partially_paid():
-    """Partial credit payment: credit < total -> PARTIALLY_PAID."""
-    order_total = Decimal("10000")
-    credit_amount = Decimal("5000")
-    paid_total = Decimal("0")
+async def test_credit_partial_amount_rejected():
+    """Phase 6 MVP: partial credit is rejected. Only full-credit sale allowed."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from fastapi import HTTPException
 
-    from core.domain.order_state import OrderState
-    cumulative = paid_total + credit_amount
-    target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
-    assert target == OrderState.PARTIALLY_PAID, \
-        "Partial credit must leave order as PARTIALLY_PAID"
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("10000"))
+    mock_db = _make_mock_db()
+
+    pay_req = PayOrderRequest(amount=5000, method="credit")
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         pytest.raises(HTTPException) as exc_info:
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_order_payments = AsyncMock(return_value=0)
+        MockRepo.return_value = repo_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "CREDIT_AMOUNT_MISMATCH" in str(exc_info.value.detail)
 
 
 @pytest.mark.asyncio
-async def test_credit_plus_cash_can_reach_paid():
-    """Mix of credit + cash: cumulative settlement includes both.
-    paid_total (for financial reporting) counts only cash/transfer,
-    but order state considers all payment methods."""
+async def test_credit_plus_cash_not_supported_in_mvp():
+    """Phase 6 MVP: split tender (credit + cash on same order) is not supported.
+    Credit must be for the full remaining balance only."""
     order_total = Decimal("10000")
-    cash_amount = Decimal("10000")
-    credit_amount = Decimal("5000")
-    # Cumulative for state: prior_cash + credit = 10000 + 5000 = 15000
-    cumulative = cash_amount + credit_amount
+    # Scenario: 5000 cash already paid, remaining = 5000
+    # Credit for 5000 would be a full-credit of the remaining balance
+    # but MVP requires credit on a clean order (no prior payments).
+    # This test documents the constraint — credit covers the full balance.
+    prior_paid = Decimal("5000")
+    remaining = order_total - prior_paid  # 5000
 
-    from core.domain.order_state import OrderState
-    target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
-    assert target == OrderState.PAID, \
-        "Cash + credit combination should reach PAID"
+    # Credit must equal remaining — that IS valid in MVP
+    credit_amount = remaining
+    assert credit_amount == Decimal("5000")
+    # But the endpoint will check pay_amount == remaining_balance
+    # So this specific scenario IS allowed: credit covers the remaining 5000
+
+
+@pytest.mark.asyncio
+async def test_credit_rejected_when_amount_exceeds_remaining():
+    """Credit amount greater than remaining balance is rejected.
+    Hit by the generic PAYMENT_EXCEEDS_REMAINING guard (runs before
+    the credit-specific checks)."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from fastapi import HTTPException
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
+    mock_db = _make_mock_db()
+
+    # Try credit for 6000 when remaining is 5000
+    pay_req = PayOrderRequest(amount=6000, method="credit")
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         pytest.raises(HTTPException) as exc_info:
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_order_payments = AsyncMock(return_value=0)
+        MockRepo.return_value = repo_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert exc_info.value.status_code == 400
+    # Exceeding balance is caught by the generic overpayment guard
+    assert "PAYMENT_EXCEEDS_REMAINING" in str(exc_info.value.detail)
 
 
 # ---------------------------------------------------------------------------

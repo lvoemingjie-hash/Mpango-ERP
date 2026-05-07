@@ -455,7 +455,8 @@ async def pay_order(
         # Determine target state from CUMULATIVE settlement.
         # Credit closes the order lifecycle (PAID) but does NOT inflate
         # paid_total (which counts only cash/transfer for financial reporting).
-        # Guard: only one credit payment allowed per order.
+        # MVP constraint: credit is full-credit sale only — amount must equal
+        # remaining balance.  No partial credit or split tender in this slice.
         if payment_input.method == "credit":
             credit_count = await payment_repo.count_order_payments(
                 db, order_id=order.id, method="credit",
@@ -468,6 +469,19 @@ async def pay_order(
                         "message": (
                             "A credit payment already exists for this order. "
                             "Only one credit payment is allowed per order."
+                        ),
+                    },
+                )
+            if pay_amount != remaining_balance:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "code": "CREDIT_AMOUNT_MISMATCH",
+                        "message": (
+                            f"Phase 6 MVP supports full-credit sale only. "
+                            f"Credit amount ({pay_amount}) must equal "
+                            f"remaining balance ({remaining_balance}). "
+                            f"Partial credit and split tender are not supported."
                         ),
                     },
                 )

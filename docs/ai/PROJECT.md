@@ -1,57 +1,152 @@
-# Project Overview
+# Project Log
 
-This document provides the essential project context that every AI agent needs before doing any work on Mpango ERP.
+This file is the fast handoff document for new AI threads and newly activated agents.
 
-## What Is Mpango ERP
+It is not a full audit trail.
+It is not a substitute for `ai-ledger/`.
+It is not a strategy archive like `PROJECT_MEMORY.md`.
 
-Mpango ERP is a multi-tenant wholesale-retail ERP system built for the African market. It supports digital operations for Kenyan wholesalers and their retailer networks.
+Its job is to answer, quickly:
 
-**Version**: 0.2.0
-**Repository**: The repository is the operational source of truth.
+- What have we already completed?
+- What branch should work happen on?
+- What is currently blocked?
+- What should the next agent preserve?
 
-## Architecture
+## How To Use
 
-- **Tenancy model**: Schema-per-tenant (DR-001). Each tenant gets an isolated PostgreSQL schema (`t_xxx`). This is non-negotiable.
-- **Backend**: Python / FastAPI / SQLAlchemy / Alembic
-- **Frontend**: React / Vite
-- **Database**: PostgreSQL with schema-per-tenant isolation
-- **Platform layer**: Public-schema tables with `platform_` prefix, extending the SaaS layer without touching tenant schemas
+Read this after:
 
-## Current Development Tracks
+1. `docs/ai/CTO_COCKPIT.md`
+2. `docs/ai/CTO_CONTEXT.md`
 
-| Track | Branch | Focus |
-|-------|--------|-------|
-| Product | `product-dev` | ERP business modules, frontend, retailer portal, mobile web |
-| Platform | `platform-dev` | Tenant registry, platform admin, audit, monitoring |
+Then use this file to orient yourself before opening detailed ledgers or code.
 
-**Authority rule**: Product line and platform line are parallel only in execution, not in authority. Product continuity wins when tradeoffs appear.
+## Document Roles
 
-## Current Phase
+- `docs/ai/PROJECT.md`
+  Current project status, active branches, accepted slices, blockers, next moves.
+- `docs/ai/PROJECT_MEMORY.md`
+  Durable strategic truth, long-lived decisions, product philosophy.
+- `ai-ledger/`
+  Detailed implementation/session audit trail.
 
-The immediate goal is to make the ERP genuinely usable for real wholesalers while preserving strict tenant isolation and preparing the path to SaaS platform expansion.
+## Current Strategic Frame
 
-### Product Status (v0.2.0)
+- Product first, platform second.
+- Primary customer is the wholesaler.
+- Retailer workflows exist to improve wholesaler throughput and retention.
+- Platform work must support the ERP product line and must not force architecture drift.
+- `schema-per-tenant` remains the primary tenancy model.
 
-Core modules are production-ready: authentication (JWT + refresh), RBAC (22+ permissions), order management (full state machine), inventory (SKU + concurrency), payments, finance, dashboard/BI, data export, and audit trail.
+## Current Branch Map
 
-### Platform Status
+- `origin/product-dev`
+  Last stable remote product baseline before recovered Phase 5 work.
+- `product-dev-recovered`
+  Current product recovery branch and active candidate for the new product mainline.
+- `product-dev-backup`
+  Historical backup branch; keep for recovery/reference, do not use as active mainline.
+- `platform-dev`
+  Active platform branch.
 
-Platform track has completed 7 closed slices: routing scaffold, boundary note, information model, tenant lifecycle scaffold, platform audit logs, operational reporting stats, and audit activity enhancement. All platform API endpoints are read-only (8 endpoints, 55 tests).
+## Product Line Status
 
-## Primary Customer Hierarchy
+### Accepted Before Recovery
 
-1. **Primary**: Wholesaler
-2. **Secondary**: Invited retailer under wholesaler control
-3. **Future**: Supplier workflows upstream, end-customer workflows downstream
+- Phase 3 pricing MVP: accepted.
+- Phase 4 pricing-safe wholesaler order creation: accepted and previously pushed.
 
-## Key Constraints
+### Phase 5 Goal
 
-- Multi-tenancy is a first-order architectural rule
-- Platform work extends the SaaS layer without forcing the product core to adapt
-- Schema and API changes must follow documented contracts
-- Database changes go through Alembic migrations only
-- All AI work must be auditable through repo docs, decision records, and ledger entries
+- Close the wholesaler money loop:
+  - structured payment recording
+  - outstanding balance correctness
+  - safe order lifecycle closure
 
-## Where To Go Next
+### Phase 5 Recovered State
 
-After reading this document, follow the read order defined in `docs/ai/README.md`.
+The recovered branch has progressed through three recovery checkpoints:
+
+1. Auth regressions restored
+   - `select-tenant` repaired
+   - identity-only `/auth/me` repaired
+2. Payment runtime repaired
+   - nested transaction conflict removed from payment creation path
+3. Runtime closeout evidence added for:
+   - `draft -> confirm -> pay`
+   - payment record creation
+   - outstanding balance update
+
+### Current Product-Line Truth
+
+- `product-dev-recovered` is the candidate mainline.
+- `product-dev-backup` remains preserved and must not be deleted yet.
+- The latest closeout evidence is promising, but branch hygiene and final review discipline still matter.
+- If runtime evidence depends on uncommitted code or unpushed docs, the branch is not yet operationally closed.
+
+## Platform Line Status
+
+Platform line is active and progressing in controlled slices.
+
+Accepted slices so far include:
+
+- platform routing scaffold
+- platform tenant lifecycle scaffold
+- platform audit log boundary
+- platform operational reporting stats
+- audit time-range filtering and activity summary enhancement
+
+Platform remains proposal-first and incremental.
+No auth rewrite, no tenancy rewrite, no billing engine implementation.
+
+## Current Priority Order
+
+1. Finish clean product-line closeout on `product-dev-recovered`
+2. Ensure accepted product-line state is pushed and visible to all machines
+3. Only after closeout and visibility are stable, decide whether to re-promote recovered branch as the canonical product line
+4. Keep platform line moving in controlled proposal/implementation slices with synchronized repo memory
+
+## Current Non-Negotiables
+
+- Do not delete `product-dev-backup` until recovered branch is fully accepted and stabilized.
+- Do not treat `product-dev-backup` as the active product mainline.
+- Do not change `schema-per-tenant`.
+- Do not let platform work drive product architecture.
+- Do not claim route-level validation that was not actually achieved.
+- Do not push mixed or dirty worktrees.
+- Do not let `PROJECT.md` drift behind the actual accepted branch/blocker state.
+- Do not start platform or product tasks from stale local docs when a newer remote state exists.
+
+## What A New Agent Should Preserve
+
+- Product line priority and wholesaler-first hierarchy
+- Accepted Phase 3 and Phase 4 baselines
+- Recovery status of Phase 5 and its repaired auth/payment chain
+- Platform branch boundaries and proposal-first discipline
+- AI team operating rules in `docs/ai/AI_TEAM_OPERATING_RULES.md`
+- The rule that repo memory must be both updated and made remotely visible when another machine depends on it
+
+## Next Expected Action
+
+For the product line:
+
+- complete final closeout / cleanliness / promotion decision for `product-dev-recovered`
+
+For the platform line:
+
+- continue with the next approved proposal-first slice
+- keep platform handoff skill and repo-memory sync aligned with the actual remote branch state
+
+## Update Rule
+
+Update this file when any of the following changes:
+
+- active branch strategy
+- accepted phase/slice status
+- current blocker list
+- project-wide next action
+- recovered vs stable branch ownership
+
+Keep entries concise.
+Do not turn this into a raw transcript or a duplicate of `ai-ledger/`.

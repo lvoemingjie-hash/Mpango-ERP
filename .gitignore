@@ -93,25 +93,18 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+.gitnexus
+.claude/
+AGENTS.md
+CLAUDE.md
 
-# =============================================================================
-# AI Agent Runtime Configuration (DO NOT COMMIT)
-# =============================================================================
+# AI agent runtime configuration
 .openclaw/
 .opencode/
 
-# =============================================================================
-# Editor Temporary Files
-# =============================================================================
+# Editor temporary files
 *.swp
 *.swo
 *.swn
 *.swm
 .netrwhist
-*~
-
-# =============================================================================
-# Historical AI Ledger Documents (archived, not tracked)
-# =============================================================================
-ai-ledger/cto/
-ai-ledger/test/

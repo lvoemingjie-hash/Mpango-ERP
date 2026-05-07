@@ -30,7 +30,7 @@ Always sync before reading to avoid stale context.
 | Step | File | Purpose |
 |------|------|---------|
 | 1 | `docs/ai/README.md` | Canonical entry point; defines the read order for all AI agents |
-| 2 | `docs/ai/PROJECT.md` | Project overview: architecture, development tracks, constraints |
+| 2 | `docs/ai/PROJECT.md` | Canonical project log: branch map, accepted slices, blockers, next moves |
 | 3 | `docs/ai/PROJECT_MEMORY.md` | Strategic intent, product boundary, delivery tradeoff principle |
 
 ### Phase 2 — Governance Documents
@@ -137,7 +137,7 @@ Run before every commit. All must PASS.
 |------|----------|
 | **Entry point (read first)** | `docs/ai/README.md` |
 | Strategic memory | `docs/ai/PROJECT_MEMORY.md` |
-| Project overview | `docs/ai/PROJECT.md` |
+| Canonical project log | `docs/ai/PROJECT.md` |
 | Decision hierarchy | `docs/ai/CTO_COCKPIT.md` |
 | Current priorities | `docs/ai/CTO_CONTEXT.md` |
 | Delegation protocol | `docs/ai/AGENT_DELEGATION_PROTOCOL.md` |

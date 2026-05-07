@@ -1279,22 +1279,42 @@ async def test_credit_partial_amount_rejected():
 
 
 @pytest.mark.asyncio
-async def test_credit_plus_cash_not_supported_in_mvp():
-    """Phase 6 MVP: split tender (credit + cash on same order) is not supported.
-    Credit must be for the full remaining balance only."""
-    order_total = Decimal("10000")
-    # Scenario: 5000 cash already paid, remaining = 5000
-    # Credit for 5000 would be a full-credit of the remaining balance
-    # but MVP requires credit on a clean order (no prior payments).
-    # This test documents the constraint — credit covers the full balance.
-    prior_paid = Decimal("5000")
-    remaining = order_total - prior_paid  # 5000
+async def test_credit_rejected_when_prior_cash_exists():
+    """Phase 6 MVP: credit on an order that already has cash/transfer
+    settlement must be rejected with CREDIT_SPLIT_TENDER_UNSUPPORTED.
+    Split tender is not allowed — credit is only for clean orders."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from fastapi import HTTPException
 
-    # Credit must equal remaining — that IS valid in MVP
-    credit_amount = remaining
-    assert credit_amount == Decimal("5000")
-    # But the endpoint will check pay_amount == remaining_balance
-    # So this specific scenario IS allowed: credit covers the remaining 5000
+    order_total = Decimal("10000")
+    prior_paid = Decimal("5000")
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=order_total)
+    mock_db = _make_mock_db()
+
+    # Credit for exactly the remaining 5000 — amount matches remaining
+    # but prior_paid > 0, so split-tender guard must reject.
+    pay_req = PayOrderRequest(amount=Decimal("5000"), method="credit")
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         pytest.raises(HTTPException) as exc_info:
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=prior_paid)
+        repo_instance.count_order_payments = AsyncMock(return_value=0)
+        MockRepo.return_value = repo_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "CREDIT_SPLIT_TENDER_UNSUPPORTED" in str(exc_info.value.detail)
 
 
 @pytest.mark.asyncio

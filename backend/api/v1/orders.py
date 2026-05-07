@@ -458,6 +458,7 @@ async def pay_order(
         # MVP constraint: credit is full-credit sale only — amount must equal
         # remaining balance.  No partial credit or split tender in this slice.
         if payment_input.method == "credit":
+            # Guard 1: No duplicate credit on the same order.
             credit_count = await payment_repo.count_order_payments(
                 db, order_id=order.id, method="credit",
             )
@@ -472,7 +473,23 @@ async def pay_order(
                         ),
                     },
                 )
-            if pay_amount != remaining_balance:
+            # Guard 2: No split tender — credit is only allowed on a clean
+            # order with zero prior cash/transfer settlement.
+            if prior_paid > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "code": "CREDIT_SPLIT_TENDER_UNSUPPORTED",
+                        "message": (
+                            f"Phase 6 MVP does not support split tender. "
+                            f"This order already has {prior_paid} in "
+                            f"cash/transfer payments. Credit is allowed only "
+                            f"on a clean order with no prior settlement."
+                        ),
+                    },
+                )
+            # Guard 3: Full-credit sale only — amount must equal order total.
+            if pay_amount != order_total:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail={
@@ -480,8 +497,8 @@ async def pay_order(
                         "message": (
                             f"Phase 6 MVP supports full-credit sale only. "
                             f"Credit amount ({pay_amount}) must equal "
-                            f"remaining balance ({remaining_balance}). "
-                            f"Partial credit and split tender are not supported."
+                            f"order total ({order_total}). "
+                            f"Partial credit is not supported."
                         ),
                     },
                 )

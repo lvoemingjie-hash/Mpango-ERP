@@ -3,7 +3,7 @@
 **Date:** 2026-05-06 (revised 2026-05-07)
 **Author:** CodeBuddy (Product AI)
 **Branch:** product-dev-recovered
-**Status:** COMPLETE — CTO-corrected x2, ready for review
+**Status:** COMPLETE — CTO-corrected x3, ready for review
 
 ---
 
@@ -14,6 +14,7 @@ credit-payment slice. After two CTO corrections:
 
 1. **Correction 1:** Credit closes the order lifecycle (PAID) without inflating `paid_total`.
 2. **Correction 2:** Phase 6 MVP supports full-credit sale only — no partial credit, no split tender.
+3. **Correction 3:** Split-tender hard guard — credit is allowed only on a clean order with `prior_paid == 0` and `pay_amount == order_total`.
 
 ## Approved Semantics (Model A — Payment-Centric, CTO-Corrected)
 
@@ -26,8 +27,8 @@ credit-payment slice. After two CTO corrections:
 | Credit payment status | Always `pending` |
 | Credit & order state | Full credit → PAID (closes lifecycle) |
 | Duplicate credit | Only ONE credit payment allowed per order (409 on repeat) |
-| Partial credit | **NOT SUPPORTED** — credit amount must equal remaining balance (400 `CREDIT_AMOUNT_MISMATCH`) |
-| Split tender | **NOT SUPPORTED** in this slice |
+| Partial credit | **NOT SUPPORTED** — credit amount must equal order total (400 `CREDIT_AMOUNT_MISMATCH`) |
+| Split tender | **NOT SUPPORTED** — credit allowed only when `prior_paid == 0` (400 `CREDIT_SPLIT_TENDER_UNSUPPORTED`) |
 
 ## CTO Corrections
 
@@ -47,6 +48,17 @@ credit-payment slice. After two CTO corrections:
 - Added `pay_amount != remaining_balance` check for credit → 400 `CREDIT_AMOUNT_MISMATCH`
 - Removed partial credit test, replaced with rejection test
 
+### Correction 3 (2026-05-07): Split-tender hard guard
+
+> Current code rejects partial credit against remaining balance, but still allows
+> split tender: cash/transfer first, then credit for the remaining balance.
+> That violates the approved MVP boundary.
+
+- Added `prior_paid > 0` check for credit → 400 `CREDIT_SPLIT_TENDER_UNSUPPORTED`
+- Changed full-credit check from `pay_amount != remaining_balance` to `pay_amount != order_total`
+- Credit is now allowed only on a clean order with zero prior settlement and full order amount
+- Replaced placeholder test with real endpoint-level rejection test
+
 ## Changes Made
 
 ### 1. `backend/api/v1/orders.py` — `pay_order()`
@@ -62,8 +74,10 @@ credit-payment slice. After two CTO corrections:
 **Duplicate credit guard.**
 - `count_order_payments(method='credit')` query → 409 `DUPLICATE_CREDIT_PAYMENT`
 
-**Full-credit-only guard (Correction 2).**
-- `pay_amount != remaining_balance` for credit → 400 `CREDIT_AMOUNT_MISMATCH`
+**Full-credit-only guard (Correction 2 → refined in Correction 3).**
+- `pay_amount != order_total` for credit → 400 `CREDIT_AMOUNT_MISMATCH`
+- `prior_paid > 0` for credit → 400 `CREDIT_SPLIT_TENDER_UNSUPPORTED`
+- Credit allowed only on clean orders: `prior_paid == 0` AND `pay_amount == order_total`
 
 ### 2. `backend/repositories/payment_repository.py`
 
@@ -89,7 +103,7 @@ credit-payment slice. After two CTO corrections:
 | `test_credit_payment_status_is_pending` | Credit payment status = pending |
 | `test_credit_full_amount_advances_order_to_paid` | Full credit → PAID |
 | `test_credit_partial_amount_rejected` | Partial credit → 400 CREDIT_AMOUNT_MISMATCH |
-| `test_credit_plus_cash_not_supported_in_mvp` | Documents split-tender constraint |
+| `test_credit_rejected_when_prior_cash_exists` | Prior cash/transfer + credit → 400 CREDIT_SPLIT_TENDER_UNSUPPORTED |
 | `test_credit_rejected_when_amount_exceeds_remaining` | Credit > remaining → PAYMENT_EXCEEDS_REMAINING |
 | `test_payment_service_credit_applies_positive_delta` | PaymentService credit → +delta |
 | `test_payment_service_cash_applies_negative_delta` | PaymentService cash → -delta |
@@ -108,9 +122,9 @@ credit-payment slice. After two CTO corrections:
 
 > **Phase 6 MVP supports full-credit sale only.**
 >
-> - Credit amount must exactly equal remaining balance
+> - Credit is allowed only on a clean order with `prior_paid == 0` and `pay_amount == order_total`
 > - Partial credit → 400 `CREDIT_AMOUNT_MISMATCH`
-> - Split tender (credit + cash) not supported in this slice
+> - Split tender (prior cash/transfer then credit) → 400 `CREDIT_SPLIT_TENDER_UNSUPPORTED`
 > - `paid_total` = cash + transfer only (financial reporting unchanged)
 > - Full credit → order state = PAID (lifecycle closed)
 > - Only one credit per order → 409 on duplicate
@@ -138,6 +152,32 @@ All changes have LOW impact radius. No HIGH or CRITICAL risk.
 - Credit aging / overdue tracking
 - Cancel/return credit reversal
 - UI changes for credit method selection
+
+## CTO Instruction Compliance Check
+
+### Constraint → Evidence Matrix
+
+| # | CTO Constraint | Implementation Evidence | Test Evidence |
+|---|----------------|------------------------|---------------|
+| 1 | No partial credit | `pay_order()`: `pay_amount != order_total` → 400 `CREDIT_AMOUNT_MISMATCH` | `test_credit_partial_amount_rejected` |
+| 2 | No split tender | `pay_order()`: `prior_paid > 0` → 400 `CREDIT_SPLIT_TENDER_UNSUPPORTED` | `test_credit_rejected_when_prior_cash_exists` |
+| 3 | No duplicate credit | `pay_order()`: `count_order_payments(method='credit') > 0` → 409 `DUPLICATE_CREDIT_PAYMENT` | `test_duplicate_credit_payment_rejected`, `test_first_credit_payment_allowed` |
+| 4 | Full credit closes order | `pay_order()`: `cumulative = prior_paid + pay_amount`; full credit → `PAID` | `test_credit_full_amount_advances_order_to_paid`, `test_first_credit_payment_allowed` |
+| 5 | Credit increases outstanding balance | `pay_order()`: `balance_delta = +pay_amount` for credit | `test_credit_payment_applies_positive_balance_delta` |
+| 6 | Credit excluded from paid_total | `payment_repository.py`: `AND method IN ('cash', 'transfer')` filter | `test_get_order_paid_total_sql_excludes_credit`, `test_get_order_paid_total_only_counts_cash_and_transfer` |
+
+### Counterexample → Rejection Tests
+
+| Counterexample | Expected Error | Proving Test |
+|----------------|---------------|--------------|
+| Order total 10000, 5000 cash already paid, then credit 5000 for remaining | 400 `CREDIT_SPLIT_TENDER_UNSUPPORTED` | `test_credit_rejected_when_prior_cash_exists` |
+| Order total 10000, no prior payment, credit 5000 (partial) | 400 `CREDIT_AMOUNT_MISMATCH` | `test_credit_partial_amount_rejected` |
+| Order total 10000, credit 10000 already recorded, second credit 10000 | 409 `DUPLICATE_CREDIT_PAYMENT` | `test_duplicate_credit_payment_rejected` |
+| Order total 5000, no prior payment, credit 6000 (exceeds) | 400 `PAYMENT_EXCEEDS_REMAINING` | `test_credit_rejected_when_amount_exceeds_remaining` |
+
+### Compliance Verdict
+
+All 6 CTO constraints have both **implementation evidence** (code location in `pay_order()` / `payment_repository.py`) and **test evidence** (named test cases). Every counterexample is covered by a specific rejection test. **PASS.**
 
 ## Approval Gate
 

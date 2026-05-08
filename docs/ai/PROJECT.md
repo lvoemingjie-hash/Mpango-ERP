@@ -84,6 +84,11 @@ The recovered branch has progressed through three recovery checkpoints:
 - `product-dev-backup` remains preserved and must not be deleted yet.
 - The latest closeout evidence is promising, but branch hygiene and final review discipline still matter.
 - If runtime evidence depends on uncommitted code or unpushed docs, the branch is not yet operationally closed.
+- Phase 6 MVP credit payment is now scoped to full-credit sale only:
+  - credit allowed only on a clean order with no prior cash/transfer settlement
+  - credit amount must equal the full order total
+  - partial credit and split tender are deferred
+  - credit increases outstanding balance and closes the order lifecycle as `paid`
 
 ## Platform Line Status
 
@@ -117,6 +122,7 @@ No auth rewrite, no tenancy rewrite, no billing engine implementation.
 - Do not push mixed or dirty worktrees.
 - Do not let `PROJECT.md` drift behind the actual accepted branch/blocker state.
 - Do not start platform or product tasks from stale local docs when a newer remote state exists.
+- Do not report AI work as complete unless the ledger includes a CTO Instruction Compliance Check with implementation evidence, test evidence, and counterexample coverage.
 
 ## What A New Agent Should Preserve
 
@@ -126,12 +132,14 @@ No auth rewrite, no tenancy rewrite, no billing engine implementation.
 - Platform branch boundaries and proposal-first discipline
 - AI team operating rules in `docs/ai/AI_TEAM_OPERATING_RULES.md`
 - The rule that repo memory must be both updated and made remotely visible when another machine depends on it
+- The rule that AI agents must prove CTO instruction compliance before asking for CTO review
 
 ## Next Expected Action
 
 For the product line:
 
-- complete final closeout / cleanliness / promotion decision for `product-dev-recovered`
+- complete Phase 6 credit-payment CTO review and product-line closeout on `product-dev-recovered`
+- then run a temporary product/platform integration rehearsal before branch promotion
 
 For the platform line:
 

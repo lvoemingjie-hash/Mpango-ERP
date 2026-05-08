@@ -8,11 +8,12 @@ This folder is the canonical starting point for Codex and other AI coding agents
 2. `docs/ai/CTO_CONTEXT.md`
 3. `docs/ai/PROJECT.md`
 4. `docs/ai/PROJECT_MEMORY.md`
-5. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
-6. `docs/contracts/Boot contract.md`
-7. `docs/contracts/AI workrules.md`
-8. `docs/mpango_erp_v0_3_development_master_plan.md`
-9. `decision-register/README.md`
+5. `docs/ai/AI_TEAM_OPERATING_RULES.md`
+6. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
+7. `docs/contracts/Boot contract.md`
+8. `docs/contracts/AI workrules.md`
+9. `docs/mpango_erp_v0_3_development_master_plan.md`
+10. `decision-register/README.md`
 
 ## Purpose
 
@@ -28,7 +29,7 @@ This folder is the canonical starting point for Codex and other AI coding agents
 - After each meaningful phase or branch-state change, update `PROJECT.md`
 - When priorities change, update `CTO_CONTEXT.md` first
 - When hidden assumptions from old chats are recovered, add them to `PROJECT_MEMORY.md`
-- When team operating rules for AI agents change, update `AGENT_DELEGATION_PROTOCOL.md`
+- When team operating rules for AI agents change, update `AI_TEAM_OPERATING_RULES.md`
 
 ## Multi-Agent Sync Rules
 

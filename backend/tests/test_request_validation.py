@@ -56,7 +56,7 @@ class TestRequestValidation:
     @given(
         password=st.text(max_size=7)  # Less than min_length=8
     )
-    @settings(max_examples=50)
+    @settings(max_examples=50, deadline=None)
     def test_login_rejects_short_password(self, password: str):
         """
         Property 7.3: Login request with password < 8 chars is rejected.

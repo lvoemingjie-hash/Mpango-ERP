@@ -71,14 +71,22 @@ def test_get_valid_transitions():
 
 
 def test_terminal_states():
-    """Test terminal state detection."""
-    assert is_terminal_state(OrderState.FULFILLED)
+    """Test terminal state detection.
+
+    FULFILLED is NOT terminal — it can transition to RETURNED.
+    RETURNED, CANCELLED, VOIDED are terminal (no outgoing transitions).
+    """
+    # Terminal states: empty transition sets in STATE_TRANSITION_MATRIX
+    assert is_terminal_state(OrderState.RETURNED)
     assert is_terminal_state(OrderState.CANCELLED)
     assert is_terminal_state(OrderState.VOIDED)
 
+    # Non-terminal states: have at least one outgoing transition
     assert not is_terminal_state(OrderState.DRAFT)
     assert not is_terminal_state(OrderState.CONFIRMED)
+    assert not is_terminal_state(OrderState.PARTIALLY_PAID)
     assert not is_terminal_state(OrderState.PAID)
+    assert not is_terminal_state(OrderState.FULFILLED)
 
 
 # ============================================================================

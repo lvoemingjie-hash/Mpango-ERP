@@ -26,6 +26,11 @@ from models.base import Base, BaseModel, PublicBaseModel
 # View/read models that don't follow standard entity conventions
 _VIEW_MODELS = {"MvSalesDaily", "RptSalesDaily", "RptReceivablesSummary", "RptCashFlowDaily"}
 
+# Append-only models with CTO-frozen constraints prohibiting audit columns
+# (updated_at, is_deleted, deleted_at). These are immutable event logs.
+# CTO-frozen: do NOT remove without explicit CTO approval.
+_FROZEN_APPEND_ONLY_MODELS = {"SysAuditLog"}
+
 
 def get_all_model_classes() -> list[Type]:
     """Get all concrete (non-abstract) model classes."""
@@ -91,6 +96,9 @@ class TestORMModelStructure:
         models = get_all_model_classes()
 
         for model in models:
+            # Skip append-only models with CTO-frozen constraints
+            if model.__name__ in _FROZEN_APPEND_ONLY_MODELS:
+                continue
             mapper = inspect(model)
             column_names = {col.name for col in mapper.columns}
 
@@ -150,12 +158,14 @@ class TestPublicBaseModel:
         """PublicBaseModel must have audit columns but not user tracking."""
         required = {'created_at', 'updated_at', 'is_deleted', 'deleted_at'}
         # PublicBaseModel is abstract; verify via first concrete public subclass
+        # Skip frozen append-only models — they have CTO exemptions from audit columns
         models = get_all_model_classes()
         pub_model = next(
-            (m for m in models if getattr(m.__table__, 'schema', None) == 'public'
-             or getattr(m, '__tablename__', '') in
-             ('wholesalers', 'retailers', 'invitations', 'wholesaler_retailer_bindings',
-              'sys_audit_logs', 'sys_reports', 'sys_jobs')),
+            (m for m in models if m.__name__ not in _FROZEN_APPEND_ONLY_MODELS
+             and (getattr(m.__table__, 'schema', None) == 'public'
+                  or getattr(m, '__tablename__', '') in
+                  ('wholesalers', 'retailers', 'invitations', 'wholesaler_retailer_bindings',
+                   'sys_audit_logs', 'sys_reports', 'sys_jobs'))),
             None
         )
         if pub_model is None:
@@ -168,12 +178,14 @@ class TestPublicBaseModel:
     def test_public_base_model_no_user_tracking(self):
         """PublicBaseModel should not have user tracking columns."""
         # PublicBaseModel is abstract; verify via first concrete public subclass
+        # Skip frozen append-only models — they have CTO exemptions from audit columns
         models = get_all_model_classes()
         pub_model = next(
-            (m for m in models if getattr(m.__table__, 'schema', None) == 'public'
-             or getattr(m, '__tablename__', '') in
-             ('wholesalers', 'retailers', 'invitations', 'wholesaler_retailer_bindings',
-              'sys_audit_logs', 'sys_reports', 'sys_jobs')),
+            (m for m in models if m.__name__ not in _FROZEN_APPEND_ONLY_MODELS
+             and (getattr(m.__table__, 'schema', None) == 'public'
+                  or getattr(m, '__tablename__', '') in
+                  ('wholesalers', 'retailers', 'invitations', 'wholesaler_retailer_bindings',
+                   'sys_audit_logs', 'sys_reports', 'sys_jobs'))),
             None
         )
         if pub_model is None:

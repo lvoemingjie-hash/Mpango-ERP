@@ -97,3 +97,14 @@ __pycache__/
 .claude/
 AGENTS.md
 CLAUDE.md
+
+# AI agent runtime configuration
+.openclaw/
+.opencode/
+
+# Editor temporary files
+*.swp
+*.swo
+*.swn
+*.swm
+.netrwhist

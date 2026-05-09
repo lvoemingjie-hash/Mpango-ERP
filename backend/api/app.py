@@ -151,6 +151,23 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.v1.pricing import router as pricing_router
     app.include_router(pricing_router, prefix="/api/v1/pricing", tags=["pricing"])
 
+    # Platform Track P0 - isolated routing scaffold
+    from api.v1.platform.health import router as platform_router
+    app.include_router(platform_router, tags=["platform"])
+    logger.info("Platform router registered (Track P0 scaffold)")
+
+    from api.v1.platform.tenants import router as platform_tenants_router
+    app.include_router(platform_tenants_router, tags=["platform-tenants"])
+    logger.info("Platform tenants router registered (read-only)")
+
+    from api.v1.platform.audit import router as platform_audit_router
+    app.include_router(platform_audit_router, tags=["platform-audit"])
+    logger.info("Platform audit router registered (read-only)")
+
+    from api.v1.platform.stats import router as platform_stats_router
+    app.include_router(platform_stats_router, tags=["platform-stats"])
+    logger.info("Platform stats router registered (read-only)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

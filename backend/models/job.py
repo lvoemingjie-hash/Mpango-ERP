@@ -7,7 +7,7 @@ Table: public.sys_jobs (system-level, cross-tenant)
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Text, DateTime, JSON
+from sqlalchemy import Column, String, Integer, Text, DateTime, JSON, Boolean, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from models.base import Base
@@ -16,14 +16,18 @@ from models.base import Base
 class Job(Base):
     """
     Job model for persistent job tracking.
-    
+
     Stores job metadata for auditability and retry capability.
     Lives in public schema as jobs may cross tenants.
+
+    Audit columns (is_deleted, deleted_at) added via 020 migration
+    to comply with database_contract.md audit-column contract.
     """
     __tablename__ = "sys_jobs"
     __table_args__ = {"schema": "public"}
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+                server_default=text("gen_random_uuid()"))
     job_name = Column(String(255), nullable=False, index=True)
     payload = Column(JSON, nullable=False, default=dict)
     status = Column(
@@ -35,16 +39,21 @@ class Job(Base):
     attempts = Column(Integer, nullable=False, default=0)
     max_retries = Column(Integer, nullable=False, default=3)
     last_error = Column(Text, nullable=True)
-    
+
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    
+
+    # Audit columns — comply with database_contract.md
+    # Added by migration 020_sys_jobs_audit_columns
+    is_deleted = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
     def __repr__(self):
         return f"<Job(id={self.id}, job_name={self.job_name}, status={self.status}, attempts={self.attempts})>"
-    
+
     def to_dict(self):
         """Convert job to dictionary."""
         return {

@@ -18,6 +18,7 @@ from models.audit import SysAuditLog
 from models.report import SysReport
 from models.platform_tenant import PlatformTenant
 from models.platform_audit_log import PlatformAuditLog
+from models.job import Job
 
 __all__ = [
     # Base classes
@@ -64,4 +65,7 @@ __all__ = [
 
     # Platform P0: Tenant lifecycle journal
     "PlatformTenant",
+
+    # S4-B: Persistent job tracking (public schema)
+    "Job",
 ]

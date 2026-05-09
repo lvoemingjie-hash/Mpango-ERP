@@ -399,3 +399,23 @@ Total: **72 passed** in owned suites. No regressions introduced.
 | **Total** | **10** | **8** | **-2** |
 
 Pass rate: 95.2% → **~95.5%** (777 passed / 814 total, estimated)
+
+
+---
+
+## Cycle 2B-fix Result - Job Model Audit Columns (2026-05-09)
+
+**Status**: FIX VERIFIED - awaiting CTO commit approval.
+
+**Changes**:
+- `backend/models/job.py`: Added `is_deleted` + `deleted_at` audit columns, `server_default` on `id`, payload JSON import/type unchanged from original.
+- `backend/models/__init__.py`: Added `from models.job import Job` + `"Job"` to `__all__`.
+- `backend/alembic/versions/020_sys_jobs_audit_columns.py`: New migration, applied locally.
+
+**Test results**: 13/13 (smallest group), 49/49 (platform subset), 4/4 (tenant isolation no regression).
+
+**Alembic**: Single head `020_sys_jobs_audit_columns` confirmed.
+
+**P1-2 (Job audit columns)**: RESOLVED.
+
+Full report: `ai-ledger/ops/2026-05-09_cycle_2b_fix_job_audit_columns.md`

@@ -59,9 +59,29 @@ AsyncSessionLocal = async_sessionmaker(
 install_global_tenant_filter()
 
 
+async def _reset_search_path_before_close(session: AsyncSession) -> None:
+    """Reset search_path to public and commit, ensuring clean pool return.
+
+    Handles the transaction boundary correctly:
+      1. SET search_path TO public  — takes effect on the connection immediately
+      2. COMMIT                     — commits the SET so it is not left in an
+                                      implicit transaction that could bleed into
+                                      the next checkout
+
+    Raises if the session/connection is in a broken state; callers decide
+    whether to suppress based on whether an original exception is in flight.
+    """
+    await session.execute(text("SET search_path TO public"))
+    await session.commit()
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Get database session for public schema operations.
+
+    Defensive: explicitly resets search_path to public on open to prevent
+    leaking a residual tenant search_path from connection pool reuse.
+    On cleanup, commits the RESET so no implicit transaction is left open.
 
     Yields:
         AsyncSession: Database session
@@ -71,15 +91,31 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             # Use session
     """
     async with AsyncSessionLocal() as session:
+        original_exc: BaseException | None = None
+        cleanup_exc: BaseException | None = None
         try:
             session.info["tenant_schema"] = "public"
+            # Defensive: ensure clean search_path regardless of pool state
+            await session.execute(text("SET search_path TO public"))
             yield session
             await session.commit()
-        except Exception:
+        except BaseException as exc:
+            original_exc = exc
             await session.rollback()
-            raise
         finally:
-            await session.close()
+            try:
+                await _reset_search_path_before_close(session)
+            except BaseException as exc:
+                if original_exc is None:
+                    cleanup_exc = exc
+                # else: suppress cleanup failure to preserve original exception
+            try:
+                await session.close()
+            finally:
+                if original_exc is not None:
+                    raise original_exc
+                if cleanup_exc is not None:
+                    raise cleanup_exc
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -107,19 +143,31 @@ async def get_tenant_db(tenant_schema: str) -> AsyncGenerator[AsyncSession, None
     """
     validate_identifier(tenant_schema, "tenant_schema")
     async with AsyncSessionLocal() as session:
+        original_exc: BaseException | None = None
+        cleanup_exc: BaseException | None = None
         try:
             session.info["tenant_schema"] = tenant_schema
-            # Set search_path for tenant isolation
             await session.execute(
                 text(f'SET LOCAL search_path TO "{tenant_schema}", public')
             )
             yield session
             await session.commit()
-        except Exception:
+        except BaseException as exc:
+            original_exc = exc
             await session.rollback()
-            raise
         finally:
-            await session.close()
+            try:
+                await _reset_search_path_before_close(session)
+            except BaseException as exc:
+                if original_exc is None:
+                    cleanup_exc = exc
+            try:
+                await session.close()
+            finally:
+                if original_exc is not None:
+                    raise original_exc
+                if cleanup_exc is not None:
+                    raise cleanup_exc
 
 
 async def create_tenant_schema(tenant_schema: str) -> None:

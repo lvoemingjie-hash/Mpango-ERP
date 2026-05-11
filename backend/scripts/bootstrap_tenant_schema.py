@@ -147,6 +147,8 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             f'CREATE TABLE IF NOT EXISTS "{ts}".payments ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
             f'order_id UUID NOT NULL REFERENCES "{ts}".orders(id) ON DELETE CASCADE,'
+            "retailer_id UUID NOT NULL,"
+            "transaction_id VARCHAR(64),"
             "amount NUMERIC(12,2) NOT NULL,"
             "method VARCHAR(50) NOT NULL DEFAULT 'cash',"
             "status VARCHAR(50) NOT NULL DEFAULT 'completed',"
@@ -170,6 +172,16 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
         ]
         for ddl in tables:
             await db.execute(text(ddl))
+
+        # Indexes for payments table (idempotent via CREATE INDEX IF NOT EXISTS)
+        payment_indexes = [
+            f'CREATE INDEX IF NOT EXISTS ix_payments_order_id ON "{ts}".payments (order_id)',
+            f'CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_transaction_id '
+            f'ON "{ts}".payments (transaction_id) '
+            f"WHERE transaction_id IS NOT NULL",
+        ]
+        for idx_ddl in payment_indexes:
+            await db.execute(text(idx_ddl))
 
         # Ledger immutability trigger
         await db.execute(text(

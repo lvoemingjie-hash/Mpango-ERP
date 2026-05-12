@@ -39,6 +39,16 @@ async def _column_exists(db, schema: str, table: str, column: str) -> bool:
     return result.first() is not None
 
 
+async def _table_exists(db, schema: str, table: str) -> bool:
+    """Check whether a table exists in the given schema."""
+    from sqlalchemy import text
+    result = await db.execute(text(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = :schema AND table_name = :table"
+    ), {"schema": schema, "table": table})
+    return result.first() is not None
+
+
 async def _column_is_nullable(db, schema: str, table: str, column: str) -> bool | None:
     from sqlalchemy import text
     result = await db.execute(text(
@@ -168,6 +178,110 @@ async def _reconcile_payments(db, ts: str) -> None:
         ("unique index", "payments", "(transaction_id)", "transaction_id is not null"),
     )
     print(f"[reconcile] {ts}.payments: ensured uq_payments_transaction_id")
+
+
+async def _reconcile_retailer_prices(db, ts: str) -> None:
+    """Structural validation and index reconciliation for retailer_prices.
+
+    Mirrors Alembic migration 017 contract exactly.  Two-phase approach:
+
+    Phase 1 - if the table does not exist at all, return (the CREATE TABLE IF
+    NOT EXISTS in the tables list above will create it fresh with full DDL).
+
+    Phase 2 - if the table *does* exist, validate every column, constraint,
+    and index against the migration 017 contract.  Any structural mismatch
+    triggers an immediate RuntimeError with a precise description of what is
+    wrong.  No silent patching, no guessing.
+    """
+    from sqlalchemy import text
+
+    # Phase 1: missing table -> nothing to reconcile (CREATE TABLE handles it)
+    if not await _table_exists(db, ts, "retailer_prices"):
+        return
+
+    # Phase 2: table exists - full structural contract check
+    violations: list[str] = []
+
+    # --- Required NOT NULL columns ---
+    required_not_null = {
+        "retailer_id": "UUID",
+        "sku_id": "UUID",
+        "price": "NUMERIC(12,2)",
+        "created_at": "TIMESTAMPTZ",
+        "updated_at": "TIMESTAMPTZ",
+        "is_deleted": "BOOLEAN",
+    }
+
+    for col_name, expected_type in required_not_null.items():
+        if not await _column_exists(db, ts, "retailer_prices", col_name):
+            violations.append(f"missing column '{col_name}'")
+            continue
+        if await _column_is_nullable(db, ts, "retailer_prices", col_name):
+            violations.append(f"column '{col_name}' is nullable, expected NOT NULL")
+
+    # --- Unique constraint: uq_retailer_prices_retailer_sku ---
+    # Check via pg_constraint (covers both table constraints and unique indexes)
+    uq_result = await db.execute(text(
+        "SELECT 1 FROM pg_constraint "
+        "WHERE connamespace = (SELECT oid FROM pg_namespace WHERE nspname = :schema) "
+        "AND conname = 'uq_retailer_prices_retailer_sku' "
+        "AND contype = 'u'"
+    ), {"schema": ts})
+    uq_constraint_exists = uq_result.first() is not None
+    # Also accept if a unique *index* with the same name provides the guarantee
+    uq_idx_result = await db.execute(text(
+        "SELECT 1 FROM pg_indexes "
+        "WHERE schemaname = :schema AND indexname = 'uq_retailer_prices_retailer_sku' "
+        "AND indexdef LIKE '%UNIQUE%'"
+    ), {"schema": ts})
+    uq_index_exists = uq_idx_result.first() is not None
+    if not uq_constraint_exists and not uq_index_exists:
+        violations.append(
+            "missing unique constraint 'uq_retailer_prices_retailer_sku' "
+            "on (retailer_id, sku_id)"
+        )
+
+    # --- Check constraint: ck_retailer_prices_positive_price ---
+    ck_result = await db.execute(text(
+        "SELECT 1 FROM pg_constraint "
+        "WHERE connamespace = (SELECT oid FROM pg_namespace WHERE nspname = :schema) "
+        "AND conname = 'ck_retailer_prices_positive_price' "
+        "AND contype = 'c'"
+    ), {"schema": ts})
+    if ck_result.first() is None:
+        violations.append(
+            "missing check constraint 'ck_retailer_prices_positive_price'"
+        )
+
+    # --- Indexes ---
+    await _ensure_index(
+        db,
+        ts,
+        "ix_retailer_prices_retailer_id",
+        f'CREATE INDEX IF NOT EXISTS ix_retailer_prices_retailer_id '
+        f'ON "{ts}".retailer_prices (retailer_id)',
+        ("retailer_prices", "(retailer_id)"),
+    )
+
+    await _ensure_index(
+        db,
+        ts,
+        "ix_retailer_prices_sku_id",
+        f'CREATE INDEX IF NOT EXISTS ix_retailer_prices_sku_id '
+        f'ON "{ts}".retailer_prices (sku_id)',
+        ("retailer_prices", "(sku_id)"),
+    )
+
+    # --- Fail fast if any violations ---
+    if violations:
+        violation_list = "\n  - ".join(violations)
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.retailer_prices exists but does NOT match "
+            f"migration 017 contract. Violations:\n  - {violation_list}\n"
+            "Manual schema correction is required before continuing."
+        )
+
+    print(f"[reconcile] {ts}.retailer_prices: contract validated, indexes ensured")
 
 
 async def _reconcile_reporting(db, ts: str) -> None:
@@ -438,6 +552,22 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
             "created_by UUID, updated_by UUID)",
+
+            # retailer_prices - mirrors migration 017 contract exactly
+            # Audit fields: NOT NULL (matching AuditMixin / migration 017,
+            # unlike legacy tables where bootstrap omitted NOT NULL)
+            f'CREATE TABLE IF NOT EXISTS "{ts}".retailer_prices ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "retailer_id UUID NOT NULL,"
+            "sku_id UUID NOT NULL,"
+            "price NUMERIC(12,2) NOT NULL,"
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "is_deleted BOOLEAN NOT NULL DEFAULT false,"
+            "deleted_at TIMESTAMPTZ,"
+            "created_by UUID, updated_by UUID,"
+            "CONSTRAINT uq_retailer_prices_retailer_sku UNIQUE (retailer_id, sku_id),"
+            "CONSTRAINT ck_retailer_prices_positive_price CHECK (price > 0))",
         ]
         for ddl in tables:
             await db.execute(text(ddl))
@@ -470,6 +600,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- payments: reconcile retailer_id / transaction_id (mirrors 021) ---
         await _reconcile_payments(db, ts)
+
+        # --- retailer_prices: reconcile indexes (mirrors 017) ---
+        await _reconcile_retailer_prices(db, ts)
 
         # --- reporting views / matviews (mirrors 012 + 013) ---
         await _reconcile_reporting(db, ts)

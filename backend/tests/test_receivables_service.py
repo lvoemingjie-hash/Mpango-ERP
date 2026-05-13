@@ -514,3 +514,281 @@ async def test_service_does_not_mutate_db_state(mock_db_session, receivables_ser
         mutation_pattern = r'\b(delete|insert|update)\b.*?\b(from|into|table|set)\b'
         assert not re.search(mutation_pattern, query_lower, re.IGNORECASE | re.DOTALL), \
             f"Found mutation operation in query: {query_str}"
+
+
+# ---------------------------------------------------------------------------
+# 6. Classification Pagination Tests (CTO Round 2 Polish)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_classification_pagination_across_db_pages(mock_db_session, receivables_service):
+    """Classification filter finds items beyond first DB page and computes correct total."""
+    retailer_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+    # Create 25 orders total (2 pages when page_size=20)
+    # First 10 orders: credit_receivable
+    # Next 10 orders: unpaid_order
+    # Last 5 orders: credit_receivable (on page 2)
+    mock_orders = []
+    for i in range(25):
+        mock_order = MagicMock()
+        mock_order.id = uuid.UUID(f"{i:032x}")  # Generate UUID from index
+        mock_order.retailer_id = retailer_id
+        mock_order.status = "confirmed"
+        mock_order.total_amount = Decimal("1000.00")
+        mock_order.created_at = datetime.utcnow()
+        mock_orders.append(mock_order)
+
+    mock_orders_result = MagicMock()
+    mock_orders_result.scalars.return_value.all.return_value = mock_orders
+
+    # Mock credit payments for orders 0-9 and 20-24 (credit_receivable)
+    credit_orders = [mock_orders[i].id for i in range(10)] + [mock_orders[i].id for i in range(20, 25)]
+    mock_credit_result = MagicMock()
+    mock_credit_result.mappings.return_value.all.return_value = [
+        {"order_id": order_id, "credit_total": Decimal("500.00")}
+        for order_id in credit_orders
+    ]
+
+    # Mock cash payments for all orders
+    mock_cash_result = MagicMock()
+    mock_cash_result.mappings.return_value.all.return_value = [
+        {"order_id": order.id, "cash_total": Decimal("500.00")}
+        for order in mock_orders
+    ]
+
+    mock_retailer_result = MagicMock()
+    mock_retailer_result.mappings.return_value.all.return_value = [
+        {"retailer_id": retailer_id, "retailer_name": "Test Retailer"},
+    ]
+
+    def mock_execute(query, params=None):
+        query_str = str(query)
+        # For classification filter, we should fetch ALL orders (no pagination)
+        if "orders" in query_str.lower() and "count(" not in query_str.lower():
+            return mock_orders_result
+        elif "credit" in query_str.lower():
+            return mock_credit_result
+        elif "cash" in query_str.lower():
+            return mock_cash_result
+        elif "retailers" in query_str.lower():
+            return mock_retailer_result
+        return MagicMock()
+
+    mock_db_session.execute.side_effect = mock_execute
+
+    # Request page 1 with credit_receivable classification
+    # Should find 15 credit_receivable orders (10 on page 1, 5 on page 2)
+    result = await receivables_service.list_receivable_orders(
+        tenant_db=mock_db_session,
+        page=1,
+        size=10,
+        classification="credit_receivable",
+    )
+
+    # Verify pagination reflects all 15 credit_receivable orders, not just first page
+    assert result["pagination"]["total"] == 15
+    assert result["pagination"]["pages"] == 2  # ceil(15/10) = 2
+    assert result["pagination"]["page"] == 1
+    assert result["pagination"]["size"] == 10
+
+    # Verify we get 10 items on page 1
+    assert len(result["items"]) == 10
+
+    # Verify all items are credit_receivable
+    for item in result["items"]:
+        assert item["classification"] == "credit_receivable"
+
+
+@pytest.mark.asyncio
+async def test_classification_pagination_page_beyond_first_db_page(mock_db_session, receivables_service):
+    """Classification filter page 2 returns items from DB page 2 that match classification."""
+    retailer_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+    # Create 25 orders total (2 pages when page_size=20)
+    # First 10 orders: credit_receivable
+    # Next 10 orders: unpaid_order
+    # Last 5 orders: credit_receivable (on page 2)
+    mock_orders = []
+    for i in range(25):
+        mock_order = MagicMock()
+        mock_order.id = uuid.UUID(f"{i:032x}")
+        mock_order.retailer_id = retailer_id
+        mock_order.status = "confirmed"
+        mock_order.total_amount = Decimal("1000.00")
+        mock_order.created_at = datetime.utcnow()
+        mock_orders.append(mock_order)
+
+    mock_orders_result = MagicMock()
+    mock_orders_result.scalars.return_value.all.return_value = mock_orders
+
+    # Mock credit payments for orders 0-9 and 20-24 (credit_receivable)
+    credit_orders = [mock_orders[i].id for i in range(10)] + [mock_orders[i].id for i in range(20, 25)]
+    mock_credit_result = MagicMock()
+    mock_credit_result.mappings.return_value.all.return_value = [
+        {"order_id": order_id, "credit_total": Decimal("500.00")}
+        for order_id in credit_orders
+    ]
+
+    # Mock cash payments for all orders
+    mock_cash_result = MagicMock()
+    mock_cash_result.mappings.return_value.all.return_value = [
+        {"order_id": order.id, "cash_total": Decimal("500.00")}
+        for order in mock_orders
+    ]
+
+    mock_retailer_result = MagicMock()
+    mock_retailer_result.mappings.return_value.all.return_value = [
+        {"retailer_id": retailer_id, "retailer_name": "Test Retailer"},
+    ]
+
+    def mock_execute(query, params=None):
+        query_str = str(query)
+        if "orders" in query_str.lower() and "count(" not in query_str.lower():
+            return mock_orders_result
+        elif "credit" in query_str.lower():
+            return mock_credit_result
+        elif "cash" in query_str.lower():
+            return mock_cash_result
+        elif "retailers" in query_str.lower():
+            return mock_retailer_result
+        return MagicMock()
+
+    mock_db_session.execute.side_effect = mock_execute
+
+    # Request page 2 with credit_receivable classification
+    # Should return the remaining 5 credit_receivable orders from DB page 2
+    result = await receivables_service.list_receivable_orders(
+        tenant_db=mock_db_session,
+        page=2,
+        size=10,
+        classification="credit_receivable",
+    )
+
+    # Verify pagination
+    assert result["pagination"]["total"] == 15
+    assert result["pagination"]["pages"] == 2
+    assert result["pagination"]["page"] == 2
+    assert result["pagination"]["size"] == 10
+
+    # Verify we get 5 items on page 2
+    assert len(result["items"]) == 5
+
+    # Verify all items are credit_receivable
+    for item in result["items"]:
+        assert item["classification"] == "credit_receivable"
+
+
+# ---------------------------------------------------------------------------
+# 7. Empty Order ID Collection Safety Tests (CTO Round 2 Polish)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_receivables_summary_empty_orders_safe(mock_db_session, receivables_service):
+    """Receivables summary handles empty order_ids collection safely (no raw SQL with ANY)."""
+    # Mock bindings with outstanding balance but no orders
+    mock_binding_result = MagicMock()
+    mock_binding_result.mappings.return_value.all.return_value = [
+        {
+            "retailer_id": uuid.UUID("11111111-1111-1111-1111-111111111111"),
+            "outstanding_balance": Decimal("5000.00"),
+            "retailer_name": "Retailer A",
+        },
+    ]
+
+    # Mock empty orders result
+    mock_orders_result = MagicMock()
+    mock_orders_result.all.return_value = []
+
+    def mock_execute(query, params=None):
+        query_str = str(query)
+        if "wholesaler_retailer_bindings" in query_str:
+            return mock_binding_result
+        elif "orders" in query_str:
+            return mock_orders_result
+        return MagicMock()
+
+    mock_db_session.execute.side_effect = mock_execute
+
+    # Should not crash with empty order_ids collection
+    result = await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
+
+    # Verify result structure with zero order data
+    assert result["total_outstanding"] == 5000.00  # Still has binding balance
+    assert result["retailer_count"] == 1
+    assert result["order_count"] == 0  # No orders
+    assert result["credit_receivables"] == 0.0
+    assert result["unpaid_order_balance"] == 0.0
+    assert len(result["by_retailer"]) == 1
+
+    # Verify retailer entry has zero order data
+    retailer = result["by_retailer"][0]
+    assert retailer["credit_receivables"] == 0.0
+    assert retailer["unpaid_order_balance"] == 0.0
+    assert retailer["order_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_receivables_summary_binding_only_tenant_safe(mock_db_session, receivables_service):
+    """Receivables summary for binding-only tenant (no orders) returns safely."""
+    # Mock tenant with bindings but completely empty orders table
+    mock_binding_result = MagicMock()
+    mock_binding_result.mappings.return_value.all.return_value = [
+        {
+            "retailer_id": uuid.UUID("11111111-1111-1111-1111-111111111111"),
+            "outstanding_balance": Decimal("10000.00"),
+            "retailer_name": "Binding Only Retailer",
+        },
+    ]
+
+    mock_orders_result = MagicMock()
+    mock_orders_result.all.return_value = []
+
+    def mock_execute(query, params=None):
+        query_str = str(query)
+        if "wholesaler_retailer_bindings" in query_str:
+            return mock_binding_result
+        elif "orders" in query_str:
+            return mock_orders_result
+        return MagicMock()
+
+    mock_db_session.execute.side_effect = mock_execute
+
+    # Should not attempt payment aggregation with empty order_ids
+    result = await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
+
+    # Verify safe return with binding data but zero order breakdown
+    assert result["total_outstanding"] == 10000.00
+    assert result["retailer_count"] == 1
+    assert result["order_count"] == 0
+    assert result["credit_receivables"] == 0.0
+    assert result["unpaid_order_balance"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_receivable_orders_empty_result_safe(mock_db_session, receivables_service):
+    """Receivable orders list handles empty result safely (no payment aggregation queries)."""
+    mock_count_result = MagicMock()
+    mock_count_result.scalar.return_value = 0
+
+    def mock_execute(query, params=None):
+        query_str = str(query)
+        if "count(" in query_str.lower() or "count(" in query_str:
+            return mock_count_result
+        return MagicMock()
+
+    mock_db_session.execute.side_effect = mock_execute
+
+    # Should not crash with empty orders
+    result = await receivables_service.list_receivable_orders(
+        tenant_db=mock_db_session,
+        page=1,
+        size=20,
+    )
+
+    # Verify empty result structure
+    assert result["items"] == []
+    assert result["pagination"]["total"] == 0
+    assert result["pagination"]["pages"] == 0
+    assert result["pagination"]["page"] == 1
+    assert result["pagination"]["size"] == 20

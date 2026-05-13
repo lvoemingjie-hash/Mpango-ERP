@@ -15,15 +15,14 @@ authoritative retailer balance cache.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Mapping
+from typing import Any
 
-from sqlalchemy import select, func, case, text, and_, or_
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.order import Order, OrderStatus
-from models.ledger import LedgerEntry, AccountType
 
 
 class ReceivablesService:
@@ -99,40 +98,45 @@ class ReceivablesService:
         order_rows = orders_result.all()
 
         # Query 3: Get credit payment totals per order (exclude from paid calculation)
-        credit_totals_result = await tenant_db.execute(
-            text(
-                """
-                SELECT
-                    order_id,
-                    COALESCE(SUM(amount), 0) as credit_total
-                FROM payments
-                WHERE order_id = ANY(:order_ids)
-                  AND is_deleted IS FALSE
-                  AND method = 'credit'
-                GROUP BY order_id
-                """
-            ),
-            {"order_ids": [order.id for order in order_rows]},
-        )
-        credit_totals = {row["order_id"]: Decimal(str(row["credit_total"])) for row in credit_totals_result.mappings().all()}
+        # Skip payment aggregation if no orders found to avoid empty order_ids collection
+        credit_totals = {}
+        cash_totals = {}
 
-        # Query 4: Get cash/transfer payment totals per order
-        cash_totals_result = await tenant_db.execute(
-            text(
-                """
-                SELECT
-                    order_id,
-                    COALESCE(SUM(amount), 0) as cash_total
-                FROM payments
-                WHERE order_id = ANY(:order_ids)
-                  AND is_deleted IS FALSE
-                  AND method IN ('cash', 'transfer')
-                GROUP BY order_id
-                """
-            ),
-            {"order_ids": [order.id for order in order_rows]},
-        )
-        cash_totals = {row["order_id"]: Decimal(str(row["cash_total"])) for row in cash_totals_result.mappings().all()}
+        if order_rows:
+            credit_totals_result = await tenant_db.execute(
+                text(
+                    """
+                    SELECT
+                        order_id,
+                        COALESCE(SUM(amount), 0) as credit_total
+                    FROM payments
+                    WHERE order_id = ANY(:order_ids)
+                      AND is_deleted IS FALSE
+                      AND method = 'credit'
+                    GROUP BY order_id
+                    """
+                ),
+                {"order_ids": [order.id for order in order_rows]},
+            )
+            credit_totals = {row["order_id"]: Decimal(str(row["credit_total"])) for row in credit_totals_result.mappings().all()}
+
+            # Query 4: Get cash/transfer payment totals per order
+            cash_totals_result = await tenant_db.execute(
+                text(
+                    """
+                    SELECT
+                        order_id,
+                        COALESCE(SUM(amount), 0) as cash_total
+                    FROM payments
+                    WHERE order_id = ANY(:order_ids)
+                      AND is_deleted IS FALSE
+                      AND method IN ('cash', 'transfer')
+                    GROUP BY order_id
+                    """
+                ),
+                {"order_ids": [order.id for order in order_rows]},
+            )
+            cash_totals = {row["order_id"]: Decimal(str(row["cash_total"])) for row in cash_totals_result.mappings().all()}
 
         # Build per-retailer breakdown
         by_retailer = []
@@ -240,67 +244,89 @@ class ReceivablesService:
             except ValueError:
                 return {"items": [], "pagination": {"page": 1, "size": size, "total": 0, "pages": 0}}
 
-        # Count query
-        count_stmt = select(func.count(Order.id)).where(*filters)
-        total = int((await tenant_db.execute(count_stmt)).scalar() or 0)
+        # When classification filter is provided, fetch ALL orders first for correct pagination
+        # Classification is computed in-memory, so we need the full dataset before pagination
+        if classification:
+            # Fetch all matching orders (no pagination) for classification filtering
+            orders_stmt = (
+                select(Order)
+                .where(*filters)
+                .order_by(Order.created_at.desc())
+            )
+            order_rows = (await tenant_db.execute(orders_stmt)).scalars().all()
+        else:
+            # Count query for pagination
+            count_stmt = select(func.count(Order.id)).where(*filters)
+            total = int((await tenant_db.execute(count_stmt)).scalar() or 0)
 
-        # Calculate pagination
-        import math
-        pages = math.ceil(total / size) if total > 0 else 0
-        offset = (page - 1) * size
+            # Calculate pagination
+            import math
+            pages = math.ceil(total / size) if total > 0 else 0
+            offset = (page - 1) * size
 
-        # Fetch orders
-        orders_stmt = (
-            select(Order)
-            .where(*filters)
-            .order_by(Order.created_at.desc())
-            .offset(offset)
-            .limit(size)
-        )
-        order_rows = (await tenant_db.execute(orders_stmt)).scalars().all()
+            # Fetch orders with pagination
+            orders_stmt = (
+                select(Order)
+                .where(*filters)
+                .order_by(Order.created_at.desc())
+                .offset(offset)
+                .limit(size)
+            )
+            order_rows = (await tenant_db.execute(orders_stmt)).scalars().all()
 
         if not order_rows:
-            return {
-                "items": [],
-                "pagination": {"page": page, "size": size, "total": total, "pages": pages},
-            }
+            # Handle empty result for both classification and non-classification cases
+            if classification:
+                return {
+                    "items": [],
+                    "pagination": {"page": page, "size": size, "total": 0, "pages": 0},
+                }
+            else:
+                return {
+                    "items": [],
+                    "pagination": {"page": page, "size": size, "total": total, "pages": pages},
+                }
 
         order_ids = [order.id for order in order_rows]
 
-        # Fetch payment totals
-        credit_result = await tenant_db.execute(
-            text(
-                """
-                SELECT
-                    order_id,
-                    COALESCE(SUM(amount), 0) as credit_total
-                FROM payments
-                WHERE order_id = ANY(:order_ids)
-                  AND is_deleted IS FALSE
-                  AND method = 'credit'
-                GROUP BY order_id
-                """
-            ),
-            {"order_ids": order_ids},
-        )
-        credit_totals = {row["order_id"]: Decimal(str(row["credit_total"])) for row in credit_result.mappings().all()}
+        # Fetch payment totals - skip if no orders to avoid empty order_ids collection
+        credit_totals = {}
+        cash_totals = {}
 
-        cash_result = await tenant_db.execute(
-            text(
-                """
-                SELECT
-                    order_id,
-                    COALESCE(SUM(amount), 0) as cash_total
-                FROM payments
-                WHERE order_id = ANY(:order_ids)
-                  AND is_deleted IS FALSE
-                  AND method IN ('cash', 'transfer')
-                GROUP BY order_id
-                """
-            ),
-            {"order_ids": order_ids},
-        )
-        cash_totals = {row["order_id"]: Decimal(str(row["cash_total"])) for row in cash_result.mappings().all()}
+        if order_ids:
+            credit_result = await tenant_db.execute(
+                text(
+                    """
+                    SELECT
+                        order_id,
+                        COALESCE(SUM(amount), 0) as credit_total
+                    FROM payments
+                    WHERE order_id = ANY(:order_ids)
+                      AND is_deleted IS FALSE
+                      AND method = 'credit'
+                    GROUP BY order_id
+                    """
+                ),
+                {"order_ids": order_ids},
+            )
+            credit_totals = {row["order_id"]: Decimal(str(row["credit_total"])) for row in credit_result.mappings().all()}
+
+            cash_result = await tenant_db.execute(
+                text(
+                    """
+                    SELECT
+                        order_id,
+                        COALESCE(SUM(amount), 0) as cash_total
+                    FROM payments
+                    WHERE order_id = ANY(:order_ids)
+                      AND is_deleted IS FALSE
+                      AND method IN ('cash', 'transfer')
+                    GROUP BY order_id
+                    """
+                ),
+                {"order_ids": order_ids},
+            )
+            cash_totals = {row["order_id"]: Decimal(str(row["cash_total"])) for row in cash_result.mappings().all()}
 
         # Get retailer names from public bindings
         retailer_ids = list(set([order.retailer_id for order in order_rows]))
@@ -368,10 +394,26 @@ class ReceivablesService:
                 "age_days": age_days,
             })
 
-        # Recalculate total after classification filter
+        # Apply pagination slicing after classification filter
         if classification:
+            # Calculate pagination from filtered results
+            import math
             total = len(items)
             pages = math.ceil(total / size) if total > 0 else 0
+            offset = (page - 1) * size
+
+            # Slice items for current page
+            paginated_items = items[offset:offset + size]
+
+            return {
+                "items": paginated_items,
+                "pagination": {
+                    "page": page,
+                    "size": size,
+                    "total": total,
+                    "pages": pages,
+                },
+            }
 
         return {
             "items": items,

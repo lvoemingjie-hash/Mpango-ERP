@@ -229,15 +229,17 @@ async def test_order_list_classifies_credit_receivable(mock_db_session, receivab
     ]
 
     def mock_execute(query, params=None):
-        if "COUNT" in str(query):
+        query_str = str(query)
+        # Match count queries first (before generic "orders" match)
+        if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
-        elif "FROM orders" in str(query) or "orders" in str(query).lower():
+        elif "FROM orders" in query_str or ("orders" in query_str.lower() and "count(" not in query_str.lower()):
             return mock_orders_result
-        elif "method = 'credit'" in str(query):
+        elif "method = 'credit'" in query_str or "credit" in query_str.lower():
             return mock_credit_result
-        elif "method IN ('cash', 'transfer')" in str(query):
+        elif "method IN ('cash', 'transfer')" in query_str or "cash" in query_str.lower():
             return mock_cash_result
-        elif "retailers" in str(query):
+        elif "retailers" in query_str:
             return mock_retailer_result
         return MagicMock()
 
@@ -292,15 +294,17 @@ async def test_order_list_classifies_unpaid_order(mock_db_session, receivables_s
     ]
 
     def mock_execute(query, params=None):
-        if "COUNT" in str(query):
+        query_str = str(query)
+        # Match count queries first (before generic "orders" match)
+        if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
-        elif "orders" in str(query).lower():
+        elif "orders" in query_str.lower() and "count(" not in query_str.lower():
             return mock_orders_result
-        elif "credit" in str(query):
+        elif "credit" in query_str.lower():
             return mock_credit_result
-        elif "cash" in str(query):
+        elif "cash" in query_str.lower():
             return mock_cash_result
-        elif "retailers" in str(query):
+        elif "retailers" in query_str.lower():
             return mock_retailer_result
         return MagicMock()
 
@@ -353,15 +357,17 @@ async def test_order_list_supports_retailer_filter(mock_db_session, receivables_
     ]
 
     def mock_execute(query, params=None):
-        if "COUNT" in str(query):
+        query_str = str(query)
+        # Match count queries first (before generic "orders" match)
+        if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
-        elif "orders" in str(query).lower():
+        elif "orders" in query_str.lower() and "count(" not in query_str.lower():
             return mock_orders_result
-        elif "credit" in str(query):
+        elif "credit" in query_str.lower():
             return mock_credit_result
-        elif "cash" in str(query):
+        elif "cash" in query_str.lower():
             return mock_cash_result
-        elif "retailers" in str(query):
+        elif "retailers" in query_str.lower():
             return mock_retailer_result
         return MagicMock()
 
@@ -405,15 +411,17 @@ async def test_pagination_metadata_correct(mock_db_session, receivables_service)
     mock_retailer_result.mappings.return_value.all.return_value = []
 
     def mock_execute(query, params=None):
-        if "COUNT" in str(query):
+        query_str = str(query)
+        # Match count queries first (before generic "orders" match)
+        if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
-        elif "orders" in str(query).lower():
+        elif "orders" in query_str.lower() and "count(" not in query_str.lower():
             return mock_orders_result
-        elif "credit" in str(query):
+        elif "credit" in query_str.lower():
             return mock_credit_result
-        elif "cash" in str(query):
+        elif "cash" in query_str.lower():
             return mock_cash_result
-        elif "retailers" in str(query):
+        elif "retailers" in query_str.lower():
             return mock_retailer_result
         return MagicMock()
 
@@ -439,7 +447,9 @@ async def test_pagination_empty_result(mock_db_session, receivables_service):
     mock_count_result.scalar.return_value = 0
 
     def mock_execute(query, params=None):
-        if "COUNT" in str(query):
+        query_str = str(query)
+        # Match count queries
+        if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
         return MagicMock()
 
@@ -480,6 +490,8 @@ async def test_service_does_not_commit_or_rollback(mock_db_session, receivables_
 @pytest.mark.asyncio
 async def test_service_does_not_mutate_db_state(mock_db_session, receivables_service):
     """Service only uses SELECT queries, no INSERT/UPDATE/DELETE."""
+    import re
+
     mock_count_result = MagicMock()
     mock_count_result.scalar.return_value = 0
 
@@ -489,10 +501,16 @@ async def test_service_does_not_mutate_db_state(mock_db_session, receivables_ser
     await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
     await receivables_service.list_receivable_orders(tenant_db=mock_db_session)
 
-    # Verify all queries are SELECT
+    # Verify all queries are SELECT (not INSERT/UPDATE/DELETE as standalone operations)
     for call in mock_db_session.execute.call_args_list:
-        query_str = str(call[0][0]).lower()
-        assert "select" in query_str
-        assert "insert" not in query_str
-        assert "update" not in query_str
-        assert "delete" not in query_str
+        query_str = str(call[0][0]).strip()
+        query_lower = query_str.lower()
+
+        # Check that query starts with SELECT or WITH (CTE)
+        assert query_lower.startswith("select") or query_lower.startswith("with") or query_lower.startswith("select(") or query_lower.startswith("with(")
+
+        # Check for mutation operations as standalone statements (not in column names like "is_deleted")
+        # Use regex to match DELETE/INSERT/UPDATE only as statement keywords
+        mutation_pattern = r'\b(delete|insert|update)\b.*?\b(from|into|table|set)\b'
+        assert not re.search(mutation_pattern, query_lower, re.IGNORECASE | re.DOTALL), \
+            f"Found mutation operation in query: {query_str}"

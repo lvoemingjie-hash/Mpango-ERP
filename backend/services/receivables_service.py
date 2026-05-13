@@ -145,9 +145,6 @@ class ReceivablesService:
             binding_info = retailer_data[retailer_id]
             retailer_orders = [o for o in order_rows if o.retailer_id == retailer_id]
 
-            if not retailer_orders:
-                continue
-
             retailer_credit = Decimal("0")
             retailer_unpaid = Decimal("0")
 
@@ -353,11 +350,14 @@ class ReceivablesService:
 
             age_days = (now - order.created_at).days if order.created_at else 0
 
+            # Handle both enum and string status values
+            status_value = order.status.value if hasattr(order.status, "value") else order.status
+
             items.append({
                 "order_id": str(order_id),
                 "retailer_id": str(order.retailer_id),
                 "retailer_name": retailer_names.get(order.retailer_id, "Unknown"),
-                "status": order.status.value,
+                "status": status_value,
                 "classification": order_classification,
                 "payment_method": payment_method,
                 "total_amount": float(order.total_amount),

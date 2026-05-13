@@ -471,15 +471,15 @@ $env:REPORTING_USER_PASSWORD='test_reporting_password'
 $env:PYTHONIOENCODING='utf-8'
 poetry run pytest tests/test_receivables_service.py tests/test_finance_receivables_api.py -q --tb=short
 ```
-**Result:** ✅ **24 passed, 22 warnings** (0 failed)
+**Result:** PASS - **24 passed, 22 warnings** (0 failed)
 
 **Regression Tests:**
 ```powershell
 poetry run pytest tests/test_phase5_order_payment.py -q --tb=short
 ```
-**Result:** ✅ **50 passed, 1 xfailed, 3 environment-failures** (consistent with CTO baseline)
+**Initial result without REPORTING_USER_PASSWORD:** **50 passed, 1 xfailed, 3 failed**
 
-**Environment failures**: REPORTING_USER_PASSWORD not set in bash shell (not code-related)
+**Environment note:** the 3 failures were caused by missing `REPORTING_USER_PASSWORD` during app import, not by Phase 6.2 code changes. CTO rerun with `REPORTING_USER_PASSWORD` set passed as **53 passed, 1 xfailed**.
 
 ### App Smoke Test
 
@@ -490,7 +490,9 @@ $env:MPANGO_ENV='test'
 $env:SECRET_KEY='<redacted-local-test-key>'
 poetry run python -c "from api.app import app; print(len(app.routes))"
 ```
-**Result:** ⚠️ **Skipped** - Python environment issue (not code-related)
+**Original result:** skipped by Claude due local Python environment setup.
+
+**CTO rerun result:** PASS - **105 routes** with Poetry environment and runtime-generated strong `SECRET_KEY`.
 
 ### GitNexus Status
 
@@ -515,9 +517,9 @@ npx gitnexus status   # ✅ up-to-date
 
 ### Verdict
 
-**Status:** ✅ **READY TO COMMIT**
+**Status:** PASS - **READY TO COMMIT**
 
-All 9 failing tests now pass. Regression tests maintain baseline (50 passed). Changes are strictly limited to test robustness and service compatibility with mock data. No scope creep, no write path changes, no migrations added.
+All 9 failing tests now pass. Regression tests maintain baseline when the required reporting environment variable is set (**53 passed, 1 xfailed**). Changes are strictly limited to test robustness and service compatibility with mock data. No scope creep, no write path changes, no migrations added.
 
 **Commit Message:** `fix(finance): stabilize receivables visibility tests`
 
@@ -680,14 +682,17 @@ if order_ids:  # ✅ Guard clause
 ```powershell
 poetry run pytest tests/test_receivables_service.py tests/test_finance_receivables_api.py -q --tb=short
 ```
-**Result:** ✅ **29 passed** (up from 24, +5 new tests for CTO polish fixes)
+**Result:** PASS - **29 passed** (up from 24, +5 new tests for CTO polish fixes)
 
 **Regression Tests:**
 ```powershell
 poetry run pytest tests/test_phase5_order_payment.py -q --tb=short
 ```
-**Result:** ✅ **50 passed, 1 xfailed, 3 environment-failures** (consistent with baseline)
-- 3 failures due to missing REPORTING_USER_PASSWORD (environment issue, not code)
+**Initial result without REPORTING_USER_PASSWORD:** **50 passed, 1 xfailed, 3 failed**
+
+**CTO rerun with REPORTING_USER_PASSWORD set:** PASS - **53 passed, 1 xfailed**
+
+The 3 initial failures were due to missing reporting environment configuration during app import, not a code regression.
 
 **App Smoke Test:**
 ```python
@@ -699,7 +704,7 @@ os.environ["REPORTING_USER_PASSWORD"] = "test-password-for-reporting"
 from api.app import app
 print(len(app.routes))
 ```
-**Result:** ✅ **105 routes** (matches baseline)
+**Result:** PASS - **105 routes** (matches baseline)
 
 ### GitNexus Impact Analysis (Post-Polish)
 

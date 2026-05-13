@@ -16,6 +16,9 @@ from models.retailer_price import RetailerPrice
 from models.reporting import MvSalesDaily, RptSalesDaily, RptReceivablesSummary, RptCashFlowDaily
 from models.audit import SysAuditLog
 from models.report import SysReport
+from models.platform_tenant import PlatformTenant
+from models.platform_audit_log import PlatformAuditLog
+from models.job import Job
 
 __all__ = [
     # Base classes
@@ -59,4 +62,10 @@ __all__ = [
 
     # S7-4: Tenant-Scoped Reports
     "SysReport",
+
+    # Platform P0: Tenant lifecycle journal
+    "PlatformTenant",
+
+    # S4-B: Persistent job tracking (public schema)
+    "Job",
 ]

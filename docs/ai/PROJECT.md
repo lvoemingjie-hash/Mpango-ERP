@@ -139,7 +139,7 @@ No auth rewrite, no tenancy rewrite, no billing engine implementation.
 For the product line:
 
 - complete Phase 6 credit-payment CTO review and product-line closeout on `product-dev-recovered`
-- then run a temporary product/platform integration rehearsal before branch promotion
+- then run and finish the product/platform integration rehearsal before promotion decision
 
 For the platform line:
 

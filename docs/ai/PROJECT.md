@@ -1,7 +1,7 @@
 # Project Log / 项目快速交接说明
 
 **Last updated:** 2026-05-13
-**Current product baseline:** `origin/product-dev-recovered` at `2e8e50612323c873f0e7bc992801aee87c3c65d5`
+**Current product baseline:** `origin/product-dev-recovered` at `030e96449ea9e09559fb777cfb62b8d66a08d92a`
 **Promotion status:** Product/platform integration promoted and pushed to `origin/product-dev-recovered`
 **Main branch:** `origin/main` remains unchanged at `02d69c00e7aeefdc788a0335a09a6f735b85f07b`
 
@@ -57,8 +57,8 @@ Then use this file to orient yourself before opening detailed ledgers or code.
 ## Current Branch Map / 当前分支地图
 
 - `origin/product-dev-recovered`
-  当前产品主基线。已完成产品线恢复、平台 P0 集成、Gate 6B/6C 验证和最终晋升。当前 HEAD:
-  `2e8e50612323c873f0e7bc992801aee87c3c65d5`.
+  当前产品主基线。已完成产品线恢复、平台 P0 集成、Gate 6B/6C 验证、最终晋升和项目交接文档同步。
+  当前 HEAD: `030e96449ea9e09559fb777cfb62b8d66a08d92a`.
 - `origin/ops/integration-rehearsal-clean-2026-05-08`
   集成彩排候选分支，当前 HEAD: `803634b9b46cdb454c25e89e28170e658601c9de`. 已被合入
   `product-dev-recovered`，保留作审计和回溯。
@@ -156,6 +156,7 @@ Platform constraints remain:
 Latest reliable validation evidence:
 
 - `2e8e506` final promotion commit pushed to `origin/product-dev-recovered`.
+- `030e964` project handoff document sync pushed after promotion.
 - Gate 6B:
   - schema contract: `40 passed`
   - pricing: `34 passed`
@@ -253,7 +254,7 @@ All agents must:
 
 Immediate next actions:
 
-1. Sync all active agents to `origin/product-dev-recovered@2e8e506`.
+1. Sync all active agents to `origin/product-dev-recovered@030e964`.
 2. Do not use the dirty Windows main workspace for new development until its state is reviewed.
 3. Start new product work from a clean branch/worktree based on `origin/product-dev-recovered`.
 4. If continuing product MVP, next feature is Phase 6 credit payment minimal safe model.
@@ -282,7 +283,7 @@ Recommended branch/worktree rule:
 
 ## What A New Agent Should Preserve / 新 Agent 必须继承什么
 
-- `product-dev-recovered@2e8e506` is the current accepted product baseline.
+- `product-dev-recovered@030e964` is the current accepted product baseline.
 - Platform P0 has been integrated into the product baseline.
 - `main` is not yet the active promoted branch.
 - The wholesaler-first product hierarchy remains the guiding product truth.

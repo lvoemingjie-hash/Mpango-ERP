@@ -1559,3 +1559,296 @@ async def test_first_credit_payment_allowed():
     assert resp.success is True
     assert resp.data["status"] == "paid"
     assert delta_captured["delta"] == Decimal("5000")
+
+
+# ============================================================================
+# 11. Phase 6.1 — Credit Ledger Semantics
+#
+# Tests that pay_order passes payment_method into OrderService.transition
+# so that credit PAID transitions skip cash-settlement ledger entries.
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_credit_payment_passes_method_to_transition():
+    """Credit via pay_order() must pass payment_method='credit' into
+    OrderService.transition so the ledger layer can skip cash-settlement."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from core.domain.order_state import OrderState
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
+    mock_db = _make_mock_db()
+    payment_dict = {"id": "pay-cl-1", "amount": Decimal("5000"), "method": "credit"}
+
+    pay_req = PayOrderRequest(amount=5000, method="credit")
+
+    transition_kwargs = {}
+
+    async def capture_transition(**kwargs):
+        transition_kwargs.update(kwargs)
+        return MagicMock(
+            id=mock_order.id, status=OrderState.PAID,
+            total_amount=mock_order.total_amount,
+        )
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
+         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_order_payments = AsyncMock(return_value=0)
+        repo_instance.create = AsyncMock(return_value=payment_dict)
+        MockRepo.return_value = repo_instance
+
+        svc_instance = AsyncMock()
+        svc_instance.transition = AsyncMock(side_effect=capture_transition)
+        MockOS.return_value = svc_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert transition_kwargs.get("payment_method") == "credit", \
+        f"Expected payment_method='credit' passed to transition, got {transition_kwargs.get('payment_method')}"
+
+
+@pytest.mark.asyncio
+async def test_cash_payment_passes_method_to_transition():
+    """Cash via pay_order() must pass payment_method='cash' into
+    OrderService.transition so the ledger layer posts cash-settlement."""
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+    from core.domain.order_state import OrderState
+
+    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
+    mock_db = _make_mock_db()
+    payment_dict = {"id": "pay-cash-ls", "amount": Decimal("5000"), "method": "cash"}
+
+    pay_req = PayOrderRequest(amount=5000, method="cash")
+
+    transition_kwargs = {}
+
+    async def capture_transition(**kwargs):
+        transition_kwargs.update(kwargs)
+        return MagicMock(
+            id=mock_order.id, status=OrderState.PAID,
+            total_amount=mock_order.total_amount,
+        )
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
+         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
+         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
+
+        repo_instance = AsyncMock()
+        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.create = AsyncMock(return_value=payment_dict)
+        MockRepo.return_value = repo_instance
+
+        svc_instance = AsyncMock()
+        svc_instance.transition = AsyncMock(side_effect=capture_transition)
+        MockOS.return_value = svc_instance
+
+        await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=pay_req,
+        )
+
+    assert transition_kwargs.get("payment_method") == "cash", \
+        f"Expected payment_method='cash' passed to transition, got {transition_kwargs.get('payment_method')}"
+
+
+@pytest.mark.asyncio
+async def test_legacy_pay_passes_no_payment_method_to_transition():
+    """Legacy empty-body pay must NOT pass payment_method to transition
+    (preserves default None → existing cash-settlement ledger behavior)."""
+    from api.v1.orders import pay_order
+    from core.domain.order_state import OrderState
+
+    mock_order = _make_mock_order(order_status="confirmed")
+    mock_db = _make_mock_db()
+
+    transition_kwargs = {}
+
+    async def capture_transition(**kwargs):
+        transition_kwargs.update(kwargs)
+        return MagicMock(
+            id=mock_order.id, status=OrderState.PAID,
+            total_amount=mock_order.total_amount,
+        )
+
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.order_service.OrderService") as MockOS, \
+         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "Retailer A"}):
+
+        svc_instance = AsyncMock()
+        svc_instance.transition = AsyncMock(side_effect=capture_transition)
+        MockOS.return_value = svc_instance
+
+        resp = await pay_order(
+            order_id=str(mock_order.id),
+            token=_FakeToken(),
+            db=mock_db,
+            payment_input=None,
+        )
+
+    assert resp.success is True
+    assert "payment_method" not in transition_kwargs or transition_kwargs.get("payment_method") is None, \
+        f"Legacy path should not pass payment_method, got {transition_kwargs.get('payment_method')}"
+
+
+# ============================================================================
+# 12. Phase 6.1 — Credit Ledger Semantics (mock-based unit tests)
+#
+# Mock-based tests verifying _post_ledger_entries behavior without DB.
+# These complement the DB integration tests in test_s5_ledger.py.
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_post_ledger_entries_credit_paid_skips_payment_received():
+    """_post_ledger_entries with payment_method='credit' must NOT call
+    post_payment_received — receivable exposure stays on the ledger."""
+    from services.order_service import OrderService
+    from core.domain.order_state import OrderState
+
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_order = MagicMock()
+    mock_order.id = "ord-ledger-1"
+    mock_order.total_amount = Decimal("5000")
+    mock_result.scalar_one_or_none.return_value = mock_order
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    mock_db.refresh = AsyncMock()
+
+    svc = OrderService(mock_db)
+
+    with patch("services.ledger_service.LedgerService") as MockLedgerSvc:
+        ledger_instance = AsyncMock()
+        MockLedgerSvc.return_value = ledger_instance
+
+        await svc._post_ledger_entries(
+            order=mock_order,
+            from_state=OrderState.CONFIRMED,
+            to_state=OrderState.PAID,
+            payment_method="credit",
+        )
+
+        # post_payment_received must NOT be called for credit
+        ledger_instance.post_payment_received.assert_not_called()
+        # post_order_confirmation must NOT be called (target is PAID, not CONFIRMED)
+        ledger_instance.post_order_confirmation.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_post_ledger_entries_default_paid_calls_payment_received():
+    """_post_ledger_entries with payment_method=None (default) must call
+    post_payment_received — existing cash/legacy behavior preserved."""
+    from services.order_service import OrderService
+    from core.domain.order_state import OrderState
+
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_order = MagicMock()
+    mock_order.id = "ord-ledger-2"
+    mock_order.total_amount = Decimal("5000")
+    mock_result.scalar_one_or_none.return_value = mock_order
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    mock_db.refresh = AsyncMock()
+
+    svc = OrderService(mock_db)
+
+    with patch("services.ledger_service.LedgerService") as MockLedgerSvc:
+        ledger_instance = AsyncMock()
+        MockLedgerSvc.return_value = ledger_instance
+
+        await svc._post_ledger_entries(
+            order=mock_order,
+            from_state=OrderState.CONFIRMED,
+            to_state=OrderState.PAID,
+        )
+
+        # post_payment_received MUST be called for default (legacy) PAID
+        ledger_instance.post_payment_received.assert_called_once_with(
+            order_id=mock_order.id,
+            amount=Decimal("5000"),
+            description=f"Payment received for order {mock_order.id} - Amount: {Decimal('5000')}",
+        )
+
+
+@pytest.mark.asyncio
+async def test_post_ledger_entries_cash_paid_calls_payment_received():
+    """_post_ledger_entries with payment_method='cash' must call
+    post_payment_received — explicit cash acts like default."""
+    from services.order_service import OrderService
+    from core.domain.order_state import OrderState
+
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_order = MagicMock()
+    mock_order.id = "ord-ledger-3"
+    mock_order.total_amount = Decimal("5000")
+    mock_result.scalar_one_or_none.return_value = mock_order
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    mock_db.refresh = AsyncMock()
+
+    svc = OrderService(mock_db)
+
+    with patch("services.ledger_service.LedgerService") as MockLedgerSvc:
+        ledger_instance = AsyncMock()
+        MockLedgerSvc.return_value = ledger_instance
+
+        await svc._post_ledger_entries(
+            order=mock_order,
+            from_state=OrderState.CONFIRMED,
+            to_state=OrderState.PAID,
+            payment_method="cash",
+        )
+
+        ledger_instance.post_payment_received.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_post_ledger_entries_transfer_paid_calls_payment_received():
+    """_post_ledger_entries with payment_method='transfer' must call
+    post_payment_received."""
+    from services.order_service import OrderService
+    from core.domain.order_state import OrderState
+
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_order = MagicMock()
+    mock_order.id = "ord-ledger-4"
+    mock_order.total_amount = Decimal("5000")
+    mock_result.scalar_one_or_none.return_value = mock_order
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.flush = AsyncMock()
+    mock_db.refresh = AsyncMock()
+
+    svc = OrderService(mock_db)
+
+    with patch("services.ledger_service.LedgerService") as MockLedgerSvc:
+        ledger_instance = AsyncMock()
+        MockLedgerSvc.return_value = ledger_instance
+
+        await svc._post_ledger_entries(
+            order=mock_order,
+            from_state=OrderState.CONFIRMED,
+            to_state=OrderState.PAID,
+            payment_method="transfer",
+        )
+
+        ledger_instance.post_payment_received.assert_called_once()

@@ -571,6 +571,7 @@ async def pay_order(
                     f"{payment_input.amount}"
                 ),
                 updated_by=token.user_id,
+                payment_method=payment_input.method,
             )
         except InvalidStateTransitionError as e:
             raise HTTPException(

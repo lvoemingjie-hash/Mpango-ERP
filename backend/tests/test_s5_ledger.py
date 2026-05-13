@@ -509,3 +509,122 @@ async def test_zero_balance_for_unused_account(async_session):
     balance = await service.get_balance(AccountType.LIABILITY)
 
     assert balance == Decimal('0')
+
+
+# ============================================================================
+# Phase 6.1 — Credit Ledger Semantics (unit-level)
+#
+# Unit tests proving _post_ledger_entries skips post_payment_received
+# when payment_method="credit", and preserves existing behavior for
+# None / "cash" / "transfer".
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_credit_paid_skips_cash_settlement_ledger(async_session, sample_order_for_ledger):
+    """
+    Phase 6.1: Credit PAID transition must NOT call post_payment_received.
+
+    When payment_method="credit" and target is PAID, the receivable
+    exposure from confirmation must remain visible — no CASH/RECEIVABLE
+    settlement entries are posted.
+    """
+    order_service = OrderService(async_session)
+    ledger_service = LedgerService(async_session)
+    order = sample_order_for_ledger
+
+    # Confirm order first → RECEIVABLE +100, REVENUE -100
+    order = await order_service.transition(
+        order_id=order.id,
+        target_state=OrderState.CONFIRMED,
+    )
+
+    receivable_after_confirm = await ledger_service.get_balance(AccountType.RECEIVABLE)
+    cash_after_confirm = await ledger_service.get_balance(AccountType.CASH)
+    assert receivable_after_confirm == Decimal("100.00")
+    assert cash_after_confirm == Decimal("0")
+
+    # Transition to PAID with payment_method="credit"
+    order = await order_service.transition(
+        order_id=order.id,
+        target_state=OrderState.PAID,
+        payment_method="credit",
+    )
+
+    # Receivable must remain +100 (NOT settled to 0)
+    receivable_after_paid = await ledger_service.get_balance(AccountType.RECEIVABLE)
+    assert receivable_after_paid == Decimal("100.00"), \
+        f"Credit PAID must preserve receivable, got {receivable_after_paid}"
+
+    # Cash must remain 0 (no cash received)
+    cash_after_paid = await ledger_service.get_balance(AccountType.CASH)
+    assert cash_after_paid == Decimal("0"), \
+        f"Credit PAID must not create cash entries, got {cash_after_paid}"
+
+    # Only confirmation entries (2), no payment-settlement entries
+    entries = await ledger_service.get_entries_for_reference('order', order.id)
+    assert len(entries) == 2, \
+        f"Credit PAID should have 2 entries (confirm only), got {len(entries)}"
+
+
+@pytest.mark.asyncio
+async def test_default_paid_posts_cash_settlement_ledger(async_session, sample_order_for_ledger):
+    """
+    Phase 6.1: Default PAID transition (no payment_method) still calls
+    post_payment_received — existing cash/legacy behavior preserved.
+    """
+    order_service = OrderService(async_session)
+    ledger_service = LedgerService(async_session)
+    order = sample_order_for_ledger
+
+    # Confirm order
+    order = await order_service.transition(
+        order_id=order.id,
+        target_state=OrderState.CONFIRMED,
+    )
+
+    # Transition to PAID without payment_method (legacy/default)
+    order = await order_service.transition(
+        order_id=order.id,
+        target_state=OrderState.PAID,
+    )
+
+    # Receivable settled to 0
+    receivable = await ledger_service.get_balance(AccountType.RECEIVABLE)
+    assert receivable == Decimal("0")
+
+    # Cash increased by 100
+    cash = await ledger_service.get_balance(AccountType.CASH)
+    assert cash == Decimal("100.00")
+
+    # 4 entries: 2 confirm + 2 payment-settlement
+    entries = await ledger_service.get_entries_for_reference('order', order.id)
+    assert len(entries) == 4
+
+
+@pytest.mark.asyncio
+async def test_explicit_cash_paid_posts_cash_settlement(async_session, sample_order_for_ledger):
+    """
+    Phase 6.1: Explicit payment_method="cash" posts cash-settlement
+    ledger entries (same as default behavior).
+    """
+    order_service = OrderService(async_session)
+    ledger_service = LedgerService(async_session)
+    order = sample_order_for_ledger
+
+    order = await order_service.transition(
+        order_id=order.id,
+        target_state=OrderState.CONFIRMED,
+    )
+
+    order = await order_service.transition(
+        order_id=order.id,
+        target_state=OrderState.PAID,
+        payment_method="cash",
+    )
+
+    receivable = await ledger_service.get_balance(AccountType.RECEIVABLE)
+    assert receivable == Decimal("0")
+
+    cash = await ledger_service.get_balance(AccountType.CASH)
+    assert cash == Decimal("100.00")

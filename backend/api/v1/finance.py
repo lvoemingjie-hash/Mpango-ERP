@@ -32,6 +32,7 @@ from core.security import TokenPayload
 from models.ledger import LedgerEntry, AccountType
 from models.order import Order, OrderItem, OrderStatus
 from schemas.common import DataResponse
+from services.receivables_service import ReceivablesService
 
 
 router = APIRouter()
@@ -317,5 +318,93 @@ async def get_financial_summary(
         success=True,
         data=summary,
         message="Financial summary generated",
+        timestamp=datetime.utcnow(),
+    )
+
+
+# ============================================================================
+# Phase 6.2 Round 2: Receivables Visibility MVP
+# ============================================================================
+
+@router.get(
+    "/receivables/summary",
+    response_model=DataResponse[dict],
+    status_code=status.HTTP_200_OK,
+    summary="Receivables summary by retailer",
+)
+async def get_receivables_summary(
+    token: TokenPayload = Depends(RequirePermission("finance:read")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    """
+    Returns comprehensive receivables summary by retailer:
+      - total_outstanding: sum of all retailer outstanding balances
+      - retailer_count: number of retailers with balances
+      - order_count: total orders with receivable exposure
+      - credit_receivables: total credit payment exposure
+      - unpaid_order_balance: total unpaid order balances
+      - by_retailer: list of per-retailer breakdowns
+
+    Uses public.wholesaler_retailer_bindings.outstanding_balance as the
+    authoritative retailer balance cache.
+
+    Permission: finance:read
+    """
+    service = ReceivablesService()
+    summary = await service.get_receivables_summary(tenant_db=db)
+
+    return DataResponse(
+        success=True,
+        data=summary,
+        message="Receivables summary generated",
+        timestamp=datetime.utcnow(),
+    )
+
+
+@router.get(
+    "/receivables/orders",
+    response_model=DataResponse[dict],
+    status_code=status.HTTP_200_OK,
+    summary="List orders with receivables exposure",
+)
+async def get_receivable_orders(
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(20, ge=1, le=100, description="Items per page"),
+    retailer_id: str | None = Query(None, description="Filter by retailer ID"),
+    classification: str | None = Query(None, description="Filter by classification: credit_receivable or unpaid_order"),
+    status_filter: str | None = Query(None, alias="status", description="Filter by order status"),
+    token: TokenPayload = Depends(RequirePermission("finance:read")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    """
+    Returns orders with receivables exposure, paginated and filterable.
+
+    Query params:
+      - page: page number (default 1)
+      - size: items per page (default 20, max 100)
+      - retailer_id: optional retailer UUID filter
+      - classification: optional filter (credit_receivable or unpaid_order)
+      - status: optional order status filter
+
+    Classification definitions:
+      - credit_receivable: order with credit payment exposure (may be PAID)
+      - unpaid_order: confirmed/partially_paid with remaining non-credit balance
+
+    Permission: finance:read
+    """
+    service = ReceivablesService()
+    result = await service.list_receivable_orders(
+        tenant_db=db,
+        page=page,
+        size=size,
+        retailer_id=retailer_id,
+        classification=classification,
+        status=status_filter,
+    )
+
+    return DataResponse(
+        success=True,
+        data=result,
+        message="Receivable orders listed",
         timestamp=datetime.utcnow(),
     )

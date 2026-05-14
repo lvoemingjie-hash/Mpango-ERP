@@ -222,6 +222,137 @@ npx gitnexus status
 ✅ No changes to existing Phase 6.2 business semantics
 ✅ Read-only contract hardening only
 
+## CTO Polish Addendum (Round 2)
+
+**Date:** 2026-05-14 (continued)
+**Commit:** `085ea92 style(finance): CTO polish - tighten receivables API response contract`
+
+### Overview
+
+After initial contract stabilization, CTO code review identified opportunities to strengthen the typed contract without changing runtime business behavior. This polish adds stricter type constraints and removes unused imports.
+
+### Changes
+
+#### 1. Pagination Type Safety
+
+**Before:**
+```python
+pagination: dict = Field(..., description="Pagination metadata with page, size, total, pages")
+```
+
+**After:**
+```python
+class ReceivablesPagination(BaseModel):
+    page: int = Field(..., ge=1, description="Current page number (1-based)")
+    size: int = Field(..., ge=1, le=100, description="Items per page")
+    total: int = Field(..., ge=0, description="Total number of items")
+    pages: int = Field(..., ge=0, description="Total number of pages")
+
+class ReceivableOrdersResponse(BaseModel):
+    items: List[ReceivableOrderItem] = Field(..., description="Receivable orders")
+    pagination: ReceivablesPagination = Field(..., description="Pagination metadata")
+```
+
+**Rationale:** Replaces weak `dict` type with strongly-typed pagination model that validates constraints (page≥1, size 1-100, total≥0, pages≥0).
+
+#### 2. Literal Types for Enums
+
+**Before:**
+```python
+classification: str | None = Field(None, description="Classification: credit_receivable or unpaid_order")
+payment_method: str = Field(..., description="Primary payment method (credit, cash)")
+```
+
+**After:**
+```python
+from typing import Literal
+
+classification: Literal["credit_receivable", "unpaid_order"] | None = Field(None, description="Classification: credit_receivable or unpaid_order")
+payment_method: Literal["credit", "cash", "unknown"] = Field(..., description="Primary payment method")
+```
+
+**Rationale:**
+- `classification`: Only two valid values exist from service output, use Literal to enforce them
+- `payment_method`: Service returns exactly three values ("credit", "cash", "unknown"), use Literal to enforce them
+
+#### 3. Import Cleanup
+
+**Removed unused imports from `backend/api/v1/finance.py`:**
+```python
+# Removed (not used in endpoint logic):
+- RetailerSummaryItem
+- ReceivableOrderItem
+```
+
+**Removed unused import from `backend/schemas/finance.py`:**
+```python
+# Removed (not used in schemas):
+- datetime
+```
+
+#### 4. Enhanced Test Coverage
+
+**Added tests validating new typed contract:**
+- `test_receivable_orders_pagination_typed_contract`: Validates pagination is properly typed with stable keys and constraints
+- `test_receivable_orders_literal_classification_values`: Validates both valid classification values
+- `test_receivable_orders_literal_payment_method_values`: Validates all three valid payment_method values
+- `test_receivable_orders_null_classification_safe`: Validates null classification is accepted
+
+### Verification
+
+**Tests:** All 38 receivables tests pass
+```powershell
+poetry run pytest tests/test_receivables_service.py tests/test_finance_receivables_api.py -q --tb=short
+# Result: 38 passed
+```
+
+**App Smoke:** 105 routes loaded successfully
+```powershell
+$env:MPANGO_ENV='test'
+$env:DATABASE_URL='postgresql://postgres:postgres@localhost:5432/mpango_test'
+$env:REPORTING_USER_PASSWORD='test-password-for-reporting'
+python -c "import os; import secrets; os.environ['SECRET_KEY'] = secrets.token_urlsafe(32); from api.app import app; print(len(app.routes))"
+# Result: 105
+```
+
+**GitNexus:** Index updated successfully
+```powershell
+npx gitnexus analyze
+# Result: 4,692 nodes | 13,279 edges | 310 clusters | 224 flows
+```
+
+### Impact Assessment
+
+✅ **No runtime behavior change** - Service logic untouched
+✅ **No query validation behavior change** - Same empty-result fallback
+✅ **No migrations** - Schema changes are Pydantic types only
+✅ **No write-path changes** - OrderService, PaymentService, LedgerService untouched
+✅ **Stronger contract** - Literal types and pagination model improve type safety
+✅ **Better IDE support** - Literal values autocomplete in TypeScript/Python clients
+✅ **Test coverage** - New tests validate typed contract constraints
+
+### Updated TypeScript Contract
+
+**Pagination:**
+```typescript
+interface ReceivablesPagination {
+  page: number;  // ≥ 1
+  size: number;  // 1-100
+  total: number; // ≥ 0
+  pages: number; // ≥ 0
+}
+```
+
+**Classification (stricter):**
+```typescript
+classification: "credit_receivable" | "unpaid_order" | null
+```
+
+**Payment Method (stricter):**
+```typescript
+payment_method: "credit" | "cash" | "unknown"
+```
+
 ## Frontend Contract Note
 
 ### For Frontend Developers
@@ -253,12 +384,14 @@ interface RetailerSummaryItem {
 ```typescript
 interface ReceivableOrdersResponse {
   items: ReceivableOrderItem[];
-  pagination: {
-    page: number;
-    size: number;
-    total: number;
-    pages: number;
-  };
+  pagination: ReceivablesPagination;
+}
+
+interface ReceivablesPagination {
+  page: number;  // ≥ 1
+  size: number;  // 1-100
+  total: number; // ≥ 0
+  pages: number; // ≥ 0
 }
 
 interface ReceivableOrderItem {
@@ -267,7 +400,7 @@ interface ReceivableOrderItem {
   retailer_name: string;
   status: string;
   classification: "credit_receivable" | "unpaid_order" | null;
-  payment_method: "credit" | "cash";
+  payment_method: "credit" | "cash" | "unknown";
   total_amount: number;
   cash_paid: number;
   credit_amount: number;

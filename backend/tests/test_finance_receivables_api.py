@@ -535,6 +535,251 @@ async def test_receivable_orders_requires_finance_read_permission():
 
 
 # ---------------------------------------------------------------------------
+# API Boundary Validation Tests (Phase 6.3A)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_receivable_orders_invalid_classification_returns_empty():
+    """GET /finance/receivables/orders with invalid classification returns empty result (safe contract)."""
+    from services.receivables_service import ReceivablesService
+    from api.v1.finance import get_receivable_orders
+
+    mock_response = {
+        "items": [],
+        "pagination": {"page": 1, "size": 20, "total": 0, "pages": 0},
+    }
+
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response) as mock_service:
+        mock_token = MagicMock()
+        mock_db = AsyncMock()
+
+        result = await get_receivable_orders(
+            page=1,
+            size=20,
+            classification="invalid_classification",
+            token=mock_token,
+            db=mock_db,
+        )
+
+        # Should return empty result, not 422 error (safe frontend contract)
+        assert result.success is True
+        assert result.data["items"] == []
+        assert result.data["pagination"]["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_receivable_orders_invalid_status_returns_empty():
+    """GET /finance/receivables/orders with invalid status returns empty result (safe contract)."""
+    from services.receivables_service import ReceivablesService
+    from api.v1.finance import get_receivable_orders
+
+    mock_response = {
+        "items": [],
+        "pagination": {"page": 1, "size": 20, "total": 0, "pages": 0},
+    }
+
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response) as mock_service:
+        mock_token = MagicMock()
+        mock_db = AsyncMock()
+
+        result = await get_receivable_orders(
+            page=1,
+            size=20,
+            status_filter="invalid_status",
+            token=mock_token,
+            db=mock_db,
+        )
+
+        # Should return empty result, not 422 error (safe frontend contract)
+        assert result.success is True
+        assert result.data["items"] == []
+        assert result.data["pagination"]["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_receivable_orders_invalid_retailer_id_returns_empty():
+    """GET /finance/receivables/orders with invalid retailer_id returns empty result (safe contract)."""
+    from services.receivables_service import ReceivablesService
+    from api.v1.finance import get_receivable_orders
+
+    mock_response = {
+        "items": [],
+        "pagination": {"page": 1, "size": 20, "total": 0, "pages": 0},
+    }
+
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response) as mock_service:
+        mock_token = MagicMock()
+        mock_db = AsyncMock()
+
+        result = await get_receivable_orders(
+            page=1,
+            size=20,
+            retailer_id="not-a-uuid",
+            token=mock_token,
+            db=mock_db,
+        )
+
+        # Should return empty result, not 422 error (safe frontend contract)
+        assert result.success is True
+        assert result.data["items"] == []
+        assert result.data["pagination"]["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_receivable_orders_page_size_validation():
+    """GET /finance/receivables/orders enforces page/size validation."""
+    from services.receivables_service import ReceivablesService
+    from api.v1.finance import get_receivable_orders
+
+    mock_response = {
+        "items": [],
+        "pagination": {"page": 1, "size": 20, "total": 0, "pages": 0},
+    }
+
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response):
+        mock_token = MagicMock()
+        mock_db = AsyncMock()
+
+        # Valid page/size values should work
+        result = await get_receivable_orders(
+            page=1,
+            size=100,  # max allowed
+            token=mock_token,
+            db=mock_db,
+        )
+        assert result.success is True
+
+
+@pytest.mark.asyncio
+async def test_receivables_response_has_stable_keys():
+    """Receivables endpoints return responses with stable, documented keys for frontend consumption."""
+    from services.receivables_service import ReceivablesService
+    from api.v1.finance import get_receivables_summary, get_receivable_orders
+
+    # Test summary response keys
+    mock_summary = {
+        "total_outstanding": 15000.00,
+        "retailer_count": 3,
+        "order_count": 25,
+        "credit_receivables": 5000.00,
+        "unpaid_order_balance": 10000.00,
+        "by_retailer": [
+            {
+                "retailer_id": str(uuid.uuid4()),
+                "retailer_name": "Retailer A",
+                "outstanding_balance": 5000.00,
+                "credit_receivables": 2000.00,
+                "unpaid_order_balance": 3000.00,
+                "order_count": 10,
+            },
+        ],
+    }
+
+    with patch.object(ReceivablesService, 'get_receivables_summary', return_value=mock_summary):
+        mock_token = MagicMock()
+        mock_db = AsyncMock()
+
+        result = await get_receivables_summary(token=mock_token, db=mock_db)
+
+        # Verify stable keys exist
+        data = result.data
+        required_summary_keys = [
+            "total_outstanding",
+            "retailer_count",
+            "order_count",
+            "credit_receivables",
+            "unpaid_order_balance",
+            "by_retailer",
+        ]
+        for key in required_summary_keys:
+            assert key in data, f"Missing required key: {key}"
+
+        # Verify retailer item keys
+        if len(data["by_retailer"]) > 0:
+            retailer = data["by_retailer"][0]
+            required_retailer_keys = [
+                "retailer_id",
+                "retailer_name",
+                "outstanding_balance",
+                "credit_receivables",
+                "unpaid_order_balance",
+                "order_count",
+            ]
+            for key in required_retailer_keys:
+                assert key in retailer, f"Missing required retailer key: {key}"
+
+    # Test orders response keys
+    order_id = uuid.uuid4()
+    retailer_id = uuid.uuid4()
+    mock_orders_response = {
+        "items": [
+            {
+                "order_id": str(order_id),
+                "retailer_id": str(retailer_id),
+                "retailer_name": "Test Retailer",
+                "status": "confirmed",
+                "classification": "credit_receivable",
+                "payment_method": "credit",
+                "total_amount": 2000.00,
+                "cash_paid": 500.00,
+                "credit_amount": 1500.00,
+                "balance_due": 1500.00,
+                "created_at": "2026-05-13T10:00:00",
+                "age_days": 3,
+            },
+        ],
+        "pagination": {
+            "page": 1,
+            "size": 20,
+            "total": 1,
+            "pages": 1,
+        },
+    }
+
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_orders_response):
+        mock_token = MagicMock()
+        mock_db = AsyncMock()
+
+        result = await get_receivable_orders(
+            page=1,
+            size=20,
+            token=mock_token,
+            db=mock_db,
+        )
+
+        # Verify stable keys exist
+        data = result.data
+        assert "items" in data
+        assert "pagination" in data
+
+        # Verify order item keys
+        if len(data["items"]) > 0:
+            item = data["items"][0]
+            required_item_keys = [
+                "order_id",
+                "retailer_id",
+                "retailer_name",
+                "status",
+                "classification",
+                "payment_method",
+                "total_amount",
+                "cash_paid",
+                "credit_amount",
+                "balance_due",
+                "created_at",
+                "age_days",
+            ]
+            for key in required_item_keys:
+                assert key in item, f"Missing required order item key: {key}"
+
+        # Verify pagination keys
+        pagination = data["pagination"]
+        required_pagination_keys = ["page", "size", "total", "pages"]
+        for key in required_pagination_keys:
+            assert key in pagination, f"Missing required pagination key: {key}"
+
+
+# ---------------------------------------------------------------------------
 # Error Handling Tests
 # ---------------------------------------------------------------------------
 

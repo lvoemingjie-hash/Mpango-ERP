@@ -32,6 +32,12 @@ from core.security import TokenPayload
 from models.ledger import LedgerEntry, AccountType
 from models.order import Order, OrderItem, OrderStatus
 from schemas.common import DataResponse
+from schemas.finance import (
+    ReceivablesSummaryResponse,
+    ReceivableOrdersResponse,
+    RetailerSummaryItem,
+    ReceivableOrderItem,
+)
 from services.receivables_service import ReceivablesService
 
 
@@ -328,7 +334,7 @@ async def get_financial_summary(
 
 @router.get(
     "/receivables/summary",
-    response_model=DataResponse[dict],
+    response_model=DataResponse[ReceivablesSummaryResponse],
     status_code=status.HTTP_200_OK,
     summary="Receivables summary by retailer",
 )
@@ -363,7 +369,7 @@ async def get_receivables_summary(
 
 @router.get(
     "/receivables/orders",
-    response_model=DataResponse[dict],
+    response_model=DataResponse[ReceivableOrdersResponse],
     status_code=status.HTTP_200_OK,
     summary="List orders with receivables exposure",
 )

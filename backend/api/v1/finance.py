@@ -15,29 +15,26 @@ Tenant isolation: enforced via `get_tenant_db_session` (JWT-derived search_path)
 """
 from __future__ import annotations
 
-import io
 import uuid
 from datetime import datetime
 from decimal import Decimal
 from math import ceil
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func, case, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_tenant_db_session
 from api.middleware.rbac import RequirePermission
 from core.security import TokenPayload
-from models.ledger import LedgerEntry, AccountType
+from models.ledger import AccountType, LedgerEntry
 from models.order import Order, OrderItem, OrderStatus
 from schemas.common import DataResponse
 from schemas.finance import (
-    ReceivablesSummaryResponse,
     ReceivableOrdersResponse,
+    ReceivablesSummaryResponse,
 )
 from services.receivables_service import ReceivablesService
-
 
 router = APIRouter()
 

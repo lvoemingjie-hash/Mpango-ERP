@@ -7,7 +7,8 @@ Provides stable typed response models for Phase 6.2 receivables endpoints:
 """
 from __future__ import annotations
 
-from typing import List, Literal
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -38,7 +39,7 @@ class ReceivablesSummaryResponse(BaseModel):
     order_count: int = Field(..., ge=0, description="Total orders with receivable exposure")
     credit_receivables: float = Field(..., ge=0, description="Total credit payment exposure")
     unpaid_order_balance: float = Field(..., ge=0, description="Total unpaid order balances")
-    by_retailer: List[RetailerSummaryItem] = Field(..., description="Per-retailer breakdowns")
+    by_retailer: list[RetailerSummaryItem] = Field(..., description="Per-retailer breakdowns")
 
     model_config = {"from_attributes": True}
 
@@ -83,7 +84,7 @@ class ReceivableOrdersResponse(BaseModel):
 
     Response for GET /finance/receivables/orders
     """
-    items: List[ReceivableOrderItem] = Field(..., description="Receivable orders")
+    items: list[ReceivableOrderItem] = Field(..., description="Receivable orders")
     pagination: ReceivablesPagination = Field(..., description="Pagination metadata")
 
     model_config = {"from_attributes": True}

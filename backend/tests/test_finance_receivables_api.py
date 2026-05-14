@@ -7,12 +7,11 @@ Tests for receivables visibility API endpoints:
 - Query parameters pass through correctly
 - Permission checks work
 """
-import pytest
-from decimal import Decimal
+import uuid
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -43,9 +42,9 @@ def mock_db_session():
 @pytest.mark.asyncio
 async def test_get_receivables_summary_returns_200_shape():
     """GET /finance/receivables/summary returns 200 with correct shape."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivables_summary
     from schemas.common import DataResponse
+    from services.receivables_service import ReceivablesService
 
     # Mock service response
     mock_summary = {
@@ -123,8 +122,8 @@ async def test_get_receivables_summary_returns_200_shape():
 @pytest.mark.asyncio
 async def test_get_receivables_summary_calls_service_once():
     """GET /finance/receivables/summary calls service exactly once."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivables_summary
+    from services.receivables_service import ReceivablesService
 
     mock_summary = {
         "total_outstanding": 0.0,
@@ -152,8 +151,8 @@ async def test_get_receivables_summary_calls_service_once():
 @pytest.mark.asyncio
 async def test_get_receivables_summary_empty_result():
     """GET /finance/receivables/summary returns empty structure when no data."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivables_summary
+    from services.receivables_service import ReceivablesService
 
     mock_summary = {
         "total_outstanding": 0.0,
@@ -186,9 +185,9 @@ async def test_get_receivables_summary_empty_result():
 @pytest.mark.asyncio
 async def test_get_receivable_orders_returns_200_shape():
     """GET /finance/receivables/orders returns 200 with correct shape."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
     from schemas.common import DataResponse
+    from services.receivables_service import ReceivablesService
 
     # Mock service response
     order_id = uuid.uuid4()
@@ -291,8 +290,8 @@ async def test_get_receivable_orders_returns_200_shape():
 @pytest.mark.asyncio
 async def test_get_receivable_orders_passes_query_params():
     """GET /finance/receivables/orders passes query params to service."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     retailer_id = str(uuid.uuid4())
     classification = "credit_receivable"
@@ -332,8 +331,8 @@ async def test_get_receivable_orders_passes_query_params():
 @pytest.mark.asyncio
 async def test_get_receivable_orders_empty_result():
     """GET /finance/receivables/orders returns empty list when no orders."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [],
@@ -360,8 +359,8 @@ async def test_get_receivable_orders_empty_result():
 @pytest.mark.asyncio
 async def test_get_receivable_orders_pagination_metadata():
     """GET /finance/receivables/orders returns correct pagination metadata."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [
@@ -413,8 +412,8 @@ async def test_get_receivable_orders_pagination_metadata():
 @pytest.mark.asyncio
 async def test_receivable_orders_retailer_id_filter():
     """Query param retailer_id passes through to service."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     retailer_id = str(uuid.uuid4())
     mock_response = {
@@ -441,8 +440,8 @@ async def test_receivable_orders_retailer_id_filter():
 @pytest.mark.asyncio
 async def test_receivable_orders_classification_filter():
     """Query param classification passes through to service."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [],
@@ -468,8 +467,8 @@ async def test_receivable_orders_classification_filter():
 @pytest.mark.asyncio
 async def test_receivable_orders_status_filter():
     """Query param status passes through to service (aliased as status_filter)."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [],
@@ -499,9 +498,9 @@ async def test_receivable_orders_status_filter():
 @pytest.mark.asyncio
 async def test_receivables_summary_requires_finance_read_permission():
     """GET /finance/receivables/summary requires finance:read permission."""
-    from api.middleware.rbac import RequirePermission
-    from api.v1.finance import get_receivables_summary
     import inspect
+
+    from api.v1.finance import get_receivables_summary
 
     # Verify the endpoint function signature has token dependency with RequirePermission
     sig = inspect.signature(get_receivables_summary)
@@ -518,9 +517,9 @@ async def test_receivables_summary_requires_finance_read_permission():
 @pytest.mark.asyncio
 async def test_receivable_orders_requires_finance_read_permission():
     """GET /finance/receivables/orders requires finance:read permission."""
-    from api.middleware.rbac import RequirePermission
-    from api.v1.finance import get_receivable_orders
     import inspect
+
+    from api.v1.finance import get_receivable_orders
 
     # Verify the endpoint function signature has token dependency with RequirePermission
     sig = inspect.signature(get_receivable_orders)
@@ -541,9 +540,8 @@ async def test_receivable_orders_requires_finance_read_permission():
 @pytest.mark.asyncio
 async def test_receivable_orders_pagination_typed_contract():
     """GET /finance/receivables/orders returns typed pagination with stable keys."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
-    from schemas.finance import ReceivablesPagination
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [
@@ -607,8 +605,8 @@ async def test_receivable_orders_pagination_typed_contract():
 @pytest.mark.asyncio
 async def test_receivable_orders_literal_classification_values():
     """Receivable orders classification field accepts only valid literal values."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     # Test both valid classification values
     for classification_value in ["credit_receivable", "unpaid_order"]:
@@ -655,8 +653,8 @@ async def test_receivable_orders_literal_classification_values():
 @pytest.mark.asyncio
 async def test_receivable_orders_literal_payment_method_values():
     """Receivable orders payment_method field accepts only valid literal values."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     # Test all valid payment method values
     for payment_method_value in ["credit", "cash", "unknown"]:
@@ -703,8 +701,8 @@ async def test_receivable_orders_literal_payment_method_values():
 @pytest.mark.asyncio
 async def test_receivable_orders_null_classification_safe():
     """Receivable orders classification field can be null (no credit or unpaid balance)."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [
@@ -749,15 +747,15 @@ async def test_receivable_orders_null_classification_safe():
 @pytest.mark.asyncio
 async def test_receivable_orders_invalid_classification_returns_empty():
     """GET /finance/receivables/orders with invalid classification returns empty result (safe contract)."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [],
         "pagination": {"page": 1, "size": 20, "total": 0, "pages": 0},
     }
 
-    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response) as mock_service:
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response):
         mock_token = MagicMock()
         mock_db = AsyncMock()
 
@@ -778,15 +776,15 @@ async def test_receivable_orders_invalid_classification_returns_empty():
 @pytest.mark.asyncio
 async def test_receivable_orders_invalid_status_returns_empty():
     """GET /finance/receivables/orders with invalid status returns empty result (safe contract)."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [],
         "pagination": {"page": 1, "size": 20, "total": 0, "pages": 0},
     }
 
-    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response) as mock_service:
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response):
         mock_token = MagicMock()
         mock_db = AsyncMock()
 
@@ -807,15 +805,15 @@ async def test_receivable_orders_invalid_status_returns_empty():
 @pytest.mark.asyncio
 async def test_receivable_orders_invalid_retailer_id_returns_empty():
     """GET /finance/receivables/orders with invalid retailer_id returns empty result (safe contract)."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [],
         "pagination": {"page": 1, "size": 20, "total": 0, "pages": 0},
     }
 
-    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response) as mock_service:
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response):
         mock_token = MagicMock()
         mock_db = AsyncMock()
 
@@ -836,8 +834,8 @@ async def test_receivable_orders_invalid_retailer_id_returns_empty():
 @pytest.mark.asyncio
 async def test_receivable_orders_page_size_validation():
     """GET /finance/receivables/orders enforces page/size validation."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     mock_response = {
         "items": [],
@@ -861,8 +859,8 @@ async def test_receivable_orders_page_size_validation():
 @pytest.mark.asyncio
 async def test_receivables_response_has_stable_keys():
     """Receivables endpoints return responses with stable, documented keys for frontend consumption."""
+    from api.v1.finance import get_receivable_orders, get_receivables_summary
     from services.receivables_service import ReceivablesService
-    from api.v1.finance import get_receivables_summary, get_receivable_orders
 
     # Test summary response keys
     mock_summary = {
@@ -994,8 +992,8 @@ async def test_receivables_response_has_stable_keys():
 @pytest.mark.asyncio
 async def test_receivables_summary_service_error_propagates():
     """Service errors in receivables summary propagate correctly."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivables_summary
+    from services.receivables_service import ReceivablesService
 
     with patch.object(ReceivablesService, 'get_receivables_summary', side_effect=Exception("DB connection failed")):
         mock_token = MagicMock()
@@ -1008,8 +1006,8 @@ async def test_receivables_summary_service_error_propagates():
 @pytest.mark.asyncio
 async def test_receivable_orders_service_error_propagates():
     """Service errors in receivable orders propagate correctly."""
-    from services.receivables_service import ReceivablesService
     from api.v1.finance import get_receivable_orders
+    from services.receivables_service import ReceivablesService
 
     with patch.object(ReceivablesService, 'list_receivable_orders', side_effect=Exception("Invalid retailer ID")):
         mock_token = MagicMock()

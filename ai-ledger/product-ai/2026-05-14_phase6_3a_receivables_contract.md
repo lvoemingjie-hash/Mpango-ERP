@@ -336,10 +336,10 @@ npx gitnexus analyze
 **Pagination:**
 ```typescript
 interface ReceivablesPagination {
-  page: number;  // ≥ 1
+  page: number;  // >= 1
   size: number;  // 1-100
-  total: number; // ≥ 0
-  pages: number; // ≥ 0
+  total: number; // >= 0
+  pages: number; // >= 0
 }
 ```
 
@@ -388,10 +388,10 @@ interface ReceivableOrdersResponse {
 }
 
 interface ReceivablesPagination {
-  page: number;  // ≥ 1
+  page: number;  // >= 1
   size: number;  // 1-100
-  total: number; // ≥ 0
-  pages: number; // ≥ 0
+  total: number; // >= 0
+  pages: number; // >= 0
 }
 
 interface ReceivableOrderItem {
@@ -411,3 +411,21 @@ interface ReceivableOrderItem {
 ```
 
 **Important:** Invalid filter values (classification, status, retailer_id) return empty results, not errors. This ensures consistent response shapes for frontend consumption.
+
+## CTO Final Polish Evidence
+
+After Claude's Round 2 polish, CTO ran scoped lint normalization on the touched files only:
+
+```powershell
+poetry run ruff check schemas/finance.py tests/test_finance_receivables_api.py
+poetry run ruff check api/v1/finance.py --ignore B904
+```
+
+Result:
+- `schemas/finance.py` and `tests/test_finance_receivables_api.py`: PASS
+- `api/v1/finance.py`: PASS with `B904` ignored because that warning belongs to a pre-existing invoice exception path, outside Phase 6.3A receivables contract scope
+
+Final CTO rerun:
+- Receivables suite: `38 passed`
+- Phase 5 order/payment regression with `REPORTING_USER_PASSWORD`: `53 passed, 1 xfailed`
+- App smoke: `105 routes`

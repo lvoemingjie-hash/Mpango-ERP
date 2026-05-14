@@ -35,8 +35,6 @@ from schemas.common import DataResponse
 from schemas.finance import (
     ReceivablesSummaryResponse,
     ReceivableOrdersResponse,
-    RetailerSummaryItem,
-    ReceivableOrderItem,
 )
 from services.receivables_service import ReceivablesService
 

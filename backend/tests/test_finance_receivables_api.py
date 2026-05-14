@@ -539,6 +539,214 @@ async def test_receivable_orders_requires_finance_read_permission():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
+async def test_receivable_orders_pagination_typed_contract():
+    """GET /finance/receivables/orders returns typed pagination with stable keys."""
+    from services.receivables_service import ReceivablesService
+    from api.v1.finance import get_receivable_orders
+    from schemas.finance import ReceivablesPagination
+
+    mock_response = {
+        "items": [
+            {
+                "order_id": str(uuid.uuid4()),
+                "retailer_id": str(uuid.uuid4()),
+                "retailer_name": "Test Retailer",
+                "status": "confirmed",
+                "classification": "credit_receivable",
+                "payment_method": "credit",
+                "total_amount": 2000.00,
+                "cash_paid": 500.00,
+                "credit_amount": 1500.00,
+                "balance_due": 1500.00,
+                "created_at": "2026-05-13T10:00:00",
+                "age_days": 3,
+            },
+        ],
+        "pagination": {
+            "page": 1,
+            "size": 20,
+            "total": 1,
+            "pages": 1,
+        },
+    }
+
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response):
+        mock_token = MagicMock()
+        mock_db = AsyncMock()
+
+        result = await get_receivable_orders(
+            page=1,
+            size=20,
+            token=mock_token,
+            db=mock_db,
+        )
+
+        # Verify pagination is properly typed with stable keys
+        pagination = result.data["pagination"]
+        assert isinstance(pagination, dict)
+
+        # Verify all required keys exist
+        required_keys = ["page", "size", "total", "pages"]
+        for key in required_keys:
+            assert key in pagination, f"Missing required pagination key: {key}"
+
+        # Verify types
+        assert isinstance(pagination["page"], int)
+        assert isinstance(pagination["size"], int)
+        assert isinstance(pagination["total"], int)
+        assert isinstance(pagination["pages"], int)
+
+        # Verify constraints
+        assert pagination["page"] >= 1
+        assert pagination["size"] >= 1
+        assert pagination["size"] <= 100
+        assert pagination["total"] >= 0
+        assert pagination["pages"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_receivable_orders_literal_classification_values():
+    """Receivable orders classification field accepts only valid literal values."""
+    from services.receivables_service import ReceivablesService
+    from api.v1.finance import get_receivable_orders
+
+    # Test both valid classification values
+    for classification_value in ["credit_receivable", "unpaid_order"]:
+        mock_response = {
+            "items": [
+                {
+                    "order_id": str(uuid.uuid4()),
+                    "retailer_id": str(uuid.uuid4()),
+                    "retailer_name": "Test Retailer",
+                    "status": "confirmed",
+                    "classification": classification_value,
+                    "payment_method": "credit",
+                    "total_amount": 2000.00,
+                    "cash_paid": 500.00,
+                    "credit_amount": 1500.00,
+                    "balance_due": 1500.00,
+                    "created_at": "2026-05-13T10:00:00",
+                    "age_days": 3,
+                },
+            ],
+            "pagination": {
+                "page": 1,
+                "size": 20,
+                "total": 1,
+                "pages": 1,
+            },
+        }
+
+        with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response):
+            mock_token = MagicMock()
+            mock_db = AsyncMock()
+
+            result = await get_receivable_orders(
+                page=1,
+                size=20,
+                token=mock_token,
+                db=mock_db,
+            )
+
+            # Verify classification is set correctly
+            assert result.data["items"][0]["classification"] == classification_value
+
+
+@pytest.mark.asyncio
+async def test_receivable_orders_literal_payment_method_values():
+    """Receivable orders payment_method field accepts only valid literal values."""
+    from services.receivables_service import ReceivablesService
+    from api.v1.finance import get_receivable_orders
+
+    # Test all valid payment method values
+    for payment_method_value in ["credit", "cash", "unknown"]:
+        mock_response = {
+            "items": [
+                {
+                    "order_id": str(uuid.uuid4()),
+                    "retailer_id": str(uuid.uuid4()),
+                    "retailer_name": "Test Retailer",
+                    "status": "confirmed",
+                    "classification": "credit_receivable",
+                    "payment_method": payment_method_value,
+                    "total_amount": 2000.00,
+                    "cash_paid": 500.00,
+                    "credit_amount": 1500.00,
+                    "balance_due": 1500.00,
+                    "created_at": "2026-05-13T10:00:00",
+                    "age_days": 3,
+                },
+            ],
+            "pagination": {
+                "page": 1,
+                "size": 20,
+                "total": 1,
+                "pages": 1,
+            },
+        }
+
+        with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response):
+            mock_token = MagicMock()
+            mock_db = AsyncMock()
+
+            result = await get_receivable_orders(
+                page=1,
+                size=20,
+                token=mock_token,
+                db=mock_db,
+            )
+
+            # Verify payment_method is set correctly
+            assert result.data["items"][0]["payment_method"] == payment_method_value
+
+
+@pytest.mark.asyncio
+async def test_receivable_orders_null_classification_safe():
+    """Receivable orders classification field can be null (no credit or unpaid balance)."""
+    from services.receivables_service import ReceivablesService
+    from api.v1.finance import get_receivable_orders
+
+    mock_response = {
+        "items": [
+            {
+                "order_id": str(uuid.uuid4()),
+                "retailer_id": str(uuid.uuid4()),
+                "retailer_name": "Test Retailer",
+                "status": "paid",
+                "classification": None,  # No credit exposure and fully paid
+                "payment_method": "unknown",
+                "total_amount": 2000.00,
+                "cash_paid": 2000.00,
+                "credit_amount": 0.00,
+                "balance_due": 0.00,
+                "created_at": "2026-05-13T10:00:00",
+                "age_days": 3,
+            },
+        ],
+        "pagination": {
+            "page": 1,
+            "size": 20,
+            "total": 1,
+            "pages": 1,
+        },
+    }
+
+    with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response):
+        mock_token = MagicMock()
+        mock_db = AsyncMock()
+
+        result = await get_receivable_orders(
+            page=1,
+            size=20,
+            token=mock_token,
+            db=mock_db,
+        )
+
+        # Verify null classification is accepted
+        assert result.data["items"][0]["classification"] is None
+
+
+@pytest.mark.asyncio
 async def test_receivable_orders_invalid_classification_returns_empty():
     """GET /finance/receivables/orders with invalid classification returns empty result (safe contract)."""
     from services.receivables_service import ReceivablesService

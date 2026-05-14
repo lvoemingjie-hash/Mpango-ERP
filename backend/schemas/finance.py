@@ -7,9 +7,8 @@ Provides stable typed response models for Phase 6.2 receivables endpoints:
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Literal
 from pydantic import BaseModel, Field
-from datetime import datetime
 
 
 class RetailerSummaryItem(BaseModel):
@@ -44,6 +43,18 @@ class ReceivablesSummaryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReceivablesPagination(BaseModel):
+    """
+    Pagination metadata for receivables list.
+
+    Stable typed contract for frontend pagination controls.
+    """
+    page: int = Field(..., ge=1, description="Current page number (1-based)")
+    size: int = Field(..., ge=1, le=100, description="Items per page")
+    total: int = Field(..., ge=0, description="Total number of items")
+    pages: int = Field(..., ge=0, description="Total number of pages")
+
+
 class ReceivableOrderItem(BaseModel):
     """
     Order with receivables exposure.
@@ -54,8 +65,8 @@ class ReceivableOrderItem(BaseModel):
     retailer_id: str = Field(..., description="Retailer UUID")
     retailer_name: str = Field(..., description="Retailer display name")
     status: str = Field(..., description="Order status (confirmed, partially_paid, paid)")
-    classification: str | None = Field(None, description="Classification: credit_receivable or unpaid_order")
-    payment_method: str = Field(..., description="Primary payment method (credit, cash)")
+    classification: Literal["credit_receivable", "unpaid_order"] | None = Field(None, description="Classification: credit_receivable or unpaid_order")
+    payment_method: Literal["credit", "cash", "unknown"] = Field(..., description="Primary payment method")
     total_amount: float = Field(..., ge=0, description="Order total amount")
     cash_paid: float = Field(..., ge=0, description="Cash/transfer amount paid")
     credit_amount: float = Field(..., ge=0, description="Credit amount charged")
@@ -73,6 +84,6 @@ class ReceivableOrdersResponse(BaseModel):
     Response for GET /finance/receivables/orders
     """
     items: List[ReceivableOrderItem] = Field(..., description="Receivable orders")
-    pagination: dict = Field(..., description="Pagination metadata with page, size, total, pages")
+    pagination: ReceivablesPagination = Field(..., description="Pagination metadata")
 
     model_config = {"from_attributes": True}

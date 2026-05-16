@@ -4,16 +4,17 @@ This folder is the canonical starting point for Codex and other AI coding agents
 
 ## Read Order
 
-1. `docs/ai/CTO_COCKPIT.md`
-2. `docs/ai/CTO_CONTEXT.md`
-3. `docs/ai/PROJECT.md`
-4. `docs/ai/PROJECT_MEMORY.md`
-5. `docs/ai/AI_TEAM_OPERATING_RULES.md`
-6. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
-7. `docs/contracts/Boot contract.md`
-8. `docs/contracts/AI workrules.md`
-9. `docs/mpango_erp_v0_3_development_master_plan.md`
-10. `decision-register/README.md`
+1. `docs/ai/CTO_CURRENT_OPS.md`
+2. `docs/ai/CTO_COCKPIT.md`
+3. `docs/ai/CTO_CONTEXT.md`
+4. `docs/ai/PROJECT.md`
+5. `docs/ai/PROJECT_MEMORY.md`
+6. `docs/ai/AI_TEAM_OPERATING_RULES.md`
+7. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
+8. `docs/contracts/Boot contract.md`
+9. `docs/contracts/AI workrules.md`
+10. `docs/mpango_erp_v0_3_development_master_plan.md`
+11. `decision-register/README.md`
 
 ## Purpose
 
@@ -21,11 +22,13 @@ This folder is the canonical starting point for Codex and other AI coding agents
 - Reduce dependence on transient chat history
 - Align multiple AI agents on the same roadmap and constraints
 - Give Codex a repeatable CTO operating surface for planning and delegation
+- Give agents a short current operating picture before they enter detailed ledgers
 
 ## Update Rules
 
 - Strategic or cross-module decisions must also be recorded in `decision-register/`
 - Each meaningful AI implementation session should leave a ledger entry in `ai-ledger/`
+- After each active sprint, baseline, validation gate, or agent-role change, update `CTO_CURRENT_OPS.md`
 - After each meaningful phase or branch-state change, update `PROJECT.md`
 - When priorities change, update `CTO_CONTEXT.md` first
 - When hidden assumptions from old chats are recovered, add them to `PROJECT_MEMORY.md`

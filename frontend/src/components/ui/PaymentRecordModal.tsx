@@ -17,6 +17,7 @@ const METHODS = [
   { value: 'cash', label: 'Cash' },
   { value: 'transfer', label: 'Bank Transfer' },
   { value: 'mobile_money', label: 'Mobile Money' },
+  { value: 'credit', label: 'Credit Sale' },
 ] as const;
 
 export function PaymentRecordModal({
@@ -33,7 +34,8 @@ export function PaymentRecordModal({
   const [transactionId, setTransactionId] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const isValid = method && amount && Number(amount) > 0 && Number(amount) <= remainingAmount;
+  const isValid = method && amount && Number(amount) > 0
+    && (method === 'credit' ? Number(amount) === orderTotal && remainingAmount === orderTotal : Number(amount) <= remainingAmount);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +46,16 @@ export function PaymentRecordModal({
       setError('Amount must be greater than 0');
       return;
     }
-    if (numAmount > remainingAmount) {
+    if (method === 'credit') {
+      if (remainingAmount !== orderTotal) {
+        setError('Credit is only allowed on orders with no prior payments (no split tender).');
+        return;
+      }
+      if (numAmount !== orderTotal) {
+        setError(`Credit amount must equal the full order total of KES ${orderTotal.toLocaleString()}. Partial credit is not supported.`);
+        return;
+      }
+    } else if (numAmount > remainingAmount) {
       setError(`Amount cannot exceed remaining balance of KES ${remainingAmount.toLocaleString()}`);
       return;
     }

@@ -17,7 +17,7 @@ export function DashboardPage() {
 
   // Legacy data (orders table + status breakdown)
   const [orders, setOrders] = useState<Order[]>([]);
-  const [_stocks, setStocks] = useState<StockView[]>([]);
+  const [, setStocks] = useState<StockView[]>([]);
 
   // BI data (from S6-3 Dashboard API)
   const [kpiCards, setKpiCards] = useState<KpiCardType[]>([]);

@@ -51,7 +51,7 @@ export function InventoryAdjustModal({ isOpen, onClose, onSubmit, initialSkuCode
       setError(null);
       await onSubmit(data);
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       const message = normalizeApiError(err);
       setError(message);
     }

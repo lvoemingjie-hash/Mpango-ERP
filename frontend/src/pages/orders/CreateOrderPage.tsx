@@ -20,6 +20,16 @@ interface OrderLineItem {
   stock?: number;
 }
 
+interface OrderValidationError {
+  response?: {
+    data?: {
+      detail?: {
+        errors?: string[];
+      };
+    };
+  };
+}
+
 export function CreateOrderPage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
@@ -171,10 +181,11 @@ export function CreateOrderPage() {
       });
 
       navigate('/orders');
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Backend returns accumulated errors in detail.errors
-      if (err.response?.data?.detail?.errors) {
-        setError(err.response.data.detail.errors.join(' | '));
+      const validationError = err as OrderValidationError;
+      if (validationError.response?.data?.detail?.errors) {
+        setError(validationError.response.data.detail.errors.join(' | '));
       } else {
         setError(normalizeApiError(err));
       }

@@ -1,7 +1,7 @@
 /**
- * Finance service — mirrors backend api/v1/finance.py endpoints.
+ * Finance service - mirrors backend api/v1/finance.py endpoints.
  *
- * GAP 2: Provides frontend access to invoices, receivables, and financial summary.
+ * Provides frontend access to invoices, receivables, and financial summary.
  */
 import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
@@ -48,6 +48,39 @@ export interface ReceivableItem {
     age_days: number;
 }
 
+export interface RetailerReceivablesSummary {
+    retailer_id: string;
+    retailer_name: string;
+    outstanding_balance: number;
+    credit_receivables: number;
+    unpaid_order_balance: number;
+    order_count: number;
+}
+
+export interface CreditReceivableItem {
+    order_id: string;
+    retailer_id: string;
+    retailer_name: string;
+    status: string;
+    classification: 'credit_receivable' | 'unpaid_order' | null;
+    payment_method: 'credit' | 'cash' | 'unknown';
+    total_amount: number;
+    cash_paid: number;
+    credit_amount: number;
+    balance_due: number;
+    created_at: string | null;
+    age_days: number;
+}
+
+export interface ReceivablesSummary {
+    total_outstanding: number;
+    retailer_count: number;
+    order_count: number;
+    credit_receivables: number;
+    unpaid_order_balance: number;
+    by_retailer: RetailerReceivablesSummary[];
+}
+
 export interface FinancialSummary {
     total_revenue: number;
     total_cash_received: number;
@@ -63,7 +96,7 @@ export const financeService = {
     getInvoice: (orderId: string) =>
         api.get<ApiResponse<InvoiceData>>(`/orders/${orderId}/invoice`),
 
-    /** List accounts receivable (unpaid/partially paid orders) */
+    /** Legacy receivables list */
     getReceivables: (page = 1, size = 20) =>
         api.get<ApiResponse<PaginatedData<ReceivableItem>>>('/finance/receivables', {
             params: { page, size },
@@ -72,4 +105,18 @@ export const financeService = {
     /** Get aggregated financial summary */
     getSummary: () =>
         api.get<ApiResponse<FinancialSummary>>('/finance/summary'),
+
+    /** Get classified receivable orders (credit exposure vs unpaid order balance) */
+    getReceivablesOrders: (
+        page = 1,
+        size = 20,
+        classification?: 'credit_receivable' | 'unpaid_order'
+    ) =>
+        api.get<ApiResponse<PaginatedData<CreditReceivableItem>>>('/finance/receivables/orders', {
+            params: { page, size, ...(classification ? { classification } : {}) },
+        }),
+
+    /** Get receivables summary grouped by retailer */
+    getReceivablesSummary: () =>
+        api.get<ApiResponse<ReceivablesSummary>>('/finance/receivables/summary'),
 };

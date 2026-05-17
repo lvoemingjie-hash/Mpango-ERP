@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { orderService } from '@/services/orderService';
 import type { PayOrderData } from '@/services/orderService';
 import { financeService } from '@/services/financeService';
@@ -20,6 +20,7 @@ import { ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 export function OrderListPage() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -173,6 +174,19 @@ export function OrderListPage() {
       setPayRemaining(order.total_amount);
     }
   };
+
+  useEffect(() => {
+    const collectOrderId = searchParams.get('collect');
+    if (!collectOrderId || loading || payModalOrder) return;
+
+    const order = orders.find((o) => o.id === collectOrderId);
+    if (!order) return;
+
+    setSearchParams({}, { replace: true });
+    if (hasUpdatePermission && canPay(order.status)) {
+      void handleOpenPayModal(order);
+    }
+  }, [searchParams, loading, payModalOrder, orders, hasUpdatePermission, setSearchParams]);
 
   const canInvoice = (status: OrderStatus) => {
     const noInvoice: OrderStatus[] = ['draft', 'cancelled', 'voided'];

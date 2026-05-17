@@ -7,11 +7,35 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { DashboardSkeleton } from '@/components/skeletons/DashboardSkeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Pagination } from '@/components/ui/Pagination';
-import { BanknotesIcon } from '@heroicons/react/24/outline';
+import { BanknotesIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 type ReceivableTab = 'all' | 'credit_receivable' | 'unpaid_order';
 
 const PAGE_SIZE = 20;
+
+function agingStyle(days: number): string {
+    if (days >= 30) return 'text-red-600';
+    if (days >= 15) return 'text-orange-600';
+    if (days >= 7) return 'text-amber-600';
+    return 'text-gray-500';
+}
+
+function agingLabel(days: number): string {
+    if (days >= 30) return `${days}d overdue`;
+    if (days >= 15) return `${days}d aging`;
+    return `${days}d`;
+}
+
+function PaymentBar({ paid, total }: { paid: number; total: number }) {
+    if (total <= 0) return null;
+    const pct = Math.min(100, Math.round((paid / total) * 100));
+    const barColor = pct >= 100 ? 'bg-green-500' : pct >= 50 ? 'bg-blue-500' : 'bg-amber-500';
+    return (
+        <div className="mt-1 h-1 w-full rounded-full bg-gray-200">
+            <div className={`h-1 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+        </div>
+    );
+}
 
 export function FinancePage() {
     const navigate = useNavigate();
@@ -59,9 +83,7 @@ export function FinancePage() {
         }).format(amount);
     };
 
-    const overdueCount = receivables.filter((r) => r.balance_due > 0 && r.age_days >= 30).length;
-    const creditCount = receivables.filter((r) => r.classification === 'credit_receivable').length;
-    const unpaidCount = receivables.filter((r) => r.classification === 'unpaid_order').length;
+    const overdueCount = summary?.overdue_receivables_count ?? 0;
 
     const handleDownloadInvoice = async (orderId: string) => {
         try {
@@ -79,8 +101,8 @@ export function FinancePage() {
         }
     };
 
-    const goToOrdersForRepayment = () => {
-        navigate('/orders');
+    const goToCollect = (orderId?: string) => {
+        navigate(orderId ? `/orders?collect=${orderId}` : '/orders');
     };
 
     if (loading && !summary) {
@@ -106,7 +128,7 @@ export function FinancePage() {
                 }
                 action={
                     <div className="flex items-center gap-3">
-                        <button onClick={goToOrdersForRepayment} className="btn-secondary text-sm">
+                        <button onClick={() => goToCollect()} className="btn-secondary text-sm">
                             Record Repayment
                         </button>
                         <button onClick={load} disabled={loading} className="btn-secondary text-sm">
@@ -116,7 +138,25 @@ export function FinancePage() {
                 }
             />
 
-            {error && <p className="mt-6 text-sm text-red-600">{error}</p>}
+            {error && (
+                <div className="mt-6 flex items-center gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <span>{error}</span>
+                    <button
+                        onClick={load}
+                        className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+                    >
+                        <ArrowPathIcon className="h-3 w-3" />
+                        Retry
+                    </button>
+                </div>
+            )}
+
+            {loading && summary && (
+                <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                    Updating...
+                </div>
+            )}
 
             {summary && (
                 <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -124,6 +164,9 @@ export function FinancePage() {
                         <p className="text-sm font-medium text-amber-700">Outstanding Receivables</p>
                         <p className="mt-2 text-2xl font-bold text-amber-800">
                             {formatCurrency(receivablesSummary?.total_outstanding ?? summary.outstanding_receivables)}
+                        </p>
+                        <p className="mt-1 text-xs text-amber-600">
+                            across {receivablesSummary?.retailer_count ?? 0} retailer{(receivablesSummary?.retailer_count ?? 0) !== 1 ? 's' : ''}
                         </p>
                     </div>
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
@@ -135,12 +178,14 @@ export function FinancePage() {
                             {receivablesSummary?.order_count ?? 0} receivable order{receivablesSummary?.order_count !== 1 ? 's' : ''}
                         </p>
                     </div>
-                    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                        <p className="text-sm font-medium text-gray-500">Overdue Accounts</p>
-                        <p className="mt-2 text-2xl font-bold text-red-600">
+                    <div className={`rounded-lg border p-4 shadow-sm ${overdueCount > 0 ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'}`}>
+                        <p className={`text-sm font-medium ${overdueCount > 0 ? 'text-red-700' : 'text-gray-500'}`}>Overdue</p>
+                        <p className={`mt-2 text-2xl font-bold ${overdueCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
                             {overdueCount}
                         </p>
-                        <p className="mt-1 text-xs text-gray-500">30+ days on this page</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                            {overdueCount > 0 ? '30+ days outstanding' : 'No overdue accounts'}
+                        </p>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                         <p className="text-sm font-medium text-gray-500">Cash Received</p>
@@ -172,7 +217,7 @@ export function FinancePage() {
                             <div>
                                 <h3 className="text-base font-semibold text-gray-900">Receivable Orders</h3>
                                 <p className="mt-1 text-sm text-gray-500">
-                                    Use Orders to record repayments; invoices are available from each row.
+                                    Click <strong>Collect</strong> to record a repayment against an order.
                                 </p>
                             </div>
                             <div className="flex gap-1">
@@ -189,13 +234,14 @@ export function FinancePage() {
                                         {t === 'all'
                                             ? `All (${totalItems})`
                                             : t === 'credit_receivable'
-                                                ? `Credit (${creditCount})`
-                                                : `Unpaid (${unpaidCount})`}
+                                                ? 'Credit'
+                                                : 'Unpaid'}
                                     </button>
                                 ))}
                             </div>
                         </div>
                     </div>
+                    <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 text-sm">
                         <thead className="bg-gray-50">
                             <tr>
@@ -207,65 +253,77 @@ export function FinancePage() {
                                 <th className="px-6 py-3 text-right font-medium text-gray-500">Paid</th>
                                 <th className="px-6 py-3 text-right font-medium text-gray-500">Balance</th>
                                 <th className="px-6 py-3 text-right font-medium text-gray-500">Age</th>
-                                <th className="px-6 py-3 text-right font-medium text-gray-500">Actions</th>
+                                <th className="px-6 py-3 text-right font-medium text-gray-500">Next Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
-                            {receivables.map((r) => (
-                                <tr key={r.order_id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4 font-mono text-xs text-gray-600">
-                                        {r.order_id.slice(0, 8)}...
-                                    </td>
-                                    <td className="px-6 py-4 text-gray-700">
-                                        <div className="font-medium">{r.retailer_name || 'Unknown retailer'}</div>
-                                        <div className="font-mono text-xs text-gray-400">{r.retailer_id?.slice(0, 8) ?? '--'}...</div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                                            r.classification === 'credit_receivable'
-                                                ? 'bg-blue-100 text-blue-700'
-                                                : 'bg-gray-100 text-gray-600'
-                                        }`}>
-                                            {r.classification === 'credit_receivable' ? 'Credit' : 'Unpaid'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <StatusBadge status={r.status} />
-                                    </td>
-                                    <td className="px-6 py-4 text-right text-gray-900">
-                                        {formatCurrency(r.total_amount)}
-                                    </td>
-                                    <td className="px-6 py-4 text-right text-green-600">
-                                        {formatCurrency(r.cash_paid)}
-                                    </td>
-                                    <td className="px-6 py-4 text-right font-medium text-red-600">
-                                        {formatCurrency(r.balance_due)}
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <span className={r.age_days >= 30 ? 'font-semibold text-red-600' : 'text-gray-500'}>
-                                            {r.age_days}d{r.age_days >= 30 ? ' overdue' : ''}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-3">
-                                            <button
-                                                onClick={() => handleDownloadInvoice(r.order_id)}
-                                                className="text-gray-600 hover:text-gray-900"
-                                            >
-                                                Invoice
-                                            </button>
-                                            <button
-                                                onClick={goToOrdersForRepayment}
-                                                className="text-green-600 hover:text-green-900"
-                                            >
-                                                Record
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                            {receivables.map((r) => {
+                                const hasBalance = r.balance_due > 0;
+                                const isOverdue = r.age_days >= 30;
+                                return (
+                                    <tr key={r.order_id} className={`hover:bg-gray-50 ${isOverdue && hasBalance ? 'bg-red-50/40' : ''}`}>
+                                        <td className="px-6 py-4 font-mono text-xs text-gray-600">
+                                            {r.order_id.slice(0, 8)}...
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-700">
+                                            <div className="font-medium">{r.retailer_name || 'Unknown retailer'}</div>
+                                            <div className="font-mono text-xs text-gray-400">{r.retailer_id?.slice(0, 8) ?? '--'}...</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                r.classification === 'credit_receivable'
+                                                    ? 'bg-blue-100 text-blue-700'
+                                                    : 'bg-gray-100 text-gray-600'
+                                            }`}>
+                                                {r.classification === 'credit_receivable' ? 'Credit' : 'Unpaid'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <StatusBadge status={r.status} />
+                                        </td>
+                                        <td className="px-6 py-4 text-right text-gray-900">
+                                            {formatCurrency(r.total_amount)}
+                                            <PaymentBar paid={r.cash_paid} total={r.total_amount} />
+                                        </td>
+                                        <td className="px-6 py-4 text-right text-green-600">
+                                            {formatCurrency(r.cash_paid)}
+                                        </td>
+                                        <td className={`px-6 py-4 text-right font-medium ${hasBalance ? 'text-red-600' : 'text-green-600'}`}>
+                                            {hasBalance ? formatCurrency(r.balance_due) : 'Settled'}
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <span className={`text-xs font-medium ${agingStyle(r.age_days)}`}>
+                                                {agingLabel(r.age_days)}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button
+                                                    onClick={() => handleDownloadInvoice(r.order_id)}
+                                                    className="text-gray-500 hover:text-gray-700 text-xs"
+                                                >
+                                                    Invoice
+                                                </button>
+                                                {hasBalance && (
+                                                    <button
+                                                        onClick={() => goToCollect(r.order_id)}
+                                                        className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                                                            isOverdue
+                                                                ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                                                : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                        }`}
+                                                    >
+                                                        {isOverdue ? 'Collect Now' : 'Collect'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
+                    </div>
 
                     {totalPages > 1 && (
                         <div className="px-6 py-3">

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { orderService } from '@/services/orderService';
 import type { PayOrderData } from '@/services/orderService';
@@ -21,6 +21,7 @@ export function OrderListPage() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const handledCollectIdRef = useRef<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -177,15 +178,53 @@ export function OrderListPage() {
 
   useEffect(() => {
     const collectOrderId = searchParams.get('collect');
-    if (!collectOrderId || loading || payModalOrder) return;
+    if (!collectOrderId || loading || payModalOrder || handledCollectIdRef.current === collectOrderId) return;
 
-    const order = orders.find((o) => o.id === collectOrderId);
-    if (!order) return;
-
+    // Consume the param exactly once before opening the existing payment flow.
+    handledCollectIdRef.current = collectOrderId;
     setSearchParams({}, { replace: true });
-    if (hasUpdatePermission && canPay(order.status)) {
-      void handleOpenPayModal(order);
+
+    // Fast path: order already in loaded rows
+    const order = orders.find((o) => o.id === collectOrderId);
+    if (order) {
+      if (hasUpdatePermission && canPay(order.status)) {
+        void handleOpenPayModal(order);
+      } else {
+        useToastStore.getState().addToast({
+          type: 'error',
+          title: 'Cannot Record Payment',
+          message: !hasUpdatePermission
+            ? 'You do not have permission to record payments.'
+            : `Order ${collectOrderId.slice(0, 8)}... is not payable (status: ${order.status}).`,
+        });
+      }
+      return;
     }
+
+    // Fallback: fetch the specific order when it is outside the current page.
+    (async () => {
+      try {
+        const res = await orderService.getById(collectOrderId);
+        const fetched = res.data.data;
+        if (hasUpdatePermission && canPay(fetched.status)) {
+          void handleOpenPayModal(fetched);
+        } else {
+          useToastStore.getState().addToast({
+            type: 'error',
+            title: 'Cannot Record Payment',
+            message: !hasUpdatePermission
+              ? 'You do not have permission to record payments.'
+              : `Order ${collectOrderId.slice(0, 8)}... is not payable (status: ${fetched.status}).`,
+          });
+        }
+      } catch {
+        useToastStore.getState().addToast({
+          type: 'error',
+          title: 'Order Not Found',
+          message: `Could not load order ${collectOrderId.slice(0, 8)}... for collection.`,
+        });
+      }
+    })();
   }, [searchParams, loading, payModalOrder, orders, hasUpdatePermission, setSearchParams]);
 
   const canInvoice = (status: OrderStatus) => {

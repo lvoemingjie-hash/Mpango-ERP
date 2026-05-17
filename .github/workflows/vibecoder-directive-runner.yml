@@ -1,3 +1,17 @@
+# =============================================================================
+# Vibecoder Directive Runner — Hardened v3
+#
+# Triggers on push to automation/cto-directives when new directives are added.
+# Uses hardened run_directive.sh v3 with:
+#   - Report Existence Final Gate
+#   - Leo Execution Evidence Gate
+#   - Checkpoint / Progress tracking
+#   - Failure Report Guarantee
+#   - Heartbeat with phase/checkpoint info
+#   - Verdict Discipline enforcement
+#
+# Last updated: 2026-05-17
+# =============================================================================
 name: Vibecoder Directive Runner
 
 on:
@@ -13,6 +27,12 @@ concurrency:
 
 permissions:
   contents: write
+
+env:
+  # Pass GitHub context to script for report metadata
+  GITHUB_SERVER_URL: ${{ github.server_url }}
+  GITHUB_REPOSITORY: ${{ github.repository }}
+  GITHUB_RUN_ID: ${{ github.run_id }}
 
 jobs:
   run-vibecoder-directive:
@@ -32,12 +52,59 @@ jobs:
         shell: bash
         run: |
           echo "event=${GITHUB_EVENT_NAME}"
-          echo "ref=${GITHUB_REF}"
+          echo "ref=${GITHUB_REF}}"
           echo "sha=${GITHUB_SHA}"
+          echo "run_id=${GITHUB_RUN_ID}"
+          echo "run_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           git -C directives log -1 --oneline
           git -C directives status --short
 
-      - name: Run local Vibecoder directive runner
+      - name: Run hardened directive runner (v3)
         shell: bash
+        env:
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           ~/.openclaw/mpango-directive-runner/run_directive.sh "$GITHUB_WORKSPACE/directives"
+
+      # Post-run: Verify report was actually created (double-check gate)
+      - name: Verify report generation
+        if: always()
+        shell: bash
+        run: |
+          echo "=== Post-run report verification ==="
+          REPORT_DIR="$GITHUB_WORKSPACE/directives/docs/ai-reports/lubuntu"
+          if [ -d "$REPORT_DIR" ]; then
+            echo "Reports found:"
+            ls -la "$REPORT_DIR/" 2>/dev/null || echo "(empty)"
+            echo ""
+            echo "Latest report (first 30 lines):"
+            latest="$(find "$REPORT_DIR" -name '*.md' -type f -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)"
+            if [ -n "$latest" ] && [ -f "$latest" ]; then
+              echo "--- $latest ---"
+              head -30 "$latest"
+            else
+              echo "WARNING: No markdown report found in $REPORT_DIR"
+            fi
+          else
+            echo "WARNING: Report directory does not exist: $REPORT_DIR"
+          fi
+
+          # Also check fallback reports
+          FALLBACK_DIR="$HOME/.openclaw/mpango-directive-runner/fallback-reports"
+          if [ -d "$FALLBACK_DIR" ]; then
+            echo ""
+            echo "Fallback reports:"
+            ls -la "$FALLBACK_DIR/" 2>/dev/null || echo "(empty)"
+          fi
+
+      # Upload runner logs as artifacts
+      - name: Upload runner logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: directive-runner-logs-${{ github.run_id }}
+          path: ~/.openclaw/mpango-directive-runner/logs/
+          retention-days: 30
+          if-no-files-found: warn

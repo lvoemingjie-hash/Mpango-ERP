@@ -17,7 +17,7 @@
 #   - Negative test: if report missing on reports branch, workflow MUST fail
 #   - Runner path: ~/.openclaw/mpango-directive-runner/run_directive.sh
 #
-# Last updated: 2026-05-18
+# Last updated: 2026-05-18 (v4.1: push rebase fix)
 # =============================================================================
 name: Vibecoder Directive Runner
 
@@ -125,6 +125,7 @@ jobs:
             git config user.name "directive-runner[bot]"
             git config user.email "directive-runner[bot]@users.noreply.github.com"
             git commit -m "auto: directive execution report [run ${{ github.run_id }}]"
+            git pull --rebase origin reports/lubuntu-validation 2>&1 || true
             git push origin reports/lubuntu-validation 2>&1
             echo "Reports pushed to reports/lubuntu-validation"
           fi

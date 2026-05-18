@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_directive.sh v3.5 — Hardened Directive Runner (Path Isolation Fix)
+# run_directive.sh v3.6 — Hardened Directive Runner (Path Isolation Fix)
 #
 # R6 Architecture Changes:
 #   B. Directive repo (directives/) vs validation target (validation-target/) separated
@@ -101,21 +101,33 @@ parse_field() {
 }
 
 # Parse evidence fields directly from raw JSON output.
-# v3.5: Use Python JSON repair to handle openclaw agent --json output where
-# string values may contain literal (unescaped) newlines, making raw JSON invalid.
-# Python json.JSONDecoder repairs common issues; jq and grep fallbacks remain.
+# v3.6: Recursive scan ALL string fields for === LEO_EVIDENCE === marker.
+# No longer relies on specific JSON paths (result.payloads[0].text, etc.).
+# Falls back to grep on raw output if JSON repair fails.
 parse_evidence_from_json() {
   local field="$1" json="$2"
-  # Strategy 1: Python JSON repair + field extraction (handles literal newlines)
+  # Strategy 1: Python JSON repair + recursive scan for evidence text
   local clean_text
   clean_text="$(python3 -c "
-import json, sys, re
+import json, sys
+
+def find_evidence_text(obj, marker='=== LEO_EVIDENCE ==='):
+    if isinstance(obj, str):
+        return obj if marker in obj else None
+    if isinstance(obj, dict):
+        for v in obj.values():
+            r = find_evidence_text(v, marker)
+            if r: return r
+    if isinstance(obj, list):
+        for item in obj:
+            r = find_evidence_text(item, marker)
+            if r: return r
+    return None
+
 raw = sys.stdin.read()
-# Extract JSON object from output (find outermost { ... })
 start = raw.find('{')
 if start < 0:
     sys.exit(1)
-# Find matching closing brace (handle nested objects)
 depth = 0
 end = -1
 for i in range(start, len(raw)):
@@ -127,14 +139,12 @@ for i in range(start, len(raw)):
 if end < 0:
     sys.exit(1)
 json_str = raw[start:end]
-# Repair: replace literal newlines inside JSON string values
-# Strategy: find string boundaries (between unescaped quotes) and fix newlines
 result = []
 in_string = False
 i = 0
 while i < len(json_str):
     c = json_str[i]
-    if c == '\\' and in_string:
+    if c == '\\\\' and in_string:
         result.append(c)
         if i + 1 < len(json_str):
             i += 1
@@ -145,27 +155,14 @@ while i < len(json_str):
         in_string = not in_string
         result.append(c)
     elif in_string and c in '\n\r':
-        result.append('\\' + ('n' if c == '\n' else 'r'))
+        result.append('\\\\' + ('n' if c == '\n' else 'r'))
     else:
         result.append(c)
     i += 1
 repaired = ''.join(result)
 try:
     data = json.loads(repaired)
-    # Navigate possible JSON structures
-    text = ''
-    for path in ['result.payloads[0].text', 'payloads[0].text',
-                  'result.finalAssistantVisibleText', 'finalAssistantVisibleText',
-                  'result.finalAssistantRawText', 'finalAssistantRawText']:
-        obj = data
-        keys = [k.strip('[]') for k in path.split('.')]
-        try:
-            for k in keys:
-                obj = obj[int(k)] if k.isdigit() else obj[k]
-            text = str(obj)
-            break
-        except (KeyError, IndexError, TypeError, ValueError):
-            continue
+    text = find_evidence_text(data)
     if text:
         sys.stdout.write(text)
 except json.JSONDecodeError:
@@ -175,7 +172,7 @@ except json.JSONDecodeError:
   if [ -n "$clean_text" ]; then
     echo "$clean_text" | grep -oP "${field}:[[:space:]]*\K[^\n]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
   else
-    # Strategy 2: grep fallback on raw output (handles non-JSON or edge cases)
+    # Strategy 2: grep fallback on raw output
     echo "$json" | grep -oP "${field}:[[:space:]]*\K[^\n]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
   fi
 }
@@ -503,8 +500,8 @@ parse_leo_evidence() {
   local raw="$1"
   LEO_RAW_EVIDENCE="$raw"
 
-  # R6b: Parse directly from raw JSON output.
-  # The text is in result.payloads[0].text with \\n escapes.
+  # v3.6: Parse from raw JSON output via recursive field scan.
+  # Scans ALL string fields for === LEO_EVIDENCE === marker.
   # grep -oP extracts field values stopping at \\ or \" boundaries.
   EVIDENCE_VERDICT="$(parse_evidence_from_json 'VERDICT' "$raw")"
   EVIDENCE_COMMANDS="$(parse_evidence_from_json 'COMMANDS_EXECUTED' "$raw")"

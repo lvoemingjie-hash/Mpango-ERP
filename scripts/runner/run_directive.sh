@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_directive.sh v3.4 — Hardened Directive Runner (Path Isolation Fix)
+# run_directive.sh v3.5 — Hardened Directive Runner (Path Isolation Fix)
 #
 # R6 Architecture Changes:
 #   B. Directive repo (directives/) vs validation target (validation-target/) separated
@@ -101,18 +101,82 @@ parse_field() {
 }
 
 # Parse evidence fields directly from raw JSON output.
-# The openclaw agent --json output contains the text in result.payloads[0].text
-# with \\n as literal escape sequences (not real newlines in the JSON source).
-# We use grep -oP to extract each field value, stopping at \\ or \" boundaries.
+# v3.5: Use Python JSON repair to handle openclaw agent --json output where
+# string values may contain literal (unescaped) newlines, making raw JSON invalid.
+# Python json.JSONDecoder repairs common issues; jq and grep fallbacks remain.
 parse_evidence_from_json() {
   local field="$1" json="$2"
-  # v3.4b: Extract text via jq (single-line expression to avoid bash quoting issues)
+  # Strategy 1: Python JSON repair + field extraction (handles literal newlines)
   local clean_text
-  clean_text="$(echo "$json" | sed -n '/^{/,/^}/p' | jq -r '.result.payloads[0].text // .payloads[0].text // .result.finalAssistantVisibleText // .finalAssistantVisibleText // .finalAssistantRawText // empty' 2>/dev/null)"
+  clean_text="$(python3 -c "
+import json, sys, re
+raw = sys.stdin.read()
+# Extract JSON object from output (find outermost { ... })
+start = raw.find('{')
+if start < 0:
+    sys.exit(1)
+# Find matching closing brace (handle nested objects)
+depth = 0
+end = -1
+for i in range(start, len(raw)):
+    if raw[i] == '{': depth += 1
+    elif raw[i] == '}': depth -= 1
+    if depth == 0:
+        end = i + 1
+        break
+if end < 0:
+    sys.exit(1)
+json_str = raw[start:end]
+# Repair: replace literal newlines inside JSON string values
+# Strategy: find string boundaries (between unescaped quotes) and fix newlines
+result = []
+in_string = False
+i = 0
+while i < len(json_str):
+    c = json_str[i]
+    if c == '\\' and in_string:
+        result.append(c)
+        if i + 1 < len(json_str):
+            i += 1
+            result.append(json_str[i])
+        i += 1
+        continue
+    if c == '"':
+        in_string = not in_string
+        result.append(c)
+    elif in_string and c in '\n\r':
+        result.append('\\' + ('n' if c == '\n' else 'r'))
+    else:
+        result.append(c)
+    i += 1
+repaired = ''.join(result)
+try:
+    data = json.loads(repaired)
+    # Navigate possible JSON structures
+    text = ''
+    for path in ['result.payloads[0].text', 'payloads[0].text',
+                  'result.finalAssistantVisibleText', 'finalAssistantVisibleText',
+                  'result.finalAssistantRawText', 'finalAssistantRawText']:
+        obj = data
+        keys = [k.strip('[]') for k in path.split('.')]
+        try:
+            for k in keys:
+                obj = obj[int(k)] if k.isdigit() else obj[k]
+            text = str(obj)
+            break
+        except (KeyError, IndexError, TypeError, ValueError):
+            continue
+    if text:
+        sys.stdout.write(text)
+except json.JSONDecodeError:
+    sys.exit(1)
+" <<< "$json" 2>/dev/null)" || true
+
   if [ -n "$clean_text" ]; then
     echo "$clean_text" | grep -oP "${field}:[[:space:]]*\K[^\n]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
   else
-    echo "$json" | grep -oP "${field}:[[:space:]]*\K[^\\\\]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
+    # Strategy 2: grep fallback on raw output (handles non-JSON or edge cases)
+    echo "$json" | grep -oP "${field}:[[:space:]]*\K[^\n]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
   fi
 }
 
@@ -384,7 +448,7 @@ run_leo_headless() {
     openclaw agent \
       --agent main \
       --message "$leo_prompt" \
-      --timeout 900 --json 2>&1)" || rc=$?
+      --timeout 3600 --json 2>&1)" || rc=$?
 
   LEO_COMMANDS_RUN=1
 

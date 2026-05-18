@@ -41,3 +41,200 @@ jobs:
         shell: bash
         run: |
           ~/.openclaw/mpango-directive-runner/run_directive.sh "$GITHUB_WORKSPACE/directives"
+
+      - name: Final Gate — Verify REQUIRED_FIELDS
+        if: always()
+        shell: bash
+        run: |
+          METADATA="${GITHUB_WORKSPACE}/generated-reports/_metadata.txt"
+          echo "=== Final Gate: REQUIRED_FIELDS check ==="
+
+          if [ ! -f "$METADATA" ]; then
+            echo "❌ FAIL: _metadata.txt not found"
+            exit 1
+          fi
+
+          source "$METADATA" 2>/dev/null || {
+            echo "❌ FAIL: Could not source metadata file"
+            exit 1
+          }
+
+          echo "VERDICT=${VERDICT:-<unset>}"
+          echo "EVIDENCE_COMMANDS=${EVIDENCE_COMMANDS:-<unset>}"
+          echo "EVIDENCE_APP_IMPORT_SMOKE=${EVIDENCE_APP_IMPORT_SMOKE:-<unset>}"
+          echo "EVIDENCE_RECEIVABLES_SUITE=${EVIDENCE_RECEIVABLES_SUITE:-<unset>}"
+          echo "EVIDENCE_PHASE5_PAYMENT=${EVIDENCE_PHASE5_PAYMENT:-<unset>}"
+          echo "EVIDENCE_SCHEMA_CONTRACT=${EVIDENCE_SCHEMA_CONTRACT:-<unset>}"
+          echo "EVIDENCE_PRODUCT_MODIFIED=${EVIDENCE_PRODUCT_MODIFIED:-<unset>}"
+          echo "EVIDENCE_BRANCH_PUSHED=${EVIDENCE_BRANCH_PUSHED:-<unset>}"
+          echo "LEO_EXECUTED=${LEO_EXECUTED:-<unset>}"
+          echo "TRANSPORT_HEALTH=${TRANSPORT_HEALTH:-<unset>}"
+
+          FAILURES=0
+
+          if [ -z "${VERDICT:-}" ]; then
+            echo "❌ FAIL: VERDICT is empty"
+            FAILURES=$((FAILURES + 1))
+          fi
+
+          if [ "${LEO_EXECUTED:-}" != "true" ]; then
+            echo "❌ FAIL: LEO_EXECUTED is not true"
+            FAILURES=$((FAILURES + 1))
+          fi
+
+          if [ "${TRANSPORT_HEALTH:-}" = "degraded" ] || [ "${TRANSPORT_HEALTH:-}" = "failed" ]; then
+            echo "❌ FAIL: TRANSPORT_HEALTH=$TRANSPORT_HEALTH"
+            FAILURES=$((FAILURES + 1))
+          fi
+
+          if echo "${EVIDENCE_PRODUCT_MODIFIED:-}" | grep -qiE "^yes$|^true$"; then
+            echo "❌ FAIL: Product code was modified"
+            FAILURES=$((FAILURES + 1))
+          fi
+
+          if echo "${EVIDENCE_BRANCH_PUSHED:-}" | grep -qiE "^yes$|^true$"; then
+            echo "❌ FAIL: Product branch was pushed"
+            FAILURES=$((FAILURES + 1))
+          fi
+
+          if [ "${VERDICT:-}" = "PASS_FOR_CTO_REVIEW" ]; then
+            for FIELD in EVIDENCE_APP_IMPORT_SMOKE EVIDENCE_RECEIVABLES_SUITE EVIDENCE_PHASE5_PAYMENT EVIDENCE_SCHEMA_CONTRACT; do
+              VAL="${!FIELD:-}"
+              if [ "$VAL" = "unknown" ] || [ -z "$VAL" ]; then
+                echo "❌ FAIL: $FIELD=$VAL (must not be unknown/empty for PASS)"
+                FAILURES=$((FAILURES + 1))
+              else
+                echo "✅ $FIELD=$VAL"
+              fi
+            done
+          else
+            echo "ℹ️  Verdict is $VERDICT — skipping validation evidence checks"
+          fi
+
+          if [ "$FAILURES" -gt 0 ]; then
+            echo ""
+            echo "=== Final Gate: FAILED ($FAILURES violation(s)) ==="
+            exit 1
+          fi
+
+          echo ""
+          echo "=== Final Gate: PASSED ==="
+
+      - name: Push report to reports/lubuntu-validation
+        if: always()
+        shell: bash
+        run: |
+          REPORT_BRANCH="reports/lubuntu-validation"
+          REPORT_DIR="${GITHUB_WORKSPACE}/generated-reports"
+          METADATA="${REPORT_DIR}/_metadata.txt"
+
+          if [ ! -f "$METADATA" ]; then
+            echo "No metadata file — nothing to push"
+            exit 0
+          fi
+
+          source "$METADATA" 2>/dev/null || true
+          REPORT_FILE="${REPORT_STAGING_FILE:-${REPORT_DIR}/${REPORT_BASENAME:-report.md}}"
+
+          if [ ! -f "$REPORT_FILE" ]; then
+            echo "Report file not found at $REPORT_FILE"
+            exit 0
+          fi
+
+          echo "Pushing report to $REPORT_BRANCH ..."
+          git init reports-repo
+          cd reports-repo
+          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git fetch origin "$REPORT_BRANCH" 2>/dev/null || true
+          git checkout "$REPORT_BRANCH" 2>/dev/null || git checkout --orphan "$REPORT_BRANCH"
+          mkdir -p "$(dirname "${REPORT_PATH:-docs/ai-reports/lubuntu/}")"
+          cp "$REPORT_FILE" "${REPORT_PATH:-docs/ai-reports/lubuntu/report.md}"
+          git add -A
+          git diff --cached --quiet || git commit -m "directive: ${TASK_ID:-unknown} verdict=${VERDICT:-unknown}"
+          git pull --rebase origin "$REPORT_BRANCH" 2>/dev/null || true
+          git push origin "$REPORT_BRANCH"
+          echo "Report pushed to $REPORT_BRANCH"
+
+      - name: Final Gate — Verify REQUIRED_FIELDS
+        if: always()
+        shell: bash
+        run: |
+          METADATA="${GITHUB_WORKSPACE}/generated-reports/_metadata.txt"
+          echo "=== Final Gate: REQUIRED_FIELDS check ==="
+          
+          if [ ! -f "$METADATA" ]; then
+            echo "❌ FAIL: _metadata.txt not found"
+            exit 1
+          fi
+          
+          source "$METADATA" 2>/dev/null || {
+            echo "❌ FAIL: Could not source metadata file"
+            exit 1
+          }
+          
+          echo "VERDICT=$VERDICT"
+          echo "EVIDENCE_COMMANDS=$EVIDENCE_COMMANDS"
+          echo "EVIDENCE_APP_IMPORT_SMOKE=$EVIDENCE_APP_IMPORT_SMOKE"
+          echo "EVIDENCE_RECEIVABLES_SUITE=$EVIDENCE_RECEIVABLES_SUITE"
+          echo "EVIDENCE_PHASE5_PAYMENT=$EVIDENCE_PHASE5_PAYMENT"
+          echo "EVIDENCE_SCHEMA_CONTRACT=$EVIDENCE_SCHEMA_CONTRACT"
+          echo "EVIDENCE_PRODUCT_MODIFIED=$EVIDENCE_PRODUCT_MODIFIED"
+          echo "EVIDENCE_BRANCH_PUSHED=$EVIDENCE_BRANCH_PUSHED"
+          echo "LEO_EXECUTED=$LEO_EXECUTED"
+          echo "TRANSPORT_HEALTH=$TRANSPORT_HEALTH"
+          
+          FAILURES=0
+          
+          # Verdict must be set
+          if [ -z "${VERDICT:-}" ]; then
+            echo "❌ FAIL: VERDICT is empty"
+            FAILURES=$((FAILURES + 1))
+          fi
+          
+          # Leo must have been invoked
+          if [ "${LEO_EXECUTED:-}" != "true" ]; then
+            echo "❌ FAIL: LEO_EXECUTED is not true"
+            FAILURES=$((FAILURES + 1))
+          fi
+          
+          # Transport must not be degraded/failed
+          if [ "${TRANSPORT_HEALTH:-}" = "degraded" ] || [ "${TRANSPORT_HEALTH:-}" = "failed" ]; then
+            echo "❌ FAIL: TRANSPORT_HEALTH=$TRANSPORT_HEALTH"
+            FAILURES=$((FAILURES + 1))
+          fi
+          
+          # Product code must not be modified
+          if echo "${EVIDENCE_PRODUCT_MODIFIED:-}" | grep -qiE "^yes$|^true$"; then
+            echo "❌ FAIL: Product code was modified"
+            FAILURES=$((FAILURES + 1))
+          fi
+          
+          # Product branch must not be pushed
+          if echo "${EVIDENCE_BRANCH_PUSHED:-}" | grep -qiE "^yes$|^true$"; then
+            echo "❌ FAIL: Product branch was pushed"
+            FAILURES=$((FAILURES + 1))
+          fi
+          
+          # If verdict is PASS_FOR_CTO_REVIEW, validation evidence must not be "unknown"
+          if [ "${VERDICT:-}" = "PASS_FOR_CTO_REVIEW" ]; then
+            for FIELD in EVIDENCE_APP_IMPORT_SMOKE EVIDENCE_RECEIVABLES_SUITE EVIDENCE_PHASE5_PAYMENT EVIDENCE_SCHEMA_CONTRACT; do
+              VAL="${!FIELD:-}"
+              if [ "$VAL" = "unknown" ] || [ -z "$VAL" ]; then
+                echo "❌ FAIL: $FIELD=$VAL (must not be unknown/empty for PASS)"
+                FAILURES=$((FAILURES + 1))
+              else
+                echo "✅ $FIELD=$VAL"
+              fi
+            done
+          else
+            echo "ℹ️  Verdict is $VERDICT — skipping validation evidence checks"
+          fi
+          
+          if [ "$FAILURES" -gt 0 ]; then
+            echo ""
+            echo "=== Final Gate: FAILED ($FAILURES violation(s)) ==="
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== Final Gate: PASSED ==="

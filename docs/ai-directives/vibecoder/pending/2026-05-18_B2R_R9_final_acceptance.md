@@ -1,16 +1,16 @@
-# CTO Directive — R6c Path Isolation Verification (v3)
+# CTO Directive — B2R Final Acceptance (R9)
 
-Directive-ID: dry-run-B2R-R6c-path-isolation
+Directive-ID: dry-run-B2R-R9-final-acceptance
 Mode: VALIDATION_GATE
 Priority: HIGH
 Created: 2026-05-18
 Target branch: product-dev-recovered
 Report branch: reports/lubuntu-validation
-Report path: docs/ai-reports/lubuntu/2026-05-18_dry_run_B2R_R6c_path_isolation.md
+Report path: docs/ai-reports/lubuntu/2026-05-18_B2R_R9_final_acceptance.md
 
 ## Objective
 
-Verify R6 path isolation architecture (v3 — evidence parsing fix).
+Final acceptance run — full end-to-end verification.
 
 ## Instructions for Leo
 
@@ -23,7 +23,6 @@ Execute these 5 git commands in VALIDATION_TARGET directory:
 5. git log -1 --oneline
 
 ### Evidence Output Format
-Output evidence in this exact format:
 
 ```
 === LEO_EVIDENCE ===
@@ -48,8 +47,9 @@ LATEST_COMMIT: <commit message>
 
 ## Acceptance Criteria
 
-- GitHub Actions conclusion = success
+- GitHub Actions conclusion = success (all steps green)
 - Leo 5/5 commands passed
 - fallbackUsed = false
-- Final report exists on reports/lubuntu-validation
+- All evidence fields correctly parsed
+- Report pushed to reports/lubuntu-validation
 - Final Gate all checks passed

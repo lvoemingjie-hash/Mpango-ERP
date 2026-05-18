@@ -165,6 +165,7 @@ jobs:
 
           # Clone reports branch
           REPORTS_CHECKOUT="$GITHUB_WORKSPACE/reports-branch"
+          rm -rf "$REPORTS_CHECKOUT" 2>/dev/null || true
           git clone --depth 1 --branch reports/lubuntu-validation \
             https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git \
             "$REPORTS_CHECKOUT" 2>&1

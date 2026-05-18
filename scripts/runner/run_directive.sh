@@ -106,19 +106,13 @@ parse_field() {
 # We use grep -oP to extract each field value, stopping at \\ or \" boundaries.
 parse_evidence_from_json() {
   local field="$1" json="$2"
-  # v3.4: Use jq to extract clean text from JSON, parse evidence from unescaped content
+  # v3.4b: Extract text via jq (single-line expression to avoid bash quoting issues)
   local clean_text
-  clean_text="$(echo "$json" | sed -n '/^{/,/^}/p' | jq -r '\
-    .result.payloads[0].text //\
-    .payloads[0].text //\
-    .result.finalAssistantVisibleText //\
-    .finalAssistantVisibleText //\
-    empty\
-  ' 2>/dev/null)"
+  clean_text="$(echo "$json" | sed -n '/^{/,/^}/p' | jq -r '.result.payloads[0].text // .payloads[0].text // .result.finalAssistantVisibleText // .finalAssistantVisibleText // empty' 2>/dev/null)"
   if [ -n "$clean_text" ]; then
-    echo "$clean_text" | grep -oP "${field}:[[:space:]]*\\K[^\\n]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
+    echo "$clean_text" | grep -oP "${field}:[[:space:]]*\K[^\n]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
   else
-    echo "$json" | grep -oP "${field}:[[:space:]]*\\K[^\\]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
+    echo "$json" | grep -oP "${field}:[[:space:]]*\K[^\\\\]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
   fi
 }
 

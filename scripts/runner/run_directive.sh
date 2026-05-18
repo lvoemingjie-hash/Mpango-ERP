@@ -197,6 +197,7 @@ START_TIME="$(date +%s)"
 
 # ── Leo Execution Evidence Tracking ─────────────────────────────────────
 LEO_EXECUTED="false"
+TRANSPORT_HEALTH="healthy"   # healthy | degraded | failed
 LEO_INVOCATION_CMD=""
 LEO_COMMANDS_RUN=0
 LEO_COMMAND_RESULTS=""
@@ -310,6 +311,33 @@ Do NOT wait for human input. Generate report and exit." \
 
   LEO_COMMANDS_RUN=1  # At minimum, the invocation command itself counts
 
+  # ── Transport Health Detection ──────────────────────────────────────
+  # Inspect openclaw agent --json output for transport type.
+  # "gateway" = healthy path. "embedded" = degraded (fallback).
+  if echo "$raw_output" | grep -qE '"(transport|runner)"[[:space:]]*:[[:space:]]*"embedded"'; then
+    TRANSPORT_HEALTH="degraded"
+    checkpoint_warn "transport_health" "embedded fallback detected — Gateway path not used"
+    echo "[TRANSPORT_DEGRADED] openclaw agent used embedded fallback (not Gateway)"
+  elif echo "$raw_output" | grep -qE '"(transport|runner)"[[:space:]]*:[[:space:]]*"gateway"'; then
+    TRANSPORT_HEALTH="healthy"
+    checkpoint "transport_health"
+    echo "[TRANSPORT_HEALTHY] openclaw agent used Gateway path"
+  elif echo "$raw_output" | grep -q "EMBEDDED FALLBACK"; then
+    TRANSPORT_HEALTH="degraded"
+    checkpoint_warn "transport_health" "embedded fallback detected (fallback string)"
+    echo "[TRANSPORT_DEGRADED] EMBEDDED FALLBACK detected in output"
+  else
+    # Cannot determine — if rc=0, assume healthy but note uncertainty
+    if [ "$rc" -eq 0 ]; then
+      checkpoint_warn "transport_health" "transport type undetermined, assuming healthy (rc=0)"
+      echo "[TRANSPORT_UNKNOWN] Could not detect transport type, rc=0"
+    else
+      TRANSPORT_HEALTH="failed"
+      checkpoint_fail "transport_health" "transport undetermined and rc=$rc"
+      echo "[TRANSPORT_FAILED] Could not detect transport type, rc=$rc"
+    fi
+  fi
+
   if [ "$rc" -eq 0 ]; then
     checkpoint "leo_executor_complete"
     # Try to extract evidence of command execution from output
@@ -371,6 +399,7 @@ write_report() {
 | Executed | $(date -Is) |
 | Duration | ${duration}s |
 | Verdict | **$verdict** |
+| Transport Health | $TRANSPORT_HEALTH |
 | Executor | $EXECUTOR_TYPE |
 | Runner | run_directive.sh v3 (hardened) |
 | Commit | $commit |
@@ -553,12 +582,19 @@ BRANCH_INFO="$(git -C "$DIRECTIVE_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null 
 case "$EXECUTOR_TYPE" in
   script-only)
     checkpoint "executor_script_only_start"
-    EXECUTOR_OUTPUT="$(run_script_only 2>&1)" || true
+    # [FIX v3.1] file-based capture to preserve shell variables
+    local _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
+    run_script_only > "$_tmp_out" 2>&1 || true
+    EXECUTOR_OUTPUT="$(cat "$_tmp_out")"
     ;;
   leo-headless)
     checkpoint "executor_leo_headless_start"
-    EXECUTOR_OUTPUT="$(run_leo_headless 2>&1)" || {
-      local rc=$?
+    # [FIX v3.1] file-based capture to preserve shell variables
+    local _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
+    run_leo_headless > "$_tmp_out" 2>&1
+    local rc=$?
+    EXECUTOR_OUTPUT="$(cat "$_tmp_out")"
+    if [ $rc -ne 0 ]; then
       stop_heartbeat
       local elapsed
       elapsed="$(elapsed_since "$START_TIME")"
@@ -581,7 +617,7 @@ case "$EXECUTOR_TYPE" in
 
       echo "[EXIT] ts=$(date -Is) directive=$TASK_ID verdict=$VERDICT duration=${elapsed}s executor=$EXECUTOR_TYPE" | tee -a "$log_file"
       exit 1
-    }
+    fi
     ;;
   *)
     VERDICT="FAIL_RUNNER_INFRA"
@@ -610,9 +646,33 @@ fi
 
 checkpoint "timeout_check_pass"
 
+# ── Transport Health Gate ────────────────────────────────────────────
+# Three-tier verdict based on CTO directive:
+#   Gateway healthy + validation OK           → PASS_FOR_CTO_REVIEW
+#   Gateway degraded (embedded fallback)       → FAIL_RUNNER_INFRA_WITH_VALIDATION_COMPLETED
+#   Gateway failed + validation failed/timeout → FAIL_RUNNER_INFRA
+checkpoint "transport_gate"
+
+if [ "$TRANSPORT_HEALTH" = "degraded" ]; then
+  VERDICT="FAIL_RUNNER_INFRA_WITH_VALIDATION_COMPLETED"
+  checkpoint_warn "transport_gate" "transport degraded — validation may have completed but infra path is unhealthy"
+  echo "[TRANSPORT_GATE] DEGRADED: embedded fallback was used. Setting verdict to FAIL_RUNNER_INFRA_WITH_VALIDATION_COMPLETED"
+elif [ "$TRANSPORT_HEALTH" = "failed" ]; then
+  VERDICT="FAIL_RUNNER_INFRA"
+  checkpoint_fail "transport_gate" "transport failed"
+  echo "[TRANSPORT_GATE] FAILED: transport health is failed"
+else
+  checkpoint "transport_gate"
+fi
+
 # ── Leo Execution Evidence Gate (VALIDATION_GATE only) ────────────────
 if ! verify_leo_evidence; then
-  VERDICT="FAIL_RUNNER_INFRA"
+  if [ "$VERDICT" = "FAIL_RUNNER_INFRA_WITH_VALIDATION_COMPLETED" ]; then
+    # Keep the more specific degraded verdict
+    checkpoint_warn "leo_evidence_gate" "evidence gate failed on top of degraded transport"
+  else
+    VERDICT="FAIL_RUNNER_INFRA"
+  fi
   write_failure_report "$VERDICT" "Leo execution evidence gate failed" "$ELAPSED" "$COMMIT_INFO" "$BRANCH_INFO"
 fi
 
@@ -659,6 +719,8 @@ case "$VERDICT" in
     exit 0 ;;
   PARTIAL_PASS_WITH_DB_EVIDENCE_GAP)
     exit 0 ;;
+  FAIL_RUNNER_INFRA_WITH_VALIDATION_COMPLETED)
+    exit 1 ;;  # degraded path — non-zero exit per CTO directive
   *)
     exit 1 ;;
 esac

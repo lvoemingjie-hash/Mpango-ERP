@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_directive.sh v3 — Hardened Directive Runner
+# run_directive.sh v3.3 — Hardened Directive Runner
 # Implements CTO Hardening Requirements (2026-05-17):
 #   1. Report Existence Final Gate
 #   2. Leo Execution Evidence Gate
@@ -296,8 +296,7 @@ run_leo_headless() {
 
 Task ID: $TASK_ID
 Mode: $MODE
-Report Branch: $REPORT_BRANCH
-Report Path: $REPORT_PATH
+Report Path (local): $REPORT_PATH
 
 Directive file: $latest_directive
 
@@ -306,37 +305,63 @@ $directive_content
 --- End Directive ---
 
 Execute the leo-headless-runner skill for this directive.
-Do NOT wait for human input. Generate report and exit." \
+Do NOT wait for human input. Generate report and exit.
+
+CRITICAL: Do NOT git push to ANY branch. Write the report file locally only.
+The workflow push step handles pushing to reports/lubuntu-validation.
+If you push, it will conflict with the workflow and cause failure." \
       --json 2>&1)" || rc=$?
 
   LEO_COMMANDS_RUN=1  # At minimum, the invocation command itself counts
 
-  # ── Transport Health Detection ──────────────────────────────────────
-  # Inspect openclaw agent --json output for transport type.
-  # "gateway" = healthy path. "embedded" = degraded (fallback).
-  if echo "$raw_output" | grep -qE '"(transport|runner)"[[:space:]]*:[[:space:]]*"embedded"'; then
+  # ── Transport Health Detection v3.3 ──────────────────────────────
+  # Inspect openclaw agent --json output for actual fallback usage.
+  #
+  # IMPORTANT: "runner": "embedded" in the JSON output refers to the
+  # OpenClaw agent CLI binary running mode, NOT that Gateway fallback
+  # was used. The correct indicator is "fallbackUsed": true/false.
+  #
+  # Healthy:   fallbackUsed=false, rc=0, tools were called
+  # Degraded:  fallbackUsed=true (actual embedded fallback was used)
+  # Failed:    rc!=0, no tools called
+
+  if echo "$raw_output" | grep -qE '"fallbackUsed"[[:space:]]*:[[:space:]]*true'; then
+    # ACTUAL embedded fallback was used — this is degraded
     TRANSPORT_HEALTH="degraded"
-    checkpoint_warn "transport_health" "embedded fallback detected — Gateway path not used"
-    echo "[TRANSPORT_DEGRADED] openclaw agent used embedded fallback (not Gateway)"
+    checkpoint_warn "transport_health" "fallbackUsed=true — actual embedded fallback detected"
+    echo "[TRANSPORT_DEGRADED] fallbackUsed=true: Gateway was bypassed, embedded fallback was used"
+  elif echo "$raw_output" | grep -qE '"fallbackUsed"[[:space:]]*:[[:space:]]*false'; then
+    # Gateway was used successfully — this is healthy
+    TRANSPORT_HEALTH="healthy"
+    checkpoint "transport_health" "fallbackUsed=false — Gateway path confirmed"
+    echo "[TRANSPORT_HEALTHY] fallbackUsed=false: Gateway path confirmed"
   elif echo "$raw_output" | grep -qE '"(transport|runner)"[[:space:]]*:[[:space:]]*"gateway"'; then
     TRANSPORT_HEALTH="healthy"
     checkpoint "transport_health"
-    echo "[TRANSPORT_HEALTHY] openclaw agent used Gateway path"
+    echo "[TRANSPORT_HEALTHY] transport/runner=gateway detected"
   elif echo "$raw_output" | grep -q "EMBEDDED FALLBACK"; then
     TRANSPORT_HEALTH="degraded"
     checkpoint_warn "transport_health" "embedded fallback detected (fallback string)"
     echo "[TRANSPORT_DEGRADED] EMBEDDED FALLBACK detected in output"
   else
-    # Cannot determine — if rc=0, assume healthy but note uncertainty
+    # Cannot determine from explicit flags — use proxy signals
     if [ "$rc" -eq 0 ]; then
-      checkpoint_warn "transport_health" "transport type undetermined, assuming healthy (rc=0)"
-      echo "[TRANSPORT_UNKNOWN] Could not detect transport type, rc=0"
+      # If execution succeeded, check for tool calls as health proxy
+      if echo "$raw_output" | grep -qE '"calls"[[:space:]]*:[[:space:]]*[1-9]'; then
+        TRANSPORT_HEALTH="healthy"
+        checkpoint "transport_health" "rc=0 with tool calls — assuming healthy"
+        echo "[TRANSPORT_HEALTHY] rc=0 with tool calls detected, assuming Gateway healthy"
+      else
+        checkpoint_warn "transport_health" "transport type undetermined, assuming healthy (rc=0)"
+        echo "[TRANSPORT_UNKNOWN] Could not detect transport type, rc=0"
+      fi
     else
       TRANSPORT_HEALTH="failed"
       checkpoint_fail "transport_health" "transport undetermined and rc=$rc"
       echo "[TRANSPORT_FAILED] Could not detect transport type, rc=$rc"
     fi
   fi
+
 
   if [ "$rc" -eq 0 ]; then
     checkpoint "leo_executor_complete"

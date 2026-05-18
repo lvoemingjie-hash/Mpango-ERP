@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_directive.sh v3.6 — Hardened Directive Runner (Path Isolation Fix)
+# run_directive.sh v3.7 — Hardened Directive Runner (Path Isolation Fix)
 #
 # R6 Architecture Changes:
 #   B. Directive repo (directives/) vs validation target (validation-target/) separated
@@ -101,76 +101,17 @@ parse_field() {
 }
 
 # Parse evidence fields directly from raw JSON output.
-# v3.6: Recursive scan ALL string fields for === LEO_EVIDENCE === marker.
-# No longer relies on specific JSON paths (result.payloads[0].text, etc.).
-# Falls back to grep on raw output if JSON repair fails.
+# v3.7: Delegate to extract_leo_evidence.py helper (no inline Python).
+# The helper does JSON repair + recursive scan for === LEO_EVIDENCE ===.
+# Falls back to grep on raw output if helper fails.
+HELPER_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/extract_leo_evidence.py"
+
 parse_evidence_from_json() {
   local field="$1" json="$2"
-  # Strategy 1: Python JSON repair + recursive scan for evidence text
-  local clean_text
-  clean_text="$(python3 -c "
-import json, sys
-
-def find_evidence_text(obj, marker='=== LEO_EVIDENCE ==='):
-    if isinstance(obj, str):
-        return obj if marker in obj else None
-    if isinstance(obj, dict):
-        for v in obj.values():
-            r = find_evidence_text(v, marker)
-            if r: return r
-    if isinstance(obj, list):
-        for item in obj:
-            r = find_evidence_text(item, marker)
-            if r: return r
-    return None
-
-raw = sys.stdin.read()
-start = raw.find('{')
-if start < 0:
-    sys.exit(1)
-depth = 0
-end = -1
-for i in range(start, len(raw)):
-    if raw[i] == '{': depth += 1
-    elif raw[i] == '}': depth -= 1
-    if depth == 0:
-        end = i + 1
-        break
-if end < 0:
-    sys.exit(1)
-json_str = raw[start:end]
-result = []
-in_string = False
-i = 0
-while i < len(json_str):
-    c = json_str[i]
-    if c == '\\\\' and in_string:
-        result.append(c)
-        if i + 1 < len(json_str):
-            i += 1
-            result.append(json_str[i])
-        i += 1
-        continue
-    if c == '"':
-        in_string = not in_string
-        result.append(c)
-    elif in_string and c in '\n\r':
-        result.append('\\\\' + ('n' if c == '\n' else 'r'))
-    else:
-        result.append(c)
-    i += 1
-repaired = ''.join(result)
-try:
-    data = json.loads(repaired)
-    text = find_evidence_text(data)
-    if text:
-        sys.stdout.write(text)
-except json.JSONDecodeError:
-    sys.exit(1)
-" <<< "$json" 2>/dev/null)" || true
-
-  if [ -n "$clean_text" ]; then
-    echo "$clean_text" | grep -oP "${field}:[[:space:]]*\K[^\n]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
+  local result
+  result="$(printf '%s' "$json" | python3 "$HELPER_SCRIPT" "$field" 2>/dev/null)" || true
+  if [ -n "$result" ] && [ "$result" != "unknown" ]; then
+    echo "$result"
   else
     # Strategy 2: grep fallback on raw output
     echo "$json" | grep -oP "${field}:[[:space:]]*\K[^\n]+" | head -1 | sed 's/[[:space:]]*$//' || echo "unknown"
@@ -500,8 +441,8 @@ parse_leo_evidence() {
   local raw="$1"
   LEO_RAW_EVIDENCE="$raw"
 
-  # v3.6: Parse from raw JSON output via recursive field scan.
-  # Scans ALL string fields for === LEO_EVIDENCE === marker.
+  # v3.7: Parse via extract_leo_evidence.py helper (no inline Python).
+  # Helper does JSON repair + recursive field scan + grep fallback.
   # grep -oP extracts field values stopping at \\ or \" boundaries.
   EVIDENCE_VERDICT="$(parse_evidence_from_json 'VERDICT' "$raw")"
   EVIDENCE_COMMANDS="$(parse_evidence_from_json 'COMMANDS_EXECUTED' "$raw")"

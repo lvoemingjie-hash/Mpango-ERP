@@ -99,3 +99,4 @@ R6 Acceptance Criteria (runner gates):
 If R6 fails, report failure phase ONLY:
 - script syntax / directive parsing / section extraction / Leo timeout / evidence gate / validation gate / workflow Final Gate / report push
 - Do NOT stack additional patches. Report and escalate.
+

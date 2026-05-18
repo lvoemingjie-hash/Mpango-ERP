@@ -1,5 +1,5 @@
 # =============================================================================
-# Vibecoder Directive Runner — Hardened v4.2 (R6 Path Isolation)
+# Vibecoder Directive Runner — Hardened v4.3 (v3.8 Full Validation)
 #
 # R6 Changes:
 #   A. Debug diagnostics step for environment visibility
@@ -8,7 +8,7 @@
 #   D. Push Step: absolute paths, generated-reports → fallback-reports, exit 1 if missing
 #   E. Final Gate: hard failure — verify report content fields on reports branch
 #
-# Last updated: 2026-05-18 (v4.2: R6 path isolation fix)
+# Last updated: 2026-05-19 (v4.3: R5 full validation gates)
 # =============================================================================
 name: Vibecoder Directive Runner
 
@@ -100,8 +100,8 @@ jobs:
           echo "=== directives/pending ==="
           ls -la directives/docs/ai-directives/vibecoder/pending/ 2>/dev/null || echo "(no pending dir)"
 
-      # ── Run hardened directive runner (v3.4) ────────────────────────
-      - name: Run hardened directive runner (v3.4)
+      # ── Run hardened directive runner (v3.8) ────────────────────────
+      - name: Run hardened directive runner (v3.8)
         id: runner
         shell: bash
         env:
@@ -265,6 +265,12 @@ jobs:
             "Run URL"
             "Leo Invoked"
             "COMMANDS_EXECUTED"
+            "PREFLIGHT|Preflight Commands"
+            "VALIDATION|Product Validation"
+            "APP_IMPORT_SMOKE|App Import Smoke"
+            "RECEIVABLES_SUITE|Receivables Suite"
+            "PHASE5_PAYMENT_REGRESSION|Phase 5 Payment"
+            "SCHEMA_CONTRACT|Schema Contract"
             "fallbackUsed|Transport Health"
             "PRODUCT_CODE_MODIFIED|Product Code Modified"
             "PRODUCT_BRANCH_PUSHED|Product Branch Pushed"
@@ -285,12 +291,12 @@ jobs:
           fi
           echo "Gate 4 PASS: Leo invoked = yes"
 
-          # ── Gate 5: 5/5 commands ──
-          if ! echo "$REPORT_CONTENT" | grep -qE "5/5"; then
-            echo "FATAL: 5/5 commands not found in report"
+          # ── Gate 5: Command count (preflight + validation) ──
+          if ! echo "$REPORT_CONTENT" | grep -qE "[0-9]+/[0-9]+.*commands"; then
+            echo "FATAL: COMMANDS_EXECUTED field not found in report"
             exit 1
           fi
-          echo "Gate 5 PASS: 5/5 commands passed"
+          echo "Gate 5 PASS: COMMANDS_EXECUTED found"
 
           # ── Gate 6: Transport healthy / fallbackUsed=false ──
           if echo "$REPORT_CONTENT" | grep -qiE "fallbackUsed.*true"; then
@@ -316,6 +322,14 @@ jobs:
             exit 1
           fi
           echo "Gate 8 PASS: Product branch not pushed"
+
+          # ── Gate 9: Validation evidence present (v3.8) ──
+          if echo "$REPORT_CONTENT" | grep -qE "App Import Smoke.*unknown"; then
+            echo "FATAL: Product validation results are missing (APP_IMPORT_SMOKE=unknown)"
+            echo "  Leo likely only executed preflight git commands, not actual tests."
+            exit 1
+          fi
+          echo "Gate 9 PASS: Product validation evidence present"
 
           echo ""
           echo "=========================================="

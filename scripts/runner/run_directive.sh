@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_directive.sh v3.7 — Hardened Directive Runner (Path Isolation Fix)
+# run_directive.sh v3.8 — Full Validation Directive Runner
 #
 # R6 Architecture Changes:
 #   B. Directive repo (directives/) vs validation target (validation-target/) separated
@@ -215,7 +215,7 @@ if echo "$REPORT_PATH" | grep -q '/$'; then
 fi
 
 {
-  echo "=== Directive Runner v3.4 (Path Isolation Fix) ==="
+  echo "=== Directive Runner v3.8 (Full Validation) ==="
   echo "Task ID: $TASK_ID"
   echo "Mode: $MODE"
   echo "Priority: $PRIORITY"
@@ -244,11 +244,18 @@ LEO_RAW_EVIDENCE=""
 # Evidence fields parsed from Leo output
 EVIDENCE_VERDICT="unknown"
 EVIDENCE_COMMANDS="unknown"
+EVIDENCE_PREFLIGHT="unknown"
+EVIDENCE_VALIDATION="unknown"
 EVIDENCE_CMD1_FETCH="unknown"
 EVIDENCE_CMD2_CHECKOUT="unknown"
 EVIDENCE_CMD3_REVPARSE="unknown"
 EVIDENCE_CMD4_STATUS="unknown"
 EVIDENCE_CMD5_LOG="unknown"
+EVIDENCE_APP_IMPORT="unknown"
+EVIDENCE_RECEIVABLES="unknown"
+EVIDENCE_PHASE5_PAYMENT="unknown"
+EVIDENCE_SCHEMA_CONTRACT="unknown"
+EVIDENCE_SCHEMA_SKIP_REASONS="unknown"
 EVIDENCE_PRODUCT_MODIFIED="unknown"
 EVIDENCE_BRANCH_PUSHED="unknown"
 EVIDENCE_COMMIT_HASH="unknown"
@@ -316,7 +323,14 @@ run_script_only() {
   echo -e "$output"
 }
 
-# ── Leo headless executor (R6: isolated to VALIDATION_TARGET) ─────────
+# Extract a markdown section from the directive file by header name.
+# Returns text between "## SectionName" (or "### SectionName") and the next ## header.
+extract_directive_section() {
+  local section="$1" file="$2"
+  sed -n "/^##\+ *${section}/,/^##\+ /{ /^##\+ *${section}/d; /^##\+ /d; p; }" "$file" 2>/dev/null
+}
+
+# ── Leo headless executor (v3.8: full validation) ─────────
 run_leo_headless() {
   checkpoint "leo_executor_start"
 
@@ -331,6 +345,23 @@ run_leo_headless() {
   local directive_content
   directive_content="$(cat "$latest_directive")"
 
+  # v3.8: Extract directive sections dynamically
+  local preflight_cmds=""
+  local validation_cmds=""
+  local expected_evidence=""
+  local hard_rules=""
+
+  preflight_cmds="$(extract_directive_section 'Required branch/commit checks' "$latest_directive")" || true
+  validation_cmds="$(extract_directive_section 'Required validation commands' "$latest_directive")" || true
+  expected_evidence="$(extract_directive_section 'Expected evidence' "$latest_directive")" || true
+  hard_rules="$(extract_directive_section 'Hard rules' "$latest_directive")" || true
+
+  # Count validation commands (lines starting with digits followed by .)
+  VALIDATION_CMD_COUNT="$(echo "$validation_cmds" | grep -cE '^[[:space:]]*[0-9]+\.' || echo 0)"
+  TOTAL_CMD_COUNT=$((5 + VALIDATION_CMD_COUNT))  # 5 preflight + N validation
+
+  checkpoint "directive_sections_extracted" "preflight=5 validation=${VALIDATION_CMD_COUNT} total=${TOTAL_CMD_COUNT}"
+
   LEO_INVOCATION_CMD="openclaw agent --agent main --message 'CTO_DIRECTIVE_TRIGGER'"
   LEO_EXECUTED="true"
 
@@ -339,47 +370,75 @@ run_leo_headless() {
   local raw_output=""
   local rc=0
 
-  # R6: Leo prompt — work in VALIDATION_TARGET, output raw evidence, NO report files
+  # v3.8: Leo prompt — preflight THEN validation commands from directive
   local leo_prompt=""
   leo_prompt+="CTO_DIRECTIVE_TRIGGER\n\n"
   leo_prompt+="Task ID: $TASK_ID\n"
   leo_prompt+="Mode: $MODE\n"
   leo_prompt+="Target Branch: $TARGET_BRANCH\n\n"
-  leo_prompt+="Directive file: $latest_directive\n\n"
   leo_prompt+="--- Directive Content ---\n"
   leo_prompt+="$directive_content\n"
   leo_prompt+="--- End Directive ---\n\n"
-  leo_prompt+="INSTRUCTIONS FOR LEO (R6 PATH ISOLATION):\n\n"
-  leo_prompt+="1. Your working directory MUST be: $VALIDATION_TARGET\n"
-  leo_prompt+="   - All git commands must be executed in this directory\n"
-  leo_prompt+="   - Use absolute paths for all git operations\n\n"
+  leo_prompt+="INSTRUCTIONS FOR LEO:\n\n"
+  leo_prompt+="1. Your working directory MUST be: $VALIDATION_TARGET/backend\n"
+  leo_prompt+="   - All commands must be executed in this directory\n"
+  leo_prompt+="   - Use absolute paths: cd $VALIDATION_TARGET/backend first\n\n"
   leo_prompt+="2. FORBIDDEN ACTIONS:\n"
   leo_prompt+="   - Do NOT cd to $DIRECTIVE_REPO\n"
-  leo_prompt+="   - Do NOT execute git checkout/reset/pull in $DIRECTIVE_REPO\n"
   leo_prompt+="   - Do NOT write any report file anywhere\n"
   leo_prompt+="   - Do NOT git push to any branch\n"
-  leo_prompt+="   - Do NOT modify any tracked files\n\n"
-  leo_prompt+="3. Execute these 5 git commands IN ORDER in $VALIDATION_TARGET:\n"
+  leo_prompt+="   - Do NOT modify any tracked files\n"
+  leo_prompt+="   - Do NOT skip any validation command\n"
+  leo_prompt+="   - Do NOT classify as PASS unless ALL commands complete successfully\n\n"
+  leo_prompt+="3. PHASE 1 — BRANCH/COMMIT PREFLIGHT (execute in $VALIDATION_TARGET):\n"
   leo_prompt+="   git -C $VALIDATION_TARGET fetch origin --prune\n"
   leo_prompt+="   git -C $VALIDATION_TARGET checkout origin/$TARGET_BRANCH --detach\n"
   leo_prompt+="   git -C $VALIDATION_TARGET rev-parse HEAD\n"
   leo_prompt+="   git -C $VALIDATION_TARGET status --short\n"
   leo_prompt+="   git -C $VALIDATION_TARGET log -1 --oneline\n\n"
-  leo_prompt+="4. After executing all 5 commands, output your evidence in EXACTLY this format:\n"
+  leo_prompt+="4. PHASE 2 — PRODUCT VALIDATION COMMANDS (execute in $VALIDATION_TARGET/backend):\n"
+  leo_prompt+="   You MUST execute EVERY command listed in the directive under 'Required validation commands'.\n"
+  leo_prompt+="   These are the ACTUAL product tests. The git preflight above is NOT the validation.\n"
+  leo_prompt+="   Run each command and capture the full output (pass/fail counts, errors, skips).\n\n"
+
+  # Append directive content for validation commands
+  if [ -n "$validation_cmds" ]; then
+    leo_prompt+="   Directive validation commands:\n"
+    leo_prompt+="$(echo "$validation_cmds" | sed 's/^/   /')\n\n"
+  fi
+  if [ -n "$expected_evidence" ]; then
+    leo_prompt+="   Expected evidence (to verify your results):\n"
+    leo_prompt+="$(echo "$expected_evidence" | sed 's/^/   /')\n\n"
+  fi
+  if [ -n "$hard_rules" ]; then
+    leo_prompt+="   Hard rules from directive:\n"
+    leo_prompt+="$(echo "$hard_rules" | sed 's/^/   /')\n\n"
+  fi
+
+  leo_prompt+="5. EVIDENCE FORMAT — After completing ALL commands, output in EXACTLY this format:\n"
   leo_prompt+="=== LEO_EVIDENCE ===\n"
-  leo_prompt+="VERDICT: PASS_FOR_CTO_REVIEW\n"
-  leo_prompt+="COMMANDS_EXECUTED: 5/5\n"
-  leo_prompt+="CMD1_FETCH: PASS\n"
-  leo_prompt+="CMD2_CHECKOUT: PASS\n"
+  leo_prompt+="VERDICT: <PASS_FOR_CTO_REVIEW|PARTIAL_PASS_WITH_DB_EVIDENCE_GAP|BLOCKED_ENVIRONMENT|FAIL_RUNNER_INFRA_WITH_VALIDATION_COMPLETED|FAIL_VALIDATION>\n"
+  leo_prompt+="COMMANDS_EXECUTED: ${TOTAL_CMD_COUNT}/${TOTAL_CMD_COUNT}\n"
+  leo_prompt+="PREFLIGHT: 5/5\n"
+  leo_prompt+="VALIDATION: ${VALIDATION_CMD_COUNT}/${VALIDATION_CMD_COUNT}\n"
+  leo_prompt+="CMD1_FETCH: <PASS|FAIL|BLOCKED>\n"
+  leo_prompt+="CMD2_CHECKOUT: <PASS|FAIL|BLOCKED>\n"
   leo_prompt+="CMD3_REVPARSE: <hash>\n"
-  leo_prompt+="CMD4_STATUS: clean\n"
+  leo_prompt+="CMD4_STATUS: <clean|dirty>\n"
   leo_prompt+="CMD5_LOG: <commit message>\n"
+  leo_prompt+="APP_IMPORT_SMOKE: <route_count_or_error>\n"
+  leo_prompt+="RECEIVABLES_SUITE: <X passed, Y failed>\n"
+  leo_prompt+="PHASE5_PAYMENT_REGRESSION: <X passed, Y xfailed, Z failed>\n"
+  leo_prompt+="SCHEMA_CONTRACT: <X passed, Y skipped, Z failed>\n"
+  leo_prompt+="SCHEMA_SKIP_REASONS: <reasons if any, or NONE>\n"
   leo_prompt+="PRODUCT_CODE_MODIFIED: no\n"
   leo_prompt+="PRODUCT_BRANCH_PUSHED: no\n"
   leo_prompt+="COMMIT_HASH: <full hash>\n"
   leo_prompt+="LATEST_COMMIT: <commit message>\n"
   leo_prompt+="=== LEO_EVIDENCE_END ===\n\n"
-  leo_prompt+="5. Do NOT wait for human input. Execute and output evidence immediately.\n"
+  leo_prompt+="CRITICAL: VERDICT must reflect whether ALL validation commands completed successfully.\n"
+  leo_prompt+="If any validation command failed or was skipped, use FAIL_VALIDATION or PARTIAL_PASS_WITH_DB_EVIDENCE_GAP, NOT PASS_FOR_CTO_REVIEW.\n"
+  leo_prompt+="Do NOT wait for human input. Execute and output evidence immediately.\n"
 
   # Wrap in timeout, capture exit code properly
   raw_output="$(timeout "$EXECUTOR_TIMEOUT_SECS" \
@@ -436,6 +495,8 @@ run_leo_headless() {
   fi
 }
 
+
+
 # ── Parse Leo Evidence ─────────────────────────────────────────────────
 parse_leo_evidence() {
   local raw="$1"
@@ -446,11 +507,18 @@ parse_leo_evidence() {
   # grep -oP extracts field values stopping at \\ or \" boundaries.
   EVIDENCE_VERDICT="$(parse_evidence_from_json 'VERDICT' "$raw")"
   EVIDENCE_COMMANDS="$(parse_evidence_from_json 'COMMANDS_EXECUTED' "$raw")"
+  EVIDENCE_PREFLIGHT="$(parse_evidence_from_json 'PREFLIGHT' "$raw")"
+  EVIDENCE_VALIDATION="$(parse_evidence_from_json 'VALIDATION' "$raw")"
   EVIDENCE_CMD1_FETCH="$(parse_evidence_from_json 'CMD1_FETCH' "$raw")"
   EVIDENCE_CMD2_CHECKOUT="$(parse_evidence_from_json 'CMD2_CHECKOUT' "$raw")"
   EVIDENCE_CMD3_REVPARSE="$(parse_evidence_from_json 'CMD3_REVPARSE' "$raw")"
   EVIDENCE_CMD4_STATUS="$(parse_evidence_from_json 'CMD4_STATUS' "$raw")"
   EVIDENCE_CMD5_LOG="$(parse_evidence_from_json 'CMD5_LOG' "$raw")"
+  EVIDENCE_APP_IMPORT="$(parse_evidence_from_json 'APP_IMPORT_SMOKE' "$raw")"
+  EVIDENCE_RECEIVABLES="$(parse_evidence_from_json 'RECEIVABLES_SUITE' "$raw")"
+  EVIDENCE_PHASE5_PAYMENT="$(parse_evidence_from_json 'PHASE5_PAYMENT_REGRESSION' "$raw")"
+  EVIDENCE_SCHEMA_CONTRACT="$(parse_evidence_from_json 'SCHEMA_CONTRACT' "$raw")"
+  EVIDENCE_SCHEMA_SKIP_REASONS="$(parse_evidence_from_json 'SCHEMA_SKIP_REASONS' "$raw")"
   EVIDENCE_PRODUCT_MODIFIED="$(parse_evidence_from_json 'PRODUCT_CODE_MODIFIED' "$raw")"
   EVIDENCE_BRANCH_PUSHED="$(parse_evidence_from_json 'PRODUCT_BRANCH_PUSHED' "$raw")"
   EVIDENCE_COMMIT_HASH="$(parse_evidence_from_json 'COMMIT_HASH' "$raw")"
@@ -460,11 +528,18 @@ parse_leo_evidence() {
   echo "[EVIDENCE] Parsed Leo evidence (from raw JSON):"
   echo "  VERDICT: $EVIDENCE_VERDICT"
   echo "  COMMANDS: $EVIDENCE_COMMANDS"
+  echo "  PREFLIGHT: $EVIDENCE_PREFLIGHT"
+  echo "  VALIDATION: $EVIDENCE_VALIDATION"
   echo "  CMD1: $EVIDENCE_CMD1_FETCH"
   echo "  CMD2: $EVIDENCE_CMD2_CHECKOUT"
   echo "  CMD3: $EVIDENCE_CMD3_REVPARSE"
   echo "  CMD4: $EVIDENCE_CMD4_STATUS"
   echo "  CMD5: $EVIDENCE_CMD5_LOG"
+  echo "  APP_IMPORT: $EVIDENCE_APP_IMPORT"
+  echo "  RECEIVABLES: $EVIDENCE_RECEIVABLES"
+  echo "  PHASE5_PAYMENT: $EVIDENCE_PHASE5_PAYMENT"
+  echo "  SCHEMA_CONTRACT: $EVIDENCE_SCHEMA_CONTRACT"
+  echo "  SCHEMA_SKIP_REASONS: $EVIDENCE_SCHEMA_SKIP_REASONS"
   echo "  PRODUCT_MODIFIED: $EVIDENCE_PRODUCT_MODIFIED"
   echo "  BRANCH_PUSHED: $EVIDENCE_BRANCH_PUSHED"
 }
@@ -505,7 +580,7 @@ write_report() {
 | Invocation Command | \`${LEO_INVOCATION_CMD}\` |
 | Transport Health | $TRANSPORT_HEALTH |
 
-### Command Evidence
+### Preflight Commands
 
 | Command | Result |
 |---------|--------|
@@ -514,6 +589,16 @@ write_report() {
 | 3. git rev-parse HEAD | $EVIDENCE_CMD3_REVPARSE |
 | 4. git status --short | $EVIDENCE_CMD4_STATUS |
 | 5. git log -1 --oneline | $EVIDENCE_CMD5_LOG |
+
+### Product Validation Results
+
+| Suite | Result |
+|-------|--------|
+| App Import Smoke | $EVIDENCE_APP_IMPORT |
+| Receivables Suite | $EVIDENCE_RECEIVABLES |
+| Phase 5 Payment Regression | $EVIDENCE_PHASE5_PAYMENT |
+| Schema Contract | $EVIDENCE_SCHEMA_CONTRACT |
+| Schema Skip Reasons | $EVIDENCE_SCHEMA_SKIP_REASONS |
 
 ### Compliance
 
@@ -550,7 +635,7 @@ write_report() {
 | **Verdict** | **$verdict** |
 | Transport Health | $TRANSPORT_HEALTH |
 | Executor | $EXECUTOR_TYPE |
-| Runner | run_directive.sh v3.4 (path isolation) |
+| Runner | run_directive.sh v3.8 (full validation) |
 | runner_name | $(hostname) |
 | Run URL | $run_url |
 | Report Path (on branch) | $REPORT_PATH |
@@ -565,7 +650,7 @@ $leo_evidence_section
 $(echo -e "$CHECKPOINTS")
 
 ---
-Generated by Mpango Directive Runner v3.4 (Path Isolation Fix) at $(date -Is)
+Generated by Mpango Directive Runner v3.8 (Full Validation) at $(date -Is)
 REPORT_EOF
 )
 
@@ -614,7 +699,7 @@ write_failure_report() {
 | Mode | $MODE |
 | **Verdict** | **$verdict** |
 | Executor | $EXECUTOR_TYPE |
-| Runner | run_directive.sh v3.4 (path isolation) |
+| Runner | run_directive.sh v3.8 (full validation) |
 | runner_name | $(hostname) |
 | Run URL | $run_url |
 | Report Path (intended) | $REPORT_PATH |
@@ -650,7 +735,7 @@ $stderr_summary
 | 5. Final gate | N/A (workflow step) |
 
 ---
-Generated by Mpango Directive Runner v3.4 (Path Isolation Fix) at $(date -Is)
+Generated by Mpango Directive Runner v3.8 (Full Validation) at $(date -Is)
 REPORT_EOF
 )
 
@@ -777,14 +862,24 @@ if [ "$EXECUTOR_TYPE" = "leo-headless" ]; then
   if [ "$LEO_EXECUTED" != "true" ]; then
     VERDICT="FAIL_RUNNER_INFRA"
     checkpoint_fail "leo_evidence_gate" "Leo was NOT invoked"
-  elif [ "$EVIDENCE_COMMANDS" != "5/5" ]; then
+  elif [ "$EVIDENCE_COMMANDS" != "${TOTAL_CMD_COUNT}/${TOTAL_CMD_COUNT}" ]; then
     VERDICT="FAIL_RUNNER_INFRA"
-    checkpoint_fail "leo_commands_gate" "Leo commands: $EVIDENCE_COMMANDS (expected 5/5)"
+    checkpoint_fail "leo_commands_gate" "Leo commands: $EVIDENCE_COMMANDS (expected ${TOTAL_CMD_COUNT}/${TOTAL_CMD_COUNT})"
   elif echo "$EVIDENCE_PRODUCT_MODIFIED" | grep -qiE "^no$|^false$"; then
     checkpoint "leo_product_modified_gate" "product code not modified"
   else
     VERDICT="FAIL_RUNNER_INFRA"
     checkpoint_fail "leo_product_modified_gate" "product code was modified: $EVIDENCE_PRODUCT_MODIFIED"
+  fi
+
+  # v3.8: Validation evidence gate — reject PASS if no real validation results
+  if [ "$VERDICT" = "PASS_FOR_CTO_REVIEW" ]; then
+    if [ "${VALIDATION_CMD_COUNT:-0}" -gt 0 ]; then
+      if [ "$EVIDENCE_VALIDATION" = "unknown" ] || [ "$EVIDENCE_APP_IMPORT" = "unknown" ]; then
+        VERDICT="FAIL_RUNNER_INFRA"
+        checkpoint_fail "leo_validation_gate" "Leo did not execute validation commands (VALIDATION=$EVIDENCE_VALIDATION, APP_IMPORT=$EVIDENCE_APP_IMPORT)"
+      fi
+    fi
   fi
 fi
 

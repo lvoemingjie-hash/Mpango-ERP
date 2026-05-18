@@ -228,6 +228,7 @@ jobs:
 
           # Clone fresh copy of reports branch
           VERIFY_DIR="$GITHUB_WORKSPACE/reports-verify"
+          rm -rf "$VERIFY_DIR" 2>/dev/null || true
           rm -rf "$VERIFY_DIR"
           git clone --depth 1 --branch reports/lubuntu-validation \
             https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git \
@@ -264,9 +265,9 @@ jobs:
             "Run URL"
             "Leo Invoked"
             "COMMANDS_EXECUTED"
-            "fallbackUsed\|Transport Health"
-            "PRODUCT_CODE_MODIFIED\|Product Code Modified"
-            "PRODUCT_BRANCH_PUSHED\|Product Branch Pushed"
+            "fallbackUsed|Transport Health"
+            "PRODUCT_CODE_MODIFIED|Product Code Modified"
+            "PRODUCT_BRANCH_PUSHED|Product Branch Pushed"
           )
 
           for field in "${REQUIRED_FIELDS[@]}"; do

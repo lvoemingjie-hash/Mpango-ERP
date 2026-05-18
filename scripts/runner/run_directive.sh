@@ -583,16 +583,16 @@ case "$EXECUTOR_TYPE" in
   script-only)
     checkpoint "executor_script_only_start"
     # [FIX v3.1] file-based capture to preserve shell variables
-    local _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
+    _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
     run_script_only > "$_tmp_out" 2>&1 || true
     EXECUTOR_OUTPUT="$(cat "$_tmp_out")"
     ;;
   leo-headless)
     checkpoint "executor_leo_headless_start"
     # [FIX v3.1] file-based capture to preserve shell variables
-    local _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
+    _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
     run_leo_headless > "$_tmp_out" 2>&1
-    local rc=$?
+    rc=$?
     EXECUTOR_OUTPUT="$(cat "$_tmp_out")"
     if [ $rc -ne 0 ]; then
       stop_heartbeat

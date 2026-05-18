@@ -517,7 +517,13 @@ write_report() {
 
 | Field | Value |
 |-------|-------|
-| Commands Executed | $EVIDENCE_COMMANDS |
+| COMMANDS_EXECUTED | $EVIDENCE_COMMANDS |
+| Product Code Modified | $EVIDENCE_PRODUCT_MODIFIED |
+| Product Branch Pushed | $EVIDENCE_BRANCH_PUSHED |
+| PRODUCT_CODE_MODIFIED | $EVIDENCE_PRODUCT_MODIFIED |
+| PRODUCT_BRANCH_PUSHED | $EVIDENCE_BRANCH_PUSHED |
+| Commit Hash | $EVIDENCE_COMMIT_HASH |
+| Latest Commit | $EVIDENCE_LATEST_COMMIT |
 | Product Code Modified | $EVIDENCE_PRODUCT_MODIFIED |
 | Product Branch Pushed | $EVIDENCE_BRANCH_PUSHED |
 | Commit Hash | $EVIDENCE_COMMIT_HASH |

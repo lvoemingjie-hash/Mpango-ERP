@@ -1,16 +1,23 @@
 # =============================================================================
-# Vibecoder Directive Runner — Hardened v3
+# Vibecoder Directive Runner — Hardened v4
 #
 # Triggers on push to automation/cto-directives when new directives are added.
 # Uses hardened run_directive.sh v3 with:
-#   - Report Existence Final Gate
+#   - Report Existence Final Gate (reports/lubuntu-validation branch)
 #   - Leo Execution Evidence Gate
 #   - Checkpoint / Progress tracking
 #   - Failure Report Guarantee
 #   - Heartbeat with phase/checkpoint info
 #   - Verdict Discipline enforcement
+#   - Report push to reports/lubuntu-validation branch
 #
-# Last updated: 2026-05-17
+# v4 changes (2026-05-18):
+#   - Report Path Gate: reports MUST be pushed to reports/lubuntu-validation branch
+#   - Final Gate verifies report exists on reports branch (not just local fs)
+#   - Negative test: if report missing on reports branch, workflow MUST fail
+#   - Runner path: ~/.openclaw/mpango-directive-runner/run_directive.sh
+#
+# Last updated: 2026-05-18
 # =============================================================================
 name: Vibecoder Directive Runner
 
@@ -29,7 +36,6 @@ permissions:
   contents: write
 
 env:
-  # Pass GitHub context to script for report metadata
   GITHUB_SERVER_URL: ${{ github.server_url }}
   GITHUB_REPOSITORY: ${{ github.repository }}
   GITHUB_RUN_ID: ${{ github.run_id }}
@@ -60,6 +66,7 @@ jobs:
           git -C directives status --short
 
       - name: Run hardened directive runner (v3)
+        id: runner
         shell: bash
         env:
           GITHUB_SERVER_URL: ${{ github.server_url }}
@@ -68,35 +75,116 @@ jobs:
         run: |
           ~/.openclaw/mpango-directive-runner/run_directive.sh "$GITHUB_WORKSPACE/directives"
 
-      # Post-run: Verify report was actually created (double-check gate)
-      - name: Verify report generation
+      # Push reports to reports/lubuntu-validation branch
+      - name: Push reports to reports/lubuntu-validation
         if: always()
+        id: push-reports
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "=== Post-run report verification ==="
-          REPORT_DIR="$GITHUB_WORKSPACE/directives/docs/ai-reports/lubuntu"
-          if [ -d "$REPORT_DIR" ]; then
-            echo "Reports found:"
-            ls -la "$REPORT_DIR/" 2>/dev/null || echo "(empty)"
-            echo ""
-            echo "Latest report (first 30 lines):"
-            latest="$(find "$REPORT_DIR" -name '*.md' -type f -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)"
-            if [ -n "$latest" ] && [ -f "$latest" ]; then
-              echo "--- $latest ---"
-              head -30 "$latest"
-            else
-              echo "WARNING: No markdown report found in $REPORT_DIR"
-            fi
+          echo "=== Report Push Step ==="
+          REPORT_SRC="$GITHUB_WORKSPACE/directives/docs/ai-reports/lubuntu"
+          REPORTS_CHECKOUT="$GITHUB_WORKSPACE/reports-branch"
+
+          # Check if any reports were generated locally
+          if [ -d "$REPORT_SRC" ] && [ -n "$(ls -A "$REPORT_SRC" 2>/dev/null)" ]; then
+            echo "Found local reports to push:"
+            ls -la "$REPORT_SRC/"
           else
-            echo "WARNING: Report directory does not exist: $REPORT_DIR"
+            echo "No local reports found in $REPORT_SRC"
+            # Check fallback reports
+            FALLBACK_DIR="$HOME/.openclaw/mpango-directive-runner/fallback-reports"
+            if [ -d "$FALLBACK_DIR" ] && [ -n "$(ls -A "$FALLBACK_DIR" 2>/dev/null)" ]; then
+              echo "Found fallback reports:"
+              ls -la "$FALLBACK_DIR/"
+              REPORT_SRC="$FALLBACK_DIR"
+            else
+              echo "WARNING: No reports (primary or fallback) to push"
+              exit 1
+            fi
           fi
 
-          # Also check fallback reports
-          FALLBACK_DIR="$HOME/.openclaw/mpango-directive-runner/fallback-reports"
-          if [ -d "$FALLBACK_DIR" ]; then
+          # Clone reports branch
+          git clone --depth 1 --branch reports/lubuntu-validation \
+            https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git "$REPORTS_CHECKOUT" 2>&1
+
+          # Ensure target directory exists
+          mkdir -p "$REPORTS_CHECKOUT/docs/ai-reports/lubuntu"
+
+          # Copy all reports
+          cp -r "$REPORT_SRC"/* "$REPORTS_CHECKOUT/docs/ai-reports/lubuntu/" 2>/dev/null || true
+
+          cd "$REPORTS_CHECKOUT"
+          git add -A
+
+          # Check if there are changes to commit
+          if git diff --cached --quiet; then
+            echo "No new reports to commit (already up to date)"
+          else
+            git config user.name "directive-runner[bot]"
+            git config user.email "directive-runner[bot]@users.noreply.github.com"
+            git commit -m "auto: directive execution report [run ${{ github.run_id }}]"
+            git push origin reports/lubuntu-validation 2>&1
+            echo "Reports pushed to reports/lubuntu-validation"
+          fi
+
+          echo "push-success=true" >> "$GITHUB_OUTPUT"
+
+      # CRITICAL FINAL GATE: verify report exists on reports branch
+      - name: Report Path Final Gate
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== Report Path Final Gate ==="
+
+          # Determine the expected report path from the directive
+          LATEST_DIRECTIVE="$(find "$GITHUB_WORKSPACE/directives/docs/ai-directives/vibecoder/pending" -name '*.md' -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-)"
+
+          if [ -z "$LATEST_DIRECTIVE" ]; then
+            echo "No directive found - nothing to gate"
+            exit 0
+          fi
+
+          # Parse report path from directive
+          REPORT_PATH_HEADER="$(grep -E '^Report path:' "$LATEST_DIRECTIVE" 2>/dev/null | head -1 | sed 's/^Report path: *//' | sed 's/[[:space:]]*$//' || true)"
+          TASK_ID="$(grep -E '^Directive-ID:' "$LATEST_DIRECTIVE" 2>/dev/null | head -1 | sed 's/^Directive-ID: *//' | tr -d '[:space:]' || true)"
+
+          if [ -z "$REPORT_PATH_HEADER" ]; then
+            REPORT_PATH_HEADER="docs/ai-reports/lubuntu/${TASK_ID}.md"
+          fi
+
+          echo "Expected report path: $REPORT_PATH_HEADER"
+          echo "Directive task ID: $TASK_ID"
+
+          # Clone fresh copy of reports branch to verify
+          VERIFY_DIR="$GITHUB_WORKSPACE/reports-verify"
+          git clone --depth 1 --branch reports/lubuntu-validation \
+            https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git "$VERIFY_DIR" 2>&1 || {
+              echo "FATAL: Cannot clone reports/lubuntu-validation for verification"
+              exit 1
+            }
+
+          # Check if report exists on the reports branch
+          VERIFY_FILE="$VERIFY_DIR/$REPORT_PATH_HEADER"
+          if [ -f "$VERIFY_FILE" ]; then
+            echo "FINAL GATE PASSED: Report exists on reports/lubuntu-validation branch"
+            echo "  Path: $REPORT_PATH_HEADER"
+            echo "  File: $VERIFY_FILE"
+            ls -la "$VERIFY_FILE"
+            exit 0
+          else
+            echo "FATAL: Report does NOT exist on reports/lubuntu-validation branch"
+            echo "  Expected: $REPORT_PATH_HEADER"
+            echo "  Checked: $VERIFY_FILE"
             echo ""
-            echo "Fallback reports:"
-            ls -la "$FALLBACK_DIR/" 2>/dev/null || echo "(empty)"
+            echo "Contents of reports/lubuntu-validation/docs/ai-reports/lubuntu/:"
+            ls -la "$VERIFY_DIR/docs/ai-reports/lubuntu/" 2>/dev/null || echo "  (directory does not exist)"
+            echo ""
+            echo "WORKFLOW MUST FAIL - Report Path Final Gate FAILED"
+            exit 1
           fi
 
       # Upload runner logs as artifacts

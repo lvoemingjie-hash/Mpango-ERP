@@ -1,23 +1,14 @@
 # =============================================================================
-# Vibecoder Directive Runner — Hardened v4
+# Vibecoder Directive Runner — Hardened v4.2 (R6 Path Isolation)
 #
-# Triggers on push to automation/cto-directives when new directives are added.
-# Uses hardened run_directive.sh v3 with:
-#   - Report Existence Final Gate (reports/lubuntu-validation branch)
-#   - Leo Execution Evidence Gate
-#   - Checkpoint / Progress tracking
-#   - Failure Report Guarantee
-#   - Heartbeat with phase/checkpoint info
-#   - Verdict Discipline enforcement
-#   - Report push to reports/lubuntu-validation branch
+# R6 Changes:
+#   A. Debug diagnostics step for environment visibility
+#   B. Directive repo (directives/) vs validation target (validation-target/) separated
+#   C. Reports staged to $GITHUB_WORKSPACE/generated-reports/ by run_directive.sh
+#   D. Push Step: absolute paths, generated-reports → fallback-reports, exit 1 if missing
+#   E. Final Gate: hard failure — verify report content fields on reports branch
 #
-# v4 changes (2026-05-18):
-#   - Report Path Gate: reports MUST be pushed to reports/lubuntu-validation branch
-#   - Final Gate verifies report exists on reports branch (not just local fs)
-#   - Negative test: if report missing on reports branch, workflow MUST fail
-#   - Runner path: ~/.openclaw/mpango-directive-runner/run_directive.sh
-#
-# Last updated: 2026-05-18 (v4.1: push rebase fix)
+# Last updated: 2026-05-18 (v4.2: R6 path isolation fix)
 # =============================================================================
 name: Vibecoder Directive Runner
 
@@ -47,6 +38,33 @@ jobs:
     timeout-minutes: 90
 
     steps:
+      # ── A. Debug Diagnostics ────────────────────────────────────────
+      - name: Debug — Environment diagnostics
+        shell: bash
+        run: |
+          echo "=== R6 Debug Diagnostics ==="
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          echo "GITHUB_RUN_NUMBER=$GITHUB_RUN_NUMBER"
+          echo "pwd=$(pwd)"
+          echo "hostname=$(hostname)"
+          echo "whoami=$(whoami)"
+          echo "runner_name=${RUNNER_NAME:-unknown}"
+          echo ""
+
+          # Check existing file structure (before checkout)
+          echo "=== Pre-checkout file scan ==="
+          find "$GITHUB_WORKSPACE" -maxdepth 5 -type f 2>/dev/null | grep -E 'ai-reports|directive|run_directive' || echo "(no matches)"
+
+          echo ""
+          echo "=== Runner script ==="
+          ls -la "$HOME/.openclaw/mpango-directive-runner/run_directive.sh" 2>/dev/null || echo "(script not found)"
+
+          echo ""
+          echo "=== Fallback reports ==="
+          ls -la "$HOME/.openclaw/mpango-directive-runner/fallback-reports/" 2>/dev/null || echo "(none)"
+
+      # ── B. Checkout directive branch ─────────────────────────────────
       - name: Checkout directive branch
         uses: actions/checkout@v4
         with:
@@ -54,28 +72,49 @@ jobs:
           fetch-depth: 0
           path: directives
 
+      # ── B. Checkout validation target (full product repo) ────────────
+      - name: Checkout full repo (validation target)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: validation-target
+
       - name: Show trigger context
         shell: bash
         run: |
           echo "event=${GITHUB_EVENT_NAME}"
-          echo "ref=${GITHUB_REF}}"
+          echo "ref=${GITHUB_REF}"
           echo "sha=${GITHUB_SHA}"
           echo "run_id=${GITHUB_RUN_ID}"
           echo "run_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          echo "runner_name=${RUNNER_NAME:-unknown}"
+          echo ""
+          echo "=== directives ==="
           git -C directives log -1 --oneline
           git -C directives status --short
+          echo ""
+          echo "=== validation-target ==="
+          git -C validation-target branch -a 2>/dev/null | head -5 || echo "(not a git repo)"
+          git -C validation-target log -1 --oneline 2>/dev/null || echo "(no commits)"
+          echo ""
+          echo "=== directives/pending ==="
+          ls -la directives/docs/ai-directives/vibecoder/pending/ 2>/dev/null || echo "(no pending dir)"
 
-      - name: Run hardened directive runner (v3)
+      # ── Run hardened directive runner (v3.4) ────────────────────────
+      - name: Run hardened directive runner (v3.4)
         id: runner
         shell: bash
         env:
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          RUNNER_NAME: ${{ runner.name }}
         run: |
-          ~/.openclaw/mpango-directive-runner/run_directive.sh "$GITHUB_WORKSPACE/directives"
+          ~/.openclaw/mpango-directive-runner/run_directive.sh \
+            "$GITHUB_WORKSPACE/directives" \
+            "$GITHUB_WORKSPACE/validation-target"
 
-      # Push reports to reports/lubuntu-validation branch
+      # ── D. Push reports to reports/lubuntu-validation ─────────────────
       - name: Push reports to reports/lubuntu-validation
         if: always()
         id: push-reports
@@ -83,110 +122,206 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "=== Report Push Step ==="
-          REPORT_SRC="$GITHUB_WORKSPACE/directives/docs/ai-reports/lubuntu"
-          REPORTS_CHECKOUT="$GITHUB_WORKSPACE/reports-branch"
+          echo "=== R6 Push Step ==="
 
-          # Check if any reports were generated locally
-          if [ -d "$REPORT_SRC" ] && [ -n "$(ls -A "$REPORT_SRC" 2>/dev/null)" ]; then
-            echo "Found local reports to push:"
-            ls -la "$REPORT_SRC/"
+          # Read metadata from script output
+          METADATA_FILE="$GITHUB_WORKSPACE/generated-reports/_metadata.txt"
+          REPORT_SRC=""
+          REPORT_BASENAME=""
+
+          if [ -f "$METADATA_FILE" ]; then
+            echo "Metadata file found:"
+            cat "$METADATA_FILE"
+            echo ""
+            REPORT_BASENAME="$(grep '^REPORT_BASENAME=' "$METADATA_FILE" | cut -d= -f2)"
+            REPORT_DECLARED_PATH="$(grep '^REPORT_DECLARED_PATH=' "$METADATA_FILE" | cut -d= -f2)"
+          fi
+
+          # Primary: generated-reports directory
+          if [ -n "$REPORT_BASENAME" ] && [ -f "$GITHUB_WORKSPACE/generated-reports/$REPORT_BASENAME" ]; then
+            REPORT_SRC="$GITHUB_WORKSPACE/generated-reports/$REPORT_BASENAME"
+            echo "Found primary report: $REPORT_SRC"
           else
-            echo "No local reports found in $REPORT_SRC"
-            # Check fallback reports
+            echo "Primary report not found at generated-reports/$REPORT_BASENAME"
+          fi
+
+          # Fallback: fallback-reports directory
+          if [ -z "$REPORT_SRC" ]; then
             FALLBACK_DIR="$HOME/.openclaw/mpango-directive-runner/fallback-reports"
+            echo "Checking fallback: $FALLBACK_DIR"
             if [ -d "$FALLBACK_DIR" ] && [ -n "$(ls -A "$FALLBACK_DIR" 2>/dev/null)" ]; then
-              echo "Found fallback reports:"
-              ls -la "$FALLBACK_DIR/"
-              REPORT_SRC="$FALLBACK_DIR"
-            else
-              echo "WARNING: No reports (primary or fallback) to push"
-              exit 1
+              REPORT_SRC="$(find "$FALLBACK_DIR" -name '*.md' -type f -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)"
+              echo "Found fallback report: $REPORT_SRC"
             fi
           fi
 
+          # HARD FAIL: no report anywhere
+          if [ -z "$REPORT_SRC" ] || [ ! -f "$REPORT_SRC" ]; then
+            echo "FATAL: No report found in generated-reports OR fallback-reports"
+            exit 1
+          fi
+
+          echo "Using report: $REPORT_SRC"
+
           # Clone reports branch
+          REPORTS_CHECKOUT="$GITHUB_WORKSPACE/reports-branch"
           git clone --depth 1 --branch reports/lubuntu-validation \
-            https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git "$REPORTS_CHECKOUT" 2>&1
+            https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git \
+            "$REPORTS_CHECKOUT" 2>&1
 
-          # Ensure target directory exists
-          mkdir -p "$REPORTS_CHECKOUT/docs/ai-reports/lubuntu"
+          # Determine target path on reports branch
+          if [ -z "$REPORT_DECLARED_PATH" ]; then
+            REPORT_DECLARED_PATH="docs/ai-reports/lubuntu/$REPORT_BASENAME"
+          fi
 
-          # Copy all reports
-          cp -r "$REPORT_SRC"/* "$REPORTS_CHECKOUT/docs/ai-reports/lubuntu/" 2>/dev/null || true
+          TARGET_DIR="$(dirname "$REPORTS_CHECKOUT/$REPORT_DECLARED_PATH")"
+          mkdir -p "$TARGET_DIR"
+
+          # Copy report to declared path
+          cp "$REPORT_SRC" "$REPORTS_CHECKOUT/$REPORT_DECLARED_PATH"
+          echo "Copied to: $REPORTS_CHECKOUT/$REPORT_DECLARED_PATH"
 
           cd "$REPORTS_CHECKOUT"
           git add -A
 
-          # Check if there are changes to commit
           if git diff --cached --quiet; then
-            echo "No new reports to commit (already up to date)"
+            echo "No changes to commit"
           else
             git config user.name "directive-runner[bot]"
             git config user.email "directive-runner[bot]@users.noreply.github.com"
             git commit -m "auto: directive execution report [run ${{ github.run_id }}]"
             git pull --rebase origin reports/lubuntu-validation 2>&1 || true
             git push origin reports/lubuntu-validation 2>&1
-            echo "Reports pushed to reports/lubuntu-validation"
+            echo "Report pushed to reports/lubuntu-validation"
           fi
 
           echo "push-success=true" >> "$GITHUB_OUTPUT"
 
-      # CRITICAL FINAL GATE: verify report exists on reports branch
-      - name: Report Path Final Gate
+      # ── E. Final Gate — Verify report on reports branch ──────────────
+      - name: Final Gate — Verify report on reports/lubuntu-validation
         if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "=== Report Path Final Gate ==="
+          echo "=== R6 Final Gate ==="
 
-          # Determine the expected report path from the directive
-          LATEST_DIRECTIVE="$(find "$GITHUB_WORKSPACE/directives/docs/ai-directives/vibecoder/pending" -name '*.md' -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-)"
+          # Read metadata to know what to verify
+          METADATA_FILE="$GITHUB_WORKSPACE/generated-reports/_metadata.txt"
+          REPORT_BASENAME=""
+          REPORT_DECLARED_PATH=""
 
-          if [ -z "$LATEST_DIRECTIVE" ]; then
-            echo "No directive found - nothing to gate"
-            exit 0
+          if [ -f "$METADATA_FILE" ]; then
+            REPORT_BASENAME="$(grep '^REPORT_BASENAME=' "$METADATA_FILE" | cut -d= -f2)"
+            REPORT_DECLARED_PATH="$(grep '^REPORT_DECLARED_PATH=' "$METADATA_FILE" | cut -d= -f2)"
           fi
 
-          # Parse report path from directive
-          REPORT_PATH_HEADER="$(grep -E '^Report path:' "$LATEST_DIRECTIVE" 2>/dev/null | head -1 | sed 's/^Report path: *//' | sed 's/[[:space:]]*$//' || true)"
-          TASK_ID="$(grep -E '^Directive-ID:' "$LATEST_DIRECTIVE" 2>/dev/null | head -1 | sed 's/^Directive-ID: *//' | tr -d '[:space:]' || true)"
-
-          if [ -z "$REPORT_PATH_HEADER" ]; then
-            REPORT_PATH_HEADER="docs/ai-reports/lubuntu/${TASK_ID}.md"
+          if [ -z "$REPORT_BASENAME" ] || [ -z "$REPORT_DECLARED_PATH" ]; then
+            echo "FATAL: Cannot determine report path from metadata"
+            echo "  METADATA_FILE: $METADATA_FILE"
+            exit 1
           fi
 
-          echo "Expected report path: $REPORT_PATH_HEADER"
-          echo "Directive task ID: $TASK_ID"
+          echo "Expected report path: $REPORT_DECLARED_PATH"
+          echo "Expected report basename: $REPORT_BASENAME"
 
-          # Clone fresh copy of reports branch to verify
+          # Clone fresh copy of reports branch
           VERIFY_DIR="$GITHUB_WORKSPACE/reports-verify"
+          rm -rf "$VERIFY_DIR"
           git clone --depth 1 --branch reports/lubuntu-validation \
-            https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git "$VERIFY_DIR" 2>&1 || {
-              echo "FATAL: Cannot clone reports/lubuntu-validation for verification"
+            https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git \
+            "$VERIFY_DIR" 2>&1 || {
+              echo "FATAL: Cannot clone reports/lubuntu-validation"
               exit 1
             }
 
-          # Check if report exists on the reports branch
-          VERIFY_FILE="$VERIFY_DIR/$REPORT_PATH_HEADER"
-          if [ -f "$VERIFY_FILE" ]; then
-            echo "FINAL GATE PASSED: Report exists on reports/lubuntu-validation branch"
-            echo "  Path: $REPORT_PATH_HEADER"
-            echo "  File: $VERIFY_FILE"
-            ls -la "$VERIFY_FILE"
-            exit 0
-          else
-            echo "FATAL: Report does NOT exist on reports/lubuntu-validation branch"
-            echo "  Expected: $REPORT_PATH_HEADER"
+          VERIFY_FILE="$VERIFY_DIR/$REPORT_DECLARED_PATH"
+
+          # ── Gate 1: Report file exists ──
+          if [ ! -f "$VERIFY_FILE" ]; then
+            echo "FATAL: Report does NOT exist on reports/lubuntu-validation"
+            echo "  Expected: $REPORT_DECLARED_PATH"
             echo "  Checked: $VERIFY_FILE"
-            echo ""
-            echo "Contents of reports/lubuntu-validation/docs/ai-reports/lubuntu/:"
-            ls -la "$VERIFY_DIR/docs/ai-reports/lubuntu/" 2>/dev/null || echo "  (directory does not exist)"
-            echo ""
-            echo "WORKFLOW MUST FAIL - Report Path Final Gate FAILED"
+            ls -la "$VERIFY_DIR/docs/ai-reports/lubuntu/" 2>/dev/null || echo "  (directory missing)"
             exit 1
           fi
+          echo "Gate 1 PASS: Report exists"
+
+          REPORT_CONTENT="$(cat "$VERIFY_FILE")"
+
+          # ── Gate 2: Verdict is PASS_FOR_CTO_REVIEW ──
+          if ! echo "$REPORT_CONTENT" | grep -q "PASS_FOR_CTO_REVIEW"; then
+            echo "FATAL: Verdict is not PASS_FOR_CTO_REVIEW"
+            echo "  Found verdict: $(echo "$REPORT_CONTENT" | grep -i 'verdict' | head -3)"
+            exit 1
+          fi
+          echo "Gate 2 PASS: Verdict = PASS_FOR_CTO_REVIEW"
+
+          # ── Gate 3: Required fields present ──
+          REQUIRED_FIELDS=(
+            "runner_name"
+            "Run URL"
+            "Leo Invoked"
+            "COMMANDS_EXECUTED"
+            "fallbackUsed\|Transport Health"
+            "PRODUCT_CODE_MODIFIED\|Product Code Modified"
+            "PRODUCT_BRANCH_PUSHED\|Product Branch Pushed"
+          )
+
+          for field in "${REQUIRED_FIELDS[@]}"; do
+            if ! echo "$REPORT_CONTENT" | grep -qE "$field"; then
+              echo "FATAL: Missing required field: $field"
+              exit 1
+            fi
+            echo "Gate 3 PASS: Found field '$field'"
+          done
+
+          # ── Gate 4: Leo invoked = yes ──
+          if echo "$REPORT_CONTENT" | grep -qE "Leo Invoked.*false"; then
+            echo "FATAL: Leo was NOT invoked"
+            exit 1
+          fi
+          echo "Gate 4 PASS: Leo invoked = yes"
+
+          # ── Gate 5: 5/5 commands ──
+          if ! echo "$REPORT_CONTENT" | grep -qE "5/5"; then
+            echo "FATAL: 5/5 commands not found in report"
+            exit 1
+          fi
+          echo "Gate 5 PASS: 5/5 commands passed"
+
+          # ── Gate 6: Transport healthy / fallbackUsed=false ──
+          if echo "$REPORT_CONTENT" | grep -qiE "fallbackUsed.*true"; then
+            echo "FATAL: fallbackUsed=true — transport was degraded"
+            exit 1
+          fi
+          if echo "$REPORT_CONTENT" | grep -qiE "Transport Health.*degraded"; then
+            echo "FATAL: Transport health is degraded"
+            exit 1
+          fi
+          echo "Gate 6 PASS: Transport healthy / fallbackUsed=false"
+
+          # ── Gate 7: Product code not modified ──
+          if echo "$REPORT_CONTENT" | grep -qiE "Product Code Modified.*yes"; then
+            echo "FATAL: Product code was modified"
+            exit 1
+          fi
+          echo "Gate 7 PASS: Product code not modified"
+
+          # ── Gate 8: Product branch not pushed ──
+          if echo "$REPORT_CONTENT" | grep -qiE "Product Branch Pushed.*yes"; then
+            echo "FATAL: Product branch was pushed"
+            exit 1
+          fi
+          echo "Gate 8 PASS: Product branch not pushed"
+
+          echo ""
+          echo "=========================================="
+          echo "  ALL GATES PASSED — R6 FINAL GATE PASS"
+          echo "=========================================="
+          echo "  Report: $REPORT_DECLARED_PATH"
+          echo "  File:   $VERIFY_FILE"
+          echo "=========================================="
 
       # Upload runner logs as artifacts
       - name: Upload runner logs

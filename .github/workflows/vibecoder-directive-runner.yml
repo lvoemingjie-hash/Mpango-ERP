@@ -1,14 +1,13 @@
 # =============================================================================
-# Vibecoder Directive Runner — Hardened v4.3 (v3.8 Full Validation)
+# Vibecoder Directive Runner — Hardened v4.4 (v3.9 Full Validation)
 #
-# R6 Changes:
-#   A. Debug diagnostics step for environment visibility
-#   B. Directive repo (directives/) vs validation target (validation-target/) separated
-#   C. Reports staged to $GITHUB_WORKSPACE/generated-reports/ by run_directive.sh
-#   D. Push Step: absolute paths, generated-reports → fallback-reports, exit 1 if missing
-#   E. Final Gate: hard failure — verify report content fields on reports branch
+# R7 Changes (over R6):
+#   A. Gate 5: exact match COMMANDS_EXECUTED = 9/9 in table (not regex "[0-9]+/[0-9]+.*commands")
+#   B. Gate 9: check all 4 validation suites != unknown, Schema no failed, skip reasons if skipped>0
+#   C. Report: github_runner_name (GitHub runner.name) vs host_name (hostname) separated
+#   D. Required fields: runner_name → github_runner_name + host_name
 #
-# Last updated: 2026-05-19 (v4.3: R5 full validation gates)
+# Last updated: 2026-05-19 (v4.4: R7 Final Gate fixes)
 # =============================================================================
 name: Vibecoder Directive Runner
 
@@ -42,7 +41,7 @@ jobs:
       - name: Debug — Environment diagnostics
         shell: bash
         run: |
-          echo "=== R6 Debug Diagnostics ==="
+          echo "=== R7 Debug Diagnostics ==="
           echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
           echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           echo "GITHUB_RUN_NUMBER=$GITHUB_RUN_NUMBER"
@@ -100,8 +99,8 @@ jobs:
           echo "=== directives/pending ==="
           ls -la directives/docs/ai-directives/vibecoder/pending/ 2>/dev/null || echo "(no pending dir)"
 
-      # ── Run hardened directive runner (v3.8) ────────────────────────
-      - name: Run hardened directive runner (v3.8)
+      # ── Run hardened directive runner (v3.9) ────────────────────────
+      - name: Run hardened directive runner (v3.9)
         id: runner
         shell: bash
         env:
@@ -122,7 +121,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "=== R6 Push Step ==="
+          echo "=== R7 Push Step ==="
 
           # Read metadata from script output
           METADATA_FILE="$GITHUB_WORKSPACE/generated-reports/_metadata.txt"
@@ -205,7 +204,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "=== R6 Final Gate ==="
+          echo "=== R7 Final Gate ==="
 
           # Read metadata to know what to verify
           METADATA_FILE="$GITHUB_WORKSPACE/generated-reports/_metadata.txt"
@@ -261,7 +260,8 @@ jobs:
 
           # ── Gate 3: Required fields present ──
           REQUIRED_FIELDS=(
-            "runner_name"
+            "github_runner_name"
+            "host_name"
             "Run URL"
             "Leo Invoked"
             "COMMANDS_EXECUTED"
@@ -291,12 +291,13 @@ jobs:
           fi
           echo "Gate 4 PASS: Leo invoked = yes"
 
-          # ── Gate 5: Command count (preflight + validation) ──
-          if ! echo "$REPORT_CONTENT" | grep -qE "[0-9]+/[0-9]+.*commands"; then
-            echo "FATAL: COMMANDS_EXECUTED field not found in report"
+          # ── Gate 5: COMMANDS_EXECUTED must be exactly 9/9 ──
+          if ! echo "$REPORT_CONTENT" | grep -qE "COMMANDS_EXECUTED[[:space:]]*\|[[:space:]]*9/9[[:space:]]*\|"; then
+            echo "FATAL: COMMANDS_EXECUTED is not 9/9"
+            echo "  Found: $(echo "$REPORT_CONTENT" | grep 'COMMANDS_EXECUTED' | head -3)"
             exit 1
           fi
-          echo "Gate 5 PASS: COMMANDS_EXECUTED found"
+          echo "Gate 5 PASS: COMMANDS_EXECUTED = 9/9"
 
           # ── Gate 6: Transport healthy / fallbackUsed=false ──
           if echo "$REPORT_CONTENT" | grep -qiE "fallbackUsed.*true"; then
@@ -323,17 +324,45 @@ jobs:
           fi
           echo "Gate 8 PASS: Product branch not pushed"
 
-          # ── Gate 9: Validation evidence present (v3.8) ──
-          if echo "$REPORT_CONTENT" | grep -qE "App Import Smoke.*unknown"; then
-            echo "FATAL: Product validation results are missing (APP_IMPORT_SMOKE=unknown)"
-            echo "  Leo likely only executed preflight git commands, not actual tests."
+          # ── Gate 9: All product validation suites present and valid (v4.4) ──
+          # 9a: App Import Smoke != unknown
+          if echo "$REPORT_CONTENT" | grep -qE "App Import Smoke[[:space:]]*\|[[:space:]]*unknown"; then
+            echo "FATAL: APP_IMPORT_SMOKE = unknown (no validation ran)"
             exit 1
           fi
-          echo "Gate 9 PASS: Product validation evidence present"
+          # 9b: Receivables Suite != unknown
+          if echo "$REPORT_CONTENT" | grep -qE "Receivables Suite[[:space:]]*\|[[:space:]]*unknown"; then
+            echo "FATAL: RECEIVABLES_SUITE = unknown (no validation ran)"
+            exit 1
+          fi
+          # 9c: Phase 5 Payment Regression != unknown
+          if echo "$REPORT_CONTENT" | grep -qE "Phase 5 Payment Regression[[:space:]]*\|[[:space:]]*unknown"; then
+            echo "FATAL: PHASE5_PAYMENT_REGRESSION = unknown (no validation ran)"
+            exit 1
+          fi
+          # 9d: Schema Contract != unknown
+          if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|[[:space:]]*unknown"; then
+            echo "FATAL: SCHEMA_CONTRACT = unknown (no validation ran)"
+            exit 1
+          fi
+          # 9e: Schema Contract must not contain 'failed'
+          if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|.*[1-9][0-9]* failed"; then
+            echo "FATAL: SCHEMA_CONTRACT contains failures"
+            echo "  Found: $(echo "$REPORT_CONTENT" | grep 'Schema Contract' | head -3)"
+            exit 1
+          fi
+          # 9f: If Schema has skips > 0, Schema Skip Reasons must exist and not be NONE/unknown
+          if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|.*[1-9][0-9]* skipped"; then
+            if echo "$REPORT_CONTENT" | grep -qE "Schema Skip Reasons[[:space:]]*\|[[:space:]]*(NONE|unknown)"; then
+              echo "FATAL: Schema has skipped tests but no skip reasons provided"
+              exit 1
+            fi
+          fi
+          echo "Gate 9 PASS: All validation suites present and valid"
 
           echo ""
           echo "=========================================="
-          echo "  ALL GATES PASSED — R6 FINAL GATE PASS"
+          echo "  ALL GATES PASSED — R7 FINAL GATE PASS"
           echo "=========================================="
           echo "  Report: $REPORT_DECLARED_PATH"
           echo "  File:   $VERIFY_FILE"

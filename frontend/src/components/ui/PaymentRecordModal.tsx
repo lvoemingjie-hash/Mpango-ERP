@@ -35,6 +35,7 @@ export function PaymentRecordModal({
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const creditUnavailable = remainingAmount !== orderTotal;
   const isValid = method && amount && Number(amount) > 0
     && (method === 'credit' ? Number(amount) === orderTotal && remainingAmount === orderTotal : Number(amount) <= remainingAmount);
 
@@ -116,16 +117,38 @@ export function PaymentRecordModal({
           <select
             id="pay-method"
             value={method}
-            onChange={(e) => setMethod(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setError(null);
+              if (next === 'credit' && creditUnavailable) {
+                setMethod('');
+                setAmount('');
+                setError('Credit Sale is only available before any payment has been recorded. Use a repayment method for partially paid orders.');
+                return;
+              }
+              setMethod(next);
+              if (next === 'credit') {
+                setAmount(String(orderTotal));
+              } else {
+                setAmount('');
+              }
+            }}
             className="mt-1 block w-full rounded-md border border-gray-300 py-2 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">Select method</option>
             {METHODS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
+              <option key={m.value} value={m.value} disabled={m.value === 'credit' && creditUnavailable}>
+                {m.value === 'credit' && creditUnavailable
+                  ? `${m.label} (full unpaid orders only)`
+                  : m.label}
               </option>
             ))}
           </select>
+          {creditUnavailable && (
+            <p className="mt-1 text-xs text-gray-500">
+              Credit Sale is disabled because this order already has a recorded payment. Use Cash, Bank Transfer, or Mobile Money to collect the remaining balance.
+            </p>
+          )}
         </div>
 
         <div>
@@ -140,8 +163,9 @@ export function PaymentRecordModal({
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder={`Max: KES ${remainingAmount.toLocaleString()}`}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            readOnly={method === 'credit'}
+            placeholder={method === 'credit' ? 'Full order total (auto-filled)' : `Max: KES ${remainingAmount.toLocaleString()}`}
+            className={`mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500${method === 'credit' ? ' bg-gray-100 cursor-not-allowed' : ''}`}
           />
         </div>
 
@@ -179,7 +203,13 @@ export function PaymentRecordModal({
           </p>
         </div>
 
-        {willFullyPay && (
+        {method === 'credit' && (
+          <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">
+            <strong>Credit Sale:</strong> No cash is received now. The full order balance (KES {orderTotal.toLocaleString()}) will be recorded as an account receivable. Repayment is tracked separately under Accounts Receivable.
+          </div>
+        )}
+
+        {willFullyPay && method !== 'credit' && (
           <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">
             [OK] Full payment -- order will be marked as <strong>Paid</strong>
           </div>

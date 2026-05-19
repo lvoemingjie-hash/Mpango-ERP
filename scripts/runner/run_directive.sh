@@ -82,6 +82,7 @@ elapsed_since() {
 route_executor() {
   case "$1" in
     INVENTORY_ONLY)  echo "script-only" ;;
+    PARSER_ONLY)     echo "script-only" ;;
     VALIDATION_GATE) echo "leo-headless" ;;
     SCHEDULED_WATCH) echo "script-only" ;;
     *)               echo "unknown" ;;
@@ -122,6 +123,17 @@ parse_evidence_from_json() {
 parse_evidence() {
   local field="$1" text="$2"
   echo "$text" | grep -iE "${field}:" | head -1 | sed "s/[^:]*:[[:space:]]*//" | sed 's/[[:space:]]*$//' || echo "unknown"
+}
+
+count_numbered_commands() {
+  local text="$1"
+  local count
+  if [ -z "$text" ]; then
+    echo 0
+    return 0
+  fi
+  count="$(printf '%s\n' "$text" | grep -cE '^[[:space:]]*[0-9]+\.')" || count=0
+  echo "${count:-0}"
 }
 
 # ── Validate input ─────────────────────────────────────────────────────
@@ -189,7 +201,7 @@ fi
 # R6: Parse target branch
 TARGET_BRANCH="$(parse_field 'Target branch' "$latest_directive" 'product-dev-recovered')"
 
-if ! echo "$MODE" | grep -Eq '^(INVENTORY_ONLY|VALIDATION_GATE|SCHEDULED_WATCH)$'; then
+if ! echo "$MODE" | grep -Eq '^(INVENTORY_ONLY|PARSER_ONLY|VALIDATION_GATE|SCHEDULED_WATCH)$'; then
   die "invalid or missing Mode: '$MODE'"
 fi
 
@@ -260,6 +272,10 @@ EVIDENCE_PRODUCT_MODIFIED="unknown"
 EVIDENCE_BRANCH_PUSHED="unknown"
 EVIDENCE_COMMIT_HASH="unknown"
 EVIDENCE_LATEST_COMMIT="unknown"
+PARSER_PREFLIGHT_COUNT="unknown"
+PARSER_VALIDATION_COUNT="unknown"
+PARSER_TOTAL_COUNT="unknown"
+PARSER_STATUS="not_run"
 
 # ── Heartbeat (background) ─────────────────────────────────────────────
 heartbeat_pid=""
@@ -415,12 +431,12 @@ run_leo_headless() {
   expected_evidence="$(extract_directive_section 'Expected evidence' "$latest_directive")" || true
   hard_rules="$(extract_directive_section 'Hard rules' "$latest_directive")" || true
 
-  # Count validation commands (lines starting with digits followed by .)
-  VALIDATION_CMD_COUNT="$(echo "$validation_cmds" | grep -cE '^[[:space:]]*[0-9]+\.' || true)"
-  VALIDATION_CMD_COUNT="${VALIDATION_CMD_COUNT:-0}"
-  TOTAL_CMD_COUNT=$((5 + VALIDATION_CMD_COUNT))  # 5 preflight + N validation
+  # Count command bullets in the directive itself.
+  PREFLIGHT_CMD_COUNT="$(count_numbered_commands "$preflight_cmds")"
+  VALIDATION_CMD_COUNT="$(count_numbered_commands "$validation_cmds")"
+  TOTAL_CMD_COUNT=$((PREFLIGHT_CMD_COUNT + VALIDATION_CMD_COUNT))
 
-  checkpoint "directive_sections_extracted" "preflight=5 validation=${VALIDATION_CMD_COUNT} total=${TOTAL_CMD_COUNT}"
+  checkpoint "directive_sections_extracted" "preflight=${PREFLIGHT_CMD_COUNT} validation=${VALIDATION_CMD_COUNT} total=${TOTAL_CMD_COUNT}"
 
   LEO_INVOCATION_CMD="openclaw agent --agent main --message 'CTO_DIRECTIVE_TRIGGER'"
   LEO_EXECUTED="true"
@@ -479,7 +495,7 @@ run_leo_headless() {
   leo_prompt+="=== LEO_EVIDENCE ===\n"
   leo_prompt+="VERDICT: <PASS_FOR_CTO_REVIEW|PARTIAL_PASS_WITH_DB_EVIDENCE_GAP|BLOCKED_ENVIRONMENT|FAIL_RUNNER_INFRA_WITH_VALIDATION_COMPLETED|FAIL_VALIDATION>\n"
   leo_prompt+="COMMANDS_EXECUTED: ${TOTAL_CMD_COUNT}/${TOTAL_CMD_COUNT}\n"
-  leo_prompt+="PREFLIGHT: 5/5\n"
+  leo_prompt+="PREFLIGHT: ${PREFLIGHT_CMD_COUNT}/${PREFLIGHT_CMD_COUNT}\n"
   leo_prompt+="VALIDATION: ${VALIDATION_CMD_COUNT}/${VALIDATION_CMD_COUNT}\n"
   leo_prompt+="CMD1_FETCH: <PASS|FAIL|BLOCKED>\n"
   leo_prompt+="CMD2_CHECKOUT: <PASS|FAIL|BLOCKED>\n"
@@ -673,6 +689,21 @@ write_report() {
 "
   fi
 
+  local script_evidence_section=""
+  if [ "$EXECUTOR_TYPE" = "script-only" ]; then
+    script_evidence_section="
+## Script / Parser Evidence
+
+| Field | Value |
+|-------|-------|
+| Leo Invoked | $LEO_EXECUTED |
+| Parser Status | $PARSER_STATUS |
+| PARSER_PREFLIGHT_COUNT | $PARSER_PREFLIGHT_COUNT |
+| PARSER_VALIDATION_COUNT | $PARSER_VALIDATION_COUNT |
+| PARSER_TOTAL_COUNT | $PARSER_TOTAL_COUNT |
+"
+  fi
+
   local report_content=""
   report_content=$(cat << REPORT_EOF
 # Directive Execution Report — $TASK_ID
@@ -700,6 +731,7 @@ write_report() {
 | Directive Repo | $DIRECTIVE_REPO |
 | Validation Target | $VALIDATION_TARGET |
 $leo_evidence_section
+$script_evidence_section
 
 ## Checkpoints
 
@@ -740,6 +772,15 @@ write_failure_report() {
 - Commands: $EVIDENCE_COMMANDS
 - Product Modified: $EVIDENCE_PRODUCT_MODIFIED
 - Branch Pushed: $EVIDENCE_BRANCH_PUSHED
+"
+  elif [ "$EXECUTOR_TYPE" = "script-only" ]; then
+    leo_section="
+### Script / Parser Evidence
+- Leo Invoked: $LEO_EXECUTED
+- Parser Status: $PARSER_STATUS
+- PARSER_PREFLIGHT_COUNT: $PARSER_PREFLIGHT_COUNT
+- PARSER_VALIDATION_COUNT: $PARSER_VALIDATION_COUNT
+- PARSER_TOTAL_COUNT: $PARSER_TOTAL_COUNT
 "
   fi
 
@@ -847,11 +888,22 @@ case "$EXECUTOR_TYPE" in
     _validation_cmds="$(extract_directive_section 'Required validation commands' "$latest_directive")" || true
     _expected_evidence="$(extract_directive_section 'Expected evidence' "$latest_directive")" || true
     _hard_rules="$(extract_directive_section 'Hard rules' "$latest_directive")" || true
-    _val_count="$(echo "$_validation_cmds" | grep -cE '^[[:space:]]*[0-9]+\.' || true)"
-    _val_count="${_val_count:-0}"
-    _total_count=$((5 + _val_count))
-    checkpoint "directive_sections_extracted" "preflight=5 validation=${_val_count} total=${_total_count} (parser-only, no Leo)"
-    EXECUTOR_OUTPUT+="PARSER_VALIDATION: preflight=5 validation=${_val_count} total=${_total_count}\n"
+    PARSER_PREFLIGHT_COUNT="$(count_numbered_commands "$_preflight_cmds")"
+    PARSER_VALIDATION_COUNT="$(count_numbered_commands "$_validation_cmds")"
+    PARSER_TOTAL_COUNT=$((PARSER_PREFLIGHT_COUNT + PARSER_VALIDATION_COUNT))
+    PARSER_STATUS="parsed"
+    checkpoint "directive_sections_extracted" "preflight=${PARSER_PREFLIGHT_COUNT} validation=${PARSER_VALIDATION_COUNT} total=${PARSER_TOTAL_COUNT} (parser-only, no Leo)"
+    EXECUTOR_OUTPUT+="PARSER_VALIDATION: preflight=${PARSER_PREFLIGHT_COUNT} validation=${PARSER_VALIDATION_COUNT} total=${PARSER_TOTAL_COUNT}\n"
+    if [ "$MODE" = "PARSER_ONLY" ]; then
+      if [ "$PARSER_PREFLIGHT_COUNT" -eq 5 ] && [ "$PARSER_VALIDATION_COUNT" -eq 4 ] && [ "$PARSER_TOTAL_COUNT" -eq 9 ]; then
+        PARSER_STATUS="pass"
+        checkpoint "parser_counts_verified" "preflight=5 validation=4 total=9"
+      else
+        PARSER_STATUS="fail"
+        VERDICT="FAIL_RUNNER_INFRA"
+        checkpoint_fail "parser_counts_verified" "expected preflight=5 validation=4 total=9, got preflight=${PARSER_PREFLIGHT_COUNT} validation=${PARSER_VALIDATION_COUNT} total=${PARSER_TOTAL_COUNT}"
+      fi
+    fi
     _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
     run_script_only > "$_tmp_out" 2>&1 || true
     EXECUTOR_OUTPUT+="$(cat "$_tmp_out")"
@@ -868,7 +920,6 @@ case "$EXECUTOR_TYPE" in
 
     if [ $rc -ne 0 ]; then
       stop_heartbeat
-      local elapsed
       elapsed="$(elapsed_since "$START_TIME")"
 
       if [ "$rc" -eq 124 ]; then

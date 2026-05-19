@@ -1,5 +1,5 @@
 # =============================================================================
-# Vibecoder Directive Runner — Hardened v4.5 (Mode-Aware Final Gate)
+# Vibecoder Directive Runner — Hardened v4.6 (Parser-Only Gate)
 #
 # v4.5 Changes (over v4.4):
 #   A. Final Gate reads Mode from report before field checks
@@ -9,7 +9,7 @@
 #   D. No warnings — missing fields = hard FAIL for both modes
 #   E. Fixed missing fi in Gate 5 else block (v4.4 bug)
 #
-# Last updated: 2026-05-19 (v4.5: mode-aware Final Gate)
+# Last updated: 2026-05-19 (v4.6: parser-only mode + repo script execution)
 # =============================================================================
 name: Vibecoder Directive Runner
 
@@ -61,6 +61,9 @@ jobs:
           echo ""
           echo "=== Runner script ==="
           ls -la "$HOME/.openclaw/mpango-directive-runner/run_directive.sh" 2>/dev/null || echo "(script not found)"
+          echo ""
+          echo "=== Repo runner script ==="
+          ls -la "$GITHUB_WORKSPACE/directives/scripts/runner/run_directive.sh" 2>/dev/null || echo "(repo script not checked out yet)"
 
           echo ""
           echo "=== Fallback reports ==="
@@ -112,7 +115,12 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           RUNNER_NAME: ${{ runner.name }}
         run: |
-          ~/.openclaw/mpango-directive-runner/run_directive.sh \
+          RUNNER_SCRIPT="$GITHUB_WORKSPACE/directives/scripts/runner/run_directive.sh"
+          HELPER_SCRIPT="$GITHUB_WORKSPACE/directives/scripts/runner/extract_leo_evidence.py"
+          chmod +x "$RUNNER_SCRIPT" "$HELPER_SCRIPT"
+          bash -n "$RUNNER_SCRIPT"
+          python3 -m py_compile "$HELPER_SCRIPT"
+          "$RUNNER_SCRIPT" \
             "$GITHUB_WORKSPACE/directives" \
             "$GITHUB_WORKSPACE/validation-target"
 
@@ -253,9 +261,11 @@ jobs:
 
           REPORT_CONTENT="$(cat "$VERIFY_FILE")"
 
-          # Detect mode from report (INVENTORY_ONLY skips Leo gates)
+          # Detect mode from report
           DIRECTIVE_MODE="VALIDATION_GATE"
-          if echo "$REPORT_CONTENT" | grep -qE "Mode.*INVENTORY_ONLY"; then
+          if echo "$REPORT_CONTENT" | grep -qE "Mode.*PARSER_ONLY"; then
+            DIRECTIVE_MODE="PARSER_ONLY"
+          elif echo "$REPORT_CONTENT" | grep -qE "Mode.*INVENTORY_ONLY"; then
             DIRECTIVE_MODE="INVENTORY_ONLY"
           fi
           echo "Directive mode: $DIRECTIVE_MODE"
@@ -284,6 +294,15 @@ jobs:
             REQUIRED_FIELDS+=(
               "script_only_complete"
             )
+          elif [ "$DIRECTIVE_MODE" = "PARSER_ONLY" ]; then
+            REQUIRED_FIELDS+=(
+              "script_only_complete"
+              "directive_sections_extracted"
+              "Leo Invoked"
+              "PARSER_PREFLIGHT_COUNT"
+              "PARSER_VALIDATION_COUNT"
+              "PARSER_TOTAL_COUNT"
+            )
           elif [ "$DIRECTIVE_MODE" = "VALIDATION_GATE" ]; then
             REQUIRED_FIELDS+=(
               "Leo Invoked"
@@ -310,6 +329,13 @@ jobs:
           # ── Gate 4: Leo invoked check (VALIDATION_GATE only) ──
           if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
             echo "Gate 4 SKIP: INVENTORY_ONLY mode — Leo not required"
+          elif [ "$DIRECTIVE_MODE" = "PARSER_ONLY" ]; then
+            if ! echo "$REPORT_CONTENT" | grep -qE "Leo Invoked[[:space:]]*\|[[:space:]]*false[[:space:]]*\|"; then
+              echo "FATAL: PARSER_ONLY must not invoke Leo"
+              echo "  Found: $(echo "$REPORT_CONTENT" | grep 'Leo Invoked' | head -3)"
+              exit 1
+            fi
+            echo "Gate 4 PASS: PARSER_ONLY did not invoke Leo"
           else
             if echo "$REPORT_CONTENT" | grep -qE "Leo Invoked.*false"; then
               echo "FATAL: Leo was NOT invoked"
@@ -321,6 +347,20 @@ jobs:
           # ── Gate 5: COMMANDS_EXECUTED (VALIDATION_GATE only) ──
           if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
             echo "Gate 5 SKIP: INVENTORY_ONLY mode — COMMANDS_EXECUTED not required"
+          elif [ "$DIRECTIVE_MODE" = "PARSER_ONLY" ]; then
+            if ! echo "$REPORT_CONTENT" | grep -qE "PARSER_PREFLIGHT_COUNT[[:space:]]*\|[[:space:]]*5[[:space:]]*\|"; then
+              echo "FATAL: PARSER_PREFLIGHT_COUNT is not 5"
+              exit 1
+            fi
+            if ! echo "$REPORT_CONTENT" | grep -qE "PARSER_VALIDATION_COUNT[[:space:]]*\|[[:space:]]*4[[:space:]]*\|"; then
+              echo "FATAL: PARSER_VALIDATION_COUNT is not 4"
+              exit 1
+            fi
+            if ! echo "$REPORT_CONTENT" | grep -qE "PARSER_TOTAL_COUNT[[:space:]]*\|[[:space:]]*9[[:space:]]*\|"; then
+              echo "FATAL: PARSER_TOTAL_COUNT is not 9"
+              exit 1
+            fi
+            echo "Gate 5 PASS: PARSER_ONLY counts = 5/4/9"
           else
             if ! echo "$REPORT_CONTENT" | grep -qE "COMMANDS_EXECUTED[[:space:]]*\|[[:space:]]*9/9[[:space:]]*\|"; then
               echo "FATAL: COMMANDS_EXECUTED is not 9/9"
@@ -342,8 +382,8 @@ jobs:
           echo "Gate 6 PASS: Transport healthy / fallbackUsed=false"
 
           # ── Gate 7: Product code not modified (VALIDATION_GATE only) ──
-          if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
-            echo "Gate 7 SKIP: INVENTORY_ONLY mode — product code check not required"
+          if [ "$DIRECTIVE_MODE" != "VALIDATION_GATE" ]; then
+            echo "Gate 7 SKIP: $DIRECTIVE_MODE mode — product code check not required"
           else
             if echo "$REPORT_CONTENT" | grep -qiE "Product Code Modified.*yes"; then
               echo "FATAL: Product code was modified"
@@ -353,8 +393,8 @@ jobs:
           fi
 
           # ── Gate 8: Product branch not pushed (VALIDATION_GATE only) ──
-          if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
-            echo "Gate 8 SKIP: INVENTORY_ONLY mode — product branch check not required"
+          if [ "$DIRECTIVE_MODE" != "VALIDATION_GATE" ]; then
+            echo "Gate 8 SKIP: $DIRECTIVE_MODE mode — product branch check not required"
           else
             if echo "$REPORT_CONTENT" | grep -qiE "Product Branch Pushed.*yes"; then
               echo "FATAL: Product branch was pushed"
@@ -364,8 +404,8 @@ jobs:
           fi
 
           # ── Gate 9: Product validation suites (VALIDATION_GATE only) ──
-          if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
-            echo "Gate 9 SKIP: INVENTORY_ONLY mode — validation suites not required"
+          if [ "$DIRECTIVE_MODE" != "VALIDATION_GATE" ]; then
+            echo "Gate 9 SKIP: $DIRECTIVE_MODE mode — validation suites not required"
           else
             # 9a: App Import Smoke != unknown
             if echo "$REPORT_CONTENT" | grep -qE "App Import Smoke[[:space:]]*\|[[:space:]]*unknown"; then

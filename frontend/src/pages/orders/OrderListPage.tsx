@@ -22,6 +22,7 @@ export function OrderListPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const handledCollectIdRef = useRef<string | null>(null);
+  const collectReturnPathRef = useRef<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +101,13 @@ export function OrderListPage() {
           : `Order ${orderId.slice(0, 8)}... marked as ${resp.status}.`,
       });
       setPayModalOrder(null);
-      await load();
+      const returnPath = collectReturnPathRef.current;
+      collectReturnPathRef.current = null;
+      if (returnPath) {
+        navigate(returnPath);
+      } else {
+        await load();
+      }
     } catch {
       // Error toast handled by global interceptor -- leave modal open so user can retry
     } finally {
@@ -178,10 +185,12 @@ export function OrderListPage() {
 
   useEffect(() => {
     const collectOrderId = searchParams.get('collect');
+    const returnTo = searchParams.get('returnTo');
     if (!collectOrderId || loading || payModalOrder || handledCollectIdRef.current === collectOrderId) return;
 
     // Consume the param exactly once before opening the existing payment flow.
     handledCollectIdRef.current = collectOrderId;
+    collectReturnPathRef.current = returnTo === 'finance' ? '/finance' : null;
     setSearchParams({}, { replace: true });
 
     // Fast path: order already in loaded rows

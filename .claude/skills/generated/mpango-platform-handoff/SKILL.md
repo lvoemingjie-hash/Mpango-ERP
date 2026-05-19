@@ -11,6 +11,35 @@ Orientation skill for platform-track agents working on the `platform-dev` branch
 
 **Core principle**: Platform work extends the SaaS layer without forcing the product core to adapt.
 
+## P1 Harness Context
+
+The GitHub self-hosted runner is now complete (CTO confirmed). Platform code
+development may proceed in bounded slices under harness discipline.
+
+### Runner Gate
+Runner success is a prerequisite but not sufficient. Each platform slice must
+additionally satisfy:
+- Report artifact produced with all required fields
+- Required fields not blank or placeholder
+- Evidence traceable to concrete file changes
+
+### Delegation Split
+- **Goose**: Platform implementation on Machine B (Lubuntu) - code, tests, migrations
+- **Opencode**: Governance, alignment, handoff, ledger - docs, skills, report artifacts
+
+### Branch/Worktree Isolation
+All platform work must occur in clean isolated worktrees on branches matching
+`codex/platform-*`, derived from `origin/platform-dev`. No mixed worktrees.
+
+### Final Status Report Fields
+Every platform session must produce a terminal report containing:
+- **Branch**: active branch name
+- **Commit**: current HEAD hash
+- **Modified files**: list of files changed
+- **Tests/checks**: what was run and result
+- **Report path**: path to report artifact
+- **Risk**: LOW / MEDIUM / HIGH with brief justification
+
 **Canonical entry point**: All agents must start from `docs/ai/README.md` and follow its read order. The boot sequence below is the platform-specific extension of that canonical path.
 
 ## Boot Sequence
@@ -157,14 +186,17 @@ Run before every commit. All must PASS.
 ## Session Workflow
 
 ```
-Phase 0: git fetch && git pull
+Phase 0: git fetch && git pull (isolated worktree on codex/platform-*)
 Phase 1: Read README.md + PROJECT.md + PROJECT_MEMORY.md (canonical entry)
 Phase 2: Read CTO_COCKPIT + CTO_CONTEXT + AGENT_DELEGATION + DUAL_MACHINE_PROTOCOL (governance)
 Phase 3: Read platform-boundary-note + STARTUP_CHECKLIST + permanent_rules + PROJECT_HANDOFF (constraints)
   → Write proposal to ai-ledger/platform/
   → Implement bounded slice
   → Run 8 self-check gates
-  → Commit → Present ledger + hash
+  → Run tests
+  → Commit
+  → Produce report artifact (branch, commit, files, tests, report path, risk)
+  → Present ledger + hash + report to CTO
   → Await CTO review → Push after approval
 ```
 

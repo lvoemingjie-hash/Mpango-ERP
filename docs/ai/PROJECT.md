@@ -96,9 +96,17 @@ Accepted slices so far include:
 - platform audit log boundary
 - platform operational reporting stats
 - audit time-range filtering and activity summary enhancement
+- GitHub self-hosted runner completed by CTO (confirmed)
+
+### P1 Harness Kickoff - 2026-05-19
+
+- GitHub self-hosted runner confirmed complete by CTO
+- Platform P1 development proceeds in bounded code slices under harness discipline
+- Active branch: `codex/platform-p1-harness-aligned-dev-2026-05-19` (isolated worktree)
+- Each slice requires: proposal -> implementation -> 8 gates -> report artifact -> CTO review
+- No auth rewrite, no tenancy rewrite, no billing engine implementation
 
 Platform remains proposal-first and incremental.
-No auth rewrite, no tenancy rewrite, no billing engine implementation.
 
 ## Current Priority Order
 

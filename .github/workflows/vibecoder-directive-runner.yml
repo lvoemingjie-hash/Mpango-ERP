@@ -1,13 +1,15 @@
 # =============================================================================
-# Vibecoder Directive Runner — Hardened v4.4 (v3.9 Full Validation)
+# Vibecoder Directive Runner — Hardened v4.5 (Mode-Aware Final Gate)
 #
-# R7 Changes (over R6):
-#   A. Gate 5: exact match COMMANDS_EXECUTED = 9/9 in table (not regex "[0-9]+/[0-9]+.*commands")
-#   B. Gate 9: check all 4 validation suites != unknown, Schema no failed, skip reasons if skipped>0
-#   C. Report: github_runner_name (GitHub runner.name) vs host_name (hostname) separated
-#   D. Required fields: runner_name → github_runner_name + host_name
+# v4.5 Changes (over v4.4):
+#   A. Final Gate reads Mode from report before field checks
+#   B. INVENTORY_ONLY mode: requires report/verdict/mode/runner/host/run-url/
+#      transport-healthy/script_only_complete; skips Leo/product gates 4-9
+#   C. VALIDATION_GATE mode: full R7 requirements preserved (Gates 4-9)
+#   D. No warnings — missing fields = hard FAIL for both modes
+#   E. Fixed missing fi in Gate 5 else block (v4.4 bug)
 #
-# Last updated: 2026-05-19 (v4.4: R7 Final Gate fixes)
+# Last updated: 2026-05-19 (v4.5: mode-aware Final Gate)
 # =============================================================================
 name: Vibecoder Directive Runner
 
@@ -267,54 +269,58 @@ jobs:
           echo "Gate 2 PASS: Verdict = PASS_FOR_CTO_REVIEW"
 
           # ── Gate 3: Required fields present ──
+
+          # ── Gate 3: Mode-required fields present ──
+          # Base fields required for ALL modes
           REQUIRED_FIELDS=(
             "github_runner_name"
             "host_name"
             "Run URL"
-            "COMMANDS_EXECUTED"
-            "PREFLIGHT|Preflight Commands"
-            "VALIDATION|Product Validation"
-            "APP_IMPORT_SMOKE|App Import Smoke"
             "fallbackUsed|Transport Health"
-            "PRODUCT_CODE_MODIFIED|Product Code Modified"
-            "PRODUCT_BRANCH_PUSHED|Product Branch Pushed"
           )
 
-          # Leo-dependent fields only required for VALIDATION_GATE
-          if [ "$DIRECTIVE_MODE" = "VALIDATION_GATE" ]; then
+          # Mode-specific required fields
+          if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
+            REQUIRED_FIELDS+=(
+              "script_only_complete"
+            )
+          elif [ "$DIRECTIVE_MODE" = "VALIDATION_GATE" ]; then
             REQUIRED_FIELDS+=(
               "Leo Invoked"
+              "COMMANDS_EXECUTED"
+              "PREFLIGHT|Preflight Commands"
+              "VALIDATION|Product Validation"
+              "APP_IMPORT_SMOKE|App Import Smoke"
               "RECEIVABLES_SUITE|Receivables Suite"
               "PHASE5_PAYMENT_REGRESSION|Phase 5 Payment"
               "SCHEMA_CONTRACT|Schema Contract"
+              "PRODUCT_CODE_MODIFIED|Product Code Modified"
+              "PRODUCT_BRANCH_PUSHED|Product Branch Pushed"
             )
           fi
 
           for field in "${REQUIRED_FIELDS[@]}"; do
             if ! echo "$REPORT_CONTENT" | grep -qE "$field"; then
-              echo "FATAL: Missing required field: $field"
+              echo "FATAL: Missing required field: $field (mode=$DIRECTIVE_MODE)"
               exit 1
             fi
             echo "Gate 3 PASS: Found field '$field'"
           done
 
-          # ── Gate 4: Leo invoked = yes (skip for INVENTORY_ONLY) ──
+          # ── Gate 4: Leo invoked check (VALIDATION_GATE only) ──
           if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
             echo "Gate 4 SKIP: INVENTORY_ONLY mode — Leo not required"
-          elif echo "$REPORT_CONTENT" | grep -qE "Leo Invoked.*false"; then
-            echo "FATAL: Leo was NOT invoked"
-            exit 1
           else
+            if echo "$REPORT_CONTENT" | grep -qE "Leo Invoked.*false"; then
+              echo "FATAL: Leo was NOT invoked"
+              exit 1
+            fi
             echo "Gate 4 PASS: Leo invoked = yes"
           fi
 
-          # ── Gate 5: COMMANDS_EXECUTED check (mode-aware) ──
+          # ── Gate 5: COMMANDS_EXECUTED (VALIDATION_GATE only) ──
           if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
-            if ! echo "$REPORT_CONTENT" | grep -qE "COMMANDS_EXECUTED[[:space:]]*\|[[:space:]]*[0-9]+/[0-9]+[[:space:]]*\|"; then
-              echo "FATAL: COMMANDS_EXECUTED missing or malformed"
-              exit 1
-            fi
-            echo "Gate 5 PASS: COMMANDS_EXECUTED present (INVENTORY_ONLY mode, flexible count)"
+            echo "Gate 5 SKIP: INVENTORY_ONLY mode — COMMANDS_EXECUTED not required"
           else
             if ! echo "$REPORT_CONTENT" | grep -qE "COMMANDS_EXECUTED[[:space:]]*\|[[:space:]]*9/9[[:space:]]*\|"; then
               echo "FATAL: COMMANDS_EXECUTED is not 9/9"
@@ -322,8 +328,9 @@ jobs:
               exit 1
             fi
             echo "Gate 5 PASS: COMMANDS_EXECUTED = 9/9"
+          fi
 
-          # ── Gate 6: Transport healthy / fallbackUsed=false ──
+          # ── Gate 6: Transport healthy (ALL modes) ──
           if echo "$REPORT_CONTENT" | grep -qiE "fallbackUsed.*true"; then
             echo "FATAL: fallbackUsed=true — transport was degraded"
             exit 1
@@ -334,61 +341,74 @@ jobs:
           fi
           echo "Gate 6 PASS: Transport healthy / fallbackUsed=false"
 
-          # ── Gate 7: Product code not modified ──
-          if echo "$REPORT_CONTENT" | grep -qiE "Product Code Modified.*yes"; then
-            echo "FATAL: Product code was modified"
-            exit 1
-          fi
-          echo "Gate 7 PASS: Product code not modified"
-
-          # ── Gate 8: Product branch not pushed ──
-          if echo "$REPORT_CONTENT" | grep -qiE "Product Branch Pushed.*yes"; then
-            echo "FATAL: Product branch was pushed"
-            exit 1
-          fi
-          echo "Gate 8 PASS: Product branch not pushed"
-
-          # ── Gate 9: All product validation suites present and valid (v4.4) ──
-          # 9a: App Import Smoke != unknown
-          if echo "$REPORT_CONTENT" | grep -qE "App Import Smoke[[:space:]]*\|[[:space:]]*unknown"; then
-            echo "FATAL: APP_IMPORT_SMOKE = unknown (no validation ran)"
-            exit 1
-          fi
-          # 9b: Receivables Suite != unknown
-          if echo "$REPORT_CONTENT" | grep -qE "Receivables Suite[[:space:]]*\|[[:space:]]*unknown"; then
-            echo "FATAL: RECEIVABLES_SUITE = unknown (no validation ran)"
-            exit 1
-          fi
-          # 9c: Phase 5 Payment Regression != unknown
-          if echo "$REPORT_CONTENT" | grep -qE "Phase 5 Payment Regression[[:space:]]*\|[[:space:]]*unknown"; then
-            echo "FATAL: PHASE5_PAYMENT_REGRESSION = unknown (no validation ran)"
-            exit 1
-          fi
-          # 9d: Schema Contract != unknown
-          if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|[[:space:]]*unknown"; then
-            echo "FATAL: SCHEMA_CONTRACT = unknown (no validation ran)"
-            exit 1
-          fi
-          # 9e: Schema Contract must not contain 'failed'
-          if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|.*[1-9][0-9]* failed"; then
-            echo "FATAL: SCHEMA_CONTRACT contains failures"
-            echo "  Found: $(echo "$REPORT_CONTENT" | grep 'Schema Contract' | head -3)"
-            exit 1
-          fi
-          # 9f: If Schema has skips > 0, Schema Skip Reasons must exist and not be NONE/unknown
-          if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|.*[1-9][0-9]* skipped"; then
-            if echo "$REPORT_CONTENT" | grep -qE "Schema Skip Reasons[[:space:]]*\|[[:space:]]*(NONE|unknown)"; then
-              echo "FATAL: Schema has skipped tests but no skip reasons provided"
+          # ── Gate 7: Product code not modified (VALIDATION_GATE only) ──
+          if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
+            echo "Gate 7 SKIP: INVENTORY_ONLY mode — product code check not required"
+          else
+            if echo "$REPORT_CONTENT" | grep -qiE "Product Code Modified.*yes"; then
+              echo "FATAL: Product code was modified"
               exit 1
             fi
+            echo "Gate 7 PASS: Product code not modified"
           fi
-          echo "Gate 9 PASS: All validation suites present and valid"
+
+          # ── Gate 8: Product branch not pushed (VALIDATION_GATE only) ──
+          if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
+            echo "Gate 8 SKIP: INVENTORY_ONLY mode — product branch check not required"
+          else
+            if echo "$REPORT_CONTENT" | grep -qiE "Product Branch Pushed.*yes"; then
+              echo "FATAL: Product branch was pushed"
+              exit 1
+            fi
+            echo "Gate 8 PASS: Product branch not pushed"
+          fi
+
+          # ── Gate 9: Product validation suites (VALIDATION_GATE only) ──
+          if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
+            echo "Gate 9 SKIP: INVENTORY_ONLY mode — validation suites not required"
+          else
+            # 9a: App Import Smoke != unknown
+            if echo "$REPORT_CONTENT" | grep -qE "App Import Smoke[[:space:]]*\|[[:space:]]*unknown"; then
+              echo "FATAL: APP_IMPORT_SMOKE = unknown (no validation ran)"
+              exit 1
+            fi
+            # 9b: Receivables Suite != unknown
+            if echo "$REPORT_CONTENT" | grep -qE "Receivables Suite[[:space:]]*\|[[:space:]]*unknown"; then
+              echo "FATAL: RECEIVABLES_SUITE = unknown (no validation ran)"
+              exit 1
+            fi
+            # 9c: Phase 5 Payment Regression != unknown
+            if echo "$REPORT_CONTENT" | grep -qE "Phase 5 Payment Regression[[:space:]]*\|[[:space:]]*unknown"; then
+              echo "FATAL: PHASE5_PAYMENT_REGRESSION = unknown (no validation ran)"
+              exit 1
+            fi
+            # 9d: Schema Contract != unknown
+            if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|[[:space:]]*unknown"; then
+              echo "FATAL: SCHEMA_CONTRACT = unknown (no validation ran)"
+              exit 1
+            fi
+            # 9e: Schema Contract must not contain 'failed'
+            if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|.*[1-9][0-9]* failed"; then
+              echo "FATAL: SCHEMA_CONTRACT contains failures"
+              echo "  Found: $(echo "$REPORT_CONTENT" | grep 'Schema Contract' | head -3)"
+              exit 1
+            fi
+            # 9f: If Schema has skips > 0, Schema Skip Reasons must exist and not be NONE/unknown
+            if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|.*[1-9][0-9]* skipped"; then
+              if echo "$REPORT_CONTENT" | grep -qE "Schema Skip Reasons[[:space:]]*\|[[:space:]]*(NONE|unknown)"; then
+                echo "FATAL: Schema has skipped tests but no skip reasons provided"
+                exit 1
+              fi
+            fi
+            echo "Gate 9 PASS: All validation suites present and valid"
+          fi
 
           echo ""
           echo "=========================================="
-          echo "  ALL GATES PASSED — R7 FINAL GATE PASS"
+          echo "  ALL GATES PASSED — FINAL GATE PASS"
           echo "=========================================="
           echo "  Report: $REPORT_DECLARED_PATH"
+          echo "  Mode:   $DIRECTIVE_MODE"
           echo "  File:   $VERIFY_FILE"
           echo "=========================================="
 

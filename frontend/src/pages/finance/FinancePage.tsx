@@ -102,7 +102,7 @@ export function FinancePage() {
     };
 
     const goToCollect = (orderId?: string) => {
-        navigate(orderId ? `/orders?collect=${orderId}` : '/orders');
+        navigate(orderId ? `/orders?collect=${orderId}&returnTo=finance` : '/orders');
     };
 
     if (loading && !summary) {

@@ -17,6 +17,7 @@ on:
       - automation/cto-directives
     paths:
       - "docs/ai-directives/vibecoder/pending/**.md"
+  workflow_dispatch:
 
 concurrency:
   group: vibecoder-directive-runner

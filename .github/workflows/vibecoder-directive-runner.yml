@@ -433,12 +433,12 @@ jobs:
               echo "  Found: $(echo "$REPORT_CONTENT" | grep 'Schema Contract' | head -3)"
               exit 1
             fi
-            # 9f: If Schema has skips > 0, Schema Skip Reasons must exist and not be NONE/unknown
+            # 9f: Final product validation must not have schema skips.
             if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|.*[1-9][0-9]* skipped"; then
-              if echo "$REPORT_CONTENT" | grep -qE "Schema Skip Reasons[[:space:]]*\|[[:space:]]*(NONE|unknown)"; then
-                echo "FATAL: Schema has skipped tests but no skip reasons provided"
-                exit 1
-              fi
+              echo "FATAL: SCHEMA_CONTRACT contains skipped tests; live DB evidence is incomplete"
+              echo "  Found: $(echo "$REPORT_CONTENT" | grep 'Schema Contract' | head -3)"
+              echo "  Skip reasons: $(echo "$REPORT_CONTENT" | grep 'Schema Skip Reasons' | head -3)"
+              exit 1
             fi
             echo "Gate 9 PASS: All validation suites present and valid"
           fi

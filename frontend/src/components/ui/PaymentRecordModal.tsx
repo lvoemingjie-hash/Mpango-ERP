@@ -32,6 +32,7 @@ export function PaymentRecordModal({
   const [method, setMethod] = useState('');
   const [amount, setAmount] = useState('');
   const [transactionId, setTransactionId] = useState('');
+  const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const isValid = method && amount && Number(amount) > 0
@@ -65,11 +66,13 @@ export function PaymentRecordModal({
         method,
         amount: numAmount,
         transaction_id: transactionId || undefined,
+        notes: notes.trim() || undefined,
       });
       // Reset form on success
       setMethod('');
       setAmount('');
       setTransactionId('');
+      setNotes('');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Payment failed';
       setError(msg);
@@ -81,6 +84,7 @@ export function PaymentRecordModal({
     setMethod('');
     setAmount('');
     setTransactionId('');
+    setNotes('');
     setError(null);
     onClose();
   };
@@ -156,6 +160,24 @@ export function PaymentRecordModal({
             />
           </div>
         )}
+
+        <div>
+          <label htmlFor="pay-notes" className="block text-sm font-medium text-gray-700">
+            Collection note
+          </label>
+          <textarea
+            id="pay-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            maxLength={1000}
+            rows={2}
+            placeholder="Optional note for this repayment"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Add context such as collector, receipt reference, or repayment promise.
+          </p>
+        </div>
 
         {willFullyPay && (
           <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">

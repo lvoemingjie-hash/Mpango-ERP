@@ -35,6 +35,7 @@ export function PaymentRecordModal({
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const creditUnavailable = remainingAmount !== orderTotal;
   const isValid = method && amount && Number(amount) > 0
     && (method === 'credit' ? Number(amount) === orderTotal && remainingAmount === orderTotal : Number(amount) <= remainingAmount);
 
@@ -118,6 +119,13 @@ export function PaymentRecordModal({
             value={method}
             onChange={(e) => {
               const next = e.target.value;
+              setError(null);
+              if (next === 'credit' && creditUnavailable) {
+                setMethod('');
+                setAmount('');
+                setError('Credit Sale is only available before any payment has been recorded. Use a repayment method for partially paid orders.');
+                return;
+              }
               setMethod(next);
               if (next === 'credit') {
                 setAmount(String(orderTotal));
@@ -129,11 +137,18 @@ export function PaymentRecordModal({
           >
             <option value="">Select method</option>
             {METHODS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
+              <option key={m.value} value={m.value} disabled={m.value === 'credit' && creditUnavailable}>
+                {m.value === 'credit' && creditUnavailable
+                  ? `${m.label} (full unpaid orders only)`
+                  : m.label}
               </option>
             ))}
           </select>
+          {creditUnavailable && (
+            <p className="mt-1 text-xs text-gray-500">
+              Credit Sale is disabled because this order already has a recorded payment. Use Cash, Bank Transfer, or Mobile Money to collect the remaining balance.
+            </p>
+          )}
         </div>
 
         <div>

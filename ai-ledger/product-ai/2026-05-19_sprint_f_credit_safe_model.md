@@ -109,9 +109,44 @@ pnpm run build — passed (1225 modules, built in 3.95s)
 
 ### Known Gaps
 
-- Credit Sale option still appears for partially-paid orders (the `isValid` guard prevents submission, but the option is visible). Removing it from the dropdown would require conditional rendering based on `remainingAmount !== orderTotal`, which is a safe follow-up but not strictly necessary since validation catches it.
+- Resolved in CTO repair: Credit Sale now appears disabled for partially-paid orders with a short explanation that repayment methods should be used instead.
 - No frontend unit tests exist for PaymentRecordModal (no test file to add to). If CTO wants test coverage, a `PaymentRecordModal.test.tsx` would need to be created.
 
 ### Commit
 
 Will commit with message: `feat(finance): improve credit-safe collection flow`
+
+## CTO Repair Checkpoint - 2026-05-20
+
+### Reason
+
+CTO review identified a non-blocking UX gap after Claude's first commit: partially-paid orders still showed the `Credit Sale` option even though validation prevented submission. This could confuse the user during collection.
+
+### Repair
+
+Updated `frontend/src/components/ui/PaymentRecordModal.tsx`:
+
+- Added `creditUnavailable = remainingAmount !== orderTotal`
+- Disabled the `Credit Sale` option when an order already has a recorded payment
+- Added visible helper text explaining that partially-paid orders must use repayment methods
+- Added a defensive `onChange` guard in case the disabled option is bypassed by browser/automation behavior
+
+### Safety
+
+- Frontend-only UX guard
+- No backend production code
+- No payment/accounting semantic changes
+- Backend full-credit-only and no-split-tender validation remains authoritative
+
+### CTO Validation
+
+- `git diff --check`: PASS
+- `cd frontend && pnpm install --offline --frozen-lockfile`: PASS
+- `cd frontend && pnpm run lint`: PASS
+- `cd frontend && pnpm run build`: PASS, with existing Vite large chunk warning
+- `cd backend && poetry run pytest tests/test_phase5_order_payment.py -q --tb=short`: 53 passed, 1 xfailed, 0 failed
+- `cd backend && poetry run pytest tests/test_receivables_service.py tests/test_finance_receivables_api.py -q --tb=short`: 38 passed, 0 failed
+
+### Repair Commit Plan
+
+Commit message: `fix(finance): disable unavailable credit sale option`

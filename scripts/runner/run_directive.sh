@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_directive.sh v3.9 — Full Validation Directive Runner
+# run_directive.sh v3.9.1 — Full Validation Directive Runner
 #
 # R6 Architecture Changes:
 #   B. Directive repo (directives/) vs validation target (validation-target/) separated
@@ -215,7 +215,7 @@ if echo "$REPORT_PATH" | grep -q '/$'; then
 fi
 
 {
-  echo "=== Directive Runner v3.9 (Full Validation) ==="
+  echo "=== Directive Runner v3.9.1 (Full Validation) ==="
   echo "Task ID: $TASK_ID"
   echo "Mode: $MODE"
   echo "Priority: $PRIORITY"
@@ -325,9 +325,68 @@ run_script_only() {
 
 # Extract a markdown section from the directive file by header name.
 # Returns text between "## SectionName" (or "### SectionName") and the next ## header.
+# Extract a section from directive by header name.
+# Supports both markdown (## SectionName) and plain label (SectionName:)
+# Uses grep -n to find line numbers, then sed to extract range — avoids regex issues with / . in section names.
 extract_directive_section() {
   local section="$1" file="$2"
-  sed -n "/^##\+ *${section}/,/^##\+ /{ /^##\+ *${section}/d; /^##\+ /d; p; }" "$file" 2>/dev/null
+  local start_line end_line total_lines
+  local result=""
+
+  # Strategy 1: markdown header (## or ###)
+  start_line="$(grep -n "^##\+ *${section}" "$file" 2>/dev/null | head -1 | cut -d: -f1)" || true
+  if [ -n "${start_line:-}" ]; then
+    # Find next markdown header
+    end_line="$(sed -n "$((start_line + 1)),\$p" "$file" | grep -n "^##\+ " | head -1 | cut -d: -f1)" || true
+    if [ -n "${end_line:-}" ]; then
+      end_line=$((start_line + end_line))
+    else
+      total_lines="$(wc -l < "$file")"
+      end_line="$total_lines"
+    fi
+    result="$(sed -n "$((start_line + 1)),$((end_line - 1))p" "$file")" || true
+    if [ -n "$result" ]; then
+      echo "$result"
+      return 0
+    fi
+  fi
+
+  # Strategy 2: plain label — "SectionName:" at start of line
+  start_line="$(grep -n "^${section}:" "$file" 2>/dev/null | head -1 | cut -d: -f1)" || true
+  if [ -n "${start_line:-}" ]; then
+    # Find next blank line
+    end_line="$(sed -n "$((start_line + 1)),\$p" "$file" | grep -n "^[[:space:]]*\$" | head -1 | cut -d: -f1)" || true
+    if [ -n "${end_line:-}" ]; then
+      end_line=$((start_line + end_line))
+    else
+      total_lines="$(wc -l < "$file")"
+      end_line="$total_lines"
+    fi
+    result="$(sed -n "$((start_line + 1)),$((end_line - 1))p" "$file")" || true
+    if [ -n "$result" ]; then
+      echo "$result"
+      return 0
+    fi
+  fi
+
+  # Strategy 3: plain label with leading spaces
+  start_line="$(grep -n "^[[:space:]]*${section}:" "$file" 2>/dev/null | head -1 | cut -d: -f1)" || true
+  if [ -n "${start_line:-}" ]; then
+    end_line="$(sed -n "$((start_line + 1)),\$p" "$file" | grep -n "^[[:space:]]*\$" | head -1 | cut -d: -f1)" || true
+    if [ -n "${end_line:-}" ]; then
+      end_line=$((start_line + end_line))
+    else
+      total_lines="$(wc -l < "$file")"
+      end_line="$total_lines"
+    fi
+    result="$(sed -n "$((start_line + 1)),$((end_line - 1))p" "$file")" || true
+    if [ -n "$result" ]; then
+      echo "$result"
+      return 0
+    fi
+  fi
+
+  echo ""
 }
 
 # ── Leo headless executor (v3.8: full validation) ─────────
@@ -357,7 +416,8 @@ run_leo_headless() {
   hard_rules="$(extract_directive_section 'Hard rules' "$latest_directive")" || true
 
   # Count validation commands (lines starting with digits followed by .)
-  VALIDATION_CMD_COUNT="$(echo "$validation_cmds" | grep -cE '^[[:space:]]*[0-9]+\.' || echo 0)"
+  VALIDATION_CMD_COUNT="$(echo "$validation_cmds" | grep -cE '^[[:space:]]*[0-9]+\.' || true)"
+  VALIDATION_CMD_COUNT="${VALIDATION_CMD_COUNT:-0}"
   TOTAL_CMD_COUNT=$((5 + VALIDATION_CMD_COUNT))  # 5 preflight + N validation
 
   checkpoint "directive_sections_extracted" "preflight=5 validation=${VALIDATION_CMD_COUNT} total=${TOTAL_CMD_COUNT}"
@@ -447,7 +507,7 @@ run_leo_headless() {
       --message "$leo_prompt" \
       --timeout 3600 --json 2>&1)" || rc=$?
 
-  LEO_COMMANDS_RUN=1
+  # LEO_COMMANDS_RUN=1  # available if needed
 
   # ── Transport Health Detection ───────────────────────────────────
   if echo "$raw_output" | grep -qE '"fallbackUsed"[[:space:]]*:[[:space:]]*true'; then
@@ -608,12 +668,6 @@ write_report() {
 | COMMANDS_EXECUTED | $EVIDENCE_COMMANDS |
 | Product Code Modified | $EVIDENCE_PRODUCT_MODIFIED |
 | Product Branch Pushed | $EVIDENCE_BRANCH_PUSHED |
-| PRODUCT_CODE_MODIFIED | $EVIDENCE_PRODUCT_MODIFIED |
-| PRODUCT_BRANCH_PUSHED | $EVIDENCE_BRANCH_PUSHED |
-| Commit Hash | $EVIDENCE_COMMIT_HASH |
-| Latest Commit | $EVIDENCE_LATEST_COMMIT |
-| Product Code Modified | $EVIDENCE_PRODUCT_MODIFIED |
-| Product Branch Pushed | $EVIDENCE_BRANCH_PUSHED |
 | Commit Hash | $EVIDENCE_COMMIT_HASH |
 | Latest Commit | $EVIDENCE_LATEST_COMMIT |
 "
@@ -636,7 +690,7 @@ write_report() {
 | **Verdict** | **$verdict** |
 | Transport Health | $TRANSPORT_HEALTH |
 | Executor | $EXECUTOR_TYPE |
-| Runner | run_directive.sh v3.9 (full validation) |
+| Runner | run_directive.sh v3.9.1 (full validation) |
 | github_runner_name | $github_runner_name |
 | host_name | $host_name |
 | Run URL | $run_url |
@@ -652,7 +706,7 @@ $leo_evidence_section
 $(echo -e "$CHECKPOINTS")
 
 ---
-Generated by Mpango Directive Runner v3.9 (Full Validation) at $(date -Is)
+Generated by Mpango Directive Runner v3.9.1 (Full Validation) at $(date -Is)
 REPORT_EOF
 )
 
@@ -701,7 +755,7 @@ write_failure_report() {
 | Mode | $MODE |
 | **Verdict** | **$verdict** |
 | Executor | $EXECUTOR_TYPE |
-| Runner | run_directive.sh v3.9 (full validation) |
+| Runner | run_directive.sh v3.9.1 (full validation) |
 | github_runner_name | ${RUNNER_NAME:-$(hostname)} |
 | host_name | $(hostname) |
 | Run URL | $run_url |
@@ -731,14 +785,14 @@ $stderr_summary
 
 | Stage | Status |
 |-------|--------|
-| 1. Runner accepted job | $( [ "$LEO_EXECUTED" = "true" ] || [ "$EXECUTOR_TYPE" = "script-only" ] && echo "PASS" || echo "FAIL" ) |
+| 1. Runner accepted job | $({ [ "$LEO_EXECUTED" = "true" ] || [ "$EXECUTOR_TYPE" = "script-only" ]; } && echo "PASS" || echo "FAIL") |
 | 2. Leo invoked | $LEO_EXECUTED |
 | 3. Report generation | $( [ -f "$report_staging_file" ] && echo "PASS" || echo "FAIL" ) |
 | 4. Report push | N/A (workflow step) |
 | 5. Final gate | N/A (workflow step) |
 
 ---
-Generated by Mpango Directive Runner v3.9 (Full Validation) at $(date -Is)
+Generated by Mpango Directive Runner v3.9.1 (Full Validation) at $(date -Is)
 REPORT_EOF
 )
 
@@ -781,15 +835,26 @@ echo "[EXEC] executor=$EXECUTOR_TYPE mode=$MODE ts=$(date -Is)" | tee -a "$log_f
 checkpoint "heartbeat_start"
 start_heartbeat
 
-COMMIT_INFO="$(git -C "$DIRECTIVE_REPO" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-BRANCH_INFO="$(git -C "$DIRECTIVE_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')"
+# COMMIT_INFO/BRANCH_INFO available if needed:
+# COMMIT_INFO="$(git -C "$DIRECTIVE_REPO" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+# BRANCH_INFO="$(git -C "$DIRECTIVE_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')"
 
 case "$EXECUTOR_TYPE" in
   script-only)
     checkpoint "executor_script_only_start"
+    # v3.9.1: Also parse directive sections in script-only mode for parser validation
+    _preflight_cmds="$(extract_directive_section 'Required branch/commit checks' "$latest_directive")" || true
+    _validation_cmds="$(extract_directive_section 'Required validation commands' "$latest_directive")" || true
+    _expected_evidence="$(extract_directive_section 'Expected evidence' "$latest_directive")" || true
+    _hard_rules="$(extract_directive_section 'Hard rules' "$latest_directive")" || true
+    _val_count="$(echo "$_validation_cmds" | grep -cE '^[[:space:]]*[0-9]+\.' || true)"
+    _val_count="${_val_count:-0}"
+    _total_count=$((5 + _val_count))
+    checkpoint "directive_sections_extracted" "preflight=5 validation=${_val_count} total=${_total_count} (parser-only, no Leo)"
+    EXECUTOR_OUTPUT+="PARSER_VALIDATION: preflight=5 validation=${_val_count} total=${_total_count}\n"
     _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
     run_script_only > "$_tmp_out" 2>&1 || true
-    EXECUTOR_OUTPUT="$(cat "$_tmp_out")"
+    EXECUTOR_OUTPUT+="$(cat "$_tmp_out")"
     ;;
   leo-headless)
     checkpoint "executor_leo_headless_start"

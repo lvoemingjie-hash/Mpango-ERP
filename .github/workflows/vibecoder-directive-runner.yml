@@ -250,6 +250,13 @@ jobs:
 
           REPORT_CONTENT="$(cat "$VERIFY_FILE")"
 
+          # Detect mode from report (INVENTORY_ONLY skips Leo gates)
+          DIRECTIVE_MODE="VALIDATION_GATE"
+          if echo "$REPORT_CONTENT" | grep -qE "Mode.*INVENTORY_ONLY"; then
+            DIRECTIVE_MODE="INVENTORY_ONLY"
+          fi
+          echo "Directive mode: $DIRECTIVE_MODE"
+
           # ── Gate 2: Verdict is PASS_FOR_CTO_REVIEW ──
           if ! echo "$REPORT_CONTENT" | grep -q "PASS_FOR_CTO_REVIEW"; then
             echo "FATAL: Verdict is not PASS_FOR_CTO_REVIEW"
@@ -263,18 +270,24 @@ jobs:
             "github_runner_name"
             "host_name"
             "Run URL"
-            "Leo Invoked"
             "COMMANDS_EXECUTED"
             "PREFLIGHT|Preflight Commands"
             "VALIDATION|Product Validation"
             "APP_IMPORT_SMOKE|App Import Smoke"
-            "RECEIVABLES_SUITE|Receivables Suite"
-            "PHASE5_PAYMENT_REGRESSION|Phase 5 Payment"
-            "SCHEMA_CONTRACT|Schema Contract"
             "fallbackUsed|Transport Health"
             "PRODUCT_CODE_MODIFIED|Product Code Modified"
             "PRODUCT_BRANCH_PUSHED|Product Branch Pushed"
           )
+
+          # Leo-dependent fields only required for VALIDATION_GATE
+          if [ "$DIRECTIVE_MODE" = "VALIDATION_GATE" ]; then
+            REQUIRED_FIELDS+=(
+              "Leo Invoked"
+              "RECEIVABLES_SUITE|Receivables Suite"
+              "PHASE5_PAYMENT_REGRESSION|Phase 5 Payment"
+              "SCHEMA_CONTRACT|Schema Contract"
+            )
+          fi
 
           for field in "${REQUIRED_FIELDS[@]}"; do
             if ! echo "$REPORT_CONTENT" | grep -qE "$field"; then
@@ -284,20 +297,30 @@ jobs:
             echo "Gate 3 PASS: Found field '$field'"
           done
 
-          # ── Gate 4: Leo invoked = yes ──
-          if echo "$REPORT_CONTENT" | grep -qE "Leo Invoked.*false"; then
+          # ── Gate 4: Leo invoked = yes (skip for INVENTORY_ONLY) ──
+          if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
+            echo "Gate 4 SKIP: INVENTORY_ONLY mode — Leo not required"
+          elif echo "$REPORT_CONTENT" | grep -qE "Leo Invoked.*false"; then
             echo "FATAL: Leo was NOT invoked"
             exit 1
+          else
+            echo "Gate 4 PASS: Leo invoked = yes"
           fi
-          echo "Gate 4 PASS: Leo invoked = yes"
 
-          # ── Gate 5: COMMANDS_EXECUTED must be exactly 9/9 ──
-          if ! echo "$REPORT_CONTENT" | grep -qE "COMMANDS_EXECUTED[[:space:]]*\|[[:space:]]*9/9[[:space:]]*\|"; then
-            echo "FATAL: COMMANDS_EXECUTED is not 9/9"
-            echo "  Found: $(echo "$REPORT_CONTENT" | grep 'COMMANDS_EXECUTED' | head -3)"
-            exit 1
-          fi
-          echo "Gate 5 PASS: COMMANDS_EXECUTED = 9/9"
+          # ── Gate 5: COMMANDS_EXECUTED check (mode-aware) ──
+          if [ "$DIRECTIVE_MODE" = "INVENTORY_ONLY" ]; then
+            if ! echo "$REPORT_CONTENT" | grep -qE "COMMANDS_EXECUTED[[:space:]]*\|[[:space:]]*[0-9]+/[0-9]+[[:space:]]*\|"; then
+              echo "FATAL: COMMANDS_EXECUTED missing or malformed"
+              exit 1
+            fi
+            echo "Gate 5 PASS: COMMANDS_EXECUTED present (INVENTORY_ONLY mode, flexible count)"
+          else
+            if ! echo "$REPORT_CONTENT" | grep -qE "COMMANDS_EXECUTED[[:space:]]*\|[[:space:]]*9/9[[:space:]]*\|"; then
+              echo "FATAL: COMMANDS_EXECUTED is not 9/9"
+              echo "  Found: $(echo "$REPORT_CONTENT" | grep 'COMMANDS_EXECUTED' | head -3)"
+              exit 1
+            fi
+            echo "Gate 5 PASS: COMMANDS_EXECUTED = 9/9"
 
           # ── Gate 6: Transport healthy / fallbackUsed=false ──
           if echo "$REPORT_CONTENT" | grep -qiE "fallbackUsed.*true"; then

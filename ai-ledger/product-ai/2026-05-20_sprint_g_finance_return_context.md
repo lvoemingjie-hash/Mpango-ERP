@@ -24,7 +24,7 @@ Preserve Accounts Receivable tab/page context when navigating to order collectio
 - `financeTab` validated against allowlist (`all`, `credit_receivable`, `unpaid_order`).
 - `financePage` validated as positive integer.
 - Default values (`tab=all`, `page=1`) are omitted from URLs to avoid noisy query strings.
-- `syncingRef` prevents infinite React render loops when `changeTab` calls both `setTab` and `setPage`.
+- CTO repair changed the design to make the URL the source of truth for `tab` and `page`; this avoids stale local state and supports browser back/forward navigation.
 
 ## Commands Run
 
@@ -58,9 +58,37 @@ No output (no whitespace errors).
 ## Known Gaps
 
 - No frontend unit tests for the URL sync behavior (no existing test infrastructure for FinancePage).
-- Browser back/forward navigation is handled by React Router's `useSearchParams` re-reading from the URL on popstate, which naturally updates the state initializers on remount.
-- The `syncingRef` pattern is a lightweight approach; a more robust solution would use `useSyncExternalStore` or a router-first state model, but that is out of scope for this slice.
+- Browser back/forward navigation is handled because `tab` and `page` are derived from `useSearchParams` on every render.
+- No frontend unit tests for router query-state behavior were added in this slice.
 
 ## Commit
 
+Hash: `2322c58`
 Message: `feat(finance): preserve receivables return context`
+
+## CTO Repair - 2026-05-20
+
+### Issue Found
+
+CTO review found that the original local-state + `syncingRef` implementation could skip URL synchronization when changing tabs. It also overstated browser back/forward behavior because React state initializers do not re-run on query-string changes.
+
+### Repair Applied
+
+- Removed local React state for `tab` and `page`
+- Derived `tab` and `page` directly from `useSearchParams`
+- Added `buildFinanceSearchParams()` to canonicalize URL state
+- Updated `changeTab()` and pagination to write validated query params directly
+- Kept default URL cleanup (`tab=all`, `page=1` omitted)
+
+### CTO Repair Validation
+
+- `git diff --check`: PASS
+- `cd frontend && pnpm install --offline --frozen-lockfile`: PASS
+- `cd frontend && pnpm run lint`: PASS
+- `cd frontend && pnpm run build`: PASS, with existing Vite large chunk warning
+- `cd backend && poetry run pytest tests/test_receivables_service.py tests/test_finance_receivables_api.py -q --tb=short`: 38 passed, 0 failed
+- `cd backend && poetry run pytest tests/test_phase5_order_payment.py -q --tb=short`: 53 passed, 1 xfailed, 0 failed
+
+### CTO Repair Commit Plan
+
+Message: `fix(finance): make receivables URL state authoritative`

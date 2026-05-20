@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { financeService } from '@/services/financeService';
 import type { FinancialSummary, CreditReceivableItem, ReceivablesSummary } from '@/services/financeService';
@@ -23,6 +23,13 @@ function parsePage(value: string | null): number {
     if (!value) return 1;
     const n = Number(value);
     return Number.isInteger(n) && n > 0 ? n : 1;
+}
+
+function buildFinanceSearchParams(tab: ReceivableTab, page: number): URLSearchParams {
+    const next = new URLSearchParams();
+    if (tab !== 'all') next.set('tab', tab);
+    if (page !== 1) next.set('page', String(page));
+    return next;
 }
 
 function agingStyle(days: number): string {
@@ -52,30 +59,31 @@ function PaymentBar({ paid, total }: { paid: number; total: number }) {
 export function FinancePage() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
+    const searchKey = searchParams.toString();
+    const tab = parseTab(searchParams.get('tab'));
+    const page = parsePage(searchParams.get('page'));
     const [summary, setSummary] = useState<FinancialSummary | null>(null);
     const [receivablesSummary, setReceivablesSummary] = useState<ReceivablesSummary | null>(null);
     const [receivables, setReceivables] = useState<CreditReceivableItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [tab, setTab] = useState<ReceivableTab>(() => parseTab(searchParams.get('tab')));
-    const [page, setPage] = useState(() => parsePage(searchParams.get('page')));
     const [totalItems, setTotalItems] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
-    const syncingRef = useRef(false);
 
-    // Sync tab/page to URL, omitting defaults to keep URLs clean.
+    // Canonicalize invalid/noisy query params while keeping the URL as the source of truth.
     useEffect(() => {
-        if (syncingRef.current) { syncingRef.current = false; return; }
-        const next = new URLSearchParams();
-        if (tab !== 'all') next.set('tab', tab);
-        if (page !== 1) next.set('page', String(page));
-        setSearchParams(next, { replace: true });
-    }, [tab, page, setSearchParams]);
+        const next = buildFinanceSearchParams(tab, page);
+        if (next.toString() !== searchKey) {
+            setSearchParams(next, { replace: true });
+        }
+    }, [tab, page, searchKey, setSearchParams]);
 
     const changeTab = (t: ReceivableTab) => {
-        syncingRef.current = true;
-        setTab(t);
-        setPage(1);
+        setSearchParams(buildFinanceSearchParams(t, 1), { replace: true });
+    };
+
+    const changePage = (nextPage: number) => {
+        setSearchParams(buildFinanceSearchParams(tab, nextPage), { replace: true });
     };
 
     const load = useCallback(async () => {
@@ -361,7 +369,7 @@ export function FinancePage() {
                             <Pagination
                                 page={page}
                                 totalPages={totalPages}
-                                onPageChange={setPage}
+                                onPageChange={changePage}
                             />
                         </div>
                     )}

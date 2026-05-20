@@ -190,7 +190,21 @@ export function OrderListPage() {
 
     // Consume the param exactly once before opening the existing payment flow.
     handledCollectIdRef.current = collectOrderId;
-    collectReturnPathRef.current = returnTo === 'finance' ? '/finance' : null;
+
+    if (returnTo === 'finance') {
+      const ALLOWED_TABS = ['all', 'credit_receivable', 'unpaid_order'] as const;
+      const rawTab = searchParams.get('financeTab');
+      const rawPage = searchParams.get('financePage');
+      const financeTab = rawTab && (ALLOWED_TABS as readonly string[]).includes(rawTab) ? rawTab : null;
+      const financePage = rawPage && Number.isInteger(Number(rawPage)) && Number(rawPage) > 0 ? Number(rawPage) : null;
+      const params = new URLSearchParams();
+      if (financeTab && financeTab !== 'all') params.set('tab', financeTab);
+      if (financePage && financePage !== 1) params.set('page', String(financePage));
+      collectReturnPathRef.current = params.toString() ? `/finance?${params.toString()}` : '/finance';
+    } else {
+      collectReturnPathRef.current = null;
+    }
+
     setSearchParams({}, { replace: true });
 
     // Fast path: order already in loaded rows

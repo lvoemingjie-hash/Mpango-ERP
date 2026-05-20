@@ -17,6 +17,15 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 
+function buildFinanceCollectionReturnPath(returnPath: string, orderId: string): string {
+  const [path, query = ''] = returnPath.split('?');
+  const params = new URLSearchParams(query);
+  params.set('collection', 'recorded');
+  params.set('collectedOrder', orderId);
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
+}
+
 export function OrderListPage() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
@@ -104,7 +113,7 @@ export function OrderListPage() {
       const returnPath = collectReturnPathRef.current;
       collectReturnPathRef.current = null;
       if (returnPath) {
-        navigate(returnPath);
+        navigate(buildFinanceCollectionReturnPath(returnPath, orderId));
       } else {
         await load();
       }

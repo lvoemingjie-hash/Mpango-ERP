@@ -13,6 +13,7 @@ type ReceivableTab = 'all' | 'credit_receivable' | 'unpaid_order';
 
 const ALLOWED_TABS: ReceivableTab[] = ['all', 'credit_receivable', 'unpaid_order'];
 const PAGE_SIZE = 20;
+const COLLECTION_RECORDED = 'recorded';
 
 function parseTab(value: string | null): ReceivableTab {
     if (value && ALLOWED_TABS.includes(value as ReceivableTab)) return value as ReceivableTab;
@@ -25,10 +26,24 @@ function parsePage(value: string | null): number {
     return Number.isInteger(n) && n > 0 ? n : 1;
 }
 
-function buildFinanceSearchParams(tab: ReceivableTab, page: number): URLSearchParams {
+function parseCollectedOrderId(value: string | null): string | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 && trimmed.length <= 64 ? trimmed : null;
+}
+
+function buildFinanceSearchParams(
+    tab: ReceivableTab,
+    page: number,
+    collectionNotice?: { recorded: boolean; orderId: string | null },
+): URLSearchParams {
     const next = new URLSearchParams();
     if (tab !== 'all') next.set('tab', tab);
     if (page !== 1) next.set('page', String(page));
+    if (collectionNotice?.recorded) {
+        next.set('collection', COLLECTION_RECORDED);
+        if (collectionNotice.orderId) next.set('collectedOrder', collectionNotice.orderId);
+    }
     return next;
 }
 
@@ -62,6 +77,10 @@ export function FinancePage() {
     const searchKey = searchParams.toString();
     const tab = parseTab(searchParams.get('tab'));
     const page = parsePage(searchParams.get('page'));
+    const collectionRecorded = searchParams.get('collection') === COLLECTION_RECORDED;
+    const collectedOrderId = collectionRecorded
+        ? parseCollectedOrderId(searchParams.get('collectedOrder'))
+        : null;
     const [summary, setSummary] = useState<FinancialSummary | null>(null);
     const [receivablesSummary, setReceivablesSummary] = useState<ReceivablesSummary | null>(null);
     const [receivables, setReceivables] = useState<CreditReceivableItem[]>([]);
@@ -72,11 +91,14 @@ export function FinancePage() {
 
     // Canonicalize invalid/noisy query params while keeping the URL as the source of truth.
     useEffect(() => {
-        const next = buildFinanceSearchParams(tab, page);
+        const next = buildFinanceSearchParams(tab, page, {
+            recorded: collectionRecorded,
+            orderId: collectedOrderId,
+        });
         if (next.toString() !== searchKey) {
             setSearchParams(next, { replace: true });
         }
-    }, [tab, page, searchKey, setSearchParams]);
+    }, [tab, page, collectionRecorded, collectedOrderId, searchKey, setSearchParams]);
 
     const changeTab = (t: ReceivableTab) => {
         setSearchParams(buildFinanceSearchParams(t, 1), { replace: true });
@@ -84,6 +106,10 @@ export function FinancePage() {
 
     const changePage = (nextPage: number) => {
         setSearchParams(buildFinanceSearchParams(tab, nextPage), { replace: true });
+    };
+
+    const dismissCollectionNotice = () => {
+        setSearchParams(buildFinanceSearchParams(tab, page), { replace: true });
     };
 
     const load = useCallback(async () => {
@@ -176,6 +202,28 @@ export function FinancePage() {
                     </div>
                 }
             />
+
+            {collectionRecorded && (
+                <div className="mt-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p className="font-semibold">Payment recorded</p>
+                            <p className="mt-1">
+                                You are back in Accounts Receivable
+                                {collectedOrderId ? ` after collecting payment for order ${collectedOrderId.slice(0, 8)}...` : ''}
+                                . Refresh is available if you want to confirm the latest balance immediately.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={dismissCollectionNotice}
+                            className="self-start rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-800 hover:bg-green-200"
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {error && (
                 <div className="mt-6 flex items-center gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">

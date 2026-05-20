@@ -43,6 +43,7 @@ The following are the approved shared memory surfaces:
 
 - `docs/ai/CTO_COCKPIT.md`
 - `docs/ai/CTO_CONTEXT.md`
+- `docs/ai/PROJECT.md`
 - `docs/ai/PROJECT_MEMORY.md`
 - `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
 - `decision-register/`
@@ -136,12 +137,50 @@ Machine B should assume these are read-only unless a written approval exists in 
 - Machine A uses a product branch
 - Machine B uses a platform branch
 - Cross-cutting work requires explicit coordination before merge
+- A local-only branch state is not sufficient shared truth when another machine or CTO must review it
 
 Recommended:
 
 - `product-dev` for active ERP work
 - `platform-dev` for platform line work
 - short-lived feature branches off the relevant long-lived branch
+
+## Start-Of-Task Sync Gate
+
+Before a machine starts a new non-trivial task, it must:
+
+1. Fetch the latest remote branch state
+2. Read:
+   - `docs/ai/README.md`
+   - `docs/ai/PROJECT.md`
+   - `docs/ai/PROJECT_MEMORY.md`
+3. Confirm the active branch and current blocker list are still accurate
+4. Refuse to proceed on stale assumptions if repo memory and local branch state disagree
+
+## Visibility Push Rule
+
+There are two distinct push states:
+
+1. Visibility push
+   - allowed when another machine / CTO cannot inspect a local-only commit
+   - purpose is review visibility, not approval to continue or merge
+2. Approval push / promotion push
+   - happens only after CTO review says the slice is approved for continuation, closeout, or branch promotion
+
+Agents must state which kind of push they are performing.
+Do not treat "pushed so CTO can see it" as equivalent to "approved to merge/promote".
+
+## PROJECT.md Update Gate
+
+`docs/ai/PROJECT.md` must be updated whenever any of the following changes:
+
+- active branch ownership
+- accepted / not accepted status of a slice
+- current blocker list
+- next expected action
+- recovered-vs-backup branch role
+
+If another machine depends on this knowledge, the update must be pushed remotely or it is not reliable shared memory.
 
 ## Merge Gates
 
@@ -187,6 +226,22 @@ At least once per sync cycle, both tracks must reconcile:
 - unresolved risks
 
 Record meaningful outcomes in repo docs, not just chat.
+
+## CTO Review Handshake
+
+For dual-line work, the expected node sequence is:
+
+1. Proposal or implementation slice completed locally
+2. Self-check gate passes
+3. Repo memory updated (`PROJECT.md` if needed, ledger always)
+4. If CTO is on another machine, perform a visibility push
+5. CTO reviews against the pushed state
+6. CTO either:
+   - approves continuation
+   - requests correction
+   - approves promotion / closeout
+
+Skipping step 3 or 4 creates split-brain memory and stale-agent risk.
 
 ## Current Recommended Platform Sequence
 

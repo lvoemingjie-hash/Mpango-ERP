@@ -88,6 +88,9 @@ export function FinancePage() {
     const [error, setError] = useState<string | null>(null);
     const [totalItems, setTotalItems] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
+    const refreshedAtLabel = summary?.generated_at
+        ? new Date(summary.generated_at).toLocaleString()
+        : null;
 
     // Canonicalize invalid/noisy query params while keeping the URL as the source of truth.
     useEffect(() => {
@@ -211,16 +214,28 @@ export function FinancePage() {
                             <p className="mt-1">
                                 You are back in Accounts Receivable
                                 {collectedOrderId ? ` after collecting payment for order ${collectedOrderId.slice(0, 8)}...` : ''}
-                                . Refresh is available if you want to confirm the latest balance immediately.
+                                {refreshedAtLabel
+                                    ? `. Balances were refreshed at ${refreshedAtLabel}.`
+                                    : '. Balances have been loaded from the current Finance view.'}
                             </p>
                         </div>
-                        <button
-                            type="button"
-                            onClick={dismissCollectionNotice}
-                            className="self-start rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-800 hover:bg-green-200"
-                        >
-                            Dismiss
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={load}
+                                disabled={loading}
+                                className="rounded-md bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
+                            >
+                                {loading ? 'Refreshing...' : 'Refresh balances'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={dismissCollectionNotice}
+                                className="rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-800 hover:bg-green-200"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

@@ -91,6 +91,12 @@ export function FinancePage() {
     const refreshedAtLabel = summary?.generated_at
         ? new Date(summary.generated_at).toLocaleString()
         : null;
+    const activeTabLabel = tab === 'all'
+        ? 'All receivables'
+        : tab === 'credit_receivable'
+            ? 'Credit receivables'
+            : 'Unpaid orders';
+    const pageContextLabel = totalPages > 0 ? `Page ${page} of ${totalPages}` : null;
 
     // Canonicalize invalid/noisy query params while keeping the URL as the source of truth.
     useEffect(() => {
@@ -320,6 +326,11 @@ export function FinancePage() {
                                 <h3 className="text-base font-semibold text-gray-900">Receivable Orders</h3>
                                 <p className="mt-1 text-sm text-gray-500">
                                     Click <strong>Collect</strong> to record a repayment against an order.
+                                </p>
+                                <p className="mt-1 text-xs text-gray-400">
+                                    Showing {activeTabLabel}
+                                    {pageContextLabel ? ` - ${pageContextLabel}` : ''}
+                                    {refreshedAtLabel ? ` - Refreshed ${refreshedAtLabel}` : ''}
                                 </p>
                             </div>
                             <div className="flex gap-1">

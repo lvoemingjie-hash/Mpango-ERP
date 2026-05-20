@@ -126,18 +126,29 @@ def is_forbidden_path(path):
     return False, None
 
 
-def check_branch(result, repo_path):
+def check_branch(result, repo_path, allow_platform_dev=False):
     branch = get_current_branch(repo_path)
     if branch is None:
         result.add_fail("could not determine current branch")
         return None
 
-    if branch == "platform-dev" or branch.startswith("codex/platform-"):
+    if branch.startswith("codex/platform-"):
         result.add_pass(f"branch '{branch}' is allowed")
+    elif branch == "platform-dev":
+        if allow_platform_dev:
+            result.add_pass(
+                "branch 'platform-dev' is allowed (--allow-platform-dev)"
+            )
+        else:
+            result.add_fail(
+                "branch 'platform-dev' is not allowed by default; "
+                "use --allow-platform-dev to enable"
+            )
     else:
         result.add_fail(
             f"branch '{branch}' is not allowed; "
-            "must be 'platform-dev' or start with 'codex/platform-'"
+            "must start with 'codex/platform-' "
+            "or use --allow-platform-dev for 'platform-dev'"
         )
     return branch
 
@@ -213,6 +224,14 @@ def main():
         action="store_true",
         help="Fail if --report is not provided",
     )
+    parser.add_argument(
+        "--allow-platform-dev",
+        action="store_true",
+        help=(
+            "Allow 'platform-dev' branch "
+            "(default: only codex/platform-* branches are allowed)"
+        ),
+    )
     args = parser.parse_args()
 
     if args.require_report and args.report is None:
@@ -231,7 +250,7 @@ def main():
     result = PreflightResult()
 
     print("[1/4] Checking branch...")
-    branch = check_branch(result, repo_path)
+    branch = check_branch(result, repo_path, allow_platform_dev=args.allow_platform_dev)
     print()
 
     print("[2/4] Checking required shared-memory docs...")

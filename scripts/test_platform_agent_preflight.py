@@ -218,6 +218,55 @@ class TestInvalidBranchFails(unittest.TestCase):
             )
 
 
+class TestPlatformDevBranchPolicy(unittest.TestCase):
+    def _init_repo(self, tmpdir, branch_name):
+        subprocess.run(["git", "init"], cwd=tmpdir, capture_output=True)
+        readme = os.path.join(tmpdir, "README.md")
+        with open(readme, "w") as f:
+            f.write("# test\n")
+        subprocess.run(["git", "add", "README.md"], cwd=tmpdir, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.name=test", "-c", "user.email=test@test.com",
+             "commit", "-m", "init"],
+            cwd=tmpdir, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "-b", branch_name],
+            cwd=tmpdir, capture_output=True,
+        )
+
+    def test_platform_dev_fails_by_default(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._init_repo(tmpdir, "platform-dev")
+            result = preflight.PreflightResult()
+            preflight.check_branch(result, tmpdir)
+            self.assertFalse(result.passed)
+            self.assertTrue(
+                any("not allowed by default" in f for f in result.failures),
+                f"expected platform-dev default failure, got: {result.failures}",
+            )
+
+    def test_platform_dev_passes_with_allow_flag(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._init_repo(tmpdir, "platform-dev")
+            result = preflight.PreflightResult()
+            preflight.check_branch(result, tmpdir, allow_platform_dev=True)
+            self.assertTrue(
+                result.passed,
+                f"expected pass with --allow-platform-dev, got: {result.failures}",
+            )
+
+    def test_codex_platform_branch_still_passes_by_default(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._init_repo(tmpdir, "codex/platform-some-task")
+            result = preflight.PreflightResult()
+            preflight.check_branch(result, tmpdir)
+            self.assertTrue(
+                result.passed,
+                f"expected codex/platform-* to pass, got: {result.failures}",
+            )
+
+
 class TestReportValidation(unittest.TestCase):
     def test_report_with_all_fields_passes(self):
         content = """# Report
@@ -322,6 +371,90 @@ class TestCliReportBehavior(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+    def test_platform_dev_without_flag_fails_cli(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            subprocess.run(["git", "init"], cwd=tmpdir, capture_output=True)
+            readme = os.path.join(tmpdir, "README.md")
+            with open(readme, "w") as f:
+                f.write("# test\n")
+            subprocess.run(["git", "add", "README.md"], cwd=tmpdir, capture_output=True)
+            subprocess.run(
+                ["git", "-c", "user.name=test", "-c", "user.email=test@test.com",
+                 "commit", "-m", "init"],
+                cwd=tmpdir, capture_output=True,
+            )
+            subprocess.run(
+                ["git", "checkout", "-b", "platform-dev"],
+                cwd=tmpdir, capture_output=True,
+            )
+
+            for doc in preflight.REQUIRED_DOCS:
+                doc_path = os.path.join(tmpdir, doc)
+                os.makedirs(os.path.dirname(doc_path), exist_ok=True)
+                with open(doc_path, "w") as f:
+                    f.write(f"# {doc}\n")
+
+            subprocess.run(["git", "add", "-A"], cwd=tmpdir, capture_output=True)
+            subprocess.run(
+                ["git", "-c", "user.name=test", "-c", "user.email=test@test.com", "commit", "-m", "init"],
+                cwd=tmpdir, capture_output=True,
+            )
+
+            result = subprocess.run(
+                [sys.executable, os.path.join(SCRIPT_DIR, "platform_agent_preflight.py"),
+                 "--repo", tmpdir],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+
+    def test_platform_dev_with_flag_passes_cli(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            subprocess.run(["git", "init"], cwd=tmpdir, capture_output=True)
+            readme = os.path.join(tmpdir, "README.md")
+            with open(readme, "w") as f:
+                f.write("# test\n")
+            subprocess.run(["git", "add", "README.md"], cwd=tmpdir, capture_output=True)
+            subprocess.run(
+                ["git", "-c", "user.name=test", "-c", "user.email=test@test.com",
+                 "commit", "-m", "init"],
+                cwd=tmpdir, capture_output=True,
+            )
+            subprocess.run(
+                ["git", "checkout", "-b", "platform-dev"],
+                cwd=tmpdir, capture_output=True,
+            )
+
+            for doc in preflight.REQUIRED_DOCS:
+                doc_path = os.path.join(tmpdir, doc)
+                os.makedirs(os.path.dirname(doc_path), exist_ok=True)
+                with open(doc_path, "w") as f:
+                    f.write(f"# {doc}\n")
+
+            report_path = os.path.join(tmpdir, "report.md")
+            with open(report_path, "w") as f:
+                f.write(
+                    "- Branch: platform-dev\n"
+                    "- Commit: abc123\n"
+                    "- Modified files: none\n"
+                    "- Tests: self-check\n"
+                    "- Report path: report.md\n"
+                    "- Risk: LOW\n"
+                )
+
+            subprocess.run(["git", "add", "-A"], cwd=tmpdir, capture_output=True)
+            subprocess.run(
+                ["git", "-c", "user.name=test", "-c", "user.email=test@test.com", "commit", "-m", "init"],
+                cwd=tmpdir, capture_output=True,
+            )
+
+            result = subprocess.run(
+                [sys.executable, os.path.join(SCRIPT_DIR, "platform_agent_preflight.py"),
+                 "--repo", tmpdir, "--report", "report.md", "--allow-platform-dev"],
+                capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

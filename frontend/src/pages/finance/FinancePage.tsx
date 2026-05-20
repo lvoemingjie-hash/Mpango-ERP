@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { financeService } from '@/services/financeService';
 import type { FinancialSummary, CreditReceivableItem, ReceivablesSummary } from '@/services/financeService';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -11,7 +11,19 @@ import { BanknotesIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 type ReceivableTab = 'all' | 'credit_receivable' | 'unpaid_order';
 
+const ALLOWED_TABS: ReceivableTab[] = ['all', 'credit_receivable', 'unpaid_order'];
 const PAGE_SIZE = 20;
+
+function parseTab(value: string | null): ReceivableTab {
+    if (value && ALLOWED_TABS.includes(value as ReceivableTab)) return value as ReceivableTab;
+    return 'all';
+}
+
+function parsePage(value: string | null): number {
+    if (!value) return 1;
+    const n = Number(value);
+    return Number.isInteger(n) && n > 0 ? n : 1;
+}
 
 function agingStyle(days: number): string {
     if (days >= 30) return 'text-red-600';
@@ -39,15 +51,32 @@ function PaymentBar({ paid, total }: { paid: number; total: number }) {
 
 export function FinancePage() {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [summary, setSummary] = useState<FinancialSummary | null>(null);
     const [receivablesSummary, setReceivablesSummary] = useState<ReceivablesSummary | null>(null);
     const [receivables, setReceivables] = useState<CreditReceivableItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [tab, setTab] = useState<ReceivableTab>('all');
-    const [page, setPage] = useState(1);
+    const [tab, setTab] = useState<ReceivableTab>(() => parseTab(searchParams.get('tab')));
+    const [page, setPage] = useState(() => parsePage(searchParams.get('page')));
     const [totalItems, setTotalItems] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
+    const syncingRef = useRef(false);
+
+    // Sync tab/page to URL, omitting defaults to keep URLs clean.
+    useEffect(() => {
+        if (syncingRef.current) { syncingRef.current = false; return; }
+        const next = new URLSearchParams();
+        if (tab !== 'all') next.set('tab', tab);
+        if (page !== 1) next.set('page', String(page));
+        setSearchParams(next, { replace: true });
+    }, [tab, page, setSearchParams]);
+
+    const changeTab = (t: ReceivableTab) => {
+        syncingRef.current = true;
+        setTab(t);
+        setPage(1);
+    };
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -73,8 +102,6 @@ export function FinancePage() {
     }, [page, tab]);
 
     useEffect(() => { load(); }, [load]);
-
-    useEffect(() => { setPage(1); }, [tab]);
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-KE', {
@@ -102,7 +129,11 @@ export function FinancePage() {
     };
 
     const goToCollect = (orderId?: string) => {
-        navigate(orderId ? `/orders?collect=${orderId}&returnTo=finance` : '/orders');
+        if (!orderId) { navigate('/orders'); return; }
+        const params = new URLSearchParams({ collect: orderId, returnTo: 'finance' });
+        if (tab !== 'all') params.set('financeTab', tab);
+        if (page !== 1) params.set('financePage', String(page));
+        navigate(`/orders?${params.toString()}`);
     };
 
     if (loading && !summary) {
@@ -224,7 +255,7 @@ export function FinancePage() {
                                 {(['all', 'credit_receivable', 'unpaid_order'] as const).map((t) => (
                                     <button
                                         key={t}
-                                        onClick={() => setTab(t)}
+                                        onClick={() => changeTab(t)}
                                         className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
                                             tab === t
                                                 ? 'bg-primary-600 text-white'

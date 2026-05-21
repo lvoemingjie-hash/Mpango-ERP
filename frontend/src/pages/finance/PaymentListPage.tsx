@@ -47,7 +47,7 @@ export function PaymentListPage() {
         description="View all payment records."
         action={
           <button onClick={load} disabled={loading} className="btn-secondary text-sm">
-            Refresh
+            {loading ? 'Refreshing...' : 'Refresh'}
           </button>
         }
       />
@@ -70,6 +70,16 @@ export function PaymentListPage() {
 
       {!loading && !error && payments.length > 0 && (
         <div className="mt-6 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-600">
+            <span>Page {page} of {Math.ceil(total / size) || 1}</span>
+            <span className="text-gray-300">|</span>
+            <span>{total} records</span>
+            <span className="text-gray-300">|</span>
+            <span>Page total: {formatCurrency(payments.reduce((s, p) => s + p.amount, 0))}</span>
+            <span className="text-gray-300">|</span>
+            <span className="text-green-700">{payments.filter(p => p.status === 'completed').length} completed</span>
+            <span className="text-yellow-700">{payments.filter(p => p.status === 'pending').length} pending</span>
+          </div>
           <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -107,7 +117,7 @@ export function PaymentListPage() {
                       {p.method}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {p.transaction_id || '—'}
+                      {p.transaction_id || '-'}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-right text-gray-900">
                       {formatCurrency(p.amount)}

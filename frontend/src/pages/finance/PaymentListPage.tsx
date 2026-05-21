@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { paymentService, type PaymentData } from '@/services/paymentService';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
@@ -6,14 +7,32 @@ import { BanknotesIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 
+/** Parse and clamp the `page` query param. Invalid/missing -> 1. */
+function parsePage(value: string | null): number {
+  if (!value) return 1;
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : 1;
+}
+
 export function PaymentListPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = parsePage(searchParams.get('page'));
+  const searchKey = searchParams.toString();
+
   const [payments, setPayments] = useState<PaymentData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [page, setPage] = useState(1);
   const [size] = useState(20);
   const [total, setTotal] = useState(0);
+
+  // Canonicalize: strip noisy/invalid params via replace navigation.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (page !== 1) next.set('page', String(page));
+    if (next.toString() !== searchKey) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [page, searchKey, setSearchParams]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -32,6 +51,12 @@ export function PaymentListPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const changePage = (nextPage: number) => {
+    const next = new URLSearchParams();
+    if (nextPage !== 1) next.set('page', String(nextPage));
+    setSearchParams(next);
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-KE', {
@@ -138,7 +163,7 @@ export function PaymentListPage() {
           <Pagination
             page={page}
             totalPages={Math.ceil(total / size)}
-            onPageChange={setPage}
+            onPageChange={changePage}
           />
         </div>
       )}

@@ -141,9 +141,18 @@ def validate_directive(directive, repo_path):
         issues.append("'expected_files' must be a list")
     else:
         for f in expected_files:
-            forbidden, reason = is_forbidden_path(f)
-            if forbidden:
-                issues.append(f"forbidden expected_file '{f}' ({reason})")
+            if not isinstance(f, str) or not f:
+                issues.append("expected_file must be a non-empty string")
+                continue
+            ef_norm = normalize_path(f)
+            if os.path.isabs(f) or ":" in ef_norm.split("/")[0]:
+                issues.append(f"expected_file '{ef_norm}' must be relative")
+            elif has_unsafe_path_part(ef_norm):
+                issues.append(f"expected_file '{ef_norm}' contains unsafe path part")
+            else:
+                forbidden, reason = is_forbidden_path(ef_norm)
+                if forbidden:
+                    issues.append(f"forbidden expected_file '{ef_norm}' ({reason})")
 
     allow_platform_dev = directive.get("allow_platform_dev", False)
     if not isinstance(allow_platform_dev, bool):

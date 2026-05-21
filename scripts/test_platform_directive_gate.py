@@ -269,6 +269,107 @@ class TestDirectiveGateValidation(unittest.TestCase):
             self.assertNotIn("platform_runner_gate.py", result.stdout)
 
 
+class TestExpectedFilesPathSafety(unittest.TestCase):
+    def test_expected_file_dotdot_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            dpath = _create_directive(
+                tmpdir,
+                {"expected_files": ["../scripts/platform.py"]},
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath, "--dry-run"],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(
+                0, result.returncode,
+                f"expected nonzero exit, got {result.returncode}\nstdout: {result.stdout}",
+            )
+            self.assertIn("unsafe path part", result.stdout)
+
+    def test_expected_file_posix_absolute_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            dpath = _create_directive(
+                tmpdir,
+                {"expected_files": ["/tmp/foo.py"]},
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath, "--dry-run"],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(
+                0, result.returncode,
+                f"expected nonzero exit, got {result.returncode}\nstdout: {result.stdout}",
+            )
+            self.assertIn("must be relative", result.stdout)
+
+    def test_expected_file_windows_drive_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            dpath = _create_directive(
+                tmpdir,
+                {"expected_files": ["C:/tmp/foo.py"]},
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath, "--dry-run"],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(
+                0, result.returncode,
+                f"expected nonzero exit, got {result.returncode}\nstdout: {result.stdout}",
+            )
+            self.assertIn("must be relative", result.stdout)
+
+    def test_expected_file_traversal_docs_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            dpath = _create_directive(
+                tmpdir,
+                {"expected_files": ["docs/ai/../ai/PROJECT.md"]},
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath, "--dry-run"],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(
+                0, result.returncode,
+                f"expected nonzero exit, got {result.returncode}\nstdout: {result.stdout}",
+            )
+            self.assertIn("unsafe path part", result.stdout)
+
+    def test_legal_expected_files_scripts_pass(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            _create_report(tmpdir)
+            dpath = _create_directive(
+                tmpdir,
+                {"expected_files": [
+                    "scripts/platform_directive_gate.py",
+                    "ai-ledger/platform/test.md",
+                ]},
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath, "--dry-run"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(
+                0, result.returncode,
+                f"expected exit 0, got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}",
+            )
+            self.assertIn("DRY-RUN PASS", result.stdout)
+
+
 class TestDirectiveGatePlatformDev(unittest.TestCase):
     def test_platform_dev_no_allow_fails(self):
         with tempfile.TemporaryDirectory() as tmpdir:

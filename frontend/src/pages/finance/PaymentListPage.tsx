@@ -24,6 +24,7 @@ export function PaymentListPage() {
   const [error, setError] = useState<string | null>(null);
   const [size] = useState(20);
   const [total, setTotal] = useState(0);
+  const totalPages = Math.ceil(total / size) || 1;
 
   // Canonicalize: strip noisy/invalid params via replace navigation.
   useEffect(() => {
@@ -39,14 +40,26 @@ export function PaymentListPage() {
     setError(null);
     try {
       const res = await paymentService.getAll(page, size);
-      setPayments(res.data.data.items);
-      setTotal(res.data.data.pagination.total);
+      const { items, pagination } = res.data.data;
+
+      // Page-recovery: a bookmarked or shared URL may request a page beyond
+      // the available data. Redirect to the last valid page so the user sees
+      // content instead of a misleading "No payments found" empty state.
+      if (page > pagination.pages && pagination.pages > 0) {
+        const recovered = new URLSearchParams();
+        if (pagination.pages !== 1) recovered.set('page', String(pagination.pages));
+        setSearchParams(recovered, { replace: true });
+        return; // keep loading skeleton; the URL change triggers a fresh fetch
+      }
+
+      setPayments(items);
+      setTotal(pagination.total);
+      setLoading(false);
     } catch {
       setError('Failed to load payments. Please try again.');
-    } finally {
       setLoading(false);
     }
-  }, [page, size]);
+  }, [page, size, setSearchParams]);
 
   useEffect(() => {
     load();
@@ -96,7 +109,7 @@ export function PaymentListPage() {
       {!loading && !error && payments.length > 0 && (
         <div className="mt-6 flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-600">
-            <span>Page {page} of {Math.ceil(total / size) || 1}</span>
+            <span>Page {page} of {totalPages}</span>
             <span className="text-gray-300">|</span>
             <span>{total} records</span>
             <span className="text-gray-300">|</span>
@@ -162,7 +175,7 @@ export function PaymentListPage() {
 
           <Pagination
             page={page}
-            totalPages={Math.ceil(total / size)}
+            totalPages={totalPages}
             onPageChange={changePage}
           />
         </div>

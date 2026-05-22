@@ -197,7 +197,7 @@ async function runErrorRecoveryScenario(browser) {
 
     await page.goto(`${baseUrl}/finance`, { waitUntil: 'domcontentloaded' });
     await waitForBodyContains(page, 'Failed to load accounts receivable data.', 'temporary API error');
-    await page.getByRole('button', { name: 'Try again' }).click();
+    await page.getByRole('button', { name: 'Retry' }).click();
     await waitForBodyContains(page, 'Tier3 Exploratory Retailer', 'error recovery receivable row');
     await waitForBodyExcludes(page, 'Failed to load accounts receivable data.', 'error recovery clears alert');
   } finally {

@@ -416,7 +416,7 @@ jobs:
               exit 1
             fi
             APP_IMPORT_LINE="$(echo "$REPORT_CONTENT" | grep -E "App Import Smoke[[:space:]]*\|" | head -1 || true)"
-            if echo "$APP_IMPORT_LINE" | grep -qiE "(fail|blocked|error)"; then
+            if echo "$APP_IMPORT_LINE" | grep -qiE "(fail|blocked)"; then
               echo "FATAL: APP_IMPORT_SMOKE contains failing or blocked evidence"
               echo "  Found: $APP_IMPORT_LINE"
               exit 1

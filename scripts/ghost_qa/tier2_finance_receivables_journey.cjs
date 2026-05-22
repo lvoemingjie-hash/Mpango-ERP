@@ -191,7 +191,8 @@ async function main() {
 
     delayNextSummary = true;
     await page.getByRole('button', { name: 'Refresh balances' }).click();
-    await page.getByRole('button', { name: 'Refreshing...' }).waitFor({ timeout: 3000 });
+    const refreshingButtons = page.locator('button').filter({ hasText: 'Refreshing...' });
+    await refreshingButtons.first().waitFor({ timeout: 3000 });
     await page.waitForFunction(() => !document.body.innerText.includes('Refreshing...'), null, { timeout: 10000 });
 
     await page.getByRole('button', { name: 'Credit' }).click();

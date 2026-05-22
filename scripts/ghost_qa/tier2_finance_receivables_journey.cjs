@@ -127,6 +127,16 @@ async function assertBodyContains(page, text, label) {
   }
 }
 
+async function waitForBodyContains(page, text, label, timeoutMs = 10000) {
+  await page.waitForFunction(
+    (expectedText) => document.body && document.body.innerText.includes(expectedText),
+    text,
+    { timeout: timeoutMs },
+  ).catch(() => {
+    throw new Error(`${label} missing expected text after wait: ${text}`);
+  });
+}
+
 async function main() {
   if (!fs.existsSync(path.join(frontendDir, 'dist'))) {
     throw new Error('frontend dist directory missing; run build before Tier 2 browser journey');
@@ -185,9 +195,9 @@ async function main() {
 
     await page.goto(`${baseUrl}/finance?page=999&collection=recorded&collectedOrder=${orderId}`, { waitUntil: 'domcontentloaded' });
     await page.waitForURL((url) => url.pathname === '/finance' && url.searchParams.get('page') === '2', { timeout: 10000 });
-    await assertBodyContains(page, 'Payment recorded', 'collection notice');
-    await assertBodyContains(page, 'Ghost QA Retailer', 'receivable row after stale page recovery');
-    await assertBodyContains(page, 'Page 2 of 2', 'pagination recovery');
+    await waitForBodyContains(page, 'Payment recorded', 'collection notice');
+    await waitForBodyContains(page, 'Ghost QA Retailer', 'receivable row after stale page recovery');
+    await waitForBodyContains(page, 'Page 2 of 2', 'pagination recovery');
 
     delayNextSummary = true;
     await page.getByRole('button', { name: 'Refresh balances' }).click();
@@ -197,8 +207,8 @@ async function main() {
 
     await page.getByRole('button', { name: 'Credit' }).click();
     await page.waitForURL((url) => url.pathname === '/finance' && url.searchParams.get('tab') === 'credit_receivable' && !url.searchParams.has('page'), { timeout: 10000 });
-    await assertBodyContains(page, 'Credit Exposure', 'credit tab summary');
-    await assertBodyContains(page, 'Ghost QA Retailer', 'credit tab receivable row');
+    await waitForBodyContains(page, 'Credit Exposure', 'credit tab summary');
+    await waitForBodyContains(page, 'Ghost QA Retailer', 'credit tab receivable row');
 
     await page.getByRole('button', { name: /^(Collect|Collect Now)$/ }).first().click();
     await page.waitForURL((url) => url.pathname === '/orders' && url.searchParams.get('collect') === orderId && url.searchParams.get('returnTo') === 'finance' && url.searchParams.get('financeTab') === 'credit_receivable', { timeout: 10000 });

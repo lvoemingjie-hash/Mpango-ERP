@@ -347,10 +347,11 @@ export function FinancePage() {
                                     {refreshedAtLabel ? ` - Refreshed ${refreshedAtLabel}` : ''}
                                 </p>
                             </div>
-                            <div className="flex gap-1">
+                            <div className="flex gap-1" role="group" aria-label="Receivable filters">
                                 {(['all', 'credit_receivable', 'unpaid_order'] as const).map((t) => (
                                     <button
                                         key={t}
+                                        aria-pressed={tab === t}
                                         onClick={() => changeTab(t)}
                                         className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
                                             tab === t

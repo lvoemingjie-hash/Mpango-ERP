@@ -246,7 +246,7 @@ export function FinancePage() {
                                 disabled={loading}
                                 className="rounded-md bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
                             >
-                                {loading ? 'Refreshing...' : 'Refresh balances'}
+                                {loading ? 'Refreshing balances...' : 'Refresh balances'}
                             </button>
                             <button
                                 type="button"

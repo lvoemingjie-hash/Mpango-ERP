@@ -134,15 +134,29 @@ export function FinancePage() {
 
             setSummary(summaryRes.data.data);
             setReceivablesSummary(receivablesSummaryRes.data.data);
+            const pagination = receivablesRes.data.data.pagination;
+
+            // Page-recovery: a bookmarked or shared URL may request a page beyond
+            // the available data. Redirect to the last valid page so the user sees
+            // content instead of a misleading empty state.
+            if (page > pagination.pages && pagination.pages > 0) {
+                const recovered = buildFinanceSearchParams(tab, pagination.pages, {
+                    recorded: collectionRecorded,
+                    orderId: collectedOrderId,
+                });
+                setSearchParams(recovered, { replace: true });
+                return;
+            }
+
             setReceivables(receivablesRes.data.data.items);
-            setTotalItems(receivablesRes.data.data.pagination.total);
-            setTotalPages(receivablesRes.data.data.pagination.pages);
+            setTotalItems(pagination.total);
+            setTotalPages(pagination.pages);
         } catch {
             setError('Failed to load accounts receivable data.');
         } finally {
             setLoading(false);
         }
-    }, [page, tab]);
+    }, [page, tab, collectionRecorded, collectedOrderId, setSearchParams]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -206,7 +220,7 @@ export function FinancePage() {
                             Record Repayment
                         </button>
                         <button onClick={load} disabled={loading} className="btn-secondary text-sm">
-                            Refresh
+                            {loading ? 'Refreshing...' : 'Refresh'}
                         </button>
                     </div>
                 }

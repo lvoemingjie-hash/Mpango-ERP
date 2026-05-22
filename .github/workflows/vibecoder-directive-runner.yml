@@ -221,10 +221,12 @@ jobs:
           METADATA_FILE="$GITHUB_WORKSPACE/generated-reports/_metadata.txt"
           REPORT_BASENAME=""
           REPORT_DECLARED_PATH=""
+          DIRECTIVE_FILE=""
 
           if [ -f "$METADATA_FILE" ]; then
-            REPORT_BASENAME="$(grep '^REPORT_BASENAME=' "$METADATA_FILE" | cut -d= -f2)"
-            REPORT_DECLARED_PATH="$(grep '^REPORT_DECLARED_PATH=' "$METADATA_FILE" | cut -d= -f2)"
+            REPORT_BASENAME="$(grep '^REPORT_BASENAME=' "$METADATA_FILE" | cut -d= -f2-)"
+            REPORT_DECLARED_PATH="$(grep '^REPORT_DECLARED_PATH=' "$METADATA_FILE" | cut -d= -f2-)"
+            DIRECTIVE_FILE="$(grep '^DIRECTIVE_FILE=' "$METADATA_FILE" | cut -d= -f2-)"
           fi
 
           if [ -z "$REPORT_BASENAME" ] || [ -z "$REPORT_DECLARED_PATH" ]; then
@@ -235,6 +237,7 @@ jobs:
 
           echo "Expected report path: $REPORT_DECLARED_PATH"
           echo "Expected report basename: $REPORT_BASENAME"
+          echo "Directive file: ${DIRECTIVE_FILE:-unknown}"
 
           # Clone fresh copy of reports branch
           VERIFY_DIR="$GITHUB_WORKSPACE/reports-verify"
@@ -472,6 +475,37 @@ jobs:
               exit 1
             fi
             echo "Gate 9 PASS: All validation suites present and valid"
+          fi
+
+          # ── Gate 10: Target-Commit equals report Commit Hash (VALIDATION_GATE only) ──
+          if [ "$DIRECTIVE_MODE" != "VALIDATION_GATE" ]; then
+            echo "Gate 10 SKIP: $DIRECTIVE_MODE mode — target commit check not required"
+          else
+            if [ -z "$DIRECTIVE_FILE" ] || [ ! -f "$DIRECTIVE_FILE" ]; then
+              echo "FATAL: Cannot verify Target-Commit because directive file is missing"
+              echo "  DIRECTIVE_FILE: ${DIRECTIVE_FILE:-empty}"
+              exit 1
+            fi
+
+            EXPECTED_COMMIT="$(grep -E '^Target-Commit:' "$DIRECTIVE_FILE" | head -1 | sed 's/^Target-Commit:[[:space:]]*//' | tr -d '`' | awk '{print $1}')"
+            REPORT_COMMIT="$(echo "$REPORT_CONTENT" | awk -F'|' '/Commit Hash/ {gsub(/^[ \t]+|[ \t]+$/, "", $3); print $3; exit}' | tr -d '`')"
+
+            if [ -z "$EXPECTED_COMMIT" ]; then
+              echo "FATAL: VALIDATION_GATE directive is missing Target-Commit"
+              echo "  Directive file: $DIRECTIVE_FILE"
+              exit 1
+            fi
+            if [ -z "$REPORT_COMMIT" ]; then
+              echo "FATAL: Report is missing Commit Hash"
+              exit 1
+            fi
+            if [ "$EXPECTED_COMMIT" != "$REPORT_COMMIT" ]; then
+              echo "FATAL: Report Commit Hash does not match directive Target-Commit"
+              echo "  Target-Commit: $EXPECTED_COMMIT"
+              echo "  Report Commit Hash: $REPORT_COMMIT"
+              exit 1
+            fi
+            echo "Gate 10 PASS: Report Commit Hash matches directive Target-Commit"
           fi
 
           echo ""

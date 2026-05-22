@@ -27,6 +27,49 @@ Leo must ask:
 - Does the feature degrade safely when data is empty, paginated, delayed, or stale?
 - Is the report based on fresh evidence from the target branch, not assumptions copied from the directive?
 
+## Ghost QA Maturity Tiers
+
+Ghost QA is intentionally staged so validation becomes more human-real without making every sprint depend on a brittle full E2E stack on day one.
+
+### Tier 0 - Structural Adversarial Contract
+
+Tier 0 proves that the branch contains the safety behavior the sprint claims to add.
+
+Examples:
+
+- Source-level assertions for stale URL recovery.
+- Source-level assertions that collection notice context is preserved.
+- Source-level assertions that refresh/loading feedback exists.
+
+Tier 0 is useful, but it is not enough for long-term MVP confidence because it can still reflect the worker's implementation shape.
+
+### Tier 1 - Browser Capability Probe
+
+Tier 1 proves the validation machine can support browser-level QA without changing product code.
+
+Leo should check:
+
+- Whether Playwright or a compatible browser automation package is available offline.
+- Whether a system Chromium/Chrome executable is available.
+- Whether frontend dependencies can be reused offline.
+- Whether lint/build still pass before any browser probe is trusted.
+
+If browser tooling is missing, classify as `BLOCKED_ENVIRONMENT`, not `PASS_FOR_CTO_REVIEW` and not product failure.
+
+### Tier 2 - Human Journey Browser Test
+
+Tier 2 is the target Ghost QA level for product promotions.
+
+Leo should drive a real browser or browser-compatible harness through user journeys such as:
+
+- Open Finance with a stale high page URL.
+- Confirm the UI recovers to the last valid page instead of showing a misleading empty state.
+- Confirm collection confirmation survives recovery.
+- Refresh while loading and confirm the user sees meaningful feedback.
+- Use back/forward or reload and confirm URL-state remains coherent.
+
+Use Tier 2 as the default for future high-risk finance, payment, order, and receivables work once Tier 1 capability is proven.
+
 ## Mandatory Evidence Layers
 
 Every product validation directive should include these layers whenever possible:

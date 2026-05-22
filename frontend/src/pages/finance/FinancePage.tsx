@@ -57,6 +57,7 @@ function agingStyle(days: number): string {
 function agingLabel(days: number): string {
     if (days >= 30) return `${days}d overdue`;
     if (days >= 15) return `${days}d aging`;
+    if (days === 0) return 'New';
     return `${days}d`;
 }
 
@@ -65,7 +66,7 @@ function PaymentBar({ paid, total }: { paid: number; total: number }) {
     const pct = Math.min(100, Math.round((paid / total) * 100));
     const barColor = pct >= 100 ? 'bg-green-500' : pct >= 50 ? 'bg-blue-500' : 'bg-amber-500';
     return (
-        <div className="mt-1 h-1 w-full rounded-full bg-gray-200">
+        <div className="mt-1 h-1 w-full rounded-full bg-gray-200" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${pct}% paid`}>
             <div className={`h-1 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
         </div>
     );
@@ -373,15 +374,15 @@ export function FinancePage() {
                     <table className="min-w-full divide-y divide-gray-200 text-sm">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-6 py-3 text-left font-medium text-gray-500">Order</th>
-                                <th className="px-6 py-3 text-left font-medium text-gray-500">Retailer</th>
-                                <th className="px-6 py-3 text-left font-medium text-gray-500">Type</th>
-                                <th className="px-6 py-3 text-left font-medium text-gray-500">Status</th>
-                                <th className="px-6 py-3 text-right font-medium text-gray-500">Total</th>
-                                <th className="px-6 py-3 text-right font-medium text-gray-500">Paid</th>
-                                <th className="px-6 py-3 text-right font-medium text-gray-500">Balance</th>
-                                <th className="px-6 py-3 text-right font-medium text-gray-500">Age</th>
-                                <th className="px-6 py-3 text-right font-medium text-gray-500">Next Action</th>
+                                <th scope="col" className="px-6 py-3 text-left font-medium text-gray-500">Order</th>
+                                <th scope="col" className="px-6 py-3 text-left font-medium text-gray-500">Retailer</th>
+                                <th scope="col" className="px-6 py-3 text-left font-medium text-gray-500">Type</th>
+                                <th scope="col" className="px-6 py-3 text-left font-medium text-gray-500">Status</th>
+                                <th scope="col" className="px-6 py-3 text-right font-medium text-gray-500">Total</th>
+                                <th scope="col" className="px-6 py-3 text-right font-medium text-gray-500">Paid</th>
+                                <th scope="col" className="px-6 py-3 text-right font-medium text-gray-500">Balance</th>
+                                <th scope="col" className="px-6 py-3 text-right font-medium text-gray-500">Age</th>
+                                <th scope="col" className="px-6 py-3 text-right font-medium text-gray-500">Next Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">

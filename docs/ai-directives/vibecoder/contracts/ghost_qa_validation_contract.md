@@ -83,6 +83,8 @@ Leo should drive a real browser or browser-compatible harness through user journ
 
 Use Tier 2 as the default for future high-risk finance, payment, order, and receivables work once Tier 1 capability is proven.
 
+Tier 2 evidence must come from a real built frontend page, not only a source scan or standalone data URL. API mocking is allowed only through browser/network interception in the validation harness. The report must include an App Import/Ghost QA evidence line containing `ghost_qa_tier2_journey=pass(...)`; otherwise the Final Gate must fail the run.
+
 ## Mandatory Evidence Layers
 
 Every product validation directive should include these layers whenever possible:

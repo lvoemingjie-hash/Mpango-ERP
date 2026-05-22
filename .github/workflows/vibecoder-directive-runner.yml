@@ -418,6 +418,13 @@ jobs:
               echo "  Found: $APP_IMPORT_LINE"
               exit 1
             fi
+            if echo "$REPORT_CONTENT" | grep -qE "ghost-qa-tier2|Ghost QA Tier 2|tier2_finance_receivables"; then
+              if ! echo "$APP_IMPORT_LINE" | grep -q "ghost_qa_tier2_journey=pass"; then
+                echo "FATAL: Tier 2 Ghost QA run is missing human journey pass evidence"
+                echo "  Found: $APP_IMPORT_LINE"
+                exit 1
+              fi
+            fi
             # 9b: Receivables Suite != unknown
             if echo "$REPORT_CONTENT" | grep -qE "Receivables Suite[[:space:]]*\|[[:space:]]*unknown"; then
               echo "FATAL: RECEIVABLES_SUITE = unknown (no validation ran)"

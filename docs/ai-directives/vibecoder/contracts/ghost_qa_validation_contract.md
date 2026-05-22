@@ -56,6 +56,19 @@ Leo should check:
 
 If browser tooling is missing, classify as `BLOCKED_ENVIRONMENT`, not `PASS_FOR_CTO_REVIEW` and not product failure.
 
+### Tier 1B - Browser Launch Probe
+
+Tier 1B proves that browser capability is not only installed, but can actually launch headlessly and execute JavaScript.
+
+Leo should check:
+
+- Launch Playwright Chromium when Playwright is available.
+- Otherwise launch system Chromium/Chrome in headless mode.
+- Render a minimal local HTML probe.
+- Execute a DOM assertion inside the browser.
+
+If a package or binary is present but cannot launch, classify as `BLOCKED_ENVIRONMENT` unless the failure is clearly caused by product code.
+
 ### Tier 2 - Human Journey Browser Test
 
 Tier 2 is the target Ghost QA level for product promotions.

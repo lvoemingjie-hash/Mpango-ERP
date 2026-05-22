@@ -123,6 +123,7 @@ For finance, receivables, credit payment, and collection workflows, Leo should c
 Leo must not:
 
 - Mark PASS only because the command exit codes are green if the human scenario evidence is missing.
+- Mark PASS when report evidence contains `fail`, `blocked`, or `error` inside an App Import/Ghost QA evidence line.
 - Reuse stale reports from `reports/lubuntu-validation`.
 - Trust the worker's ledger without checking branch, commit, and diff.
 - Modify product code, tests, migrations, or product branches.

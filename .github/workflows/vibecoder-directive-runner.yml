@@ -412,9 +412,21 @@ jobs:
               echo "FATAL: APP_IMPORT_SMOKE = unknown (no validation ran)"
               exit 1
             fi
+            APP_IMPORT_LINE="$(echo "$REPORT_CONTENT" | grep -E "App Import Smoke[[:space:]]*\|" | head -1 || true)"
+            if echo "$APP_IMPORT_LINE" | grep -qiE "(fail|blocked|error)"; then
+              echo "FATAL: APP_IMPORT_SMOKE contains failing or blocked evidence"
+              echo "  Found: $APP_IMPORT_LINE"
+              exit 1
+            fi
             # 9b: Receivables Suite != unknown
             if echo "$REPORT_CONTENT" | grep -qE "Receivables Suite[[:space:]]*\|[[:space:]]*unknown"; then
               echo "FATAL: RECEIVABLES_SUITE = unknown (no validation ran)"
+              exit 1
+            fi
+            RECEIVABLES_LINE="$(echo "$REPORT_CONTENT" | grep -E "Receivables Suite[[:space:]]*\|" | head -1 || true)"
+            if echo "$RECEIVABLES_LINE" | grep -qiE "([1-9][0-9]* failed|error|blocked)"; then
+              echo "FATAL: RECEIVABLES_SUITE contains failing or blocked evidence"
+              echo "  Found: $RECEIVABLES_LINE"
               exit 1
             fi
             # 9c: Phase 5 Payment Regression != unknown
@@ -422,9 +434,21 @@ jobs:
               echo "FATAL: PHASE5_PAYMENT_REGRESSION = unknown (no validation ran)"
               exit 1
             fi
+            PHASE5_LINE="$(echo "$REPORT_CONTENT" | grep -E "Phase 5 Payment Regression[[:space:]]*\|" | head -1 || true)"
+            if echo "$PHASE5_LINE" | grep -qiE "([1-9][0-9]* failed|error|blocked)"; then
+              echo "FATAL: PHASE5_PAYMENT_REGRESSION contains failing or blocked evidence"
+              echo "  Found: $PHASE5_LINE"
+              exit 1
+            fi
             # 9d: Schema Contract != unknown
             if echo "$REPORT_CONTENT" | grep -qE "Schema Contract[[:space:]]*\|[[:space:]]*unknown"; then
               echo "FATAL: SCHEMA_CONTRACT = unknown (no validation ran)"
+              exit 1
+            fi
+            SCHEMA_LINE="$(echo "$REPORT_CONTENT" | grep -E "Schema Contract[[:space:]]*\|" | head -1 || true)"
+            if echo "$SCHEMA_LINE" | grep -qiE "(error|blocked)"; then
+              echo "FATAL: SCHEMA_CONTRACT contains error or blocked evidence"
+              echo "  Found: $SCHEMA_LINE"
               exit 1
             fi
             # 9e: Schema Contract must not contain 'failed'

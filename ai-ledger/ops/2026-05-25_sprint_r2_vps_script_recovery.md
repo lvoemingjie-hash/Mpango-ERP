@@ -32,6 +32,13 @@ This ledger documents the successful draft recovery of `scripts/safe_cleanup_vps
 - `shellcheck`: (If available on the local machine, results are noted in the command output; otherwise recorded as unavailable).
 - **Execution Mode**: Only local static paths and dry-run/help validations were performed. No destructive apply was executed.
 
-## 4. Unresolved Risks & Next Steps
-- **Unresolved Risks**: The scripts are currently untested against a live VPS environment. The behavior of `docker compose` and `alembic` commands within the deployment script assumes standard configurations that must be validated in a pre-production rehearsal.
-- **Next Step**: CTO review of this script recovery draft. Once approved, the next phase will involve a dry-run execution on a staging or test VPS to validate resource filtering and migration paths.
+## 5. R-2R Corrections (CTO Review)
+- **CTO Feedback**: The initial R-2 draft was rejected because `safe_cleanup_vps.sh` contained `rm -rf --project-dir` capabilities, and `deploy_vps.sh` defaulted to apply mode instead of dry-run.
+- **`safe_cleanup_vps.sh` Updates**:
+  - Removed `--project-dir` parameter and all file system deletion (`rm -rf`) logic.
+  - Hardened Docker resource filtering to prioritize `com.docker.compose.project=mpango` label, with a strict `^mpango[-_]` name fallback to prevent greedy regex matches.
+- **`deploy_vps.sh` Updates**:
+  - Changed default mode to `DRY_RUN=true`.
+  - Added explicit `--apply` flag requiring interactive confirmation (`deploy mpango`).
+  - Relaxed `.env.prod` check in dry-run mode (only warns), but strictly enforces it in apply mode.
+- **Status Confirmation**: Still NO VPS connection, NO cleanup executed, NO deployment executed, and NO secrets committed.

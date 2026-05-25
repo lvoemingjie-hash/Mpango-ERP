@@ -5,9 +5,11 @@
 # It protects other services (Sing-Box, etc.) from accidental deletion.
 #
 # Constraints:
+# - NO file system deletion (no rm -rf)
 # - NO `docker system prune`
 # - Default mode is --dry-run
-# - ONLY matches resources with 'mpango'
+# - ONLY matches resources with Docker Compose label 'com.docker.compose.project=mpango'
+#   or name prefix '^mpango[-_]'
 # - Volumes are NOT deleted unless explicitly forced with --delete-volumes
 # - Requires confirmation if not in dry-run
 
@@ -22,7 +24,6 @@ NC='\033[0m' # No Color
 # Configuration
 DRY_RUN=true
 DELETE_VOLUMES=false
-PROJECT_DIR=""
 
 function show_help() {
     echo -e "${GREEN}Mpango ERP Safe Cleanup Script${NC}"
@@ -32,12 +33,11 @@ function show_help() {
     echo "  -h, --help           Show this help message"
     echo "  --apply              Execute the cleanup (default is dry-run)"
     echo "  --delete-volumes     Also delete volumes (Requires backup verified + CTO approval)"
-    echo "  --project-dir DIR    Delete the specified project directory"
     echo ""
     echo -e "${YELLOW}Stop Conditions:${NC}"
     echo "- If you are unsure about the resources being deleted, STOP."
     echo "- If volume deletion is required but not CTO approved, STOP."
-    echo "- If co-hosted services (e.g., Sing-Box) match 'mpango', STOP."
+    echo "- If co-hosted services (e.g., Sing-Box) match the filters, STOP."
 }
 
 # Parse arguments
@@ -46,7 +46,6 @@ while [[ "$#" -gt 0 ]]; do
         -h|--help) show_help; exit 0 ;;
         --apply) DRY_RUN=false ;;
         --delete-volumes) DELETE_VOLUMES=true ;;
-        --project-dir) PROJECT_DIR="$2"; shift ;;
         *) echo -e "${RED}Unknown parameter passed: $1${NC}"; show_help; exit 1 ;;
     esac
     shift
@@ -79,11 +78,14 @@ if [ "$DELETE_VOLUMES" = true ]; then
 fi
 
 echo -e "\n${GREEN}Finding Mpango containers...${NC}"
-CONTAINERS=$(docker ps -a --filter "name=mpango" -q)
+CONTAINERS=$(docker ps -a --filter "label=com.docker.compose.project=mpango" -q)
+if [ -z "$CONTAINERS" ]; then
+    CONTAINERS=$(docker ps -a --filter "name=^mpango[-_]" -q)
+fi
 if [ -z "$CONTAINERS" ]; then
     echo "No Mpango containers found."
 else
-    docker ps -a --filter "name=mpango" --format "table {{.ID}}\t{{.Names}}\t{{.Status}}"
+    docker ps -a --filter "label=com.docker.compose.project=mpango" --format "table {{.ID}}\t{{.Names}}\t{{.Status}}" || true
     if [ "$DRY_RUN" = false ]; then
         echo "$CONTAINERS" | xargs -r docker stop
         echo "$CONTAINERS" | xargs -r docker rm
@@ -92,11 +94,14 @@ else
 fi
 
 echo -e "\n${GREEN}Finding Mpango networks...${NC}"
-NETWORKS=$(docker network ls --filter "name=mpango" -q)
+NETWORKS=$(docker network ls --filter "label=com.docker.compose.project=mpango" -q)
+if [ -z "$NETWORKS" ]; then
+    NETWORKS=$(docker network ls --filter "name=^mpango[-_]" -q)
+fi
 if [ -z "$NETWORKS" ]; then
     echo "No Mpango networks found."
 else
-    docker network ls --filter "name=mpango" --format "table {{.ID}}\t{{.Name}}"
+    docker network ls --filter "label=com.docker.compose.project=mpango" --format "table {{.ID}}\t{{.Name}}" || true
     if [ "$DRY_RUN" = false ]; then
         echo "$NETWORKS" | xargs -r docker network rm
         echo -e "${GREEN}Networks removed.${NC}"
@@ -104,11 +109,15 @@ else
 fi
 
 echo -e "\n${GREEN}Finding Mpango images...${NC}"
-IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}} {{.ID}}" | grep "mpango" | awk '{print $2}' || true)
+# Use explicit filters to avoid shared images
+IMAGES=$(docker images --filter "label=com.docker.compose.project=mpango" -q)
+if [ -z "$IMAGES" ]; then
+    IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}} {{.ID}}" | grep -E "^mpango[-_]" | awk '{print $2}' || true)
+fi
 if [ -z "$IMAGES" ]; then
     echo "No Mpango images found."
 else
-    docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}" | grep -E "REPOSITORY|mpango" || true
+    docker images --filter "label=com.docker.compose.project=mpango" --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}" || true
     if [ "$DRY_RUN" = false ]; then
         echo "$IMAGES" | xargs -r docker rmi -f
         echo -e "${GREEN}Images removed.${NC}"
@@ -117,11 +126,14 @@ fi
 
 if [ "$DELETE_VOLUMES" = true ]; then
     echo -e "\n${GREEN}Finding Mpango volumes...${NC}"
-    VOLUMES=$(docker volume ls --filter "name=mpango" -q)
+    VOLUMES=$(docker volume ls --filter "label=com.docker.compose.project=mpango" -q)
+    if [ -z "$VOLUMES" ]; then
+        VOLUMES=$(docker volume ls --filter "name=^mpango[-_]" -q)
+    fi
     if [ -z "$VOLUMES" ]; then
         echo "No Mpango volumes found."
     else
-        docker volume ls --filter "name=mpango" --format "table {{.Name}}\t{{.Driver}}"
+        docker volume ls --filter "label=com.docker.compose.project=mpango" --format "table {{.Name}}\t{{.Driver}}" || true
         if [ "$DRY_RUN" = false ]; then
             echo "$VOLUMES" | xargs -r docker volume rm
             echo -e "${GREEN}Volumes removed.${NC}"
@@ -129,18 +141,6 @@ if [ "$DELETE_VOLUMES" = true ]; then
     fi
 else
     echo -e "\n${YELLOW}Skipping volume deletion (use --delete-volumes if CTO approved).${NC}"
-fi
-
-if [ -n "$PROJECT_DIR" ]; then
-    echo -e "\n${GREEN}Target Project Directory: $PROJECT_DIR${NC}"
-    if [ "$DRY_RUN" = false ]; then
-        if [ -d "$PROJECT_DIR" ]; then
-            rm -rf "$PROJECT_DIR"
-            echo -e "${GREEN}Project directory $PROJECT_DIR deleted.${NC}"
-        else
-            echo -e "${YELLOW}Project directory $PROJECT_DIR not found.${NC}"
-        fi
-    fi
 fi
 
 echo -e "\n${GREEN}Cleanup process completed successfully.${NC}"

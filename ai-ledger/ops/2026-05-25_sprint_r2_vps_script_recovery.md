@@ -12,11 +12,13 @@ This ledger documents the successful draft recovery of `scripts/safe_cleanup_vps
 
 ### `scripts/safe_cleanup_vps.sh`
 - **Default Mode**: `--dry-run` is enabled by default to prevent accidental destructive operations.
-- **Targeted Filtering**: Uses `docker ps -a --filter "name=mpango"`, `docker network ls --filter "name=mpango"`, `docker volume ls --filter "name=mpango"`, and `docker images | grep mpango` to ensure only Mpango ERP resources are touched.
+- **Targeted Filtering**: Uses Docker Compose label `com.docker.compose.project=mpango` as primary filter, with `^mpango[-_]` name prefix as fallback for containers, networks, and volumes. Images use label match only (no name fallback) to protect shared base images.
 - **Safety Constraints**:
   - `docker system prune` is strictly prohibited and not present in the script.
+  - No `rm -rf` or file system deletion capabilities.
   - Deleting volumes is disabled by default.
   - Volume deletion requires the explicit `--delete-volumes` flag, a verified backup, and an interactive confirmation typing "I have CTO approval" (when not in dry-run).
+- **Discovery-First Flow**: Resources are discovered and displayed with exact targets (ID, name, status, matched_by) before any confirmation prompt appears.
 - **Verification**: The script includes explicit stop conditions in its help message.
 
 ### `scripts/deploy_vps.sh`
@@ -42,3 +44,29 @@ This ledger documents the successful draft recovery of `scripts/safe_cleanup_vps
   - Added explicit `--apply` flag requiring interactive confirmation (`deploy mpango`).
   - Relaxed `.env.prod` check in dry-run mode (only warns), but strictly enforces it in apply mode.
 - **Status Confirmation**: Still NO VPS connection, NO cleanup executed, NO deployment executed, and NO secrets committed.
+
+## 6. R-2S Corrections (CTO Review)
+- **CTO Feedback**: R-2R was blocked because fallback resources were not displayed before delete confirmation. The user could not review name-fallback matches before approving cleanup.
+- **`safe_cleanup_vps.sh` R-2S Updates**:
+  - Restructured into three phases: DISCOVERY → CONFIRMATION → EXECUTION.
+  - Discovery phase runs first for all resource types, collecting both label and name-fallback matches.
+  - Each discovered resource is displayed with exact details: ID, name, status/driver, and matched_by (label or name-fallback).
+  - If label query is empty but name fallback hits, the fallback resources are displayed (not hidden).
+  - Images: restricted to label match only — no name fallback for image deletion, protecting shared base images.
+  - Confirmation prompt only appears after all exact targets are displayed.
+- **`deploy_vps.sh` R-2S Updates**:
+  - Added prerequisites section to help text: VPS inventory, backup verification, CTO approval.
+- **Status Confirmation**: Still NO VPS connection, NO cleanup executed, NO deployment executed, and NO secrets committed.
+
+## 7. R-2S Validation Results
+- `git diff --check HEAD~1..HEAD`: See command output below.
+- `git show --check --oneline --stat HEAD`: See command output below.
+- `bash -n scripts/safe_cleanup_vps.sh`: PASS
+- `bash -n scripts/deploy_vps.sh`: PASS
+- `bash scripts/safe_cleanup_vps.sh --help`: PASS
+- `bash scripts/deploy_vps.sh --help`: PASS
+- `bash scripts/deploy_vps.sh --dry-run`: PASS
+- `grep` for rm -rf, --project-dir, docker system prune, alembic stamp, hardcoded IP/password/token: None found.
+- `shellcheck`: unavailable (not installed, not installing per CTO directive).
+- `git status --short`: clean after commit.
+- `git log -1 --oneline`: See command output below.

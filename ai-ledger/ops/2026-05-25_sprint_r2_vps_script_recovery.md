@@ -98,4 +98,6 @@ This ledger documents the successful draft recovery of `scripts/safe_cleanup_vps
 - `grep` for non-ASCII mojibake in scripts: PASS (zero matches in both .sh files and ledger).
 - `shellcheck`: unavailable (not installed, not installing per CTO directive).
 - `git status --short`: clean.
-- `git log -1 --oneline`: `649d64f (HEAD -> ops/sprint-r2-vps-script-recovery-2026-05-25) ops: sprint R-2T docker preflight fail-closed, fix mojibake`
+- `git log -1 --oneline`: `b76ed4c (HEAD -> ops/sprint-r2-vps-script-recovery-2026-05-25) docs(ops): fill R-2T validation results in ledger`
+
+R-2T final reviewed HEAD = `b76ed4c`.

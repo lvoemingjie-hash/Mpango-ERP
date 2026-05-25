@@ -88,4 +88,14 @@ This ledger documents the successful draft recovery of `scripts/safe_cleanup_vps
 - **Status Confirmation**: Still NO VPS connection, NO cleanup executed, NO deployment executed, and NO secrets committed.
 
 ## 9. R-2T Validation Results
-(To be filled after commit with exact inline results.)
+- `git diff --check HEAD~1..HEAD`: PASS (exit 0, no whitespace errors)
+- `bash -n scripts/safe_cleanup_vps.sh`: PASS
+- `bash -n scripts/deploy_vps.sh`: PASS
+- `bash scripts/safe_cleanup_vps.sh --help`: PASS -- shows Options, Prerequisites, Stop Conditions including "If Docker is not installed or not running, STOP."
+- `bash scripts/safe_cleanup_vps.sh` (default dry-run): PASS -- Docker preflight ran (found docker + docker info OK), discovered 5 containers via name-fallback, 0 networks, 0 images (label-only), 0 volumes (skipped). All targets displayed before summary. No destructive actions taken.
+- `bash scripts/deploy_vps.sh --dry-run`: PASS -- `Warning: .env.prod not found. (It would be required in apply mode)` + 4-step simulation.
+- `grep` for rm -rf, --project-dir, docker system prune, alembic stamp, hardcoded IP/password/token: None found (rm -rf and docker system prune only in prohibition comments).
+- `grep` for non-ASCII mojibake in scripts: PASS (zero matches in both .sh files and ledger).
+- `shellcheck`: unavailable (not installed, not installing per CTO directive).
+- `git status --short`: clean.
+- `git log -1 --oneline`: `649d64f (HEAD -> ops/sprint-r2-vps-script-recovery-2026-05-25) ops: sprint R-2T docker preflight fail-closed, fix mojibake`

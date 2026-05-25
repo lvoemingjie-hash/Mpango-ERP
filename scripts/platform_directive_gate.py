@@ -69,6 +69,91 @@ def is_forbidden_path(path):
     return False, None
 
 
+def validate_contract_path(value, label):
+    if not isinstance(value, str) or not value:
+        return None, f"{label} must be a non-empty string"
+
+    normalized = normalize_path(value)
+    if os.path.isabs(value) or ":" in normalized.split("/")[0]:
+        return normalized, f"{label} '{normalized}' must be relative"
+    if has_unsafe_path_part(normalized):
+        return normalized, f"{label} '{normalized}' contains unsafe path part"
+
+    forbidden, reason = is_forbidden_path(normalized)
+    if forbidden:
+        return normalized, f"forbidden {label} '{normalized}' ({reason})"
+
+    return normalized, None
+
+
+def get_expected_files(directive):
+    return [normalize_path(path) for path in directive.get("expected_files", [])]
+
+
+def get_changed_files(repo_path):
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain=v1", "-uall"],
+            capture_output=True, text=True, cwd=str(repo_path), timeout=30,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None, "could not collect git changed files"
+
+    if result.returncode != 0:
+        return None, "git status failed while collecting changed files"
+
+    changed = []
+    for line in result.stdout.splitlines():
+        if not line:
+            continue
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        path = path.strip().strip('"')
+        if path:
+            changed.append(normalize_path(path))
+
+    return sorted(set(changed)), None
+
+
+def validate_changed_files_allowlist(changed_files, expected_files):
+    expected = set(expected_files)
+    actual = set(changed_files)
+
+    if expected:
+        unexpected = sorted(actual - expected)
+        if unexpected:
+            return [
+                "unexpected changed file(s): " + ", ".join(unexpected),
+            ]
+        return []
+
+    if actual:
+        return [
+            "changed files present but expected_files is empty: "
+            + ", ".join(sorted(actual))
+        ]
+
+    return []
+
+
+def print_changed_files_diagnostics(changed_files, expected_files):
+    print_section("POST-COMMAND CHANGED FILES")
+    if expected_files:
+        print("  Expected files allowlist:", flush=True)
+        for path in expected_files:
+            print(f"  - {path}", flush=True)
+    else:
+        print("  Expected files allowlist: <empty>", flush=True)
+
+    if changed_files:
+        print("  Actual changed files:", flush=True)
+        for path in changed_files:
+            print(f"  - {path}", flush=True)
+    else:
+        print("  Actual changed files: <none>", flush=True)
+
+
 def get_current_branch(repo_path):
     try:
         result = subprocess.run(
@@ -141,18 +226,9 @@ def validate_directive(directive, repo_path):
         issues.append("'expected_files' must be a list")
     else:
         for f in expected_files:
-            if not isinstance(f, str) or not f:
-                issues.append("expected_file must be a non-empty string")
-                continue
-            ef_norm = normalize_path(f)
-            if os.path.isabs(f) or ":" in ef_norm.split("/")[0]:
-                issues.append(f"expected_file '{ef_norm}' must be relative")
-            elif has_unsafe_path_part(ef_norm):
-                issues.append(f"expected_file '{ef_norm}' contains unsafe path part")
-            else:
-                forbidden, reason = is_forbidden_path(ef_norm)
-                if forbidden:
-                    issues.append(f"forbidden expected_file '{ef_norm}' ({reason})")
+            _, issue = validate_contract_path(f, "expected_file")
+            if issue:
+                issues.append(issue)
 
     allow_platform_dev = directive.get("allow_platform_dev", False)
     if not isinstance(allow_platform_dev, bool):
@@ -244,12 +320,41 @@ def main():
     print(f"  {runner_cmd_str}", flush=True)
     print()
 
+    expected_files = get_expected_files(directive)
+    print_section("EXPECTED FILES ALLOWLIST")
+    if expected_files:
+        for path in expected_files:
+            print(f"  - {path}", flush=True)
+    else:
+        print("  <empty>", flush=True)
+    print()
+
     if args.dry_run:
         print("=" * 50)
         print("VERDICT: DRY-RUN PASS")
         sys.exit(0)
 
     result = subprocess.run(runner_cmd, cwd=str(repo_path))
+    changed_files, changed_error = get_changed_files(repo_path)
+    if changed_error:
+        print_section("POST-COMMAND CHANGED FILES")
+        print(f"  FAIL  {changed_error}", flush=True)
+        sys.exit(1)
+
+    print_changed_files_diagnostics(changed_files, expected_files)
+    allowlist_issues = validate_changed_files_allowlist(
+        changed_files, expected_files
+    )
+    if allowlist_issues:
+        for issue in allowlist_issues:
+            print(f"  FAIL  {issue}", flush=True)
+        if result.returncode == 0:
+            print()
+            print("=" * 50)
+            print("VERDICT: FAIL - unexpected changed files")
+        sys.exit(1)
+
+    print("  PASS  changed files match expected_files contract", flush=True)
     sys.exit(result.returncode)
 
 

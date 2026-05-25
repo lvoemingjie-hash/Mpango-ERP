@@ -103,6 +103,15 @@ def _create_directive_with_bom(tmpdir, overrides=None):
     return dpath
 
 
+def _commit_all(tmpdir, message="fixture"):
+    subprocess.run(["git", "add", "-A"], cwd=tmpdir, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.name=test", "-c", "user.email=test@test.com",
+         "commit", "-m", message],
+        cwd=tmpdir, capture_output=True,
+    )
+
+
 class TestDirectiveGateDryRun(unittest.TestCase):
     def test_valid_dry_run_on_codex_branch(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -144,6 +153,7 @@ class TestDirectiveGateDryRun(unittest.TestCase):
             _init_repo(tmpdir, "codex/platform-test")
             _create_report(tmpdir)
             dpath = _create_directive(tmpdir)
+            _commit_all(tmpdir)
 
             result = subprocess.run(
                 [sys.executable, str(DIRECTIVE_GATE),
@@ -156,6 +166,7 @@ class TestDirectiveGateDryRun(unittest.TestCase):
             )
             self.assertIn("PREFLIGHT: PASS", result.stdout)
             self.assertIn("runner-ok", result.stdout)
+            self.assertIn("changed files match expected_files contract", result.stdout)
 
 
 class TestDirectiveGateValidation(unittest.TestCase):
@@ -368,6 +379,163 @@ class TestExpectedFilesPathSafety(unittest.TestCase):
                 f"expected exit 0, got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}",
             )
             self.assertIn("DRY-RUN PASS", result.stdout)
+
+
+class TestPostCommandChangedFilesContract(unittest.TestCase):
+    def test_empty_expected_files_with_command_change_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            _create_report(tmpdir)
+            dpath = _create_directive(
+                tmpdir,
+                {"command": [
+                    sys.executable, "-c",
+                    "from pathlib import Path; Path('generated.txt').write_text('ok')",
+                ]},
+            )
+            _commit_all(tmpdir)
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("POST-COMMAND CHANGED FILES", result.stdout)
+            self.assertIn("generated.txt", result.stdout)
+            self.assertIn("expected_files is empty", result.stdout)
+
+    def test_expected_file_with_command_change_passes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            _create_report(tmpdir)
+            dpath = _create_directive(
+                tmpdir,
+                {
+                    "expected_files": ["generated.txt"],
+                    "command": [
+                        sys.executable, "-c",
+                        "from pathlib import Path; Path('generated.txt').write_text('ok')",
+                    ],
+                },
+            )
+            _commit_all(tmpdir)
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(
+                0, result.returncode,
+                f"expected exit 0, got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}",
+            )
+            self.assertIn("generated.txt", result.stdout)
+            self.assertIn("changed files match expected_files contract", result.stdout)
+
+    def test_extra_unlisted_command_change_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            _create_report(tmpdir)
+            dpath = _create_directive(
+                tmpdir,
+                {
+                    "expected_files": ["generated.txt"],
+                    "command": [
+                        sys.executable, "-c",
+                        "from pathlib import Path; Path('generated.txt').write_text('ok'); Path('extra.txt').write_text('bad')",
+                    ],
+                },
+            )
+            _commit_all(tmpdir)
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("unexpected changed file(s)", result.stdout)
+            self.assertIn("extra.txt", result.stdout)
+
+    def test_forbidden_expected_file_fails_before_command(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            _create_report(tmpdir)
+            dpath = _create_directive(
+                tmpdir,
+                {
+                    "expected_files": ["backend/generated.py"],
+                    "command": [
+                        sys.executable, "-c",
+                        "from pathlib import Path; Path('should_not_run.txt').write_text('bad')",
+                    ],
+                },
+            )
+            _commit_all(tmpdir)
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("forbidden expected_file", result.stdout)
+            self.assertFalse(os.path.exists(os.path.join(tmpdir, "should_not_run.txt")))
+
+    def test_nonzero_command_outputs_changed_files_and_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            _create_report(tmpdir)
+            dpath = _create_directive(
+                tmpdir,
+                {
+                    "expected_files": ["failure.txt"],
+                    "command": [
+                        sys.executable, "-c",
+                        "from pathlib import Path; Path('failure.txt').write_text('bad'); raise SystemExit(7)",
+                    ],
+                },
+            )
+            _commit_all(tmpdir)
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("POST-COMMAND CHANGED FILES", result.stdout)
+            self.assertIn("failure.txt", result.stdout)
+
+    def test_dry_run_prints_allowlist_without_executing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _init_repo(tmpdir, "codex/platform-test")
+            _create_report(tmpdir)
+            dpath = _create_directive(
+                tmpdir,
+                {
+                    "expected_files": ["dry-run-created.txt"],
+                    "command": [
+                        sys.executable, "-c",
+                        "from pathlib import Path; Path('dry-run-created.txt').write_text('bad')",
+                    ],
+                },
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(DIRECTIVE_GATE),
+                 "--repo", tmpdir, "--directive", dpath, "--dry-run"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(
+                0, result.returncode,
+                f"expected exit 0, got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}",
+            )
+            self.assertIn("RUNNER INVOCATION", result.stdout)
+            self.assertIn("EXPECTED FILES ALLOWLIST", result.stdout)
+            self.assertIn("dry-run-created.txt", result.stdout)
+            self.assertFalse(os.path.exists(os.path.join(tmpdir, "dry-run-created.txt")))
 
 
 class TestDirectiveGatePlatformDev(unittest.TestCase):

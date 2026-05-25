@@ -13,6 +13,7 @@
 # - Images: label match ONLY (no name fallback) to protect shared base images
 # - Volumes are NOT deleted unless explicitly forced with --delete-volumes
 # - Requires confirmation AFTER showing exact targets
+# - Docker discovery errors FAIL CLOSED (no silent swallowing)
 
 set -euo pipefail
 
@@ -39,6 +40,8 @@ function show_help() {
     echo "- CTO explicit approval obtained"
     echo ""
     echo -e "${YELLOW}Stop Conditions:${NC}"
+    echo "- If Docker is not installed or not running, STOP."
+    echo "- If any resource list command fails, STOP."
     echo "- If you are unsure about the resources being deleted, STOP."
     echo "- If volume deletion is required but not CTO approved, STOP."
     echo "- If co-hosted services (e.g., Sing-Box) appear in targets, STOP."
@@ -62,16 +65,36 @@ if [ "$DRY_RUN" = true ]; then
     echo -e "${GREEN}Mode: DRY RUN (No changes will be made)${NC}"
 fi
 
+# ---------- DOCKER PREFLIGHT ----------
+
+echo -e "\n${GREEN}=== DOCKER PREFLIGHT ===${NC}"
+
+if ! command -v docker >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: docker command not found. Cannot proceed.${NC}"
+    exit 1
+fi
+echo "  docker command: found"
+
+if ! docker info >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: docker info failed. Docker daemon may not be running.${NC}"
+    exit 1
+fi
+echo "  docker info: OK"
+
 # ---------- DISCOVERY PHASE ----------
-# All resources are discovered FIRST, then exact targets are displayed,
-# and ONLY THEN does the user confirm (if --apply).
 
 echo -e "\n${GREEN}=== DISCOVERY PHASE ===${NC}"
 
 # --- Containers ---
 echo -e "\n${GREEN}Finding Mpango containers...${NC}"
-CONTAINER_IDS_LABEL=$(docker ps -a --filter "label=com.docker.compose.project=mpango" -q 2>/dev/null || true)
-CONTAINER_IDS_NAME=$(docker ps -a --filter "name=^mpango[-_]" -q 2>/dev/null || true)
+CONTAINER_IDS_LABEL=$(docker ps -a --filter "label=com.docker.compose.project=mpango" -q) || {
+    echo -e "${RED}ERROR: docker ps -a failed. Cannot discover containers.${NC}"
+    exit 1
+}
+CONTAINER_IDS_NAME=$(docker ps -a --filter "name=^mpango[-_]" -q) || {
+    echo -e "${RED}ERROR: docker ps -a (name filter) failed. Cannot discover containers.${NC}"
+    exit 1
+}
 CONTAINER_IDS=$(echo -e "${CONTAINER_IDS_LABEL}\n${CONTAINER_IDS_NAME}" | sort -u | grep -v '^$' || true)
 
 if [ -z "$CONTAINER_IDS" ]; then
@@ -96,8 +119,14 @@ fi
 
 # --- Networks ---
 echo -e "\n${GREEN}Finding Mpango networks...${NC}"
-NETWORK_IDS_LABEL=$(docker network ls --filter "label=com.docker.compose.project=mpango" -q 2>/dev/null || true)
-NETWORK_IDS_NAME=$(docker network ls --filter "name=^mpango[-_]" -q 2>/dev/null || true)
+NETWORK_IDS_LABEL=$(docker network ls --filter "label=com.docker.compose.project=mpango" -q) || {
+    echo -e "${RED}ERROR: docker network ls failed. Cannot discover networks.${NC}"
+    exit 1
+}
+NETWORK_IDS_NAME=$(docker network ls --filter "name=^mpango[-_]" -q) || {
+    echo -e "${RED}ERROR: docker network ls (name filter) failed. Cannot discover networks.${NC}"
+    exit 1
+}
 NETWORK_IDS=$(echo -e "${NETWORK_IDS_LABEL}\n${NETWORK_IDS_NAME}" | sort -u | grep -v '^$' || true)
 
 if [ -z "$NETWORK_IDS" ]; then
@@ -121,7 +150,10 @@ fi
 
 # --- Images (label ONLY, no name fallback) ---
 echo -e "\n${GREEN}Finding Mpango images (label match only)...${NC}"
-IMAGE_IDS=$(docker images --filter "label=com.docker.compose.project=mpango" -q 2>/dev/null || true)
+IMAGE_IDS=$(docker images --filter "label=com.docker.compose.project=mpango" -q) || {
+    echo -e "${RED}ERROR: docker images failed. Cannot discover images.${NC}"
+    exit 1
+}
 
 if [ -z "$IMAGE_IDS" ]; then
     echo "  No Mpango images found via label."
@@ -139,8 +171,14 @@ fi
 # --- Volumes ---
 if [ "$DELETE_VOLUMES" = true ]; then
     echo -e "\n${GREEN}Finding Mpango volumes...${NC}"
-    VOLUME_NAMES_LABEL=$(docker volume ls --filter "label=com.docker.compose.project=mpango" --format '{{.Name}}' 2>/dev/null || true)
-    VOLUME_NAMES_NAME=$(docker volume ls --filter "name=^mpango[-_]" --format '{{.Name}}' 2>/dev/null || true)
+    VOLUME_NAMES_LABEL=$(docker volume ls --filter "label=com.docker.compose.project=mpango" --format '{{.Name}}') || {
+        echo -e "${RED}ERROR: docker volume ls failed. Cannot discover volumes.${NC}"
+        exit 1
+    }
+    VOLUME_NAMES_NAME=$(docker volume ls --filter "name=^mpango[-_]" --format '{{.Name}}') || {
+        echo -e "${RED}ERROR: docker volume ls (name filter) failed. Cannot discover volumes.${NC}"
+        exit 1
+    }
     VOLUME_NAMES=$(echo -e "${VOLUME_NAMES_LABEL}\n${VOLUME_NAMES_NAME}" | sort -u | grep -v '^$' || true)
 
     if [ -z "$VOLUME_NAMES" ]; then
@@ -170,7 +208,7 @@ fi
 
 if [ "$DRY_RUN" = false ]; then
     echo -e "\n${RED}==============================================${NC}"
-    echo -e "${RED}         APPLY MODE — EXACT TARGETS          ${NC}"
+    echo -e "${RED}         APPLY MODE -- EXACT TARGETS          ${NC}"
     echo -e "${RED}==============================================${NC}"
     echo ""
     echo "  Containers to stop & remove: ${CONTAINER_COUNT}"

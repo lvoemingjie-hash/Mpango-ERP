@@ -48,19 +48,19 @@ This ledger documents the successful draft recovery of `scripts/safe_cleanup_vps
 ## 6. R-2S Corrections (CTO Review)
 - **CTO Feedback**: R-2R was blocked because fallback resources were not displayed before delete confirmation. The user could not review name-fallback matches before approving cleanup.
 - **`safe_cleanup_vps.sh` R-2S Updates**:
-  - Restructured into three phases: DISCOVERY → CONFIRMATION → EXECUTION.
+  - Restructured into three phases: DISCOVERY -> CONFIRMATION -> EXECUTION.
   - Discovery phase runs first for all resource types, collecting both label and name-fallback matches.
   - Each discovered resource is displayed with exact details: ID, name, status/driver, and matched_by (label or name-fallback).
   - If label query is empty but name fallback hits, the fallback resources are displayed (not hidden).
-  - Images: restricted to label match only — no name fallback for image deletion, protecting shared base images.
+  - Images: restricted to label match only -- no name fallback for image deletion, protecting shared base images.
   - Confirmation prompt only appears after all exact targets are displayed.
 - **`deploy_vps.sh` R-2S Updates**:
   - Added prerequisites section to help text: VPS inventory, backup verification, CTO approval.
 - **Status Confirmation**: Still NO VPS connection, NO cleanup executed, NO deployment executed, and NO secrets committed.
 
 ## 7. R-2S Validation Results
-- `git diff --check HEAD~1..HEAD`: See command output below.
-- `git show --check --oneline --stat HEAD`: See command output below.
+- `git diff --check HEAD~1..HEAD`: PASS (exit 0, no whitespace errors)
+- `git show --check --oneline --stat HEAD`: PASS (`1dcbf1a ops: sprint R-2S discover-first exact targets, no image name fallback`)
 - `bash -n scripts/safe_cleanup_vps.sh`: PASS
 - `bash -n scripts/deploy_vps.sh`: PASS
 - `bash scripts/safe_cleanup_vps.sh --help`: PASS
@@ -69,4 +69,23 @@ This ledger documents the successful draft recovery of `scripts/safe_cleanup_vps
 - `grep` for rm -rf, --project-dir, docker system prune, alembic stamp, hardcoded IP/password/token: None found.
 - `shellcheck`: unavailable (not installed, not installing per CTO directive).
 - `git status --short`: clean after commit.
-- `git log -1 --oneline`: See command output below.
+- `git log -1 --oneline`: `1dcbf1a (HEAD -> ops/sprint-r2-vps-script-recovery-2026-05-25) ops: sprint R-2S discover-first exact targets, no image name fallback`
+
+## 8. R-2T Corrections (CTO Review)
+- **CTO Feedback**: R-2S was blocked because Docker discovery used `2>/dev/null || true` to swallow errors instead of failing closed, and the ledger contained mojibake (non-ASCII arrows/dashes).
+- **`safe_cleanup_vps.sh` R-2T Updates**:
+  - Added DOCKER PREFLIGHT phase: checks `docker` command exists and `docker info` succeeds before any discovery.
+  - Removed all `2>/dev/null || true` from resource list commands (`docker ps -a`, `docker network ls`, `docker images`, `docker volume ls`).
+  - Each list command now fails closed with explicit error message and exit 1.
+  - `docker inspect` for individual resource details may still fail gracefully (marks as "unknown") since a resource may disappear between list and inspect.
+  - Fixed mojibake: replaced `--` (em dash) with `--` (ASCII double hyphen) in section headers.
+- **`deploy_vps.sh` R-2T Updates**:
+  - Verified ASCII-clean (no mojibake found).
+- **Ledger R-2T Updates**:
+  - Replaced non-ASCII arrows (`->`) and em dashes (`--`) with ASCII equivalents.
+  - Replaced all "See command output below" placeholders with actual inline results.
+  - Added R-2T section with full validation results inline.
+- **Status Confirmation**: Still NO VPS connection, NO cleanup executed, NO deployment executed, and NO secrets committed.
+
+## 9. R-2T Validation Results
+(To be filled after commit with exact inline results.)

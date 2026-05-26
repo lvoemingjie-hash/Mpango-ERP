@@ -129,7 +129,8 @@ This is additive platform harness code. It does not modify runtime product code,
 ## Report Fields
 
 - **Branch:** `codex/platform-p1k-opencode-worker-mission-gate-2026-05-26`
-- **Commit:** pending final commit
+- **Implementation commit:** `f2dc9adcbe8487cb955a34ea2987c9786a533eca`
+- **Branch head:** reported in the final CTO handoff after commit creation
 - **Modified files:** `scripts/platform_opencode_worker_gate.py`, `scripts/test_platform_opencode_worker_gate.py`, `ai-ledger/platform/2026-05-26_p1k_opencode_worker_mission_gate.md`
 - **Tests:** `python scripts/test_platform_opencode_worker_gate.py`, `git diff --check`
 - **Report path:** `ai-ledger/platform/2026-05-26_p1k_opencode_worker_mission_gate.md`

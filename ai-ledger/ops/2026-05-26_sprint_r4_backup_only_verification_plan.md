@@ -22,6 +22,9 @@ set -euo pipefail
 BACKUP_TS=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="/root/mpango-backups"
 BACKUP_FILE="${BACKUP_DIR}/mpango_erp_${BACKUP_TS}.sql.gz"
+BACKUP_TMP="${BACKUP_FILE}.tmp"
+
+trap 'rm -f "${BACKUP_TMP}"' EXIT
 
 mkdir -p "${BACKUP_DIR}"
 
@@ -31,18 +34,27 @@ docker exec mpango_prod_postgres sh -lc 'command -v pg_dump && pg_dump --version
   || { echo "ERROR: pg_dump not found inside container."; exit 1; }
 
 docker exec mpango_prod_postgres sh -lc 'pg_dump -U mpango -d mpango_erp --clean --if-exists' \
-  | gzip -c > "${BACKUP_FILE}"
+  | gzip -c > "${BACKUP_TMP}"
 
-test -f "${BACKUP_FILE}" || { echo "ERROR: Backup file not created."; exit 1; }
+gzip -t "${BACKUP_TMP}" || { echo "ERROR: gzip verification failed on temp file. Aborting."; exit 1; }
+
+mv "${BACKUP_TMP}" "${BACKUP_FILE}"
+
+trap - EXIT
+
+sha256sum "${BACKUP_FILE}" > "${BACKUP_FILE}.sha256"
+ls -lh "${BACKUP_FILE}"
 ```
 
 **Why this method**:
 - Connects to the running PostgreSQL process via the existing container.
 - `sh -lc` loads login profile to set PATH correctly for pg_dump.
 - `--clean --if-exists` makes the dump restorable with `psql < dump.sql`.
-- Piped through `gzip -c` to stdout, written to file on host.
+- Piped through `gzip -c` to stdout, written to temp file on host.
 - Pre-checks `command -v pg_dump` before attempting dump.
 - Collision guard: `test -f` ensures no overwrite.
+- **Atomic write**: Writes to `.tmp` first; only promoted to final filename after `gzip -t` passes. Prevents half-failed backups from appearing valid.
+- **trap cleanup**: If the script exits early (error, signal), the `.tmp` file is automatically removed.
 
 ### 2.2 Why NOT docker run --volumes-from (ANTI-PATTERN -- do not use)
 
@@ -90,10 +102,17 @@ After creating the backup, verify it is a valid gzip containing SQL:
 
 ```bash
 gzip -t "${BACKUP_FILE}" && echo "gzip OK" || { echo "gzip FAILED"; exit 1; }
-zcat "${BACKUP_FILE}" | head -20
 ```
 
-**Important**: `head -20` will show only the pg_dump header comments (version, dump date, database name). It will NOT show any data rows, user data, or secrets. If the first 20 lines contain unexpected content, STOP and report.
+To preview the dump header without triggering SIGPIPE under `set -euo pipefail`, use `awk` instead of `head`:
+
+```bash
+set +o pipefail
+zcat "${BACKUP_FILE}" | awk 'NR<=20 {print}'
+set -o pipefail
+```
+
+**Why `awk` instead of `head`**: Under `set -euo pipefail`, `head -20` closes its input after 20 lines, causing `zcat` to receive SIGPIPE and exit non-zero, which would trigger a false failure. `awk 'NR<=20 {print}'` reads the entire stream without early close, avoiding this issue.
 
 ## 7. File Size Recording
 
@@ -168,3 +187,11 @@ After execution, this file will be updated with:
 - **New recommended method**: `docker exec mpango_prod_postgres sh -lc 'pg_dump ...'` connects to the running PostgreSQL process correctly.
 - **Added**: `set -euo pipefail`, `test -f` collision guard, `command -v pg_dump` pre-check, `gzip -t` verification, file size recording.
 - **Status**: Plan corrected. No backup executed. Awaiting CTO review of R-4R before push.
+
+## 15. R-4S Corrections
+
+- **P1 Fixed**: Backup now writes to `${BACKUP_FILE}.tmp` first, then `gzip -t` verifies integrity before `mv` to final filename. Prevents half-failed backups from appearing valid.
+- **P1 Fixed**: Added `trap 'rm -f "${BACKUP_TMP}"' EXIT` to auto-cleanup temp file on early exit or signal. `trap - EXIT` clears trap after successful promotion.
+- **P2 Fixed**: Header preview changed from `zcat | head -20` to `zcat | awk 'NR<=20 {print}'` with `set +o pipefail` guard. Avoids SIGPIPE false failure under `set -euo pipefail`.
+- **Added**: `sha256sum` and `ls -lh` now integrated into the main backup script (section 2.1), executed only on the final promoted file.
+- **Status**: R-4S plan correction only. No backup executed. No VPS connection. No push. Awaiting CTO approval.

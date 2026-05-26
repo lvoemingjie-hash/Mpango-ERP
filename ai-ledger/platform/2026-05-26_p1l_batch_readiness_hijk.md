@@ -168,7 +168,8 @@ timeout and explicit artifact checks.
 
 - **Branch:** `codex/platform-p1l-batch-readiness-hijk-2026-05-26`
 - **Batch merge head before packet commit:** `7e3f8440b9c3534edc1b3cc4f5449f05f802aaf8`
-- **Packet commit:** pending final commit
+- **Packet commit:** `a07b5f4e4d1ab7ec8a70bb6e74a5851bda35ffa6`
+- **Final branch head:** reported in the final CTO handoff after ledger finalization
 - **Modified files:** see Changed Files
 - **Tests:** see Test Plan
 - **Report path:** `ai-ledger/platform/2026-05-26_p1l_batch_readiness_hijk.md`

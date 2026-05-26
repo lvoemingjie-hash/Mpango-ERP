@@ -18,6 +18,7 @@ pg_dump must connect to the running PostgreSQL process inside the existing conta
 
 ```bash
 set -euo pipefail
+umask 077
 
 BACKUP_TS=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="/root/mpango-backups"
@@ -27,6 +28,7 @@ BACKUP_TMP="${BACKUP_FILE}.tmp"
 trap 'rm -f "${BACKUP_TMP}"' EXIT
 
 mkdir -p "${BACKUP_DIR}"
+chmod 700 "${BACKUP_DIR}"
 
 test -f "${BACKUP_FILE}" && { echo "ERROR: ${BACKUP_FILE} already exists. Aborting."; exit 1; }
 
@@ -42,7 +44,9 @@ mv "${BACKUP_TMP}" "${BACKUP_FILE}"
 
 trap - EXIT
 
+chmod 600 "${BACKUP_FILE}"
 sha256sum "${BACKUP_FILE}" > "${BACKUP_FILE}.sha256"
+chmod 600 "${BACKUP_FILE}.sha256"
 ls -lh "${BACKUP_FILE}"
 ```
 
@@ -55,6 +59,7 @@ ls -lh "${BACKUP_FILE}"
 - Collision guard: `test -f` ensures no overwrite.
 - **Atomic write**: Writes to `.tmp` first; only promoted to final filename after `gzip -t` passes. Prevents half-failed backups from appearing valid.
 - **trap cleanup**: If the script exits early (error, signal), the `.tmp` file is automatically removed.
+- **Permission hardening**: `umask 077` ensures new files are owner-only. Directory `chmod 700` and file `chmod 600` enforce strict access even if umask was overridden. Backup contains real business data and must not be readable by other users.
 
 ### 2.2 Why NOT docker run --volumes-from (ANTI-PATTERN -- do not use)
 
@@ -127,7 +132,7 @@ Record the file size in the post-execution ledger.
 - **Never `cat .env` or `cat .env.prod`**: The backup script does not read any env files.
 - **Never `printenv`**: No environment variable printing.
 - **pg_dump does not dump credentials**: It dumps schema + data, not postgres user passwords or .env contents.
-- **The dump may contain application data**: Never print the full dump contents. Only `head -20` for header verification.
+- **The dump may contain application data**: Never print the full dump contents. Only the first 20 header lines via `awk 'NR<=20 {print}'` for verification.
 - **The sha256 file is safe to record**: It contains only a hash and filename.
 
 ## 9. Disk Space Check Before Backup
@@ -145,7 +150,7 @@ Requirement: at least 200MB free (database is ~66.8MB, compressed will be smalle
 - **No cleanup**: No docker stop/rm/rmi/volume rm/network rm/system prune.
 - **No deployment**: No docker compose up, git pull, or alembic.
 - **No .env reading**: No cat/printenv of any env files.
-- **No dump contents printing**: Only `head -20` of the compressed dump header.
+- **No dump contents printing**: Only the first 20 header lines via `awk 'NR<=20 {print}'` of the compressed dump header.
 - **No image cleanup**: Do NOT `docker image prune` the 21 dangling images. Exact image-id listing and dry-run required first if cleanup is ever needed.
 - **sing-box protection**: sing-box on port 443 must not be disturbed. Do not stop, remove, or modify any non-Mpango container/process.
 - **No git pull**: No code changes on VPS.
@@ -177,7 +182,7 @@ After execution, this file will be updated with:
 - File size
 - SHA256 hash
 - gzip -t verification result
-- `head -20` header output (sanitized)
+- First 20 header lines via `awk 'NR<=20 {print}'` (sanitized)
 - Confirmation: no cleanup, no deployment, no secrets read, no dump contents printed
 
 ## 14. R-4R Corrections
@@ -195,3 +200,11 @@ After execution, this file will be updated with:
 - **P2 Fixed**: Header preview changed from `zcat | head -20` to `zcat | awk 'NR<=20 {print}'` with `set +o pipefail` guard. Avoids SIGPIPE false failure under `set -euo pipefail`.
 - **Added**: `sha256sum` and `ls -lh` now integrated into the main backup script (section 2.1), executed only on the final promoted file.
 - **Status**: R-4S plan correction only. No backup executed. No VPS connection. No push. Awaiting CTO approval.
+
+## 16. R-4T Corrections
+
+- **P1 Fixed**: Added `umask 077` after `set -euo pipefail`. Ensures all new files are owner-only by default.
+- **P1 Fixed**: Added `chmod 700 "${BACKUP_DIR}"` after `mkdir -p`. Backup directory is strictly owner-accessible.
+- **P1 Fixed**: Added `chmod 600 "${BACKUP_FILE}"` and `chmod 600 "${BACKUP_FILE}.sha256"` after creation. Even if umask was overridden, files are locked to owner-only. Backup contains real business data and must not leak.
+- **P2 Fixed**: All residual `head -20` references in Hard Restrictions, Secrets, and Post-Execution Deliverable sections replaced with `awk 'NR<=20 {print}'` or descriptive text. No `head` command remains anywhere in the document except the anti-pattern explanation in section 6.
+- **Status**: R-4T plan correction only. No backup executed. No VPS connection. No push. Awaiting CTO approval.

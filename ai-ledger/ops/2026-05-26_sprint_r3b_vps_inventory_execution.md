@@ -173,3 +173,60 @@ Note: The postgres container is running and healthy per `docker ps`, but `docker
 - **No secrets read**: No .env contents, passwords, or tokens accessed.
 - **No remote file writes**: No files created or modified on VPS.
 - **No scripts executed**: safe_cleanup_vps.sh and deploy_vps.sh were not run on VPS.
+
+## 8. R-3B-R1 Evidence Corrections
+
+### Corrections to R-3B Original Findings
+
+| Original Finding | Corrected Finding |
+|-----------------|-------------------|
+| Port 443: "Unknown (not Mpango containers)" | Port 443: **sing-box** (pid 132529) -- co-hosted VPN/proxy service, must NOT be disturbed |
+| pg_dump: "NOT available" | psql works fine via `docker exec mpango_prod_postgres psql -U mpango -d mpango_erp`. pg_dump path issue only. `pg_database_size()` function call blocked by PowerShell `()` stripping, not by postgres. Database `mpango_erp` has 939,046 xact_commit, 7 active backends. |
+| R-3B listed 10 images | `docker system df -v` reveals **31 images** total (21 are `<none>` dangling images), plus 945.4MB build cache |
+| R-3B listed 4 volumes | Confirmed. Volume sizes: `mpango-erp_postgres_data` = 66.8MB, `app_postgres_data` = 48.18MB, `mpango-erp_redis_data` = 143B, `app_redis_data` = 88B |
+| Git status not checked | `git status --short` returned empty output -- working tree is CLEAN |
+| postgres:15 (444MB) image | Confirmed unused (0 containers). postgres:15-alpine (274MB) is the active image. |
+
+### Additional Evidence from R-3B-R1
+
+**Port 443 resolved**:
+```
+tcp LISTEN 0 4096 *:443 *:* users:(("sing-box",pid=132529,fd=7))
+```
+Port 443 is **sing-box** -- a co-hosted proxy/VPN service. Must not be disturbed during deployment.
+
+**Docker disk usage summary**:
+- Images: ~6.4GB (31 images, 21 dangling `<none>`)
+- Build cache: 945.4MB
+- Containers: negligible
+- Volumes: 115MB total
+- Reclaimable via dangling image cleanup: estimated ~3-4GB
+
+**Postgres connectivity confirmed**:
+```
+psql -U mpango -d mpango_erp works.
+Databases: mpango_erp (939,046 commits, 7 backends), postgres, template0, template1.
+```
+
+**File existence reconfirmed**:
+- `.env`: EXISTS (contents not read)
+- `.env.prod`: MISSING
+- `docker-compose.yml`: EXISTS
+- `docker-compose.prod.yml`: EXISTS
+- `docker-compose.override.yml`: EXISTS
+
+### Updated Risk Assessment
+
+| Risk | Severity | Updated Detail |
+|------|----------|----------------|
+| Disk at 75% | MEDIUM | 6.1G free + ~3-4GB reclaimable from dangling images. Cleanup before build recommended. |
+| Port 443 = sing-box | RESOLVED | Identified as co-hosted service. NOT Mpango. Safe to leave untouched. |
+| pg_dump unavailable | MEDIUM | psql works; pg_dump PATH may differ. Use `docker run --rm --volumes-from` as fallback. |
+| Memory at 555/957 MiB | MEDIUM | Unchanged. Consider swap or off-host build. |
+| Dangling images (21) | LOW | Safe cleanup target via `docker image prune` (label-filtered only). |
+
+### R-3B-R1 Confirmation
+- **No cleanup**: No docker stop/rm/rmi/volume rm/network rm/system prune executed.
+- **No deployment**: No docker compose up, git pull, or alembic executed.
+- **No secrets read**: No .env contents, passwords, or tokens accessed.
+- **No remote file writes**: No files created or modified on VPS.

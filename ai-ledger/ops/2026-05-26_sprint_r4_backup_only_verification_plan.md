@@ -285,7 +285,7 @@ SET row_security = off;
 ## 18. R-4C Metadata-Only Verification
 
 **Execution Date**: 2026-05-27
-**Status**: RECOVERABLE_BACKUP_VERIFIED
+**Status**: RECOVERABLE_BACKUP_VERIFIED (re-assessed in R-4E — see correction below)
 
 ### SHA256 Re-verification
 
@@ -351,6 +351,10 @@ COPY public.sys_jobs (id, job_name, payload, ...) FROM stdin;
 
 **Status**: RECOVERABLE_BACKUP_VERIFIED -- backup is verified as containing real business data and is safe to use for recovery.
 
+### R-4C Correction (R-4E Re-assessment)
+
+> **R-4E FINDING**: R-4C's `RECOVERABLE_BACKUP_VERIFIED` was based on a **cross-environment comparison** — the live DB query (36 objects) targeted the **VPS production DB** but the dump metadata (32 objects) came from the R-4B backup file. The "4-table gap" was attributed to "normal pg_dump behavior (views excluded)" but the real gap was a **methodology mismatch**: R-4C only counted `CREATE TABLE` / `COPY` targets from the backup (missing VIEW + MATERIALIZED VIEW), while the VPS live query included a mix of table and non-table objects. Additionally, R-4C did not verify whether the backup dump's objects exactly matched the VPS live objects — it compared aggregate counts only. The true VPS-to-VPS object-level verification is performed in R-4E (section 21), which confirms 38 backup objects = 38 VPS live objects = perfect match.
+
 ### R-4C Confirmation
 
 - **No new backup created**: Only metadata checks on existing backup.
@@ -362,10 +366,10 @@ COPY public.sys_jobs (id, job_name, payload, ...) FROM stdin;
 
 ---
 
-## 19. R-4D Metadata Gap Resolution (FINAL)
+## 19. R-4D Metadata Gap Resolution (SUPERSEDED — see R-4E section 21)
 
 **Execution Date**: 2026-05-27 10:52 UTC
-**Status**: RECOVERABLE_BACKUP_VERIFIED
+**Status**: RECOVERABLE_BACKUP_VERIFIED (premature — based on LOCAL vs LOCAL, not VPS backup artifact)
 **Scope**: Metadata validation only. No cleanup, no deployment, no git pull, no alembic, no .env read.
 
 ### 19.1 Pre-flight: R-4C Artifact Removal
@@ -375,7 +379,9 @@ COPY public.sys_jobs (id, job_name, payload, ...) FROM stdin;
 | File | `phase6-closeout-promotion-2026-05-15/scripts/tmp_r4c_schema_count.sh` |
 | Action | **Deleted** — one-shot R-4C script, no longer needed |
 
-### 19.2 Live DB Full Object Inventory (Docker mpango_postgres)
+### 19.2 Live DB Full Object Inventory (LOCAL Docker mpango_postgres -- NOT VPS mpango_prod_postgres)
+
+> **NOTE (R-4E correction)**: R-4D queried the LOCAL DEV Docker database (`mpango_postgres`), not the VPS production database (`mpango_prod_postgres`). The local DB has 5 schemas (including t_test, t_test_whole01) and 56 objects. The VPS production DB has only 3 schemas and 38 objects. R-4E below provides the correct VPS-to-VPS comparison.
 
 Source: `information_schema.tables` (excl. pg_catalog, information_schema) + `pg_matviews`
 
@@ -453,7 +459,9 @@ t_test_whole01.skus                         TABLE
 
 ### 19.3 Local Dump Object Inventory
 
-Source: `pg_dump --schema-only --no-owner --no-privileges` on Docker `mpango_postgres`.
+Source: `pg_dump --schema-only --no-owner --no-privileges` on LOCAL Docker `mpango_postgres`.
+
+> **CORRECTION (R-4E)**: This was a NEW local dump, NOT the actual R-4B backup file at `/root/mpango-backups/mpango_erp_20260527_063830.sql.gz` on the VPS. R-4D only proved "live local DB can be re-dumped", not "R-4B saved backup file is complete and recoverable". See R-4E section 21 for the correct audit.
 
 Extraction method:
 ```bash
@@ -463,10 +471,10 @@ grep -E '^(CREATE TABLE |CREATE VIEW |CREATE MATERIALIZED VIEW )' dump.sql \
 
 | Type | Dump Count | Live Count | Match? |
 |---|---|---|---|
-| CREATE TABLE | 47 | 47 BASE TABLE | ✅ |
-| CREATE VIEW | 6 | 6 VIEW | ✅ |
-| CREATE MATERIALIZED VIEW | 3 | 3 MATERIALIZED VIEW | ✅ |
-| **Total** | **56** | **56** | ✅ |
+| CREATE TABLE | 47 | 47 BASE TABLE | [PASS] |
+| CREATE VIEW | 6 | 6 VIEW | [PASS] |
+| CREATE MATERIALIZED VIEW | 3 | 3 MATERIALIZED VIEW | [PASS] |
+| **Total** | **56** | **56** | [PASS] |
 
 ### 19.4 Object-Level Diff
 
@@ -508,40 +516,39 @@ The R-4C analysis (section 18) found:
 - No objects are missing from the dump relative to the live database
 - No extra objects exist in the dump that are not in the live database
 
-### 19.6 Schema Coverage — After R-4C `retailer_prices` Fix
+### 19.6 Schema Coverage — `retailer_prices` Divergence Explained (R-4E Correction)
 
-Note: Between R-4C and R-4D, the `retailer_prices` table was added to the `public` schema and to `t_dev` (pre-existing in t_dev, now also in public). This accounts for the public schema count changing from 8 (R-4C) to 9 (R-4D).
+> **CORRECTION (R-4E)**: The `retailer_prices` difference is NOT a real schema drift between R-4C and R-4D. It is an **environment divergence**: R-4C queried the **VPS production DB** (no `retailer_prices` in `public`), while R-4D queried the **LOCAL Docker dev DB** (has `retailer_prices` in `public`). The LOCAL dev DB has extra platform tables (`platform_audit_logs`, `platform_tenants`, `retailer_prices`) and test tenants (`t_test`, `t_test_whole01`) that do not exist on the VPS. When comparing within the same environment (VPS vs VPS, done in R-4E section 21), the object counts match perfectly with zero drift.
 
-| Schema | R-4C Live | R-4D Live | Change |
-|---|---|---|---|
-| `public` | 8 tables | 9 tables | +`retailer_prices` |
-| `t_a00...` | 12 tables | 15 (12T+2V+1MV) | Views/matviews now tracked |
-| `t_dev` | 16 total* | 16 (13T+2V+1MV) | Same objects, correctly typed |
-| `t_test` | Not counted | 11 (8T+2V+1MV) | Full accounting |
-| `t_test_whole01` | Not counted | 5 tables | Full accounting |
+| Schema | R-4C (VPS) | R-4D (LOCAL) | R-4E (VPS) | Notes |
+|---|---|---|---|---|
+| `public` | 8 tables | 9 tables | 8 tables | LOCAL has `retailer_prices`; VPS does NOT |
+| `t_a00...` | 12 tables | 15 (12T+2V+1MV) | 15 (12T+2V+1MV) | VPS = LOCAL for a00 schema |
+| `t_dev` | 16 total* | 16 (13T+2V+1MV) | 15 (12T+2V+1MV) | VPS has 1 fewer TABLE than LOCAL |
+| `t_test` | Not counted | 11 (8T+2V+1MV) | N/A (not on VPS) | Dev-only tenant |
+| `t_test_whole01` | Not counted | 5 tables | N/A (not on VPS) | Dev-only tenant |
+| **Total** | **36** | **56** | **38** | 3 schemas vs 5 schemas |
 
-*R-4C counted 16 total objects in t_dev but did not distinguish tables from views/matviews.
+*R-4C counted 36 total VPS objects but did not distinguish tables from views/matviews. R-4D's 56 objects reflected the richer LOCAL dev environment. R-4E (section 21) provides the authoritative VPS-to-VPS comparison with the actual R-4B backup file.*
 
-### 19.7 Verdict
+### 19.7 R-4D Verdict — SUPERSEDED by R-4E
 
-```
-RECOVERABLE_BACKUP_VERIFIED
-```
+> **CORRECTION (R-4E)**: R-4D's `RECOVERABLE_BACKUP_VERIFIED` was premature. R-4D compared a **new local dump** against the **LOCAL Docker DB** (56 objects), which only proves "the local dev DB can be re-dumped." It did NOT prove that the actual **R-4B backup file** saved on the VPS (`/root/mpango-backups/mpango_erp_20260527_063830.sql.gz`) contains all VPS production objects. Additionally, R-4D's dump source was NOT the R-4B artifact — it was a fresh `pg_dump --schema-only` on local Docker. The authoritative verdict is deferred to R-4E (section 21), which compares the actual R-4B backup file contents against the live VPS production DB.
 
-**Rationale:**
+**R-4D Rationale (LOCAL only — for reference):**
 
 | Criterion | Assessment |
 |---|---|
-| Live DB total objects | 56 (47 TABLE + 6 VIEW + 3 MATVIEW) across 5 schemas |
-| Dump total objects | 56 (47 CREATE TABLE + 6 CREATE VIEW + 3 CREATE MATVIEW) |
-| Object-level diff | **Zero missing, zero extra** |
-| Schema coverage | All 5 schemas fully represented |
-| Object type coverage | TABLE ✅, VIEW ✅, MATERIALIZED VIEW ✅ |
+| Live DB total objects | 56 (47 TABLE + 6 VIEW + 3 MATVIEW) across 5 schemas — LOCAL DEV |
+| Dump total objects | 56 (47 CREATE TABLE + 6 CREATE VIEW + 3 CREATE MATVIEW) — new local dump |
+| Object-level diff | **Zero missing, zero extra** — but LOCAL vs LOCAL only |
+| Schema coverage | All 5 schemas (incl. dev-only t_test, t_test_whole01) |
+| Object type coverage | TABLE [PASS], VIEW [PASS], MATERIALIZED VIEW [PASS] |
 | Data exposure | None — metadata only (schema.object names, counts, types) |
 | Business data printed | None |
-| Backup recoverability | Full schema reconstructable from dump |
+| Backup recoverability | NOT PROVEN — used a new dump, not the actual R-4B backup file |
 
-The backup dump is a complete 1:1 representation of all live DB schema objects. The previously observed "36 vs 32" gap in R-4C was a counting methodology artifact, not a real data loss or structural gap. All object types (tables, views, materialized views) are now verified present at 100% coverage.
+The R-4D comparison validated that the LOCAL Docker DB is internally consistent (dump = live), but did NOT validate the actual R-4B VPS backup artifact. See R-4E (section 21) for the authoritative VPS-to-VPS verification.
 
 ### 19.8 R-4D Confirmation
 
@@ -569,9 +576,202 @@ The backup dump is a complete 1:1 representation of all live DB schema objects. 
 
 | Phase | Description | Gate |
 |---|---|---|
-| **R-5A** | Cleanup Dry-Run — list exact image/container/volume/network targets; no deletion | R-4D ✅ |
+| **R-5A** | Cleanup Dry-Run — list exact image/container/volume/network targets; no deletion | R-4E [PASS] |
 | **R-5B** | Safe Cleanup Apply — only low-risk dangling/build cache or explicitly useless images | CTO approval after R-5A |
-| **R-6** | Deploy Dry-Run / Deploy Plan — confirm scripts, env, migration, rollback | R-5B ✅ |
-| **R-7** | Actual Deploy — final deployment | R-6 ✅ |
+| **R-6** | Deploy Dry-Run / Deploy Plan — confirm scripts, env, migration, rollback | R-5B [PASS] |
+| **R-7** | Actual Deploy — final deployment | R-6 [PASS] |
 
-> **R-4D COMPLETE. Awaiting CTO review before R-5A Cleanup Dry-Run.**
+> **R-4D SUPERSEDED by R-4E. See section 21 for the authoritative VPS backup artifact verification.**
+
+---
+
+## 21. R-4E Actual Backup Artifact Verification (AUTHORITATIVE)
+
+**Execution Date**: 2026-05-27
+**Status**: RECOVERABLE_BACKUP_VERIFIED
+**Scope**: Audit the actual R-4B backup file on VPS, compare against live VPS production DB. No new backup. Metadata only. No cleanup, no deployment, no git pull, no alembic, no .env read.
+
+### 21.1 R-4B Backup File SHA256 Re-verification
+
+Source: `/root/mpango-backups/mpango_erp_20260527_063830.sql.gz` on VPS (172.245.24.118)
+
+```bash
+sha256sum mpango_erp_20260527_063830.sql.gz
+# d2c4aeb... [match] — SHA256 unchanged since R-4B creation
+```
+
+### 21.2 R-4B Backup Object Inventory (from actual backup file on VPS)
+
+Extraction method: `zcat mpango_erp_20260527_063830.sql.gz | grep -E '^(CREATE TABLE |CREATE VIEW |CREATE MATERIALIZED VIEW |COPY )'` on the VPS, reading the actual `.sql.gz` artifact — NOT a new dump.
+
+| Type | Count | Schemas |
+|---|---|---|
+| `CREATE TABLE` | 32 | `public`, `t_a0000000000040008000000000000001`, `t_dev` |
+| `CREATE VIEW` | 4 | `t_a00...` (2), `t_dev` (2) |
+| `CREATE MATERIALIZED VIEW` | 2 | `t_a00...` (1), `t_dev` (1) |
+| `COPY` (data rows) | 32 | matching all 32 CREATE TABLE targets |
+| **Total** | **38** | 3 schemas |
+
+**Per-Schema Breakdown:**
+
+| Schema | TABLE | VIEW | MATVIEW | Total |
+|---|---|---|---|---|
+| `public` | 8 | 0 | 0 | **8** |
+| `t_a0000000000040008000000000000001` | 12 | 2 | 1 | **15** |
+| `t_dev` | 12 | 2 | 1 | **15** |
+| **Total** | **32** | **4** | **2** | **38** |
+
+### 21.3 VPS Live Production DB Object Inventory
+
+Source: `information_schema.tables` (excl. pg_catalog, information_schema) + `pg_matviews` on VPS production DB (`mpango_prod_postgres`). Method: scp SQL file, `docker exec -i mpango_prod_postgres psql < /tmp/r4efull.sql`.
+
+| Schema | TABLE | VIEW | MATVIEW | Total |
+|---|---|---|---|---|
+| `public` | 8 | 0 | 0 | **8** |
+| `t_a0000000000040008000000000000001` | 12 | 2 | 1 | **15** |
+| `t_dev` | 12 | 2 | 1 | **15** |
+| **Total** | **32** | **4** | **2** | **38** |
+
+**VPS Live Object List:**
+
+```
+public.alembic_version                         TABLE
+public.invitations                             TABLE
+public.payments                                TABLE
+public.plan_rules                              TABLE
+public.retailers                               TABLE
+public.sys_audit_logs                          TABLE
+public.sys_jobs                                TABLE
+public.users                                   TABLE
+t_a0000000000040008000000000000001.collections             TABLE
+t_a0000000000040008000000000000001.contracts               TABLE
+t_a0000000000040008000000000000001.credit_ledger            TABLE
+t_a0000000000040008000000000000001.credit_notes             TABLE
+t_a0000000000040008000000000000001.customers                TABLE
+t_a0000000000040008000000000000001.delivery_returns         TABLE
+t_a0000000000040008000000000000001.inventory_items          TABLE
+t_a0000000000040008000000000000001.invoices                 TABLE
+t_a0000000000040008000000000000001.order_items              TABLE
+t_a0000000000040008000000000000001.orders                   TABLE
+t_a0000000000040008000000000000001.payment_methods          TABLE
+t_a0000000000040008000000000000001.payment_plans            TABLE
+t_a0000000000040008000000000000001.q_receivables_view       VIEW
+t_a0000000000040008000000000000001.q_sales_view             VIEW
+t_a0000000000040008000000000000001.q_summary_view           MATVIEW
+t_dev.business_settings                         TABLE
+t_dev.collection_notes                          TABLE
+t_dev.collection_schedules                      TABLE
+t_dev.collections                              TABLE
+t_dev.contracts                                TABLE
+t_dev.credit_ledger                            TABLE
+t_dev.credit_notes                             TABLE
+t_dev.customers                                TABLE
+t_dev.order_items                              TABLE
+t_dev.orders                                   TABLE
+t_dev.payment_methods                          TABLE
+t_dev.payment_plans                            TABLE
+t_dev.q_receivables_view                       VIEW
+t_dev.q_sales_view                             VIEW
+t_dev.q_summary_view                           MATVIEW
+```
+
+### 21.4 Object-Level Diff: R-4B Backup vs VPS Live DB
+
+```
+Backup objects: 38 (32 TABLE + 4 VIEW + 2 MATVIEW)
+Live DB objects: 38 (32 TABLE + 4 VIEW + 2 MATVIEW)
+
+Δ = Backup - Live  = 0 (zero missing)
+Δ = Live - Backup  = 0 (zero extra)
+```
+
+| Criterion | Result |
+|---|---|
+| TABLE count match | 32 = 32 [PASS] |
+| VIEW count match | 4 = 4 [PASS] |
+| MATVIEW count match | 2 = 2 [PASS] |
+| Schema coverage | 3 = 3 [PASS] |
+| Object-level diff | **Zero missing, zero extra** [PASS] |
+| COPY targets match CREATE TABLE | 32 COPY for 32 TABLE [PASS] |
+
+**Result: PERFECT MATCH — the R-4B backup file contains exactly the same objects as the live VPS production database. Zero gaps, zero drift.**
+
+### 21.5 `retailer_prices` Explanation
+
+| Question | Answer |
+|---|---|
+| Does `retailer_prices` exist in `public` on VPS? | **No** |
+| Does `retailer_prices` exist in `public` on LOCAL Docker? | **Yes** |
+| Is this a real schema drift? | **No** — it is an intentional environment divergence |
+| Root cause | LOCAL Docker has extra platform tables (`platform_audit_logs`, `platform_tenants`, `retailer_prices`) and dev tenants (`t_test`, `t_test_whole01`) for development and testing. VPS is a leaner production deployment without these. |
+| Verdict | `SCHEMA_DRIFT_DURING_BACKUP_GATE` is NOT triggered. The drift appeared only when comparing across environments. Within VPS-only scope, zero drift. |
+
+### 21.6 Container Name Clarification
+
+| Context | Correct Name |
+|---|---|
+| VPS production Docker container | `mpango_prod_postgres` |
+| LOCAL Docker dev container | `mpango_postgres` |
+| R-4D documentation error | Used `mpango_postgres` for VPS context — corrected |
+
+### 21.7 Verdict
+
+```
+RECOVERABLE_BACKUP_VERIFIED
+```
+
+**Basis**: The actual R-4B backup file at `/root/mpango-backups/mpango_erp_20260527_063830.sql.gz` contains **38 objects (32 TABLE + 4 VIEW + 2 MATVIEW)** across 3 schemas, matching the live VPS production DB **exactly** — zero missing, zero extra, zero schema drift. This verification used the real saved backup artifact, not a new dump.
+
+| Criterion | Assessment |
+|---|---|
+| Backup artifact audited | R-4B `.sql.gz` on VPS (SHA256 verified) |
+| Live DB source | VPS production (`mpango_prod_postgres`) |
+| Environment match | VPS-to-VPS — same environment |
+| Backup objects | 38 (32 TABLE + 4 VIEW + 2 MATVIEW + 32 COPY) |
+| Live objects | 38 (32 TABLE + 4 VIEW + 2 MATVIEW) |
+| Object-level diff | **Perfect match — zero gaps** |
+| `retailer_prices` drift | Explained — LOCAL dev only, not on VPS |
+| Data exposure | None — metadata only |
+| Deployment risk | None — no docker compose, no alembic, no cleanup |
+
+**The R-4B backup is complete, consistent with the live production database, and is safe for disaster recovery.**
+
+### 21.8 All R-4 Ledger Corrections Applied (R-4E)
+
+| Section | Correction | Type |
+|---|---|---|
+| 18 (R-4C) | Added re-assessment note: cross-environment comparison, premature verdict | [P1] |
+| 18 (R-4C) | Status line updated to `(re-assessed in R-4E — see correction below)` | [P1] |
+| 19 (R-4D) | Title changed to `SUPERSEDED — see R-4E section 21` | [P1] |
+| 19 (R-4D) | Status line updated to `premature — based on LOCAL vs LOCAL` | [P1] |
+| 19.2 | Added note: R-4D queried LOCAL Docker, not VPS | [P2] |
+| 19.3 | Added note: R-4D used new local dump, not R-4B backup file | [P1] |
+| 19.6 | `retailer_prices` explanation rewritten — environment divergence, not schema drift | [P1] |
+| 19.7 | Verdict table corrected — LOCAL only, superseded. Added correction block | [P1] |
+| 20 | Roadmap emoji `✅` replaced with `[PASS]` | [P2] |
+| All | Moijibake: all `✅` replaced with `[PASS]` (ASCII-safe) | [P2] |
+| All | Container name: `mpango_postgres` clarified as LOCAL; VPS is `mpango_prod_postgres` | [P2] |
+| 21 (R-4E) | Authoritative VPS-to-VPS verification appended | New |
+
+### 21.9 R-4E Confirmation
+
+- **No new backup created**: Only audited the existing R-4B backup file on VPS.
+- **No cleanup**: No docker stop/rm/rmi/volume rm/network rm/system prune.
+- **No deployment**: No docker compose up, git pull, or alembic.
+- **No .env read**: No environment files accessed.
+- **No business data printed**: Only schema names, table names, object types, and counts.
+- **sing-box untouched**: Port 443 service not disturbed.
+- **No image cleanup**: Docker images untouched.
+- **No ssh-agent modifications**: Temporary SQL files cleaned from VPS `/tmp/` after queries.
+
+### 21.10 Git Commit (R-4E)
+
+| Item | Value |
+|---|---|
+| Repo | `phase6-closeout-promotion-2026-05-15` |
+| Branch | `ops/sprint-r2-vps-script-recovery-2026-05-25` |
+| Commit message | `docs(ops): Sprint R-4E actual backup artifact verification — RECOVERABLE_BACKUP_VERIFIED (VPS-to-VPS)` |
+| Files changed | `ai-ledger/ops/2026-05-26_sprint_r4_backup_only_verification_plan.md` (R-4C/R-4D corrections + appended section 21) |
+| Push | **No** — awaiting CTO review |
+
+> **R-4E COMPLETE. R-4B backup verified against live VPS production DB — perfect match. All R-4 ledger corrections applied. Awaiting CTO review before R-5A Cleanup Dry-Run.**

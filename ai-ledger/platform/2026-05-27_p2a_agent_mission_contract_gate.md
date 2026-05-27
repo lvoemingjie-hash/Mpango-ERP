@@ -132,7 +132,8 @@ affected_processes:
 ## Report Fields
 
 - **Branch:** `codex/platform-p2a-agent-mission-contract-gate-2026-05-27`
-- **Commit:** pending final commit
+- **Implementation commit:** `d7a314260e33b16ba977d15c4517c7987e10ffd9`
+- **Final branch head:** reported in CTO handoff after ledger finalization
 - **Modified files:** `scripts/platform_agent_mission_gate.py`, `scripts/test_platform_agent_mission_gate.py`, `ai-ledger/platform/2026-05-27_p2a_agent_mission_contract_gate.md`
 - **Tests:** `python scripts/test_platform_agent_mission_gate.py -v` (53 passed)
 - **Report path:** `ai-ledger/platform/2026-05-27_p2a_agent_mission_contract_gate.md`

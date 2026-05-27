@@ -4,9 +4,9 @@
 
 `codex/platform-p1l-batch-readiness-hijk-2026-05-26`
 
-## Commit
+## Commit / Reviewed Final Branch Head
 
-`7e3f8440b9c3534edc1b3cc4f5449f05f802aaf8`
+`e857ec26c6dac857a493bfa09c2b2f5ce66878d7`
 
 ## Base Ref
 
@@ -45,6 +45,7 @@ Distance remaining: roughly one merge gate plus one post-merge runner smoke.
 | `A` | `ai-ledger/platform/2026-05-26_p1i_agent_artifact_allowlist_collector.md` |
 | `A` | `ai-ledger/platform/2026-05-26_p1j_agent_run_bundle_gate.md` |
 | `A` | `ai-ledger/platform/2026-05-26_p1k_opencode_worker_mission_gate.md` |
+| `A` | `ai-ledger/platform/2026-05-26_p1l_batch_readiness_hijk.md` |
 | `A` | `scripts/platform_agent_artifact_collector.py` |
 | `A` | `scripts/platform_agent_run_bundle_gate.py` |
 | `A` | `scripts/platform_agent_timeout_watchdog.py` |
@@ -131,8 +132,8 @@ the batch diff.
 ```
 GitNexus detect_changes(scope=compare, base_ref=origin/platform-dev,
 repo=<P1-L worktree path>)
-changed_files: 12
-changed_count: 138
+changed_files: 13
+changed_count: 139
 affected_count: 9
 risk_level: high
 affected_processes: harness-only CLI/test flows
@@ -169,7 +170,8 @@ timeout and explicit artifact checks.
 - **Branch:** `codex/platform-p1l-batch-readiness-hijk-2026-05-26`
 - **Batch merge head before packet commit:** `7e3f8440b9c3534edc1b3cc4f5449f05f802aaf8`
 - **Packet commit:** `a07b5f4e4d1ab7ec8a70bb6e74a5851bda35ffa6`
-- **Final branch head:** reported in the final CTO handoff after ledger finalization
+- **Final ledger commit before P1-L-R1:** `e857ec26c6dac857a493bfa09c2b2f5ce66878d7`
+- **P1-L-R1 evidence polish commit:** reported in the final CTO handoff
 - **Modified files:** see Changed Files
 - **Tests:** see Test Plan
 - **Report path:** `ai-ledger/platform/2026-05-26_p1l_batch_readiness_hijk.md`

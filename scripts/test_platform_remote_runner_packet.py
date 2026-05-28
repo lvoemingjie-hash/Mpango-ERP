@@ -36,6 +36,7 @@ class TestRemoteRunnerPacket(unittest.TestCase):
             "--report", "ai-ledger/platform/report_test.md",
             "--risk", "MEDIUM",
             "--test-command", "python scripts/test_x.py",
+            "--allow-platform-dev",
         ]
         for k, v in overrides.items():
             flag = "--" + k.replace("_", "-")

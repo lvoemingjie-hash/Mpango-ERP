@@ -129,6 +129,10 @@ This is a batch-high-looking harness addition, but GitNexus currently classifies
 
 Ready for main CTO review as a batch merge candidate. Do not merge to `platform-dev` without explicit CTO approval.
 
+## P2-E.1 Merge Gate Note
+
+During the `platform-dev` merge readiness gate, `test_platform_remote_runner_packet.py` surfaced one platform-main context issue: the valid repo test executed from `platform-dev` without `--allow-platform-dev`, while the production branch gate intentionally requires that explicit flag for platform-main checks. The test fixture was updated to pass `--allow-platform-dev`; GitNexus impact on `test_valid_repo_writes_packet_and_pass` was LOW with no affected processes.
+
 Recommended merge readiness checks before any `platform-dev` merge:
 
 1. `git fetch --all --prune`

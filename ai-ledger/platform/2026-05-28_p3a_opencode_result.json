@@ -1,0 +1,9 @@
+{
+  "status": "partial",
+  "files_changed": [
+    "scripts/platform_harness_index.py",
+    "scripts/test_platform_harness_index.py"
+  ],
+  "test_result": "opencode timed out at 900 seconds before writing result JSON; CTO review ran python scripts/test_platform_harness_index.py: PASS (34 tests)",
+  "blocker": "opencode worker gate exit=124 timeout; result JSON and ledger were completed by CTO within the mission allowlist"
+}

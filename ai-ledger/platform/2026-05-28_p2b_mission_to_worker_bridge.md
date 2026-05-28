@@ -86,11 +86,23 @@ at runtime, and forbidden path strings appear only as policy/test fixtures.
 
 ## Risk Classification
 
-**Risk:** MEDIUM
+**Risk:** LOW
 
-This is additive platform harness code that creates a new mission-to-worker
-execution flow. It does not modify runtime product code, backend/frontend code,
-auth/RBAC/tenancy/migration/payment code, `.github`, `.claude`, or `docs/ai`.
+This is additive platform harness code. GitNexus compare reports LOW with no
+affected processes. It does not modify runtime product code, backend/frontend
+code, auth/RBAC/tenancy/migration/payment code, `.github`, `.claude`, or
+`docs/ai`.
+
+Final compare evidence:
+
+```
+GitNexus detect_changes(scope=compare, base_ref=origin/platform-dev)
+changed_files: 3
+changed_count: 41
+affected_count: 0
+risk_level: low
+affected_processes: none
+```
 
 ## CTO Instruction Compliance Check
 
@@ -124,4 +136,4 @@ gate approval.
 - **Modified files:** `scripts/platform_mission_worker_bridge.py`, `scripts/test_platform_mission_worker_bridge.py`, `ai-ledger/platform/2026-05-28_p2b_mission_to_worker_bridge.md`
 - **Tests:** `python scripts/test_platform_mission_worker_bridge.py -v`
 - **Report path:** `ai-ledger/platform/2026-05-28_p2b_mission_to_worker_bridge.md`
-- **Risk:** MEDIUM
+- **Risk:** LOW

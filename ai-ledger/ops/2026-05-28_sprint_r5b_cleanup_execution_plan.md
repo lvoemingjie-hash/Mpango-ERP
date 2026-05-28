@@ -1,7 +1,7 @@
 # Sprint R-5B: Cleanup Execution Plan
 
 **Execution Date**: 2026-05-28 14:15 UTC
-**Status**: PLAN_ONLY -- AWAITING CTO APPROVAL
+**Status**: PLAN_ONLY -- AWAITING CTO APPROVAL (R-5B-R1 safety corrections applied)
 **Target**: Canonical India VPS `143.110.177.2` (`ubuntu-s-1vcpu-1gb-blr1-01`)
 **Preceding Gate**: R-5A-R2 `LEDGER_NORMALIZED` (commit `e40b327`, pushed)
 
@@ -25,7 +25,7 @@
 
 **Total proposed reclaimable**: 9.663 GB (images) + 945.4 MB (build cache) = **~10.6 GB**
 
-**Current disk**: 6.1 GB free / 25 GB total (75% used). After cleanup: ~16.7 GB free (67% used).
+**Current disk**: 6.1 GB free / 25 GB total (75% used). After cleanup: ~16.7 GB free (~33% used).
 
 ---
 
@@ -98,8 +98,9 @@ docker system df
 # P1-POST-05: Verify port 80 responds
 curl -s -o /dev/null -w "%{http_code}" http://143.110.177.2:80/ --max-time 10
 
-# P1-POST-06: Verify port 443 responds (sing-box)
-curl -s -o /dev/null -w "%{http_code}" https://143.110.177.2:443/ --max-time 10 -k
+# P1-POST-06: Verify sing-box still listening on port 443 (process + socket)
+ps aux | grep sing-box | grep -v grep
+ss -ltnp | grep ':443'
 ```
 
 **P1 Post-Check Pass Criteria**:
@@ -107,9 +108,9 @@ curl -s -o /dev/null -w "%{http_code}" https://143.110.177.2:443/ --max-time 10 
 - sing-box: process present
 - Disk: free space increased by ~945 MB
 - Port 80: HTTP 200 or 301/302 (any non-timeout response)
-- Port 443: any response (sing-box TLS proxy)
+- Port 443: sing-box process present AND `ss -ltnp` shows LISTEN on `:443`
 
-**P1 Rollback**: No rollback needed. Build cache is non-functional; removing it has no side effects. If containers stopped (impossible from this command), restart with `docker compose up -d` from `/root/mpango-erp/`.
+**P1 Failure Policy**: Build cache removal has no impact on running containers. If any P1 post-check fails: **STOP_AND_REPORT_CTO**. Do NOT run `docker compose up` or any deployment/restart command. The operator must halt all phases, record the exact failure output, and await CTO instruction.
 
 **P1 Decision Gate**: If ALL P1 post-checks pass, proceed to Phase 2. If ANY fail, STOP and report to CTO.
 
@@ -167,8 +168,9 @@ docker system df
 # P2-POST-06: Verify port 80 responds
 curl -s -o /dev/null -w "%{http_code}" http://143.110.177.2:80/ --max-time 10
 
-# P2-POST-07: Verify port 443 responds
-curl -s -o /dev/null -w "%{http_code}" https://143.110.177.2:443/ --max-time 10 -k
+# P2-POST-07: Verify sing-box still listening on port 443
+ps aux | grep sing-box | grep -v grep
+ss -ltnp | grep ':443'
 
 # P2-POST-08: Verify all 5 active images still present
 docker images | grep -E "mpango-erp-backend|mpango-erp-frontend|nginx|postgres|redis"
@@ -180,9 +182,9 @@ docker images | grep -E "mpango-erp-backend|mpango-erp-frontend|nginx|postgres|r
 - Dangling count: 0
 - 5 active images: all present
 - Port 80: HTTP response (non-timeout)
-- Port 443: response (non-timeout)
+- Port 443: sing-box process present AND `ss -ltnp` shows LISTEN on `:443`
 
-**P2 Rollback**: Dangling images cannot be restored (they are unreferenced build layers with no repo:tag). However, if containers are somehow affected (should not be possible since none reference dangling images), restart with `docker compose up -d`. The 5 active images are NOT affected by `docker image prune` (which only targets `<none>:<none>`).
+**P2 Failure Policy**: Dangling images cannot be restored (unreferenced build layers with no repo:tag). The 5 active images are NOT affected by `docker image prune` (which only targets `<none>:<none>`). If any P2 post-check fails: **STOP_AND_REPORT_CTO**. Do NOT run `docker compose up` or any deployment/restart command. The operator must halt all phases, record the exact failure output, and await CTO instruction.
 
 **P2 Decision Gate**: If ALL P2 post-checks pass, proceed to Phase 3. If ANY fail, STOP and report to CTO.
 
@@ -262,8 +264,9 @@ docker system df
 # P3-POST-07: Verify port 80 responds
 curl -s -o /dev/null -w "%{http_code}" http://143.110.177.2:80/ --max-time 10
 
-# P3-POST-08: Verify port 443 responds
-curl -s -o /dev/null -w "%{http_code}" https://143.110.177.2:443/ --max-time 10 -k
+# P3-POST-08: Verify sing-box still listening on port 443
+ps aux | grep sing-box | grep -v grep
+ss -ltnp | grep ':443'
 ```
 
 **P3 Post-Check Pass Criteria**:
@@ -272,9 +275,9 @@ curl -s -o /dev/null -w "%{http_code}" https://143.110.177.2:443/ --max-time 10 
 - Legacy images: 0 remain (grep returns nothing)
 - 5 active images: all present
 - Port 80: HTTP response (non-timeout)
-- Port 443: response (non-timeout)
+- Port 443: sing-box process present AND `ss -ltnp` shows LISTEN on `:443`
 
-**P3 Rollback**: Legacy named images cannot be restored without re-pulling or re-building. However, since none are referenced by any container (verified in R-5A-R1 and P3-PRE-02), their removal has zero impact on running services. If containers somehow stopped, `docker compose up -d` restarts using the 5 active images which are untouched.
+**P3 Failure Policy**: Legacy named images cannot be restored without re-pulling or re-building. Since none are referenced by any container (verified in R-5A-R1 and P3-PRE-02), their removal has zero impact on running services. If any P3 post-check fails: **STOP_AND_REPORT_CTO**. Do NOT run `docker compose up` or any deployment/restart command. The operator must halt all phases, record the exact failure output, and await CTO instruction.
 
 ---
 
@@ -301,8 +304,9 @@ ps aux | grep sing-box | grep -v grep
 # FINAL-06: Port 80 health check
 curl -s -o /dev/null -w "%{http_code}" http://143.110.177.2:80/ --max-time 10
 
-# FINAL-07: Port 443 health check
-curl -s -o /dev/null -w "%{http_code}" https://143.110.177.2:443/ --max-time 10 -k
+# FINAL-07: sing-box process and port 443 listener
+ps aux | grep sing-box | grep -v grep
+ss -ltnp | grep ':443'
 
 # FINAL-08: All 4 volumes intact
 docker volume ls
@@ -321,7 +325,7 @@ ls -la /root/mpango-backups/mpango_erp_20260527_063830.sql.gz
 - Docker image space: ~1 GB (down from 9.992 GB)
 - Build cache: 0 MB (down from 945.4 MB)
 - Port 80: responding
-- Port 443: responding (sing-box)
+- Port 443: sing-box process present, `ss -ltnp` shows LISTEN on `:443`
 - 4 volumes: intact
 - 4 networks: intact
 - Backup file: intact at `/root/mpango-backups/`
@@ -332,20 +336,20 @@ ls -la /root/mpango-backups/mpango_erp_20260527_063830.sql.gz
 
 Before executing any R-5C phase, the operator must confirm ALL of the following are UNTOUCHED:
 
-| Resource | Identifier | Why Protected |
-|---|---|---|
-| `mpango_prod_backend` | Container `aa7d810494f6` | Production backend |
-| `mpango_prod_frontend` | Container `1e0a7c9d2cc6` | Production frontend |
-| `mpango_prod_gateway` | Container `b76de378d572` | Production nginx reverse proxy |
-| `mpango_prod_postgres` | Container `36a937f48ac7` | Production database |
-| `mpango_prod_redis` | Container `13105d2858de` | Production cache |
-| `mpango-erp_postgres_data` | Volume | Production DB data |
-| `mpango-erp_redis_data` | Volume | Production cache data |
-| `app_postgres_data` | Volume | Legacy data, deferred |
-| `app_redis_data` | Volume | Legacy data, deferred |
-| `mpango-erp_mpango_network` | Network | Container connectivity |
-| sing-box | PID 132529, port 443 | Non-MPANGO TLS proxy |
-| R-4B backup | `/root/mpango-backups/mpango_erp_20260527_063830.sql.gz` | Verified backup artifact |
+| Resource | Container Name | Image ID | Why Protected |
+|---|---|---|---|
+| Production backend | `mpango_prod_backend` | `aa7d810494f6` | Production backend container |
+| Production frontend | `mpango_prod_frontend` | `1e0a7c9d2cc6` | Production frontend container |
+| Production gateway | `mpango_prod_gateway` | `b76de378d572` | Production nginx reverse proxy |
+| Production database | `mpango_prod_postgres` | `36a937f48ac7` | Production database container |
+| Production cache | `mpango_prod_redis` | `13105d2858de` | Production cache container |
+| `mpango-erp_postgres_data` | -- | -- | Volume: production DB data |
+| `mpango-erp_redis_data` | -- | -- | Volume: production cache data |
+| `app_postgres_data` | -- | -- | Volume: legacy data, deferred |
+| `app_redis_data` | -- | -- | Volume: legacy data, deferred |
+| `mpango-erp_mpango_network` | -- | -- | Network: container connectivity |
+| sing-box | -- | -- | Process: non-MPANGO TLS proxy on port 443 |
+| R-4B backup | -- | -- | File: `/root/mpango-backups/mpango_erp_20260527_063830.sql.gz` |
 
 ---
 
@@ -382,8 +386,33 @@ Before executing any R-5C phase, the operator must confirm ALL of the following 
 |---|---|
 | Repo | `phase6-closeout-promotion-2026-05-15` |
 | Branch | `ops/sprint-r2-vps-script-recovery-2026-05-25` |
-| Commit message | `docs(ops): R-5B cleanup execution plan -- phased commands, rollback checklist, zero execution` |
-| Files changed | New: `ai-ledger/ops/2026-05-28_sprint_r5b_cleanup_execution_plan.md` |
+| R-5B commit | `09d5f8b` -- `docs(ops): R-5B cleanup execution plan -- phased commands, rollback checklist, zero execution` |
+| R-5B-R1 commit | (this commit) -- `docs(ops): R-5B-R1 plan safety correction -- STOP_AND_REPORT_CTO, sing-box ps+ss, disk % fix` |
 | Push | **No** -- awaiting CTO review |
 
-> **R-5B COMPLETE (plan only). Awaiting CTO approval to proceed to R-5C execution. R-5C will follow the 3-phase order: Phase 1 (build cache), Phase 2 (dangling images), Phase 3 (legacy named images), with health checks between every phase.**
+---
+
+## Appendix C: R-5B-R1 Plan Safety Corrections
+
+**Execution Date**: 2026-05-28 14:31 UTC
+**Status**: PLAN_CORRECTED
+**Scope**: Text-only corrections to this plan. No VPS connection, no Docker commands, no SSH.
+
+### C.1 Corrections Applied
+
+| Issue | Location | Correction |
+|---|---|---|
+| Rollback sections prescribed `docker compose up -d` | Phase 1 (line ~112), Phase 2 (line ~185), Phase 3 (line ~277) | Removed all `docker compose up` references. Replaced with **STOP_AND_REPORT_CTO** policy: halt all phases, record failure output, await CTO instruction. |
+| Port 443 health used `curl https://` (HTTP semantic check on non-HTTP proxy) | P1-POST-06, P2-POST-07, P3-POST-08, FINAL-07 | Replaced with `ps aux \| grep sing-box` + `ss -ltnp \| grep ':443'` (process + TCP listener check, no HTTP semantics). |
+| Disk percentage miscalculation: "67% used" after cleanup | Section 1, line ~28 | 16.7 GB free of 25 GB = 8.3 GB used = ~33% used. Corrected. |
+| Protected resources table conflated container name and image ID | Section 5, lines ~337-348 | Separated into distinct columns: Resource description, Container Name, Image ID. |
+
+### C.2 Remaining Unchanged
+
+- Three-phase execution order (build cache -> dangling images -> legacy named images)
+- Exact cleanup commands (`docker builder prune -f`, `docker image prune -f`, `docker rmi` x5)
+- Pre-check and post-check commands for containers, disk, Docker space
+- Port 80 HTTP check (valid for nginx reverse proxy)
+- PROTECTED status of all volumes, containers, active images, networks, sing-box, backup file
+
+> **R-5B-R1 COMPLETE (plan corrections). Awaiting CTO approval to proceed to R-5C execution.**

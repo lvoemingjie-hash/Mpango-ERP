@@ -317,8 +317,13 @@ class TestPhaseValidation(unittest.TestCase):
         failures = gate.validate_mission(data)
         self.assertEqual(failures, [])
 
-    def test_invalid_phase_prefix(self):
+    def test_p3_phase(self):
         data = dict(VALID_MISSION, phase="P3-A")
+        failures = gate.validate_mission(data)
+        self.assertEqual(failures, [])
+
+    def test_invalid_phase_prefix(self):
+        data = dict(VALID_MISSION, phase="P4-A")
         failures = gate.validate_mission(data)
         self.assertTrue(len(failures) > 0)
 

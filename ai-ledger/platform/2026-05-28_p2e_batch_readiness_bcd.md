@@ -133,6 +133,21 @@ Ready for main CTO review as a batch merge candidate. Do not merge to `platform-
 
 During the `platform-dev` merge readiness gate, `test_platform_remote_runner_packet.py` surfaced one platform-main context issue: the valid repo test executed from `platform-dev` without `--allow-platform-dev`, while the production branch gate intentionally requires that explicit flag for platform-main checks. The test fixture was updated to pass `--allow-platform-dev`; GitNexus impact on `test_valid_repo_writes_packet_and_pass` was LOW with no affected processes.
 
+Final `platform-dev` merge evidence:
+
+```text
+Merge commit: f24498d2f85006ecb8193173689cf62c417b8717
+Final commit: 7fc69f784a836e4503f19627f2e923365cf91c44
+GitNexus detect_changes(scope=compare, base_ref=origin/platform-dev before push)
+changed_files: 10
+changed_count: 102
+affected_count: 5
+risk_level: medium
+Runner smoke: PASS, runner-smoke-ok
+Post-push origin/platform-dev: 7fc69f784a836e4503f19627f2e923365cf91c44
+Post-push runner smoke: PASS, runner-smoke-ok
+```
+
 Recommended merge readiness checks before any `platform-dev` merge:
 
 1. `git fetch --all --prune`

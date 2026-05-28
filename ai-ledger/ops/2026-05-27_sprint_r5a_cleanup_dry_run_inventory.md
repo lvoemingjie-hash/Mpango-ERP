@@ -1,7 +1,7 @@
 # Sprint R-5A: Cleanup Dry-Run Exact Target Inventory
 
 **Execution Date**: 2026-05-27 15:10 UTC
-**Status**: INVENTORY_COMPLETE — DRY_RUN_ONLY
+**Status**: INVENTORY_COMPLETE -- DRY_RUN_ONLY
 **Target**: Canonical India VPS `143.110.177.2` (`ubuntu-s-1vcpu-1gb-blr1-01`)
 **Preceding Gate**: R-4E-R1 `RECOVERABLE_BACKUP_VERIFIED` (commit `1962b78`, pushed)
 
@@ -22,7 +22,7 @@ ssh root@143.110.177.2 df -h
 | `tmpfs` | 479M | 0 | 479M | 0% | `/dev/shm` |
 | `overlay` (x5) | 25G | 19G | 6.1G | 75% | container overlays |
 
-**Assessment**: 6.1GB available on root (25% free). Not critical but warrants cleanup planning. Docker images consume ~10GB.
+**Assessment**: 6.1GB available on root (25% free). Not critical but warrants cleanup planning. Docker reports 9.663 GB image space + 945.4 MB build cache reclaimable (see `docker system df`).
 
 ---
 
@@ -111,76 +111,26 @@ No orphaned custom networks. No removal candidates.
 
 ---
 
-## 7. Dangling Image Inventory (CANDIDATE_DRY_RUN_ONLY)
+## 7. Dangling Image Inventory (SUPERSEDED -- see Appendix A Section A.4)
 
-All images below have `<none>:<none>` repo:tag and are NOT used by any container. None will be pruned in R-5A.
+> **R-5A-R2 NOTE**: Sections 7 and 8 below were the original R-5A estimates with approximate counts. They have been superseded by the exact per-image catalog in Appendix A. The exact figures are: 100 dangling images (not ~26), 5 legacy named images (not 4). See Appendix A sections A.3 through A.10 for the authoritative catalog with per-image container reference verification.
 
-### 7.1 Recent Dangling (2 months ago — likely old builds of current services)
+| Category | Exact Count (from Appendix A) | Verdict |
+|---|---|---|
+| Dangling images | 100 | CANDIDATE_DRY_RUN_ONLY |
+| Legacy named images | 5 | CANDIDATE_DRY_RUN_ONLY |
 
-| Image ID | Size | Created | Notes |
-|---|---|---|---|
-| `45955866e977` | 619 MB | 2026-03-10 | Old backend build |
-| `122a0d4c7867` | 62.6 MB | 2026-03-06 | Old frontend build |
-| `293b68d1c370` | 619 MB | 2026-03-06 | Old backend build |
-| `587f897f8071` | 619 MB | 2026-03-06 | Old backend build |
-| `286acb7e6b9d` | 619 MB | 2026-03-05 | Old backend build |
-| `b95a0bc81cd9` | 62.6 MB | 2026-03-05 | Old frontend build |
-| `8244f128221f` | 62.6 MB | 2026-03-05 | Old frontend build |
-| `47e863014dbe` | 619 MB | 2026-03-05 | Old backend build |
-| `eac6ffa36989` | 619 MB | 2026-03-05 | Old backend build |
-| `d6515b8ba9ee` | 619 MB | 2026-03-05 | Old backend build |
-| `909b056c210f` | 619 MB | 2026-03-05 | Old backend build |
-| `dcbfb8239c22` | 62.6 MB | 2026-03-05 | Old frontend build |
-| **Subtotal (12)** | **~5.2 GB** | | |
-
-### 7.2 Older Dangling (3 months)
-
-| Image ID | Size | Created | Notes |
-|---|---|---|---|
-| `d5f4089faf35` | 616 MB | 2026-02-19 | Old backend build |
-| `562d9c89a30d` | 62.6 MB | 2026-02-19 | Old frontend build |
-| **Subtotal (2)** | **~678 MB** | | |
-
-### 7.3 Very Old Dangling (4-5 months — layered builds)
-
-| Image ID | Size | Created | Notes |
-|---|---|---|---|
-| `43d94af0ab04` | 998 MB | 2026-01-21 | Legacy backend layer |
-| `8d24c9db4f99` | 998 MB | 2026-01-21 | Legacy backend layer |
-| `9c7d669566bf` | 998 MB | 2026-01-21 | Legacy backend layer |
-| `0acc59f7854c` | 998 MB | 2026-01-21 | Legacy backend layer |
-| `250c3b9b0616` | 770 MB | 2026-01-21 | Legacy backend layer |
-| `f2c1724d99b2` | 770 MB | 2026-01-21 | Legacy backend layer |
-| `8f4b534aa888` | 769 MB | 2026-01-21 | Legacy backend layer |
-| `dc403688c047` | 443 MB | 2026-01-18 | Legacy frontend layer |
-| `38de73448d89` | 443 MB | 2026-01-18 | Legacy frontend layer |
-
-Additionally, dozens of smaller layer images (<500MB each) from Jan 2026 remain. Exact count: see `docker system df -v` full output; summarized here.
-
-**Estimated very-old dangling subtotal**: ~3.7+ GB (exact IDs in `docker images -a` output)
-
-### 7.4 Dangling Summary
-
-| Category | Count (est.) | Size (est.) | Verdict |
-|---|---|---|---|
-| Recent (2 months) | 12 | ~5.2 GB | CANDIDATE_DRY_RUN_ONLY |
-| Older (3 months) | 2 | ~678 MB | CANDIDATE_DRY_RUN_ONLY |
-| Very Old (4-5 months) | 7+ | ~3.7+ GB | CANDIDATE_DRY_RUN_ONLY |
-| **Total Dangling** | **~26** | **~9.66 GB** | **CANDIDATE_DRY_RUN_ONLY** |
+All 105 candidate images verified: zero container references (NONE). See Appendix A for full ID-level detail.
 
 ---
 
-## 8. Legacy Named Images (CANDIDATE_DRY_RUN_ONLY)
+## 8. Legacy Named Images (SUPERSEDED -- see Appendix A Section A.3)
 
-Images with explicit repo:tag but NOT used by any running container:
+> **R-5A-R2 NOTE**: The original R-5A listed only 4 legacy images at ~2.01 GB. The exact R-5A-R1 catalog found 5 legacy named images (added `node:18-alpine`). Display sizes sum to 998+443+124+444+127 = 2,136 MB, but due to Docker shared layers the unique reclaimable space is reported by `docker system df` as part of the total 9.663 GB reclaimable image space. See Appendix A.3 for the exact per-image table.
 
-| Image ID | Repository | Tag | Size | Created | Notes |
-|---|---|---|---|---|---|
-| `eaacea1cbf22` | `app_backend` | `latest` | 998 MB | 2026-01-21 | Legacy stack — no container uses this |
-| `6c19708eb35c` | `app_frontend` | `latest` | 443 MB | 2026-01-18 | Legacy stack — no container uses this |
-| `fa659464a114` | `python` | `3.11-slim` | 124 MB | 2026-01-13 | Base image — unused (current stack uses built images) |
-| `7064d8f3d970` | `postgres` | `15` | 444 MB | 2026-01-13 | Unused — current stack uses `postgres:15-alpine` |
-| **Total (4)** | | | **~2.01 GB** | | |
+| Exact Count | Displayed Size Sum | Docker Unique Reclaimable | Verdict |
+|---|---|---|---|
+| 5 | 2,136 MB | included in 9.663 GB total | CANDIDATE_DRY_RUN_ONLY |
 
 ---
 
@@ -217,28 +167,28 @@ ps aux | grep sing-box
 
 ---
 
-## 11. Cleanup Candidate Summary
+## 11. Cleanup Candidate Summary (exact counts from Appendix A)
 
-| Category | Reclaimable | Risk | R-5A Verdict | R-5B Discussion? |
-|---|---|---|---|---|
-| Running Containers (5) | 0 B | HIGH — production | PROTECTED | No |
-| Active Images (5) | 0 B | HIGH — production | PROTECTED | No |
-| Volumes (4, 2 active) | 48.18 MB | MEDIUM — legacy data | PROTECTED | R-6+ only if confirmed dead data |
-| Dangling Images (~26) | **~9.66 GB** | Low — no container references | CANDIDATE_DRY_RUN_ONLY | Yes — safe candidate |
-| Legacy Named Images (4) | **~2.01 GB** | Low — no container references | CANDIDATE_DRY_RUN_ONLY | Yes — safe candidate |
-| Build Cache (149) | **945.4 MB** | Very Low — build only | CANDIDATE_DRY_RUN_ONLY | Yes — safe candidate |
-| sing-box | N/A | HIGH — external service | PROTECTED_NON_MPANGO_SERVICE | Never |
+| Category | Exact Count | Reclaimable (Docker unique) | Risk | R-5A Verdict | R-5B Discussion? |
+|---|---|---|---|---|---|
+| Running Containers (5) | 5 | 0 B | HIGH -- production | PROTECTED | No |
+| Active Images (5) | 5 | 0 B | HIGH -- production | PROTECTED | No |
+| Volumes (4, 2 active) | 4 | 48.18 MB | MEDIUM -- legacy data | PROTECTED | R-6+ only if confirmed dead data |
+| Dangling Images | 100 | included in 9.663 GB | Low -- zero container refs verified | CANDIDATE_DRY_RUN_ONLY | Yes -- safe candidate |
+| Legacy Named Images | 5 | included in 9.663 GB | Low -- zero container refs verified | CANDIDATE_DRY_RUN_ONLY | Yes -- safe candidate |
+| Build Cache (149) | 149 | 945.4 MB | Very Low -- build only | CANDIDATE_DRY_RUN_ONLY | Yes -- safe candidate |
+| sing-box | N/A | N/A | HIGH -- external service | PROTECTED_NON_MPANGO_SERVICE | Never |
 
-**Total reclaimable identified in R-5A**: ~12.6 GB (dangling + legacy images + build cache + inactive volumes). Current disk: 6.1 GB free / 25 GB (75% used).
+**Total reclaimable identified**: 9.663 GB (images: 100 dangling + 5 legacy named) + 945.4 MB (build cache) = 10.6 GB per `docker system df`. Current disk: 6.1 GB free / 25 GB (75% used).
 
 ---
 
 ## 12. R-5A Confirmation
 
-- **No containers stopped, removed, or restarted**: `docker ps -a` only — read-only.
-- **No images removed**: `docker images -a` only — read-only.
-- **No volumes removed**: `docker volume ls` only — read-only.
-- **No networks removed**: `docker network ls` only — read-only.
+- **No containers stopped, removed, or restarted**: `docker ps -a` only -- read-only.
+- **No images removed**: `docker images -a` only -- read-only.
+- **No volumes removed**: `docker volume ls` only -- read-only.
+- **No networks removed**: `docker network ls` only -- read-only.
 - **No prune operations**: No `docker system prune`, `image prune`, `builder prune`, or `volume prune`.
 - **No deployment**: No docker compose up, git pull, or alembic.
 - **No .env read**: No environment files accessed.
@@ -254,9 +204,9 @@ ps aux | grep sing-box
 |---|---|
 | Repo | `phase6-closeout-promotion-2026-05-15` |
 | Branch | `ops/sprint-r2-vps-script-recovery-2026-05-25` |
-| Commit message | `docs(ops): Sprint R-5A cleanup dry-run inventory — exact target catalog, zero deletions` |
+| Commit message | `docs(ops): Sprint R-5A cleanup dry-run inventory -- exact target catalog, zero deletions` |
 | Files changed | New: `ai-ledger/ops/2026-05-27_sprint_r5a_cleanup_dry_run_inventory.md` |
-| Push | **No** — awaiting CTO review |
+| Push | **No** -- awaiting CTO review |
 
 > **R-5A COMPLETE (initial). See Appendix A (R-5A-R1) for exact candidate catalog with per-image container reference verification.**
 
@@ -276,7 +226,7 @@ ps aux | grep sing-box
 3. For each non-active image: `docker ps -a --filter ancestor=<IMAGE_ID>` to verify zero container references.
 4. All 105 non-active images confirmed: **zero container references** (result: NONE for every image).
 
-## A.2 Active Images (PROTECTED — 5 total, 1,059 MB)
+## A.2 Active Images (PROTECTED -- 5 total, 1,059 MB)
 
 These images are in use by running containers. Must NOT be removed.
 
@@ -288,7 +238,7 @@ These images are in use by running containers. Must NOT be removed.
 | 4 | `36a937f48ac7` | `postgres` | `15-alpine` | 274MB | 2025-12-18 | `mpango_prod_postgres` |
 | 5 | `13105d2858de` | `redis` | `7-alpine` | 41.4MB | 2025-11-03 | `mpango_prod_redis` |
 
-## A.3 Legacy Named Images (CANDIDATE — 5 total, 1,338 MB)
+## A.3 Legacy Named Images (CANDIDATE -- 5 total)
 
 Images with explicit repo:tag, NOT referenced by any container. Verified via `docker ps -a --filter ancestor=<ID>`.
 
@@ -300,13 +250,13 @@ Images with explicit repo:tag, NOT referenced by any container. Verified via `do
 | 4 | `7064d8f3d970` | `postgres` | `15` | 444MB | 2026-01-13 | NONE |
 | 5 | `ee77c6cd7c18` | `node` | `18-alpine` | 127MB | 2025-03-27 | NONE |
 
-**Legacy named subtotal**: 5 images, 1,736 MB
+**Legacy named subtotal**: 5 images. Displayed size sum: 998+443+124+444+127 = 2,136 MB. Unique reclaimable space is shared with other image layers per `docker system df` (included in the 9.663 GB total image reclaimable).
 
-## A.4 Dangling Images (CANDIDATE — 100 total)
+## A.4 Dangling Images (CANDIDATE -- 100 total)
 
 All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancestor=<ID>` returns NONE.
 
-### A.4.1 March 2026 (current-gen old builds — 14 images)
+### A.4.1 March 2026 (current-gen old builds -- 14 images)
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -326,7 +276,7 @@ All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancesto
 | 14 | `562d9c89a30d` | 62.6MB | 2026-02-19 | NONE |
 | | **Subtotal** | **6,968 MB** | | |
 
-### A.4.2 January 2026 — legacy app_backend build layers (21 images)
+### A.4.2 January 2026 -- legacy app_backend build layers (21 images)
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -353,7 +303,7 @@ All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancesto
 | 21 | `c45949708ea4` | 1.08GB | 2026-01-18 | NONE |
 | | **Subtotal** | **11,492 MB** | | |
 
-### A.4.3 January 2026 — legacy app_frontend build layers (10 images)
+### A.4.3 January 2026 -- legacy app_frontend build layers (10 images)
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -369,7 +319,7 @@ All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancesto
 | 10 | `743d8bba937a` | 443MB | 2026-01-18 | NONE |
 | | **Subtotal** | **5,595 MB** | | |
 
-### A.4.4 January 2026 — older frontend builds (14 images)
+### A.4.4 January 2026 -- older frontend builds (14 images)
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -389,7 +339,7 @@ All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancesto
 | 14 | `3c39f110628a` | 854MB | 2026-01-18 | NONE |
 | | **Subtotal** | **8,816 MB** | | |
 
-### A.4.5 January 2026 — more legacy layers (13 images)
+### A.4.5 January 2026 -- more legacy layers (13 images)
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -408,7 +358,7 @@ All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancesto
 | 13 | `77ea8d52aaa4` | 298MB | 2026-01-18 | NONE |
 | | **Subtotal** | **5,905 MB** | | |
 
-### A.4.6 January 2026 — earliest layers (14 images)
+### A.4.6 January 2026 -- earliest layers (14 images)
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -428,7 +378,7 @@ All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancesto
 | 14 | `58f8f1a9a61c` | 451MB | 2026-01-18 | NONE |
 | | **Subtotal** | **9,888 MB** | | |
 
-### A.4.7 January 2026 — final batch (8 images)
+### A.4.7 January 2026 -- final batch (8 images)
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -442,7 +392,7 @@ All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancesto
 | 8 | `246abb951ad1` | 458MB | 2026-01-16 | NONE |
 | | **Subtotal** | **3,167 MB** | | |
 
-### A.4.8 January 2026 — earliest proto-builds (6 images)
+### A.4.8 January 2026 -- earliest proto-builds (6 images)
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -454,7 +404,7 @@ All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancesto
 | 6 | `3af6bffe4fb8` | 451MB | 2026-01-16 | NONE |
 | | **Subtotal** | **2,726 MB** | | |
 
-### A.4.9 January 2026 — oldest proto-builds (10 images)
+### A.4.9 January 2026 -- oldest proto-builds (10 images)
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -470,7 +420,7 @@ All have `<none>:<none>` repo:tag. Each verified: `docker ps -a --filter ancesto
 | 10 | `1dbac28b010e` | 298MB | 2026-01-16 | NONE |
 | | **Subtotal** | **3,440 MB** | | |
 
-### A.4.10 January 2026 — final 2 proto-build layers
+### A.4.10 January 2026 -- final 2 proto-build layers
 
 | # | Image ID | Size | Created | Container Refs |
 |---|---|---|---|---|
@@ -517,8 +467,8 @@ R-5B will NOT discuss volume removal. All 4 volumes remain PROTECTED.
 |---|---|
 | `mpango-erp_postgres_data` | PROTECTED (active) |
 | `mpango-erp_redis_data` | PROTECTED (active) |
-| `app_postgres_data` | PROTECTED (legacy, 48.18 MB — deferred beyond R-5B) |
-| `app_redis_data` | PROTECTED (legacy — deferred beyond R-5B) |
+| `app_postgres_data` | PROTECTED (legacy, 48.18 MB -- deferred beyond R-5B) |
+| `app_redis_data` | PROTECTED (legacy -- deferred beyond R-5B) |
 
 ## A.8 Corrected Candidate Summary for R-5B Discussion
 
@@ -529,7 +479,7 @@ R-5B will NOT discuss volume removal. All 4 volumes remain PROTECTED.
 | Dangling images | 100 | shared w/ layers | NONE (verified) | In scope |
 | Build cache | 149 entries | 945.4 MB | 0 active | In scope |
 | Volumes | 4 | N/A | N/A | NOT in scope |
-| **Docker total reclaimable** | — | **9.663 GB (images) + 945.4 MB (cache)** | — | — |
+| **Docker total reclaimable** | -- | **9.663 GB (images) + 945.4 MB (cache)** | -- | -- |
 
 ## A.9 R-5A-R1 Confirmation
 
@@ -546,8 +496,43 @@ R-5B will NOT discuss volume removal. All 4 volumes remain PROTECTED.
 |---|---|
 | Repo | `phase6-closeout-promotion-2026-05-15` |
 | Branch | `ops/sprint-r2-vps-script-recovery-2026-05-25` |
-| Commit message | `docs(ops): R-5A-R1 exact candidate catalog — 105 images verified zero container refs` |
+| Commit message | `docs(ops): R-5A-R1 exact candidate catalog -- 105 images verified zero container refs` |
 | Files changed | `ai-ledger/ops/2026-05-27_sprint_r5a_cleanup_dry_run_inventory.md` (appended Appendix A) |
-| Push | **No** — awaiting CTO review |
+| Push | **No** -- awaiting CTO review |
 
-> **R-5A-R1 COMPLETE. Exact catalog: 105 non-active images (100 dangling + 5 legacy named), each verified with zero container references. Build cache: 945.4 MB, 100% reclaimable. All volumes PROTECTED, not in R-5B scope. Awaiting CTO review.**
+> **R-5A-R1 COMPLETE. Exact catalog: 105 non-active images (100 dangling + 5 legacy named), each verified with zero container references. Build cache: 945.4 MB, 100% reclaimable. All volumes PROTECTED, not in R-5B scope.**
+
+---
+
+## Appendix B: R-5A-R2 Ledger Consistency Correction
+
+**Execution Date**: 2026-05-28 12:45 UTC
+**Status**: LEDGER_NORMALIZED
+**Scope**: Text-only corrections to this ledger file. No VPS connection, no Docker commands, no SSH.
+
+### B.1 Corrections Applied
+
+| Issue | Location | Correction |
+|---|---|---|
+| Old Section 7 had estimate-based dangling tables | Lines 114-169 | Replaced with brief reference to Appendix A exact catalog. Exact count: 100 (not ~26). |
+| Old Section 8 had estimate-based legacy table | Lines 173-183 | Replaced with brief reference to Appendix A.3. Exact count: 5 (not 4). Added `node:18-alpine`. |
+| Section 11 cleanup summary had estimates | Lines 220-232 | Replaced with exact counts from Appendix A. Removed `~`, `est.`, `dozens`. |
+| Section 1 said "Docker images consume ~10GB" | Line 25 | Replaced with exact Docker-reported values (9.663 GB + 945.4 MB). |
+| A.3 header said "1,338 MB" but subtotal said "1,736 MB" | Lines 291, 303 | Header now omits size; subtotal explains displayed-size sum (2,136 MB) vs Docker unique reclaimable (shared layers, included in 9.663 GB). |
+| 26 em-dash characters (U+2014 `--`) | Throughout file | All replaced with ASCII `--`. Verified: 0 non-ASCII characters remaining. |
+
+### B.2 Single Source of Truth
+
+After R-5A-R2, the authoritative candidate catalog exists in **Appendix A only** (sections A.2 through A.10). Sections 7, 8, and 11 in the main body are summary references that point to Appendix A for exact per-image detail.
+
+### B.3 Git Commit (R-5A-R2)
+
+| Item | Value |
+|---|---|
+| Repo | `phase6-closeout-promotion-2026-05-15` |
+| Branch | `ops/sprint-r2-vps-script-recovery-2026-05-25` |
+| Commit message | `docs(ops): R-5A-R2 ledger normalization -- single source of truth, ASCII-clean` |
+| Files changed | `ai-ledger/ops/2026-05-27_sprint_r5a_cleanup_dry_run_inventory.md` |
+| Push | **No** -- awaiting CTO review |
+
+> **R-5A-R2 COMPLETE. Ledger normalized: old estimates removed, single exact catalog in Appendix A, legacy named images count/size reconciled (5 images, 2,136 MB displayed, unique space shared in 9.663 GB Docker total), 0 non-ASCII characters. Awaiting CTO review for R-5B approval.**

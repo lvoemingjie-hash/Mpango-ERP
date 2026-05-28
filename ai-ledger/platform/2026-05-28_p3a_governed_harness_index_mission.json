@@ -1,0 +1,15 @@
+{
+  "phase": "P3-A",
+  "agent": "opencode",
+  "mission": "ai-ledger/platform/2026-05-28_p3a_governed_harness_index_mission.md",
+  "expected_files": [
+    "scripts/platform_harness_index.py",
+    "scripts/test_platform_harness_index.py",
+    "ai-ledger/platform/2026-05-28_p3a_platform_harness_index.md"
+  ],
+  "result": "ai-ledger/platform/2026-05-28_p3a_opencode_result.json",
+  "events": "ai-ledger/platform/2026-05-28_p3a_opencode_events.jsonl",
+  "timeout_seconds": 900,
+  "allow_edits": true,
+  "notes": "P3-A first governed platform task trial. Worker may only add harness index script, test, ledger, result/events."
+}

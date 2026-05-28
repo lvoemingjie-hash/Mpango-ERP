@@ -119,7 +119,8 @@ gate approval.
 ## Report Fields
 
 - **Branch:** `codex/platform-p2b-mission-to-worker-bridge-2026-05-28`
-- **Commit:** pending final commit
+- **Implementation commit:** `a15016bd78440dfbb5f6e4a4cc3b5fd828fe1c3b`
+- **Final branch head:** reported in CTO handoff after ledger finalization
 - **Modified files:** `scripts/platform_mission_worker_bridge.py`, `scripts/test_platform_mission_worker_bridge.py`, `ai-ledger/platform/2026-05-28_p2b_mission_to_worker_bridge.md`
 - **Tests:** `python scripts/test_platform_mission_worker_bridge.py -v`
 - **Report path:** `ai-ledger/platform/2026-05-28_p2b_mission_to_worker_bridge.md`

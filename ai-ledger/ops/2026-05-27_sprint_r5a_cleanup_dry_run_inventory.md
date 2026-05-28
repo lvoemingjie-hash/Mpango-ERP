@@ -7,6 +7,8 @@
 
 > **CRITICAL**: This is a READ-ONLY inventory. No `docker stop/rm/rmi/volume rm/network rm/system prune/image prune/builder prune`. No `git pull`, `alembic`, `docker compose up`, `.env` read, backup file touch.
 
+> **R-5A-R4 AUTHORITATIVE DATA DECLARATION**: The ONLY authoritative data source in this document is **Appendix E (R-5A-R3)**. The true cleanup scope is: **21 true dangling images + 5 legacy named images + 149 build cache entries**. All references to "100 dangling" or "105 candidates" in Appendix A (R-5A-R1) and Appendix B (R-5A-R2) are SUPERSEDED historical errors -- they resulted from `docker image ls -a` conflating 91 intermediate build layers with true dangling images. The 100/105 figures MUST NOT be used for any execution planning.
+
 ---
 
 ## 1. Disk Space Overview

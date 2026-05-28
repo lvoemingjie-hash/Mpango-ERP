@@ -8,6 +8,12 @@
 > **CRITICAL**: This is a PLAN document only. R-5B does NOT execute any cleanup commands. All commands below are proposed for R-5C execution, contingent on CTO approval of this plan.
 >
 > **R-5B-R3 NOTE**: R-5A-R1 through R-5B-R2 are SUPERSEDED. The original R-5A-R1 catalog claimed 100 dangling images; the true count is 21. R-5A-R1 used `docker image ls -a` (includes intermediate build layers) and conflated 79 intermediate layers with true dangling images. All counts below are corrected per R-5A-R3 VPS truth recount.
+>
+> **CURRENT AUTHORIZED COMMAND SET (R-5B-R4)**:
+> - **Phase 1**: `docker builder prune -f` (build cache, 149 entries)
+> - **Phase 2**: `docker rmi <ID>` x21 (exact dangling image IDs from R-5A-R3 Appendix E.3.3)
+> - **Phase 3**: `docker rmi <ID>` x5 (exact legacy named image IDs)
+> - **EXPLICITLY FORBIDDEN**: `docker image prune -f` -- global prune removed from R-5B-R3; exact-ID removal only
 
 ---
 
@@ -217,6 +223,8 @@ docker rmi b8ecc4501e86
 
 **Expected output**: Each `docker rmi` untags and frees layers not shared with remaining images.
 
+> **FAIL-CLOSED RULE (Phase 2)**: Execute each `docker rmi` command individually. After EACH command, check the exit code. If **any** `docker rmi` returns a non-zero exit code: **immediately STOP_AND_REPORT_CTO**. Do NOT execute the next `docker rmi` command. Do NOT proceed to Phase 3. Record the exact error output from the failed command and await CTO instruction. There is NO automatic continue-on-error.
+
 #### Post-Check (Phase 2)
 
 ```bash
@@ -308,6 +316,8 @@ docker rmi ee77c6cd7c18
 ```
 
 **Expected output**: Each `docker rmi` untags and removes layers not shared with other images.
+
+> **FAIL-CLOSED RULE (Phase 3)**: Execute each `docker rmi` command individually. After EACH command, check the exit code. If **any** `docker rmi` returns a non-zero exit code: **immediately STOP_AND_REPORT_CTO**. Do NOT execute the next `docker rmi` command. Record the exact error output from the failed command and await CTO instruction. There is NO automatic continue-on-error.
 
 #### Post-Check (Phase 3)
 
@@ -482,7 +492,7 @@ Before executing any R-5C phase, the operator must confirm ALL of the following 
 ### C.2 Remaining Unchanged
 
 - Three-phase execution order (build cache -> dangling images -> legacy named images)
-- Exact cleanup commands (`docker builder prune -f`, `docker image prune -f`, `docker rmi` x5)
+- ~~Exact cleanup commands (`docker builder prune -f`, `docker image prune -f`, `docker rmi` x5)~~ SUPERSEDED_BY_R5B_R3: `docker image prune -f` replaced by `docker rmi <ID>` x21. Current authorized commands: `docker builder prune -f`, `docker rmi` x21, `docker rmi` x5.
 - Pre-check and post-check commands for containers, disk, Docker space
 - Port 80 HTTP check (valid for nginx reverse proxy)
 - PROTECTED status of all volumes, containers, active images, networks, sing-box, backup file

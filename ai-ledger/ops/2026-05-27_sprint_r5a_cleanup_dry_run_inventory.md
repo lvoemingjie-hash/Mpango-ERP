@@ -535,4 +535,128 @@ After R-5A-R2, the authoritative candidate catalog exists in **Appendix A only**
 | Files changed | `ai-ledger/ops/2026-05-27_sprint_r5a_cleanup_dry_run_inventory.md` |
 | Push | **No** -- awaiting CTO review |
 
-> **R-5A-R2 COMPLETE. Ledger normalized: old estimates removed, single exact catalog in Appendix A, legacy named images count/size reconciled (5 images, 2,136 MB displayed, unique space shared in 9.663 GB Docker total), 0 non-ASCII characters. Awaiting CTO review for R-5B approval.**
+> **R-5A-R2 SUPERSEDED_BY_R5A_R3. Appendix A (R-5A-R1) contained a critical miscount: 100 "dangling" images were actually 21 true dangling + 79 intermediate build layers. See Appendix E for the corrected truth recount.**
+
+---
+
+## Appendix E: R-5A-R3 Truth Reconciliation (VPS Read-Only Recount)
+
+**Execution Date**: 2026-05-28 15:06 UTC
+**Status**: SUPERSEDED_BY_R5A_R3 -- COUNT_CORRECTED
+**Scope**: Read-only SSH to canonical VPS `143.110.177.2`. No modifications. No cleanup commands.
+**Preceding Gate**: R-5B-R2 (`8741c11`) -- CTO rejected pending count reconciliation.
+**Correction Trigger**: CTO detected R-5B-R2 heredoc contained 112 IDs despite claiming 100. Cross-reference with `docker system df` Images Total = 31 revealed fundamental miscount in R-5A-R1.
+
+### E.1 Root Cause of R-5A-R1 Miscount
+
+R-5A-R1 ran `docker images -a` (with `-a` flag) which returns ALL images including intermediate build layers. The output contained 122 rows. R-5A-R1 classified these as:
+
+- 5 active (correct)
+- 5 legacy named (correct)
+- ~100 "dangling" (INCORRECT -- conflated true dangling images with intermediate build layers)
+
+**The `-a` flag includes intermediate layers that are NOT dangling.** `docker image prune` does NOT remove these layers -- only `docker rmi` of their parent images would cascade-remove them.
+
+### E.2 Corrected Count Reconciliation
+
+| Metric | Command | R-5A-R1 Claim | Actual (R-5A-R3) |
+|---|---|---|---|
+| `docker system df` Images Total | `docker system df` | 31 | **31** |
+| Top-level named images | `docker image ls` (no `-a`) | N/A (not queried) | **10** |
+| True dangling images | `docker image ls -f dangling=true` | 100 | **21** |
+| All images incl. intermediate | `docker image ls -a` | 110 | **122** |
+| Intermediate build layers | 122 - 31 | N/A (not distinguished) | **91** |
+| Build cache entries | `docker system df` | 149 | **149** |
+
+**Verification**: 5 (active) + 5 (legacy) + 21 (dangling) = **31** = `docker system df` Images Total. Consistent.
+
+### E.3 Corrected Top-Level Image Catalog (31 images)
+
+Source: `docker system df -v` on `143.110.177.2`, 2026-05-28 15:10 UTC.
+
+#### E.3.1 Active Images (PROTECTED -- 5 total)
+
+| # | Image ID | Repository | Tag | Size | Containers |
+|---|---|---|---|---|---|
+| 1 | `aa7d810494f6` | `mpango-erp-backend` | `latest` | 619 MB | 1 |
+| 2 | `1e0a7c9d2cc6` | `mpango-erp-frontend` | `latest` | 62.6 MB | 1 |
+| 3 | `b76de378d572` | `nginx` | `alpine` | 62.1 MB | 1 |
+| 4 | `36a937f48ac7` | `postgres` | `15-alpine` | 274 MB | 1 |
+| 5 | `13105d2858de` | `redis` | `7-alpine` | 41.4 MB | 1 |
+
+#### E.3.2 Legacy Named Images (CANDIDATE -- 5 total)
+
+| # | Image ID | Repository | Tag | Size | Containers |
+|---|---|---|---|---|---|
+| 1 | `eaacea1cbf22` | `app_backend` | `latest` | 998 MB | 0 |
+| 2 | `6c19708eb35c` | `app_frontend` | `latest` | 443 MB | 0 |
+| 3 | `fa659464a114` | `python` | `3.11-slim` | 124 MB | 0 |
+| 4 | `7064d8f3d970` | `postgres` | `15` | 444 MB | 0 |
+| 5 | `ee77c6cd7c18` | `node` | `18-alpine` | 127 MB | 0 |
+
+#### E.3.3 True Dangling Images (CANDIDATE -- 21 total)
+
+All have `<none>:<none>` repo:tag. Source: `docker image ls -f dangling=true --no-trunc`.
+
+| # | Image ID | Size | Created | Containers |
+|---|---|---|---|---|
+| 1 | `45955866e977` | 619 MB | 2 months ago | 0 |
+| 2 | `122a0d4c7867` | 62.6 MB | 2 months ago | 0 |
+| 3 | `293b68d1c370` | 619 MB | 2 months ago | 0 |
+| 4 | `587f897f8071` | 619 MB | 2 months ago | 0 |
+| 5 | `286acb7e6b9d` | 619 MB | 2 months ago | 0 |
+| 6 | `b95a0bc81cd9` | 62.6 MB | 2 months ago | 0 |
+| 7 | `8244f128221f` | 62.6 MB | 2 months ago | 0 |
+| 8 | `47e863014dbe` | 619 MB | 2 months ago | 0 |
+| 9 | `eac6ffa36989` | 619 MB | 2 months ago | 0 |
+| 10 | `d6515b8ba9ee` | 619 MB | 2 months ago | 0 |
+| 11 | `909b056c210f` | 619 MB | 2 months ago | 0 |
+| 12 | `dcbfb8239c22` | 62.6 MB | 2 months ago | 0 |
+| 13 | `d5f4089faf35` | 616 MB | 3 months ago | 0 |
+| 14 | `562d9c89a30d` | 62.6 MB | 3 months ago | 0 |
+| 15 | `0fc496c615d6` | 1.08 GB | 4 months ago | 0 |
+| 16 | `f45583cac65c` | 443 MB | 4 months ago | 0 |
+| 17 | `c3f6445fba2c` | 1.08 GB | 4 months ago | 0 |
+| 18 | `e923c0c55f1d` | 443 MB | 4 months ago | 0 |
+| 19 | `322bdf3e0aaa` | 1.08 GB | 4 months ago | 0 |
+| 20 | `d363a698cfb4` | 458 MB | 4 months ago | 0 |
+| 21 | `b8ecc4501e86` | 443 MB | 4 months ago | 0 |
+
+### E.4 Concept Clarification: Image vs Layer vs Build Cache
+
+| Concept | Docker Command | Count | Removal Method |
+|---|---|---|---|
+| **Top-level image** (named) | `docker image ls` | 10 | `docker rmi <ID>` |
+| **Top-level image** (dangling) | `docker image ls -f dangling=true` | 21 | `docker image prune` or `docker rmi <ID>` each |
+| **Intermediate build layer** | `docker image ls -a` (diff vs top-level) | 91 | Automatically freed when parent image removed |
+| **Build cache** | `docker system df` Build Cache | 149 | `docker builder prune` |
+
+**Key insight**: Intermediate layers are NOT independent images. They are filesystem layers created during `docker build` that serve as parents of top-level images. They appear in `docker image ls -a` but NOT in `docker image ls` (without `-a`). They are NOT dangling -- they are referenced by child images. When all child images of a layer are removed, Docker automatically garbage-collects the layer.
+
+### E.5 What This Means for R-5C Cleanup
+
+1. `docker image prune` will remove **21** dangling images (not 100)
+2. Removing the 5 legacy named images via `docker rmi` will cascade-free their intermediate layers
+3. `docker builder prune` will remove **149** build cache entries (945.4 MB)
+4. Total reclaimable remains **9.663 GB (images) + 945.4 MB (build cache)** per `docker system df`
+5. The reclaimable amount is unchanged; only our understanding of the image breakdown is corrected
+
+### E.6 Status of Previous Appendices
+
+| Appendix | Status | Reason |
+|---|---|---|
+| A (R-5A-R1) | **SUPERSEDED_BY_R5A_R3** | Miscounted dangling images as 100 instead of 21. Included 79 intermediate layers as "dangling". |
+| B (R-5A-R2) | **SUPERSEDED_BY_R5A_R3** | Normalized incorrect data. Single source of truth was Appendix A which contained wrong counts. |
+| E (R-5A-R3) | **CURRENT -- AUTHORITATIVE** | Ground truth from VPS read-only recount. 31 top-level images = 5 active + 5 legacy + 21 dangling. 91 intermediate layers. 149 build cache entries. |
+
+### E.7 Git Commit (R-5A-R3)
+
+| Item | Value |
+|---|---|
+| Repo | `phase6-closeout-promotion-2026-05-15` |
+| Branch | `ops/sprint-r2-vps-script-recovery-2026-05-25` |
+| Commit message | `docs(ops): R-5A-R3 truth recount -- 21 dangling (not 100), 91 intermediate layers, Appendix A/B SUPERSEDED` |
+| Files changed | `ai-ledger/ops/2026-05-27_sprint_r5a_cleanup_dry_run_inventory.md`, `ai-ledger/ops/2026-05-28_sprint_r5b_cleanup_execution_plan.md` |
+| Push | **No** -- awaiting CTO review |
+
+> **R-5A-R3 COMPLETE. Truth reconciliation: 31 top-level images (5 active + 5 legacy + 21 dangling), 91 intermediate build layers, 149 build cache entries. Appendix A (R-5A-R1) and B (R-5A-R2) SUPERSEDED. Corrected catalog in Appendix E is the new single source of truth.**

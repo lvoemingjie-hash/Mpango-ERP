@@ -1,11 +1,13 @@
 # Sprint R-5B: Cleanup Execution Plan
 
 **Execution Date**: 2026-05-28 14:15 UTC
-**Status**: PLAN_ONLY -- AWAITING CTO APPROVAL (R-5B-R2 exact target lock applied)
+**Status**: PLAN_ONLY -- AWAITING CTO APPROVAL (R-5B-R3 count reconciliation + exact-ID removal strategy)
 **Target**: Canonical India VPS `143.110.177.2` (`ubuntu-s-1vcpu-1gb-blr1-01`)
-**Preceding Gate**: R-5A-R2 `LEDGER_NORMALIZED` (commit `e40b327`, pushed)
+**Preceding Gate**: R-5A-R3 `SUPERSEDED_BY_R5A_R3` (truth recount: 21 dangling, not 100)
 
 > **CRITICAL**: This is a PLAN document only. R-5B does NOT execute any cleanup commands. All commands below are proposed for R-5C execution, contingent on CTO approval of this plan.
+>
+> **R-5B-R3 NOTE**: R-5A-R1 through R-5B-R2 are SUPERSEDED. The original R-5A-R1 catalog claimed 100 dangling images; the true count is 21. R-5A-R1 used `docker image ls -a` (includes intermediate build layers) and conflated 79 intermediate layers with true dangling images. All counts below are corrected per R-5A-R3 VPS truth recount.
 
 ---
 
@@ -13,9 +15,10 @@
 
 | Category | Count | Reclaimable (Docker unique) | R-5C Eligible? |
 |---|---|---|---|
-| Dangling images (`<none>:<none>`) | 100 | Included in 9.663 GB | Yes |
-| Legacy named images | 5 | Included in 9.663 GB | Yes |
-| Build cache entries | 149 | 945.4 MB | Yes |
+| True dangling images (`<none>:<none>`, top-level) | **21** | Included in 9.663 GB | Yes |
+| Legacy named images | **5** | Included in 9.663 GB | Yes |
+| Build cache entries | **149** | 945.4 MB | Yes |
+| Intermediate build layers (91) | **91** | Auto-freed when parents removed | Indirect (freed by Phase 2+3) |
 | Running containers (5) | 5 | 0 B | PROTECTED |
 | Active images (5) | 5 | 0 B | PROTECTED |
 | Volumes (4) | 4 | 48.18 MB | PROTECTED |
@@ -122,11 +125,11 @@ ss -ltnp | grep ':443'
 
 ---
 
-### Phase 2: Dangling Images (100 images)
+### Phase 2: Dangling Images (21 images -- exact-ID removal)
 
-**Rationale**: Dangling images (`<none>:<none>`) are unreferenced build layers. All verified with `docker ps -a --filter ancestor=<ID>` returning NONE in R-5A-R1. Zero container references. `docker image prune` removes only dangling images -- it cannot touch tagged or active images.
+**Rationale**: 21 true dangling images (`<none>:<none>`), verified as top-level via `docker image ls -f dangling=true`. All have zero container references. R-5A-R3 Appendix E.3.3 contains the authoritative catalog.
 
-> **Exact Target Lock**: `docker image prune -f` is a Docker-wide operation that removes ALL currently dangling images. If any new dangling images appeared between R-5A-R1 and R-5C, they would also be removed -- potentially exceeding the R-5A-R1 authorization scope. Therefore, R-5C must verify that the current dangling image ID set is an exact match to the R-5A-R1 catalog before executing `docker image prune -f`.
+> **Strategy Change (R-5B-R3)**: Previous iterations used `docker image prune -f` (global prune of all dangling). R-5B-R3 replaces this with explicit `docker rmi <ID>` for each of the 21 authorized dangling IDs. This ensures only the exact authorized IDs are removed, with zero risk of removing newly-created dangling images.
 
 #### Pre-Check (Phase 2)
 
@@ -134,13 +137,11 @@ ss -ltnp | grep ':443'
 # P2-PRE-01: Verify all 5 containers running and healthy
 docker ps --format 'table {{.Names}}\t{{.Status}}'
 
-# P2-PRE-02: Record dangling image count (must be 100)
+# P2-PRE-02: Record dangling image count (must be 21)
 docker images -f "dangling=true" -q | wc -l
 
-# P2-PRE-03: EXACT ID LOCK -- collect current dangling IDs and diff against R-5A-R1 catalog
-# Step A: Write the authorized R-5A-R1 dangling image IDs to a reference file on VPS.
-# This is the complete set from R-5A-R1 Appendix A sections A.4.1 through A.4.10:
-cat > /tmp/r5a_r1_authorized_dangling_ids.txt << 'AUTHORIZED_EOF'
+# P2-PRE-03: EXACT ID LOCK -- verify current dangling IDs match R-5A-R3 catalog
+cat > /tmp/r5a_r3_authorized_dangling_ids.txt << 'AUTHORIZED_EOF'
 45955866e977
 122a0d4c7867
 293b68d1c370
@@ -155,112 +156,18 @@ d6515b8ba9ee
 dcbfb8239c22
 d5f4089faf35
 562d9c89a30d
-43d94af0ab04
-8d24c9db4f99
-9c7d669566bf
-0acc59f7854c
-250c3b9b0616
-f2c1724d99b2
-8f4b534aa888
-260d3c6b1288
-38de73448d89
-bfda92ceae58
-1197fc9cc1e9
-8bfbb4c27786
-c94066a36aad
-5a0eaedc974e
-813f62cc26d5
-dd383cb55634
-54003690b6d9
-c94e54c50c36
-a8a3a618e918
 0fc496c615d6
-c45949708ea4
-dc403688c047
-22b36114bdd0
-319d261b82f0
-10c88a9a1674
-1d0100e1ce48
-72455b8847bb
-444bd1fceb9d
-d1a684dc46e9
 f45583cac65c
-743d8bba937a
-9c1f263f3a16
-66f141f6bce3
-6657bf592a72
-d58a9f76353a
-bfd1b81c4e5b
-867c1e81347b
-0ebfd8458b19
-bc597e892cb6
-1ce84a5f05e6
-a248c185462f
-1c6e88ea3ae6
-e4940490c593
 c3f6445fba2c
-3c39f110628a
-31155d7f306a
-85069dc8b37c
-c37593ea4c1d
-9bd62bb9745c
-cb649b08bf63
-91d51f432a95
-74bcbd45bac7
-49339eec7bd5
-29d052d1aab2
 e923c0c55f1d
-3be728897d14
-eccdc128546c
-77ea8d52aaa4
-1419058f2445
-307431b5adc5
-bf4e1e8a4b0b
-cf5d59a64752
-089e179ddbe2
-2fda947af8ac
 322bdf3e0aaa
-7ab9ced4e313
-b53064b1f50a
-09fce7640c0f
-55338c78d6d7
-abda8436c092
-d030960f9d2b
-58f8f1a9a61c
-984eeb5dc1fe
-a996f819a23a
-cdded6143ff1
 d363a698cfb4
-022ba8b8c49a
-93b16d243162
-7d37d2fd132d
-246abb951ad1
-a61b4b77381b
-e0d5332d3748
-4db9b209f19e
-3b4f72ce8cab
-3e3c0181edd7
-3af6bffe4fb8
-3d2549d64f00
-7b2cf277a4ee
-bf2839f295fa
 b8ecc4501e86
-6c053077a94a
-638b97d29a53
-94ff3f6866c6
-2cbf448a188f
-1fe40758005e
-1dbac28b010e
-52fd62d6da5a
-4f1c48272ed0
 AUTHORIZED_EOF
 
-# Step B: Collect current dangling IDs on VPS, sort both sets, diff.
 docker images -f "dangling=true" -q | sort > /tmp/r5c_current_dangling_ids.txt
-sort /tmp/r5a_r1_authorized_dangling_ids.txt > /tmp/r5a_r1_authorized_dangling_ids_sorted.txt
-
-# Step C: Diff -- must show ZERO differences (no output = exact match)
-diff /tmp/r5c_current_dangling_ids.txt /tmp/r5a_r1_authorized_dangling_ids_sorted.txt
+sort /tmp/r5a_r3_authorized_dangling_ids.txt > /tmp/r5a_r3_sorted.txt
+diff /tmp/r5c_current_dangling_ids.txt /tmp/r5a_r3_sorted.txt
 echo "Diff exit code: $?"
 # If exit code != 0: STOP_AND_REPORT_CTO
 
@@ -273,22 +180,42 @@ df -h /
 
 **P2 Pre-Check Pass Criteria** (ALL must pass):
 - 5 containers Up/healthy
-- Dangling count = 100
-- **Exact ID lock: `diff` produces ZERO output and exit code 0** (current dangling IDs are an exact match to R-5A-R1 catalog)
+- Dangling count = 21
+- **Exact ID lock: `diff` produces ZERO output and exit code 0**
 - Disk/Docker space recorded
 
-> **P2 ID Lock Failure**: If `diff` shows any differences (extra IDs = new dangling images appeared; missing IDs = previously dangling images were removed or tagged), the operator must **STOP_AND_REPORT_CTO** with the full diff output. Do NOT execute `docker image prune -f`. New dangling images were NOT part of the R-5A-R1 authorization scope and must not be removed without explicit CTO approval.
+> **P2 ID Lock Failure**: If `diff` shows any differences, **STOP_AND_REPORT_CTO** with full diff output. Do NOT proceed.
 
 #### Execution (Phase 2)
 
 ```bash
-# P2-EXEC-01: Remove dangling images only
-# EXECUTION GATE: This command is authorized ONLY IF P2-PRE-03 exact ID lock diff returned 0 differences.
-# If the diff showed any discrepancy, do NOT execute this command.
-docker image prune -f
+# P2-EXEC-01 through P2-EXEC-21: Remove each authorized dangling image by exact ID.
+# Each command removes exactly one authorized image. No global prune.
+# EXECUTION GATE: Authorized ONLY IF P2-PRE-03 exact ID lock diff returned 0.
+docker rmi 45955866e977
+docker rmi 122a0d4c7867
+docker rmi 293b68d1c370
+docker rmi 587f897f8071
+docker rmi 286acb7e6b9d
+docker rmi b95a0bc81cd9
+docker rmi 8244f128221f
+docker rmi 47e863014dbe
+docker rmi eac6ffa36989
+docker rmi d6515b8ba9ee
+docker rmi 909b056c210f
+docker rmi dcbfb8239c22
+docker rmi d5f4089faf35
+docker rmi 562d9c89a30d
+docker rmi 0fc496c615d6
+docker rmi f45583cac65c
+docker rmi c3f6445fba2c
+docker rmi e923c0c55f1d
+docker rmi 322bdf3e0aaa
+docker rmi d363a698cfb4
+docker rmi b8ecc4501e86
 ```
 
-**Expected output**: `Total reclaimed space: portion of 9.663 GB` (dangling layers; some shared with legacy named images so not all 9.663 GB freed here)
+**Expected output**: Each `docker rmi` untags and frees layers not shared with remaining images.
 
 #### Post-Check (Phase 2)
 
@@ -502,8 +429,8 @@ Before executing any R-5C phase, the operator must confirm ALL of the following 
 |---|---|---|---|
 | Before R-5C | -- | -- | 6.1 GB |
 | Phase 1: Build Cache | 149 entries | 945.4 MB | ~7.0 GB |
-| Phase 2: Dangling Images | 100 images | ~8.5 GB (estimate, shared layers) | ~15.5 GB |
-| Phase 3: Legacy Named | 5 images | ~1.1 GB (remaining shared layers) | ~16.7 GB |
+| Phase 2: Dangling Images (exact rmi) | 21 images | portion of 9.663 GB | ~TBD per `docker system df` |
+| Phase 3: Legacy Named (exact rmi) | 5 images | remaining of 9.663 GB | ~16.7 GB |
 
 > Note: Phase-by-phase disk reclamation is approximate because Docker shared layers are freed only when the last image referencing a layer is removed. `docker system df` after each phase gives the authoritative figure.
 
@@ -531,7 +458,8 @@ Before executing any R-5C phase, the operator must confirm ALL of the following 
 | Branch | `ops/sprint-r2-vps-script-recovery-2026-05-25` |
 | R-5B commit | `09d5f8b` -- `docs(ops): R-5B cleanup execution plan -- phased commands, rollback checklist, zero execution` |
 | R-5B-R1 commit | `82d9522` -- `docs(ops): R-5B-R1 plan safety correction -- STOP_AND_REPORT_CTO, sing-box ps+ss, disk pct fix` |
-| R-5B-R2 commit | (this commit) -- `docs(ops): R-5B-R2 exact target lock -- dangling ID diff, build cache active=0 gate` |
+| R-5B-R2 commit | `8741c11` -- `docs(ops): R-5B-R2 exact target lock -- dangling ID diff, build cache active=0 gate` (SUPERSEDED: IDs were wrong) |
+| R-5B-R3 commit | (this commit) -- `docs(ops): R-5B-R3 count reconciliation + exact-ID removal -- 21 dangling (not 100), no docker image prune` |
 | Push | **No** -- awaiting CTO review |
 
 ---
@@ -578,40 +506,11 @@ Before executing any R-5C phase, the operator must confirm ALL of the following 
 | Phase 1 `docker builder prune -f` scope not documented | Phase 1 rationale | Added scope note: `docker builder prune -f` removes ALL inactive Docker build cache (Docker-wide). Docker only prunes inactive cache, so any new active entries are protected. |
 | Phase 1 did not verify build cache active=0 | P1-PRE-05 | Added pre-check: `docker system df -v` to confirm Build Cache Active = 0 before pruning. If Active > 0: STOP_AND_REPORT_CTO. |
 
-### D.2 Authorized Dangling Image ID Set
+### D.2 Authorized Dangling Image ID Set (SUPERSEDED -- contained 112 IDs, not 100)
 
-The 100 dangling image IDs below constitute the complete authorized removal set for Phase 2. They were cataloged in R-5A-R1 Appendix A sections A.4.1 through A.4.10 on the canonical India VPS `143.110.177.2`.
+The R-5B-R2 heredoc listed 112 unique IDs but claimed 100. This was because R-5A-R1's Appendix A sections A.4.1-A.4.10 also contained an inflated count (group subtotals summed to 112 while grand total said 100). **The entire R-5A-R1 catalog is SUPERSEDED by R-5A-R3 Appendix E.3.3 which identifies the true 21 dangling images.**
 
-```
-45955866e977 122a0d4c7867 293b68d1c370 587f897f8071
-286acb7e6b9d b95a0bc81cd9 8244f128221f 47e863014dbe
-eac6ffa36989 d6515b8ba9ee 909b056c210f dcbfb8239c22
-d5f4089faf35 562d9c89a30d 43d94af0ab04 8d24c9db4f99
-9c7d669566bf 0acc59f7854c 250c3b9b0616 f2c1724d99b2
-8f4b534aa888 260d3c6b1288 38de73448d89 bfda92ceae58
-1197fc9cc1e9 8bfbb4c27786 c94066a36aad 5a0eaedc974e
-813f62cc26d5 dd383cb55634 54003690b6d9 c94e54c50c36
-a8a3a618e918 0fc496c615d6 c45949708ea4 dc403688c047
-22b36114bdd0 319d261b82f0 10c88a9a1674 1d0100e1ce48
-72455b8847bb 444bd1fceb9d d1a684dc46e9 f45583cac65c
-743d8bba937a 9c1f263f3a16 66f141f6bce3 6657bf592a72
-d58a9f76353a bfd1b81c4e5b 867c1e81347b 0ebfd8458b19
-bc597e892cb6 1ce84a5f05e6 a248c185462f 1c6e88ea3ae6
-e4940490c593 c3f6445fba2c 3c39f110628a 31155d7f306a
-85069dc8b37c c37593ea4c1d 9bd62bb9745c cb649b08bf63
-91d51f432a95 74bcbd45bac7 49339eec7bd5 29d052d1aab2
-e923c0c55f1d 3be728897d14 eccdc128546c 77ea8d52aaa4
-1419058f2445 307431b5adc5 bf4e1e8a4b0b cf5d59a64752
-089e179ddbe2 2fda947af8ac 322bdf3e0aaa 7ab9ced4e313
-b53064b1f50a 09fce7640c0f 55338c78d6d7 abda8436c092
-d030960f9d2b 58f8f1a9a61c 984eeb5dc1fe a996f819a23a
-cdded6143ff1 d363a698cfb4 022ba8b8c49a 93b16d243162
-7d37d2fd132d 246abb951ad1 a61b4b77381b e0d5332d3748
-4db9b209f19e 3b4f72ce8cab 3e3c0181edd7 3af6bffe4fb8
-3d2549d64f00 7b2cf277a4ee bf2839f295fa b8ecc4501e86
-6c053077a94a 638b97d29a53 94ff3f6866c6 2cbf448a188f
-1fe40758005e 1dbac28b010e 52fd62d6da5a 4f1c48272ed0
-```
+The correct 21 authorized dangling image IDs are in Phase 2 pre-check P2-PRE-03 above and in R-5A-R3 Appendix E.3.3.
 
 ### D.3 Remaining Unchanged
 
@@ -622,4 +521,45 @@ cdded6143ff1 d363a698cfb4 022ba8b8c49a 93b16d243162
 - PROTECTED resource list
 - Three-phase execution order
 
-> **R-5B-R2 COMPLETE (exact target lock). Awaiting CTO approval to proceed to R-5C execution.**
+> **R-5B-R2 SUPERSEDED_BY_R5B_R3. The 112-ID heredoc and `docker image prune` strategy are replaced by R-5B-R3 exact-ID removal.**
+
+---
+
+## Appendix E: R-5B-R3 Count Reconciliation + Exact-ID Removal Strategy
+
+**Execution Date**: 2026-05-28 15:24 UTC
+**Status**: PLAN_CORRECTED
+**Scope**: Read-only SSH to VPS `143.110.177.2` for truth recount. No cleanup commands executed.
+
+### E.1 Root Cause
+
+R-5A-R1 used `docker images -a` which includes 91 intermediate build layers. These layers were misclassified as "dangling images". True dangling count is 21 (via `docker image ls -f dangling=true`), not 100.
+
+| Metric | R-5A-R1 Claim | R-5A-R3 Actual |
+|---|---|---|
+| `docker system df` Images Total | 31 | 31 |
+| True dangling images | 100 | **21** |
+| Legacy named images | 5 | 5 |
+| Active images | 5 | 5 |
+| All images incl. intermediate (`docker image ls -a`) | 110 | **122** |
+| Intermediate build layers | not distinguished | **91** |
+| Build cache entries | 149 | 149 |
+
+### E.2 Strategy Change
+
+| Aspect | R-5B-R2 (old) | R-5B-R3 (current) |
+|---|---|---|
+| Dangling count | 100 | **21** |
+| Removal method | `docker image prune -f` (global) | `docker rmi <ID>` x21 (exact per-ID) |
+| ID lock | Diff against 112-ID heredoc | Diff against 21-ID heredoc |
+| Risk of removing new images | Present (global prune) | Eliminated (explicit IDs only) |
+
+### E.3 Previous Appendices Status
+
+| Appendix | Status |
+|---|---|
+| C (R-5B-R1) | Kept for audit trail |
+| D (R-5B-R2) | SUPERSEDED_BY_R5B_R3 -- contained wrong ID set (112, not 100 or 21) |
+| E (R-5B-R3) | CURRENT -- AUTHORITATIVE |
+
+> **R-5B-R3 COMPLETE. Awaiting CTO approval to proceed to R-5C execution. True counts: 21 dangling + 5 legacy = 26 images to remove via explicit `docker rmi`. No global `docker image prune`.**

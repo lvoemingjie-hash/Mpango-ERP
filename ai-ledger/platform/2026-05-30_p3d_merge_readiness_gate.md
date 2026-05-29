@@ -3,7 +3,17 @@
 Date: 2026-05-30
 Lane: platform-dev / automation / runner / platform infra
 Gate: P3-D
-Status: PASS - ready to commit and push after final staged checks
+Status: PASS - merged and pushed, pending post-push runner smoke at this
+ledger revision
+
+## Required Report Fields
+
+- Branch: platform-dev
+- Commit: cce0be85e71c5e69cc40365f5f1ac3e0fe5fb09e
+- Modified files: 20 platform harness and ledger files
+- Tests: full platform harness suite passed, diff checks passed, GitNexus passed
+- Report path: ai-ledger/platform/2026-05-30_p3d_merge_readiness_gate.md
+- Risk: MEDIUM, platform harness only
 
 ## Branch
 

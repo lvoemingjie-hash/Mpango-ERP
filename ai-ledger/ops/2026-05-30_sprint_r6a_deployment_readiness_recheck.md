@@ -292,41 +292,98 @@ exec uvicorn main:app --host 0.0.0.0 --port 8000
 
 ### 9.2 Candidate Deployment Branch
 
-| Branch | Tip | Commits Ahead of main |
+| Branch | Tip | Commits Ahead of VPS (`02d69c0`) |
 |---|---|---|
-| `codex/product-night-sprint-n-2026-05-22` | `6da4372` | ~100+ commits |
+| `origin/product-dev-recovered` | `b30784b` | 95 commits |
 
-### 9.3 Key Features in Candidate Branch
+> **R-6A-R1 CORRECTION**: Original R-6A incorrectly identified `codex/product-night-sprint-n-2026-05-22` as the candidate. The correct deployment candidate is `origin/product-dev-recovered @ b30784b`.
 
-Major feature areas in the deployment delta:
+### 9.3 Migration Delta
+
+5 new alembic migrations exist in the deployment candidate (not on VPS):
+
+| Migration | Description |
+|---|---|
+| `017_retailer_prices.py` | Phase 3: Retailer pricing schema |
+| `018_platform_p0_lifecycle.py` | Platform: Tenant lifecycle scaffold |
+| `019_platform_audit_logs.py` | Platform: Audit log slice |
+| `020_sys_jobs_audit_columns.py` | Platform: Audit contract columns |
+| `021_tenant_payments_retailer_id_transaction_id.py` | Phase 6: Payment ledger enrichment |
+
+VPS currently has migrations 001-016. Deployment will run 017-021 via `alembic upgrade head` (automatic in entrypoint).
+
+### 9.4 Configuration Delta
+
+| File | Changed Since VPS (`02d69c0`..`b30784b`) |
+|---|---|
+| `docker-compose.prod.yml` | NO (identical) |
+| `docker-compose.yml` | NO (identical) |
+| `backend/docker-entrypoint.sh` | NO (identical) |
+| `.env.example` | NO (identical) |
+
+**Env var assessment**: No new required environment variables added in the delta. The `docker-compose.prod.yml` is unchanged, so all `${VAR:?error}` requirements are identical. Existing `.env` (2948 B) should be sufficient.
+
+### 9.5 Key Features in Candidate Branch
+
+Feature areas in the deployment delta (95 commits):
 - Phase 3: Retailer pricing MVP
 - Phase 4: Wholesaler pricing UI, slim-order flow
 - Phase 5: Payment flow (draft -> confirm -> pay)
 - Phase 6: Credit payment semantics, receivables, collections
-- Finance sprint cycles (sprint c through sprint r): Collection notes, credit-safe model, return context, payment history, URL state, accessibility polish
+- Finance sprint cycles (sprint c through sprint q): Collection notes, credit-safe model, return context, payment history, URL state, accessibility polish
 - Platform track: Multi-tenant scaffold, audit logs, operational reporting
+- MVP closeout acceptance evidence
 
-### 9.4 Deployment Concern
+### 9.6 Deployment Concern
 
-**The candidate branch has ~100+ commits ahead of main, including multiple database migrations (alembic).** The VPS has not been deployed to since March 11. This is a significant delta.
+**The candidate branch has 95 commits ahead of VPS, including 5 new database migrations.** The VPS has not been deployed to since March 11 (~80 days). This is a significant but bounded delta.
 
 **Critical items for R-6B dry-run**:
-1. How many new alembic migrations exist in the candidate branch?
-2. Are all migrations backwards-compatible?
-3. What is the rollback strategy if migrations fail?
-4. Does the candidate branch require new environment variables not in current `.env`?
+1. Verify the 5 new migrations (017-021) are backwards-compatible
+2. Confirm rollback strategy if any migration fails
+3. Verify `.env` has all required vars (no new required vars expected per Section 9.4)
 
 ---
 
 ## 10. Deployment Scripts
 
-**No deployment scripts found** on VPS or in repository. The deployment process is:
-1. `git pull` (or `git checkout <branch>`) on VPS
-2. `docker compose -f docker-compose.prod.yml up -d --build`
+> **R-6A-R1 CORRECTION**: Original R-6A stated "No deployment scripts found on VPS or in repository." This was inaccurate.
 
-The `docker-entrypoint.sh` handles migrations automatically on container start.
+### 10.1 Scripts in OPS Branch
 
-**RECOMMENDATION for R-6B**: A formal `deploy_vps.sh` with `--dry-run` / `--apply` modes should be created to standardize the deployment process with pre-checks, backup, and rollback.
+The OPS branch `ops/sprint-r2-vps-script-recovery-2026-05-25` contains two deployment/ops scripts:
+
+| Script | Commit | Branch | Location |
+|---|---|---|---|
+| `scripts/deploy_vps.sh` | `1dcbf1a` | `ops/sprint-r2-vps-script-recovery-2026-05-25` only | NOT in `product-dev-recovered` |
+| `scripts/safe_cleanup_vps.sh` | `649d64f` | `ops/sprint-r2-vps-script-recovery-2026-05-25` only | NOT in `product-dev-recovered` |
+
+**Key**: These scripts exist in the OPS branch but are NOT present on the VPS filesystem and NOT in the deployment candidate branch (`product-dev-recovered`). They would need to be transferred to VPS separately if used.
+
+### 10.2 `deploy_vps.sh` Capabilities
+
+- Default `DRY_RUN=true` (safe by default)
+- Default target branch: `product-dev-recovered`
+- `--apply` mode requires interactive confirmation ("deploy mpango")
+- Steps: check `.env.prod` -> `git fetch/checkout/pull` -> `docker compose up -d --build` -> `alembic upgrade head`
+- Stop conditions: missing `.env.prod`, git failure, compose failure, migration failure
+- **ISSUE**: Script requires `.env.prod` but VPS uses `.env` (see Section 5.1). Script would fail in `--apply` mode.
+
+### 10.3 `safe_cleanup_vps.sh` Capabilities
+
+- Default `DRY_RUN=true`
+- Only targets resources with Docker Compose label `com.docker.compose.project=mpango`
+- Protects sing-box and other non-Mpango services
+- Volume deletion requires explicit `--delete-volumes` + CTO confirmation
+- Not needed for deployment; relevant for future cleanup operations
+
+### 10.4 VPS Deployment Script Status
+
+**No deployment scripts are installed on the VPS.** The scripts exist in the OPS repo branch but have not been deployed to `/root/mpango-erp/scripts/` on the VPS.
+
+For R-6B dry-run, the deployment would need to either:
+1. Transfer `deploy_vps.sh` to VPS and run `--dry-run` mode, OR
+2. Execute the dry-run steps manually via SSH (safer for first deployment)
 
 ---
 
@@ -345,9 +402,10 @@ The `docker-entrypoint.sh` handles migrations automatically on container start.
 | Backup | PASS | R-4B backup exists (May 26, 10.7 KB) |
 | Cron/automation | PASS | No custom automation |
 | Entrypoint/migration | NOTED | `alembic upgrade head` runs on every start |
-| Deployment delta | NOTED | ~100+ commits, needs R-6B dry-run |
-| Deploy scripts | NOTED | No `deploy_vps.sh` exists |
+| Deployment delta | NOTED | 95 commits, 5 new migrations, needs R-6B dry-run |
+| Deploy scripts | NOTED | `deploy_vps.sh` exists in OPS branch, NOT on VPS, NOT in candidate branch |
 | Build cache | NOTED | 3.486 GB reclaimable, not in R-6 scope |
+| Candidate branch | PASS | `origin/product-dev-recovered @ b30784b` (corrected in R-6A-R1) |
 
 ---
 
@@ -357,14 +415,14 @@ The `docker-entrypoint.sh` handles migrations automatically on container start.
 
 The VPS infrastructure is healthy and ready for deployment. However:
 
-1. **No deployment script exists** -- deployment will be manual `git pull` + `docker compose up --build`
-2. **Deployment delta is large** (~100+ commits, ~80 days since last deploy) -- needs careful dry-run
+1. **`deploy_vps.sh` not on VPS** -- script exists in OPS branch but needs transfer; also has `.env.prod` hard requirement that conflicts with VPS `.env` usage
+2. **Deployment delta is large** (95 commits, 5 new migrations, ~80 days since last deploy) -- needs careful dry-run
 3. **Migration strategy is auto-run** -- `alembic upgrade head` fires on container start, no manual control
 4. **Backup is 4 days old** -- recommend fresh backup before deploy
-5. **`.env.prod` does not exist** -- VPS uses `.env`, which differs from compose file documentation
-6. **New env vars may be needed** -- candidate branch may require env vars not in current `.env`
+5. **`.env.prod` does not exist** -- VPS uses `.env`; `deploy_vps.sh` would fail in `--apply` mode without adaptation
+6. **No new env vars required** -- `docker-compose.prod.yml` and `.env.example` unchanged in candidate branch
 
-**Recommendation**: Proceed to R-6B (Deployment Dry-Run) to assess migration count, env var delta, and create a formal deployment procedure.
+**Recommendation**: Proceed to R-6B (Deployment Dry-Run) with inputs specified in Section 15.
 
 ---
 
@@ -382,5 +440,33 @@ All SSH commands were read-only: `hostname`, `uptime`, `docker ps`, `docker imag
 |---|---|
 | Repo | `phase6-closeout-promotion-2026-05-15` |
 | Branch | `ops/sprint-r2-vps-script-recovery-2026-05-25` |
-| Files changed | New: `ai-ledger/ops/2026-05-30_sprint_r6a_deployment_readiness_recheck.md` |
+| Original commit | `86b9311` (R-6A initial) |
+| R-6A-R1 commit | *(follow-up, this correction)* |
 | Push | **No** -- awaiting CTO review |
+
+---
+
+## 15. R-6B Dry-Run Inputs
+
+> **R-6A-R1 addition**: Precise inputs for R-6B deployment dry-run.
+
+| Parameter | Value |
+|---|---|
+| **Target commit** | `b30784b` (`merge: add mvp closeout acceptance evidence`) |
+| **Target branch** | `origin/product-dev-recovered` |
+| **Deploy method** | Manual SSH steps (recommended for first deploy) |
+| **Deploy script** | `scripts/deploy_vps.sh` available in OPS branch but NOT on VPS; requires `.env.prod` fix |
+| **Fresh backup** | REQUIRED before R-6C -- current backup is 4 days old |
+| **Migrations to run** | `017_retailer_prices`, `018_platform_p0_lifecycle`, `019_platform_audit_logs`, `020_sys_jobs_audit_columns`, `021_tenant_payments_retailer_id_transaction_id` |
+| **New env vars** | NONE expected (compose and .env.example unchanged) |
+| **Rollback concern** | Alembic migrations run on container start; no `downgrade` in entrypoint. Failed migration = container crash loop. Need rollback plan in R-6B. |
+
+### R-6B Dry-Run Steps (Recommended)
+
+1. **Pre-flight**: SSH to VPS, verify all current state (same as R-6A checks)
+2. **Fresh backup**: Run `pg_dump` or backup script, verify output
+3. **Git fetch only**: `git fetch origin product-dev-recovered` (read-only, no checkout)
+4. **Diff review**: `git diff HEAD..origin/product-dev-recovered -- docker-compose.prod.yml backend/alembic/versions/ .env.example backend/docker-entrypoint.sh`
+5. **Migration review**: Read each of the 5 new migration files for destructive operations
+6. **Script review**: Transfer and review `deploy_vps.sh` on VPS (or document manual steps)
+7. **No deployment**: Report findings to CTO, await R-6C approval

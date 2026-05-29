@@ -4,7 +4,8 @@
 
 - **Branch:** `codex/platform-p3b-opencode-timeout-evidence-2026-05-29`
 - **Base:** stacked on `origin/codex/platform-p3a-governed-harness-index-2026-05-28` at `9dbad1b0eaf625f29f103b51d111fc101a037990`
-- **Commit:** pending final CTO commit
+- **Implementation commit:** `61d44542ae8104c434a5b5748d6255711d1415f2`
+- **Final branch head:** recorded in CTO final response after ledger polish commit
 - **Report path:** `ai-ledger/platform/2026-05-29_p3b_opencode_timeout_evidence.md`
 - **Risk:** MEDIUM, platform harness only
 

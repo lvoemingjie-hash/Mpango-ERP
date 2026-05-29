@@ -1,0 +1,15 @@
+{
+  "phase": "P4-B",
+  "agent": "opencode",
+  "mission": "ai-ledger/platform/2026-05-30_p4b_precode_readiness_mission.md",
+  "expected_files": [
+    "ai-ledger/platform/2026-05-30_p4b_precode_readiness_closeout.md",
+    "ai-ledger/platform/2026-05-30_p4b_precode_readiness_mission.md",
+    "ai-ledger/platform/2026-05-30_p4b_precode_readiness_mission.json"
+  ],
+  "result": "ai-ledger/platform/2026-05-30_p4b_opencode_result.json",
+  "events": "ai-ledger/platform/2026-05-30_p4b_opencode_events.jsonl",
+  "timeout_seconds": 600,
+  "allow_edits": true,
+  "notes": "P4-B docs-only pre-code readiness closeout. No scripts or runtime files."
+}

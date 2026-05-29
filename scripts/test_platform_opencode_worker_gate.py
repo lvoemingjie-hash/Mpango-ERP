@@ -115,6 +115,32 @@ sys.exit({exit_code})
     return textwrap.dedent(body)
 
 
+def fake_timeout_script(extra_change=False):
+    body = f"""
+import sys
+import time
+from pathlib import Path
+
+root = Path.cwd()
+(root / 'scripts').mkdir(exist_ok=True)
+(root / 'scripts/out.txt').write_text('partial', encoding='utf-8')
+if {str(extra_change)}:
+    (root / 'scripts/extra.txt').write_text('extra', encoding='utf-8')
+sys.stdout.write('{{"sessionID":"ses_TEST_SESSION_ID","snapshot":"TEST_SNAPSHOT_ID"}}\\n')
+sys.stdout.flush()
+time.sleep(3)
+"""
+    return textwrap.dedent(body)
+
+
+def read_jsonl(path):
+    return [
+        json.loads(line)
+        for line in Path(path).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
 class TestWorkerGate(unittest.TestCase):
     def test_dry_run_creates_no_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -135,6 +161,13 @@ class TestWorkerGate(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertIn("WORKER VERDICT: PASS", result.stdout)
             self.assertTrue(Path(tmpdir, "ai-ledger/platform/events.jsonl").exists())
+            events_text = Path(tmpdir, "ai-ledger/platform/events.jsonl").read_text(
+                encoding="utf-8"
+            )
+            self.assertNotIn('"text":"fake"', events_text)
+            events = read_jsonl(Path(tmpdir, "ai-ledger/platform/events.jsonl"))
+            self.assertTrue(events[0]["redacted"])
+            self.assertEqual(0, events[0]["exit_code"])
 
     def test_nonzero_worker_fails(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -149,12 +182,52 @@ class TestWorkerGate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             init_repo(tmpdir)
             mission(tmpdir)
-            fake = make_fake_opencode(tmpdir, "import time\ntime.sleep(3)\n")
+            fake = make_fake_opencode(tmpdir, fake_timeout_script())
             result = run(
                 gate_cmd(tmpdir, fake, ["--timeout-seconds", "0.2"]),
                 tmpdir,
             )
             self.assertEqual(124, result.returncode)
+            result_json = json.loads(
+                Path(tmpdir, "ai-ledger/platform/result.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual("partial", result_json["status"])
+            self.assertEqual(["scripts/out.txt"], result_json["files_changed"])
+            self.assertIn("timed out", result_json["test_result"])
+
+    def test_timeout_events_jsonl_is_sanitized(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            init_repo(tmpdir)
+            mission(tmpdir)
+            fake = make_fake_opencode(tmpdir, fake_timeout_script())
+            result = run(
+                gate_cmd(tmpdir, fake, ["--timeout-seconds", "0.2"]),
+                tmpdir,
+            )
+            self.assertEqual(124, result.returncode)
+            events_path = Path(tmpdir, "ai-ledger/platform/events.jsonl")
+            events = read_jsonl(events_path)
+            self.assertGreaterEqual(len(events), 2)
+            self.assertTrue(events[0]["redacted"])
+            self.assertTrue(events[0]["timed_out"])
+            events_text = events_path.read_text(encoding="utf-8")
+            self.assertNotIn("ses_TEST_SESSION_ID", events_text)
+            self.assertNotIn("TEST_SNAPSHOT_ID", events_text)
+
+    def test_timeout_extra_actual_file_fails_audit(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            init_repo(tmpdir)
+            mission(tmpdir)
+            fake = make_fake_opencode(tmpdir, fake_timeout_script(extra_change=True))
+            result = run(
+                gate_cmd(tmpdir, fake, ["--timeout-seconds", "0.2"]),
+                tmpdir,
+            )
+            self.assertEqual(124, result.returncode)
+            self.assertIn("unexpected actual changed files", result.stdout)
+            self.assertIn("scripts/extra.txt", result.stdout)
 
     def test_missing_result_fails(self):
         with tempfile.TemporaryDirectory() as tmpdir:

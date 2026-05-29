@@ -151,6 +151,48 @@ def run_worker(cmd, repo_path, timeout_seconds):
         return TIMEOUT_EXIT_CODE, True, time.monotonic() - start, stdout, stderr
 
 
+def write_sanitized_events(path, stdout, stderr, rc, timed_out, elapsed):
+    stdout = stdout or ""
+    stderr = stderr or ""
+    lines = [
+        {
+            "type": "opencode_invocation_summary",
+            "redacted": True,
+            "raw_stdout_committed": False,
+            "raw_stderr_committed": False,
+            "stdout_bytes": len(stdout.encode("utf-8")),
+            "stderr_bytes": len(stderr.encode("utf-8")),
+            "stdout_nonempty_lines": len([line for line in stdout.splitlines() if line.strip()]),
+            "stderr_nonempty_lines": len([line for line in stderr.splitlines() if line.strip()]),
+            "exit_code": rc,
+            "timed_out": timed_out,
+            "elapsed_seconds": round(elapsed, 2),
+        },
+        {
+            "type": "opencode_event_redaction_policy",
+            "redacted": True,
+            "reason": "raw opencode streams may contain high-entropy session identifiers",
+        },
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps(item, sort_keys=True) + "\n" for item in lines),
+        encoding="utf-8",
+    )
+
+
+def write_timeout_result(path, expected, actual, elapsed):
+    files_changed = sorted(set(actual) & set(expected))
+    result = {
+        "status": "partial",
+        "files_changed": files_changed,
+        "test_result": f"opencode timed out after {elapsed:.2f}s before writing result JSON",
+        "blocker": "timeout with missing worker result JSON",
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Mpango platform opencode worker gate")
     parser.add_argument("--repo", required=True)
@@ -213,42 +255,57 @@ def main():
 
     rc, timed_out, elapsed, stdout, stderr = run_worker(cmd, repo_path, args.timeout_seconds)
     events_abs = repo_path / events_path
-    events_abs.parent.mkdir(parents=True, exist_ok=True)
-    events_abs.write_text(stdout or "", encoding="utf-8")
+    write_sanitized_events(events_abs, stdout, stderr, rc, timed_out, elapsed)
     if stderr:
-        print(stderr)
+        print("stderr captured and redacted from events output")
     print(f"opencode_exit={rc} elapsed={elapsed:.2f}s timed_out={timed_out}")
 
     print_section("RESULT VALIDATION")
     result_abs = repo_path / result_path
+    if timed_out and not result_abs.exists():
+        try:
+            actual_for_timeout = changed_paths(repo_path)
+        except RuntimeError as exc:
+            print(f"FAIL could not collect timeout changed files: {exc}")
+            sys.exit(TIMEOUT_EXIT_CODE)
+        write_timeout_result(result_abs, expected, actual_for_timeout, elapsed)
+
     result, issues = validate_result(result_abs)
+    hard_failure = False
     if issues:
         for item in issues:
             print(f"FAIL {item}")
-        sys.exit(1 if rc != TIMEOUT_EXIT_CODE else TIMEOUT_EXIT_CODE)
+        hard_failure = True
 
     changed_by_worker = []
-    for item in result.get("files_changed", []):
-        normalized, issue = validate_contract_path(item, "files_changed")
-        if issue:
-            print(f"FAIL {issue}")
-            sys.exit(1)
-        changed_by_worker.append(normalized)
-    extra_reported = sorted(set(changed_by_worker) - set(expected))
-    if extra_reported:
-        print("FAIL files_changed outside expected: " + ", ".join(extra_reported))
-        sys.exit(1)
-    print("PASS result JSON schema and files_changed allowlist")
+    if result is not None:
+        for item in result.get("files_changed", []):
+            normalized, issue = validate_contract_path(item, "files_changed")
+            if issue:
+                print(f"FAIL {issue}")
+                hard_failure = True
+                continue
+            changed_by_worker.append(normalized)
+        extra_reported = sorted(set(changed_by_worker) - set(expected))
+        if extra_reported:
+            print("FAIL files_changed outside expected: " + ", ".join(extra_reported))
+            hard_failure = True
+        if not hard_failure:
+            print("PASS result JSON schema and files_changed allowlist")
 
     print_section("ARTIFACT AUDIT")
     actual = changed_paths(repo_path)
     unexpected = sorted(set(actual) - set(expected_with_gate_outputs))
     if unexpected:
         print("FAIL unexpected actual changed files: " + ", ".join(unexpected))
-        sys.exit(1)
-    print("PASS actual changed files within expected allowlist")
+        hard_failure = True
+    else:
+        print("PASS actual changed files within expected allowlist")
 
     print_section("WORKER VERDICT")
+    if hard_failure:
+        print("WORKER VERDICT: FAIL")
+        sys.exit(TIMEOUT_EXIT_CODE if rc == TIMEOUT_EXIT_CODE else 1)
     if rc == 0 and result.get("status") == "done":
         print("WORKER VERDICT: PASS")
         sys.exit(0)

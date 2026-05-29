@@ -1,0 +1,6 @@
+{
+  "status": "partial",
+  "files_changed": [],
+  "test_result": "opencode invoked twice through platform_mission_worker_bridge; both runs exited 0 internally but failed worker validation because no result JSON or code changes were produced. CTO completed implementation and verification manually.",
+  "blocker": "opencode did not complete file edits/result output for this mission even with --allow-edits"
+}

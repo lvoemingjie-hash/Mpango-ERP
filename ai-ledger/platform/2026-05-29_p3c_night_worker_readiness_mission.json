@@ -1,0 +1,14 @@
+{
+  "phase": "P3-C",
+  "agent": "opencode",
+  "mission": "ai-ledger/platform/2026-05-29_p3c_night_worker_readiness_mission.md",
+  "expected_files": [
+    "ai-ledger/platform/2026-05-29_p3c_night_worker_readiness_packet.md"
+  ],
+  "result": "ai-ledger/platform/2026-05-29_p3c_opencode_result.json",
+  "events": "ai-ledger/platform/2026-05-29_p3c_opencode_events.jsonl",
+  "timeout_seconds": 900,
+  "allow_edits": true,
+  "risk": "HIGH",
+  "branch": "codex/platform-p3c-night-worker-readiness-2026-05-29"
+}

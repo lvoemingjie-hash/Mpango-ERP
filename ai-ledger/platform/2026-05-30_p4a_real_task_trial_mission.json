@@ -1,0 +1,15 @@
+{
+  "phase": "P4-A",
+  "agent": "opencode",
+  "mission": "ai-ledger/platform/2026-05-30_p4a_real_task_trial_mission.md",
+  "expected_files": [
+    "ai-ledger/platform/2026-05-30_p4a_real_task_trial_goal.md",
+    "ai-ledger/platform/2026-05-30_p4a_real_task_trial_mission.md",
+    "ai-ledger/platform/2026-05-30_p4a_real_task_trial_mission.json"
+  ],
+  "result": "ai-ledger/platform/2026-05-30_p4a_opencode_result.json",
+  "events": "ai-ledger/platform/2026-05-30_p4a_opencode_events.jsonl",
+  "timeout_seconds": 600,
+  "allow_edits": true,
+  "notes": "P4-A docs-only real platform task trial goal. No runtime/product files."
+}

@@ -1,0 +1,2 @@
+{"elapsed_seconds": 107.98, "exit_code": 0, "raw_stderr_committed": false, "raw_stdout_committed": false, "redacted": true, "stderr_bytes": 0, "stderr_nonempty_lines": 0, "stdout_bytes": 72925, "stdout_nonempty_lines": 38, "timed_out": false, "type": "opencode_invocation_summary"}
+{"reason": "raw opencode streams may contain high-entropy session identifiers", "redacted": true, "type": "opencode_event_redaction_policy"}

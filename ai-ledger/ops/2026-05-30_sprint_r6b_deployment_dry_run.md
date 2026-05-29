@@ -1,7 +1,7 @@
 # Sprint R-6B: India VPS Deployment Dry-Run and Backup Gate
 
 **Execution Date**: 2026-05-30 07:04 UTC
-**Status**: DRY_RUN_COMPLETE
+**Status**: DRY_RUN_COMPLETE + R-6B-R1 ROLLBACK CORRECTION
 **Target**: Canonical India VPS `143.110.177.2` (`ubuntu-s-1vcpu-1gb-blr1-01`)
 **Preceding Gate**: R-6A-R1 approved (`b6dab2f`, pushed to origin)
 **Scope**: Fresh DB backup, git fetch (no checkout), diff review, migration review, deploy script review. **NO DEPLOYMENT.**
@@ -304,51 +304,162 @@ STEP 5: Migration verification
   docker exec mpango_prod_postgres psql -U mpango -d mpango_erp -c "\dt t_*.retailer_prices"  # New tenant table
 ```
 
-### 7.3 R-6C Rollback Plan
+### 7.3 R-6C Failure Classification and Rollback Plan
 
-If deployment fails or migration 021 backfill errors:
+> **R-6B-R1 CORRECTION**: Original R-6B rollback plan had a fatal sequencing error: `docker compose down` stops the Postgres container, making subsequent `docker exec -i mpango_prod_postgres psql ...` impossible. This section is completely rewritten with two distinct rollback paths based on failure type.
+
+#### 7.3.1 Failure Type A -- Build/Compose Failure, No Migration Executed
+
+**Trigger**: Docker build fails, `docker compose up` fails before backend entrypoint runs `alembic upgrade head`, or backend image fails to start for non-migration reasons (e.g. import error, config error).
+
+**State**: Database schema is UNCHANGED (still at migrations 001-016). No backup restore needed.
 
 ```
-ROLLBACK STEP 1: Stop failed deployment
+ROLLBACK-A STEP 1: Stop failed containers (if any running)
   cd /root/mpango-erp
-  docker compose -f docker-compose.prod.yml down          # Stop all containers
+  docker compose -f docker-compose.prod.yml stop backend frontend
+  # Postgres and Redis remain running -- they are UNCHANGED
 
-ROLLBACK STEP 2: Revert to previous commit
+ROLLBACK-A STEP 2: Revert git commit
   git checkout main
   git checkout 02d69c0                                    # Return to pre-deploy commit
 
-ROLLBACK STEP 3: Restore database from backup
-  gunzip < /root/mpango-backups/mpango_erp_r6b_20260530_070447.sql.gz | \
-    docker exec -i mpango_prod_postgres psql -U mpango -d mpango_erp
-
-ROLLBACK STEP 4: Rebuild with previous code
+ROLLBACK-A STEP 3: Rebuild with old code
   docker compose -f docker-compose.prod.yml up -d --build
 
-ROLLBACK STEP 5: Verify rollback
-  docker ps --format "table {{.Names}}\t{{.Status}}"
+ROLLBACK-A STEP 4: Verify rollback
+  docker ps --format "table {{.Names}}\t{{.Status}}"    # All 5 healthy
+  docker logs mpango_prod_backend --tail 30              # No migration output expected
+  curl -s http://localhost:8000/health/live
+```
+
+**Downtime**: ~3-5 minutes (rebuild time). No data risk.
+
+#### 7.3.2 Failure Type B -- Migration Executed (Full or Partial), Database Changed
+
+**Trigger**: `alembic upgrade head` ran (fully or partially), migration 021 backfill raised `RuntimeError`, or post-migration backend crash loop.
+
+**State**: Database schema has changed (migrations 017-021 applied, or 017-020 applied with 021 failed). **Backup restore is required.**
+
+**CRITICAL CONSTRAINT**: `pg_restore` via `docker exec` requires the Postgres container to be RUNNING. **Do NOT `docker compose down`.**
+
+```
+ROLLBACK-B STEP 1: Stop ONLY backend + frontend (keep Postgres RUNNING)
+  cd /root/mpango-erp
+  docker compose -f docker-compose.prod.yml stop backend frontend gateway
+  # mpango_prod_postgres MUST remain running for backup restore
+  docker ps --format "table {{.Names}}\t{{.Status}}"    # Verify postgres is Up
+
+ROLLBACK-B STEP 2: Restore database from R-6B fresh backup
+  # Postgres container is running; pipe backup into it
+  gunzip < /root/mpango-backups/mpango_erp_r6b_20260530_070447.sql.gz | \
+    docker exec -i mpango_prod_postgres psql -U mpango -d mpango_erp
+  # Backup was created with --clean --if-exists, so it will DROP and recreate
+
+ROLLBACK-B STEP 3: Verify database restore
+  docker exec mpango_prod_postgres psql -U mpango -d mpango_erp -c "\dt" | head -30
+  docker exec mpango_prod_backend alembic current         # Should show 016 as head
+
+ROLLBACK-B STEP 4: Revert git commit
+  git checkout main
+  git checkout 02d69c0                                    # Return to pre-deploy commit
+
+ROLLBACK-B STEP 5: Rebuild with old code
+  docker compose -f docker-compose.prod.yml up -d --build
+  # Entry point will run alembic upgrade head -- but DB is already at 016 (max for old code)
+  # This is a no-op migration step
+
+ROLLBACK-B STEP 6: Verify rollback
+  docker ps --format "table {{.Names}}\t{{.Status}}"    # All 5 healthy
   docker logs mpango_prod_backend --tail 30
   curl -s http://localhost:8000/health/live
 ```
 
-> **Rollback note**: Migrations 017-020 are committed in their own transactions. If 021 fails, 017-020 are already applied. The backup restore (ROLLBACK STEP 3) will undo ALL 5 migrations, returning the database to the pre-deploy state with migrations 001-016.
+**Downtime**: ~5-8 minutes (restore + rebuild). Database returns to exact pre-deploy state.
 
-### 7.4 R-6C Risk Assessment
+#### 7.3.3 Failure Type C -- Total Catastrophe (Postgres Container Lost)
+
+**Trigger**: Docker volume corrupted, `docker compose down` executed accidentally, or Postgres container cannot start.
+
+**State**: Database is inaccessible or lost. This is the worst case.
+
+```
+ROLLBACK-C STEP 1: Start ONLY Postgres container from old code
+  cd /root/mpango-erp
+  git checkout main && git checkout 02d69c0
+  docker compose -f docker-compose.prod.yml up -d postgres
+  # Wait for Postgres to be ready
+  docker exec mpango_prod_postgres pg_isready -U mpango
+
+ROLLBACK-C STEP 2: Restore database from backup
+  gunzip < /root/mpango-backups/mpango_erp_r6b_20260530_070447.sql.gz | \
+    docker exec -i mpango_prod_postgres psql -U mpango -d mpango_erp
+
+ROLLBACK-C STEP 3: Bring up remaining services
+  docker compose -f docker-compose.prod.yml up -d --build
+
+ROLLBACK-C STEP 4: Verify
+  docker ps --format "table {{.Names}}\t{{.Status}}"
+  curl -s http://localhost:8000/health/live
+```
+
+#### 7.3.4 Rollback Decision Tree
+
+```
+Deployment fails?
+  |
+  +-- Did alembic run? Check: docker logs mpango_prod_backend | grep "migrate"
+  |     |
+  |     +-- NO (build/start failure before entrypoint migration)
+  |     |     -> ROLLBACK TYPE A (git revert + rebuild, no DB restore)
+  |     |
+  |     +-- YES (migration ran fully or partially)
+  |           -> ROLLBACK TYPE B (keep Postgres running, restore backup, git revert, rebuild)
+  |
+  +-- Is Postgres container running?
+        |
+        +-- YES -> ROLLBACK TYPE B
+        |
+        +-- NO (container lost/crashed)
+              -> ROLLBACK TYPE C (start Postgres first, then restore)
+```
+
+### 7.4 R-6C Stop Conditions
+
+> **OPS AI must not self-heal.** On any of the following conditions, immediately STOP and REPORT to CTO. Do not retry, do not restart, do not override.
+
+| # | Condition | Action |
+|---|---|---|
+| 1 | Any `alembic upgrade head` migration failure (non-zero exit, RuntimeError, any exception) | **STOP_AND_REPORT_CTO** |
+| 2 | Backend container enters crash loop (restarts > 2 times within 5 minutes) | **STOP_AND_REPORT_CTO** |
+| 3 | `docker compose up --build` fails (non-zero exit, build error) | **STOP_AND_REPORT_CTO** |
+| 4 | Post-deploy health check failure (`/health/live` non-200 after 3 retries at 10s intervals) | **STOP_AND_REPORT_CTO** |
+| 5 | `docker ps` shows any container not in "Up" state after deploy | **STOP_AND_REPORT_CTO** |
+| 6 | Any unexpected `docker exec` output (wrong alembic version, missing tables) | **STOP_AND_REPORT_CTO** |
+
+**On STOP_AND_REPORT_CTO**: OPS must report the exact failure mode (Type A/B/C per Section 7.3.4), the last successful step, and current container/DB state. OPS must NOT proceed to rollback without CTO direction, unless explicitly pre-authorized.
+
+### 7.5 R-6C Risk Assessment
 
 | Risk | Probability | Impact | Mitigation |
 |---|---|---|---|
-| Migration 021 backfill failure | LOW | MEDIUM (crash loop) | Backup restore plan ready |
-| Build failure (code issue) | LOW | LOW (no DB change) | Revert git checkout |
-| Frontend build failure | LOW | LOW (no DB change) | Revert git checkout |
-| New code runtime error | LOW | LOW-MEDIUM | Revert + backup restore |
+| Migration 021 backfill failure | LOW | MEDIUM (crash loop) | Rollback Type B: restore backup while Postgres running |
+| Build failure (code issue) | LOW | LOW (no DB change) | Rollback Type A: git revert + rebuild |
+| Frontend build failure | LOW | LOW (no DB change) | Rollback Type A |
+| New code runtime error | LOW | LOW-MEDIUM | Rollback Type A or B depending on migration state |
 | Env var missing | NEAR-ZERO | LOW (compose unchanged) | Verified in R-6A-R1 |
+| Postgres container lost during rollback | VERY LOW | HIGH | Rollback Type C: start Postgres first, then restore |
 
-### 7.5 R-6C Estimated Downtime
+### 7.6 R-6C Estimated Downtime
 
-- Build time: ~3-5 minutes (backend + frontend Docker builds)
-- Migration time: ~5-10 seconds (small database, 5 simple migrations)
-- **Total estimated downtime**: ~3-5 minutes (containers restart during build)
+| Scenario | Downtime |
+|---|---|
+| Normal deployment (success) | ~3-5 minutes (build + migrate) |
+| Rollback Type A (build fail, no migration) | ~3-5 minutes (rebuild old code) |
+| Rollback Type B (migration ran, DB restore) | ~5-8 minutes (restore + rebuild) |
+| Rollback Type C (Postgres lost) | ~8-12 minutes (restart Postgres + restore + rebuild) |
 
-### 7.6 R-6C NOT Authorized
+### 7.7 R-6C NOT Authorized
 
 This plan is a **DRAFT**. R-6C requires explicit CTO approval. The following remain in place:
 - Fresh backup at `/root/mpango-backups/mpango_erp_r6b_20260530_070447.sql.gz`
@@ -368,7 +479,7 @@ This plan is a **DRAFT**. R-6C requires explicit CTO approval. The following rem
 | 5 | Migration 021: non-destructive with data integrity guard (safe fail) | GATE PASS (with caveat) |
 | 6 | `deploy_vps.sh` has `.env.prod` blocking issue; recommend manual deploy | NOTED |
 | 7 | No new environment variables required | GATE PASS |
-| 8 | R-6C apply plan drafted; requires CTO approval | PENDING |
+| 8 | R-6C apply plan drafted; rollback plan corrected in R-6B-R1; requires CTO approval | PENDING (R-6B-R1) |
 
 ---
 
@@ -391,7 +502,7 @@ All other commands were read-only: `docker exec ... env | grep`, `docker exec ..
 |---|---|
 | Repo | `phase6-closeout-promotion-2026-05-15` |
 | Branch | `ops/sprint-r2-vps-script-recovery-2026-05-25` |
-| Commit | *(this ledger)* |
+| Commit | `75debae` (R-6B initial) + R-6B-R1 correction (this edit) |
 | Push | **No** -- awaiting CTO review |
 | Preceding commit | `b6dab2f` (R-6A-R1, pushed) |
 
@@ -400,9 +511,10 @@ All other commands were read-only: `docker exec ... env | grep`, `docker exec ..
 ## 11. Commit Chain (Current)
 
 ```
-[TBD]   docs(ops): R-6B deployment dry-run -- backup PASS, fetch PASS, 5 migrations SAFE, R-6C apply plan drafted
-b6dab2f fix(ops): R-6A-R1 -- correct candidate branch, fix deploy script location, add R-6B dry-run inputs  (PUSHED)
-86b9311 docs(ops): R-6A deployment readiness recheck  (PUSHED)
+[TBD]   fix(ops): R-6B-R1 -- rollback plan correction, two-type failure classification, stop conditions
+75debae docs(ops): R-6B deployment dry-run  (NOT PUSHED)
+b6dab2f fix(ops): R-6A-R1  (PUSHED)
+86b9311 docs(ops): R-6A  (PUSHED)
 a63c91e fix(ops): R-5 closeout typo  (PUSHED)
-73ab330 docs(ops): R-5 cleanup closeout  (PUSHED)
+73ab330 docs(ops): R-5 closeout  (PUSHED)
 ```

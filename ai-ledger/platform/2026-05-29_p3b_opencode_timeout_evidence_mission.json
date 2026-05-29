@@ -10,6 +10,7 @@
   "result": "ai-ledger/platform/2026-05-29_p3b_opencode_result.json",
   "events": "ai-ledger/platform/2026-05-29_p3b_opencode_events.jsonl",
   "timeout_seconds": 900,
+  "allow_edits": true,
   "risk": "MEDIUM",
   "branch": "codex/platform-p3b-opencode-timeout-evidence-2026-05-29"
 }

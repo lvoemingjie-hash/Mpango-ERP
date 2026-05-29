@@ -45,7 +45,7 @@ All checks executed in parallel. **ALL PASS.**
 ### 3.1 Backup Execution
 
 ```sh
-docker exec mpango_prod_postgres pg_dump -U mpango -d mpango_erp --clean --if-exutes | \
+docker exec mpango_prod_postgres pg_dump -U mpango -d mpango_erp --clean --if-exists | \
   gzip > /root/mpango-backups/mpango_erp_r6c_20260530_072700.sql.gz
 ```
 

@@ -142,7 +142,7 @@ The following were explicitly prohibited and confirmed NOT executed in every pha
 
 | Image | ID | Size | Container |
 |---|---|---|---|
-| `mpango-erp-backend:latest` | `aa7d10d494f6` | 619 MB | `mpango_prod_backend` |
+| `mpango-erp-backend:latest` | `aa7d810494f6` | 619 MB | `mpango_prod_backend` |
 | `mpango-erp-frontend:latest` | `1e0a7c9d2cc6` | 62.6 MB | `mpango_prod_frontend` |
 | `nginx:alpine` | `b76de378d572` | 62.1 MB | `mpango_prod_gateway` |
 | `postgres:15-alpine` | `36a937f48ac7` | 274 MB | `mpango_prod_postgres` |

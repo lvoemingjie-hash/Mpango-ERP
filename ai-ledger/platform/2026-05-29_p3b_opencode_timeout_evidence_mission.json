@@ -1,0 +1,15 @@
+{
+  "phase": "P3-B",
+  "agent": "opencode",
+  "mission": "ai-ledger/platform/2026-05-29_p3b_opencode_timeout_evidence_mission.md",
+  "expected_files": [
+    "scripts/platform_opencode_worker_gate.py",
+    "scripts/test_platform_opencode_worker_gate.py",
+    "ai-ledger/platform/2026-05-29_p3b_opencode_timeout_evidence.md"
+  ],
+  "result": "ai-ledger/platform/2026-05-29_p3b_opencode_result.json",
+  "events": "ai-ledger/platform/2026-05-29_p3b_opencode_events.jsonl",
+  "timeout_seconds": 900,
+  "risk": "MEDIUM",
+  "branch": "codex/platform-p3b-opencode-timeout-evidence-2026-05-29"
+}

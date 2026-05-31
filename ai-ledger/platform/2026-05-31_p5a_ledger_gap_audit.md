@@ -13,7 +13,7 @@ codex/platform-p5a-ledger-gap-audit-2026-05-31 (isolated from platform-dev)
 
 ## Commit
 
-To be set on commit.
+41bf123
 
 ## Modified Files
 

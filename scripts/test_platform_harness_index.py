@@ -358,5 +358,114 @@ class TestInvalidCliPaths(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
 
+class TestCheckModePassesWithConsistentIndex(unittest.TestCase):
+    def _make_repo(self, tmpdir):
+        scripts_dir = os.path.join(tmpdir, "scripts")
+        os.makedirs(scripts_dir, exist_ok=True)
+        with open(os.path.join(scripts_dir, "platform_alpha.py"), "w") as f:
+            f.write("# alpha\n")
+        with open(os.path.join(scripts_dir, "test_platform_alpha.py"), "w") as f:
+            f.write("# test\n")
+        ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
+        os.makedirs(ledger_dir, exist_ok=True)
+        with open(os.path.join(ledger_dir, "alpha_ledger.md"), "w") as f:
+            f.write("# ledger\n")
+
+    def test_check_passes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_repo(tmpdir)
+            issues, _, _ = harness.check_consistency(tmpdir)
+            self.assertEqual(issues, [])
+
+    def test_check_cli_zero(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_repo(tmpdir)
+            result = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPT_DIR, "platform_harness_index.py"),
+                 "--repo", tmpdir, "--check"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("PASS", result.stdout)
+
+
+class TestCheckModeFailsWithMissingTest(unittest.TestCase):
+    def test_check_detects_missing_test(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir = os.path.join(tmpdir, "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "platform_solo.py"), "w") as f:
+                f.write("# solo\n")
+            issues, _, _ = harness.check_consistency(tmpdir)
+            types = [i["type"] for i in issues]
+            self.assertIn("missing_test", types)
+
+
+class TestCheckModeFailsWithStaleLedger(unittest.TestCase):
+    def test_check_detects_stale_ledger(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
+            os.makedirs(ledger_dir, exist_ok=True)
+            with open(os.path.join(ledger_dir, "stale_ledger.md"), "w") as f:
+                f.write("# stale\n")
+            issues, _, _ = harness.check_consistency(tmpdir)
+            self.assertEqual(issues, [])
+
+
+class TestCheckModeDoesNotWriteFiles(unittest.TestCase):
+    def test_check_no_file_written(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir = os.path.join(tmpdir, "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "platform_x.py"), "w") as f:
+                f.write("# x\n")
+            with open(os.path.join(scripts_dir, "test_platform_x.py"), "w") as f:
+                f.write("# test\n")
+            result = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPT_DIR, "platform_harness_index.py"),
+                 "--repo", tmpdir, "--check"],
+                capture_output=True, text=True,
+            )
+            output_file = os.path.join(tmpdir, "ai-ledger", "platform", "index.md")
+            self.assertFalse(os.path.isfile(output_file))
+
+
+class TestExistingGenerateStillWorks(unittest.TestCase):
+    def test_generate_backward_compat(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            subprocess.run(["git", "init"], cwd=tmpdir, capture_output=True)
+            subprocess.run(
+                ["git", "checkout", "-b", "test-branch"],
+                cwd=tmpdir, capture_output=True,
+            )
+            scripts_dir = os.path.join(tmpdir, "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "platform_compat.py"), "w") as f:
+                f.write("# compat\n")
+            with open(os.path.join(scripts_dir, "test_platform_compat.py"), "w") as f:
+                f.write("# test\n")
+            ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
+            os.makedirs(ledger_dir)
+            subprocess.run(["git", "add", "-A"], cwd=tmpdir, capture_output=True)
+            subprocess.run(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@t.com",
+                 "commit", "-m", "init"],
+                cwd=tmpdir, capture_output=True,
+            )
+            result = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPT_DIR, "platform_harness_index.py"),
+                 "--repo", tmpdir,
+                 "--output", "ai-ledger/platform/index.md"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(
+                os.path.isfile(os.path.join(tmpdir, "ai-ledger", "platform", "index.md"))
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

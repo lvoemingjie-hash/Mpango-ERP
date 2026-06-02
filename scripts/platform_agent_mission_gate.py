@@ -120,11 +120,14 @@ def validate_mission(data):
     if not isinstance(phase, str) or not phase.strip():
         failures.append("'phase' must be a non-empty string")
     elif not (
-        phase.startswith("P3-")
+        phase.startswith("P1-")
         or phase.startswith("P2-")
-        or phase.startswith("P1-")
+        or phase.startswith("P3-")
+        or phase.startswith("P4-")
+        or phase.startswith("P5-")
+        or phase.startswith("P6-")
     ):
-        failures.append(f"'phase' '{phase}' must begin with P3-, P2-, or P1-")
+        failures.append(f"'phase' '{phase}' must begin with P1- through P6-")
 
     agent = data["agent"]
     if not isinstance(agent, str) or agent not in VALID_AGENTS:

@@ -15,7 +15,7 @@
 
 ## Tests
 
-- `python scripts/test_platform_harness_index.py` — 46/46 PASS (34 existing + 6 new stale-index + 6 prior check-mode)
+- `python scripts/test_platform_harness_index.py` — 58/58 PASS (34 existing + 4 pairing/existence + 12 stale-index + 8 path validation)
 
 ## Report Path
 

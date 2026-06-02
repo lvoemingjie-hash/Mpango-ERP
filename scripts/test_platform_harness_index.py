@@ -679,5 +679,59 @@ class TestStaleIndexDetection(unittest.TestCase):
             self.assertIn("stale_index_new_ledger", types)
 
 
+class TestCheckIndexPathValidation(unittest.TestCase):
+    """--check-index must reject unsafe paths, same rules as --output."""
+
+    def _run_check_index(self, check_index_path):
+        return subprocess.run(
+            [sys.executable,
+             os.path.join(SCRIPT_DIR, "platform_harness_index.py"),
+             "--repo", REPO_ROOT,
+             "--check", "--check-index", check_index_path],
+            capture_output=True, text=True,
+        )
+
+    def test_windows_drive_rejected(self):
+        result = self._run_check_index("C:/Windows/win.ini")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("drive", result.stdout)
+
+    def test_absolute_path_rejected(self):
+        result = self._run_check_index("/tmp/foo.md")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("absolute", result.stdout)
+
+    def test_traversal_rejected(self):
+        result = self._run_check_index("../foo.md")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be under", result.stdout)
+
+    def test_outside_prefix_rejected(self):
+        result = self._run_check_index("docs/ai/PROJECT.md")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be under", result.stdout)
+
+    def test_dot_segment_rejected(self):
+        result = self._run_check_index("ai-ledger/platform/./foo.md")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_dotdot_segment_rejected(self):
+        result = self._run_check_index("ai-ledger/platform/../foo.md")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_non_md_rejected(self):
+        result = self._run_check_index("ai-ledger/platform/index.txt")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(".md", result.stdout)
+
+    def test_valid_path_accepted(self):
+        """Valid --check-index path should not cause a validation error."""
+        result = self._run_check_index("ai-ledger/platform/harness_index.md")
+        # May fail for other reasons (file not found) but should not
+        # fail with a path validation error.
+        if "invalid" in result.stdout.lower() or "rejected" in result.stdout.lower():
+            self.fail(f"Valid path was rejected: {result.stdout}")
+
+
 if __name__ == "__main__":
     unittest.main()

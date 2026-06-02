@@ -324,6 +324,11 @@ def main():
 
     if args.check:
         index_artifact = getattr(args, "check_index", None)
+        if index_artifact:
+            valid, reason = validate_output_path(index_artifact)
+            if not valid:
+                print(f"ERROR: invalid --check-index path '{index_artifact}': {reason}")
+                sys.exit(1)
         issues, scripts, ledgers = check_consistency(repo_path, index_artifact)
         if hasattr(args, 'json') and args.json:
             print(json.dumps({"issues": issues, "count": len(issues)}, indent=2))

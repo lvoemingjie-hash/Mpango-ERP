@@ -13,7 +13,7 @@ codex/platform-p5bcd-platform-infra-batch-2026-05-31 (isolated from P5-A)
 
 ## Final Commit
 
-7609d63e7fabf1e383c12bbb9c4596813ee9af20
+(Updated by R3 commit below.)
 
 ## Per-Slice Commits
 
@@ -25,6 +25,7 @@ codex/platform-p5bcd-platform-infra-batch-2026-05-31 (isolated from P5-A)
 | Batch | c804c32 | docs: add P5-B/C/D batch readiness packet |
 | R1 | a8d13c3 | fix(platform): P5-BCD-R1 evidence and harness index semantics |
 | R2 | 7609d63 | fix(platform): P5-BCD-R2 --check-index explicit artifact, not auto-scan |
+| R3 | (this commit) | fix(platform): P5-BCD-R3 --check-index path safety + evidence polish |
 
 ## Modified Files
 
@@ -47,10 +48,10 @@ codex/platform-p5bcd-platform-infra-batch-2026-05-31 (isolated from P5-A)
 |-------|-------|--------|
 | test_platform_batch_mission_check.py | 12 | PASS |
 | test_platform_worker_reliability_summary.py | 11 | PASS |
-| test_platform_harness_index.py | 50 | PASS (34 existing + 4 pairing/existence + 12 stale-index with --check-index) |
+| test_platform_harness_index.py | 58 | PASS (34 existing + 4 pairing/existence + 12 stale-index + 8 path validation) |
 | test_platform_agent_mission_gate.py | 54 | PASS (regression) |
 | test_platform_opencode_worker_gate.py | 10 | PASS (regression) |
-| **Total** | **137** | **ALL PASS** |
+| **Total** | **145** | **ALL PASS** |
 
 ## Report Paths
 

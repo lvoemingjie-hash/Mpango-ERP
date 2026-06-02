@@ -13,7 +13,7 @@ codex/platform-p5bcd-platform-infra-batch-2026-05-31 (isolated from P5-A)
 
 ## Final Commit
 
-(Updated by R2 commit below.)
+7609d63e7fabf1e383c12bbb9c4596813ee9af20
 
 ## Per-Slice Commits
 
@@ -24,7 +24,7 @@ codex/platform-p5bcd-platform-infra-batch-2026-05-31 (isolated from P5-A)
 | P5-D | fe8c22a | feat(platform): add P5-D harness index --check mode |
 | Batch | c804c32 | docs: add P5-B/C/D batch readiness packet |
 | R1 | a8d13c3 | fix(platform): P5-BCD-R1 evidence and harness index semantics |
-| R2 | (this commit) | fix(platform): P5-BCD-R2 --check-index explicit artifact, not auto-scan |
+| R2 | 7609d63 | fix(platform): P5-BCD-R2 --check-index explicit artifact, not auto-scan |
 
 ## Modified Files
 

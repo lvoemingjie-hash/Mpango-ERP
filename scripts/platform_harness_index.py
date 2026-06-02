@@ -170,6 +170,129 @@ def generate_index(branch, commit, output_path, scripts, ledgers):
     return "\n".join(lines)
 
 
+def find_existing_indices(ledger_dir):
+    """Find existing harness index markdown files in the ledger directory."""
+    indices = []
+    if not os.path.isdir(ledger_dir):
+        return indices
+    for name in sorted(os.listdir(ledger_dir)):
+        if name.endswith(".md") and "harness_index" in name.lower():
+            indices.append(os.path.join(ledger_dir, name))
+    return indices
+
+
+def check_index_staleness(index_path, scripts, ledgers):
+    """Compare an existing index artifact against current harness state.
+
+    Detects:
+    - Scripts on disk not listed in the index (new since last generation).
+    - Tests on disk not listed in the index.
+    - Ledgers on disk not listed in the index.
+    """
+    issues = []
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return [{"type": "index_read_error", "path": index_path, "detail": str(e)}]
+
+    for script_path, test_path in scripts:
+        if script_path not in content:
+            issues.append({
+                "type": "stale_index_new_script",
+                "path": script_path,
+                "detail": "script on disk but not in index",
+            })
+        if test_path != "MISSING" and test_path not in content:
+            issues.append({
+                "type": "stale_index_new_test",
+                "path": test_path,
+                "detail": "test on disk but not in index",
+            })
+
+    for ledger in ledgers:
+        if ledger not in content:
+            issues.append({
+                "type": "stale_index_new_ledger",
+                "path": ledger,
+                "detail": "ledger on disk but not in index",
+            })
+
+    return issues
+
+
+def check_consistency(repo_root, index_artifact=None):
+    """Check harness index consistency. Returns list of issues.
+
+    Checks:
+    1. Script/test pairing and existence.
+    2. Ledger file existence.
+    3. If index_artifact is provided, stale index detection against that
+       specific generated index file.
+
+    Default mode (no index_artifact) is pairing/existence only.  Not every
+    ``*harness_index*.md`` in ``ai-ledger/platform/`` is a canonical generated
+    index; stale detection requires an explicit artifact path.
+    """
+    scripts_dir = os.path.join(repo_root, "scripts")
+    ledger_dir = os.path.join(repo_root, "ai-ledger", "platform")
+    issues = []
+
+    scripts = scan_harness_scripts(scripts_dir)
+    ledgers = scan_platform_ledgers(ledger_dir)
+
+    for script_path, test_path in scripts:
+        script_abs = os.path.join(repo_root, normalize_path(script_path))
+        if not os.path.isfile(script_abs):
+            issues.append({"type": "missing_script", "path": script_path})
+
+        if test_path == "MISSING":
+            issues.append({"type": "missing_test", "script": script_path})
+        else:
+            test_abs = os.path.join(repo_root, normalize_path(test_path))
+            if not os.path.isfile(test_abs):
+                issues.append({"type": "missing_test", "path": test_path})
+
+    for ledger_path in ledgers:
+        ledger_abs = os.path.join(repo_root, normalize_path(ledger_path))
+        if not os.path.isfile(ledger_abs):
+            issues.append({"type": "missing_ledger", "path": ledger_path})
+
+    # Stale index detection: only when an explicit artifact is provided
+    if index_artifact:
+        idx_abs = os.path.join(repo_root, normalize_path(index_artifact))
+        if not os.path.isfile(idx_abs):
+            issues.append({
+                "type": "missing_index",
+                "path": index_artifact,
+                "detail": "specified index artifact not found",
+            })
+        else:
+            stale_issues = check_index_staleness(idx_abs, scripts, ledgers)
+            issues.extend(stale_issues)
+
+    return issues, scripts, ledgers
+
+
+def format_check_human(issues, scripts, ledgers):
+    if not issues:
+        lines = ["Harness index consistency: PASS"]
+        lines.append(f"  Scripts: {len(scripts)}")
+        lines.append(f"  Ledgers: {len(ledgers)}")
+        lines.append(f"  Issues:  0")
+        return "\n".join(lines)
+
+    lines = [f"Harness index consistency: FAIL ({len(issues)} issue(s))"]
+    for issue in issues:
+        detail = issue.get("path") or issue.get("script") or ""
+        extra = issue.get("detail", "")
+        if extra:
+            lines.append(f"  [{issue['type']}] {detail} ({extra})")
+        else:
+            lines.append(f"  [{issue['type']}] {detail}")
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Mpango ERP Platform Harness Index Generator"
@@ -181,17 +304,47 @@ def main():
     )
     parser.add_argument(
         "--output",
-        required=True,
+        required=False,
         help="Output path for the generated index (must be under ai-ledger/platform/)",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check consistency only; do not write files",
+    )
+    parser.add_argument(
+        "--check-index",
+        required=False,
+        help="Path to a generated index artifact to check for staleness "
+             "(used with --check; e.g. ai-ledger/platform/harness_index.md)",
+    )
     args = parser.parse_args()
+
+    repo_path = os.path.abspath(args.repo)
+
+    if args.check:
+        index_artifact = getattr(args, "check_index", None)
+        if index_artifact:
+            valid, reason = validate_output_path(index_artifact)
+            if not valid:
+                print(f"ERROR: invalid --check-index path '{index_artifact}': {reason}")
+                sys.exit(1)
+        issues, scripts, ledgers = check_consistency(repo_path, index_artifact)
+        if hasattr(args, 'json') and args.json:
+            print(json.dumps({"issues": issues, "count": len(issues)}, indent=2))
+        else:
+            print(format_check_human(issues, scripts, ledgers))
+        sys.exit(0 if not issues else 1)
+
+    if not args.output:
+        print("Error: --output is required when not using --check", file=sys.stderr)
+        sys.exit(1)
 
     valid, reason = validate_output_path(args.output)
     if not valid:
         print(f"ERROR: invalid output path '{args.output}': {reason}")
         sys.exit(1)
 
-    repo_path = os.path.abspath(args.repo)
     scripts_dir = os.path.join(repo_path, "scripts")
     ledger_dir = os.path.join(repo_path, "ai-ledger", "platform")
 

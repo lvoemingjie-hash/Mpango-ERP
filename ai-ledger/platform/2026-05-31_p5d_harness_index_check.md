@@ -28,12 +28,13 @@ Low. Additive change only — added `--check` flag, `check_consistency()`, `find
 ## Implementation Summary
 
 Added `--check` CLI flag that:
-1. Scans for script/test pairing and file existence issues.
-2. Detects stale index artifacts by comparing current scripts/tests/ledgers against any existing `*harness_index*.md` in `ai-ledger/platform/`. Reports new scripts, tests, or ledgers that exist on disk but are not listed in the index.
+1. Scans for script/test pairing and file existence issues (default mode).
+2. With optional `--check-index <path>`, detects stale index artifacts by comparing current scripts/tests/ledgers against a specific generated index file. Not every `*harness_index*.md` in `ai-ledger/platform/` is a canonical generated index; stale detection requires an explicit artifact path.
 
 Exits 0 when consistent, nonzero with diagnostics when issues found. Existing generate mode unchanged.
 
 ## Known Limitations
 
-- Stale index detection checks whether current scripts/tests/ledgers are mentioned in the existing index; it does not detect entries in the index that reference files removed from disk (reverse direction).
+- Default `--check` is pairing/existence only. Stale detection requires explicit `--check-index <path>`.
+- Stale detection checks whether current scripts/tests/ledgers are mentioned in the specified index; does not detect entries in the index that reference files removed from disk (reverse direction).
 - Does not validate index content beyond structural presence checks.

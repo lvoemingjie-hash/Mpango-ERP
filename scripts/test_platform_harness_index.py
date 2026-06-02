@@ -473,7 +473,12 @@ class TestExistingGenerateStillWorks(unittest.TestCase):
 
 
 class TestStaleIndexDetection(unittest.TestCase):
-    """Tests for real stale index detection via check_index_staleness."""
+    """Tests for stale index detection via --check-index option.
+
+    Default --check is pairing/existence only.  Stale detection requires an
+    explicit index artifact path via --check-index (or the index_artifact
+    parameter to check_consistency).
+    """
 
     def _make_repo_with_index(self, tmpdir):
         """Create a repo with scripts, ledgers, and a generated index."""
@@ -500,68 +505,164 @@ class TestStaleIndexDetection(unittest.TestCase):
             f.write(index_content)
         return scripts_dir, ledger_dir
 
-    def test_fresh_index_not_stale(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            self._make_repo_with_index(tmpdir)
-            issues, _, _ = harness.check_consistency(tmpdir)
-            stale = [i for i in issues if "stale_index" in i["type"]]
-            self.assertEqual(stale, [])
-
-    def test_new_script_not_in_index_detected(self):
+    def test_default_check_ignores_index_files(self):
+        """Default --check is pairing/existence only; does NOT scan for
+        *harness_index*.md files in the ledger directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             scripts_dir, _ = self._make_repo_with_index(tmpdir)
-            # Add a new script not in the existing index
+            # Add a new script not in the index
             with open(os.path.join(scripts_dir, "platform_beta.py"), "w") as f:
                 f.write("# beta\n")
             with open(os.path.join(scripts_dir, "test_platform_beta.py"), "w") as f:
                 f.write("# test beta\n")
+            # Without --check-index, no stale issues reported
             issues, _, _ = harness.check_consistency(tmpdir)
+            stale = [i for i in issues if "stale_index" in i["type"]]
+            self.assertEqual(stale, [])
+
+    def test_check_index_detects_new_script(self):
+        """With explicit index_artifact, new scripts are detected."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir, _ = self._make_repo_with_index(tmpdir)
+            with open(os.path.join(scripts_dir, "platform_beta.py"), "w") as f:
+                f.write("# beta\n")
+            with open(os.path.join(scripts_dir, "test_platform_beta.py"), "w") as f:
+                f.write("# test beta\n")
+            issues, _, _ = harness.check_consistency(
+                tmpdir, index_artifact="ai-ledger/platform/harness_index.md",
+            )
             stale = [i for i in issues if "stale_index" in i["type"]]
             self.assertTrue(len(stale) > 0)
             paths = [i["path"] for i in stale]
             self.assertIn("scripts/platform_beta.py", paths)
-            self.assertIn("scripts/test_platform_beta.py", paths)
 
-    def test_new_ledger_not_in_index_detected(self):
+    def test_check_index_detects_new_ledger(self):
+        """With explicit index_artifact, new ledgers are detected."""
         with tempfile.TemporaryDirectory() as tmpdir:
             _, ledger_dir = self._make_repo_with_index(tmpdir)
-            # Add a new ledger not in the existing index
             with open(os.path.join(ledger_dir, "beta_ledger.md"), "w") as f:
                 f.write("# beta ledger\n")
-            issues, _, _ = harness.check_consistency(tmpdir)
+            issues, _, _ = harness.check_consistency(
+                tmpdir, index_artifact="ai-ledger/platform/harness_index.md",
+            )
             stale = [i for i in issues if "stale_index" in i["type"]]
             self.assertTrue(len(stale) > 0)
             paths = [i["path"] for i in stale]
             self.assertIn("ai-ledger/platform/beta_ledger.md", paths)
 
-    def test_no_index_no_stale_issues(self):
+    def test_fresh_index_no_stale_issues(self):
+        """Fresh index matches current state: no stale issues."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            scripts_dir = os.path.join(tmpdir, "scripts")
-            os.makedirs(scripts_dir)
-            with open(os.path.join(scripts_dir, "platform_solo.py"), "w") as f:
-                f.write("# solo\n")
-            with open(os.path.join(scripts_dir, "test_platform_solo.py"), "w") as f:
-                f.write("# test\n")
-            ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
-            os.makedirs(ledger_dir)
-            issues, _, _ = harness.check_consistency(tmpdir)
+            self._make_repo_with_index(tmpdir)
+            issues, _, _ = harness.check_consistency(
+                tmpdir, index_artifact="ai-ledger/platform/harness_index.md",
+            )
             stale = [i for i in issues if "stale_index" in i["type"]]
             self.assertEqual(stale, [])
 
-    def test_stale_index_cli_nonzero(self):
+    def test_missing_index_artifact_reported(self):
+        """Nonexistent --check-index path yields a missing_index issue."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir = os.path.join(tmpdir, "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "platform_x.py"), "w") as f:
+                f.write("# x\n")
+            with open(os.path.join(scripts_dir, "test_platform_x.py"), "w") as f:
+                f.write("# test\n")
+            issues, _, _ = harness.check_consistency(
+                tmpdir, index_artifact="ai-ledger/platform/nonexistent.md",
+            )
+            types = [i["type"] for i in issues]
+            self.assertIn("missing_index", types)
+
+    def test_cli_check_index_flag(self):
+        """CLI --check --check-index detects stale index."""
         with tempfile.TemporaryDirectory() as tmpdir:
             scripts_dir, _ = self._make_repo_with_index(tmpdir)
-            # Add a new script not in the existing index
             with open(os.path.join(scripts_dir, "platform_gamma.py"), "w") as f:
                 f.write("# gamma\n")
+            result = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPT_DIR, "platform_harness_index.py"),
+                 "--repo", tmpdir, "--check",
+                 "--check-index", "ai-ledger/platform/harness_index.md"],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("stale_index", result.stdout)
+
+    def test_cli_check_without_index_passes(self):
+        """CLI --check alone (no --check-index) passes even with stale
+        index files present in the ledger directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir, _ = self._make_repo_with_index(tmpdir)
+            with open(os.path.join(scripts_dir, "platform_gamma.py"), "w") as f:
+                f.write("# gamma\n")
+            with open(os.path.join(scripts_dir, "test_platform_gamma.py"), "w") as f:
+                f.write("# test gamma\n")
             result = subprocess.run(
                 [sys.executable,
                  os.path.join(SCRIPT_DIR, "platform_harness_index.py"),
                  "--repo", tmpdir, "--check"],
                 capture_output=True, text=True,
             )
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("stale_index", result.stdout)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("PASS", result.stdout)
+
+    def test_multiple_harness_index_files_not_treated_as_stale(self):
+        """Multiple *harness_index*.md files in ledger dir are NOT treated
+        as canonical indices by default --check."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir = os.path.join(tmpdir, "scripts")
+            os.makedirs(scripts_dir, exist_ok=True)
+            with open(os.path.join(scripts_dir, "platform_alpha.py"), "w") as f:
+                f.write("# alpha\n")
+            with open(os.path.join(scripts_dir, "test_platform_alpha.py"), "w") as f:
+                f.write("# test\n")
+            ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
+            os.makedirs(ledger_dir, exist_ok=True)
+            # Create multiple harness_index*.md files (not canonical indices)
+            with open(os.path.join(ledger_dir, "2026-05-28_harness_index_mission.md"), "w") as f:
+                f.write("# Mission doc, not an index\n")
+            with open(os.path.join(ledger_dir, "2026-05-28_harness_index.md"), "w") as f:
+                f.write("# Old generated index with stale content\n")
+            with open(os.path.join(ledger_dir, "alpha_ledger.md"), "w") as f:
+                f.write("# ledger\n")
+            # Default --check should PASS: only pairing/existence checked
+            issues, _, _ = harness.check_consistency(tmpdir)
+            self.assertEqual(issues, [])
+
+    def test_explicit_index_checks_only_that_file(self):
+        """--check-index targets one specific file, not all *harness_index*.md."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir = os.path.join(tmpdir, "scripts")
+            os.makedirs(scripts_dir, exist_ok=True)
+            with open(os.path.join(scripts_dir, "platform_alpha.py"), "w") as f:
+                f.write("# alpha\n")
+            with open(os.path.join(scripts_dir, "test_platform_alpha.py"), "w") as f:
+                f.write("# test\n")
+            with open(os.path.join(scripts_dir, "platform_beta.py"), "w") as f:
+                f.write("# beta\n")
+            with open(os.path.join(scripts_dir, "test_platform_beta.py"), "w") as f:
+                f.write("# test beta\n")
+            ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
+            os.makedirs(ledger_dir, exist_ok=True)
+            # Old index only mentions alpha
+            with open(os.path.join(ledger_dir, "harness_index.md"), "w") as f:
+                f.write("# Index\nscripts/platform_alpha.py\n")
+            # Other harness_index file mentions beta (not checked)
+            with open(os.path.join(ledger_dir, "2026-05-28_harness_index.md"), "w") as f:
+                f.write("# Other\nscripts/platform_beta.py\n")
+            # Only harness_index.md is checked when explicitly specified
+            issues, _, _ = harness.check_consistency(
+                tmpdir, index_artifact="ai-ledger/platform/harness_index.md",
+            )
+            stale = [i for i in issues if "stale_index" in i["type"]]
+            paths = [i["path"] for i in stale]
+            # beta is stale because harness_index.md doesn't mention it
+            self.assertIn("scripts/platform_beta.py", paths)
+            # alpha is NOT stale because harness_index.md mentions it
+            self.assertNotIn("scripts/platform_alpha.py", paths)
 
     def test_check_index_staleness_function_directly(self):
         """Unit test for the check_index_staleness helper."""

@@ -221,15 +221,18 @@ def check_index_staleness(index_path, scripts, ledgers):
     return issues
 
 
-def check_consistency(repo_root):
+def check_consistency(repo_root, index_artifact=None):
     """Check harness index consistency. Returns list of issues.
 
     Checks:
     1. Script/test pairing and existence.
     2. Ledger file existence.
-    3. Stale index detection: if an existing harness index artifact is
-       present, verifies its content reflects the current scripts/ledgers
-       on disk.
+    3. If index_artifact is provided, stale index detection against that
+       specific generated index file.
+
+    Default mode (no index_artifact) is pairing/existence only.  Not every
+    ``*harness_index*.md`` in ``ai-ledger/platform/`` is a canonical generated
+    index; stale detection requires an explicit artifact path.
     """
     scripts_dir = os.path.join(repo_root, "scripts")
     ledger_dir = os.path.join(repo_root, "ai-ledger", "platform")
@@ -255,11 +258,18 @@ def check_consistency(repo_root):
         if not os.path.isfile(ledger_abs):
             issues.append({"type": "missing_ledger", "path": ledger_path})
 
-    # Stale index detection: compare existing index against current state
-    existing_indices = find_existing_indices(ledger_dir)
-    for idx_path in existing_indices:
-        stale_issues = check_index_staleness(idx_path, scripts, ledgers)
-        issues.extend(stale_issues)
+    # Stale index detection: only when an explicit artifact is provided
+    if index_artifact:
+        idx_abs = os.path.join(repo_root, normalize_path(index_artifact))
+        if not os.path.isfile(idx_abs):
+            issues.append({
+                "type": "missing_index",
+                "path": index_artifact,
+                "detail": "specified index artifact not found",
+            })
+        else:
+            stale_issues = check_index_staleness(idx_abs, scripts, ledgers)
+            issues.extend(stale_issues)
 
     return issues, scripts, ledgers
 
@@ -302,12 +312,19 @@ def main():
         action="store_true",
         help="Check consistency only; do not write files",
     )
+    parser.add_argument(
+        "--check-index",
+        required=False,
+        help="Path to a generated index artifact to check for staleness "
+             "(used with --check; e.g. ai-ledger/platform/harness_index.md)",
+    )
     args = parser.parse_args()
 
     repo_path = os.path.abspath(args.repo)
 
     if args.check:
-        issues, scripts, ledgers = check_consistency(repo_path)
+        index_artifact = getattr(args, "check_index", None)
+        issues, scripts, ledgers = check_consistency(repo_path, index_artifact)
         if hasattr(args, 'json') and args.json:
             print(json.dumps({"issues": issues, "count": len(issues)}, indent=2))
         else:

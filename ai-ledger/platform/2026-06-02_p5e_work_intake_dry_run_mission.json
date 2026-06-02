@@ -1,0 +1,14 @@
+{
+  "phase": "P3-A",
+  "agent": "opencode",
+  "mission": "ai-ledger/platform/2026-06-02_p5e_work_intake_dry_run.md",
+  "expected_files": [
+    "ai-ledger/platform/2026-06-02_p5e_work_intake_dry_run.md",
+    "ai-ledger/platform/2026-06-02_p5e_work_intake_dry_run_mission.json"
+  ],
+  "result": "ai-ledger/platform/2026-06-02_p5e_work_intake_dry_run_result.json",
+  "events": "ai-ledger/platform/2026-06-02_p5e_work_intake_dry_run_events.jsonl",
+  "timeout_seconds": 300,
+  "allow_edits": false,
+  "notes": "P5-E work intake dry run. No runtime code changes. Harness validation only."
+}

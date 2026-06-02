@@ -19,7 +19,7 @@ Validate the full platform work-intake-to-evidence pipeline end-to-end using the
 | 2. Validate mission contract | `platform_agent_mission_gate` | `--mission ..._mission.json` | PASS |
 | 3. Batch validate all missions | `platform_batch_mission_check` | `--repo .` | 4/4 PASS |
 | 4. Worker reliability summary | `platform_worker_reliability_summary` | `--repo .` | 2 done, 2 partial, 0 failed |
-| 5. Harness index consistency | `platform_harness_index` | `--repo . --check` | PASS (19 scripts, 47 ledgers) |
+| 5. Harness index consistency | `platform_harness_index` | `--repo . --check` | PASS (19 scripts, 48 ledgers) |
 | 6. Create result artifact | manual | Created result JSON | Done |
 | 7. Create events artifact | manual | Created events JSONL (sanitized) | Done |
 | 8. Produce evidence ledger | manual | This file | Done |

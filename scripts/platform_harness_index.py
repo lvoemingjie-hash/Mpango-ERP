@@ -170,8 +170,67 @@ def generate_index(branch, commit, output_path, scripts, ledgers):
     return "\n".join(lines)
 
 
+def find_existing_indices(ledger_dir):
+    """Find existing harness index markdown files in the ledger directory."""
+    indices = []
+    if not os.path.isdir(ledger_dir):
+        return indices
+    for name in sorted(os.listdir(ledger_dir)):
+        if name.endswith(".md") and "harness_index" in name.lower():
+            indices.append(os.path.join(ledger_dir, name))
+    return indices
+
+
+def check_index_staleness(index_path, scripts, ledgers):
+    """Compare an existing index artifact against current harness state.
+
+    Detects:
+    - Scripts on disk not listed in the index (new since last generation).
+    - Tests on disk not listed in the index.
+    - Ledgers on disk not listed in the index.
+    """
+    issues = []
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return [{"type": "index_read_error", "path": index_path, "detail": str(e)}]
+
+    for script_path, test_path in scripts:
+        if script_path not in content:
+            issues.append({
+                "type": "stale_index_new_script",
+                "path": script_path,
+                "detail": "script on disk but not in index",
+            })
+        if test_path != "MISSING" and test_path not in content:
+            issues.append({
+                "type": "stale_index_new_test",
+                "path": test_path,
+                "detail": "test on disk but not in index",
+            })
+
+    for ledger in ledgers:
+        if ledger not in content:
+            issues.append({
+                "type": "stale_index_new_ledger",
+                "path": ledger,
+                "detail": "ledger on disk but not in index",
+            })
+
+    return issues
+
+
 def check_consistency(repo_root):
-    """Check harness index consistency. Returns list of issues."""
+    """Check harness index consistency. Returns list of issues.
+
+    Checks:
+    1. Script/test pairing and existence.
+    2. Ledger file existence.
+    3. Stale index detection: if an existing harness index artifact is
+       present, verifies its content reflects the current scripts/ledgers
+       on disk.
+    """
     scripts_dir = os.path.join(repo_root, "scripts")
     ledger_dir = os.path.join(repo_root, "ai-ledger", "platform")
     issues = []
@@ -196,6 +255,12 @@ def check_consistency(repo_root):
         if not os.path.isfile(ledger_abs):
             issues.append({"type": "missing_ledger", "path": ledger_path})
 
+    # Stale index detection: compare existing index against current state
+    existing_indices = find_existing_indices(ledger_dir)
+    for idx_path in existing_indices:
+        stale_issues = check_index_staleness(idx_path, scripts, ledgers)
+        issues.extend(stale_issues)
+
     return issues, scripts, ledgers
 
 
@@ -210,7 +275,11 @@ def format_check_human(issues, scripts, ledgers):
     lines = [f"Harness index consistency: FAIL ({len(issues)} issue(s))"]
     for issue in issues:
         detail = issue.get("path") or issue.get("script") or ""
-        lines.append(f"  [{issue['type']}] {detail}")
+        extra = issue.get("detail", "")
+        if extra:
+            lines.append(f"  [{issue['type']}] {detail} ({extra})")
+        else:
+            lines.append(f"  [{issue['type']}] {detail}")
     return "\n".join(lines)
 
 

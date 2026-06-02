@@ -32,4 +32,4 @@ Batch validates all `ai-ledger/platform/*_mission.json` files using the mission 
 ## Known Limitations
 
 - Validates contract schema only; does not check whether referenced files exist on disk (that is the gap audit's job).
-- Phase validation only allows P1-/P2-/P3- prefixes (per mission gate), so P4+/P5+ missions will be flagged as invalid until the gate is updated.
+- Phase validation only allows P1-/P2-/P3- prefixes (per `platform_agent_mission_gate.validate_mission`). P4/P5 missions will be flagged as invalid until the mission gate phase rules are updated to include P4-/P5- prefixes. This update depends on a phase-unlock change covered by a separate work item and must not be broadened without dedicated test coverage.

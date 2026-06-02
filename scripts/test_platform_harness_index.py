@@ -402,8 +402,13 @@ class TestCheckModeFailsWithMissingTest(unittest.TestCase):
             self.assertIn("missing_test", types)
 
 
-class TestCheckModeFailsWithStaleLedger(unittest.TestCase):
-    def test_check_detects_stale_ledger(self):
+class TestCheckModeIgnoresOrphanedLedgers(unittest.TestCase):
+    """Verify that a ledger with no matching script does not trigger a
+    pairing/existence issue.  Orphaned ledgers are outside the scope of
+    the consistency check (the check validates script/test pairing and
+    file existence, not ledger-to-script mapping)."""
+
+    def test_orphaned_ledger_not_flagged(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
             os.makedirs(ledger_dir, exist_ok=True)
@@ -465,6 +470,112 @@ class TestExistingGenerateStillWorks(unittest.TestCase):
             self.assertTrue(
                 os.path.isfile(os.path.join(tmpdir, "ai-ledger", "platform", "index.md"))
             )
+
+
+class TestStaleIndexDetection(unittest.TestCase):
+    """Tests for real stale index detection via check_index_staleness."""
+
+    def _make_repo_with_index(self, tmpdir):
+        """Create a repo with scripts, ledgers, and a generated index."""
+        scripts_dir = os.path.join(tmpdir, "scripts")
+        os.makedirs(scripts_dir, exist_ok=True)
+        with open(os.path.join(scripts_dir, "platform_alpha.py"), "w") as f:
+            f.write("# alpha\n")
+        with open(os.path.join(scripts_dir, "test_platform_alpha.py"), "w") as f:
+            f.write("# test\n")
+        ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
+        os.makedirs(ledger_dir, exist_ok=True)
+        with open(os.path.join(ledger_dir, "alpha_ledger.md"), "w") as f:
+            f.write("# ledger\n")
+        # Generate the index
+        scripts = harness.scan_harness_scripts(scripts_dir)
+        ledgers = harness.scan_platform_ledgers(ledger_dir)
+        index_content = harness.generate_index(
+            "test-branch", "abc1234",
+            "ai-ledger/platform/harness_index.md",
+            scripts, ledgers,
+        )
+        index_path = os.path.join(ledger_dir, "harness_index.md")
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.write(index_content)
+        return scripts_dir, ledger_dir
+
+    def test_fresh_index_not_stale(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_repo_with_index(tmpdir)
+            issues, _, _ = harness.check_consistency(tmpdir)
+            stale = [i for i in issues if "stale_index" in i["type"]]
+            self.assertEqual(stale, [])
+
+    def test_new_script_not_in_index_detected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir, _ = self._make_repo_with_index(tmpdir)
+            # Add a new script not in the existing index
+            with open(os.path.join(scripts_dir, "platform_beta.py"), "w") as f:
+                f.write("# beta\n")
+            with open(os.path.join(scripts_dir, "test_platform_beta.py"), "w") as f:
+                f.write("# test beta\n")
+            issues, _, _ = harness.check_consistency(tmpdir)
+            stale = [i for i in issues if "stale_index" in i["type"]]
+            self.assertTrue(len(stale) > 0)
+            paths = [i["path"] for i in stale]
+            self.assertIn("scripts/platform_beta.py", paths)
+            self.assertIn("scripts/test_platform_beta.py", paths)
+
+    def test_new_ledger_not_in_index_detected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _, ledger_dir = self._make_repo_with_index(tmpdir)
+            # Add a new ledger not in the existing index
+            with open(os.path.join(ledger_dir, "beta_ledger.md"), "w") as f:
+                f.write("# beta ledger\n")
+            issues, _, _ = harness.check_consistency(tmpdir)
+            stale = [i for i in issues if "stale_index" in i["type"]]
+            self.assertTrue(len(stale) > 0)
+            paths = [i["path"] for i in stale]
+            self.assertIn("ai-ledger/platform/beta_ledger.md", paths)
+
+    def test_no_index_no_stale_issues(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir = os.path.join(tmpdir, "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "platform_solo.py"), "w") as f:
+                f.write("# solo\n")
+            with open(os.path.join(scripts_dir, "test_platform_solo.py"), "w") as f:
+                f.write("# test\n")
+            ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
+            os.makedirs(ledger_dir)
+            issues, _, _ = harness.check_consistency(tmpdir)
+            stale = [i for i in issues if "stale_index" in i["type"]]
+            self.assertEqual(stale, [])
+
+    def test_stale_index_cli_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scripts_dir, _ = self._make_repo_with_index(tmpdir)
+            # Add a new script not in the existing index
+            with open(os.path.join(scripts_dir, "platform_gamma.py"), "w") as f:
+                f.write("# gamma\n")
+            result = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPT_DIR, "platform_harness_index.py"),
+                 "--repo", tmpdir, "--check"],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("stale_index", result.stdout)
+
+    def test_check_index_staleness_function_directly(self):
+        """Unit test for the check_index_staleness helper."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            index_path = os.path.join(tmpdir, "harness_index.md")
+            with open(index_path, "w", encoding="utf-8") as f:
+                f.write("# Old Index\nscripts/platform_old.py\n")
+            scripts = [("scripts/platform_new.py", "scripts/test_platform_new.py")]
+            ledgers = ["ai-ledger/platform/new_ledger.md"]
+            issues = harness.check_index_staleness(index_path, scripts, ledgers)
+            self.assertEqual(len(issues), 3)  # new script + new test + new ledger
+            types = [i["type"] for i in issues]
+            self.assertIn("stale_index_new_script", types)
+            self.assertIn("stale_index_new_ledger", types)
 
 
 if __name__ == "__main__":

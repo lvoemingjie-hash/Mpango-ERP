@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Platform Merge Readiness Reporter - Mpango ERP.
+
+Generates a standard merge readiness report with all required fields.
+Uses short SHAs in JSON artifacts to avoid evidence drift and
+detect-secrets false positives.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+def normalize_path(p):
+    return p.replace("\\", "/")
+
+
+def run_git(cmd, repo_path):
+    try:
+        result = subprocess.run(
+            ["git"] + cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(repo_path),
+            timeout=30,
+        )
+        return result.returncode, result.stdout.strip(), result.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return 1, "", "timeout"
+    except FileNotFoundError:
+        return 1, "", "git not found"
+
+
+def get_branch(repo_path):
+    rc, out, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"], repo_path)
+    return out if rc == 0 else "unknown"
+
+
+def get_commit_short(repo_path):
+    rc, out, _ = run_git(["rev-parse", "--short", "HEAD"], repo_path)
+    return out if rc == 0 else "unknown"
+
+
+def get_commit_full(repo_path):
+    rc, out, _ = run_git(["rev-parse", "HEAD"], repo_path)
+    return out if rc == 0 else "unknown"
+
+
+def get_modified_files(repo_path, base_ref=None):
+    """Get list of files changed vs base ref."""
+    if base_ref is None:
+        base_ref = "HEAD~1"
+    rc, out, _ = run_git(["diff", "--name-only", base_ref, "HEAD"], repo_path)
+    if rc != 0:
+        return []
+    return [f for f in out.splitlines() if f.strip()]
+
+
+def run_test_suite(repo_path):
+    """Run full platform test suite and return results."""
+    scripts_dir = os.path.join(repo_path, "scripts")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "unittest", "discover",
+             "-s", scripts_dir, "-p", "test_platform_*.py"],
+            capture_output=True,
+            text=True,
+            cwd=repo_path,
+            timeout=300,
+        )
+        output = result.stderr  # unittest outputs to stderr
+        # Parse "Ran X tests" and "OK"/"FAIL"
+        tests_run = 0
+        status = "UNKNOWN"
+        for line in output.splitlines():
+            if line.startswith("Ran "):
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        tests_run = int(parts[1])
+                    except ValueError:
+                        pass
+            if line == "OK":
+                status = "PASS"
+            elif "FAIL" in line:
+                status = "FAIL"
+        return {
+            "total": tests_run,
+            "status": status,
+            "passed": tests_run if status == "PASS" else "N/A",
+        }
+    except subprocess.TimeoutExpired:
+        return {"total": 0, "status": "TIMEOUT", "passed": 0}
+    except Exception as e:
+        return {"total": 0, "status": f"ERROR: {e}", "passed": 0}
+
+
+def audit_forbidden_paths(files):
+    """Check file list against forbidden paths."""
+    forbidden_prefixes = [
+        "backend/", "frontend/", "product-dev-recovered/",
+        ".github/", ".claude/", "docs/ai/",
+    ]
+    forbidden_keywords = [
+        "auth", "rbac", "tenancy", "migration", "payment", "session",
+    ]
+    violations = []
+    for f in files:
+        normalized = normalize_path(f).lower()
+        for prefix in forbidden_prefixes:
+            if normalized.startswith(prefix):
+                violations.append({"file": f, "reason": f"forbidden prefix '{prefix}'"})
+                break
+        else:
+            parts = normalized.replace("/", " ").replace("-", " ").replace("_", " ").split()
+            for part in parts:
+                if part in forbidden_keywords:
+                    violations.append({"file": f, "reason": f"forbidden keyword '{part}'"})
+                    break
+    return violations
+
+
+def assess_risk(files, test_result):
+    """Assess overall risk level."""
+    if not files:
+        return "NONE"
+    # Check if any files are scripts (code changes = higher risk)
+    has_scripts = any(normalize_path(f).startswith("scripts/") for f in files)
+    has_only_ledgers = all(
+        normalize_path(f).startswith("ai-ledger/platform/") for f in files
+    )
+
+    if test_result.get("status") not in ("PASS", "SKIPPED"):
+        return "HIGH"
+    if has_scripts and not has_only_ledgers:
+        return "MEDIUM"
+    if has_only_ledgers:
+        return "LOW"
+    return "MEDIUM"
+
+
+def generate_report(repo_path, base_ref=None, skip_tests=False):
+    """Generate a complete merge readiness report."""
+    branch = get_branch(repo_path)
+    commit_short = get_commit_short(repo_path)
+    commit_full = get_commit_full(repo_path)
+    files = get_modified_files(repo_path, base_ref)
+    forbidden = audit_forbidden_paths(files)
+    if skip_tests:
+        test_result = {"total": 0, "status": "SKIPPED", "passed": 0}
+    else:
+        test_result = run_test_suite(repo_path)
+    risk = assess_risk(files, test_result)
+
+    blockers = []
+    if test_result.get("status") not in ("PASS", "SKIPPED"):
+        blockers.append("test suite failure")
+    if forbidden:
+        blockers.append(f"{len(forbidden)} forbidden path violation(s)")
+
+    return {
+        "branch": branch,
+        "commit": commit_short,
+        "commit_full": commit_full,
+        "modified_files": [normalize_path(f) for f in files],
+        "file_count": len(files),
+        "tests": test_result,
+        "report_path": "ai-ledger/platform/",
+        "risk": risk,
+        "forbidden_path_audit": {
+            "status": "PASS" if not forbidden else "FAIL",
+            "violations": forbidden,
+            "files_checked": len(files),
+        },
+        "gitnexus": {
+            "note": "run npx gitnexus analyze separately for index status",
+        },
+        "blockers": blockers,
+    }
+
+
+def format_human(report):
+    lines = ["Platform Merge Readiness Report", "=" * 40]
+    lines.append(f"Branch: {report['branch']}")
+    lines.append(f"Commit: {report['commit']} ({report['commit_full']})")
+    lines.append(f"Risk: {report['risk']}")
+    lines.append("")
+
+    lines.append(f"Modified files ({report['file_count']}):")
+    for f in report["modified_files"]:
+        lines.append(f"  {f}")
+    lines.append("")
+
+    lines.append(f"Tests: {report['tests']['total']} ({report['tests']['status']})")
+    lines.append("")
+
+    audit = report["forbidden_path_audit"]
+    lines.append(f"Forbidden path audit: {audit['status']}"
+                 f" ({audit['files_checked']} files checked)")
+    if audit["violations"]:
+        for v in audit["violations"]:
+            lines.append(f"  VIOLATION: {v['file']} ({v['reason']})")
+    lines.append("")
+
+    if report["blockers"]:
+        lines.append(f"Blockers: {', '.join(report['blockers'])}")
+    else:
+        lines.append("Blockers: none")
+    lines.append("")
+
+    lines.append(f"Report path: {report['report_path']}")
+
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Mpango ERP Platform Merge Readiness Reporter"
+    )
+    parser.add_argument(
+        "--repo", default=".",
+        help="Path to the git repository root (default: current directory)",
+    )
+    parser.add_argument(
+        "--base-ref",
+        help="Base ref for comparison (e.g. origin/platform-dev)",
+    )
+    parser.add_argument(
+        "--json", action="store_true",
+        help="Output in JSON format",
+    )
+    parser.add_argument(
+        "--skip-tests", action="store_true",
+        help="Skip running the full test suite (report only)",
+    )
+    args = parser.parse_args()
+
+    repo_path = os.path.abspath(args.repo)
+    report = generate_report(repo_path, args.base_ref, skip_tests=args.skip_tests)
+
+    if args.json:
+        # JSON output uses short SHAs only
+        if "commit_full" in report:
+            del report["commit_full"]
+        print(json.dumps(report, indent=2))
+    else:
+        print(format_human(report))
+
+    has_blockers = len(report["blockers"]) > 0
+    sys.exit(1 if has_blockers else 0)
+
+
+if __name__ == "__main__":
+    main()

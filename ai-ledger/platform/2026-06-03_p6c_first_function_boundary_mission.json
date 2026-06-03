@@ -1,0 +1,14 @@
+{
+  "phase": "P6-C",
+  "agent": "claude",
+  "mission": "ai-ledger/platform/2026-06-03_p6c_first_function_boundary.md",
+  "expected_files": [
+    "ai-ledger/platform/2026-06-03_p6c_first_function_boundary.md",
+    "ai-ledger/platform/2026-06-03_p6c_first_function_boundary_mission.json"
+  ],
+  "result": "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run_result.json",
+  "events": "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run_events.jsonl",
+  "timeout_seconds": 300,
+  "allow_edits": false,
+  "notes": "P6-C first-function implementation boundary definition. Documentation only, no code changes."
+}

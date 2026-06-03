@@ -67,6 +67,16 @@ class TestDiffAuditorCheck(unittest.TestCase):
         self.assertIn("pass", result)
         self.assertIn("violations", result)
 
+    def test_compare_with_base_ref(self):
+        result = health.check_diff_auditor(
+            REPO_ROOT, os.path.join(REPO_ROOT, "scripts"),
+            base_ref="origin/platform-dev",
+        )
+        self.assertIn("gate", result)
+        self.assertEqual(result["gate"], "diff_auditor")
+        self.assertIn("total", result)
+        self.assertGreater(result["total"], 0)
+
 
 class TestDetectSecretsCheck(unittest.TestCase):
     def test_returns_result_dict(self):
@@ -108,6 +118,11 @@ class TestRunHealthCheck(unittest.TestCase):
     def test_real_repo_passes(self):
         result = health.run_health_check(REPO_ROOT)
         self.assertEqual(result["overall"], "PASS")
+
+    def test_with_base_ref(self):
+        result = health.run_health_check(REPO_ROOT, base_ref="origin/platform-dev")
+        self.assertIn("overall", result)
+        self.assertEqual(len(result["gates"]), 6)
 
 
 class TestHumanOutput(unittest.TestCase):

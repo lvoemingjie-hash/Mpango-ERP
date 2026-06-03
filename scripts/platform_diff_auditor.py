@@ -115,7 +115,10 @@ def get_untracked_files(repo_path):
 
 
 def audit_files(files):
-    """Audit a list of file paths against forbidden rules.
+    """Audit a list of file paths against forbidden and allowlist rules.
+
+    A file passes only if it is NOT forbidden AND IS within an allowed prefix.
+    Files outside allowed prefixes are blocking disallowed files.
 
     Returns dict with: passed, violations, allowed, disallowed.
     """
@@ -132,6 +135,7 @@ def audit_files(files):
             allowed.append(f)
         else:
             disallowed.append(f)
+            violations.append({"file": f, "reason": "outside allowed prefixes"})
 
     return {
         "passed": len(violations) == 0,
@@ -146,12 +150,12 @@ def format_human(result, source):
     lines = [f"Platform Diff Auditor ({source})"]
     lines.append(f"Files checked: {result['total']}")
     lines.append(f"Allowed: {len(result['allowed'])}")
-    lines.append(f"Disallowed (non-forbidden): {len(result['disallowed'])}")
+    lines.append(f"Disallowed: {len(result['disallowed'])}")
 
     if result["violations"]:
-        lines.append(f"FORBIDDEN violations: {len(result['violations'])}")
+        lines.append(f"Violations: {len(result['violations'])}")
         for v in result["violations"]:
-            lines.append(f"  FORBIDDEN: {v['file']} ({v['reason']})")
+            lines.append(f"  BLOCKED: {v['file']} ({v['reason']})")
         lines.append("")
         lines.append("VERDICT: FAIL")
     else:

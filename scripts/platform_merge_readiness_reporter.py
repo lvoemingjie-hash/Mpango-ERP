@@ -160,6 +160,17 @@ def generate_report(repo_path, base_ref=None, skip_tests=False):
     if forbidden:
         blockers.append(f"{len(forbidden)} forbidden path violation(s)")
 
+    # Build concrete report path from branch name
+    # Extract date from branch like codex/platform-p7-safety-automation-layer-2026-06-03
+    date_part = ""
+    if branch.startswith("codex/platform-"):
+        # Find the date pattern at the end (YYYY-MM-DD)
+        import re
+        match = re.search(r"(\d{4}-\d{2}-\d{2})$", branch)
+        if match:
+            date_part = match.group(1)
+    report_file = f"ai-ledger/platform/{date_part}_merge_readiness_report.md" if date_part else "ai-ledger/platform/merge_readiness_report.md"
+
     return {
         "branch": branch,
         "commit": commit_short,
@@ -167,7 +178,7 @@ def generate_report(repo_path, base_ref=None, skip_tests=False):
         "modified_files": [normalize_path(f) for f in files],
         "file_count": len(files),
         "tests": test_result,
-        "report_path": "ai-ledger/platform/",
+        "report_path": report_file,
         "risk": risk,
         "forbidden_path_audit": {
             "status": "PASS" if not forbidden else "FAIL",

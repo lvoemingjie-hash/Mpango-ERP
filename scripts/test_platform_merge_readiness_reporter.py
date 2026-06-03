@@ -110,6 +110,16 @@ class TestGenerateReport(unittest.TestCase):
         report = reporter.generate_report(REPO_ROOT, "HEAD~1", skip_tests=True)
         self.assertEqual(report["tests"]["status"], "SKIPPED")
 
+    def test_report_path_is_concrete(self):
+        report = reporter.generate_report(REPO_ROOT, "HEAD~1", skip_tests=True)
+        self.assertIn("report_path", report)
+        # Must not be just "ai-ledger/platform/"
+        self.assertNotEqual(report["report_path"], "ai-ledger/platform/")
+        # Must end with .md
+        self.assertTrue(report["report_path"].endswith(".md"))
+        # Must start with ai-ledger/platform/
+        self.assertTrue(report["report_path"].startswith("ai-ledger/platform/"))
+
 
 class TestFormatHuman(unittest.TestCase):
     def test_format_human(self):

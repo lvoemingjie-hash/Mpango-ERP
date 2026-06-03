@@ -126,6 +126,30 @@ class TestAuditFiles(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertEqual(len(result["violations"]), 1)
 
+    def test_readme_outside_allowlist_fails(self):
+        """README.md is outside allowed prefixes and should block."""
+        files = ["README.md"]
+        result = auditor.audit_files(files)
+        self.assertFalse(result["passed"])
+        self.assertIn("README.md", result["disallowed"])
+        self.assertEqual(len(result["violations"]), 1)
+        self.assertIn("outside allowed", result["violations"][0]["reason"])
+
+    def test_random_path_outside_allowlist_fails(self):
+        """random/file.py is outside allowed prefixes and should block."""
+        files = ["random/file.py"]
+        result = auditor.audit_files(files)
+        self.assertFalse(result["passed"])
+        self.assertIn("random/file.py", result["disallowed"])
+
+    def test_mixed_allowed_and_outside_fails(self):
+        """Even with some allowed files, outside-allowlist files block."""
+        files = ["scripts/platform_foo.py", "docs/readme.txt"]
+        result = auditor.audit_files(files)
+        self.assertFalse(result["passed"])
+        self.assertEqual(len(result["allowed"]), 1)
+        self.assertEqual(len(result["disallowed"]), 1)
+
     def test_empty_list_passes(self):
         result = auditor.audit_files([])
         self.assertTrue(result["passed"])

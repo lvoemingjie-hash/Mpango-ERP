@@ -120,9 +120,12 @@ def check_worker_reliability(repo_path, scripts_dir):
 
 
 def check_diff_auditor(repo_path, scripts_dir, base_ref=None):
-    """Run diff auditor."""
+    """Run diff auditor in compare mode when base_ref is provided."""
     script = os.path.join(scripts_dir, "platform_diff_auditor.py")
-    cmd = [sys.executable, script, "--repo", repo_path, "--mode", "staged", "--json"]
+    mode = "compare" if base_ref else "staged"
+    cmd = [sys.executable, script, "--repo", repo_path, "--mode", mode, "--json"]
+    if base_ref:
+        cmd.extend(["--base-ref", base_ref])
     rc, out, err = run_tool(cmd, repo_path, timeout=30)
     try:
         data = json.loads(out) if out else {}
@@ -191,14 +194,14 @@ def check_gitnexus(repo_path):
             "pass": True,
             "nodes": stats.get("nodes", 0),
             "edges": stats.get("edges", 0),
-            "clusters": stats.get("clusters", 0),
-            "flows": stats.get("execution_flows", 0),
+            "clusters": stats.get("clusters", stats.get("communities", 0)),
+            "flows": stats.get("execution_flows", stats.get("processes", 0)),
         }
     except (json.JSONDecodeError, OSError):
         return {"gate": "gitnexus", "pass": None, "note": "meta.json unreadable"}
 
 
-def run_health_check(repo_path):
+def run_health_check(repo_path, base_ref=None):
     """Run all health check gates and aggregate results."""
     scripts_dir = os.path.join(repo_path, "scripts")
 
@@ -206,7 +209,7 @@ def run_health_check(repo_path):
     gates.append(check_batch_missions(repo_path, scripts_dir))
     gates.append(check_harness_index(repo_path, scripts_dir))
     gates.append(check_worker_reliability(repo_path, scripts_dir))
-    gates.append(check_diff_auditor(repo_path, scripts_dir))
+    gates.append(check_diff_auditor(repo_path, scripts_dir, base_ref=base_ref))
     gates.append(check_detect_secrets(repo_path))
     gates.append(check_gitnexus(repo_path))
 
@@ -264,13 +267,17 @@ def main():
         help="Path to the git repository root (default: current directory)",
     )
     parser.add_argument(
+        "--base-ref",
+        help="Base ref for compare mode (e.g. origin/platform-dev)",
+    )
+    parser.add_argument(
         "--json", action="store_true",
         help="Output in JSON format",
     )
     args = parser.parse_args()
 
     repo_path = os.path.abspath(args.repo)
-    result = run_health_check(repo_path)
+    result = run_health_check(repo_path, base_ref=args.base_ref)
 
     if args.json:
         print(json.dumps(result, indent=2))

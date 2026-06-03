@@ -4,7 +4,7 @@
 **Agent**: claude
 **Branch**: codex/platform-p6a-phase-gate-expansion-2026-06-02
 **Base**: platform-dev (41441a4)
-**Commit**: 4b655a4
+**Commit**: 4b655a4 (code), 9989984 (R1 evidence), (R2 this commit)
 
 ---
 
@@ -55,14 +55,27 @@ Breakdown: 54 existing tests (unchanged, all still pass) + 5 net-new tests + 1 u
 
 | Suite | Tests | Result |
 |-------|-------|--------|
-| test_platform_batch_mission_check.py | 12 | PASS |
-| test_platform_worker_reliability_summary.py | 11 | PASS |
-| test_platform_harness_index.py | 58 | PASS |
+| test_platform_agent_artifact_collector.py | 12 | PASS |
 | test_platform_agent_mission_gate.py | 60 | PASS |
+| test_platform_agent_preflight.py | 36 | PASS |
+| test_platform_agent_run_bundle_gate.py | 8 | PASS |
+| test_platform_agent_timeout_watchdog.py | 9 | PASS |
+| test_platform_batch_mission_check.py | 12 | PASS |
+| test_platform_batch_review_packet.py | 8 | PASS |
+| test_platform_directive_gate.py | 23 | PASS |
+| test_platform_harness_index.py | 58 | PASS |
+| test_platform_ledger_gap_audit.py | 20 | PASS |
+| test_platform_mission_worker_bridge.py | 7 | PASS |
 | test_platform_opencode_worker_gate.py | 10 | PASS |
+| test_platform_remote_runner_packet.py | 9 | PASS |
+| test_platform_run_evidence_bundle.py | 8 | PASS |
+| test_platform_run_packet_gate.py | 46 | PASS |
 | test_platform_runner_gate.py | 6 | PASS |
+| test_platform_task_execution_bridge.py | 13 | PASS |
+| test_platform_toolchain_gate.py | 13 | PASS |
+| test_platform_worker_reliability_summary.py | 11 | PASS |
 | **Focused Total** | **157** | **ALL PASS** |
-| Full platform suite (all test_platform_*.py) | **157** | **ALL PASS** |
+| **Full Platform Suite (19 suites)** | **369** | **ALL PASS** |
 
 ## Report Path
 
@@ -85,7 +98,8 @@ GitNexus impact analysis of `validate_mission` would flag CRITICAL because `vali
 | Check | Result |
 |-------|--------|
 | test_platform_agent_mission_gate.py | 60 PASS |
-| Focused platform set (6 suites) | 157 PASS |
+| Focused P6-A set (6 suites) | 157 PASS |
+| Full platform suite (19 suites) | 369 PASS |
 | git diff --check origin/platform-dev..HEAD | PASS (no whitespace errors) |
 | GitNexus detect_changes compare vs origin/platform-dev | MEDIUM, harness-only |
 | Forbidden path audit | PASS |

@@ -1,0 +1,8 @@
+{"event": "mission_validated", "gate": "platform_agent_mission_gate", "phase": "P6-B", "agent": "claude", "exit_code": 0, "redacted": true}
+{"event": "batch_check", "gate": "platform_batch_mission_check", "total": 6, "passed": 6, "failed": 0, "exit_code": 0, "elapsed_seconds": 1.4, "redacted": true}
+{"event": "worker_summary", "gate": "platform_worker_reliability_summary", "total_missions": 6, "done": 4, "partial": 2, "failed": 0, "exit_code": 0, "elapsed_seconds": 0.5, "redacted": true}
+{"event": "harness_index_check", "gate": "platform_harness_index --check", "scripts": 19, "ledgers": 55, "issues": 0, "exit_code": 0, "elapsed_seconds": 0.3, "redacted": true}
+{"event": "full_test_suite", "gate": "unittest discover", "suites": 19, "tests": 369, "result": "ALL PASS", "exit_code": 0, "elapsed_seconds": 108.9, "redacted": true}
+{"event": "git_diff_check", "gate": "git diff --check", "result": "PASS (no whitespace errors)", "exit_code": 0, "redacted": true}
+{"event": "gitnexus_analyze", "gate": "npx gitnexus analyze", "nodes": 5221, "edges": 15382, "clusters": 350, "flows": 256, "exit_code": 0, "elapsed_seconds": 13.2, "redacted": true}
+{"event": "forbidden_path_audit", "gate": "manual audit", "files_checked": 7, "violations": 0, "exit_code": 0, "redacted": true}

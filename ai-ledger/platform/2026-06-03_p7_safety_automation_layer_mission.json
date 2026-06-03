@@ -3,6 +3,8 @@
   "agent": "claude",
   "mission": "ai-ledger/platform/2026-06-03_p7_safety_automation_layer.md",
   "expected_files": [
+    "scripts/platform_agent_mission_gate.py",
+    "scripts/test_platform_agent_mission_gate.py",
     "scripts/platform_diff_auditor.py",
     "scripts/test_platform_diff_auditor.py",
     "scripts/platform_function_registry.py",
@@ -20,5 +22,5 @@
   "events": "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_events.jsonl",
   "timeout_seconds": 600,
   "allow_edits": false,
-  "notes": "P7 safety automation layer. Four platform scripts with tests + four evidence artifacts = 12 files total. No product/runtime code."
+  "notes": "P7 safety automation layer. 14 changed files = 10 scripts + 4 evidence artifacts. No product/runtime code."
 }

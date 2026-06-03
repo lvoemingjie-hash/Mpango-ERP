@@ -5,10 +5,12 @@
   "branch": "codex/platform-p7-safety-automation-layer-2026-06-03",
   "commit_batch": "e99f1f9",
   "commit_r1": "4546bae",
-  "commit_head": "650c7bf",
+  "commit_r2": "720d50e",
+  "commit_head": "3a67535",
   "blocker": "",
-  "test_result": "461/461 pass (23 suites: 19 existing + 4 new P7)",
+  "test_result": "462/462 pass (23 suites)",
   "expected_files_present": true,
   "forbidden_paths_touched": false,
-  "notes": "P7 safety automation layer. R2: phase corrected to P7-A, mission gate expanded to P7, evidence counts corrected."
+  "changed_files_vs_platform_dev": 14,
+  "notes": "P7 safety automation layer. R3: commit history traced, events counts corrected to 14 changed files."
 }

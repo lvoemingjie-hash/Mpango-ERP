@@ -1,5 +1,5 @@
 {
-  "phase": "P6-A",
+  "phase": "P7-A",
   "agent": "claude",
   "mission": "ai-ledger/platform/2026-06-03_p7_safety_automation_layer.md",
   "expected_files": [
@@ -12,11 +12,13 @@
     "scripts/platform_merge_readiness_reporter.py",
     "scripts/test_platform_merge_readiness_reporter.py",
     "ai-ledger/platform/2026-06-03_p7_safety_automation_layer.md",
-    "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_mission.json"
+    "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_mission.json",
+    "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_result.json",
+    "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_events.jsonl"
   ],
   "result": "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_result.json",
   "events": "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_events.jsonl",
   "timeout_seconds": 600,
   "allow_edits": false,
-  "notes": "P7 safety automation layer. Four platform scripts with tests. No product/runtime code."
+  "notes": "P7 safety automation layer. Four platform scripts with tests + four evidence artifacts = 12 files total. No product/runtime code."
 }

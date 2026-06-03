@@ -307,13 +307,13 @@ class TestOptionalFields(unittest.TestCase):
 
 
 class TestPhaseValidation(unittest.TestCase):
-    def test_p2_phase(self):
-        data = dict(VALID_MISSION, phase="P2-Z")
+    def test_p1_phase(self):
+        data = dict(VALID_MISSION, phase="P1-A")
         failures = gate.validate_mission(data)
         self.assertEqual(failures, [])
 
-    def test_p1_phase(self):
-        data = dict(VALID_MISSION, phase="P1-A")
+    def test_p2_phase(self):
+        data = dict(VALID_MISSION, phase="P2-Z")
         failures = gate.validate_mission(data)
         self.assertEqual(failures, [])
 
@@ -322,13 +322,43 @@ class TestPhaseValidation(unittest.TestCase):
         failures = gate.validate_mission(data)
         self.assertEqual(failures, [])
 
-    def test_invalid_phase_prefix(self):
+    def test_p4_phase(self):
         data = dict(VALID_MISSION, phase="P4-A")
+        failures = gate.validate_mission(data)
+        self.assertEqual(failures, [])
+
+    def test_p5_phase(self):
+        data = dict(VALID_MISSION, phase="P5-B")
+        failures = gate.validate_mission(data)
+        self.assertEqual(failures, [])
+
+    def test_p6_phase(self):
+        data = dict(VALID_MISSION, phase="P6-A")
+        failures = gate.validate_mission(data)
+        self.assertEqual(failures, [])
+
+    def test_invalid_phase_prefix(self):
+        data = dict(VALID_MISSION, phase="P7-A")
+        failures = gate.validate_mission(data)
+        self.assertTrue(len(failures) > 0)
+
+    def test_invalid_phase_no_number(self):
+        data = dict(VALID_MISSION, phase="PX-A")
         failures = gate.validate_mission(data)
         self.assertTrue(len(failures) > 0)
 
     def test_empty_phase(self):
         data = dict(VALID_MISSION, phase="")
+        failures = gate.validate_mission(data)
+        self.assertTrue(len(failures) > 0)
+
+    def test_non_string_phase(self):
+        data = dict(VALID_MISSION, phase=42)
+        failures = gate.validate_mission(data)
+        self.assertTrue(len(failures) > 0)
+
+    def test_lowercase_phase_rejected(self):
+        data = dict(VALID_MISSION, phase="p3-a")
         failures = gate.validate_mission(data)
         self.assertTrue(len(failures) > 0)
 

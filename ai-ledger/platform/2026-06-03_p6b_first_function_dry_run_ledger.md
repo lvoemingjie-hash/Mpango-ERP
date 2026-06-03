@@ -19,7 +19,7 @@ Validate the full P6-phase mission intake-to-evidence pipeline end-to-end. Confi
 | 2. Validate mission contract | `platform_agent_mission_gate` | `--mission ..._mission.json` | PASS |
 | 3. Batch validate all missions | `platform_batch_mission_check` | `--repo .` | 6/6 PASS |
 | 4. Worker reliability summary | `platform_worker_reliability_summary` | `--repo .` | Aggregated |
-| 5. Harness index consistency | `platform_harness_index` | `--repo . --check` | PASS (19 scripts, 55 ledgers) |
+| 5. Harness index consistency | `platform_harness_index` | `--repo . --check` | PASS (19 scripts, 54 ledgers, 0 issues) |
 | 6. Full platform test suite | `unittest discover` | 19 suites | 369/369 PASS |
 | 7. Git diff --check | `git diff --check` | vs platform-dev | PASS |
 | 8. GitNexus analyze | `npx gitnexus analyze` | Full reindex | 5,221 nodes indexed |

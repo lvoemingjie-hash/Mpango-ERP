@@ -23,7 +23,7 @@
 | Harness scripts | 19 | All under `scripts/platform_*.py` |
 | Test suites | 19 | All under `scripts/test_platform_*.py` |
 | 100% test pairing | Yes | Every script has a matching test |
-| Platform ledgers | 58 | All under `ai-ledger/platform/*.md` |
+| Platform ledgers | 54 | All under `ai-ledger/platform/*.md` |
 | Mission JSONs | 6 | All validated, all PASS |
 | Events JSONLs | 5 | All sanitized |
 | Result JSONs | 5 | All status=done |
@@ -35,7 +35,7 @@
 | Mission gate (P6-B) | PASS | P6-B phase accepted, contract valid |
 | Mission gate (P6-C) | PASS | P6-C phase accepted, contract valid |
 | Batch mission check | 6/6 PASS | All mission JSONs validate |
-| Harness index consistency | PASS | 19 scripts, 58 ledgers, 0 issues |
+| Harness index consistency | PASS | 19 scripts, 54 ledgers, 0 issues |
 | Full platform test suite | 369/369 PASS | 19 suites, zero failures |
 | git diff --check | PASS | No whitespace errors |
 | GitNexus analyze | PASS | 5,221 nodes indexed |
@@ -85,6 +85,18 @@
 ## Forbidden Path Audit
 
 PASS — all 8 files are under `ai-ledger/platform/`. No `backend/`, `frontend/`, `product-dev-recovered/`, `.github/`, `.claude/`, `docs/ai/`, auth/RBAC/tenancy/migration/payment/session paths touched.
+
+## R1 Evidence Polish
+
+| Field | Before (batch) | After (R1) | Reason |
+|-------|----------------|------------|--------|
+| `result.json` commit | `"pending"` | `commit_batch: 6c149ba`, `commit_head: R1-SHA` | Evidence drift: result written before commit finalized |
+| `ledger.md` harness index | 19 scripts, 55 ledgers | 19 scripts, 54 ledgers, 0 issues | Inflated count; actual CLI output is 54 |
+| `batch_ledger.md` asset inventory | 58 ledgers | 54 ledgers | Inflated count; actual CLI output is 54 |
+| `batch_ledger.md` gate result | 58 ledgers | 54 ledgers | Same root cause |
+| `events.jsonl` harness index | ledgers: 55 | ledgers: 54 | Same root cause |
+
+Root cause: harness index counts were written from estimates rather than actual CLI output. All corrected to match `python scripts/platform_harness_index.py --repo . --check` output: **19 scripts, 54 ledgers, 0 issues**.
 
 ## Known Limitations
 

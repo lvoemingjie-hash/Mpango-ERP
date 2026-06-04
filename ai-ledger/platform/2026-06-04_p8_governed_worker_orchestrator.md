@@ -44,7 +44,7 @@ Build the platform layer's first real function orchestrator. A governed executio
 | 22324a3 | docs(platform): P8 evidence commit chain update |
 | cead48d | docs(platform): P8 evidence alignment - 10 expected files |
 | 8f090f3 | docs(platform): P8 final commit chain closure |
-| (pending) | fix(platform): P8-R1 artifact audit contract fix |
+| 43fb515 | fix(platform): P8-R1 artifact audit contract fix |
 
 ## Evidence Strategy
 

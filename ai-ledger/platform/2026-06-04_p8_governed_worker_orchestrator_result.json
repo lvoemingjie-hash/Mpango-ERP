@@ -8,7 +8,7 @@
     "evidence_update": "22324a3",
     "evidence_alignment": "cead48d",
     "chain_closure": "8f090f3",
-    "r1_fix": "pending"
+    "r1_fix": "43fb515"
   },
   "evidence_strategy": "Commit chain records the full history. No self-referential SHA. R1 fix: orchestrator artifacts written BEFORE final diff audit — all changed files checked against expected_files. Live merge gate must regenerate the report after merge candidate checkout.",
   "blocker": "",

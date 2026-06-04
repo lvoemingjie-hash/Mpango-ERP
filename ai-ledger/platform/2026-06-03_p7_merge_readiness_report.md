@@ -1,10 +1,11 @@
 Platform Merge Readiness Report
 ========================================
 Branch: codex/platform-p7-safety-automation-layer-2026-06-03
-Commit: 016cf9a (016cf9a3ffec15fd6399e3f1b42938957a20bccb)
+Commit: a2f8c65 (a2f8c650f57ecb84250cd9159073923fbf64c549)
 Risk: MEDIUM
 
-Modified files (14):
+Modified files (15):
+  ai-ledger/platform/2026-06-03_p7_merge_readiness_report.md
   ai-ledger/platform/2026-06-03_p7_safety_automation_layer.md
   ai-ledger/platform/2026-06-03_p7_safety_automation_layer_events.jsonl
   ai-ledger/platform/2026-06-03_p7_safety_automation_layer_mission.json
@@ -22,7 +23,7 @@ Modified files (14):
 
 Tests: 0 (SKIPPED)
 
-Forbidden path audit: PASS (14 files checked)
+Forbidden path audit: PASS (15 files checked)
 
 Blockers: none
 

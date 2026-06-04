@@ -29,6 +29,7 @@ Build real platform-only safety automation tooling. Four scripts with paired tes
 - `ai-ledger/platform/2026-06-03_p7_safety_automation_layer_mission.json`
 - `ai-ledger/platform/2026-06-03_p7_safety_automation_layer_result.json`
 - `ai-ledger/platform/2026-06-03_p7_safety_automation_layer_events.jsonl`
+- `ai-ledger/platform/2026-06-03_p7_merge_readiness_report.md`
 
 ## Out of Scope
 
@@ -44,13 +45,17 @@ Build real platform-only safety automation tooling. Four scripts with paired tes
 | 720d50e | fix(platform): P7-R2 evidence truth - P7 phase gate |
 | f347d1a | fix(platform): P7-R4 evidence contract closure - 14 expected files |
 | 016cf9a | docs(platform): P7-R4 final commit_head fix |
-| (R5) | fix(platform): P7-R5 merge evidence and reporter closure |
+| a2f8c65 | fix(platform): P7-R5 merge evidence and reporter closure |
 
 ## Evidence Strategy
 
-The `result.json` `commit_head` field records the most recent substantive evidence commit, not the self-referential final commit. This avoids the inherent circularity of a commit recording its own SHA. The markdown ledger above records the full commit chain for audit.
+- This ledger was generated from commit a2f8c65.
+- The `result.json` `commit_chain` field records the full commit history for audit.
+- The final evidence commit is validated by `git log` and CTO review.
+- A self-referential SHA in `result.json` is inherently circular and is not used.
+- Live merge gate must regenerate the report via `platform_merge_readiness_reporter --report <path>` after merge candidate checkout.
 
-## Changed Files vs origin/platform-dev (14 files)
+## Changed Files vs origin/platform-dev (15 files)
 
 | # | File |
 |---|------|
@@ -58,13 +63,14 @@ The `result.json` `commit_head` field records the most recent substantive eviden
 | 2 | `ai-ledger/platform/2026-06-03_p7_safety_automation_layer_events.jsonl` |
 | 3 | `ai-ledger/platform/2026-06-03_p7_safety_automation_layer_mission.json` |
 | 4 | `ai-ledger/platform/2026-06-03_p7_safety_automation_layer_result.json` |
-| 5 | `scripts/platform_agent_mission_gate.py` |
-| 6 | `scripts/platform_diff_auditor.py` |
-| 7 | `scripts/platform_function_registry.py` |
-| 8 | `scripts/platform_health_check.py` |
-| 9 | `scripts/platform_merge_readiness_reporter.py` |
-| 10 | `scripts/test_platform_agent_mission_gate.py` |
-| 11 | `scripts/test_platform_diff_auditor.py` |
-| 12 | `scripts/test_platform_function_registry.py` |
-| 13 | `scripts/test_platform_health_check.py` |
-| 14 | `scripts/test_platform_merge_readiness_reporter.py` |
+| 5 | `ai-ledger/platform/2026-06-03_p7_merge_readiness_report.md` |
+| 6 | `scripts/platform_agent_mission_gate.py` |
+| 7 | `scripts/platform_diff_auditor.py` |
+| 8 | `scripts/platform_function_registry.py` |
+| 9 | `scripts/platform_health_check.py` |
+| 10 | `scripts/platform_merge_readiness_reporter.py` |
+| 11 | `scripts/test_platform_agent_mission_gate.py` |
+| 12 | `scripts/test_platform_diff_auditor.py` |
+| 13 | `scripts/test_platform_function_registry.py` |
+| 14 | `scripts/test_platform_health_check.py` |
+| 15 | `scripts/test_platform_merge_readiness_reporter.py` |

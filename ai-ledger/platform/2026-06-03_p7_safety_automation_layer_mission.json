@@ -16,11 +16,12 @@
     "ai-ledger/platform/2026-06-03_p7_safety_automation_layer.md",
     "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_mission.json",
     "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_result.json",
-    "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_events.jsonl"
+    "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_events.jsonl",
+    "ai-ledger/platform/2026-06-03_p7_merge_readiness_report.md"
   ],
   "result": "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_result.json",
   "events": "ai-ledger/platform/2026-06-03_p7_safety_automation_layer_events.jsonl",
   "timeout_seconds": 600,
   "allow_edits": false,
-  "notes": "P7 safety automation layer. 14 changed files = 10 scripts + 4 evidence artifacts. No product/runtime code."
+  "notes": "P7 safety automation layer. 15 changed files = 10 scripts + 5 ledger artifacts. No product/runtime code."
 }

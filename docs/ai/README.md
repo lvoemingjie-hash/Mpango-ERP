@@ -1,4 +1,4 @@
-# AI Context Entry
+﻿# AI Context Entry
 
 This folder is the canonical starting point for Codex and other AI coding agents working on Mpango ERP.
 
@@ -23,6 +23,10 @@ For P9+ SaaS platform product work, read these after the general context above a
 1. `docs/ai/PLATFORM_PRODUCT_PRD.md`
 2. `docs/ai/PLATFORM_PRODUCT_SECURITY_BOUNDARY.md`
 3. `docs/ai/PLATFORM_PRODUCT_ROADMAP.md`
+4. `docs/ai/PLATFORM_PRODUCT_P10_DATA_SOURCE_MAP.md`
+5. `docs/ai/PLATFORM_PRODUCT_ADMIN_WORKFLOWS.md`
+6. `docs/ai/PLATFORM_PRODUCT_PERMISSION_MATRIX.md`
+7. `docs/ai/PLATFORM_PRODUCT_ACCEPTANCE_CRITERIA.md`
 
 P10 must start with a data-contract-only slice unless a later CTO decision explicitly broadens scope. Do not begin P10 with migrations, API handlers, frontend UI, auth/RBAC/tenancy/session changes, payment changes, or tenant business-data edits.
 

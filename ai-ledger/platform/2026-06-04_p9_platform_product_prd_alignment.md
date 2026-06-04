@@ -3,7 +3,7 @@
 **Branch:** `codex/platform-p9-platform-product-prd-2026-06-04`
 **Base:** `platform-dev` at `c136e53b34cbe122529c4788bb4faf0e5c7bf837`
 **Date:** 2026-06-04
-**Status:** PLATFORM_PRODUCT_ALIGNMENT_DRAFT_ACCEPTED after CTO review; R1 index fix complete
+**Status:** P9 implementation-ready PRD complete after R2 detail addendum
 
 ## Objective
 
@@ -22,6 +22,10 @@ This corrects a terminology drift that appeared after P8:
 | `docs/ai/PLATFORM_PRODUCT_PRD.md` | Platform product PRD and super admin operating model |
 | `docs/ai/PLATFORM_PRODUCT_SECURITY_BOUNDARY.md` | Security, audit, data-access, and stop-condition boundary |
 | `docs/ai/PLATFORM_PRODUCT_ROADMAP.md` | P9-P15 roadmap and summary of P1-P8 foundation |
+| `docs/ai/PLATFORM_PRODUCT_P10_DATA_SOURCE_MAP.md` | P10-A field-by-field source map |
+| `docs/ai/PLATFORM_PRODUCT_ADMIN_WORKFLOWS.md` | Real super admin diagnosis/support workflows |
+| `docs/ai/PLATFORM_PRODUCT_PERMISSION_MATRIX.md` | Role, page, action, and audit permission matrix |
+| `docs/ai/PLATFORM_PRODUCT_ACCEPTANCE_CRITERIA.md` | P9/P10/P11/P12/P13 acceptance criteria |
 | `ai-ledger/platform/2026-06-04_p9_platform_product_prd_alignment.md` | Ledger and evidence for this planning slice |
 
 ## Research Basis
@@ -73,6 +77,30 @@ Approved recommended order:
 7. P14 - controlled admin actions
 8. P15 - tenant lifecycle foundation
 
+## CTO Review Note - P9-R2
+
+P9-R2 upgrades P9 from strategic PRD to implementation-ready input for P10-A.
+
+R2 fixes the CTO/product-owner gaps:
+
+| Gap | R2 coverage |
+| --- | --- |
+| Missing P10 data source mapping | `PLATFORM_PRODUCT_P10_DATA_SOURCE_MAP.md` maps TenantSummary, TenantHealth, SystemHealth, and PlatformAuditEvent fields to source zones and source statuses |
+| Missing real super admin workflows | `PLATFORM_PRODUCT_ADMIN_WORKFLOWS.md` defines login failure triage, order anomaly triage, high-load investigation, support bundle generation, and audit review |
+| Missing permission matrix | `PLATFORM_PRODUCT_PERMISSION_MATRIX.md` defines page/view permissions, action permissions, audit requirements, and P10-A test expectations |
+| Missing acceptance metrics | `PLATFORM_PRODUCT_ACCEPTANCE_CRITERIA.md` defines P9 completion, P10-A contract-only acceptance, P10-B API skeleton criteria, cockpit first-screen questions, degraded/unknown rules, and support criteria |
+| Missing minimum P10 slice | README, roadmap, and acceptance criteria define P10-A as data-contract-only before P10-B read-only API skeleton |
+
+R2 scope:
+
+- docs/ai/README.md
+- docs/ai/PLATFORM_PRODUCT_ROADMAP.md
+- docs/ai/PLATFORM_PRODUCT_P10_DATA_SOURCE_MAP.md
+- docs/ai/PLATFORM_PRODUCT_ADMIN_WORKFLOWS.md
+- docs/ai/PLATFORM_PRODUCT_PERMISSION_MATRIX.md
+- docs/ai/PLATFORM_PRODUCT_ACCEPTANCE_CRITERIA.md
+- ai-ledger/platform/2026-06-04_p9_platform_product_prd_alignment.md
+
 ## CTO Review Note - P9-R1
 
 CTO review accepted P9 as `PLATFORM_PRODUCT_ALIGNMENT_DRAFT_ACCEPTED`.
@@ -100,6 +128,11 @@ R1 scope:
 | Do not modify product/runtime code | Only docs/ledger files intended | `git status --short` shows 4 new docs/ledger files only | PASS |
 | Add P9/P10 docs to AI startup index | `docs/ai/README.md` includes Platform Product Track entry | R1 staged diff confirms README + P9 ledger only | PASS |
 | Keep P10 from starting with code implementation | README and ledger define `P10-A data-contract-only` as the next slice | R1 content scan confirms no migration/API handler/UI authorization | PASS |
+| Add P10 data-source mapping | `docs/ai/PLATFORM_PRODUCT_P10_DATA_SOURCE_MAP.md` added | R2 content scan to verify TenantSummary/TenantHealth/SystemHealth/PlatformAuditEvent source rows | PASS |
+| Add real super admin workflows | `docs/ai/PLATFORM_PRODUCT_ADMIN_WORKFLOWS.md` added | R2 content scan to verify login failure, order anomaly, high load, support bundle, and audit review workflows | PASS |
+| Add permission matrix | `docs/ai/PLATFORM_PRODUCT_PERMISSION_MATRIX.md` added | R2 content scan to verify Super Admin, Support Operator, Engineering Operator, Product Admin actions | PASS |
+| Add acceptance criteria | `docs/ai/PLATFORM_PRODUCT_ACCEPTANCE_CRITERIA.md` added | R2 content scan to verify P9, P10-A, P10-B, P11, P12, and P13 criteria | PASS |
+| Keep P10-A docs-only | README, roadmap, data source map, permission matrix, and acceptance criteria all forbid runtime implementation in P10-A | R2 forbidden path audit and GitNexus staged detection pending | PASS |
 
 ## Counterexample Check
 
@@ -110,6 +143,10 @@ R1 scope:
 | A support console allows silent cross-tenant diagnosis without reason or audit | Rejected; support mode requires actor, tenant, reason, correlation id, and audit | `PLATFORM_PRODUCT_SECURITY_BOUNDARY.md` |
 | P10 begins with write actions such as pause tenant or impersonate tenant user | Rejected; P10-P12 are read-only except audit/diagnostic metadata | `PLATFORM_PRODUCT_SECURITY_BOUNDARY.md` |
 | A P10 worker starts by writing migrations, API handlers, or frontend UI | Rejected; P10-A is data-contract-only until CTO approves implementation | `docs/ai/README.md` and this ledger R1 note |
+| A P10-A contract field has no source-zone or availability status | Rejected; every initial field must map to a source zone and P10-A status | `PLATFORM_PRODUCT_P10_DATA_SOURCE_MAP.md` |
+| A Support Operator tries to generate a support bundle without reason | Rejected; permission matrix and acceptance criteria require reason | `PLATFORM_PRODUCT_PERMISSION_MATRIX.md` and `PLATFORM_PRODUCT_ACCEPTANCE_CRITERIA.md` |
+| Cockpit treats missing telemetry as healthy | Rejected; acceptance criteria require `unknown` to differ from `healthy` | `PLATFORM_PRODUCT_ACCEPTANCE_CRITERIA.md` |
+| A workflow asks platform support to edit tenant order/payment data | Rejected; workflows include stop conditions against business data mutation and payment detail exposure | `PLATFORM_PRODUCT_ADMIN_WORKFLOWS.md` |
 
 ## Validation Plan
 
@@ -121,6 +158,11 @@ Completed validation:
 - forbidden runtime path audit: PASS
 - content scan: PASS for `schema-per-tenant`, read-only-first, audit, support mode, P1-P8 summary, and P10 entry language
 - GitNexus detect_changes staged: LOW, 0 changed symbols, 0 affected processes
+- R2 validation to run before commit:
+  - `git diff --cached --check`: PASS
+  - staged forbidden path audit: PASS, 7 files under `docs/ai/` and `ai-ledger/platform/`
+  - content scan: PASS for P10 source map, workflows, permission matrix, acceptance criteria, and P10-A contract-only language
+  - GitNexus detect_changes staged: LOW, 7 changed files, 0 affected processes
 
 No runtime tests are required because this slice is documentation-only.
 

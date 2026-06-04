@@ -70,34 +70,63 @@ Deliverables:
 - `docs/ai/PLATFORM_PRODUCT_PRD.md`
 - `docs/ai/PLATFORM_PRODUCT_SECURITY_BOUNDARY.md`
 - `docs/ai/PLATFORM_PRODUCT_ROADMAP.md`
+- `docs/ai/PLATFORM_PRODUCT_P10_DATA_SOURCE_MAP.md`
+- `docs/ai/PLATFORM_PRODUCT_ADMIN_WORKFLOWS.md`
+- `docs/ai/PLATFORM_PRODUCT_PERMISSION_MATRIX.md`
+- `docs/ai/PLATFORM_PRODUCT_ACCEPTANCE_CRITERIA.md`
 - P9 ledger
 
 Exit criteria:
 
 - CTO/product owner accepts PRD.
 - Platform product layer is clearly separated from harness engineering.
-- P10 scope is read-only and bounded.
+- P10-A scope is data-contract-only and bounded.
 
-### P10 - Platform Data Contracts & Read-Only API Foundation
+### P10-A - Platform Data Contracts Only
 
 Goal:
 
-- Define and implement the first platform data contracts and read-only backend APIs.
+- Define platform data contracts, source mapping, examples, and test plan before any runtime code is written.
 
-Likely deliverables:
+Allowed deliverables:
 
 - TenantSummary contract
 - TenantHealth contract
 - SystemHealth contract
 - PlatformAuditEvent contract
-- read-only platform API scaffolding
+- per-field source map
+- example fixtures for healthy, degraded, and unknown states
+- permission and workflow-driven test plan
+- explicit no-runtime-code evidence
+
+Implementation posture:
+
+- documentation and contract artifacts only
+- no migrations
+- no backend API handlers
+- no frontend UI
+- no auth/RBAC/tenancy/session/payment changes
+- no tenant business-data edits
+
+### P10-B - Read-Only API Skeleton
+
+Goal:
+
+- Implement read-only API skeletons only after P10-A contracts are accepted.
+
+Likely deliverables:
+
+- read-only platform API skeleton
+- fixture-backed or explicitly safe responses where real sources are unavailable
+- tests for degraded and unknown states
 - tests proving no product/runtime mutation
 
 Implementation posture:
 
-- backend first, but contract-driven
+- backend first, contract-driven
 - no frontend production UI yet
 - no controlled write actions except audit/diagnostic records if explicitly approved
+- no migrations unless a dedicated CTO gate approves a platform-owned metadata store
 
 ### P11 - Super Admin Cockpit Foundation
 
@@ -196,13 +225,14 @@ Implementation posture:
 The approved order for SaaS platform product work is:
 
 1. PRD and safety boundary
-2. data contracts
-3. read-only backend APIs
-4. frontend cockpit
-5. tenant support console
-6. operations observability
-7. controlled admin actions
-8. tenant lifecycle management
+2. data source map, workflows, permission matrix, and acceptance criteria
+3. P10-A data-contract-only
+4. P10-B read-only backend API skeleton
+5. frontend cockpit
+6. tenant support console
+7. operations observability
+8. controlled admin actions
+9. tenant lifecycle management
 
 This differs from a normal product feature because the super admin surface has higher blast radius. The team must define what is legal and auditable before exposing powerful UI affordances.
 

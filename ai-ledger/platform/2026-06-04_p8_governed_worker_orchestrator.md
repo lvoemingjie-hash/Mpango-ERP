@@ -39,7 +39,7 @@ Build the platform layer's first real function orchestrator. A governed executio
 
 | Commit | Description |
 |--------|-------------|
-| (pending) | feat(platform): P8 governed worker orchestrator |
+| 22d73f1 | feat(platform): P8 governed worker orchestrator |
 
 ## Evidence Strategy
 

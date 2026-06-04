@@ -125,7 +125,7 @@ R1 scope:
 | Generate security boundary | `docs/ai/PLATFORM_PRODUCT_SECURITY_BOUNDARY.md` added | Content scan confirms support mode, audit requirements, read-only rule, and stop conditions | PASS |
 | Summarize pre-platform-development work | `docs/ai/PLATFORM_PRODUCT_ROADMAP.md` includes P1-P8 foundation summary | Content scan confirms Track A/Track B separation and P1-P8 foundation summary | PASS |
 | Preserve platform/product separation | Docs explicitly separate harness control plane from SaaS platform product layer | Forbidden path audit: PASS, no runtime/product path touched | PASS |
-| Do not modify product/runtime code | Only docs/ledger files intended | `git status --short` shows 4 new docs/ledger files only | PASS |
+| Do not modify product/runtime code | Only docs/ledger files intended | Full branch diff vs `origin/platform-dev`: 9 docs/ledger files; R2 delta vs `bbce0cc`: 7 docs/ledger files | PASS |
 | Add P9/P10 docs to AI startup index | `docs/ai/README.md` includes Platform Product Track entry | R1 staged diff confirms README + P9 ledger only | PASS |
 | Keep P10 from starting with code implementation | README and ledger define `P10-A data-contract-only` as the next slice | R1 content scan confirms no migration/API handler/UI authorization | PASS |
 | Add P10 data-source mapping | `docs/ai/PLATFORM_PRODUCT_P10_DATA_SOURCE_MAP.md` added | R2 content scan to verify TenantSummary/TenantHealth/SystemHealth/PlatformAuditEvent source rows | PASS |
@@ -152,8 +152,9 @@ R1 scope:
 
 Completed validation:
 
-- `git status --short`: 4 new docs/ledger files only
-- `git diff --cached --name-status`: 4 new docs/ledger files only
+- Initial P9 base validation covered the original base PRD docs before R1/R2 expansion
+- Full branch diff vs `origin/platform-dev`: 9 files
+- R2 delta vs `bbce0cc`: 7 files
 - `git diff --cached --check`: PASS after whitespace cleanup
 - forbidden runtime path audit: PASS
 - content scan: PASS for `schema-per-tenant`, read-only-first, audit, support mode, P1-P8 summary, and P10 entry language
@@ -163,6 +164,11 @@ Completed validation:
   - staged forbidden path audit: PASS, 7 files under `docs/ai/` and `ai-ledger/platform/`
   - content scan: PASS for P10 source map, workflows, permission matrix, acceptance criteria, and P10-A contract-only language
   - GitNexus detect_changes staged: LOW, 7 changed files, 0 affected processes
+- R3 evidence polish:
+  - `npx gitnexus analyze`: already up to date
+  - GitNexus detect_changes compare vs `origin/platform-dev`: LOW, 9 changed files, 0 affected processes
+  - Full branch diff vs `origin/platform-dev`: 9 files
+  - R2 delta vs `bbce0cc`: 7 files
 
 No runtime tests are required because this slice is documentation-only.
 

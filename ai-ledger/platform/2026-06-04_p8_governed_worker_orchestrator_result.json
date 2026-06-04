@@ -4,7 +4,9 @@
   "agent": "claude",
   "branch": "codex/platform-p8-governed-worker-orchestrator-2026-06-04",
   "commit_chain": {
-    "batch": "22d73f1"
+    "batch": "22d73f1",
+    "evidence_update": "22324a3",
+    "evidence_alignment": "cead48d"
   },
   "evidence_strategy": "This result was generated from the initial P8 commit. The commit_chain records the full history. A self-referential SHA is not used. Live merge gate must regenerate the report after merge candidate checkout.",
   "blocker": "",

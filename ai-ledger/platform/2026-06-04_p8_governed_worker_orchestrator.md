@@ -41,6 +41,8 @@ Build the platform layer's first real function orchestrator. A governed executio
 | Commit | Description |
 |--------|-------------|
 | 22d73f1 | feat(platform): P8 governed worker orchestrator |
+| 22324a3 | docs(platform): P8 evidence commit chain update |
+| cead48d | docs(platform): P8 evidence alignment - 10 expected files |
 
 ## Evidence Strategy
 

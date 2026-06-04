@@ -33,6 +33,36 @@ def run_git(cmd, repo_path):
         return 1, "", "git not found"
 
 
+def detect_merge_commit(repo_path):
+    """Return True if HEAD is a merge commit (2+ parents)."""
+    rc, out, _ = run_git(["cat-file", "-p", "HEAD"], repo_path)
+    if rc != 0:
+        return False
+    parent_count = 0
+    for line in out.splitlines():
+        if line.startswith("parent "):
+            parent_count += 1
+    return parent_count >= 2
+
+
+def smart_base_ref(repo_path, provided_ref=None):
+    """Determine the best base ref for diff comparison.
+
+    If a ref is explicitly provided, use it.
+    If HEAD is a merge commit, HEAD~1 is the first parent (pre-merge tip).
+    Otherwise try origin/platform-dev, falling back to HEAD~1.
+    """
+    if provided_ref:
+        return provided_ref
+    if detect_merge_commit(repo_path):
+        return "HEAD~1"
+    rc, _, _ = run_git(
+        ["rev-parse", "--verify", "origin/platform-dev"], repo_path)
+    if rc == 0:
+        return "origin/platform-dev"
+    return "HEAD~1"
+
+
 def get_branch(repo_path):
     rc, out, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"], repo_path)
     return out if rc == 0 else "unknown"
@@ -174,7 +204,9 @@ def generate_report(repo_path, base_ref=None, skip_tests=False):
     branch = get_branch(repo_path)
     commit_short = get_commit_short(repo_path)
     commit_full = get_commit_full(repo_path)
-    files = get_modified_files(repo_path, base_ref)
+    merge_context = detect_merge_commit(repo_path)
+    resolved_ref = smart_base_ref(repo_path, base_ref)
+    files = get_modified_files(repo_path, resolved_ref)
     forbidden = audit_forbidden_paths(files)
     if skip_tests:
         test_result = {"total": 0, "status": "SKIPPED", "passed": 0}
@@ -202,6 +234,8 @@ def generate_report(repo_path, base_ref=None, skip_tests=False):
         "branch": branch,
         "commit": commit_short,
         "commit_full": commit_full,
+        "merge_context": merge_context,
+        "resolved_base_ref": resolved_ref,
         "modified_files": [normalize_path(f) for f in files],
         "file_count": len(files),
         "tests": test_result,
@@ -223,6 +257,9 @@ def format_human(report):
     lines = ["Platform Merge Readiness Report", "=" * 40]
     lines.append(f"Branch: {report['branch']}")
     lines.append(f"Commit: {report['commit']} ({report['commit_full']})")
+    if report.get("merge_context"):
+        lines.append("Merge Context: HEAD is a merge commit")
+    lines.append(f"Base Ref: {report.get('resolved_base_ref', 'HEAD~1')}")
     lines.append(f"Risk: {report['risk']}")
     lines.append("")
 

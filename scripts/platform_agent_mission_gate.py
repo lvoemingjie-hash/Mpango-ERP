@@ -126,8 +126,9 @@ def validate_mission(data):
         or phase.startswith("P4-")
         or phase.startswith("P5-")
         or phase.startswith("P6-")
+        or phase.startswith("P7-")
     ):
-        failures.append(f"'phase' '{phase}' must begin with P1- through P6-")
+        failures.append(f"'phase' '{phase}' must begin with P1- through P7-")
 
     agent = data["agent"]
     if not isinstance(agent, str) or agent not in VALID_AGENTS:

@@ -338,15 +338,20 @@ class TestPhaseValidation(unittest.TestCase):
         self.assertEqual(failures, [])
 
     def test_invalid_phase_prefix(self):
-        data = dict(VALID_MISSION, phase="P8-A")
+        data = dict(VALID_MISSION, phase="P9-A")
         failures = gate.validate_mission(data)
         self.assertTrue(len(failures) > 0)
-        self.assertIn("P1- through P7-", failures[0])
+        self.assertIn("P1- through P8-", failures[0])
 
     def test_p7_phase_accepted(self):
         data = dict(VALID_MISSION, phase="P7-A")
         failures = gate.validate_mission(data)
         self.assertEqual(failures, [], f"P7-A should be accepted, got: {failures}")
+
+    def test_p8_phase_accepted(self):
+        data = dict(VALID_MISSION, phase="P8-A")
+        failures = gate.validate_mission(data)
+        self.assertEqual(failures, [], f"P8-A should be accepted, got: {failures}")
 
     def test_invalid_phase_no_number(self):
         data = dict(VALID_MISSION, phase="PX-A")

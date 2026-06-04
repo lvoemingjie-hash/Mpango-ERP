@@ -9,9 +9,9 @@
   "evidence_strategy": "This result was generated from the initial P8 commit. The commit_chain records the full history. A self-referential SHA is not used. Live merge gate must regenerate the report after merge candidate checkout.",
   "blocker": "",
   "test_result": "508/508 pass",
-  "expected_files_count": 9,
-  "changed_files_vs_platform_dev": 9,
+  "expected_files_count": 10,
+  "changed_files_vs_platform_dev": 10,
   "expected_files_present": true,
   "forbidden_paths_touched": false,
-  "notes": "P8 governed worker orchestrator. 9 changed files = 5 scripts + 4 ledger artifacts. commit_chain will be updated with actual SHA after commit."
+  "notes": "P8 governed worker orchestrator. 10 changed files = 5 scripts + 5 ledger artifacts. commit_chain updated with actual SHAs."
 }

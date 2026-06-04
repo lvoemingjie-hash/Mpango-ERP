@@ -28,6 +28,7 @@ Build the platform layer's first real function orchestrator. A governed executio
 - `ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_mission.json`
 - `ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_result.json`
 - `ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_events.jsonl`
+- `ai-ledger/platform/2026-06-04_p8_merge_readiness_report.md`
 
 ## Out of Scope
 
@@ -48,7 +49,7 @@ Build the platform layer's first real function orchestrator. A governed executio
 - Live merge gate must regenerate the report after merge candidate checkout.
 - Orchestrator writes artifacts AFTER diff audit, so audit only sees worker command output.
 
-## Changed Files vs origin/platform-dev (9 files)
+## Changed Files vs origin/platform-dev (10 files)
 
 | # | File |
 |---|------|
@@ -61,3 +62,4 @@ Build the platform layer's first real function orchestrator. A governed executio
 | 7 | `ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_mission.json` |
 | 8 | `ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_result.json` |
 | 9 | `ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_events.jsonl` |
+| 10 | `ai-ledger/platform/2026-06-04_p8_merge_readiness_report.md` |

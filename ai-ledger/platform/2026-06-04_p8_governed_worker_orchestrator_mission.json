@@ -11,7 +11,8 @@
     "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator.md",
     "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_mission.json",
     "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_result.json",
-    "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_events.jsonl"
+    "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_events.jsonl",
+    "ai-ledger/platform/2026-06-04_p8_merge_readiness_report.md"
   ],
   "result": "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_result.json",
   "events": "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_events.jsonl",

@@ -16,10 +16,10 @@ Rebuild platform data contracts to align field-by-field with P9-R2 data source m
 
 | Contract | Fields | Aligned to P9-R2 |
 |----------|--------|------------------|
-| TenantSummary | 11 | Yes — all fields from source map |
-| TenantHealth | 10 + 3 sub-structures | Yes — all fields from source map |
-| SystemHealth | 11 | Yes — all fields from source map |
-| PlatformAuditEvent | 11 | Yes — all fields from source map |
+| TenantSummary | 11 | Yes - all fields from source map |
+| TenantHealth | 10 + 3 sub-structures | Yes - all fields from source map |
+| SystemHealth | 11 | Yes - all fields from source map |
+| PlatformAuditEvent | 11 | Yes - all fields from source map |
 
 ## Key Changes from P10-A (Rejected)
 
@@ -29,15 +29,15 @@ Rebuild platform data contracts to align field-by-field with P9-R2 data source m
 | TenantHealth fields | Simple `CheckResult[]` | `schema_status`, `last_login_at`, `activity_counters`, `recent_errors`, `slow_routes`, `failed_jobs`, `last_health_check_at` |
 | SystemHealth fields | Tenant counts only | `api_status`, `database_status`, `database_connections`, `queue_status`, `cpu_status`, `memory_status`, `disk_status`, `error_rate`, `slow_request_count` |
 | AuditEvent fields | `event_type`, `actor_type`, `payload` | `actor_role`, `scope`, `action`, `reason`, `result`, `metadata_redacted`, `correlation_id` |
-| Implementation assertions | "All platform data lives in public schema" | Removed — only proposed/source status labels |
+| Implementation assertions | "All platform data lives in public schema" | Removed - only proposed/source status labels |
 | Source status | Custom (platform/tenant/unknown) | P9-R2 vocabulary: available_now, proposed_public_metadata, tenant_aggregate_required, telemetry_required, manual_or_unknown, deferred |
 
 ## Deliverables
 
-- `docs/ai/PLATFORM_PRODUCT_CONTRACTS.md` — 4 contracts aligned to P9-R2
-- `docs/ai/PLATFORM_PRODUCT_CONTRACT_FIXTURES.md` — 9 valid + 6 rejected
-- `docs/ai/PLATFORM_PRODUCT_P10A_TEST_PLAN.md` — scope boundary + structure + conformance
-- `ai-ledger/platform/2026-06-05_p10a_r1_data_contract_aligned.md` — this file
+- `docs/ai/PLATFORM_PRODUCT_CONTRACTS.md` - 4 contracts aligned to P9-R2
+- `docs/ai/PLATFORM_PRODUCT_CONTRACT_FIXTURES.md` - 9 valid + 6 rejected
+- `docs/ai/PLATFORM_PRODUCT_P10A_TEST_PLAN.md` - scope boundary + structure + conformance
+- `ai-ledger/platform/2026-06-05_p10a_r1_data_contract_aligned.md` - this file
 
 ## Out of Scope
 
@@ -50,11 +50,24 @@ Rebuild platform data contracts to align field-by-field with P9-R2 data source m
 - No platform-dev merge
 - No unapproved implementation assertions
 
-## Changed Files vs origin/platform-dev (4 files)
+## P10-A-R2 CTO Index Fix
+
+Codex CTO review found that the P10-A contract documents were not included in the `docs/ai/README.md` Platform Product Track entry. That would let a future P10-B worker start from P9 product docs without reading the accepted P10-A contracts, fixtures, and test plan.
+
+R2 adds these startup-index entries:
+
+- `docs/ai/PLATFORM_PRODUCT_CONTRACTS.md`
+- `docs/ai/PLATFORM_PRODUCT_CONTRACT_FIXTURES.md`
+- `docs/ai/PLATFORM_PRODUCT_P10A_TEST_PLAN.md`
+
+No PRD body, runtime code, migrations, API handlers, UI, auth/RBAC/tenancy/session/payment, or tenant business-data files were changed.
+
+## Changed Files vs origin/platform-dev (5 files)
 
 | # | File |
 |---|------|
 | 1 | `docs/ai/PLATFORM_PRODUCT_CONTRACTS.md` |
 | 2 | `docs/ai/PLATFORM_PRODUCT_CONTRACT_FIXTURES.md` |
 | 3 | `docs/ai/PLATFORM_PRODUCT_P10A_TEST_PLAN.md` |
-| 4 | `ai-ledger/platform/2026-06-05_p10a_r1_data_contract_aligned.md` |
+| 4 | `docs/ai/README.md` |
+| 5 | `ai-ledger/platform/2026-06-05_p10a_r1_data_contract_aligned.md` |

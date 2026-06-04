@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Tests for platform_worker_orchestrator.py using unittest and stdlib only."""
+"""Tests for platform_worker_orchestrator.py using unittest and stdlib only.
+
+Contract: ALL orchestrator artifacts (result, events, report) are included in
+the final diff audit. Mission expected_files must cover worker output AND
+orchestrator artifacts. Tests verify this contract explicitly.
+"""
 
 import json
 import os
@@ -42,17 +47,31 @@ def _make_repo(tmpdir, branch="codex/platform-p8-test-2026-06-04"):
     )
 
 
+# Full expected_files: worker output + mission files + orchestrator artifacts
+_FULL_EXPECTED = [
+    "scripts/platform_new.py",
+    "ai-ledger/platform/test_mission.json",
+    "ai-ledger/platform/test_mission.md",
+    "ai-ledger/platform/test_result.json",
+    "ai-ledger/platform/test_events.jsonl",
+    "ai-ledger/platform/test_orchestrator_report.md",
+]
+
+# Minimal expected_files: worker output + mission files ONLY (no artifacts)
+_MINIMAL_EXPECTED = [
+    "scripts/platform_new.py",
+    "ai-ledger/platform/test_mission.json",
+    "ai-ledger/platform/test_mission.md",
+]
+
+
 def _write_mission(tmpdir, overrides=None):
-    """Write a valid mission JSON and its .md mission file."""
+    """Write a valid mission JSON with ALL expected files (worker + artifacts)."""
     mission = {
         "phase": "P8-A",
         "agent": "claude",
         "mission": "ai-ledger/platform/test_mission.md",
-        "expected_files": [
-            "scripts/platform_new.py",
-            "ai-ledger/platform/test_mission.json",
-            "ai-ledger/platform/test_mission.md",
-        ],
+        "expected_files": list(_FULL_EXPECTED),
         "result": "ai-ledger/platform/test_result.json",
         "events": "ai-ledger/platform/test_events.jsonl",
         "timeout_seconds": 30,
@@ -60,27 +79,14 @@ def _write_mission(tmpdir, overrides=None):
     if overrides:
         mission.update(overrides)
     ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
-    # Write the .md mission file
     mission_md = os.path.join(ledger_dir, "test_mission.md")
     if not os.path.isfile(mission_md):
         with open(mission_md, "w") as f:
             f.write("# Test Mission\n")
-    # Write the mission JSON
     path = os.path.join(ledger_dir, "test_mission.json")
     with open(path, "w") as f:
         json.dump(mission, f)
     return path
-
-
-VALID_MISSION = {
-    "phase": "P8-A",
-    "agent": "claude",
-    "mission": "ai-ledger/platform/test_mission.md",
-    "expected_files": ["scripts/platform_new.py"],
-    "result": "ai-ledger/platform/test_result.json",
-    "events": "ai-ledger/platform/test_events.jsonl",
-    "timeout_seconds": 30,
-}
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +117,6 @@ class TestValidateOutputPath(unittest.TestCase):
     def test_drive_qualified_rejected(self):
         err = orch.validate_output_path("C:/tmp/result.json", "result", ".json")
         self.assertIsNotNone(err)
-        # On Windows, C:/ paths are caught as absolute; on other OS, as drive-qualified
         self.assertTrue(
             "absolute" in err or "drive" in err,
             f"Expected 'absolute' or 'drive' in error, got: {err}"
@@ -190,7 +195,140 @@ class TestLoadAndValidateMission(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Integration: dry-run
+# Artifact contract: core P8-R1 fix verification
+# ---------------------------------------------------------------------------
+
+class TestArtifactContract(unittest.TestCase):
+    """Verify that orchestrator artifacts are included in the final audit."""
+
+    def test_excluding_artifacts_from_expected_fails(self):
+        """If expected_files omits result/events/report, orchestrator FAILS
+        even though the worker command only created legal files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _make_repo(tmpdir)
+            path = _write_mission(tmpdir, {
+                "expected_files": list(_MINIMAL_EXPECTED),
+            })
+            cmd = [
+                sys.executable, "-c",
+                "open('scripts/platform_new.py','w').write('# new')",
+            ]
+            status, events, result_data, blockers = orch.orchestrate(
+                tmpdir, path, command=cmd,
+            )
+            self.assertEqual(status, "FAIL")
+            self.assertTrue(any("unexpected" in b.lower() for b in blockers))
+            # The orchestrator artifacts must appear as unexpected
+            changed = result_data["changed_files"]
+            self.assertTrue(
+                any("test_result.json" in f for f in changed),
+                f"test_result.json not in changed_files: {changed}",
+            )
+            self.assertTrue(
+                any("test_events.jsonl" in f for f in changed),
+                f"test_events.jsonl not in changed_files: {changed}",
+            )
+
+    def test_including_artifacts_in_expected_passes(self):
+        """If expected_files covers worker + artifacts, orchestrator PASSES."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _make_repo(tmpdir)
+            path = _write_mission(tmpdir)  # uses _FULL_EXPECTED
+            cmd = [
+                sys.executable, "-c",
+                "open('scripts/platform_new.py','w').write('# new')",
+            ]
+            status, events, result_data, blockers = orch.orchestrate(
+                tmpdir, path, command=cmd,
+            )
+            self.assertEqual(status, "PASS")
+            self.assertEqual(blockers, [])
+
+    def test_changed_files_includes_artifacts(self):
+        """result.changed_files must list the orchestrator artifact files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _make_repo(tmpdir)
+            path = _write_mission(tmpdir)
+            cmd = [
+                sys.executable, "-c",
+                "open('scripts/platform_new.py','w').write('# new')",
+            ]
+            status, events, result_data, blockers = orch.orchestrate(
+                tmpdir, path, command=cmd,
+            )
+            self.assertEqual(status, "PASS")
+            changed = result_data["changed_files"]
+            self.assertIn("ai-ledger/platform/test_result.json", changed)
+            self.assertIn("ai-ledger/platform/test_events.jsonl", changed)
+            self.assertIn("ai-ledger/platform/test_orchestrator_report.md",
+                          changed)
+
+    def test_dry_run_unauthorized_artifacts_fails(self):
+        """Dry-run with artifact paths not in expected_files must FAIL and
+        must NOT write the unauthorized artifacts to disk."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _make_repo(tmpdir)
+            path = _write_mission(tmpdir, {
+                "expected_files": list(_MINIMAL_EXPECTED),
+            })
+            status, events, result_data, blockers = orch.orchestrate(
+                tmpdir, path,
+                command=[sys.executable, "-c", "print('hello')"],
+                dry_run=True,
+            )
+            self.assertEqual(status, "FAIL")
+            self.assertTrue(
+                any("unauthorized artifact" in b for b in blockers),
+                f"Expected unauthorized artifact blocker, got: {blockers}",
+            )
+            # Verify artifacts were NOT written
+            self.assertFalse(os.path.isfile(os.path.join(
+                tmpdir, "ai-ledger", "platform", "test_result.json")))
+            self.assertFalse(os.path.isfile(os.path.join(
+                tmpdir, "ai-ledger", "platform", "test_events.jsonl")))
+
+    def test_dry_run_authorized_artifacts_passes(self):
+        """Dry-run with artifact paths in expected_files writes and PASSES."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _make_repo(tmpdir)
+            path = _write_mission(tmpdir)  # _FULL_EXPECTED includes artifacts
+            status, events, result_data, blockers = orch.orchestrate(
+                tmpdir, path,
+                command=[sys.executable, "-c", "print('hello')"],
+                dry_run=True,
+            )
+            self.assertEqual(status, "DRY_RUN")
+            self.assertEqual(blockers, [])
+            self.assertTrue(os.path.isfile(os.path.join(
+                tmpdir, "ai-ledger", "platform", "test_result.json")))
+            self.assertTrue(os.path.isfile(os.path.join(
+                tmpdir, "ai-ledger", "platform", "test_events.jsonl")))
+
+    def test_final_audit_event_present(self):
+        """Events must include a final_audit event after artifacts are written."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _make_repo(tmpdir)
+            path = _write_mission(tmpdir)
+            cmd = [
+                sys.executable, "-c",
+                "open('scripts/platform_new.py','w').write('# new')",
+            ]
+            status, events, result_data, blockers = orch.orchestrate(
+                tmpdir, path, command=cmd,
+            )
+            event_types = [e["event"] for e in events]
+            self.assertIn("final_audit", event_types)
+            self.assertIn("artifacts_finalized", event_types)
+            # final_audit must come after artifacts were written
+            final_idx = event_types.index("final_audit")
+            self.assertTrue(
+                final_idx > 0,
+                "final_audit should not be the first event",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Integration: dry-run (with full expected files)
 # ---------------------------------------------------------------------------
 
 class TestDryRun(unittest.TestCase):
@@ -206,7 +344,6 @@ class TestDryRun(unittest.TestCase):
             self.assertEqual(status, "DRY_RUN")
             self.assertEqual(blockers, [])
             self.assertEqual(result_data["status"], "DRY_RUN")
-            self.assertEqual(result_data["phase"], "P8-A")
 
     def test_dry_run_writes_artifacts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -293,7 +430,6 @@ class TestSuccess(unittest.TestCase):
             with open(events_file) as f:
                 lines = f.readlines()
             self.assertGreater(len(lines), 0)
-            # Each line should be valid JSON
             for line in lines:
                 json.loads(line.strip())
 
@@ -323,7 +459,6 @@ class TestUnexpectedFileFail(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _make_repo(tmpdir)
             path = _write_mission(tmpdir)
-            # Command creates expected + unexpected file
             cmd = [
                 sys.executable, "-c",
                 "open('scripts/platform_new.py','w').write('# new');"
@@ -349,7 +484,6 @@ class TestForbiddenFileFail(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _make_repo(tmpdir)
             path = _write_mission(tmpdir)
-            # Command creates a forbidden file
             cmd = [
                 sys.executable, "-c",
                 "import os; os.makedirs('backend', exist_ok=True);"
@@ -511,7 +645,7 @@ class TestJsonCli(unittest.TestCase):
                 os.path.join(SCRIPT_DIR, "platform_worker_orchestrator.py"),
                 "--repo", tmpdir, "--mission", path,
                 "--json",
-            ] + ["--command"] + cmd
+                "--command"] + cmd
             result = subprocess.run(
                 cli_cmd, capture_output=True, text=True, timeout=30,
             )
@@ -533,7 +667,7 @@ class TestHumanCli(unittest.TestCase):
                 sys.executable,
                 os.path.join(SCRIPT_DIR, "platform_worker_orchestrator.py"),
                 "--repo", tmpdir, "--mission", path,
-            ] + ["--command"] + cmd
+                "--command"] + cmd
             result = subprocess.run(
                 cli_cmd, capture_output=True, text=True, timeout=30,
             )

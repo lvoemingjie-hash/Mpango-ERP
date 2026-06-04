@@ -263,6 +263,11 @@ def orchestrate(repo_path, mission_path, command=None, dry_run=False,
                 timeout_override=None, report_path=None):
     """Orchestrate a governed worker run.
 
+    Contract: ALL files written by the orchestrator (result, events, report)
+    are included in the final diff audit. Mission expected_files MUST cover
+    worker output AND orchestrator artifacts. The audit runs AFTER all files
+    are written, so no file escapes the expected_files check.
+
     Returns (status, events, result_data, blockers).
     """
     events = []
@@ -327,7 +332,34 @@ def orchestrate(repo_path, mission_path, command=None, dry_run=False,
 
     timeout = timeout_override or mission.get("timeout_seconds", 300)
 
-    # --- Step 4: Dry run ---
+    # --- Step 4: Dry-run artifact authorization check ---
+    # In dry-run mode, if artifact paths are not in expected_files, we must
+    # NOT write them (would leave unauthorized changed files).
+    expected_set = set(normalize_path(f) for f in mission["expected_files"])
+    artifact_paths = {result_rel, events_rel, report_rel}
+    unauthorized_artifacts = artifact_paths - expected_set
+
+    if dry_run and unauthorized_artifacts:
+        for p in sorted(unauthorized_artifacts):
+            blockers.append(
+                f"dry-run would leave unauthorized artifact: {p}")
+        events.append({
+            "event": "dry_run_unauthorized",
+            "unauthorized": sorted(unauthorized_artifacts),
+        })
+        return ("FAIL", events, {
+            "status": "FAIL",
+            "phase": mission["phase"],
+            "agent": mission["agent"],
+            "blockers": blockers,
+        }, blockers)
+
+    # --- Step 5: Run command (skip in dry-run) ---
+    exit_code = 0
+    stdout = ""
+    stderr = ""
+    timed_out = False
+
     if dry_run:
         events.append({
             "event": "dry_run",
@@ -337,43 +369,47 @@ def orchestrate(repo_path, mission_path, command=None, dry_run=False,
             "events_path": events_rel,
             "report_path": report_rel,
         })
-        result_data = {
-            "status": "DRY_RUN",
-            "phase": mission["phase"],
-            "agent": mission["agent"],
+    else:
+        events.append({
+            "event": "command_start",
             "command": command,
             "timeout": timeout,
-            "result_path": result_rel,
-            "events_path": events_rel,
-            "report_path": report_rel,
-        }
-        write_events(events_abs, events)
-        write_result(result_abs, result_data)
-        return "DRY_RUN", events, result_data, []
+        })
+        exit_code, stdout, stderr, timed_out = run_command(
+            command, repo_path, timeout)
+        events.append({
+            "event": "command_end",
+            "exit_code": exit_code,
+            "timed_out": timed_out,
+            "stdout_len": len(stdout),
+            "stderr_len": len(stderr),
+        })
+        if timed_out:
+            blockers.append(f"command timed out after {timeout}s")
+        elif exit_code != 0:
+            blockers.append(f"command exited with code {exit_code}")
 
-    # --- Step 5: Run command ---
-    events.append({
-        "event": "command_start",
-        "command": command,
-        "timeout": timeout,
-    })
-
-    exit_code, stdout, stderr, timed_out = run_command(command, repo_path, timeout)
-
-    events.append({
-        "event": "command_end",
+    # --- Step 6: Write initial artifacts (BEFORE final audit) ---
+    # Artifacts are written now so the final audit includes them.
+    preliminary_result = {
+        "status": "PENDING_AUDIT",
+        "phase": mission["phase"],
+        "agent": mission["agent"],
         "exit_code": exit_code,
         "timed_out": timed_out,
-        "stdout_len": len(stdout),
-        "stderr_len": len(stderr),
+        "expected_files": [normalize_path(f) for f in mission["expected_files"]],
+        "blockers": list(blockers),
+    }
+    write_events(events_abs, events)
+    write_result(result_abs, preliminary_result)
+    write_report(report_abs, {
+        **preliminary_result,
+        "command": command,
+        "stdout_preview": stdout[:500] if stdout else "",
+        "stderr_preview": stderr[:500] if stderr else "",
     })
 
-    if timed_out:
-        blockers.append(f"command timed out after {timeout}s")
-    elif exit_code != 0:
-        blockers.append(f"command exited with code {exit_code}")
-
-    # --- Step 6: Diff audit ---
+    # --- Step 7: Final diff audit (AFTER all artifacts written) ---
     changed_tracked = get_changed_files(repo_path)
     changed_untracked = get_untracked_files(repo_path)
     all_changed = sorted(set(
@@ -382,29 +418,35 @@ def orchestrate(repo_path, mission_path, command=None, dry_run=False,
 
     audit = audit_files(mission["expected_files"], all_changed, repo_path)
 
-    events.append({
-        "event": "diff_audit",
-        "changed_files": len(all_changed),
-        "forbidden_violations": len(audit["forbidden_violations"]),
-        "unexpected_files": len(audit["unexpected_files"]),
-        "missing_files": len(audit["missing_files"]),
-    })
-
     if audit["forbidden_violations"]:
         blockers.append(
             f"{len(audit['forbidden_violations'])} forbidden file violation(s)")
     if audit["unexpected_files"]:
         sample = ", ".join(audit["unexpected_files"][:5])
-        blockers.append(f"{len(audit['unexpected_files'])} unexpected file(s): {sample}")
-    if audit["missing_files"]:
+        blockers.append(
+            f"{len(audit['unexpected_files'])} unexpected file(s): {sample}")
+    # In dry-run, worker command did not execute so expected worker output
+    # may not exist on disk — skip missing_files check.
+    if not dry_run and audit["missing_files"]:
         sample = ", ".join(audit["missing_files"][:5])
-        blockers.append(f"{len(audit['missing_files'])} missing expected file(s): {sample}")
+        blockers.append(
+            f"{len(audit['missing_files'])} missing expected file(s): {sample}")
 
-    # --- Step 7: Determine status ---
-    status = "PASS" if not blockers else "FAIL"
+    # --- Step 8: Determine final status ---
+    status = "DRY_RUN" if (dry_run and not blockers) else \
+             ("PASS" if not blockers else "FAIL")
 
-    # --- Step 8: Build result data ---
-    result_data = {
+    # --- Step 9: Append audit event and finalize artifacts ---
+    events.append({
+        "event": "final_audit",
+        "changed_files": len(all_changed),
+        "forbidden_violations": len(audit["forbidden_violations"]),
+        "unexpected_files": len(audit["unexpected_files"]),
+        "missing_files": len(audit["missing_files"]),
+        "status": status,
+    })
+
+    final_result = {
         "status": status,
         "phase": mission["phase"],
         "agent": mission["agent"],
@@ -418,24 +460,23 @@ def orchestrate(repo_path, mission_path, command=None, dry_run=False,
         "blockers": blockers,
     }
 
-    # --- Step 9: Write artifacts ---
+    # Overwrite artifacts with final status and audit results
+    events.append({
+        "event": "artifacts_finalized",
+        "result": result_rel,
+        "events": events_rel,
+        "report": report_rel,
+    })
     write_events(events_abs, events)
-    write_result(result_abs, result_data)
+    write_result(result_abs, final_result)
     write_report(report_abs, {
-        **result_data,
+        **final_result,
         "command": command,
         "stdout_preview": stdout[:500] if stdout else "",
         "stderr_preview": stderr[:500] if stderr else "",
     })
 
-    events.append({
-        "event": "artifacts_written",
-        "result": result_rel,
-        "events": events_rel,
-        "report": report_rel,
-    })
-
-    return status, events, result_data, blockers
+    return status, events, final_result, blockers
 
 
 # ---------------------------------------------------------------------------

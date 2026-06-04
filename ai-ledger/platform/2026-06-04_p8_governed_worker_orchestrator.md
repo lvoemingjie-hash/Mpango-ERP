@@ -43,13 +43,15 @@ Build the platform layer's first real function orchestrator. A governed executio
 | 22d73f1 | feat(platform): P8 governed worker orchestrator |
 | 22324a3 | docs(platform): P8 evidence commit chain update |
 | cead48d | docs(platform): P8 evidence alignment - 10 expected files |
+| 8f090f3 | docs(platform): P8 final commit chain closure |
+| (pending) | fix(platform): P8-R1 artifact audit contract fix |
 
 ## Evidence Strategy
 
-- The `result.json` `commit_chain` field will record the full commit history.
+- The `result.json` `commit_chain` field records the full commit history.
 - A self-referential SHA is not used (circular).
 - Live merge gate must regenerate the report after merge candidate checkout.
-- Orchestrator writes artifacts AFTER diff audit, so audit only sees worker command output.
+- **R1 fix**: Orchestrator artifacts (result, events, report) are written BEFORE the final diff audit. The audit covers ALL changed files including orchestrator's own output. No file escapes the expected_files check.
 
 ## Changed Files vs origin/platform-dev (10 files)
 

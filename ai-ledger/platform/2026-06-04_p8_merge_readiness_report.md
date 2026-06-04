@@ -1,15 +1,16 @@
 Platform Merge Readiness Report
 ========================================
 Branch: codex/platform-p8-governed-worker-orchestrator-2026-06-04
-Commit: 22324a3 (22324a3a371f5ee84349313b5ee78c1d2b7ffdd6)
+Commit: 4f438b9 (4f438b95457bdc88fb808a888eff650ce933c601)
 Base Ref: origin/platform-dev
 Risk: MEDIUM
 
-Modified files (9):
+Modified files (10):
   ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator.md
   ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_events.jsonl
   ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_mission.json
   ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_result.json
+  ai-ledger/platform/2026-06-04_p8_merge_readiness_report.md
   scripts/platform_agent_mission_gate.py
   scripts/platform_merge_readiness_reporter.py
   scripts/platform_worker_orchestrator.py
@@ -18,7 +19,7 @@ Modified files (9):
 
 Tests: 0 (SKIPPED)
 
-Forbidden path audit: PASS (9 files checked)
+Forbidden path audit: PASS (10 files checked)
 
 Blockers: none
 

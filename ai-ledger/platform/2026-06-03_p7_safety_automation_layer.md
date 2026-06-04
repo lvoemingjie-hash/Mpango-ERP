@@ -14,10 +14,10 @@ Build real platform-only safety automation tooling. Four scripts with paired tes
 
 ## Scope
 
-1. **P7-A Platform Diff Auditor** — Check changed files against allowed/forbidden path lists. Compare, staged, unstacked, untracked modes. Fail on forbidden prefix/keyword or files outside allowlist.
-2. **P7-B Platform Function Registry** — Enumerate `scripts/platform_*.py`, pair with tests, identify related ledger artifacts.
-3. **P7-C Platform Health Check** — Aggregate batch mission, harness index, worker reliability, diff auditor, detect-secrets, GitNexus into single pass/fail. Supports `--base-ref` for compare mode.
-4. **P7-D Platform Merge Readiness Reporter** — Generate standard merge readiness report with all required fields. Short SHAs in JSON, full SHAs in markdown.
+1. **P7-A Platform Diff Auditor** - Check changed files against allowed/forbidden path lists. Compare, staged, untracked modes. Fail on forbidden prefix/keyword or files outside allowlist.
+2. **P7-B Platform Function Registry** - Enumerate `scripts/platform_*.py`, pair with tests, identify related ledger artifacts.
+3. **P7-C Platform Health Check** - Aggregate batch mission, harness index, worker reliability, diff auditor, detect-secrets, GitNexus into single pass/fail. Supports `--base-ref` for compare mode.
+4. **P7-D Platform Merge Readiness Reporter** - Generate standard merge readiness report with all required fields. Short SHAs in JSON, full SHAs in markdown. Supports `--report` to write report to file.
 
 ## Expected Artifacts
 
@@ -39,10 +39,16 @@ Build real platform-only safety automation tooling. Four scripts with paired tes
 
 | Commit | Description |
 |--------|-------------|
-| e99f1f9 | feat(platform): P7 safety automation layer — 4 scripts, 86 tests |
+| e99f1f9 | feat(platform): P7 safety automation layer - 4 scripts, 86 tests |
 | 4546bae | fix(platform): P7-R1 safety automation contract fixes |
-| 720d50e | fix(platform): P7-R2 evidence truth — P7 phase gate, 12-file counts |
-| (pending-r3) | fix(platform): P7-R3 evidence final head polish — 14-file counts |
+| 720d50e | fix(platform): P7-R2 evidence truth - P7 phase gate |
+| f347d1a | fix(platform): P7-R4 evidence contract closure - 14 expected files |
+| 016cf9a | docs(platform): P7-R4 final commit_head fix |
+| (R5) | fix(platform): P7-R5 merge evidence and reporter closure |
+
+## Evidence Strategy
+
+The `result.json` `commit_head` field records the most recent substantive evidence commit, not the self-referential final commit. This avoids the inherent circularity of a commit recording its own SHA. The markdown ledger above records the full commit chain for audit.
 
 ## Changed Files vs origin/platform-dev (14 files)
 

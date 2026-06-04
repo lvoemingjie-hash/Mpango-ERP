@@ -141,6 +141,34 @@ def assess_risk(files, test_result):
     return "MEDIUM"
 
 
+def validate_report_path(path):
+    """Validate that a report path is safe to write.
+
+    Must be under ai-ledger/platform/ and end with .md.
+    No traversal, no absolute paths, no drive letters.
+    """
+    if not path:
+        return False, "report path is empty"
+    normalized = normalize_path(path)
+    if os.path.isabs(path):
+        return False, "absolute paths are rejected"
+    if len(path) >= 2 and path[1] == ":":
+        return False, "drive-qualified paths are rejected"
+    if not normalized.endswith(".md"):
+        return False, "report path must end with .md"
+    if not normalized.startswith("ai-ledger/platform/"):
+        return False, "report path must be under ai-ledger/platform/"
+    parts = normalized.split("/")
+    for part in parts:
+        if part in ("", ".", ".."):
+            return False, "path contains empty, '.', or '..' segments"
+    forbidden_keywords = ["auth", "rbac", "tenancy", "migration", "payment", "session"]
+    for kw in forbidden_keywords:
+        if kw in normalized.lower():
+            return False, f"report path contains forbidden keyword '{kw}'"
+    return True, None
+
+
 def generate_report(repo_path, base_ref=None, skip_tests=False):
     """Generate a complete merge readiness report."""
     branch = get_branch(repo_path)
@@ -160,11 +188,10 @@ def generate_report(repo_path, base_ref=None, skip_tests=False):
     if forbidden:
         blockers.append(f"{len(forbidden)} forbidden path violation(s)")
 
-    # Build concrete report path from branch name
+    # Build default report path from branch name
     # Extract date from branch like codex/platform-p7-safety-automation-layer-2026-06-03
     date_part = ""
     if branch.startswith("codex/platform-"):
-        # Find the date pattern at the end (YYYY-MM-DD)
         import re
         match = re.search(r"(\d{4}-\d{2}-\d{2})$", branch)
         if match:
@@ -246,10 +273,22 @@ def main():
         "--skip-tests", action="store_true",
         help="Skip running the full test suite (report only)",
     )
+    parser.add_argument(
+        "--report",
+        help="Write human-readable markdown report to this path (must be under ai-ledger/platform/ and end with .md)",
+    )
     args = parser.parse_args()
 
     repo_path = os.path.abspath(args.repo)
     report = generate_report(repo_path, args.base_ref, skip_tests=args.skip_tests)
+
+    # Override report_path if --report is given
+    if args.report:
+        valid, reason = validate_report_path(args.report)
+        if not valid:
+            print(f"ERROR: invalid --report path '{args.report}': {reason}", file=sys.stderr)
+            sys.exit(1)
+        report["report_path"] = normalize_path(args.report)
 
     if args.json:
         # JSON output uses short SHAs only
@@ -257,7 +296,18 @@ def main():
             del report["commit_full"]
         print(json.dumps(report, indent=2))
     else:
-        print(format_human(report))
+        human = format_human(report)
+        print(human)
+
+    # Write report file if --report is specified
+    if args.report:
+        human_output = format_human(report)
+        report_abs = os.path.join(repo_path, normalize_path(args.report))
+        os.makedirs(os.path.dirname(report_abs), exist_ok=True)
+        with open(report_abs, "w", encoding="utf-8") as f:
+            f.write(human_output)
+            f.write("\n")
+        print(f"Report written to: {normalize_path(args.report)}")
 
     has_blockers = len(report["blockers"]) > 0
     sys.exit(1 if has_blockers else 0)

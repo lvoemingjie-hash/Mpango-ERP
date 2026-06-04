@@ -3,14 +3,20 @@
   "phase": "P7-A",
   "agent": "claude",
   "branch": "codex/platform-p7-safety-automation-layer-2026-06-03",
-  "commit_batch": "e99f1f9",
-  "commit_r1": "4546bae",
-  "commit_r2": "720d50e",
-  "commit_head": "f347d1a",
+  "commit_chain": {
+    "batch": "e99f1f9",
+    "r1": "4546bae",
+    "r2": "720d50e",
+    "r4": "f347d1a",
+    "r4_fix": "016cf9a",
+    "latest_evidence": "016cf9a"
+  },
+  "notes_on_commit_head": "Self-referential SHA is circular. The commit_chain field records the full history. See markdown ledger for audit trail.",
   "blocker": "",
   "test_result": "462/462 pass (23 suites)",
+  "expected_files_count": 14,
+  "changed_files_vs_platform_dev": 14,
   "expected_files_present": true,
   "forbidden_paths_touched": false,
-  "changed_files_vs_platform_dev": 14,
-  "notes": "P7 safety automation layer. R3: commit history traced, events counts corrected to 14 changed files."
+  "notes": "P7 safety automation layer. 14 changed files = 10 scripts + 4 evidence artifacts. R5: --report support, evidence chain closed."
 }

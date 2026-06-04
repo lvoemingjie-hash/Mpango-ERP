@@ -213,5 +213,118 @@ class TestForbiddenPathCli(unittest.TestCase):
             self.assertEqual(data["forbidden_path_audit"]["status"], "FAIL")
 
 
+class TestValidateReportPath(unittest.TestCase):
+    def test_valid_path(self):
+        valid, reason = reporter.validate_report_path(
+            "ai-ledger/platform/2026-06-03_merge_readiness_report.md"
+        )
+        self.assertTrue(valid)
+
+    def test_absolute_path_rejected(self):
+        valid, reason = reporter.validate_report_path(
+            "/tmp/ai-ledger/platform/report.md"
+        )
+        self.assertFalse(valid)
+        self.assertIn("absolute", reason)
+
+    def test_outside_prefix_rejected(self):
+        valid, reason = reporter.validate_report_path("scripts/report.md")
+        self.assertFalse(valid)
+        self.assertIn("must be under", reason)
+
+    def test_non_md_rejected(self):
+        valid, reason = reporter.validate_report_path(
+            "ai-ledger/platform/report.json"
+        )
+        self.assertFalse(valid)
+        self.assertIn(".md", reason)
+
+    def test_traversal_rejected(self):
+        valid, reason = reporter.validate_report_path(
+            "ai-ledger/platform/../report.md"
+        )
+        self.assertFalse(valid)
+
+    def test_forbidden_keyword_rejected(self):
+        valid, reason = reporter.validate_report_path(
+            "ai-ledger/platform/auth_report.md"
+        )
+        self.assertFalse(valid)
+        self.assertIn("auth", reason)
+
+    def test_empty_rejected(self):
+        valid, reason = reporter.validate_report_path("")
+        self.assertFalse(valid)
+
+
+class TestReportCli(unittest.TestCase):
+    def _make_repo(self, tmpdir):
+        subprocess.run(["git", "init"], cwd=tmpdir, capture_output=True)
+        subprocess.run(
+            ["git", "checkout", "-b", "codex/platform-test-2026-06-03"],
+            cwd=tmpdir, capture_output=True,
+        )
+        scripts_dir = os.path.join(tmpdir, "scripts")
+        os.makedirs(scripts_dir)
+        ledger_dir = os.path.join(tmpdir, "ai-ledger", "platform")
+        os.makedirs(ledger_dir)
+        with open(os.path.join(scripts_dir, "platform_alpha.py"), "w") as f:
+            f.write("# alpha\n")
+        subprocess.run(["git", "add", "-A"], cwd=tmpdir, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t.com",
+             "commit", "-m", "init"],
+            cwd=tmpdir, capture_output=True,
+        )
+
+    def test_report_creates_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_repo(tmpdir)
+            result = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPT_DIR, "platform_merge_readiness_reporter.py"),
+                 "--repo", tmpdir, "--base-ref", "HEAD~1", "--skip-tests",
+                 "--report", "ai-ledger/platform/2026-06-03_report.md"],
+                capture_output=True, text=True,
+                timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            report_file = os.path.join(
+                tmpdir, "ai-ledger", "platform", "2026-06-03_report.md"
+            )
+            self.assertTrue(os.path.isfile(report_file))
+            with open(report_file, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.assertIn("Platform Merge Readiness Report", content)
+            self.assertIn("Branch:", content)
+
+    def test_report_rejects_unsafe_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_repo(tmpdir)
+            result = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPT_DIR, "platform_merge_readiness_reporter.py"),
+                 "--repo", tmpdir, "--base-ref", "HEAD~1", "--skip-tests",
+                 "--report", "scripts/report.md"],
+                capture_output=True, text=True,
+                timeout=30,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must be under", result.stderr)
+
+    def test_report_rejects_absolute_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_repo(tmpdir)
+            result = subprocess.run(
+                [sys.executable,
+                 os.path.join(SCRIPT_DIR, "platform_merge_readiness_reporter.py"),
+                 "--repo", tmpdir, "--base-ref", "HEAD~1", "--skip-tests",
+                 "--report", "/tmp/report.md"],
+                capture_output=True, text=True,
+                timeout=30,
+            )
+            self.assertNotEqual(result.returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,7 +20,7 @@ Build the platform layer's first real function orchestrator. A governed executio
 
 ## Expected Artifacts
 
-- `scripts/platform_worker_orchestrator.py` + `scripts/test_platform_worker_orchestrator.py` (35 tests)
+- `scripts/platform_worker_orchestrator.py` + `scripts/test_platform_worker_orchestrator.py` (41 tests)
 - `scripts/platform_merge_readiness_reporter.py` (modified: merge context detection)
 - `scripts/platform_agent_mission_gate.py` (modified: P8 phase acceptance)
 - `scripts/test_platform_agent_mission_gate.py` (modified: P8 test, P9 rejection)
@@ -45,13 +45,16 @@ Build the platform layer's first real function orchestrator. A governed executio
 | cead48d | docs(platform): P8 evidence alignment - 10 expected files |
 | 8f090f3 | docs(platform): P8 final commit chain closure |
 | 43fb515 | fix(platform): P8-R1 artifact audit contract fix |
+| 4f438b9 | docs(platform): P8-R1 evidence chain update |
+| 901da33 | docs(platform): P8-R1 merge readiness report regeneration |
 
 ## Evidence Strategy
 
-- The `result.json` `commit_chain` field records the full commit history.
-- A self-referential SHA is not used (circular).
-- Live merge gate must regenerate the report after merge candidate checkout.
+- The `result.json` `commit_chain` records all 7 commits: `22d73f1` through `901da33`.
+- No self-referential SHA (the final commit cannot record its own hash).
+- The committed merge readiness report may show a parent commit — this is expected. The live merge gate always regenerates the report at current HEAD, so any committed version is superseded.
 - **R1 fix**: Orchestrator artifacts (result, events, report) are written BEFORE the final diff audit. The audit covers ALL changed files including orchestrator's own output. No file escapes the expected_files check.
+- **R2**: Evidence-only polish. Full test suite: 514/514 pass (41 orchestrator tests).
 
 ## Changed Files vs origin/platform-dev (10 files)
 

@@ -8,14 +8,16 @@
     "evidence_update": "22324a3",
     "evidence_alignment": "cead48d",
     "chain_closure": "8f090f3",
-    "r1_fix": "43fb515"
+    "r1_fix": "43fb515",
+    "r1_evidence_chain": "4f438b9",
+    "r1_report_regen": "901da33"
   },
-  "evidence_strategy": "Commit chain records the full history. No self-referential SHA. R1 fix: orchestrator artifacts written BEFORE final diff audit — all changed files checked against expected_files. Live merge gate must regenerate the report after merge candidate checkout.",
+  "commit_chain_strategy": "The commit_chain records the complete branch history from first commit to final branch head (901da33). No self-referential SHA — the final commit cannot record its own hash. The merge readiness report is always regenerated at the current HEAD before merge, so any stale commit in the committed report is superseded by the live gate run.",
   "blocker": "",
-  "test_result": "514/514 pass",
+  "test_result": "514/514 pass (41 orchestrator tests)",
   "expected_files_count": 10,
   "changed_files_vs_platform_dev": 10,
   "expected_files_present": true,
   "forbidden_paths_touched": false,
-  "notes": "P8 governed worker orchestrator. 10 changed files = 5 scripts + 5 ledger artifacts. R1: artifact audit contract fix, 6 new tests (41 total in orchestrator)."
+  "notes": "P8 governed worker orchestrator. 10 changed files = 5 scripts + 5 ledger artifacts. R1: artifact audit contract fix, 6 new tests (41 total). R2: evidence polish only."
 }

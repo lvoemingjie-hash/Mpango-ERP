@@ -1,7 +1,7 @@
 Platform Merge Readiness Report
 ========================================
 Branch: codex/platform-p8-governed-worker-orchestrator-2026-06-04
-Commit: 4f438b9 (4f438b95457bdc88fb808a888eff650ce933c601)
+Commit: 901da33 (901da33fcf148e83b79abab3148764a539768210)
 Base Ref: origin/platform-dev
 Risk: MEDIUM
 

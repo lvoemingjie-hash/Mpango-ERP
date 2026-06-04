@@ -16,6 +16,16 @@ This folder is the canonical starting point for Codex and other AI coding agents
 10. `docs/mpango_erp_v0_3_development_master_plan.md`
 11. `decision-register/README.md`
 
+## Platform Product Track Entry
+
+For P9+ SaaS platform product work, read these after the general context above and before writing any platform product code:
+
+1. `docs/ai/PLATFORM_PRODUCT_PRD.md`
+2. `docs/ai/PLATFORM_PRODUCT_SECURITY_BOUNDARY.md`
+3. `docs/ai/PLATFORM_PRODUCT_ROADMAP.md`
+
+P10 must start with a data-contract-only slice unless a later CTO decision explicitly broadens scope. Do not begin P10 with migrations, API handlers, frontend UI, auth/RBAC/tenancy/session changes, payment changes, or tenant business-data edits.
+
 ## Purpose
 
 - Keep long-lived project context inside the repository

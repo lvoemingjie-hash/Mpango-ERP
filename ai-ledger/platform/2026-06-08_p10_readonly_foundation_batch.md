@@ -14,7 +14,8 @@
 | P10-B | `c1b36d3` | feat(platform): P10-B read-only API skeleton |
 | P10-C | `8ddb52f` | test(platform): P10-C contract-backed tests |
 | P10-D | (this commit) | docs(platform): P10-D batch readiness packet |
-| P10-R1 | (this commit) | fix(platform): P10-R1 security boundary — guard + redaction + evidence |
+| P10-R1 | `b3bcbb2` | fix(platform): P10-R1 security boundary — guard + redaction + evidence |
+| P10-R2 | (this commit) | fix(platform): P10-R2 guard hardening — restrict test override to test env only |
 
 ## Modified Files
 
@@ -24,10 +25,10 @@
 | `backend/api/v1/platform/p10/schemas.py` | P10-B, P10-C | New |
 | `backend/api/v1/platform/p10/services.py` | P10-B, P10-R1-B | New / Modified (metadata redaction) |
 | `backend/api/v1/platform/p10/routes.py` | P10-B, P10-R1-A | New / Modified (guard dependency on all 6 endpoints) |
-| `backend/api/v1/platform/p10/guard.py` | P10-R1-A | New |
+| `backend/api/v1/platform/p10/guard.py` | P10-R1-A, P10-R2 | New / Modified (hardened test override) |
 | `backend/api/app.py` | P10-B | Modified (4 lines added — P10 router registration) |
-| `backend/tests/test_platform_p10_contracts.py` | P10-C, P10-R1 | New / Modified (guard + redaction tests) |
-| `ai-ledger/platform/2026-06-08_p10_readonly_foundation_batch.md` | P10-D, P10-R1-C | New / Modified |
+| `backend/tests/test_platform_p10_contracts.py` | P10-C, P10-R1, P10-R2 | New / Modified (guard + redaction + hardening tests) |
+| `ai-ledger/platform/2026-06-08_p10_readonly_foundation_batch.md` | P10-D, P10-R1-C, P10-R2 | New / Modified |
 
 **Total**: 7 new files, 1 modified file, 0 deletions.
 
@@ -42,9 +43,9 @@
 | API response shape | 11 | ✅ PASS |
 | No leakage (extra fields forbidden) | 4 | ✅ PASS |
 | **P10 Pre-R1 Total** | **81** | **✅ ALL PASS** |
-| Platform-only access boundary (P10-R1-A) | 16 | ✅ PASS |
+| Platform-only access boundary (P10-R1-A + R2) | 26 | ✅ PASS |
 | Metadata redaction (P10-R1-B) | 8 | ✅ PASS |
-| **P10-R1 Total** | **105** | **✅ ALL PASS** |
+| **P10-R2 Total** | **115** | **✅ ALL PASS** |
 
 ### P0 Platform Regression Tests
 
@@ -115,6 +116,32 @@
 - P10 tests: 81 pre-R1 → **105 post-R1** (81 + 16 guard + 8 redaction).
 - GitNexus risk explanation: HIGH because P10 exposes a runtime platform API skeleton — the risk is unauthorized access to platform operator data, not mutation of product business data. P10-R1-A mitigates this.
 
+### P10-R2: Guard Hardening
+
+**Problem**: P10-R1 guard accepted `X-Platform-Test-Override` in every non-production environment (development, staging, default/unset) with any non-empty value. This was too broad for a runtime platform API surface.
+
+**Fix**:
+- `X-Platform-Test-Override` now accepted **only** when `MPANGO_ENV` is explicitly `test` or `testing`.
+- Denied in: production, staging, development, unset/default.
+- Requires exact match against `PLATFORM_TEST_OVERRIDE_SECRET` env var. If unset, deny by default.
+- Production behavior unchanged: only `X-Platform-Operator` matching `PLATFORM_OPERATOR_SECRET` is accepted.
+- If `PLATFORM_OPERATOR_SECRET` is unset in any environment, deny by default.
+- Env vars read at runtime (fresh per request via `os.environ.get()` inside the check function), not captured at import time. Eliminates stale env behavior across deploys and test runs.
+- All tests use `monkeypatch` for complete env isolation — no dependency on machine environment.
+
+**Tests**: 26 guard tests (was 16 in R1, +10 new R2 tests):
+- Test override denied in: unset env, development, staging, production (4 tests)
+- Test override denied with wrong secret in test env (1 test)
+- Test override denied when `PLATFORM_TEST_OVERRIDE_SECRET` unset (1 test)
+- Test override allowed in `test` and `testing` env with correct secret (2 tests)
+- Production operator with correct `PLATFORM_OPERATOR_SECRET` allowed (1 test)
+- Production operator with missing `PLATFORM_OPERATOR_SECRET` denied (1 test)
+- All existing no-header, wrong-operator, tenant-auth-only, empty-header tests still pass (9 tests)
+- Structural: all 6 endpoints have guard wired (1 test)
+- Test override across all endpoint types: system health, audit events, tenant detail, tenant health, audit detail (5 tests)
+
+**P10 test count**: 81 pre-R1 → 105 post-R1 → **115 post-R2**.
+
 ## Data Source Status Per Contract Field
 
 ### TenantSummary
@@ -147,7 +174,7 @@ Mapped from existing `platform_audit_logs` (P0 schema). Fields `actor_role`, `re
 
 ## GitNexus Risk
 
-**HIGH** — Runtime platform API skeleton adds API surface. P10 endpoints expose platform operator data (tenant lists, health, audit events). Before P10-R1-A, these were unguarded — any request reaching the P10 router could read platform data. After P10-R1-A, all 6 endpoints require explicit platform-operator credentials. The risk category is **platform API surface exposure**, not product business mutation. GitNexus impact analysis on `configure_app` showed LOW structural risk (1 direct caller), but the runtime risk of exposing unauthenticated platform operator endpoints is HIGH, now mitigated.
+**HIGH** — Runtime platform API skeleton adds API surface. P10 endpoints expose platform operator data (tenant lists, health, audit events). Before P10-R1-A, these were unguarded. After P10-R1-A, all 6 endpoints required platform-operator credentials but test override was too broad. After P10-R2, test override is restricted to `MPANGO_ENV=test|testing` only with exact secret match, and env is read fresh per request. The risk category is **platform API surface exposure**, not product business mutation. Now mitigated by hardened guard (P10-R2). GitNexus impact on `configure_app`: LOW structural risk (1 direct caller).
 
 ## Forbidden Path Audit
 
@@ -173,7 +200,7 @@ Mapped from existing `platform_audit_logs` (P0 schema). Fields `actor_role`, `re
 3. **SystemHealth** returns all null component statuses — requires metrics/telemetry infrastructure.
 4. **PlatformAuditEvent** is a placeholder mapping from P0 audit logs — `actor_role`, `reason`, `correlation_id` are null.
 5. **TenantSummary.tier** is null — subscription/billing model not yet built.
-6. ~~No authentication/authorization on P10 endpoints~~ → **Fixed in P10-R1-A**: Platform-only guard now enforced on all 6 endpoints.
+6. ~~No authentication/authorization on P10 endpoints~~ → **Fixed in P10-R1-A**: Platform-only guard now enforced on all 6 endpoints. **Hardened in P10-R2**: Test override restricted to test env only, env read at runtime.
 7. No rate limiting specific to P10 endpoints — relies on existing global middleware.
 8. Guard uses shared-secret header model — P11 will replace with proper platform auth context.
 

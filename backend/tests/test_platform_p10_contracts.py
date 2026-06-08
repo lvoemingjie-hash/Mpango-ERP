@@ -58,9 +58,6 @@ from database.session import get_db as db_get_db
 # Test helpers
 # ═══════════════════════════════════════════════════════════════
 
-# Header for test harness — accepted in non-production by the guard.
-_PLATFORM_HEADERS = {"X-Platform-Test-Override": "test"}
-
 
 def _make_app(mock_db) -> FastAPI:
     """Build test app with dependency overrides (guard bypassed for unit tests)."""
@@ -1130,81 +1127,104 @@ class TestNoLeakage:
 
 
 # ═══════════════════════════════════════════════════════════════
-# SB-R1: Platform-Only Access Boundary Tests (P10-R1-A)
+# SB-R1/R2: Platform-Only Access Boundary Tests (P10-R1-A → P10-R2)
 # ═══════════════════════════════════════════════════════════════
 
 
-class TestPlatformOnlyAccessBoundary:
-    """
-    P10-R1-A: Prove the platform-only guard enforces deny-by-default.
+def _make_guarded_app(mock_db=None):
+    """App with guard active (no dependency override), DB mocked."""
+    app = FastAPI()
+    app.include_router(p10_router)
 
-    Tests:
-      - Unauthenticated / no platform marker → 401
-      - Tenant/product-only context (wrong marker) → 403
-      - Explicit platform-operator context → 200
-    """
-
-    @pytest.fixture
-    def guarded_app(self):
-        """App with guard active (no override), but DB mocked."""
-        app = FastAPI()
-        app.include_router(p10_router)
-
+    if mock_db is None:
         mock_db = MagicMock()
-        # Set up async execute for count + list queries
         count_result = MagicMock()
         count_result.scalar.return_value = 0
         list_result = MagicMock()
         list_result.scalars.return_value.all.return_value = []
         mock_db.execute = AsyncMock(side_effect=[count_result, list_result])
 
-        async def override():
-            yield mock_db
+    async def override():
+        yield mock_db
 
-        app.dependency_overrides[get_db] = override
-        app.dependency_overrides[db_get_db] = override
-        # Deliberately do NOT override require_platform_operator
-        return app
+    app.dependency_overrides[get_db] = override
+    app.dependency_overrides[db_get_db] = override
+    # Deliberately do NOT override require_platform_operator
+    return app
 
-    # ── Unauthenticated / no marker → 401 ──
 
-    def test_no_headers_denied_list_tenants(self, guarded_app):
+class TestPlatformOnlyAccessBoundary:
+    """
+    P10-R1-A + P10-R2: Prove the platform-only guard enforces deny-by-default.
+
+    Tests:
+      - Unauthenticated / no platform marker → 401
+      - Wrong operator secret → 403
+      - Test override restricted to MPANGO_ENV=test|testing only
+      - Test override requires PLATFORM_TEST_OVERRIDE_SECRET
+      - Production operator requires PLATFORM_OPERATOR_SECRET
+      - All env isolation via monkeypatch (no machine env dependency)
+    """
+
+    # ── Unauthenticated / no marker → 401 (env-independent) ──
+
+    def test_no_headers_denied_list_tenants(self, monkeypatch):
         """No platform marker at all → 401."""
-        client = TestClient(guarded_app)
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get("/api/v1/platform/p10/tenants")
         assert resp.status_code == 401
         assert "PLATFORM_ACCESS_REQUIRED" in resp.json()["detail"]["code"]
 
-    def test_no_headers_denied_system_health(self, guarded_app):
-        client = TestClient(guarded_app)
+    def test_no_headers_denied_system_health(self, monkeypatch):
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get("/api/v1/platform/p10/system/health")
         assert resp.status_code == 401
 
-    def test_no_headers_denied_audit_events(self, guarded_app):
-        client = TestClient(guarded_app)
+    def test_no_headers_denied_audit_events(self, monkeypatch):
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get("/api/v1/platform/p10/audit/events")
         assert resp.status_code == 401
 
-    def test_no_headers_denied_tenant_detail(self, guarded_app):
-        client = TestClient(guarded_app)
+    def test_no_headers_denied_tenant_detail(self, monkeypatch):
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get("/api/v1/platform/p10/tenants/some-id")
         assert resp.status_code == 401
 
-    def test_no_headers_denied_tenant_health(self, guarded_app):
-        client = TestClient(guarded_app)
+    def test_no_headers_denied_tenant_health(self, monkeypatch):
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get("/api/v1/platform/p10/tenants/some-id/health")
         assert resp.status_code == 401
 
-    def test_no_headers_denied_audit_event_detail(self, guarded_app):
-        client = TestClient(guarded_app)
+    def test_no_headers_denied_audit_event_detail(self, monkeypatch):
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get("/api/v1/platform/p10/audit/events/some-id")
         assert resp.status_code == 401
 
-    # ── Tenant/product-only context (wrong marker) → 403 ──
+    # ── Wrong/empty markers → 401/403 ──
 
-    def test_wrong_operator_secret_denied(self, guarded_app):
+    def test_wrong_operator_secret_denied(self, monkeypatch):
         """X-Platform-Operator with wrong value → 403."""
-        client = TestClient(guarded_app)
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_OPERATOR_SECRET", "correct-secret")
+        client = TestClient(_make_guarded_app())
         resp = client.get(
             "/api/v1/platform/p10/tenants",
             headers={"X-Platform-Operator": "wrong-secret"},
@@ -1212,18 +1232,23 @@ class TestPlatformOnlyAccessBoundary:
         assert resp.status_code == 403
         assert "PLATFORM_ACCESS_DENIED" in resp.json()["detail"]["code"]
 
-    def test_tenant_auth_header_insufficient(self, guarded_app):
+    def test_tenant_auth_header_insufficient(self, monkeypatch):
         """Standard Authorization bearer does NOT grant platform access."""
-        client = TestClient(guarded_app)
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get(
             "/api/v1/platform/p10/tenants",
             headers={"Authorization": "Bearer some-tenant-token"},
         )
         assert resp.status_code == 401
 
-    def test_empty_platform_operator_denied(self, guarded_app):
+    def test_empty_platform_operator_denied(self, monkeypatch):
         """Empty X-Platform-Operator header → 401 (treated as no marker)."""
-        client = TestClient(guarded_app)
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get(
             "/api/v1/platform/p10/tenants",
             headers={"X-Platform-Operator": ""},
@@ -1231,94 +1256,220 @@ class TestPlatformOnlyAccessBoundary:
         assert resp.status_code == 401
         assert "PLATFORM_ACCESS_REQUIRED" in resp.json()["detail"]["code"]
 
-    # ── Explicit platform-operator context → 200 ──
+    # ── P10-R2: Test override denied in non-test environments ──
 
-    def test_platform_test_override_allowed_list_tenants(self, guarded_app):
-        """X-Platform-Test-Override header → 200 in non-production."""
-        client = TestClient(guarded_app)
+    def test_test_override_denied_in_unset_env(self, monkeypatch):
+        """Unset/default MPANGO_ENV + X-Platform-Test-Override → denied."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        client = TestClient(_make_guarded_app())
         resp = client.get(
             "/api/v1/platform/p10/tenants",
-            headers=_PLATFORM_HEADERS,
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_test_override_denied_in_development(self, monkeypatch):
+        """development + X-Platform-Test-Override → denied."""
+        monkeypatch.setenv("MPANGO_ENV", "development")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_test_override_denied_in_staging(self, monkeypatch):
+        """staging + X-Platform-Test-Override → denied."""
+        monkeypatch.setenv("MPANGO_ENV", "staging")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_test_override_denied_in_production(self, monkeypatch):
+        """production + X-Platform-Test-Override → denied."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_test_override_wrong_secret_denied(self, monkeypatch):
+        """test env + wrong X-Platform-Test-Override value → denied."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "correct-test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "wrong-test-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_test_override_no_secret_env_denied(self, monkeypatch):
+        """test env + unset PLATFORM_TEST_OVERRIDE_SECRET → denied."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "any-value"},
+        )
+        assert resp.status_code == 403
+
+    # ── P10-R2: Test override allowed in test env with correct secret ──
+
+    def test_test_override_allowed_in_test_env(self, monkeypatch):
+        """test env + correct X-Platform-Test-Override → 200."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
         )
         assert resp.status_code == 200
 
-    def test_platform_test_override_allowed_system_health(self, guarded_app):
-        client = TestClient(guarded_app)
+    def test_test_override_allowed_in_testing_env(self, monkeypatch):
+        """testing env + correct X-Platform-Test-Override → 200."""
+        monkeypatch.setenv("MPANGO_ENV", "testing")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 200
+
+    def test_test_override_allowed_system_health(self, monkeypatch):
+        """System health endpoint works with test override in test env."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get(
             "/api/v1/platform/p10/system/health",
-            headers=_PLATFORM_HEADERS,
+            headers={"X-Platform-Test-Override": "test-secret"},
         )
         assert resp.status_code == 200
 
-    def test_platform_test_override_allowed_audit_events(self, guarded_app):
-        """Audit events list works with platform test override."""
-        # guarded_app already has proper async mock DB
-        client = TestClient(guarded_app)
+    def test_test_override_allowed_audit_events(self, monkeypatch):
+        """Audit events list works with test override in test env."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
         resp = client.get(
             "/api/v1/platform/p10/audit/events",
-            headers=_PLATFORM_HEADERS,
+            headers={"X-Platform-Test-Override": "test-secret"},
         )
         assert resp.status_code == 200
 
-    def test_platform_test_override_allowed_tenant_detail(self, guarded_app):
+    def test_test_override_allowed_tenant_detail(self, monkeypatch):
+        """Tenant detail works with test override in test env."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+
         w = _mock_wholesaler()
         mock_db = MagicMock()
         result = MagicMock()
         result.scalar_one_or_none.return_value = w
         mock_db.execute = AsyncMock(return_value=result)
 
-        app = FastAPI()
-        app.include_router(p10_router)
-        async def override():
-            yield mock_db
-        app.dependency_overrides[get_db] = override
-        app.dependency_overrides[db_get_db] = override
-
-        client = TestClient(app)
+        client = TestClient(_make_guarded_app(mock_db))
         resp = client.get(
             "/api/v1/platform/p10/tenants/550e8400-e29b-41d4-a716-446655440000",
-            headers=_PLATFORM_HEADERS,
+            headers={"X-Platform-Test-Override": "test-secret"},
         )
         assert resp.status_code == 200
 
-    def test_platform_test_override_allowed_tenant_health(self, guarded_app):
-        """Tenant health endpoint works with platform test override."""
+    def test_test_override_allowed_tenant_health(self, monkeypatch):
+        """Tenant health works with test override in test env."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+
         w = _mock_wholesaler()
         mock_db = MagicMock()
         result = MagicMock()
         result.scalar_one_or_none.return_value = w
         mock_db.execute = AsyncMock(return_value=result)
 
-        app = FastAPI()
-        app.include_router(p10_router)
-        async def override():
-            yield mock_db
-        app.dependency_overrides[get_db] = override
-        app.dependency_overrides[db_get_db] = override
-
-        client = TestClient(app)
+        client = TestClient(_make_guarded_app(mock_db))
         resp = client.get(
             "/api/v1/platform/p10/tenants/550e8400-e29b-41d4-a716-446655440000/health",
-            headers=_PLATFORM_HEADERS,
+            headers={"X-Platform-Test-Override": "test-secret"},
         )
         assert resp.status_code == 200
 
-    def test_platform_test_override_allowed_audit_event_detail(self, guarded_app):
-        """Audit event detail works with platform test override."""
-        mock_db = _mock_db_for_not_found()
-        app = FastAPI()
-        app.include_router(p10_router)
-        async def override():
-            yield mock_db
-        app.dependency_overrides[get_db] = override
-        app.dependency_overrides[db_get_db] = override
+    def test_test_override_allowed_audit_event_detail_404(self, monkeypatch):
+        """Audit event detail passes guard → 404 from data layer (not 401)."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
 
-        client = TestClient(app)
+        client = TestClient(_make_guarded_app(_mock_db_for_not_found()))
         resp = client.get(
             "/api/v1/platform/p10/audit/events/nonexistent-id",
-            headers=_PLATFORM_HEADERS,
+            headers={"X-Platform-Test-Override": "test-secret"},
         )
         assert resp.status_code == 404  # 404 from data layer, not 401 from guard
+
+    # ── P10-R2: Production operator scenarios ──
+
+    def test_production_operator_correct_secret_allowed(self, monkeypatch):
+        """production + correct X-Platform-Operator + PLATFORM_OPERATOR_SECRET → 200."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_OPERATOR_SECRET", "prod-secret-123")
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Operator": "prod-secret-123"},
+        )
+        assert resp.status_code == 200
+
+    def test_production_operator_missing_secret_denied(self, monkeypatch):
+        """production + missing PLATFORM_OPERATOR_SECRET → denied."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Operator": "some-value"},
+        )
+        assert resp.status_code == 403
+
+    def test_nonprod_operator_correct_secret_allowed(self, monkeypatch):
+        """development + correct X-Platform-Operator + PLATFORM_OPERATOR_SECRET → 200."""
+        monkeypatch.setenv("MPANGO_ENV", "development")
+        monkeypatch.setenv("PLATFORM_OPERATOR_SECRET", "dev-secret")
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        client = TestClient(_make_guarded_app())
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Operator": "dev-secret"},
+        )
+        assert resp.status_code == 200
+
+    # ── Structural: all endpoints guarded ──
 
     def test_all_endpoints_require_guard(self):
         """Verify all 6 P10 endpoints have the guard dependency wired."""

@@ -1,12 +1,26 @@
 """
 Platform-only access boundary guard for P10 endpoints.
 
-P10-R1-A: All P10 endpoints require an explicit platform-operator marker.
-This guard enforces deny-by-default:
+P10-R2: Hardened guard — test override restricted to MPANGO_ENV=test|testing
+only, requires PLATFORM_TEST_OVERRIDE_SECRET, env read at runtime (not import time).
 
-  - Production: requires X-Platform-Operator header with a valid shared secret.
-  - Test/Local:  requires X-Platform-Operator header OR
-                  X-Platform-Test-Override header (test harness only).
+Deny-by-default rules:
+
+  Production (MPANGO_ENV=production):
+    - Only X-Platform-Operator matching PLATFORM_OPERATOR_SECRET is accepted.
+    - If PLATFORM_OPERATOR_SECRET is unset, deny by default.
+    - X-Platform-Test-Override is NEVER accepted.
+
+  Test (MPANGO_ENV=test or testing):
+    - X-Platform-Test-Override accepted only if it exactly matches
+      PLATFORM_TEST_OVERRIDE_SECRET.
+    - If PLATFORM_TEST_OVERRIDE_SECRET is unset, deny by default.
+    - X-Platform-Operator matching PLATFORM_OPERATOR_SECRET also accepted.
+
+  All other environments (development, staging, unset, default):
+    - X-Platform-Operator matching PLATFORM_OPERATOR_SECRET accepted.
+    - X-Platform-Test-Override is NEVER accepted.
+    - If PLATFORM_OPERATOR_SECRET is unset, deny by default.
 
 This is a SKELETON guard for the P10 read-only API surface.
 It does NOT rewrite auth/RBAC/session/tenancy — it adds a single
@@ -22,10 +36,25 @@ from typing import Optional
 
 from fastapi import Header, HTTPException, Request, status
 
-# ── Configuration ──
+# ── Env readers (fresh per-request, not captured at import time) ──
 
-_PLATFORM_OPERATOR_SECRET = os.environ.get("PLATFORM_OPERATOR_SECRET", "")
-_MPANGO_ENV = os.environ.get("MPANGO_ENV", "development")
+
+def _get_env(key: str, default: str = "") -> str:
+    """Read an environment variable. Called inside the check for freshness."""
+    return os.environ.get(key, default)
+
+
+def _is_test_env(env: str) -> bool:
+    """MPANGO_ENV must be exactly 'test' or 'testing' for test override."""
+    return env in ("test", "testing")
+
+
+def _is_production_env(env: str) -> bool:
+    """MPANGO_ENV is 'production'."""
+    return env == "production"
+
+
+# ── Core authorization check ──
 
 
 def _is_platform_operator(
@@ -35,26 +64,25 @@ def _is_platform_operator(
     """
     Check whether the request carries a valid platform-operator marker.
 
-    Production:
-      - X-Platform-Operator header must match PLATFORM_OPERATOR_SECRET env var.
-      - If PLATFORM_OPERATOR_SECRET is not set, deny by default.
-      - X-Platform-Test-Override is NEVER accepted.
+    All env vars are read fresh at call time — no import-time capture.
 
-    Non-production (development, test, staging):
-      - X-Platform-Operator header must match PLATFORM_OPERATOR_SECRET if configured.
-      - If PLATFORM_OPERATOR_SECRET is not configured, operator header is NOT sufficient.
-      - X-Platform-Test-Override header is accepted for test harness use.
-
-    Returns True if the request is authorized as platform-operator.
+    Returns True only if a valid credential is presented.
     """
-    # Test override is only valid in non-production
-    if _MPANGO_ENV != "production" and platform_test_override:
-        return True
+    mpango_env = _get_env("MPANGO_ENV", "")
+    operator_secret = _get_env("PLATFORM_OPERATOR_SECRET", "")
+    test_secret = _get_env("PLATFORM_TEST_OVERRIDE_SECRET", "")
 
-    # Platform operator requires the shared secret (both production and non-production)
-    if platform_operator and _PLATFORM_OPERATOR_SECRET:
-        return platform_operator == _PLATFORM_OPERATOR_SECRET
+    # ── Test override: only in test|testing env, must match exact secret ──
+    if platform_test_override:
+        if _is_test_env(mpango_env) and test_secret and platform_test_override == test_secret:
+            return True
+        # If we get here, test override is invalid or env is wrong → fall through
 
+    # ── Operator header: works in all envs if secret is configured ──
+    if platform_operator and operator_secret:
+        return platform_operator == operator_secret
+
+    # ── Deny by default ──
     return False
 
 
@@ -68,14 +96,14 @@ def require_platform_operator(
     x_platform_test_override: Optional[str] = Header(
         None,
         alias="X-Platform-Test-Override",
-        description="Test override (non-production only)",
+        description="Test override (MPANGO_ENV=test|testing only)",
     ),
 ) -> None:
     """
     FastAPI dependency that enforces platform-only access.
 
-    Raises HTTPException 403 if no valid platform-operator marker is present.
     Raises HTTPException 401 if no marker at all (unauthenticated equivalent).
+    Raises HTTPException 403 if marker present but invalid (insufficient credentials).
     """
     # Treat empty strings as absent
     op = x_platform_operator if x_platform_operator else None

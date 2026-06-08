@@ -27,6 +27,9 @@ For P9+ SaaS platform product work, read these after the general context above a
 5. `docs/ai/PLATFORM_PRODUCT_ADMIN_WORKFLOWS.md`
 6. `docs/ai/PLATFORM_PRODUCT_PERMISSION_MATRIX.md`
 7. `docs/ai/PLATFORM_PRODUCT_ACCEPTANCE_CRITERIA.md`
+8. `docs/ai/PLATFORM_PRODUCT_CONTRACTS.md`
+9. `docs/ai/PLATFORM_PRODUCT_CONTRACT_FIXTURES.md`
+10. `docs/ai/PLATFORM_PRODUCT_P10A_TEST_PLAN.md`
 
 P10 must start with a data-contract-only slice unless a later CTO decision explicitly broadens scope. Do not begin P10 with migrations, API handlers, frontend UI, auth/RBAC/tenancy/session changes, payment changes, or tenant business-data edits.
 

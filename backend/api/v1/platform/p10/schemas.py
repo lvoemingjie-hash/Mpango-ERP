@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ── Enum literals matching PLATFORM_PRODUCT_CONTRACTS.md exactly ──
 
@@ -68,6 +68,8 @@ def validate_uuid_v4_v7(value: Optional[str]) -> Optional[str]:
 class ErrorSummary(BaseModel):
     """Redacted error summary — no raw payloads allowed."""
 
+    model_config = ConfigDict(extra="forbid")
+
     error_class: str = Field(..., description="Redacted error class name")
     count: int = Field(..., ge=1, description="Error count, must be >= 1")
     correlation_ids: list[str] = Field(
@@ -85,6 +87,8 @@ class ErrorSummary(BaseModel):
 class SlowRoute(BaseModel):
     """Redacted slow route — route name only, no full URLs."""
 
+    model_config = ConfigDict(extra="forbid")
+
     route: str = Field(..., description="Route name only (no query params)")
     latency_bucket_ms: int = Field(..., ge=0, description="Latency bucket in ms")
     count: int = Field(..., ge=1, description="Observation count, must be >= 1")
@@ -93,12 +97,16 @@ class SlowRoute(BaseModel):
 class FailedJob(BaseModel):
     """Redacted failed job — class name and count only."""
 
+    model_config = ConfigDict(extra="forbid")
+
     job_class: str = Field(..., description="Job class name only")
     count: int = Field(..., ge=1, description="Failure count, must be >= 1")
 
 
 class DatabaseConnections(BaseModel):
     """Database connection pool snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
 
     active: int = Field(..., ge=0)
     idle: int = Field(..., ge=0)
@@ -108,6 +116,8 @@ class DatabaseConnections(BaseModel):
 
 class ActivityCounters(BaseModel):
     """Windowed activity counts — no business details exposed."""
+
+    model_config = ConfigDict(extra="forbid")
 
     orders: int = Field(..., ge=0)
     inventory_changes: int = Field(..., ge=0)
@@ -125,6 +135,8 @@ class TenantSummary(BaseModel):
 
     Aligned to PLATFORM_PRODUCT_CONTRACTS.md §2.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     tenant_id: Optional[str] = Field(
         None, description="UUID v4/v7, null if registry not yet created"
@@ -182,6 +194,8 @@ class TenantHealth(BaseModel):
     Aligned to PLATFORM_PRODUCT_CONTRACTS.md §3.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     tenant_id: Optional[str] = Field(
         None, description="null if registry unavailable"
     )
@@ -225,6 +239,8 @@ class SystemHealth(BaseModel):
 
     Aligned to PLATFORM_PRODUCT_CONTRACTS.md §4.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     overall_status: OverallStatus = Field(
         ..., description="'unknown' as fallback"
@@ -271,6 +287,8 @@ class PlatformAuditEvent(BaseModel):
     Aligned to PLATFORM_PRODUCT_CONTRACTS.md §5.
     Read-only from the API perspective — entries are written by internal services only.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     event_id: str = Field(..., description="UUID v4/v7, always generated")
     actor_id: Optional[str] = Field(

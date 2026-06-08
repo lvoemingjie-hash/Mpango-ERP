@@ -1,7 +1,7 @@
 # P11 Frontend Boundary Map
 
 **Phase:** P11-A
-**Status:** Boundary document (docs/ledger only — no UI code yet)
+**Status:** Boundary document (docs/ledger only -- no UI code yet)
 **Date:** 2026-06-08
 **Author:** Platform product boundary analysis
 
@@ -34,10 +34,10 @@ Per `docs/contracts/frontend_contract.md`:
 | Language | TypeScript | Strict |
 | Styling | TailwindCSS | 3.3 |
 | State | Zustand | 4.4 |
-| HTTP | Axios (singleton) | — |
+| HTTP | Axios (singleton) | -- |
 | Router | React Router v6 | 6.20 |
-| Forms | React Hook Form + Zod | — |
-| Tests | Vitest + React Testing Library | — |
+| Forms | React Hook Form + Zod | -- |
+| Tests | Vitest + React Testing Library | -- |
 
 **P11 must follow all frontend_contract.md mandatory requirements.**
 
@@ -49,28 +49,28 @@ Per `docs/contracts/frontend_contract.md`:
 
 ```
 frontend/src/
-├── pages/platform/                          # Platform admin pages
-│   ├── PlatformOverviewPage.tsx             # P11-B: Dashboard overview
-│   ├── PlatformTenantDirectoryPage.tsx      # P11-C: Tenant list
-│   ├── PlatformTenantHealthPage.tsx         # P11-D: Tenant health detail
-│   └── PlatformAuditEventsPage.tsx          # P11-C: Audit event list
-├── components/platform/                     # Platform-specific components
-│   ├── PlatformHealthCard.tsx               # System health summary card
-│   ├── PlatformTenantCard.tsx               # Tenant summary card
-│   ├── PlatformAuditEventRow.tsx            # Audit event row
-│   ├── PlatformStatusBadge.tsx              # Health/status badge (extends pattern)
-│   ├── PlatformMetricCard.tsx               # Metric display card
-│   └── PlatformUnknownState.tsx             # Unknown state display
-├── services/
-│   └── platformApi.ts                       # Platform P10 API client service
-├── stores/
-│   └── platformStore.ts                     # Platform data state (Zustand)
-├── types/
-│   └── platform.ts                          # P10 contract TypeScript types
-├── hooks/
-│   └── usePlatformData.ts                   # Platform data fetching hook
-└── router/
-    └── (modify AppRouter.tsx)               # Add /platform/* routes
+|-- pages/platform/                          # Platform admin pages
+|   |-- PlatformOverviewPage.tsx             # P11-B: Dashboard overview
+|   |-- PlatformTenantDirectoryPage.tsx      # P11-C: Tenant list
+|   |-- PlatformTenantHealthPage.tsx         # P11-D: Tenant health detail
+|   |-- PlatformAuditEventsPage.tsx          # P11-C: Audit event list
+|-- components/platform/                     # Platform-specific components
+|   |-- PlatformHealthCard.tsx               # System health summary card
+|   |-- PlatformTenantCard.tsx               # Tenant summary card
+|   |-- PlatformAuditEventRow.tsx            # Audit event row
+|   |-- PlatformStatusBadge.tsx              # Health/status badge (extends pattern)
+|   |-- PlatformMetricCard.tsx               # Metric display card
+|   |-- PlatformUnknownState.tsx             # Unknown state display
+|-- services/
+|   |-- platformApi.ts                       # Platform P10 API client service
+|-- stores/
+|   |-- platformStore.ts                     # Platform data state (Zustand)
+|-- types/
+|   |-- platform.ts                          # P10 contract TypeScript types
+|-- hooks/
+|   |-- usePlatformData.ts                   # Platform data fetching hook
+|-- router/
+    |-- (modify AppRouter.tsx)               # Add /platform/* routes
 ```
 
 ### Existing files P11 may modify:
@@ -79,7 +79,7 @@ frontend/src/
 |------|-------------|-------|
 | `frontend/src/router/AppRouter.tsx` | Add `/platform/*` route group | 1 route block |
 | `frontend/src/components/layout/Sidebar.tsx` | Add "Platform" nav item (super_admin only) | 1 nav item |
-| `frontend/src/services/api.ts` | No modification — platform API uses same singleton with different headers | — |
+| `frontend/src/services/api.ts` | No modification -- auth transport must be resolved in P11-B before API wiring | -- |
 | `frontend/src/types/auth.ts` | May add platform role type if needed | Minimal |
 
 ### Existing files P11 may reuse but NOT modify:
@@ -147,7 +147,7 @@ frontend/src/
 ### Route guard:
 
 ```tsx
-// frontend/src/router/guards.tsx — ADD ONLY, do not modify existing guards
+// frontend/src/router/guards.tsx -- ADD ONLY, do not modify existing guards
 export function PlatformRoute() {
   const user = useAuthStore((s) => s.user);
   const isPlatformOperator = user?.roles?.includes('super_admin');
@@ -220,10 +220,13 @@ export const platformService = {
 
 ### Key rules:
 
-1. **Must use the existing `api` Axios singleton** — no separate client.
-2. **Must NOT add platform headers client-side** — the P10 guard is server-side; the frontend sends standard Bearer tokens.
-3. **All responses are P10 contract shapes** — TypeScript types must match P10-A contracts exactly.
-4. **No caching layer needed initially** — Zustand store holds fetched data; refetch on mount is acceptable for P11.
+1. **Must use the existing `api` Axios singleton** -- no separate client.
+2. **AUTH TRANSPORT GATE (blocking):** P10 production guard requires `X-Platform-Operator` header matching `PLATFORM_OPERATOR_SECRET`. The frontend CANNOT assume Bearer tokens will pass the P10 guard. P11-B MUST resolve this before any API wiring. Options:
+   - (A) Frontend sends `X-Platform-Operator` header derived from platform auth context (requires backend approval).
+   - (B) Backend P10 guard is extended to also accept Bearer tokens for platform-role users (requires separate backend/security slice approval).
+   - Either way, this must be an explicit, approved decision -- not silently assumed.
+3. **All responses are P10 contract shapes** -- TypeScript types must match P10-A contracts exactly.
+4. **No caching layer needed initially** -- Zustand store holds fetched data; refetch on mount is acceptable for P11.
 
 ### TypeScript types (from P10-A contracts):
 
@@ -266,8 +269,8 @@ export interface PlatformAuditEventList { items: PlatformAuditEvent[]; total: nu
 
 ### Critical rules:
 
-1. **Unknown ≠ healthy.** Never render unknown status as green or "OK".
-2. **Null ≠ zero.** `user_count: null` means "unavailable", not "0 users". Display as "—" or "N/A" with tooltip.
+1. **Unknown != healthy.** Never render unknown status as green or "OK".
+2. **Null != zero.** `user_count: null` means "unavailable", not "0 users". Display as "--" or "N/A" with tooltip.
 3. **Degraded gracefully.** If one API call fails, show what succeeded. Don't block the entire page.
 4. **No raw data display.** Never show raw `metadata_redacted` payloads to the user. Only display structured fields.
 5. **No write/destructive buttons in P11.** All pages are read-only. No "edit", "delete", "create", "pause" buttons.
@@ -324,21 +327,21 @@ TF-003: No tenant business data (orders, inventory, payments) on platform pages
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
+| P11-B cannot wire APIs until auth transport is resolved | HIGH | P11-B starts with a blocking gate: frontend and backend must agree on how platform API auth works. Current P10 guard requires X-Platform-Operator header; frontend Bearer tokens alone will NOT pass it. |
 | Platform API surface exposed without proper auth | HIGH | Mitigated by P10-R2 hardened guard; frontend adds PlatformRoute guard as defense-in-depth |
 | Unknown state confused with healthy | MEDIUM | Explicit test cases (TC-003, TC-006, TC-008); design tokens for unknown vs healthy |
-| API client leaks platform headers to non-platform endpoints | LOW | platformApi.ts uses same api.ts singleton; platform endpoints are under /platform/p10/ prefix |
 | Frontend platform code mixed with tenant business code | LOW | Strict file boundary: all new code in pages/platform/ and components/platform/ |
-| P10 telemetry fields all return null | LOW | Expected — UI must handle gracefully with unknown/empty states |
+| P10 telemetry fields all return null | LOW | Expected -- UI must handle gracefully with unknown/empty states |
 
 ### Open questions:
 
-1. **Platform route guard**: Should the frontend check `user.roles` from JWT payload, or call a separate platform identity endpoint? Current plan: check `user.roles.includes('super_admin')` from auth store.
+1. **Platform auth transport (BLOCKING for P11-B):** P10 production guard requires `X-Platform-Operator` header matching `PLATFORM_OPERATOR_SECRET`. The frontend CANNOT assume Bearer tokens will work. P11-B must resolve this with an explicit, approved decision before any API wiring begins. Options: (A) frontend sends X-Platform-Operator derived from platform auth context, (B) backend guard is extended to also accept Bearer tokens for platform-role users via a separately approved backend/security slice. Either way, this is not silently assumed.
 
-2. **Sidebar visibility**: Should the "Platform" nav item be hidden for non-platform users, or always visible but grayed out? Current plan: hidden for non-super-admin.
+2. **Platform route guard**: Should the frontend check `user.roles` from JWT payload, or call a separate platform identity endpoint? Current plan: check `user.roles.includes('super_admin')` from auth store.
 
-3. **Real-time updates**: Should the cockpit auto-refresh? Current plan: manual refresh only for P11. Auto-refresh deferred to P13.
+3. **Sidebar visibility**: Should the "Platform" nav item be hidden for non-platform users, or always visible but grayed out? Current plan: hidden for non-super-admin.
 
-4. **Platform auth context**: The P10 API guard uses `X-Platform-Operator` header. Should the frontend send this header automatically for super_admin users? Or should the backend accept standard Bearer tokens for platform operators? **Open decision** — P11-B must resolve this before implementation.
+4. **Real-time updates**: Should the cockpit auto-refresh? Current plan: manual refresh only for P11. Auto-refresh deferred to P13.
 
 5. **Error boundary**: Should platform pages have a dedicated error boundary separate from the main app? Current plan: reuse existing error handling patterns.
 
@@ -360,11 +363,12 @@ TF-003: No tenant business data (orders, inventory, payments) on platform pages
 
 Before any P11 frontend code is merged:
 
+- [ ] **P11-B auth transport gate resolved**: P10 guard requires X-Platform-Operator header. Frontend cannot assume Bearer tokens work. This must be explicitly decided and approved before API wiring.
 - [ ] All new files are in `pages/platform/`, `components/platform/`, `services/platformApi.ts`, `stores/platformStore.ts`, `types/platform.ts`
 - [ ] No modifications to auth flow (`guards.tsx` additions only, no changes to existing `ProtectedRoute`/`PublicRoute`)
 - [ ] No modifications to `services/api.ts` interceptor logic
 - [ ] No payment, order, inventory, SKU, or retailer pages touched
-- [ ] No backend code changes
+- [ ] No backend code changes (unless in a separately approved backend/security slice for auth transport)
 - [ ] No migrations
 - [ ] All TypeScript types match P10-A contracts exactly
 - [ ] Unknown state displayed distinctly from healthy in all components

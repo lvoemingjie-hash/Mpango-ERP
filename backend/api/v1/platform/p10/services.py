@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +38,69 @@ from .schemas import (
     OverallStatus,
     ComponentStatus,
 )
+
+
+# ── Metadata Redaction (P10-R1-B) ──
+
+
+# Keywords that indicate sensitive data — case-insensitive substring match.
+_SENSITIVE_KEY_PATTERNS: tuple[str, ...] = (
+    "password",
+    "token",
+    "secret",
+    "authorization",
+    "cookie",
+    "raw_body",
+    "request_body",
+    "response_body",
+    "payload",
+    "stack_trace",
+    "traceback",
+    "card",
+    "payment",
+)
+
+
+def _is_sensitive_key(key: str) -> bool:
+    """Check if a key name suggests sensitive content (case-insensitive)."""
+    key_lower = key.lower()
+    return any(pattern in key_lower for pattern in _SENSITIVE_KEY_PATTERNS)
+
+
+def redact_metadata(metadata: Optional[dict]) -> Optional[dict]:
+    """
+    Redact sensitive keys from audit metadata before exposing via the API.
+
+    P10-R1-B: Do NOT map PlatformAuditLog.audit_metadata directly to
+    metadata_redacted. This function implements an allowlist approach —
+    any key whose name contains a sensitive pattern is removed.
+
+    Handles nested dicts and lists of dicts recursively.
+    Returns None if input is None. Returns empty dict if input is empty.
+
+    Safe keys preserved include (but are not limited to):
+      result, denial_code, reason_code, actor_assignment_status,
+      requested_at, message, operator_assignments, context, entries.
+    """
+    if metadata is None:
+        return None
+
+    return _redact_value(metadata)
+
+
+def _redact_value(value: Any) -> Any:
+    """Recursively redact sensitive keys from dicts and lists."""
+    if isinstance(value, dict):
+        redacted: dict = {}
+        for k, v in value.items():
+            if _is_sensitive_key(k):
+                continue  # drop the key entirely
+            redacted[k] = _redact_value(v)
+        return redacted
+    elif isinstance(value, list):
+        return [_redact_value(item) for item in value]
+    else:
+        return value
 
 
 # ── Helpers ──
@@ -299,7 +362,7 @@ async def list_audit_events(
                 action=e.action or "unknown",
                 reason=None,  # proposed_public_metadata
                 result=meta.get("result", "completed"),
-                metadata_redacted=meta if meta else None,
+                metadata_redacted=redact_metadata(meta) if meta else None,
                 correlation_id=None,  # telemetry_required
                 created_at=e.created_at,
             )
@@ -332,7 +395,7 @@ async def get_audit_event(
         action=e.action or "unknown",
         reason=None,
         result=meta.get("result", "completed"),
-        metadata_redacted=meta if meta else None,
+        metadata_redacted=redact_metadata(meta) if meta else None,
         correlation_id=None,
         created_at=e.created_at,
     )

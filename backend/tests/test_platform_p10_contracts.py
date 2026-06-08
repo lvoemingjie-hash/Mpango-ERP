@@ -49,6 +49,7 @@ from api.v1.platform.p10.schemas import (
     validate_audit_event_cross_rules,
 )
 from api.v1.platform.p10.routes import router as p10_router
+from api.v1.platform.p10.guard import require_platform_operator
 from api.dependencies import get_db
 from database.session import get_db as db_get_db
 
@@ -57,15 +58,20 @@ from database.session import get_db as db_get_db
 # Test helpers
 # ═══════════════════════════════════════════════════════════════
 
+# Header for test harness — accepted in non-production by the guard.
+_PLATFORM_HEADERS = {"X-Platform-Test-Override": "test"}
+
 
 def _make_app(mock_db) -> FastAPI:
-    """Build test app with dependency overrides."""
+    """Build test app with dependency overrides (guard bypassed for unit tests)."""
     app = FastAPI()
     app.include_router(p10_router)
 
     async def override():
         yield mock_db
 
+    # Override the platform guard to always allow in unit tests
+    app.dependency_overrides[require_platform_operator] = lambda: None
     app.dependency_overrides[get_db] = override
     app.dependency_overrides[db_get_db] = override
     return app
@@ -1121,3 +1127,359 @@ class TestNoLeakage:
         )
         assert isinstance(event.metadata_redacted, dict)
         assert "denial_code" in event.metadata_redacted
+
+
+# ═══════════════════════════════════════════════════════════════
+# SB-R1: Platform-Only Access Boundary Tests (P10-R1-A)
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestPlatformOnlyAccessBoundary:
+    """
+    P10-R1-A: Prove the platform-only guard enforces deny-by-default.
+
+    Tests:
+      - Unauthenticated / no platform marker → 401
+      - Tenant/product-only context (wrong marker) → 403
+      - Explicit platform-operator context → 200
+    """
+
+    @pytest.fixture
+    def guarded_app(self):
+        """App with guard active (no override), but DB mocked."""
+        app = FastAPI()
+        app.include_router(p10_router)
+
+        mock_db = MagicMock()
+        # Set up async execute for count + list queries
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        list_result = MagicMock()
+        list_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(side_effect=[count_result, list_result])
+
+        async def override():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = override
+        app.dependency_overrides[db_get_db] = override
+        # Deliberately do NOT override require_platform_operator
+        return app
+
+    # ── Unauthenticated / no marker → 401 ──
+
+    def test_no_headers_denied_list_tenants(self, guarded_app):
+        """No platform marker at all → 401."""
+        client = TestClient(guarded_app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+        assert "PLATFORM_ACCESS_REQUIRED" in resp.json()["detail"]["code"]
+
+    def test_no_headers_denied_system_health(self, guarded_app):
+        client = TestClient(guarded_app)
+        resp = client.get("/api/v1/platform/p10/system/health")
+        assert resp.status_code == 401
+
+    def test_no_headers_denied_audit_events(self, guarded_app):
+        client = TestClient(guarded_app)
+        resp = client.get("/api/v1/platform/p10/audit/events")
+        assert resp.status_code == 401
+
+    def test_no_headers_denied_tenant_detail(self, guarded_app):
+        client = TestClient(guarded_app)
+        resp = client.get("/api/v1/platform/p10/tenants/some-id")
+        assert resp.status_code == 401
+
+    def test_no_headers_denied_tenant_health(self, guarded_app):
+        client = TestClient(guarded_app)
+        resp = client.get("/api/v1/platform/p10/tenants/some-id/health")
+        assert resp.status_code == 401
+
+    def test_no_headers_denied_audit_event_detail(self, guarded_app):
+        client = TestClient(guarded_app)
+        resp = client.get("/api/v1/platform/p10/audit/events/some-id")
+        assert resp.status_code == 401
+
+    # ── Tenant/product-only context (wrong marker) → 403 ──
+
+    def test_wrong_operator_secret_denied(self, guarded_app):
+        """X-Platform-Operator with wrong value → 403."""
+        client = TestClient(guarded_app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Operator": "wrong-secret"},
+        )
+        assert resp.status_code == 403
+        assert "PLATFORM_ACCESS_DENIED" in resp.json()["detail"]["code"]
+
+    def test_tenant_auth_header_insufficient(self, guarded_app):
+        """Standard Authorization bearer does NOT grant platform access."""
+        client = TestClient(guarded_app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"Authorization": "Bearer some-tenant-token"},
+        )
+        assert resp.status_code == 401
+
+    def test_empty_platform_operator_denied(self, guarded_app):
+        """Empty X-Platform-Operator header → 401 (treated as no marker)."""
+        client = TestClient(guarded_app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Operator": ""},
+        )
+        assert resp.status_code == 401
+        assert "PLATFORM_ACCESS_REQUIRED" in resp.json()["detail"]["code"]
+
+    # ── Explicit platform-operator context → 200 ──
+
+    def test_platform_test_override_allowed_list_tenants(self, guarded_app):
+        """X-Platform-Test-Override header → 200 in non-production."""
+        client = TestClient(guarded_app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers=_PLATFORM_HEADERS,
+        )
+        assert resp.status_code == 200
+
+    def test_platform_test_override_allowed_system_health(self, guarded_app):
+        client = TestClient(guarded_app)
+        resp = client.get(
+            "/api/v1/platform/p10/system/health",
+            headers=_PLATFORM_HEADERS,
+        )
+        assert resp.status_code == 200
+
+    def test_platform_test_override_allowed_audit_events(self, guarded_app):
+        """Audit events list works with platform test override."""
+        # guarded_app already has proper async mock DB
+        client = TestClient(guarded_app)
+        resp = client.get(
+            "/api/v1/platform/p10/audit/events",
+            headers=_PLATFORM_HEADERS,
+        )
+        assert resp.status_code == 200
+
+    def test_platform_test_override_allowed_tenant_detail(self, guarded_app):
+        w = _mock_wholesaler()
+        mock_db = MagicMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = w
+        mock_db.execute = AsyncMock(return_value=result)
+
+        app = FastAPI()
+        app.include_router(p10_router)
+        async def override():
+            yield mock_db
+        app.dependency_overrides[get_db] = override
+        app.dependency_overrides[db_get_db] = override
+
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants/550e8400-e29b-41d4-a716-446655440000",
+            headers=_PLATFORM_HEADERS,
+        )
+        assert resp.status_code == 200
+
+    def test_platform_test_override_allowed_tenant_health(self, guarded_app):
+        """Tenant health endpoint works with platform test override."""
+        w = _mock_wholesaler()
+        mock_db = MagicMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = w
+        mock_db.execute = AsyncMock(return_value=result)
+
+        app = FastAPI()
+        app.include_router(p10_router)
+        async def override():
+            yield mock_db
+        app.dependency_overrides[get_db] = override
+        app.dependency_overrides[db_get_db] = override
+
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants/550e8400-e29b-41d4-a716-446655440000/health",
+            headers=_PLATFORM_HEADERS,
+        )
+        assert resp.status_code == 200
+
+    def test_platform_test_override_allowed_audit_event_detail(self, guarded_app):
+        """Audit event detail works with platform test override."""
+        mock_db = _mock_db_for_not_found()
+        app = FastAPI()
+        app.include_router(p10_router)
+        async def override():
+            yield mock_db
+        app.dependency_overrides[get_db] = override
+        app.dependency_overrides[db_get_db] = override
+
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/audit/events/nonexistent-id",
+            headers=_PLATFORM_HEADERS,
+        )
+        assert resp.status_code == 404  # 404 from data layer, not 401 from guard
+
+    def test_all_endpoints_require_guard(self):
+        """Verify all 6 P10 endpoints have the guard dependency wired."""
+        from api.v1.platform.p10.routes import router
+
+        guarded_count = 0
+        for route in router.routes:
+            if hasattr(route, "dependant"):
+                # Check if require_platform_operator appears in the dependency tree
+                dep_names = []
+                for dep in route.dependant.dependencies:
+                    # dep.call is the actual dependency function
+                    dep_fn = getattr(dep, "call", None)
+                    if dep_fn is not None:
+                        dep_names.append(getattr(dep_fn, "__name__", str(dep_fn)))
+                has_guard = "require_platform_operator" in dep_names
+                if has_guard:
+                    guarded_count += 1
+                path = getattr(route, "path", str(route))
+                assert has_guard, f"Route {path} is missing platform guard dependency"
+
+        assert guarded_count == 6, f"Expected 6 guarded endpoints, found {guarded_count}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# P10-R1-B: Metadata Redaction Tests
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestMetadataRedaction:
+    """
+    P10-R1-B: Prove metadata_redacted output contains only safe keys.
+
+    Tests:
+      - Direct sensitive keys are removed
+      - Nested sensitive keys are removed
+      - Safe keys are preserved
+      - Empty/null metadata handled correctly
+    """
+
+    def test_direct_sensitive_keys_removed(self):
+        """Top-level sensitive keys must be stripped."""
+        from api.v1.platform.p10.services import redact_metadata
+
+        raw = {
+            "result": "completed",
+            "password": "hunter2",
+            "token": "abc123",
+            "secret": "my-secret",
+            "authorization": "Bearer xyz",
+            "cookie": "session=abc",
+            "reason_code": "policy_violation",
+            "denial_code": "missing_reason",
+        }
+        redacted = redact_metadata(raw)
+        assert redacted is not None
+        assert "password" not in redacted
+        assert "token" not in redacted
+        assert "secret" not in redacted
+        assert "authorization" not in redacted
+        assert "cookie" not in redacted
+        assert redacted["result"] == "completed"
+        assert redacted["reason_code"] == "policy_violation"
+        assert redacted["denial_code"] == "missing_reason"
+
+    def test_nested_sensitive_keys_removed(self):
+        """Sensitive keys in nested dicts must be stripped."""
+        from api.v1.platform.p10.services import redact_metadata
+
+        raw = {
+            "result": "denied",
+            "context": {
+                "user_token": "should-be-removed",
+                "db_password": "should-be-removed",
+                "safe_value": "keep-me",
+                "nested": {
+                    "secret": "deep-secret",
+                    "actor_assignment_status": "assigned",
+                },
+            },
+        }
+        redacted = redact_metadata(raw)
+        assert redacted is not None
+        assert "user_token" not in redacted["context"]
+        assert "db_password" not in redacted["context"]
+        assert redacted["context"]["safe_value"] == "keep-me"
+        assert "secret" not in redacted["context"]["nested"]
+        assert redacted["context"]["nested"]["actor_assignment_status"] == "assigned"
+
+    def test_all_sensitive_keywords_covered(self):
+        """Every listed sensitive keyword pattern is caught."""
+        from api.v1.platform.p10.services import redact_metadata
+
+        sensitive_keys = [
+            "password", "token", "secret", "authorization",
+            "cookie", "raw_body", "request_body", "response_body",
+            "payload", "stack_trace", "traceback", "card", "payment",
+        ]
+        raw = {k: f"value-{k}" for k in sensitive_keys}
+        raw["safe_key"] = "keep"
+
+        redacted = redact_metadata(raw)
+        for k in sensitive_keys:
+            assert k not in redacted, f"Sensitive key '{k}' should have been removed"
+        assert redacted["safe_key"] == "keep"
+
+    def test_safe_keys_preserved(self):
+        """Known safe keys must pass through."""
+        from api.v1.platform.p10.services import redact_metadata
+
+        raw = {
+            "result": "completed",
+            "denial_code": "missing_reason",
+            "reason_code": "expired",
+            "actor_assignment_status": "assigned",
+            "requested_at": "2026-06-05T09:20:00.000Z",
+        }
+        redacted = redact_metadata(raw)
+        assert redacted == raw  # all safe, nothing stripped
+
+    def test_none_metadata_returns_none(self):
+        """None input returns None."""
+        from api.v1.platform.p10.services import redact_metadata
+
+        assert redact_metadata(None) is None
+
+    def test_empty_metadata_returns_empty(self):
+        """Empty dict returns empty dict."""
+        from api.v1.platform.p10.services import redact_metadata
+
+        assert redact_metadata({}) == {}
+
+    def test_nested_sensitive_in_list_values(self):
+        """Sensitive keys in dicts within lists must also be removed."""
+        from api.v1.platform.p10.services import redact_metadata
+
+        raw = {
+            "result": "completed",
+            "entries": [
+                {"token": "abc", "name": "safe-name"},
+                {"password": "secret", "value": "ok"},
+            ],
+        }
+        redacted = redact_metadata(raw)
+        assert "token" not in redacted["entries"][0]
+        assert redacted["entries"][0]["name"] == "safe-name"
+        assert "password" not in redacted["entries"][1]
+        assert redacted["entries"][1]["value"] == "ok"
+
+    def test_case_insensitive_sensitive_keys(self):
+        """Sensitive key matching should be case-insensitive."""
+        from api.v1.platform.p10.services import redact_metadata
+
+        raw = {
+            "Password": "secret",
+            "TOKEN": "abc",
+            "Secret_Key": "hidden",
+            "result": "ok",
+        }
+        redacted = redact_metadata(raw)
+        assert "Password" not in redacted
+        assert "TOKEN" not in redacted
+        assert "Secret_Key" not in redacted
+        assert redacted["result"] == "ok"

@@ -1495,6 +1495,243 @@ class TestPlatformOnlyAccessBoundary:
 
 
 # ═══════════════════════════════════════════════════════════════
+# P11-B0: Bearer super_admin Auth Transport Tests
+# ═══════════════════════════════════════════════════════════════
+
+
+def _make_app_with_auth(mock_db, user_roles=None, has_auth=True):
+    """
+    Build a test app where the auth middleware has already set auth context
+    on request.state (simulating the real middleware behavior).
+    """
+    from api.context.auth import AuthContext, attach_auth_context
+    from core.security import TokenPayload
+
+    app = FastAPI()
+    app.include_router(p10_router)
+
+    if mock_db is None:
+        mock_db = MagicMock()
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        list_result = MagicMock()
+        list_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(side_effect=[count_result, list_result])
+
+    async def override():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override
+    app.dependency_overrides[db_get_db] = override
+
+    # Add middleware that simulates auth context attachment
+    if has_auth:
+        token = TokenPayload(
+            user_id="user-123",
+            roles=user_roles or [],
+            tenant_id="tenant-456" if user_roles else None,
+            tenant_schema="tenant_schema" if user_roles else None,
+        )
+        raw_token = "fake-jwt-token"
+
+        @app.middleware("http")
+        async def inject_auth(request, call_next):
+            auth_ctx = AuthContext(token=token, raw_token=raw_token)
+            attach_auth_context(request, auth_ctx)
+            response = await call_next(request)
+            return response
+
+    return app
+
+
+class TestBearerSuperAdminAccess:
+    """
+    P11-B0: Prove Bearer-authenticated super_admin users can access P10.
+
+    The guard now accepts three credential types:
+      1. X-Platform-Operator secret (server/operator context)
+      2. Authenticated super_admin via Bearer/JWT (browser frontend)
+      3. X-Platform-Test-Override (test harness, test env only)
+
+    Tests:
+      - super_admin Bearer allowed
+      - admin (not super_admin) Bearer denied
+      - regular user Bearer denied
+      - no auth context denied
+      - X-Platform-Operator secret still allowed
+      - wrong X-Platform-Operator denied
+      - test override still restricted to test env
+    """
+
+    # -- super_admin Bearer allowed --
+
+    def test_super_admin_bearer_allowed(self, monkeypatch):
+        """Authenticated super_admin via Bearer -> 200."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"])
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 200
+
+    def test_super_admin_bearer_allowed_system_health(self, monkeypatch):
+        """super_admin can access system health without any headers."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"])
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/system/health")
+        assert resp.status_code == 200
+
+    def test_super_admin_bearer_allowed_audit_events(self, monkeypatch):
+        """super_admin can access audit events without any headers."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"])
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/audit/events")
+        assert resp.status_code == 200
+
+    # -- admin (not super_admin) Bearer denied --
+
+    def test_admin_role_denied(self, monkeypatch):
+        """admin role is NOT sufficient for platform access."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["admin"])
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+
+    def test_user_role_denied(self, monkeypatch):
+        """Regular user role is NOT sufficient."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["user"])
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+
+    def test_empty_roles_denied(self, monkeypatch):
+        """Authenticated user with no roles is NOT sufficient."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=[])
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+
+    # -- no auth context denied --
+
+    def test_no_auth_context_denied(self, monkeypatch):
+        """No auth context at all -> 401."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+
+    # -- X-Platform-Operator secret still works --
+
+    def test_operator_secret_still_allowed(self, monkeypatch):
+        """X-Platform-Operator with correct secret still works (no Bearer needed)."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_OPERATOR_SECRET", "prod-secret")
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Operator": "prod-secret"},
+        )
+        assert resp.status_code == 200
+
+    def test_wrong_operator_secret_still_denied(self, monkeypatch):
+        """Wrong X-Platform-Operator secret still denied."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_OPERATOR_SECRET", "prod-secret")
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Operator": "wrong"},
+        )
+        assert resp.status_code == 403
+
+    # -- test override still restricted to test env --
+
+    def test_test_override_still_denied_in_development(self, monkeypatch):
+        """Test override still denied in development env (P10-R2 preserved)."""
+        monkeypatch.setenv("MPANGO_ENV", "development")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_test_override_still_denied_in_production(self, monkeypatch):
+        """Test override still denied in production env (P10-R2 preserved)."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_test_override_allowed_in_test_env(self, monkeypatch):
+        """Test override still works in test env with correct secret (P10-R2 preserved)."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 200
+
+    # -- combined: super_admin + test env --
+
+    def test_super_admin_in_test_env_allowed(self, monkeypatch):
+        """super_admin works in test env too (no conflict with test override)."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"])
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 200
+
+    def test_super_admin_in_production_allowed(self, monkeypatch):
+        """super_admin works in production env via Bearer."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_OPERATOR_SECRET", "prod-secret")
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"])
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 200
+
+
+# ═══════════════════════════════════════════════════════════════
 # P10-R1-B: Metadata Redaction Tests
 # ═══════════════════════════════════════════════════════════════
 

@@ -197,4 +197,4 @@ Mapped from existing `platform_audit_logs` (P0 schema). Fields `actor_role`, `re
 
 ## Push Status
 
-Branch `codex/platform-p10-readonly-foundation-2026-06-08` is local-only ahead of `origin/platform-dev`. Final push status will be recorded after push.
+Branch `codex/platform-p10-readonly-foundation-2026-06-08` **pushed** to origin. Not merged to `platform-dev`.

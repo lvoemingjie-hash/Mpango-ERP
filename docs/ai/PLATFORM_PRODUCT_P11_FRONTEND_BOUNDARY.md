@@ -221,7 +221,7 @@ export const platformService = {
 ### Key rules:
 
 1. **Must use the existing `api` Axios singleton** -- no separate client.
-2. **AUTH TRANSPORT RESOLVED (P11-B0):** The backend P10 guard has been extended to accept Bearer-authenticated `super_admin` users. The frontend sends standard Bearer tokens via the existing Axios interceptor. No `X-Platform-Operator` secret material is ever sent to or stored in the browser. The `X-Platform-Operator` header remains available for server/operator contexts. This was resolved in P11-B0 as a separate backend slice before P11-B UI work begins.
+2. **AUTH TRANSPORT RESOLVED (P11-B0-R1):** The backend P10 guard accepts **identity-only (global) `super_admin` Bearer tokens only**. A tenant-contextual token with `super_admin` role is **NOT sufficient** for P10 platform access. The frontend must use the existing Axios Bearer token from an identity/global `super_admin` session (before tenant selection). No `X-Platform-Operator` secret material is ever sent to or stored in the browser. The `X-Platform-Operator` header remains available for server/operator contexts. This was resolved in P11-B0-R1 as a separate backend slice before P11-B UI work begins.
 3. **All responses are P10 contract shapes** -- TypeScript types must match P10-A contracts exactly.
 4. **No caching layer needed initially** -- Zustand store holds fetched data; refetch on mount is acceptable for P11.
 
@@ -324,7 +324,7 @@ TF-003: No tenant business data (orders, inventory, payments) on platform pages
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| ~~P11-B cannot wire APIs until auth transport is resolved~~ | ~~HIGH~~ | **RESOLVED in P11-B0**: Backend guard now accepts Bearer-authenticated super_admin users. Frontend uses existing Axios Bearer token. No secret material in browser. |
+| ~~P11-B cannot wire APIs until auth transport is resolved~~ | ~~HIGH~~ | **RESOLVED in P11-B0-R1**: Backend guard accepts identity-only (global) super_admin Bearer tokens only. Tenant-contextual super_admin tokens are NOT sufficient. Frontend uses existing Axios Bearer token from identity/global super_admin context. No secret material in browser. |
 | Platform API surface exposed without proper auth | HIGH | Mitigated by P10-R2 hardened guard + P11-B0 Bearer super_admin check; frontend adds PlatformRoute guard as defense-in-depth |
 | Unknown state confused with healthy | MEDIUM | Explicit test cases (TC-003, TC-006, TC-008); design tokens for unknown vs healthy |
 | Frontend platform code mixed with tenant business code | LOW | Strict file boundary: all new code in pages/platform/ and components/platform/ |
@@ -332,7 +332,7 @@ TF-003: No tenant business data (orders, inventory, payments) on platform pages
 
 ### Open questions:
 
-1. ~~**Platform auth transport (BLOCKING for P11-B):**~~ **RESOLVED in P11-B0.** Backend guard extended to accept Bearer-authenticated super_admin. Frontend uses standard Bearer tokens. X-Platform-Operator remains for server/operator contexts. Browser never receives PLATFORM_OPERATOR_SECRET.
+1. ~~**Platform auth transport (BLOCKING for P11-B):**~~ **RESOLVED in P11-B0-R1.** Backend guard accepts identity-only (global) super_admin Bearer tokens only. Tenant-contextual super_admin tokens are NOT sufficient. Frontend uses standard Bearer tokens from identity/global super_admin session (before tenant selection). X-Platform-Operator remains for server/operator contexts. Browser never receives PLATFORM_OPERATOR_SECRET.
 
 2. **Platform route guard**: Should the frontend check `user.roles` from JWT payload, or call a separate platform identity endpoint? Current plan: check `user.roles.includes('super_admin')` from auth store.
 
@@ -360,7 +360,7 @@ TF-003: No tenant business data (orders, inventory, payments) on platform pages
 
 Before any P11 frontend code is merged:
 
-- [ ] **P11-B auth transport gate resolved (P11-B0):** Backend P10 guard now accepts Bearer-authenticated super_admin users (P11-B0). Frontend uses standard Bearer tokens. No secret material in browser.
+- [ ] **P11-B auth transport gate resolved (P11-B0-R1):** Backend P10 guard accepts identity-only (global) super_admin Bearer tokens only (P11-B0-R1). Tenant-contextual super_admin tokens are NOT sufficient. Frontend uses existing Axios Bearer token from identity/global super_admin context. No secret material in browser.
 - [ ] All new files are in `pages/platform/`, `components/platform/`, `services/platformApi.ts`, `stores/platformStore.ts`, `types/platform.ts`
 - [ ] No modifications to auth flow (`guards.tsx` additions only, no changes to existing `ProtectedRoute`/`PublicRoute`)
 - [ ] No modifications to `services/api.ts` interceptor logic

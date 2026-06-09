@@ -1893,14 +1893,18 @@ class TestBearerRealMiddleware:
         )
         assert resp.status_code == 401
 
-    def test_real_contextual_super_admin_denied(self, monkeypatch):
-        """Real JWT contextual token with super_admin -> denied for P10.
+    def test_contextual_super_admin_denied_with_auth_context(self, monkeypatch):
+        """Manual auth-context injection: contextual super_admin -> DENIED.
 
-        Note: The real middleware tries to resolve tenant context via
-        resolve_tenant_context which needs a real DB. We use the manual
-        mock-based contextual test instead (test_contextual_super_admin_denied)
-        to prove the guard rejects contextual tokens. This test uses the
-        mock approach with real JWT decoding to validate the token itself.
+        This test injects a contextual (tenant-scoped) AuthContext directly
+        via _make_app_with_auth (identity_only=False), bypassing the real
+        middleware. The real middleware's resolve_tenant_context requires a
+        live DB for contextual tokens, so we use manual injection to prove
+        the guard rejects contextual super_admin tokens at the guard level.
+
+        The real middleware pipeline is proven by the 5 tests above.
+        Contextual denial is additionally proven by
+        test_contextual_super_admin_denied in TestBearerSuperAdminAccess.
         """
         monkeypatch.delenv("MPANGO_ENV", raising=False)
         monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)

@@ -253,4 +253,5 @@ A separate P11-C or cleanup task should address the P0 unguarded endpoints.
 ## Push Status
 
 R1 pushed as `b5e23ff2dcb904a102079c338487ef4c1e17f47a` on branch `codex/platform-p11b0-auth-transport-2026-06-08`.
-R2 evidence + doc polish applied to docs and ledger.
+R2 evidence + doc polish applied to docs and ledger, pushed as `078a660fa89e0e25ed1a14bfcf9e5b74e9a5db07`.
+Final reviewed HEAD: `078a66028e7630b5953cc608ccdcdaff2043804b`.

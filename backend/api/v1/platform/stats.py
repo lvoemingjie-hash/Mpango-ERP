@@ -1,6 +1,10 @@
 """
 Platform Track — Read-only operational reporting endpoint.
 
+P11-C0: This endpoint now requires P10 platform operator credentials.
+Identity-only super_admin Bearer tokens, X-Platform-Operator secret,
+or test override (test env only) are accepted.
+
 Aggregates existing public-schema data (wholesalers, platform_tenants,
 platform_audit_logs) into a compact platform-wide summary.
 
@@ -14,6 +18,7 @@ from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
+from api.v1.platform.p10.guard import require_platform_operator
 from models.wholesaler import Wholesaler
 from models.platform_tenant import PlatformTenant
 from models.platform_audit_log import PlatformAuditLog
@@ -22,7 +27,10 @@ router = APIRouter(prefix='/api/v1/platform/stats', tags=['platform-stats'])
 
 
 @router.get('/')
-async def platform_stats(db: AsyncSession = Depends(get_db)):
+async def platform_stats(
+    db: AsyncSession = Depends(get_db),
+    _auth: None = Depends(require_platform_operator),
+):
     """Platform-wide operational summary (read-only)."""
     # 1. Tenant counts by status (from wholesalers)
     tenant_total_q = await db.execute(

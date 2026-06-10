@@ -3,12 +3,21 @@ Request-level API tests for Platform Track P0 — platform_audit_logs.
 
 Tests the external read-only API contract including new time-range filtering
 and summary endpoints.
+
+P11-C0: All P0 audit endpoints now require platform operator credentials.
+Tests use X-Platform-Test-Override header in test environment.
 """
+import os
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+
+# Ensure test environment for platform guard
+os.environ.setdefault("MPANGO_ENV", "test")
+os.environ.setdefault("PLATFORM_TEST_OVERRIDE_SECRET", "test-platform-override-secret")
 
 
 def _make_empty_list_result():
@@ -45,6 +54,9 @@ def _make_app(mock_db):
     return app
 
 
+TEST_HEADERS = {"X-Platform-Test-Override": "test-platform-override-secret"}
+
+
 def _list_client():
     """Client with mock returning empty list."""
     mock_db = MagicMock()
@@ -52,38 +64,74 @@ def _list_client():
     return TestClient(_make_app(mock_db))
 
 
+# === Guard tests ===
+
+class TestAuditEndpointGuard:
+
+    def test_unauthenticated_denied_list(self):
+        """Unauthenticated request to audit list is denied (401)."""
+        resp = _list_client().get("/api/v1/platform/audit/")
+        assert resp.status_code == 401
+
+    def test_unauthenticated_denied_summary(self):
+        """Unauthenticated request to audit summary is denied (401)."""
+        resp = _list_client().get("/api/v1/platform/audit/summary")
+        assert resp.status_code == 401
+
+    def test_unauthenticated_denied_detail(self):
+        """Unauthenticated request to audit detail is denied (401)."""
+        resp = _list_client().get("/api/v1/platform/audit/some-id")
+        assert resp.status_code == 401
+
+    def test_invalid_test_override_denied(self):
+        """Invalid test override is denied (403)."""
+        resp = _list_client().get(
+            "/api/v1/platform/audit/",
+            headers={"X-Platform-Test-Override": "wrong-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_valid_test_override_allowed(self):
+        """Valid test override allows access (200)."""
+        resp = _list_client().get(
+            "/api/v1/platform/audit/",
+            headers=TEST_HEADERS,
+        )
+        assert resp.status_code == 200
+
+
 # === List endpoint with time-range ===
 
 class TestAuditListEndpoint:
 
     def test_empty_list(self):
-        resp = _list_client().get("/api/v1/platform/audit/")
+        resp = _list_client().get("/api/v1/platform/audit/", headers=TEST_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["items"] == []
         assert data["total"] == 0
 
     def test_pagination_params(self):
-        resp = _list_client().get("/api/v1/platform/audit/", params={"limit": 10, "offset": 5})
+        resp = _list_client().get("/api/v1/platform/audit/", params={"limit": 10, "offset": 5}, headers=TEST_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["limit"] == 10
         assert data["offset"] == 5
 
     def test_filter_by_action(self):
-        resp = _list_client().get("/api/v1/platform/audit/", params={"action": "tenant.suspend"})
+        resp = _list_client().get("/api/v1/platform/audit/", params={"action": "tenant.suspend"}, headers=TEST_HEADERS)
         assert resp.status_code == 200
 
     def test_filter_by_wholesaler_id(self):
-        resp = _list_client().get("/api/v1/platform/audit/", params={"wholesaler_id": "00000000-0000-0000-0000-000000000000"})
+        resp = _list_client().get("/api/v1/platform/audit/", params={"wholesaler_id": "00000000-0000-0000-0000-000000000000"}, headers=TEST_HEADERS)
         assert resp.status_code == 200
 
     def test_filter_by_actor_type(self):
-        resp = _list_client().get("/api/v1/platform/audit/", params={"actor_type": "admin"})
+        resp = _list_client().get("/api/v1/platform/audit/", params={"actor_type": "admin"}, headers=TEST_HEADERS)
         assert resp.status_code == 200
 
     def test_response_shape(self):
-        resp = _list_client().get("/api/v1/platform/audit/")
+        resp = _list_client().get("/api/v1/platform/audit/", headers=TEST_HEADERS)
         data = resp.json()
         assert "items" in data
         assert "total" in data
@@ -96,35 +144,35 @@ class TestAuditListEndpoint:
 class TestAuditTimeRangeFiltering:
 
     def test_since_param(self):
-        resp = _list_client().get("/api/v1/platform/audit/?since=2026-04-01T00:00:00Z")
+        resp = _list_client().get("/api/v1/platform/audit/?since=2026-04-01T00:00:00Z", headers=TEST_HEADERS)
         assert resp.status_code == 200
 
     def test_before_param(self):
-        resp = _list_client().get("/api/v1/platform/audit/?before=2026-04-14T00:00:00Z")
+        resp = _list_client().get("/api/v1/platform/audit/?before=2026-04-14T00:00:00Z", headers=TEST_HEADERS)
         assert resp.status_code == 200
 
     def test_since_and_before_params(self):
-        resp = _list_client().get("/api/v1/platform/audit/?since=2026-04-01T00:00:00Z&before=2026-04-14T00:00:00Z")
+        resp = _list_client().get("/api/v1/platform/audit/?since=2026-04-01T00:00:00Z&before=2026-04-14T00:00:00Z", headers=TEST_HEADERS)
         assert resp.status_code == 200
 
     def test_invalid_since_format(self):
-        resp = _list_client().get("/api/v1/platform/audit/?since=invalid")
+        resp = _list_client().get("/api/v1/platform/audit/?since=invalid", headers=TEST_HEADERS)
         assert resp.status_code == 400
         assert "since" in resp.json()["detail"].lower()
 
     def test_invalid_before_format(self):
-        resp = _list_client().get("/api/v1/platform/audit/?before=invalid")
+        resp = _list_client().get("/api/v1/platform/audit/?before=invalid", headers=TEST_HEADERS)
         assert resp.status_code == 400
         assert "before" in resp.json()["detail"].lower()
 
     def test_since_after_before(self):
-        resp = _list_client().get("/api/v1/platform/audit/?since=2026-04-14T00:00:00Z&before=2026-04-01T00:00:00Z")
+        resp = _list_client().get("/api/v1/platform/audit/?since=2026-04-14T00:00:00Z&before=2026-04-01T00:00:00Z", headers=TEST_HEADERS)
         assert resp.status_code == 400
         assert "earlier" in resp.json()["detail"].lower()
 
     def test_range_exceeds_max(self):
         # 91 days exceeds 90-day max
-        resp = _list_client().get("/api/v1/platform/audit/?since=2026-01-01T00:00:00Z&before=2026-04-14T00:00:00Z")
+        resp = _list_client().get("/api/v1/platform/audit/?since=2026-01-01T00:00:00Z&before=2026-04-14T00:00:00Z", headers=TEST_HEADERS)
         assert resp.status_code == 400
         assert "90" in resp.json()["detail"]
 
@@ -134,7 +182,7 @@ class TestAuditTimeRangeFiltering:
 class TestAuditSummaryEndpoint:
 
     def test_summary_empty(self):
-        resp = _list_client().get("/api/v1/platform/audit/summary")
+        resp = _list_client().get("/api/v1/platform/audit/summary", headers=TEST_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert "period" in data
@@ -144,22 +192,22 @@ class TestAuditSummaryEndpoint:
         assert data["action_counts"] == {}
 
     def test_summary_with_time_range(self):
-        resp = _list_client().get("/api/v1/platform/audit/summary?since=2026-04-01T00:00:00Z&before=2026-04-14T00:00:00Z")
+        resp = _list_client().get("/api/v1/platform/audit/summary?since=2026-04-01T00:00:00Z&before=2026-04-14T00:00:00Z", headers=TEST_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["period"]["since"] is not None
         assert data["period"]["before"] is not None
 
     def test_summary_invalid_since(self):
-        resp = _list_client().get("/api/v1/platform/audit/summary?since=bad")
+        resp = _list_client().get("/api/v1/platform/audit/summary?since=bad", headers=TEST_HEADERS)
         assert resp.status_code == 400
 
     def test_summary_invalid_range(self):
-        resp = _list_client().get("/api/v1/platform/audit/summary?since=2026-04-14T00:00:00Z&before=2026-04-01T00:00:00Z")
+        resp = _list_client().get("/api/v1/platform/audit/summary?since=2026-04-14T00:00:00Z&before=2026-04-01T00:00:00Z", headers=TEST_HEADERS)
         assert resp.status_code == 400
 
     def test_summary_range_exceeds_max(self):
-        resp = _list_client().get("/api/v1/platform/audit/summary?since=2026-01-01T00:00:00Z&before=2026-04-14T00:00:00Z")
+        resp = _list_client().get("/api/v1/platform/audit/summary?since=2026-01-01T00:00:00Z&before=2026-04-14T00:00:00Z", headers=TEST_HEADERS)
         assert resp.status_code == 400
 
 
@@ -171,7 +219,7 @@ class TestAuditDetailEndpoint:
         mock_db = MagicMock()
         mock_db.execute = AsyncMock(return_value=_make_404_result())
         client = TestClient(_make_app(mock_db))
-        resp = client.get("/api/v1/platform/audit/00000000-0000-0000-0000-000000000000")
+        resp = client.get("/api/v1/platform/audit/00000000-0000-0000-0000-000000000000", headers=TEST_HEADERS)
         assert resp.status_code == 404
         assert "not found" in resp.json()["detail"].lower()
 
@@ -181,49 +229,49 @@ class TestAuditDetailEndpoint:
 class TestReadOnlyContract:
 
     def test_no_post_on_list(self):
-        resp = _list_client().post("/api/v1/platform/audit/", json={})
+        resp = _list_client().post("/api/v1/platform/audit/", json={}, headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_post_on_summary(self):
-        resp = _list_client().post("/api/v1/platform/audit/summary", json={})
+        resp = _list_client().post("/api/v1/platform/audit/summary", json={}, headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_post_on_detail(self):
-        resp = _list_client().post("/api/v1/platform/audit/some-id", json={})
+        resp = _list_client().post("/api/v1/platform/audit/some-id", json={}, headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_put_on_list(self):
-        resp = _list_client().put("/api/v1/platform/audit/", json={})
+        resp = _list_client().put("/api/v1/platform/audit/", json={}, headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_put_on_summary(self):
-        resp = _list_client().put("/api/v1/platform/audit/summary", json={})
+        resp = _list_client().put("/api/v1/platform/audit/summary", json={}, headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_put_on_detail(self):
-        resp = _list_client().put("/api/v1/platform/audit/some-id", json={})
+        resp = _list_client().put("/api/v1/platform/audit/some-id", json={}, headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_patch_on_list(self):
-        resp = _list_client().patch("/api/v1/platform/audit/", json={})
+        resp = _list_client().patch("/api/v1/platform/audit/", json={}, headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_patch_on_summary(self):
-        resp = _list_client().patch("/api/v1/platform/audit/summary", json={})
+        resp = _list_client().patch("/api/v1/platform/audit/summary", json={}, headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_patch_on_detail(self):
-        resp = _list_client().patch("/api/v1/platform/audit/some-id", json={})
+        resp = _list_client().patch("/api/v1/platform/audit/some-id", json={}, headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_delete_on_list(self):
-        resp = _list_client().delete("/api/v1/platform/audit/")
+        resp = _list_client().delete("/api/v1/platform/audit/", headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_delete_on_summary(self):
-        resp = _list_client().delete("/api/v1/platform/audit/summary")
+        resp = _list_client().delete("/api/v1/platform/audit/summary", headers=TEST_HEADERS)
         assert resp.status_code == 405
 
     def test_no_delete_on_detail(self):
-        resp = _list_client().delete("/api/v1/platform/audit/some-id")
+        resp = _list_client().delete("/api/v1/platform/audit/some-id", headers=TEST_HEADERS)
         assert resp.status_code == 405

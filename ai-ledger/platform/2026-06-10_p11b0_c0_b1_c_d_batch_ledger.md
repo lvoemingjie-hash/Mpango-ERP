@@ -15,19 +15,21 @@
 | 2 | `1b06548` | P11-B1 | Frontend platform route foundation |
 | 3 | `f4ebe66` | P11-C | Read-only tenant directory and audit views |
 | 4 | `4ea683f` | P11-D | Tenant health + system health cockpit |
+| 5 | `d2f9261` | P11-E | Batch readiness packet |
+| 6 | `3c28319` | P11-R1 | Cockpit boundary + evidence fix (identity-only enforcement, metadata redaction) |
 
 ---
 
-## Modified Files (33 total, +2,560 lines)
+## Modified Files (34 total)
 
 ### Backend (7 files)
 | File | Change |
 |------|--------|
 | `backend/api/v1/platform/tenants.py` | Added `require_platform_operator` guard to list/get |
-| `backend/api/v1/platform/audit.py` | Added guard to list/summary/detail |
+| `backend/api/v1/platform/audit.py` | Added guard + P10 `redact_metadata()` to list/detail responses |
 | `backend/api/v1/platform/stats.py` | Added guard to platform_stats |
 | `backend/api/v1/platform/health.py` | Documented non-sensitive decision |
-| `backend/tests/test_platform_audit_api.py` | Updated with auth headers |
+| `backend/tests/test_platform_audit_api.py` | Updated auth headers + 7 metadata redaction tests |
 | `backend/tests/test_platform_stats_api.py` | Updated with auth headers |
 | `backend/tests/test_platform_p11c0_legacy_guard.py` | **New** — 24 guard tests |
 
@@ -37,9 +39,9 @@
 | `frontend/src/types/platform.ts` | **New** — P10 contract TypeScript types + helpers |
 | `frontend/src/services/platformApi.ts` | **New** — P10 API client |
 | `frontend/src/stores/platformStore.ts` | **New** — Zustand store |
-| `frontend/src/router/guards.tsx` | Added PlatformRoute guard (additive) |
+| `frontend/src/router/guards.tsx` | PlatformRoute identity-only guard + `isIdentityPlatformOperator()` helper |
 | `frontend/src/router/AppRouter.tsx` | Added `/platform/*` routes |
-| `frontend/src/components/layout/Sidebar.tsx` | Added Platform nav (super_admin only) |
+| `frontend/src/components/layout/Sidebar.tsx` | Platform nav with identity-only condition |
 | `frontend/src/components/platform/PlatformStatusBadge.tsx` | **New** |
 | `frontend/src/components/platform/PlatformMetricCard.tsx` | **New** |
 | `frontend/src/components/platform/PlatformUnknownState.tsx` | **New** |
@@ -59,20 +61,20 @@
 
 ## Test Summary
 
-### Backend: 240 passed, 0 failed
+### Backend: 247 passed, 0 failed
 | Suite | Count |
 |-------|-------|
 | test_platform_p10_contracts.py | 137 |
 | test_platform_p0.py | 13 |
 | test_platform_audit.py | 17 |
-| test_platform_audit_api.py | 36 |
+| test_platform_audit_api.py | 43 |
 | test_platform_stats_api.py | 13 |
 | test_platform_p11c0_legacy_guard.py | 24 |
 
-### Frontend: 47 passed, 0 failed
+### Frontend: 52 passed, 0 failed
 | Suite | Count | Coverage |
 |-------|-------|----------|
-| guards.test.tsx | 5 | Route guard: super_admin allowed, regular/unauthenticated denied |
+| guards.test.tsx | 11 | Identity-only super_admin, tenant-contextual denial, isIdentityPlatformOperator helper |
 | platform.test.ts | 10 | Type conformance, displayCount, displayTimestamp |
 | platformApi.test.ts | 7 | Service endpoint calls with correct params |
 | PlatformTenantCard.test.tsx | 8 | Healthy/unknown rendering, N/A for nulls, no write buttons |
@@ -80,7 +82,14 @@
 | PlatformStatusBadge.test.tsx | 5 | Color semantics: unknown gray ≠ healthy green |
 | PlatformSystemHealthPage.test.tsx | 4 | Healthy/degraded data, no business fields |
 
-### Combined: 287 passed, 0 failed
+### Combined: 299 passed, 0 failed
+
+### Frontend Test Reproduction
+```bash
+cd frontend && npx vitest run --reporter=verbose
+# Result: 52 passed, 0 failed (3.87s)
+# jsdom ^29.1.1 in devDependencies — reproducible from clean install
+```
 
 ---
 
@@ -88,11 +97,11 @@
 
 | Field | Value |
 |-------|-------|
-| Index status | ✅ Up-to-date at `4ea683f` |
-| Nodes | 5,944 |
-| Edges | 17,586 |
-| Clusters | 390 |
-| Flows | 252 |
+| Index status | ✅ Up-to-date at `3c28319` |
+| Nodes | 5,973 |
+| Edges | 17,665 |
+| Clusters | 391 |
+| Flows | 254 |
 
 ---
 
@@ -108,7 +117,7 @@
 | auth/RBAC/session rewrites | 0 (guard.tsx additive only) | ✅ CLEAN |
 | payment/session/tenant business | 0 | ✅ CLEAN |
 
-**All 33 modified files are in allowed paths only.**
+**All 34 modified files are in allowed paths only.**
 
 ---
 
@@ -122,17 +131,28 @@
 
 | Factor | Rating | Notes |
 |--------|--------|-------|
-| Auth scope | **Low** | Uses existing P10 guard pattern, no auth rewrites |
-| Backend scope | **Low** | Additive guard dependency only, no new endpoints |
-| Frontend scope | **Low-Medium** | New pages/routes/components, minimal modifications to existing files |
-| Test coverage | **High** | 287 tests (240 backend + 47 frontend) |
+| Auth scope | **Medium** | P10 guard pattern + identity-only PlatformRoute enforcement (P11-R1 tightened) |
+| Backend scope | **Medium** | Additive guard + metadata redaction on P0 audit endpoints; raw metadata no longer exposed |
+| Frontend scope | **Medium** | New pages/routes/components, identity-only guard tightened in P11-R1 |
+| Test coverage | **High** | 299 tests (247 backend + 52 frontend) |
 | Cross-module impact | **Low** | GitNexus confirms changes isolated to platform module |
 | Forbidden paths | **None** | All files in allowed paths |
-| Backwards compatibility | **Preserved** | Health/info endpoints unchanged; P0 endpoints gain auth (breaking for unauthenticated callers — intentional security fix) |
+| Backwards compatibility | **Two breaking changes** | (1) P0 endpoints now require auth (intentional security fix). (2) Raw audit_metadata no longer returned (intentional redaction). |
 
-**Overall risk: LOW**
+**Overall risk: MEDIUM — mitigated by comprehensive test coverage and isolated scope.**
 
-**One breaking change note:** P0 endpoints (`/api/v1/platform/tenants/`, `/audit/`, `/stats/`) now require platform operator credentials. Previously unauthenticated. This is an intentional security fix — these endpoints expose tenant data and audit logs.
+The original LOW rating was incorrect. The batch adds auth gates to previously open endpoints, redacts previously exposed metadata, and tightens the frontend route guard to identity-only. Each change is a security improvement but represents a breaking change for any consumer that depended on the prior behavior.
+
+---
+
+## P11-R1 Changes (Cockpit Boundary + Evidence Fix)
+
+| Fix | Description |
+|-----|-------------|
+| Identity-only enforcement | PlatformRoute now requires `tenant_id == null AND tenant_schema == null`. Tenant-contextual super_admin is redirected from `/platform`. Sidebar uses same `isIdentityPlatformOperator()` helper. |
+| Frontend test reproducibility | jsdom `^29.1.1` already in devDependencies. All 52 tests pass. |
+| Audit metadata redaction | P0 audit endpoints now apply P10 `redact_metadata()` — sensitive keys (password, token, secret, cookie, card, payment) are stripped. 7 new tests verify. |
+| Ledger correction | File count corrected to 34, P11-E commit included, GitNexus counts updated, risk corrected to MEDIUM mitigated. |
 
 ---
 

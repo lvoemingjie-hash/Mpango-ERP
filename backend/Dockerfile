@@ -7,7 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_CREATE=false \
-    POETRY_INSTALLER_MAX_WORKERS=4
+    POETRY_INSTALLER_MAX_WORKERS=2 \
+    PIP_DEFAULT_TIMEOUT=120
 
 # Replace default sources with Aliyun mirrors (optimized for China)
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources || \
@@ -26,7 +27,12 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trus
 
 # Install only runtime dependencies first for better layer caching
 COPY pyproject.toml poetry.lock ./
-ENV POETRY_PYPI_MIRROR_URL=https://mirrors.aliyun.com/pypi/simple/
+
+# Poetry 2.x source is configured in pyproject.toml [[tool.poetry.source]] (aliyun mirror).
+# The lockfile has been regenerated to match. See ai-ledger report for details.
+# POETRY_INSTALLER_MAX_WORKERS=2 and PIP_DEFAULT_TIMEOUT=120 set above for stability.
+# requests.max-retries is set to 3 for transient network failure resilience.
+RUN poetry config requests.max-retries 3
 RUN poetry install --no-root --only main --no-ansi
 
 # Copy source code

@@ -5,7 +5,7 @@
 **Target:** Tencent VPS (1.14.247.12) — VM-0-3-ubuntu
 **Repo path:** `/opt/mpango-erp`
 **Product HEAD:** `b8a31f875241e7ebcfc3cd11be05e993f5050259`
-**Final Verdict:** **DEPLOYED_FOR_CTO_SMOKE_REVIEW**
+**Final Verdict:** **DEPLOYED_FOR_CTO_SMOKE_REVIEW_WITH_GATEWAY_OPENAPI_GAP**
 
 ---
 
@@ -104,12 +104,12 @@ redis health check: `redis-cli ping`
 | `mpango_prod_frontend` | mpango-erp-frontend:latest | 80/tcp | Healthy ✅ |
 | `mpango_prod_gateway` | nginx:alpine | 0.0.0.0:80 → 80/tcp | Healthy ✅ |
 
-Gateway routes:
+Gateway routes (as configured in `nginx/gateway.conf`):
 - `/` → frontend (static files)
 - `/api/` → backend proxy
 - `/health` → backend /health
-- `/docs` → backend /docs (Swagger UI)
-- `/openapi.json` → backend OpenAPI spec
+
+**Known gateway routing gap:** `/docs` and `/openapi.json` are NOT explicitly routed to the backend. These paths fall through to the frontend's nginx which serves `index.html` (no matching static file). The backend serves OpenAPI spec and Swagger UI correctly on its internal port 8000, but the gateway does not expose them. This is a known gap that must be addressed in R-8 or R-9 gateway polish.
 
 Frontend built with `VITE_API_URL=http://1.14.247.12`.
 
@@ -119,17 +119,18 @@ Frontend built with `VITE_API_URL=http://1.14.247.12`.
 
 | Check | Endpoint | Expected | Actual | Result |
 |-------|----------|----------|--------|--------|
-| Backend liveness | `/health/live` | 200 + OK | `{"status":"healthy"}` 200, 0.3–0.4ms | ✅ |
+| Backend liveness | `/health/live` | 200 + OK | `{"status":"healthy"}` 200, 0.3-0.4ms | ✅ |
 | Backend readiness | `/health/ready` | 200 + db/redis status | `{"status":"healthy","database":{"status":"ok","latency_ms":2},"redis":{"status":"ok","latency_ms":1.57}}` 200, 4.2ms | ✅ |
 | Gateway /health | `/health` (via nginx) | 200 | `{"status":"healthy"}` 200, 0.3ms | ✅ |
 | Frontend via gateway | `/` (via nginx) | 200 + HTML | HTTP 200, nginx serving | ✅ |
 | Public IP access | `http://1.14.247.12/` | 200 | HTTP 200, full page served | ✅ |
-| OpenAPI spec | `/openapi.json` | 200 + JSON | HTTP 200, 396ms (generated schema) | ✅ |
+| OpenAPI spec (public) | `http://1.14.247.12/openapi.json` | 200 + JSON | HTTP 200 but Content-Type: text/html (frontend HTML, not JSON) | ❌ GATEWAY_OPENAPI_GAP |
+| OpenAPI spec (internal) | `http://backend:8000/openapi.json` | 200 + JSON | HTTP 200, correct JSON (verified in backend logs) | ✅ (internal only) |
 | Alembic at head | Backend logs | `021_` | `021_tenant_payments_retailer_id_transaction_id` | ✅ |
 | Tenant bootstrap | Backend logs | t_dev ready | `t_dev ready (13 tables, reconciled)` | ✅ |
 | Gateway request log | `1.14.247.12` | 200 in log | `1.14.247.12 - - [10/Jun/2026:09:48:09 +0000] "GET / HTTP/1.1" 200 495` | ✅ |
 
-**All smoke checks pass.** Backend logs show clean requests, no errors, no stack traces. Uvicorn running on `http://0.0.0.0:8000`.
+**5/6 external smoke checks pass.** The `/openapi.json` gateway route returns frontend HTML instead of the OpenAPI JSON spec (nginx fallthrough to static files). Backend serves spec correctly on its internal port. This is a gateway routing gap, not a backend defect. Backend logs show clean requests, no errors, no stack traces. Uvicorn running on `http://0.0.0.0:8000`.
 
 ---
 
@@ -212,7 +213,8 @@ Post-deployment evidence hardening executed 2026-06-10 12:40 UTC.
 |-------|----------|--------|--------|
 | `curl -sI http://1.14.247.12/` | HTTP 200 | HTTP 200, nginx/1.31.1, 495 bytes ✅ |
 | `curl -sI http://1.14.247.12/health` | HTTP 200 (GET) | HTTP 405 (HEAD — expected, GET works) ✅ |
-| `curl -sI http://1.14.247.12/openapi.json` | HTTP 200 (GET) | HTTP 200 (HEAD returns frontend HTML — nginx expected) ✅ |
+| `curl -s http://1.14.247.12/openapi.json` | Content-Type: application/json | Content-Type: text/html (frontend index.html served) | ❌ GATEWAY_OPENAPI_GAP |
+| `curl -s http://1.14.247.12/api/openapi.json` | HTTP 200 + JSON | HTTP 404 (path not routed by gateway) | ❌ GATEWAY_OPENAPI_GAP |
 | `docker compose --env-file .env.prod ps` | 5/5 healthy | backend, frontend, gateway, postgres, redis — all healthy ✅ |
 | Backend logs (tail 120) | No errors | All requests 200, structured JSON, no stack traces ✅ |
 | Gateway logs (tail 80) | 200 responses | All /health GET → 200, public IP → 200 ✅ |
@@ -226,7 +228,7 @@ Post-deployment evidence hardening executed 2026-06-10 12:40 UTC.
 |------|--------|
 | External CTO smoke: `/` | HTTP 200 ✅ |
 | External CTO smoke: `/health` | HTTP 200 (GET) ✅ |
-| External CTO smoke: `/openapi.json` | HTTP 200 (GET) ✅ |
+| External CTO smoke: `/openapi.json` | Returns frontend HTML, not JSON spec | ❌ GATEWAY_OPENAPI_GAP |
 | Product HEAD `b8a31f8` | Confirmed by git rev-parse ✅ |
 | Git clean status | Confirmed — empty working tree ✅ |
 | Credential audit | No stored write credentials on VPS ✅ |
@@ -258,15 +260,21 @@ Post-deployment evidence hardening executed 2026-06-10 12:40 UTC.
 
 ## Final Verdict
 
-**DEPLOYED_FOR_CTO_SMOKE_REVIEW**
+**DEPLOYED_FOR_CTO_SMOKE_REVIEW_WITH_GATEWAY_OPENAPI_GAP**
 
-All pipeline stages (R-6C → R-7A → R-7B → R-7C-1 → R-7C-2) completed successfully. All three R-7C2-R1 evidence hardening audits pass. The Mpango ERP backend `v0.2.0` is running behind an nginx gateway on port 80. 21 database migrations applied, `t_dev` tenant schema bootstrapped with 13 tables. Powering on for CTO smoke review.
+All pipeline stages (R-6C → R-7A → R-7B → R-7C-1 → R-7C-2) completed successfully. All three R-7C2-R1 evidence hardening audits pass. The Mpango ERP backend `v0.2.0` is running behind an nginx gateway on port 80. 21 database migrations applied, `t_dev` tenant schema bootstrapped with 13 tables.
+
+**Known gap — gateway OpenAPI routing:**
+- MVP homepage (`http://1.14.247.12/`) and health endpoint (`/health`) are live and functional.
+- The public `/openapi.json` and `/docs` routes are NOT yet proxied through the gateway. The backend serves them correctly on its internal port, but nginx falls through to frontend static files.
+- This is a gateway configuration gap, not a backend defect. It does **not** require rollback.
+- Resolution: expected in R-8 (DNS + gateway polish) or R-9.
 
 **This is NOT yet PRODUCTION_READY.** CTO must:
-1. Perform external smoke review at `http://1.14.247.12/`
-2. Verify `/health` and `/openapi.json` endpoints
-3. Configure DNS (R-8) for HTTPS
-4. Approve PRODUCTION_READY verdict
+1. Perform external smoke review at `http://1.14.247.12/` and `/health`
+2. Verify: `/` works, `/health` returns JSON OK, `/openapi.json` returns frontend HTML (known gap)
+3. Approve R-8 for DNS, HTTPS, and gateway route polish
+4. Approve PRODUCTION_READY verdict after R-8/R-9 completion
 
 **Deploy command (for reference):**
 ```bash

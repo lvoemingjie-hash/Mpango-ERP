@@ -20,8 +20,9 @@
 | 7 | `ef470ac` | P11-R1.4 | Ledger correction |
 | 8 | `e38d5c8` | P11-R2 | Ledger update with actual evidence |
 | 9 | `ae542fa` | P11-R3 | Add jsdom devDependency via pnpm, commit lockfile |
+| 10 | `60e776f` | P11-R4 | Remove unrelated .secrets.baseline, exclude pnpm-lock.yaml from detect-secrets |
 
-**Final commit:** `ae542fa`
+**Final commit:** `60e776f`
 
 ---
 
@@ -30,7 +31,7 @@
 ### Infrastructure (3 files)
 | File | Change |
 |------|--------|
-| `.secrets.baseline` | Updated for new pnpm-lock.yaml integrity hashes |
+| `.pre-commit-config.yaml` | Added `pnpm-lock.yaml` to detect-secrets exclude pattern (alongside existing `package.lock.json`) |
 | `frontend/package.json` | jsdom `^29.1.1` added to devDependencies via `pnpm add -D jsdom` |
 | `frontend/pnpm-lock.yaml` | Updated with jsdom + transitive deps (pnpm-managed) |
 
@@ -68,6 +69,11 @@
 | `frontend/src/test/setup.ts` | **New** — Vitest setup |
 | `frontend/vite.config.ts` | Added vitest config |
 | Test files (7) | **New** — see test summary below |
+
+### NOT in diff
+| File | Reason |
+|------|--------|
+| `.secrets.baseline` | Reverted to platform-dev version — zero diff. R3 regeneration introduced unrelated entries (backend/scripts/test_login.sh, line-number drift). |
 
 ---
 
@@ -110,7 +116,7 @@ pnpm exec vitest run \
   src/pages/platform/__tests__/PlatformStatusBadge.test.tsx \
   src/pages/platform/__tests__/PlatformSystemHealthPage.test.tsx \
   --reporter=basic
-# Result: 7 test files, 52 tests passed, 0 failed (6.53s)
+# Result: 7 test files, 52 tests passed, 0 failed (6.94s)
 ```
 
 ---
@@ -119,10 +125,10 @@ pnpm exec vitest run \
 
 | Field | Value |
 |-------|-------|
-| Index status | ✅ Up-to-date at `ae542fa` |
-| Nodes | 5,971 |
-| Edges | 17,669 |
-| Clusters | 385 |
+| Index status | ✅ Up-to-date at `60e776f` |
+| Nodes | 5,980 |
+| Edges | 17,670 |
+| Clusters | 393 |
 | Flows | 254 |
 
 ### GitNexus Impact Analysis (P11-R1/R3 changed symbols)
@@ -146,6 +152,8 @@ pnpm exec vitest run \
 | auth/RBAC/session rewrites | 0 (guard.tsx additive only) | ✅ CLEAN |
 | payment/session/tenant business | 0 | ✅ CLEAN |
 | business pages (non-platform) | 0 | ✅ CLEAN |
+| `test_login.sh` | 0 | ✅ CLEAN |
+| `.secrets.baseline` | 0 (reverted to platform-dev) | ✅ CLEAN |
 
 **All 37 modified files are in allowed paths only.**
 
@@ -154,6 +162,14 @@ pnpm exec vitest run \
 ## Whitespace Check
 
 `git diff --check origin/platform-dev..HEAD` — ✅ No whitespace errors.
+
+---
+
+## Secrets Gate
+
+`detect-secrets` pre-commit hook passes. `pnpm-lock.yaml` is excluded from scanning via `.pre-commit-config.yaml` (lockfile integrity hashes are sha512 base64 — false positives). Same treatment as existing `package.lock.json` exclusion.
+
+`.secrets.baseline` is identical to `origin/platform-dev` — zero diff.
 
 ---
 
@@ -173,13 +189,11 @@ pnpm exec vitest run \
 
 ---
 
-## P11-R3 Change (Actual jsdom Dependency Fix)
+## R3/R4 Change History
 
-jsdom was listed in `frontend/package.json` devDependencies but was not installed via pnpm — it had been added manually (not through `pnpm add`). The `pnpm-lock.yaml` did not resolve jsdom, so `pnpm install --frozen-lockfile` on a clean clone would fail to find it.
+**P11-R3:** jsdom was manually listed in `package.json` but not installed via pnpm. `pnpm-lock.yaml` did not resolve it. Fixed by running `pnpm add -D jsdom`, which resolved `jsdom@29.1.1` into both files. The initial R3 commit also regenerated `.secrets.baseline`, which introduced unrelated entries.
 
-**Fix:** Ran `pnpm add -D jsdom` which resolved `jsdom@29.1.1` and updated both `package.json` and `pnpm-lock.yaml`. Verified with clean `rm -rf node_modules && pnpm install --frozen-lockfile` followed by the full vitest suite — 52/52 passed.
-
-Additional file committed: `.secrets.baseline` updated to include new integrity hash entries from the regenerated lockfile (pre-commit `detect-secrets` hook requirement).
+**P11-R4:** Reverted `.secrets.baseline` to the platform-dev version (removed unrelated `backend/scripts/test_login.sh` entry and line-number drift). Added `pnpm-lock.yaml` to the `detect-secrets` exclude pattern in `.pre-commit-config.yaml` — lockfile integrity hashes (sha512 base64) are false positives, identical to the existing `package.lock.json` treatment.
 
 ---
 

@@ -136,7 +136,7 @@ Lockfile regenerated via `poetry lock` in Docker container (Poetry 2.2.1, matchi
 ## 9. Next Steps for CTO
 
 1. Review the branch `codebuddy/backend-build-reproducibility-2026-06-10`
-2. Verify lockfile integrity: `cd backend && poetry lock --check` (should report valid)
+2. Verify lockfile integrity: `cd backend && poetry check --lock` (should report valid)
 3. Test build on Lubuntu VPS: `docker compose -f docker-compose.prod.yml build backend`
 4. If satisfied, merge to `product-dev-recovered`
 5. Clean up worktree: `git worktree remove "C:\Users\Jeff0\MPANGO ERP\backend-build-fix"`

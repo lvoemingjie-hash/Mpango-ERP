@@ -1,10 +1,12 @@
 """
 Platform Track P0 - Health and metadata endpoints.
 
-This module provides safe, read-only platform endpoints that do NOT:
-- Mutate business data
-- Access tenant schemas
-- Change authentication or authorization behavior
+P11-C0: These endpoints remain UNAUTHENTICATED by explicit design.
+They expose only non-sensitive platform status and boundary metadata.
+No tenant data, no audit data, no operational metrics are exposed.
+
+Sensitive P0 endpoints (tenants, audit, stats) have been guarded with
+require_platform_operator in their respective modules.
 """
 from __future__ import annotations
 

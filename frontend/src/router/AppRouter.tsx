@@ -1,5 +1,5 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { ProtectedRoute, PublicRoute } from '@/router/guards';
+import { ProtectedRoute, PublicRoute, PlatformRoute } from '@/router/guards';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -22,6 +22,12 @@ import { ProductDetailPage } from '@/pages/client/ProductDetailPage';
 import { CreateOrderPage } from '@/pages/client/CreateOrderPage';
 import { ClientOrderListPage } from '@/pages/client/OrderListPage';
 import { OrderDetailPage } from '@/pages/client/OrderDetailPage';
+// Platform Admin Cockpit pages (P11)
+import { PlatformOverviewPage } from '@/pages/platform/PlatformOverviewPage';
+import { PlatformTenantDirectoryPage } from '@/pages/platform/PlatformTenantDirectoryPage';
+import { PlatformAuditEventsPage } from '@/pages/platform/PlatformAuditEventsPage';
+import { PlatformTenantHealthPage } from '@/pages/platform/PlatformTenantHealthPage';
+import { PlatformSystemHealthPage } from '@/pages/platform/PlatformSystemHealthPage';
 
 const router = createBrowserRouter([
   {
@@ -72,6 +78,22 @@ const router = createBrowserRouter([
           { path: '/client/orders', element: <ClientOrderListPage /> },
           { path: '/client/orders/new', element: <CreateOrderPage /> },
           { path: '/client/orders/:orderId', element: <OrderDetailPage /> },
+        ],
+      },
+      // Platform Admin Cockpit routes (P11) — super_admin only
+      {
+        element: <PlatformRoute />,
+        children: [
+          {
+            element: <MainLayout />,
+            children: [
+              { path: '/platform', element: <PlatformOverviewPage /> },
+              { path: '/platform/tenants', element: <PlatformTenantDirectoryPage /> },
+              { path: '/platform/audit', element: <PlatformAuditEventsPage /> },
+              { path: '/platform/tenants/:tenantId/health', element: <PlatformTenantHealthPage /> },
+              { path: '/platform/system/health', element: <PlatformSystemHealthPage /> },
+            ],
+          },
         ],
       },
     ],

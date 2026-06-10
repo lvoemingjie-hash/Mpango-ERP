@@ -54,9 +54,9 @@ from api.dependencies import get_db
 from database.session import get_db as db_get_db
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 # Test helpers
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 
 
 def _make_app(mock_db) -> FastAPI:
@@ -128,9 +128,9 @@ def _mock_db_for_not_found():
     return mock_db
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 # CS-xxx: Contract Structure Tests (field-by-field)
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 
 
 class TestTenantSummaryStructure:
@@ -427,9 +427,9 @@ class TestPlatformAuditEventStructure:
             )
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 # FC-xxx: Fixture Conformance Tests
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 
 
 class TestFixtureConformance:
@@ -634,9 +634,9 @@ class TestFixtureConformance:
         assert event.metadata_redacted["denial_code"] == "unassigned_tenant"
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 # CR-xxx: Counterexample Rejection Tests
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 
 
 class TestCounterexampleRejection:
@@ -747,9 +747,9 @@ class TestCounterexampleRejection:
             )
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 # RO-xxx: Read-Only Behavior Tests
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 
 
 class TestReadOnlyBehavior:
@@ -831,9 +831,9 @@ class TestReadOnlyBehavior:
         assert resp.status_code == 405
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 # API Response Shape Tests
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 
 
 class TestTenantSummaryAPI:
@@ -1073,9 +1073,9 @@ class TestAuditEventsAPI:
         assert resp.status_code == 404
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 # No Leakage Tests
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 
 
 class TestNoLeakage:
@@ -1126,9 +1126,9 @@ class TestNoLeakage:
         assert "denial_code" in event.metadata_redacted
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 # SB-R1/R2: Platform-Only Access Boundary Tests (P10-R1-A → P10-R2)
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 
 
 def _make_guarded_app(mock_db=None):
@@ -1494,9 +1494,456 @@ class TestPlatformOnlyAccessBoundary:
         assert guarded_count == 6, f"Expected 6 guarded endpoints, found {guarded_count}"
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
+# P11-B0-R1: Bearer Identity-Only super_admin Auth Transport Tests
+# ===============================================================
+
+
+def _make_app_with_auth(mock_db, user_roles=None, has_auth=True,
+                        identity_only=True):
+    """
+    Build a test app where the auth middleware has already set auth context
+    on request.state (simulating the real middleware behavior).
+
+    Args:
+        identity_only: If True, create identity token (no tenant context).
+                       If False, create contextual token (with tenant context).
+    """
+    from api.context.auth import AuthContext, attach_auth_context
+    from core.security import TokenPayload
+
+    app = FastAPI()
+    app.include_router(p10_router)
+
+    if mock_db is None:
+        mock_db = MagicMock()
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        list_result = MagicMock()
+        list_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(side_effect=[count_result, list_result])
+
+    async def override():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override
+    app.dependency_overrides[db_get_db] = override
+
+    # Add middleware that simulates auth context attachment
+    if has_auth:
+        if identity_only:
+            # Identity token: no tenant context (global super_admin)
+            token = TokenPayload(
+                user_id="user-123",
+                roles=user_roles or [],
+                tenant_id=None,
+                tenant_schema=None,
+            )
+        else:
+            # Contextual token: has tenant context (tenant-scoped session)
+            token = TokenPayload(
+                user_id="user-123",
+                roles=user_roles or [],
+                tenant_id="tenant-456",
+                tenant_schema="tenant_schema",
+            )
+        raw_token = "fake-jwt-token"
+
+        @app.middleware("http")
+        async def inject_auth(request, call_next):
+            auth_ctx = AuthContext(token=token, raw_token=raw_token)
+            attach_auth_context(request, auth_ctx)
+            response = await call_next(request)
+            return response
+
+    return app
+
+
+class TestBearerSuperAdminAccess:
+    """
+    P11-B0-R1: Prove identity-only Bearer super_admin tokens can access P10.
+
+    The guard now accepts three credential types:
+      1. X-Platform-Operator secret (server/operator context)
+      2. Identity-only super_admin via Bearer/JWT (browser frontend)
+      3. X-Platform-Test-Override (test harness, test env only)
+
+    Tenant-contextual tokens with super_admin are NOT sufficient.
+    Platform access is identity-only (global) super_admin only.
+
+    Tests:
+      - identity-only super_admin Bearer allowed
+      - admin (not super_admin) Bearer denied
+      - regular user Bearer denied
+      - contextual super_admin Bearer DENIED (tenant-scoped not platform)
+      - no auth context denied
+      - X-Platform-Operator secret still allowed
+      - wrong X-Platform-Operator denied
+      - test override still restricted to test env
+    """
+
+    # -- identity-only super_admin Bearer allowed --
+
+    def test_identity_super_admin_bearer_allowed(self, monkeypatch):
+        """Identity-only super_admin via Bearer -> 200."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"],
+                                   identity_only=True)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 200
+
+    def test_identity_super_admin_system_health(self, monkeypatch):
+        """Identity-only super_admin can access system health."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"],
+                                   identity_only=True)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/system/health")
+        assert resp.status_code == 200
+
+    def test_identity_super_admin_audit_events(self, monkeypatch):
+        """Identity-only super_admin can access audit events."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"],
+                                   identity_only=True)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/audit/events")
+        assert resp.status_code == 200
+
+    # -- contextual super_admin Bearer DENIED --
+
+    def test_contextual_super_admin_denied(self, monkeypatch):
+        """Contextual (tenant-scoped) super_admin token -> denied for P10."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"],
+                                   identity_only=False)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        # Contextual token has auth context but is not identity-only,
+        # and no operator/test headers are present -> denied
+        assert resp.status_code in (401, 403)
+
+    def test_contextual_super_admin_denied_system_health(self, monkeypatch):
+        """Contextual super_admin cannot access system health."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"],
+                                   identity_only=False)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/system/health")
+        assert resp.status_code in (401, 403)
+
+    # -- admin (not super_admin) Bearer denied --
+
+    def test_admin_role_denied(self, monkeypatch):
+        """admin role is NOT sufficient for platform access."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["admin"],
+                                   identity_only=True)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+
+    def test_user_role_denied(self, monkeypatch):
+        """Regular user role is NOT sufficient."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["user"],
+                                   identity_only=True)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+
+    def test_empty_roles_denied(self, monkeypatch):
+        """Authenticated user with no roles is NOT sufficient."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=[],
+                                   identity_only=True)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+
+    # -- no auth context denied --
+
+    def test_no_auth_context_denied(self, monkeypatch):
+        """No auth context at all -> 401."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+
+    # -- X-Platform-Operator secret still works --
+
+    def test_operator_secret_still_allowed(self, monkeypatch):
+        """X-Platform-Operator with correct secret still works."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_OPERATOR_SECRET", "prod-secret")
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Operator": "prod-secret"},
+        )
+        assert resp.status_code == 200
+
+    def test_wrong_operator_secret_still_denied(self, monkeypatch):
+        """Wrong X-Platform-Operator secret still denied."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_OPERATOR_SECRET", "prod-secret")
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Operator": "wrong"},
+        )
+        assert resp.status_code == 403
+
+    # -- test override still restricted to test env --
+
+    def test_test_override_still_denied_in_development(self, monkeypatch):
+        """Test override still denied in development env."""
+        monkeypatch.setenv("MPANGO_ENV", "development")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_test_override_still_denied_in_production(self, monkeypatch):
+        """Test override still denied in production env."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 403
+
+    def test_test_override_allowed_in_test_env(self, monkeypatch):
+        """Test override still works in test env with correct secret."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        app = _make_app_with_auth(None, has_auth=False)
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"X-Platform-Test-Override": "test-secret"},
+        )
+        assert resp.status_code == 200
+
+    # -- combined: identity super_admin across envs --
+
+    def test_identity_super_admin_in_test_env(self, monkeypatch):
+        """Identity super_admin works in test env."""
+        monkeypatch.setenv("MPANGO_ENV", "test")
+        monkeypatch.setenv("PLATFORM_TEST_OVERRIDE_SECRET", "test-secret")
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"],
+                                   identity_only=True)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 200
+
+    def test_identity_super_admin_in_production(self, monkeypatch):
+        """Identity super_admin works in production env via Bearer."""
+        monkeypatch.setenv("MPANGO_ENV", "production")
+        monkeypatch.setenv("PLATFORM_OPERATOR_SECRET", "prod-secret")
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_auth(None, user_roles=["super_admin"],
+                                   identity_only=True)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 200
+
+
+# ===============================================================
+# P11-B0-R1: Real Bearer-through-Middleware Tests
+# ===============================================================
+
+
+def _make_app_with_real_middleware(mock_db):
+    """
+    Build a test app with the REAL AuthenticationMiddleware + JwtAuthStrategy.
+
+    Uses create_identity_token / create_contextual_token to generate
+    valid JWTs that go through the actual decode pipeline.
+    """
+    from api.middleware.auth import AuthenticationMiddleware
+    from auth.strategies.jwt import JwtAuthStrategy
+    from core.config import get_settings
+
+    app = FastAPI()
+    app.include_router(p10_router)
+
+    if mock_db is None:
+        mock_db = MagicMock()
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        list_result = MagicMock()
+        list_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(side_effect=[count_result, list_result])
+
+    async def override():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override
+    app.dependency_overrides[db_get_db] = override
+
+    # Use the real JWT auth middleware
+    settings = get_settings()
+    strategy = JwtAuthStrategy()
+    app.add_middleware(AuthenticationMiddleware, strategy=strategy)
+
+    return app
+
+
+def _create_real_identity_token(roles):
+    """Create a real JWT identity token using the app's SECRET_KEY."""
+    from core.security import create_identity_token
+    return create_identity_token(user_id="user-real-123", roles=roles)
+
+
+def _create_real_contextual_token(roles):
+    """Create a real JWT contextual token using the app's SECRET_KEY."""
+    from core.security import create_contextual_token
+    return create_contextual_token(
+        user_id="user-real-123",
+        tenant_id="tenant-real-456",
+        tenant_schema="tenant_real_schema",
+        roles=roles,
+    )
+
+
+class TestBearerRealMiddleware:
+    """
+    P11-B0-R1: Real Bearer-through-middleware tests.
+
+    These tests use the real AuthenticationMiddleware + JwtAuthStrategy
+    with actual JWT tokens (not mocked auth context). This proves the
+    full auth pipeline works end-to-end for P10 platform access.
+    """
+
+    def test_real_identity_super_admin_allowed(self, monkeypatch):
+        """Real JWT identity token with super_admin -> 200."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_real_middleware(None)
+        token = _create_real_identity_token(roles=["super_admin"])
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+
+    def test_real_identity_admin_denied(self, monkeypatch):
+        """Real JWT identity token with admin role -> denied."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_real_middleware(None)
+        token = _create_real_identity_token(roles=["admin"])
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+
+    def test_real_identity_user_denied(self, monkeypatch):
+        """Real JWT identity token with user role -> denied."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_real_middleware(None)
+        token = _create_real_identity_token(roles=["user"])
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/tenants",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+
+    def test_contextual_super_admin_denied_with_auth_context(self, monkeypatch):
+        """Manual auth-context injection: contextual super_admin -> DENIED.
+
+        This test injects a contextual (tenant-scoped) AuthContext directly
+        via _make_app_with_auth (identity_only=False), bypassing the real
+        middleware. The real middleware's resolve_tenant_context requires a
+        live DB for contextual tokens, so we use manual injection to prove
+        the guard rejects contextual super_admin tokens at the guard level.
+
+        The real middleware pipeline is proven by the 5 tests above.
+        Contextual denial is additionally proven by
+        test_contextual_super_admin_denied in TestBearerSuperAdminAccess.
+        """
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        # Use the manual auth injection to avoid tenant resolution crash
+        app = _make_app_with_auth(None, user_roles=["super_admin"],
+                                   identity_only=False)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code in (401, 403)
+
+    def test_real_no_auth_denied(self, monkeypatch):
+        """No Authorization header -> denied."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_real_middleware(None)
+        client = TestClient(app)
+        resp = client.get("/api/v1/platform/p10/tenants")
+        assert resp.status_code == 401
+
+    def test_real_identity_super_admin_system_health(self, monkeypatch):
+        """Real JWT identity super_admin -> system health 200."""
+        monkeypatch.delenv("MPANGO_ENV", raising=False)
+        monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
+        monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
+        app = _make_app_with_real_middleware(None)
+        token = _create_real_identity_token(roles=["super_admin"])
+        client = TestClient(app)
+        resp = client.get(
+            "/api/v1/platform/p10/system/health",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+
+
+# ===============================================================
 # P10-R1-B: Metadata Redaction Tests
-# ═══════════════════════════════════════════════════════════════
+# ===============================================================
 
 
 class TestMetadataRedaction:

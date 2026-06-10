@@ -24,6 +24,8 @@ import { ClientOrderListPage } from '@/pages/client/OrderListPage';
 import { OrderDetailPage } from '@/pages/client/OrderDetailPage';
 // Platform Admin Cockpit pages (P11)
 import { PlatformOverviewPage } from '@/pages/platform/PlatformOverviewPage';
+import { PlatformTenantDirectoryPage } from '@/pages/platform/PlatformTenantDirectoryPage';
+import { PlatformAuditEventsPage } from '@/pages/platform/PlatformAuditEventsPage';
 
 const router = createBrowserRouter([
   {
@@ -84,6 +86,8 @@ const router = createBrowserRouter([
             element: <MainLayout />,
             children: [
               { path: '/platform', element: <PlatformOverviewPage /> },
+              { path: '/platform/tenants', element: <PlatformTenantDirectoryPage /> },
+              { path: '/platform/audit', element: <PlatformAuditEventsPage /> },
             ],
           },
         ],

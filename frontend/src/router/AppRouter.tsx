@@ -26,6 +26,8 @@ import { OrderDetailPage } from '@/pages/client/OrderDetailPage';
 import { PlatformOverviewPage } from '@/pages/platform/PlatformOverviewPage';
 import { PlatformTenantDirectoryPage } from '@/pages/platform/PlatformTenantDirectoryPage';
 import { PlatformAuditEventsPage } from '@/pages/platform/PlatformAuditEventsPage';
+import { PlatformTenantHealthPage } from '@/pages/platform/PlatformTenantHealthPage';
+import { PlatformSystemHealthPage } from '@/pages/platform/PlatformSystemHealthPage';
 
 const router = createBrowserRouter([
   {
@@ -88,6 +90,8 @@ const router = createBrowserRouter([
               { path: '/platform', element: <PlatformOverviewPage /> },
               { path: '/platform/tenants', element: <PlatformTenantDirectoryPage /> },
               { path: '/platform/audit', element: <PlatformAuditEventsPage /> },
+              { path: '/platform/tenants/:tenantId/health', element: <PlatformTenantHealthPage /> },
+              { path: '/platform/system/health', element: <PlatformSystemHealthPage /> },
             ],
           },
         ],

@@ -18,12 +18,21 @@
 | 5 | `d2f9261` | P11-E | Batch readiness packet |
 | 6 | `3c28319` | P11-R1 | Identity-only enforcement + audit metadata redaction |
 | 7 | `ef470ac` | P11-R1.4 | Ledger correction |
+| 8 | `e38d5c8` | P11-R2 | Ledger update with actual evidence |
+| 9 | `ae542fa` | P11-R3 | Add jsdom devDependency via pnpm, commit lockfile |
 
-**Final commit:** `ef470ac`
+**Final commit:** `ae542fa`
 
 ---
 
-## Modified Files (34 total)
+## Modified Files (37 total)
+
+### Infrastructure (3 files)
+| File | Change |
+|------|--------|
+| `.secrets.baseline` | Updated for new pnpm-lock.yaml integrity hashes |
+| `frontend/package.json` | jsdom `^29.1.1` added to devDependencies via `pnpm add -D jsdom` |
+| `frontend/pnpm-lock.yaml` | Updated with jsdom + transitive deps (pnpm-managed) |
 
 ### Backend (7 files)
 | File | Change |
@@ -90,8 +99,9 @@
 ### Frontend Test Reproduction
 ```bash
 cd frontend
-npm install   # jsdom ^29.1.1 in devDependencies — installed from package.json
-npx vitest run \
+rm -rf node_modules
+pnpm install --frozen-lockfile
+pnpm exec vitest run \
   src/router/__tests__/guards.test.tsx \
   src/types/__tests__/platform.test.ts \
   src/services/__tests__/platformApi.test.ts \
@@ -100,10 +110,8 @@ npx vitest run \
   src/pages/platform/__tests__/PlatformStatusBadge.test.tsx \
   src/pages/platform/__tests__/PlatformSystemHealthPage.test.tsx \
   --reporter=basic
-# Result: 7 test files, 52 tests passed, 0 failed (4.08s)
+# Result: 7 test files, 52 tests passed, 0 failed (6.53s)
 ```
-
-Lockfile convention: Repo tracks `frontend/pnpm-lock.yaml`. `frontend/package-lock.json` is not tracked and was not committed.
 
 ---
 
@@ -111,13 +119,13 @@ Lockfile convention: Repo tracks `frontend/pnpm-lock.yaml`. `frontend/package-lo
 
 | Field | Value |
 |-------|-------|
-| Index status | ✅ Up-to-date at `ef470ac` |
-| Nodes | 5,976 |
+| Index status | ✅ Up-to-date at `ae542fa` |
+| Nodes | 5,971 |
 | Edges | 17,669 |
-| Clusters | 390 |
+| Clusters | 385 |
 | Flows | 254 |
 
-### GitNexus Impact Analysis (P11-R1 changed symbols)
+### GitNexus Impact Analysis (P11-R1/R3 changed symbols)
 
 | Symbol | Risk | Direct Callers | Notes |
 |--------|------|----------------|-------|
@@ -131,15 +139,15 @@ Lockfile convention: Repo tracks `frontend/pnpm-lock.yaml`. `frontend/package-lo
 
 | Path Pattern | Files Found | Status |
 |---|---|---|
-| `frontend/` (business pages) | 0 (only platform/ pages) | ✅ CLEAN |
 | `product-dev-recovered/` | 0 | ✅ CLEAN |
 | `.github/` | 0 | ✅ CLEAN |
 | `.claude/` | 0 | ✅ CLEAN |
 | `migrations/` | 0 | ✅ CLEAN |
 | auth/RBAC/session rewrites | 0 (guard.tsx additive only) | ✅ CLEAN |
 | payment/session/tenant business | 0 | ✅ CLEAN |
+| business pages (non-platform) | 0 | ✅ CLEAN |
 
-**All 34 modified files are in allowed paths only.**
+**All 37 modified files are in allowed paths only.**
 
 ---
 
@@ -153,25 +161,25 @@ Lockfile convention: Repo tracks `frontend/pnpm-lock.yaml`. `frontend/package-lo
 
 | Factor | Rating | Notes |
 |--------|--------|-------|
-| Auth scope | **Medium** | P10 guard pattern + identity-only PlatformRoute enforcement (P11-R1 tightened) |
-| Backend scope | **Medium** | Additive guard + metadata redaction on P0 audit endpoints; raw metadata no longer exposed |
-| Frontend scope | **Medium** | New pages/routes/components, identity-only guard tightened in P11-R1 |
+| Auth scope | **Medium** | P10 guard pattern + identity-only PlatformRoute enforcement |
+| Backend scope | **Medium** | Additive guard + metadata redaction on P0 audit endpoints |
+| Frontend scope | **Medium** | New pages/routes/components, identity-only guard |
 | Test coverage | **High** | 299 tests (247 backend + 52 frontend) |
 | Cross-module impact | **Low** | GitNexus confirms changes isolated to platform module |
 | Forbidden paths | **None** | All files in allowed paths |
-| Backwards compatibility | **Two breaking changes** | (1) P0 endpoints now require auth (intentional security fix). (2) Raw audit_metadata no longer returned (intentional redaction). |
+| Backwards compatibility | **Two breaking changes** | (1) P0 endpoints now require auth. (2) Raw audit_metadata no longer returned. |
 
 **Overall risk: MEDIUM — mitigated by comprehensive test coverage and isolated scope.**
 
 ---
 
-## P11-R1 Changes (Cockpit Boundary + Evidence Fix)
+## P11-R3 Change (Actual jsdom Dependency Fix)
 
-| Fix | Description |
-|-----|-------------|
-| Identity-only enforcement | PlatformRoute now requires `tenant_id == null AND tenant_schema == null`. Tenant-contextual super_admin is redirected from `/platform`. Sidebar uses same `isIdentityPlatformOperator()` helper. |
-| Audit metadata redaction | P0 audit endpoints now apply P10 `redact_metadata()` — sensitive keys (password, token, secret, cookie, card, payment) are stripped. 7 new tests verify. |
-| Ledger correction | File count corrected to 34, P11-E commit included, GitNexus counts updated, risk corrected to MEDIUM mitigated. |
+jsdom was listed in `frontend/package.json` devDependencies but was not installed via pnpm — it had been added manually (not through `pnpm add`). The `pnpm-lock.yaml` did not resolve jsdom, so `pnpm install --frozen-lockfile` on a clean clone would fail to find it.
+
+**Fix:** Ran `pnpm add -D jsdom` which resolved `jsdom@29.1.1` and updated both `package.json` and `pnpm-lock.yaml`. Verified with clean `rm -rf node_modules && pnpm install --frozen-lockfile` followed by the full vitest suite — 52/52 passed.
+
+Additional file committed: `.secrets.baseline` updated to include new integrity hash entries from the regenerated lockfile (pre-commit `detect-secrets` hook requirement).
 
 ---
 

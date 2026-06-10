@@ -28,3 +28,23 @@ export function PublicRoute() {
 
   return <Outlet />;
 }
+
+/**
+ * PlatformRoute — P11-B1 platform admin route guard.
+ *
+ * Only identity/global super_admin may enter platform cockpit routes.
+ * Reads user.roles from auth store (populated from JWT payload).
+ * Does NOT modify existing auth flow or guards — additive only.
+ *
+ * Non-super-admin users are redirected to the main dashboard.
+ */
+export function PlatformRoute() {
+  const user = useAuthStore((s) => s.user);
+  const isPlatformOperator = user?.roles?.includes('super_admin');
+
+  if (!isPlatformOperator) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <Outlet />;
+}

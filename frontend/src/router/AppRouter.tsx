@@ -1,5 +1,5 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { ProtectedRoute, PublicRoute } from '@/router/guards';
+import { ProtectedRoute, PublicRoute, PlatformRoute } from '@/router/guards';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -22,6 +22,8 @@ import { ProductDetailPage } from '@/pages/client/ProductDetailPage';
 import { CreateOrderPage } from '@/pages/client/CreateOrderPage';
 import { ClientOrderListPage } from '@/pages/client/OrderListPage';
 import { OrderDetailPage } from '@/pages/client/OrderDetailPage';
+// Platform Admin Cockpit pages (P11)
+import { PlatformOverviewPage } from '@/pages/platform/PlatformOverviewPage';
 
 const router = createBrowserRouter([
   {
@@ -72,6 +74,18 @@ const router = createBrowserRouter([
           { path: '/client/orders', element: <ClientOrderListPage /> },
           { path: '/client/orders/new', element: <CreateOrderPage /> },
           { path: '/client/orders/:orderId', element: <OrderDetailPage /> },
+        ],
+      },
+      // Platform Admin Cockpit routes (P11) — super_admin only
+      {
+        element: <PlatformRoute />,
+        children: [
+          {
+            element: <MainLayout />,
+            children: [
+              { path: '/platform', element: <PlatformOverviewPage /> },
+            ],
+          },
         ],
       },
     ],

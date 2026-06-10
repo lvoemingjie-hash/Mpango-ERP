@@ -7,6 +7,7 @@ import {
   CubeIcon,
   BanknotesIcon,
   CreditCardIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -32,6 +33,8 @@ const navItems: NavItem[] = [
 export function Sidebar() {
   const location = useLocation();
   const logout = useAuthStore((s) => s.logout);
+  const user = useAuthStore((s) => s.user);
+  const isSuperAdmin = user?.roles?.includes('super_admin');
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -49,7 +52,7 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
         {navItems.map((item) => {
           const active = isActive(item.path);
           return (
@@ -70,6 +73,30 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Platform Admin — super_admin only */}
+        {isSuperAdmin && (
+          <>
+            <div className="my-2 border-t border-gray-200" />
+            <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+              Platform
+            </p>
+            <Link
+              to="/platform"
+              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isActive('/platform')
+                  ? 'bg-primary-50 text-primary-700 ring-1 ring-inset ring-primary-200'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+            >
+              <ShieldCheckIcon
+                className={`h-5 w-5 shrink-0 transition-colors ${isActive('/platform') ? 'text-primary-700' : 'text-gray-400 group-hover:text-gray-500'
+                  }`}
+              />
+              Platform
+              {isActive('/platform') && <div className="absolute left-0 h-8 w-1 rounded-r-full bg-primary-600" />}
+            </Link>
+          </>
+        )}
       </nav>
 
       {/* Logout */}

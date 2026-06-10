@@ -224,6 +224,169 @@ class TestAuditDetailEndpoint:
         assert "not found" in resp.json()["detail"].lower()
 
 
+# === Metadata redaction (P11-R1.3) ===
+
+def _make_entry_with_metadata(metadata: dict):
+    """Build a mock PlatformAuditLog entry with given metadata."""
+    from uuid import uuid4
+    entry = MagicMock()
+    entry.id = uuid4()
+    entry.actor_type = "admin"
+    entry.actor_id = uuid4()
+    entry.wholesaler_id = uuid4()
+    entry.action = "tenant.update"
+    entry.resource = "tenant"
+    entry.audit_metadata = metadata
+    entry.created_at = datetime.now(timezone.utc)
+    return entry
+
+
+class TestAuditMetadataRedaction:
+
+    def test_list_redacts_password_key(self):
+        """List endpoint: password key is removed from audit_metadata."""
+        entry = _make_entry_with_metadata({
+            "password": "hunter2",
+            "safe_key": "visible",
+        })
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        list_result = MagicMock()
+        list_result.scalars.return_value.all.return_value = [entry]
+
+        mock_db = MagicMock()
+        mock_db.execute = AsyncMock(side_effect=[count_result, list_result])
+        client = TestClient(_make_app(mock_db))
+
+        resp = client.get("/api/v1/platform/audit/", headers=TEST_HEADERS)
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        meta = items[0]["audit_metadata"]
+        assert "password" not in meta
+        assert meta["safe_key"] == "visible"
+
+    def test_list_redacts_token_key(self):
+        """List endpoint: token key is removed from audit_metadata."""
+        entry = _make_entry_with_metadata({
+            "token": "secret-jwt-value",
+            "result": "completed",
+        })
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        list_result = MagicMock()
+        list_result.scalars.return_value.all.return_value = [entry]
+
+        mock_db = MagicMock()
+        mock_db.execute = AsyncMock(side_effect=[count_result, list_result])
+        client = TestClient(_make_app(mock_db))
+
+        resp = client.get("/api/v1/platform/audit/", headers=TEST_HEADERS)
+        assert resp.status_code == 200
+        meta = resp.json()["items"][0]["audit_metadata"]
+        assert "token" not in meta
+        assert meta["result"] == "completed"
+
+    def test_list_redacts_nested_sensitive_keys(self):
+        """List endpoint: sensitive keys in nested dicts are removed."""
+        entry = _make_entry_with_metadata({
+            "context": {
+                "authorization": "Bearer abc",
+                "detail": "some info",
+            },
+        })
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        list_result = MagicMock()
+        list_result.scalars.return_value.all.return_value = [entry]
+
+        mock_db = MagicMock()
+        mock_db.execute = AsyncMock(side_effect=[count_result, list_result])
+        client = TestClient(_make_app(mock_db))
+
+        resp = client.get("/api/v1/platform/audit/", headers=TEST_HEADERS)
+        assert resp.status_code == 200
+        meta = resp.json()["items"][0]["audit_metadata"]
+        assert "authorization" not in meta["context"]
+        assert meta["context"]["detail"] == "some info"
+
+    def test_detail_redacts_secret_key(self):
+        """Detail endpoint: secret key is removed from audit_metadata."""
+        entry = _make_entry_with_metadata({
+            "secret": "api-key-123",
+            "action_taken": "suspend",
+        })
+        detail_result = MagicMock()
+        detail_result.scalar_one_or_none.return_value = entry
+
+        mock_db = MagicMock()
+        mock_db.execute = AsyncMock(return_value=detail_result)
+        client = TestClient(_make_app(mock_db))
+
+        resp = client.get(f"/api/v1/platform/audit/{entry.id}", headers=TEST_HEADERS)
+        assert resp.status_code == 200
+        meta = resp.json()["audit_metadata"]
+        assert "secret" not in meta
+        assert meta["action_taken"] == "suspend"
+
+    def test_detail_redacts_cookie_and_card_keys(self):
+        """Detail endpoint: cookie and card keys are both removed."""
+        entry = _make_entry_with_metadata({
+            "cookie": "session=abc123",
+            "card": "4111111111111111",
+            "user_email": "test@example.com",
+        })
+        detail_result = MagicMock()
+        detail_result.scalar_one_or_none.return_value = entry
+
+        mock_db = MagicMock()
+        mock_db.execute = AsyncMock(return_value=detail_result)
+        client = TestClient(_make_app(mock_db))
+
+        resp = client.get(f"/api/v1/platform/audit/{entry.id}", headers=TEST_HEADERS)
+        assert resp.status_code == 200
+        meta = resp.json()["audit_metadata"]
+        assert "cookie" not in meta
+        assert "card" not in meta
+        assert meta["user_email"] == "test@example.com"
+
+    def test_list_redacts_payment_key(self):
+        """List endpoint: payment key is removed."""
+        entry = _make_entry_with_metadata({
+            "payment": {"amount": 100, "ref": "PAY-001"},
+            "order_id": "ORD-001",
+        })
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        list_result = MagicMock()
+        list_result.scalars.return_value.all.return_value = [entry]
+
+        mock_db = MagicMock()
+        mock_db.execute = AsyncMock(side_effect=[count_result, list_result])
+        client = TestClient(_make_app(mock_db))
+
+        resp = client.get("/api/v1/platform/audit/", headers=TEST_HEADERS)
+        assert resp.status_code == 200
+        meta = resp.json()["items"][0]["audit_metadata"]
+        assert "payment" not in meta
+        assert meta["order_id"] == "ORD-001"
+
+    def test_detail_handles_null_metadata(self):
+        """Detail endpoint: null metadata returns None (not an error)."""
+        entry = _make_entry_with_metadata(None)
+        entry.audit_metadata = None
+        detail_result = MagicMock()
+        detail_result.scalar_one_or_none.return_value = entry
+
+        mock_db = MagicMock()
+        mock_db.execute = AsyncMock(return_value=detail_result)
+        client = TestClient(_make_app(mock_db))
+
+        resp = client.get(f"/api/v1/platform/audit/{entry.id}", headers=TEST_HEADERS)
+        assert resp.status_code == 200
+        assert resp.json()["audit_metadata"] is None
+
+
 # === Read-only contract ===
 
 class TestReadOnlyContract:

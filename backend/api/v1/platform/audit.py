@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.v1.platform.p10.guard import require_platform_operator
+from api.v1.platform.p10.services import redact_metadata
 from models.platform_audit_log import PlatformAuditLog
 
 router = APIRouter(prefix='/api/v1/platform/audit', tags=['platform-audit'])
@@ -123,7 +124,7 @@ async def list_audit_logs(
                 'wholesaler_id': str(e.wholesaler_id) if e.wholesaler_id else None,
                 'action': e.action,
                 'resource': e.resource,
-                'audit_metadata': e.audit_metadata,
+                'audit_metadata': redact_metadata(e.audit_metadata),
                 'created_at': e.created_at.isoformat() if e.created_at else None,
             }
             for e in entries
@@ -218,6 +219,6 @@ async def get_audit_log(
         'wholesaler_id': str(entry.wholesaler_id) if entry.wholesaler_id else None,
         'action': entry.action,
         'resource': entry.resource,
-        'audit_metadata': entry.audit_metadata,
+        'audit_metadata': redact_metadata(entry.audit_metadata),
         'created_at': entry.created_at.isoformat() if entry.created_at else None,
     }

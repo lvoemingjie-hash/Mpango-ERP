@@ -10,6 +10,7 @@ import {
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
+import { isIdentityPlatformOperator } from '@/router/guards';
 
 interface NavItem {
   label: string;
@@ -34,7 +35,7 @@ export function Sidebar() {
   const location = useLocation();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
-  const isSuperAdmin = user?.roles?.includes('super_admin');
+  const showPlatformNav = isIdentityPlatformOperator(user);
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -74,8 +75,8 @@ export function Sidebar() {
           );
         })}
 
-        {/* Platform Admin — super_admin only */}
-        {isSuperAdmin && (
+        {/* Platform Admin — identity-only super_admin */}
+        {showPlatformNav && (
           <>
             <div className="my-2 border-t border-gray-200" />
             <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400">

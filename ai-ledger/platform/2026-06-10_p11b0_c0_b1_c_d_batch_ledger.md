@@ -16,7 +16,10 @@
 | 3 | `f4ebe66` | P11-C | Read-only tenant directory and audit views |
 | 4 | `4ea683f` | P11-D | Tenant health + system health cockpit |
 | 5 | `d2f9261` | P11-E | Batch readiness packet |
-| 6 | `3c28319` | P11-R1 | Cockpit boundary + evidence fix (identity-only enforcement, metadata redaction) |
+| 6 | `3c28319` | P11-R1 | Identity-only enforcement + audit metadata redaction |
+| 7 | `ef470ac` | P11-R1.4 | Ledger correction |
+
+**Final commit:** `ef470ac`
 
 ---
 
@@ -86,10 +89,21 @@
 
 ### Frontend Test Reproduction
 ```bash
-cd frontend && npx vitest run --reporter=verbose
-# Result: 52 passed, 0 failed (3.87s)
-# jsdom ^29.1.1 in devDependencies — reproducible from clean install
+cd frontend
+npm install   # jsdom ^29.1.1 in devDependencies — installed from package.json
+npx vitest run \
+  src/router/__tests__/guards.test.tsx \
+  src/types/__tests__/platform.test.ts \
+  src/services/__tests__/platformApi.test.ts \
+  src/components/platform/__tests__/PlatformTenantCard.test.tsx \
+  src/components/platform/__tests__/PlatformAuditEventRow.test.tsx \
+  src/pages/platform/__tests__/PlatformStatusBadge.test.tsx \
+  src/pages/platform/__tests__/PlatformSystemHealthPage.test.tsx \
+  --reporter=basic
+# Result: 7 test files, 52 tests passed, 0 failed (4.08s)
 ```
+
+Lockfile convention: Repo tracks `frontend/pnpm-lock.yaml`. `frontend/package-lock.json` is not tracked and was not committed.
 
 ---
 
@@ -97,11 +111,19 @@ cd frontend && npx vitest run --reporter=verbose
 
 | Field | Value |
 |-------|-------|
-| Index status | ✅ Up-to-date at `3c28319` |
-| Nodes | 5,973 |
-| Edges | 17,665 |
-| Clusters | 391 |
+| Index status | ✅ Up-to-date at `ef470ac` |
+| Nodes | 5,976 |
+| Edges | 17,669 |
+| Clusters | 390 |
 | Flows | 254 |
+
+### GitNexus Impact Analysis (P11-R1 changed symbols)
+
+| Symbol | Risk | Direct Callers | Notes |
+|--------|------|----------------|-------|
+| `PlatformRoute` | LOW | 0 upstream | Route guard — consumed by AppRouter only |
+| `isIdentityPlatformOperator` | LOW | 1 (Sidebar) | Helper shared between guard + Sidebar nav |
+| `redact_metadata` | HIGH | 4 (list_audit_logs, get_audit_log, list_audit_events, get_audit_event) | P10/P0 audit callers — all tested, no regressions |
 
 ---
 
@@ -141,8 +163,6 @@ cd frontend && npx vitest run --reporter=verbose
 
 **Overall risk: MEDIUM — mitigated by comprehensive test coverage and isolated scope.**
 
-The original LOW rating was incorrect. The batch adds auth gates to previously open endpoints, redacts previously exposed metadata, and tightens the frontend route guard to identity-only. Each change is a security improvement but represents a breaking change for any consumer that depended on the prior behavior.
-
 ---
 
 ## P11-R1 Changes (Cockpit Boundary + Evidence Fix)
@@ -150,7 +170,6 @@ The original LOW rating was incorrect. The batch adds auth gates to previously o
 | Fix | Description |
 |-----|-------------|
 | Identity-only enforcement | PlatformRoute now requires `tenant_id == null AND tenant_schema == null`. Tenant-contextual super_admin is redirected from `/platform`. Sidebar uses same `isIdentityPlatformOperator()` helper. |
-| Frontend test reproducibility | jsdom `^29.1.1` already in devDependencies. All 52 tests pass. |
 | Audit metadata redaction | P0 audit endpoints now apply P10 `redact_metadata()` — sensitive keys (password, token, secret, cookie, card, payment) are stripped. 7 new tests verify. |
 | Ledger correction | File count corrected to 34, P11-E commit included, GitNexus counts updated, risk corrected to MEDIUM mitigated. |
 

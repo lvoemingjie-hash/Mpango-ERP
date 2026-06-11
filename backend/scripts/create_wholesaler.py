@@ -161,35 +161,58 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
     # Set search path
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
-    # Define all permissions based on RBAC matrix
+    # U1: Complete permission list covering all API-enforced RequirePermission checks.
     permissions_data = [
-        # User permissions
+        # ── User management ──
         ("users:read", "Read users"),
         ("users:create", "Create users"),
         ("users:update", "Update users"),
         ("users:deactivate", "Deactivate users"),
-        # Wholesaler permissions
+        # ── Wholesaler ──
         ("wholesalers:read", "Read wholesalers"),
         ("wholesalers:write", "Create/update/delete wholesalers"),
-        # Role permissions
+        # ── Role management ──
         ("roles:read", "Read roles"),
         ("roles:create", "Create roles"),
         ("roles:update", "Update roles"),
         ("roles:delete", "Delete roles"),
         ("roles:assign", "Assign roles to users"),
-        # Order permissions
+        # ── Order management ──
         ("orders:read", "Read orders"),
         ("orders:create", "Create orders"),
         ("orders:update", "Update orders"),
         ("orders:confirm", "Confirm orders"),
         ("orders:ship", "Ship orders"),
         ("orders:cancel", "Cancel orders"),
-        # Finance permissions (GAP 2)
+        # ── SKU / Product management ──
+        ("skus:read", "Read SKUs"),
+        ("skus:create", "Create SKUs"),
+        ("skus:update", "Update SKUs"),
+        # ── Inventory management ──
+        ("inventory:read", "Read inventory"),
+        ("inventory:write", "Write inventory (legacy alias)"),
+        ("inventory:update", "Update inventory (adjustments)"),
+        # ── Payment management ──
+        ("payments:read", "Read payments"),
+        ("payments:create", "Create payments"),
+        # ── Retailer management ──
+        ("retailers:read", "Read retailers"),
+        # ── Invitations ──
+        ("invitations:create", "Create invitations"),
+        # ── Pricing ──
+        ("pricing:read", "Read pricing"),
+        ("pricing:write", "Write pricing"),
+        # ── Finance ──
         ("finance:read", "View invoices, receivables, financial summary"),
-        # Security-hardened permissions (Phase P-A Security)
+        # ── Dashboards & Reports ──
+        ("dashboards:read", "View dashboard KPIs and charts"),
+        ("reports:read", "Read reports"),
+        ("reports:analyze", "Analyze reports"),
+        # ── Exports ──
+        ("exports:create", "Request data exports"),
+        # ── System ──
         ("system:admin", "Full system administration (job queues, debug endpoints)"),
         ("metrics:admin", "Reset application metrics"),
-        ("exports:create", "Request data exports"),
     ]
 
     for code, description in permissions_data:

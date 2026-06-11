@@ -167,6 +167,11 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(platform_p10_router)
     logger.info("Platform P10 router registered (read-only, contract-compliant)")
 
+    # Platform Track P12 -- Support Console API (request-scoped diagnostics)
+    from api.v1.platform.p12.routes import router as platform_p12_router
+    app.include_router(platform_p12_router)
+    logger.info("Platform P12 router registered (support console, request-scoped)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

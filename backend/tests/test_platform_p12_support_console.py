@@ -9,6 +9,10 @@ Contract-backed tests covering:
   - Redaction (sensitive keys removed, raw payloads excluded)
   - Audit events (session_start, bundle_generated, session_end)
   - Counterexamples (unknown != healthy, null != 0, no raw payloads)
+  - Reason sanitization (credential content stripped before storage)
+  - Access-denied audit (support_access_denied on 401/403)
+  - Route-level identity (identity-only super_admin, contextual denied, tenant denied)
+  - Session expiry audit (support_session_expired on lazy TTL)
 """
 import os
 import uuid
@@ -776,3 +780,400 @@ class TestCounterexamples:
         from api.v1.platform.p12.schemas import CreateBundleRequest
         req = CreateBundleRequest()
         assert req.bundle_type == "full"
+
+
+# ============================================================
+# 9. Reason Sanitization
+# ============================================================
+
+
+class TestReasonSanitization:
+    """Support reason credential content must be stripped before storage."""
+
+    def test_password_value_stripped(self):
+        """password=xxx patterns replaced with [REDACTED]."""
+        from api.v1.platform.p12.services import sanitize_reason
+        result = sanitize_reason("user reported password=admin123 cannot login")  # pragma: allowlist secret
+        assert "admin123" not in result
+        assert "[REDACTED]" in result
+        assert "user reported" in result
+
+    def test_token_value_stripped(self):
+        """token: xxx patterns replaced with [REDACTED]."""
+        from api.v1.platform.p12.services import sanitize_reason
+        result = sanitize_reason("debug: token: bearer-abc-123 expired")  # pragma: allowlist secret
+        assert "bearer-abc-123" not in result
+        assert "[REDACTED]" in result
+        assert "debug:" in result
+
+    def test_secret_key_value_stripped(self):
+        """secret_key=xxx patterns replaced with [REDACTED]."""
+        from api.v1.platform.p12.services import sanitize_reason
+        result = sanitize_reason("secret_key=sk-live-xxx failing")  # pragma: allowlist secret
+        assert "sk-live-xxx" not in result
+        assert "[REDACTED]" in result
+
+    def test_api_key_value_stripped(self):
+        """api_key=xxx patterns replaced with [REDACTED]."""
+        from api.v1.platform.p12.services import sanitize_reason
+        result = sanitize_reason("api_key=ak-12345 integration broken")  # pragma: allowlist secret
+        assert "ak-12345" not in result
+        assert "[REDACTED]" in result
+
+    def test_cookie_value_stripped(self):
+        """cookie=xxx patterns replaced with [REDACTED]."""
+        from api.v1.platform.p12.services import sanitize_reason
+        result = sanitize_reason("cookie=sessionid=abc not working")  # pragma: allowlist secret
+        assert "sessionid=abc" not in result
+        assert "[REDACTED]" in result
+
+    def test_bearer_value_stripped(self):
+        """bearer=xxx patterns replaced with [REDACTED]."""
+        from api.v1.platform.p12.services import sanitize_reason
+        result = sanitize_reason("bearer=tok-xyz auth issue")  # pragma: allowlist secret
+        assert "tok-xyz" not in result
+        assert "[REDACTED]" in result
+
+    def test_plain_password_word_preserved(self):
+        """The word 'password' without a value is preserved."""
+        from api.v1.platform.p12.services import sanitize_reason
+        result = sanitize_reason("users cannot complete password reset")
+        assert result == "users cannot complete password reset"
+        assert "[REDACTED]" not in result
+
+    def test_plain_token_word_preserved(self):
+        """The word 'token' without a value is preserved."""
+        from api.v1.platform.p12.services import sanitize_reason
+        result = sanitize_reason("user's token was expired unexpectedly")
+        assert result == "user's token was expired unexpectedly"
+
+    def test_sanitized_reason_stored_in_session(self):
+        """Session storage contains sanitized reason, not raw credential."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={
+                "reason": "debug password=supersecret login issue",  # pragma: allowlist secret
+                "category": "login_issue",
+            },
+            headers=AUTH_HEADERS,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert "supersecret" not in data["reason"]  # pragma: allowlist secret
+        assert "[REDACTED]" in data["reason"]
+
+    def test_sanitized_reason_in_audit_metadata(self):
+        """Audit metadata contains sanitized reason."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={
+                "reason": "debug api_key=ak-12345 call fails",  # pragma: allowlist secret
+                "category": "integration",
+            },
+            headers=AUTH_HEADERS,
+        )
+        assert resp.status_code == 201
+        audit_entry = mock_db.add.call_args[0][0]
+        assert "ak-12345" not in audit_entry.audit_metadata["reason"]  # pragma: allowlist secret
+        assert "[REDACTED]" in audit_entry.audit_metadata["reason"]
+
+
+# ============================================================
+# 10. Access-Denied Audit
+# ============================================================
+
+
+class TestAccessDeniedAudit:
+    """support_access_denied audit events on denied access."""
+
+    def test_no_headers_writes_denied_audit(self):
+        """No credentials writes support_access_denied with actor_id=null."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={"reason": VALID_REASON, "category": "general"},
+        )
+        assert resp.status_code == 401
+        # Verify audit entry was written
+        assert mock_db.add.called
+        audit_entry = mock_db.add.call_args[0][0]
+        assert audit_entry.action == "support_access_denied"
+        assert audit_entry.actor_id is None
+        assert mock_db.commit.called
+
+    def test_wrong_secret_writes_denied_audit(self):
+        """Wrong operator secret writes support_access_denied."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={"reason": VALID_REASON, "category": "general"},
+            headers={"X-Platform-Operator": "wrong-secret"},
+        )
+        assert resp.status_code == 403
+        assert mock_db.add.called
+        audit_entry = mock_db.add.call_args[0][0]
+        assert audit_entry.action == "support_access_denied"
+
+    def test_contextual_super_admin_denied_writes_audit(self):
+        """Tenant-contextual super_admin denied writes support_access_denied with actor_id."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+
+        token = MagicMock()
+        token.user_id = "b2c3d4e5-f6a7-48b8-9c0d-1e2f3a4b5c6d"
+        token.roles = ["super_admin"]
+        token.tenant_id = TENANT_ID
+        token.tenant_schema = "t_test"
+        token.is_identity_only = False
+        token.is_super_admin = True
+
+        auth_ctx = MagicMock()
+        auth_ctx.token = token
+
+        with patch("api.context.auth.get_auth_context", return_value=auth_ctx):
+            resp = client.post(
+                "/api/v1/platform/p12/sessions",
+                json={"reason": VALID_REASON, "category": "general"},
+            )
+        # Contextual super_admin without platform headers is denied
+        assert resp.status_code == 401
+        assert mock_db.add.called
+        audit_entry = mock_db.add.call_args[0][0]
+        assert audit_entry.action == "support_access_denied"
+
+    def test_denied_audit_has_path_metadata(self):
+        """Denied audit includes the request path in metadata."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={"reason": VALID_REASON, "category": "general"},
+        )
+        assert resp.status_code == 401
+        audit_entry = mock_db.add.call_args[0][0]
+        meta = audit_entry.audit_metadata
+        assert "sessions" in meta["path"]
+        assert meta["code"] == "PLATFORM_ACCESS_REQUIRED"
+
+
+# ============================================================
+# 11. Route-Level Identity Tests
+# ============================================================
+
+
+class TestRouteLevelIdentity:
+    """P12 route-level identity enforcement via Bearer token."""
+
+    def test_identity_only_super_admin_allowed(self):
+        """Identity-only global super_admin Bearer token is allowed."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+
+        token = MagicMock()
+        token.user_id = "b2c3d4e5-f6a7-48b8-9c0d-1e2f3a4b5c6d"
+        token.roles = ["super_admin"]
+        token.tenant_id = None
+        token.tenant_schema = None
+        token.is_identity_only = True
+        token.is_super_admin = True
+
+        auth_ctx = MagicMock()
+        auth_ctx.token = token
+
+        with patch("api.context.auth.get_auth_context", return_value=auth_ctx):
+            resp = client.post(
+                "/api/v1/platform/p12/sessions",
+                json={"reason": VALID_REASON, "category": "general"},
+            )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["status"] == "active"
+
+    def test_contextual_super_admin_denied(self):
+        """Tenant-contextual super_admin Bearer token is denied."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+
+        token = MagicMock()
+        token.user_id = "c3d4e5f6-a7b8-49c9-0d1e-2f3a4b5c6d7e"
+        token.roles = ["super_admin"]
+        token.tenant_id = TENANT_ID
+        token.tenant_schema = "t_test"
+        token.is_identity_only = False
+        token.is_super_admin = True
+
+        auth_ctx = MagicMock()
+        auth_ctx.token = token
+
+        with patch("api.context.auth.get_auth_context", return_value=auth_ctx):
+            resp = client.post(
+                "/api/v1/platform/p12/sessions",
+                json={"reason": VALID_REASON, "category": "general"},
+            )
+        assert resp.status_code == 401
+
+    def test_tenant_user_denied(self):
+        """Regular tenant user (not super_admin) is denied."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+
+        token = MagicMock()
+        token.user_id = "d4e5f6a7-b8c9-4a0d-1e2f-3a4b5c6d7e8f"
+        token.roles = ["user"]
+        token.tenant_id = TENANT_ID
+        token.tenant_schema = "t_test"
+        token.is_identity_only = False
+        token.is_super_admin = False
+
+        auth_ctx = MagicMock()
+        auth_ctx.token = token
+
+        with patch("api.context.auth.get_auth_context", return_value=auth_ctx):
+            resp = client.post(
+                "/api/v1/platform/p12/sessions",
+                json={"reason": VALID_REASON, "category": "general"},
+            )
+        assert resp.status_code == 401
+
+    def test_identity_only_non_super_admin_denied(self):
+        """Identity-only token without super_admin role is denied."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+
+        token = MagicMock()
+        token.user_id = "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b"
+        token.roles = ["support_operator"]
+        token.tenant_id = None
+        token.tenant_schema = None
+        token.is_identity_only = True
+        token.is_super_admin = False
+
+        auth_ctx = MagicMock()
+        auth_ctx.token = token
+
+        with patch("api.context.auth.get_auth_context", return_value=auth_ctx):
+            resp = client.post(
+                "/api/v1/platform/p12/sessions",
+                json={"reason": VALID_REASON, "category": "general"},
+            )
+        assert resp.status_code == 401
+
+
+# ============================================================
+# 12. Session Expiry Audit
+# ============================================================
+
+
+class TestSessionExpiryAudit:
+    """support_session_expired audit on lazy TTL expiry."""
+
+    def test_expired_session_writes_expiry_audit(self):
+        """Accessing expired session writes support_session_expired audit."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        # Create session
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={"reason": VALID_REASON, "category": "general"},
+            headers=AUTH_HEADERS,
+        )
+        assert resp.status_code == 201
+        sid = resp.json()["session_id"]
+        # Expire it
+        session = _session_store._sessions.get(sid)
+        assert session is not None
+        session.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        # Access expired session -- triggers lazy expiry + audit
+        mock_db.add.reset_mock()
+        mock_db.commit.reset_mock()
+        resp2 = client.get(
+            f"/api/v1/platform/p12/sessions/{sid}/diagnostics",
+            headers=AUTH_HEADERS,
+        )
+        assert resp2.status_code == 404
+        # Verify expiry audit was written
+        assert mock_db.add.called
+        audit_entry = mock_db.add.call_args[0][0]
+        assert audit_entry.action == "support_session_expired"
+
+    def test_expired_bundle_writes_expiry_audit(self):
+        """Bundle generation on expired session writes support_session_expired."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={"reason": VALID_REASON, "category": "general"},
+            headers=AUTH_HEADERS,
+        )
+        sid = resp.json()["session_id"]
+        session = _session_store._sessions.get(sid)
+        session.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        mock_db.add.reset_mock()
+        mock_db.commit.reset_mock()
+        resp2 = client.post(
+            f"/api/v1/platform/p12/sessions/{sid}/bundles",
+            json={"bundle_type": "full"},
+            headers=AUTH_HEADERS,
+        )
+        assert resp2.status_code == 404
+        assert mock_db.add.called
+        audit_entry = mock_db.add.call_args[0][0]
+        assert audit_entry.action == "support_session_expired"
+
+    def test_not_found_no_session_does_not_write_expiry_audit(self):
+        """Non-existent session (never created) does NOT write expiry audit."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        fake_id = str(uuid.uuid4())
+        resp = client.get(
+            f"/api/v1/platform/p12/sessions/{fake_id}/diagnostics",
+            headers=AUTH_HEADERS,
+        )
+        assert resp.status_code == 404
+        # No expiry audit -- session never existed
+        assert not mock_db.add.called

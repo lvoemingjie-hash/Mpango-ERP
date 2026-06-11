@@ -24,7 +24,7 @@ from api.v1.platform.p10.schemas import (
     validate_uuid_v4_v7,
 )
 
-# ── Enum literals matching P12-A-R1 contract exactly ──
+# -- Enum literals matching P12-A-R1 contract exactly --
 
 SupportCategory = Literal[
     "login_issue",
@@ -53,7 +53,7 @@ SupportAction = Literal[
 ]
 
 
-# ── Request models ──
+# -- Request models --
 
 
 class CreateSessionRequest(BaseModel):
@@ -89,7 +89,7 @@ class CreateBundleRequest(BaseModel):
     )
 
 
-# ── SupportSession ──
+# -- SupportSession --
 
 
 class SupportSession(BaseModel):
@@ -129,7 +129,7 @@ class SupportSession(BaseModel):
     _validate_tenant_id = field_validator("tenant_id")(validate_uuid_v4_v7)
 
 
-# ── SupportDiagnosticItem ──
+# -- SupportDiagnosticItem --
 
 
 class SupportDiagnosticItem(BaseModel):
@@ -158,7 +158,7 @@ class SupportDiagnosticItem(BaseModel):
     _validate_item_id = field_validator("item_id")(validate_uuid_v4_v7)
 
 
-# ── SupportBundle ──
+# -- SupportBundle --
 
 
 class SupportBundle(BaseModel):
@@ -200,7 +200,7 @@ class SupportBundle(BaseModel):
         return v
 
 
-# ── SupportAuditEventResponse ──
+# -- SupportAuditEventResponse --
 
 
 class SupportAuditEventResponse(BaseModel):

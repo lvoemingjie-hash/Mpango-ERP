@@ -7,12 +7,15 @@ bundle generation, and audit event creation.
 Key design decisions:
   - Sessions are in-memory only (no migrations, no persistent storage).
   - Lazy expiry on access (no background timer).
+  - Expired sessions tracked for support_session_expired audit on next access.
   - Diagnostics gathered from P10 services with redaction applied.
   - Audit events persisted via platform_audit_service (the only allowed write).
   - Unknown/unavailable metrics stay unknown/null -- never fabricated.
+  - Support reason text sanitized before storage/audit (no credential content).
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -39,7 +42,27 @@ from .schemas import (
 )
 
 
-# ── Constants ──
+# -- Reason sanitization --
+
+# Matches credential-like key=value patterns in reason text.
+# Does NOT block the keyword alone -- only key[:=]value patterns.
+_SENSITIVE_REASON_PATTERN = re.compile(
+    r'(?:password|passwd|pwd|secret[_\w-]*|token|api[_-]?key'
+    r'|cookie|card[_\w-]*|bearer|authorization)\s*[:=]\s*\S+',
+    re.IGNORECASE,
+)
+
+
+def sanitize_reason(reason: str) -> str:
+    """Sanitize support reason text, stripping credential-like content.
+
+    Replaces patterns like 'password=xxx', 'token: yyy' with '[REDACTED]'.
+    The word alone ('password reset failures') is left intact.
+    """
+    return _SENSITIVE_REASON_PATTERN.sub('[REDACTED]', reason)
+
+
+# -- Constants --
 
 SESSION_TTL_MINUTES = 60
 
@@ -71,7 +94,7 @@ _SUMMARY_CATEGORIES = frozenset({
 })
 
 
-# ── In-Memory Session Store ──
+# -- In-Memory Session Store --
 
 
 class SupportSessionStore:
@@ -80,6 +103,7 @@ class SupportSessionStore:
     def __init__(self, ttl_minutes: int = SESSION_TTL_MINUTES):
         self._sessions: dict[str, SupportSession] = {}
         self._ttl_minutes = ttl_minutes
+        self._expired_queue: list[SupportSession] = []
 
     def create(
         self,
@@ -116,6 +140,7 @@ class SupportSessionStore:
             return None
         if session.expires_at and _utcnow() > session.expires_at:
             session.status = "expired"
+            self._expired_queue.append(session)
             del self._sessions[session_id]
             return None
         return session
@@ -143,18 +168,26 @@ class SupportSessionStore:
         ]
         for sid in expired_ids:
             self._sessions[sid].status = "expired"
+            self._expired_queue.append(self._sessions[sid])
             del self._sessions[sid]
+
+    def drain_expired(self) -> list[SupportSession]:
+        """Return and clear sessions that expired during lazy cleanup."""
+        expired = list(self._expired_queue)
+        self._expired_queue.clear()
+        return expired
 
     def clear_all(self) -> None:
         """For testing only -- clear all sessions."""
         self._sessions.clear()
+        self._expired_queue.clear()
 
 
 # Module-level singleton
 _session_store = SupportSessionStore()
 
 
-# ── Helpers ──
+# -- Helpers --
 
 
 def _utcnow() -> datetime:
@@ -181,7 +214,48 @@ def extract_support_actor(request: Request) -> tuple[Optional[str], Optional[str
         return None, None
 
 
-# ── Service functions ──
+# -- Service functions --
+
+
+async def _audit_expired_sessions(db: AsyncSession) -> None:
+    """Write support_session_expired audit for lazily-expired sessions.
+
+    Best-effort -- audit failure must not prevent normal error handling.
+    """
+    from uuid import UUID as PyUUID
+
+    expired = _session_store.drain_expired()
+    if not expired:
+        return
+    for session in expired:
+        try:
+            wholesaler_id = None
+            if session.tenant_id:
+                try:
+                    wholesaler_id = PyUUID(session.tenant_id)
+                except (ValueError, AttributeError):
+                    pass
+            await append_audit_entry(
+                db,
+                actor_type="api",
+                action="support_session_expired",
+                resource=f"support/sessions/{session.session_id}",
+                actor_id=PyUUID(session.actor_id) if session.actor_id else None,
+                wholesaler_id=wholesaler_id,
+                audit_metadata={
+                    "session_id": session.session_id,
+                    "correlation_id": session.correlation_id,
+                    "bundle_count": session.bundle_count,
+                    "actor_role": session.actor_role,
+                    "expiry_reason": "ttl_exceeded",
+                },
+            )
+        except Exception:
+            pass  # Best-effort audit
+    try:
+        await db.commit()
+    except Exception:
+        pass
 
 
 async def create_support_session(
@@ -197,8 +271,12 @@ async def create_support_session(
 
     The session is request-scoped -- it exists only in process memory.
     The audit event is the only persistent write.
+    Reason is sanitized before storage (no credential content retained).
     """
     actor_id, actor_role = extract_support_actor(request)
+
+    # Sanitize reason before storage
+    sanitized_reason = sanitize_reason(reason)
 
     correlation_id = str(uuid.uuid4())
 
@@ -206,7 +284,7 @@ async def create_support_session(
         actor_id=actor_id,
         actor_role=actor_role,
         tenant_id=tenant_id,
-        reason=reason,
+        reason=sanitized_reason,
         category=category,
         correlation_id=correlation_id,
     )
@@ -231,7 +309,7 @@ async def create_support_session(
         audit_metadata={
             "session_id": session.session_id,
             "category": category,
-            "reason": reason,
+            "reason": sanitized_reason,
             "correlation_id": correlation_id,
             "actor_role": actor_role,
             "tenant_id": tenant_id,
@@ -255,6 +333,7 @@ async def get_diagnostics(
     """
     session = _session_store.get(session_id)
     if session is None:
+        await _audit_expired_sessions(db)
         raise ValueError("Session not found or expired")
     if session.status != "active":
         raise ValueError(f"Session is {session.status}, not active")
@@ -394,6 +473,7 @@ async def generate_bundle(
     """
     session = _session_store.get(session_id)
     if session is None:
+        await _audit_expired_sessions(db)
         raise ValueError("Session not found or expired")
     if session.status != "active":
         raise ValueError(f"Session is {session.status}, cannot generate bundle")
@@ -489,6 +569,7 @@ async def close_support_session(
     """
     session = _session_store.get(session_id)
     if session is None:
+        await _audit_expired_sessions(db)
         raise ValueError("Session not found or expired")
 
     if session.status != "active":

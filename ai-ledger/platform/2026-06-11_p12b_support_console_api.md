@@ -3,8 +3,8 @@
 **Date:** 2026-06-11
 **Branch:** `codex/platform-p12b-support-console-api-2026-06-11`
 **Base:** `origin/platform-dev` at `1ff8d3c` (P12-A merge)
-**Final commit:** `e251e5a`
-**Status:** Implementation complete -- request-scoped diagnostics, no migrations
+**R1 commit:** (pending)
+**Status:** P12-B + R1 complete -- request-scoped diagnostics, access-denied audit, reason sanitization, expiry audit
 
 ---
 
@@ -18,16 +18,28 @@
 
 - `origin/platform-dev` HEAD: `1ff8d3c merge: P12-A support console contract (A + R1)`
 
-## Modified Files (6 total, 1762 insertions)
+## Modified Files (7 total)
 
 | # | File | Action |
 |---|------|--------|
 | 1 | `backend/api/v1/platform/p12/__init__.py` | **New** -- Package marker |
 | 2 | `backend/api/v1/platform/p12/schemas.py` | **New** -- P12 Pydantic contract models |
-| 3 | `backend/api/v1/platform/p12/services.py` | **New** -- In-memory session store, diagnostics, bundles, audit |
-| 4 | `backend/api/v1/platform/p12/routes.py` | **New** -- 4 FastAPI endpoints |
+| 3 | `backend/api/v1/platform/p12/services.py` | **New** -- In-memory session store, diagnostics, bundles, audit, reason sanitization, expiry tracking |
+| 4 | `backend/api/v1/platform/p12/routes.py` | **New** -- 4 FastAPI endpoints with access-denied audit wrapper |
 | 5 | `backend/api/app.py` | **Modified** -- P12 router registration (3 lines) |
-| 6 | `backend/tests/test_platform_p12_support_console.py` | **New** -- 37 test cases |
+| 6 | `backend/tests/test_platform_p12_support_console.py` | **New** -- 58 test cases (37 original + 21 R1 additions) |
+| 7 | `ai-ledger/platform/2026-06-11_p12b_support_console_api.md` | **New** -- This ledger |
+
+## R1 Changes Over P12-B
+
+| Change | Detail |
+|--------|--------|
+| **support_access_denied audit** | `require_platform_operator_with_audit` wraps P10 guard; denied access (401/403) writes `support_access_denied` with actor_id null or extracted from auth context |
+| **Reason sanitization** | `sanitize_reason()` strips credential-like patterns (password=, token:, api_key=, etc.) before storage in session and audit metadata |
+| **Session expiry audit** | `SupportSessionStore._expired_queue` tracks lazily-expired sessions; `_audit_expired_sessions()` writes `support_session_expired` on next access attempt |
+| **Route-level identity tests** | Tests for identity-only super_admin (allowed), tenant-contextual super_admin (denied), tenant user (denied), non-super_admin identity (denied) |
+| **Non-ASCII cleanup** | All P12 source files are ASCII-only (box drawing U+2500 replaced with --) |
+| **Ledger risk upgrade** | Risk rated HIGH (platform runtime API surface) mitigated by 58 tests |
 
 ## Endpoint List
 
@@ -48,9 +60,33 @@
 | SupportDiagnosticItem | `SupportDiagnosticItem` | P10 services + redaction |
 | SupportAuditEvent | `SupportAuditEventResponse` | Written via `append_audit_entry` |
 
+## Audit Actions
+
+| Action | Trigger | actor_id |
+|--------|---------|----------|
+| `support_session_start` | Session created | From auth context |
+| `support_bundle_generated` | Bundle generated | From session |
+| `support_session_end` | Session closed | From session |
+| `support_session_expired` | Lazy TTL expiry detected on next access | From expired session |
+| `support_access_denied` | Guard denies access (401/403) | Null if unauthenticated, or from auth context |
+
+## Reason Sanitization
+
+Patterns matched and replaced with `[REDACTED]`:
+- `password=xxx`, `passwd=xxx`, `pwd=xxx`
+- `token=xxx`, `token: xxx`
+- `secret_key=xxx`, `secret=xxx`
+- `api_key=xxx`, `api-key: xxx`
+- `cookie=xxx`
+- `card_number=xxx`
+- `bearer=xxx`
+- `authorization=xxx`
+
+The keyword alone (e.g., "password reset failures") is preserved. Only key=value or key:value patterns are stripped.
+
 ## Tests
 
-### P12-B: 37 passed, 0 failed
+### P12-B-R1: 58 passed, 0 failed
 
 | Class | Count | Coverage |
 |-------|-------|----------|
@@ -62,18 +98,23 @@
 | TestGuardEnforcement | 4 | No headers, wrong secret, test override, operator secret |
 | TestSessionExpiry | 2 | Expired diagnostics 404, expired bundle 404 |
 | TestCounterexamples | 5 | Sensitive keys redacted, raw payloads excluded, unknown!=healthy, null!=0, default bundle type |
+| TestReasonSanitization | 11 | password/token/secret/api_key/cookie/bearer stripped, plain words preserved, stored session sanitized, audit metadata sanitized |
+| TestAccessDeniedAudit | 4 | No headers writes audit, wrong secret writes audit, contextual super_admin denied writes audit, path metadata included |
+| TestRouteLevelIdentity | 4 | Identity-only super_admin allowed, contextual super_admin denied, tenant user denied, non-super_admin identity denied |
+| TestSessionExpiryAudit | 3 | Expired session writes expiry audit, expired bundle writes expiry audit, not-found does not write expiry audit |
 
-### P10/P11 Regression: 80 passed, 0 failed
+### P10/P11 Regression: 137 passed, 0 failed
 
 ## GitNexus
 
 | Field | Value |
 |-------|-------|
-| Nodes | 6,147 |
-| Edges | 18,194 |
-| Clusters | 400 |
-| Flows | 264 |
-| Risk | LOW -- additive platform API, reuses P10 guard/services |
+| Nodes | 6,204 |
+| Edges | 18,405 |
+| Clusters | 404 |
+| Flows | 270 |
+| Impact (sanitize_reason) | LOW (1 caller: create_support_session) |
+| Impact (require_platform_operator_with_audit) | LOW (0 upstream callers, route-level only) |
 
 ## Forbidden Path Audit
 
@@ -92,12 +133,13 @@
 
 | Check | Result |
 |-------|--------|
+| P12-B-R1 tests | 58 passed, 0 failed |
+| P10/P11 regression | 137 passed, 0 failed |
 | `git diff --check` | PASS |
-| Pre-commit hooks (whitespace, end-of-files, large files, detect-secrets) | PASS |
+| Non-ASCII scan | 0 hits (all files ASCII-only) |
 | Forbidden path audit | PASS |
-| P12-B tests | 37 passed, 0 failed |
-| P10/P11 regression | 80 passed, 0 failed |
-| GitNexus analyze | PASS -- 6,147 nodes, 18,194 edges |
+| GitNexus analyze | PASS -- 6,204 nodes, 18,405 edges |
+| GitNexus impact | LOW on all new R1 symbols |
 | No frontend files changed | CONFIRMED |
 | No migrations introduced | CONFIRMED |
 | No auth/RBAC/session/tenancy/payment changes | CONFIRMED |
@@ -116,23 +158,37 @@
 | CE-08 | redaction_applied=false rejected by schema | ValidationError PASS |
 | CE-09 | Unknown metrics stay null/unavailable | PASS |
 | CE-10 | Raw business payloads excluded by redaction | PASS |
+| CE-11 | password=xxx in reason stripped before storage | PASS |
+| CE-12 | token: xxx in reason stripped before storage | PASS |
+| CE-13 | Plain "password reset" text preserved | PASS |
+| CE-14 | Contextual super_admin denied (no platform headers) | 401 PASS |
+| CE-15 | Tenant user denied | 401 PASS |
 
 ## Risk
 
 | Factor | Rating | Notes |
 |--------|--------|-------|
-| Scope | **LOW** | Additive platform API under /platform/p12/ |
+| Scope | **HIGH** | Platform runtime API surface under /platform/p12/ |
+| Test coverage | **HIGH** | 58 P12 tests + 137 regression tests |
 | Runtime impact | **LOW** | Reuses P10 guard and services, no existing code paths changed |
 | Session storage | **LOW** | In-memory only -- process-local, acceptable for request-scoped design |
 | Audit persistence | **LOW** | Only allowed write via existing platform_audit_service |
 | Redaction | **LOW** | Reuses P10 redact_metadata, applied at gathering layer |
-| Test coverage | **HIGH** | 37 P12 tests + 80 regression tests |
+| Reason sanitization | **LOW** | Regex-based, strips credential patterns only |
+| Access-denied audit | **LOW** | Best-effort write, failure does not prevent denial |
+| Expiry audit | **LOW** | Lazy on next access, best-effort write |
 
-**Overall risk: LOW**
+**Overall risk: HIGH (platform runtime API surface) -- mitigated by 58 tests covering all paths.**
+
+## Limitations Stated Honestly
+
+1. **Session expiry is lazy** -- no background timer. Expired sessions are only detected on next access attempt. Sessions that expire and are never accessed again are never audited as expired. This is acceptable for in-memory, request-scoped design.
+2. **support_access_denied is best-effort** -- if the audit write fails, access is still denied. The denial is not dependent on audit success.
+3. **Reason sanitization is pattern-based** -- it catches common credential key=value patterns but cannot guarantee coverage of all possible credential formats.
 
 ## Note: platform-dev Not Merged or Pushed
 
-`platform-dev` was **not merged** and **not pushed** as part of P12-B. Only the isolated branch was pushed.
+`platform-dev` was **not merged** and **not pushed** as part of P12-B or R1. Only the isolated branch was pushed.
 
 ## Blockers
 

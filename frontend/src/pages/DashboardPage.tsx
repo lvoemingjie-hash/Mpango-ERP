@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { dashboardService } from '@/services/dashboardService';
 import { orderService } from '@/services/orderService';
@@ -29,43 +29,56 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        // Parallel fetch: BI endpoints + legacy lists
-        const [kpiRes, trendRes, ordersRes, stocksRes] = await Promise.allSettled([
-          dashboardService.getKpiSummary(),
-          dashboardService.getSalesTrend(),
-          orderService.getAll(1, 50),
-          inventoryService.getStocks(1, 50),
-        ]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [kpiRes, trendRes, ordersRes, stocksRes] = await Promise.allSettled([
+        dashboardService.getKpiSummary(),
+        dashboardService.getSalesTrend(),
+        orderService.getAll(1, 50),
+        inventoryService.getStocks(1, 50),
+      ]);
 
-        // BI endpoints — graceful fallback if not available
-        if (kpiRes.status === 'fulfilled') {
-          setKpiCards(kpiRes.value.data.data.cards);
-          setCurrency(kpiRes.value.data.data.currency);
-        }
-        if (trendRes.status === 'fulfilled') {
-          setSalesTrend(trendRes.value.data.data.data);
-        }
+      let failedCount = 0;
 
-        // Legacy lists — always needed for orders table
-        if (ordersRes.status === 'fulfilled') {
-          setOrders(ordersRes.value.data.data.items);
-        }
-        if (stocksRes.status === 'fulfilled') {
-          setStocks(stocksRes.value.data.data.items);
-        }
-      } catch {
-        setError('Could not load dashboard data. Check your connection and try again. If the problem persists, contact support.');
-      } finally {
-        setLoading(false);
+      if (kpiRes.status === 'fulfilled') {
+        setKpiCards(kpiRes.value.data.data.cards);
+        setCurrency(kpiRes.value.data.data.currency);
+      } else {
+        failedCount++;
       }
+      if (trendRes.status === 'fulfilled') {
+        setSalesTrend(trendRes.value.data.data.data);
+      } else {
+        failedCount++;
+      }
+      if (ordersRes.status === 'fulfilled') {
+        setOrders(ordersRes.value.data.data.items);
+      } else {
+        failedCount++;
+      }
+      if (stocksRes.status === 'fulfilled') {
+        setStocks(stocksRes.value.data.data.items);
+      } else {
+        failedCount++;
+      }
+
+      if (failedCount === 4) {
+        setError('Could not load any dashboard data. Check your connection and try again. If the problem persists, contact support.');
+      } else if (failedCount > 0) {
+        setError('Some dashboard data failed to load. Some sections may show incomplete data. Try refreshing to reload everything.');
+      }
+    } catch {
+      setError('Could not load dashboard data. Check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Count orders by status (for breakdown section)
   const statusCounts = orders.reduce<Record<string, number>>((acc, o) => {
@@ -96,8 +109,14 @@ export function DashboardPage() {
       />
 
       {error && (
-        <div className="mt-6 flex items-center gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mt-6 flex items-center justify-between gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
+          <button
+            onClick={load}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+          >
+            Retry
+          </button>
         </div>
       )}
 

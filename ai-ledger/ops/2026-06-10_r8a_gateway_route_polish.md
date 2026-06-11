@@ -98,8 +98,84 @@ location /redoc {
 
 ---
 
+---
+
+## R-8A Apply on Tencent VPS (2026-06-11 02:30 UTC)
+
+### Pre-Apply Safety Gate
+
+| Check | Result |
+|-------|--------|
+| HEAD before apply | `b8a31f8` ✅ |
+| `git status --short` | Empty ✅ |
+| Containers pre-apply | 5/5 healthy ✅ |
+| `/health` pre-apply | `{"status":"healthy"}` ✅ |
+
+### Fetch and Checkout
+
+| Action | Result |
+|--------|--------|
+| `git fetch origin product-dev-recovered` | `b8a31f8..11e4287` ✅ |
+| `git checkout --detach 11e4287` | HEAD now at `11e4287 merge: gateway route polish for docs and OpenAPI` ✅ |
+| `git status --short` | Empty ✅ |
+| `nginx/gateway.conf` has `/openapi.json` route | 2 occurrences (header + location) ✅ |
+| `nginx/gateway.conf` has `/docs` route | 1 occurrence ✅ |
+| `nginx/gateway.conf` has `/redoc` route | 1 occurrence ✅ |
+
+### Nginx Config Validation
+
+| Check | Result |
+|-------|--------|
+| `docker compose exec gateway nginx -t` | `syntax is ok` / `test is successful` ✅ |
+
+### Gateway Reload/Recreate
+
+| Attempt | Result |
+|---------|--------|
+| `docker compose exec gateway nginx -s reload` | Signal sent, but config did NOT take effect (old routes still served) |
+| `docker compose up -d --no-deps --force-recreate gateway` | Gateway container recreated, new config loaded ✅ |
+
+**Only gateway was recreated.** Backend, frontend, postgres, and redis were untouched (all still showing `17 hours ago` uptime).
+
+### External Verification
+
+| Endpoint | Expected | Actual | Result |
+|----------|----------|--------|--------|
+| `http://127.0.0.1/openapi.json` | JSON spec | `{"openapi":"3.1.0","info":{"title":"Mpango ERP API"`... Content-Type: `application/json` | ✅ PASS |
+| `http://1.14.247.12/openapi.json` | JSON spec | `{"openapi":"3.1.0","info":{"title":"Mpango ERP API"`... Content-Type: `application/json` | ✅ PASS |
+| `http://127.0.0.1/docs` | Swagger UI | `<!DOCTYPE html><html><head><link...swagger-ui.css>` | ✅ PASS |
+| `http://1.14.247.12/docs` | Swagger UI | `<!DOCTYPE html><html><head><link...swagger-ui.css>` | ✅ PASS |
+| `http://127.0.0.1/health` | Health JSON | `{"status":"healthy"}` | ✅ PASS |
+| `http://1.14.247.12/health` | Health JSON | `{"status":"healthy"}` | ✅ PASS |
+| `http://127.0.0.1/` | Frontend SPA | Frontend SPA HTML | ✅ PASS |
+| `http://1.14.247.12/` | Frontend SPA | Frontend SPA HTML | ✅ PASS |
+| Container health after apply | 5/5 healthy | 5/5 healthy (gateway recreated, others untouched) | ✅ PASS |
+
+### Compliance Confirmation
+
+| Requirement | Status |
+|-------------|--------|
+| No DB migration | ✅ |
+| No volume deletion | ✅ |
+| No prune/cleanup | ✅ |
+| No secrets printed | ✅ |
+| No India VPS | ✅ |
+| No product code modified | ✅ |
+| No backend/frontend/postgres/redis rebuilt | ✅ |
+| Only gateway container recreated | ✅ |
+
+---
+
 ## Final Verdict
 
-**READY_FOR_CTO_GATEWAY_ROUTE_REVIEW**
+**GATEWAY_ROUTE_POLISHED**
 
-The fix is a targeted 16-line addition to `nginx/gateway.conf`. No backend, frontend, database, env, or infrastructure changes. The branch is isolated from `product-dev-recovered` and ready for review.
+All gateway route polish objectives achieved:
+1. `/openapi.json` now returns OpenAPI JSON spec (Content-Type: application/json) — both local and public
+2. `/docs` now returns Swagger UI HTML — both local and public
+3. `/health` unchanged — still returns backend health JSON
+4. `/` unchanged — still returns frontend SPA HTML
+5. Only gateway container was recreated; no other services touched
+6. Product HEAD updated to `11e4287` on VPS
+
+**Ready for CTO external re-review.** Do not proceed to DNS/HTTPS without CTO approval.

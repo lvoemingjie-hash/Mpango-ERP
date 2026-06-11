@@ -90,14 +90,14 @@ async def create_schema(db: AsyncSession, tenant_schema: str):
 async def run_migrations(tenant_schema: str):
     """
     Run Alembic migrations against the tenant schema.
-    
+
     This stamps the schema with the current head revision and creates
     all tables in the tenant schema.
     """
     import subprocess
-    
+
     backend_dir = Path(__file__).parent.parent
-    
+
     # Run alembic upgrade head on the tenant schema
     # The Alembic env.py should support schema-aware migrations
     result = subprocess.run(
@@ -112,7 +112,7 @@ async def run_migrations(tenant_schema: str):
             "TENANT_SCHEMA": tenant_schema,
         }
     )
-    
+
     if result.returncode == 0:
         print(f"  ✓ Alembic migrations applied to {tenant_schema}")
     else:
@@ -140,10 +140,10 @@ async def _fallback_create_tables(tenant_schema: str):
     async with engine.begin() as conn:
         # Set search path so tables are created in tenant schema
         await conn.execute(text(f'SET search_path TO "{tenant_schema}", public'))
-        
+
         from models.base import BaseModel
         await conn.run_sync(BaseModel.metadata.create_all)
-    
+
     print(f"  ✓ Tables created via metadata.create_all in {tenant_schema}")
 
 
@@ -164,33 +164,60 @@ async def setup_admin(
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
     # --- Create permissions ---
+    # U1: Complete permission list covering all API-enforced RequirePermission checks.
+    # Every permission here is required by at least one API endpoint.
+    # Admin role receives ALL permissions during onboarding.
     permissions_data = [
+        # ── User management ──
         ("users:read", "Read users"),
         ("users:create", "Create users"),
         ("users:update", "Update users"),
         ("users:deactivate", "Deactivate users"),
+        # ── Wholesaler ──
         ("wholesalers:read", "Read wholesalers"),
         ("wholesalers:write", "Create/update/delete wholesalers"),
+        # ── Role management ──
         ("roles:read", "Read roles"),
         ("roles:create", "Create roles"),
         ("roles:update", "Update roles"),
         ("roles:delete", "Delete roles"),
         ("roles:assign", "Assign roles to users"),
+        # ── Order management ──
         ("orders:read", "Read orders"),
         ("orders:create", "Create orders"),
-        ("orders:update", "Update/confirm/cancel/return orders"),
+        ("orders:update", "Update orders"),
         ("orders:confirm", "Confirm orders"),
         ("orders:ship", "Ship orders"),
         ("orders:cancel", "Cancel orders"),
+        # ── SKU / Product management ──
+        ("skus:read", "Read SKUs"),
+        ("skus:create", "Create SKUs"),
+        ("skus:update", "Update SKUs"),
+        # ── Inventory management ──
         ("inventory:read", "Read inventory"),
-        ("inventory:write", "Update inventory"),
-        ("dashboards:read", "View dashboard KPIs and charts"),
-        # Finance permissions (GAP 2)
+        ("inventory:write", "Write inventory (legacy alias)"),
+        ("inventory:update", "Update inventory (adjustments)"),
+        # ── Payment management ──
+        ("payments:read", "Read payments"),
+        ("payments:create", "Create payments"),
+        # ── Retailer management ──
+        ("retailers:read", "Read retailers"),
+        # ── Invitations ──
+        ("invitations:create", "Create invitations"),
+        # ── Pricing ──
+        ("pricing:read", "Read pricing"),
+        ("pricing:write", "Write pricing"),
+        # ── Finance ──
         ("finance:read", "View invoices, receivables, financial summary"),
-        # Security-hardened permissions (Phase P-A Security)
+        # ── Dashboards & Reports ──
+        ("dashboards:read", "View dashboard KPIs and charts"),
+        ("reports:read", "Read reports"),
+        ("reports:analyze", "Analyze reports"),
+        # ── Exports ──
+        ("exports:create", "Request data exports"),
+        # ── System ──
         ("system:admin", "Full system administration (job queues, debug endpoints)"),
         ("metrics:admin", "Reset application metrics"),
-        ("exports:create", "Request data exports"),
     ]
 
     perm_ids = []
@@ -207,7 +234,7 @@ async def setup_admin(
             perm_ids.append(perm.id)
         else:
             perm_ids.append(row[0])
-    
+
     print(f"  ✓ {len(perm_ids)} permissions ensured")
 
     # --- Create admin role ---
@@ -223,7 +250,7 @@ async def setup_admin(
         db.add(admin_role)
         await db.flush()
         role_id = admin_role.id
-    
+
     print(f"  ✓ Admin role ensured")
 
     # --- Assign all permissions to admin role ---
@@ -398,7 +425,7 @@ async def validate_tenant(db: AsyncSession, tenant_schema: str) -> bool:
     ]
 
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
-    
+
     all_ok = True
     for table_name, query in checks:
         try:

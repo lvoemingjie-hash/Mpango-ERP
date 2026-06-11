@@ -287,13 +287,58 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     admin_password = "testpassword"
     admin_full_name = "Test Admin"
 
+    # U1: Complete permission list matching onboard_tenant.py
     permission_codes = [
-        ("payments:create", "Create payments"),
-        ("payments:read", "Read payments"),
-        ("orders:read", "Read orders"),
-        ("orders:write", "Write orders"),
+        # ── User management ──
         ("users:read", "Read users"),
         ("users:create", "Create users"),
+        ("users:update", "Update users"),
+        ("users:deactivate", "Deactivate users"),
+        # ── Wholesaler ──
+        ("wholesalers:read", "Read wholesalers"),
+        ("wholesalers:write", "Create/update/delete wholesalers"),
+        # ── Role management ──
+        ("roles:read", "Read roles"),
+        ("roles:create", "Create roles"),
+        ("roles:update", "Update roles"),
+        ("roles:delete", "Delete roles"),
+        ("roles:assign", "Assign roles to users"),
+        # ── Order management ──
+        ("orders:read", "Read orders"),
+        ("orders:create", "Create orders"),
+        ("orders:update", "Update orders"),
+        ("orders:confirm", "Confirm orders"),
+        ("orders:ship", "Ship orders"),
+        ("orders:cancel", "Cancel orders"),
+        # ── SKU / Product management ──
+        ("skus:read", "Read SKUs"),
+        ("skus:create", "Create SKUs"),
+        ("skus:update", "Update SKUs"),
+        # ── Inventory management ──
+        ("inventory:read", "Read inventory"),
+        ("inventory:write", "Write inventory (legacy alias)"),
+        ("inventory:update", "Update inventory (adjustments)"),
+        # ── Payment management ──
+        ("payments:read", "Read payments"),
+        ("payments:create", "Create payments"),
+        # ── Retailer management ──
+        ("retailers:read", "Read retailers"),
+        # ── Invitations ──
+        ("invitations:create", "Create invitations"),
+        # ── Pricing ──
+        ("pricing:read", "Read pricing"),
+        ("pricing:write", "Write pricing"),
+        # ── Finance ──
+        ("finance:read", "View invoices, receivables, financial summary"),
+        # ── Dashboards & Reports ──
+        ("dashboards:read", "View dashboard KPIs and charts"),
+        ("reports:read", "Read reports"),
+        ("reports:analyze", "Analyze reports"),
+        # ── Exports ──
+        ("exports:create", "Request data exports"),
+        # ── System ──
+        ("system:admin", "Full system administration (job queues, debug endpoints)"),
+        ("metrics:admin", "Reset application metrics"),
     ]
 
     async with AsyncSessionLocal() as db:

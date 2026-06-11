@@ -46,7 +46,7 @@ export function RetailerPricingPage() {
         const res = await retailerService.getAll(1, 100);
         setRetailers(res.data.data.items);
       } catch {
-        setError('Failed to load customers.');
+        setError('Could not load customers. Check your connection and try again.');
       } finally {
         setLoading(false);
       }
@@ -67,7 +67,7 @@ export function RetailerPricingPage() {
       setPrices(res.data.data.items);
       setTotal(res.data.data.total);
     } catch {
-      setError('Failed to load prices for this customer.');
+      setError('Could not load prices for this customer. Try selecting the customer again or refresh the page.');
     } finally {
       setPricesLoading(false);
     }
@@ -175,8 +175,14 @@ export function RetailerPricingPage() {
 
         {/* Error State */}
         {error && (
-          <div className="rounded-md bg-red-50 p-4">
+          <div className="flex items-center justify-between rounded-md bg-red-50 p-4">
             <div className="text-sm text-red-700">{error}</div>
+            <button
+              onClick={() => { setError(null); loadPrices(); }}
+              className="rounded-md bg-red-100 px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -184,8 +190,8 @@ export function RetailerPricingPage() {
         {!retailerId ? (
           <EmptyState
             icon={CurrencyDollarIcon}
-            title="No customer selected"
-            description="Please select a customer from the dropdown above to manage their pricing."
+            title="Select a customer to manage pricing"
+            description="Choose a customer from the dropdown above to view and set their custom product prices."
           />
         ) : pricesLoading ? (
           <TableSkeleton />
@@ -193,7 +199,7 @@ export function RetailerPricingPage() {
           <EmptyState
             icon={CurrencyDollarIcon}
             title="No prices configured"
-            description="This customer does not have any custom prices set. They cannot order items without prices."
+            description="This customer has no custom prices yet. Set prices for your products so this customer can place orders."
             action={
               <button
                 onClick={handleOpenAddModal}

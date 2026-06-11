@@ -10,6 +10,8 @@ import type { KpiCard as KpiCardType, ChartDataPoint } from '@/services/dashboar
 
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DashboardSkeleton } from '@/components/skeletons/DashboardSkeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { HomeIcon } from '@heroicons/react/24/outline';
 
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -57,7 +59,7 @@ export function DashboardPage() {
           setStocks(stocksRes.value.data.data.items);
         }
       } catch {
-        setError('Failed to load dashboard data. Is the backend running?');
+        setError('Could not load dashboard data. Check your connection and try again. If the problem persists, contact support.');
       } finally {
         setLoading(false);
       }
@@ -93,10 +95,23 @@ export function DashboardPage() {
         description={`Welcome back${user?.full_name ? `, ${user.full_name}` : ''}.${tenantCode ? ` (${tenantCode})` : ''}`}
       />
 
-      {error && <p className="mt-6 text-sm text-red-600">{error}</p>}
+      {error && (
+        <div className="mt-6 flex items-center gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+        </div>
+      )}
 
       {!error && (
         <div className="space-y-6">
+          {/* First-use state: show guidance when there is no data at all */}
+          {orders.length === 0 && kpiCards.length === 0 && salesTrend.length === 0 && (
+            <EmptyState
+              icon={HomeIcon}
+              title="Welcome to your dashboard"
+              description="Your business overview will appear here as you get started. Add products, create orders, and onboard customers to see your metrics come to life."
+            />
+          )}
+
           {/* KPI Cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {kpiCards.map((card, i) => (
@@ -150,7 +165,7 @@ export function DashboardPage() {
                   </div>
                 ))}
                 {orders.length === 0 && (
-                  <p className="text-sm text-gray-400">No orders yet.</p>
+                  <p className="text-sm text-gray-400">No orders yet. Create your first order to see status breakdown here.</p>
                 )}
               </div>
             </div>
@@ -192,7 +207,7 @@ export function DashboardPage() {
                   {orders.length === 0 && (
                     <tr>
                       <td colSpan={4} className="px-6 py-8 text-center text-gray-400">
-                        No recent orders found.
+                        No orders yet. Go to Sales to create your first order.
                       </td>
                     </tr>
                   )}

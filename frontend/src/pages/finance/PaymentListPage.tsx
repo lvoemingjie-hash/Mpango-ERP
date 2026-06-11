@@ -56,7 +56,7 @@ export function PaymentListPage() {
       setTotal(pagination.total);
       setLoading(false);
     } catch {
-      setError('Failed to load payments. Please try again.');
+      setError('Could not load payment records. Check your connection and try again. If the problem persists, contact support.');
       setLoading(false);
     }
   }, [page, size, setSearchParams]);
@@ -93,16 +93,22 @@ export function PaymentListPage() {
       {loading && <TableSkeleton />}
 
       {error && (
-        <div className="mt-6 rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error}</div>
+        <div className="mt-6 flex items-center gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            onClick={load}
+            className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+          >
+            Retry
+          </button>
         </div>
       )}
 
       {!loading && !error && payments.length === 0 && (
         <EmptyState
           icon={BanknotesIcon}
-          title="No payments found"
-          description="Payment records will appear here once orders are paid."
+          title="No payments yet"
+          description="Payment records will appear here once you start collecting payments against orders."
         />
       )}
 

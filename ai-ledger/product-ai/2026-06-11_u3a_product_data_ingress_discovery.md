@@ -1,11 +1,13 @@
-# U3-A: Product Data Ingress Discovery & Design (R1 Revised)
+# U3-A: Product Data Ingress Discovery & Design (R2 Revised)
 
 **Branch:** `codebuddy/u3a-product-data-ingress-discovery-2026-06-11`
 **Date:** 2026-06-11
 **Sprint:** U3-A (Research & Design — No Production Code Changes)
-**Revision:** R1 (2026-06-11 23:11) — Permission model correction, U3-B sub-sliced into 4, `skus:import` defined
+**Revision:** R2 (2026-06-11 23:28) — Agent-operable 3-phase import contract, U3-B re-ordered to 5 backend-first slices
 **Author:** AI Engineer
 **Status:** Pending CTO Final Approval
+
+**CTO Direction Confirmed:** U3 first builds the agent-operable data ingress kernel (preview→validate→apply contract), then wraps it in the human-friendly import wizard UI.
 
 ---
 
@@ -241,9 +243,228 @@ ALTER TABLE skus ADD COLUMN custom_attributes JSONB DEFAULT '{}';
 
 ---
 
-## 4. Recommended MVP Slice (U3-B Scope)
+## 4. Agent-Operable / CLI-Friendly Import Contract (Architecture Constraint)
 
-### 4.1 MVP Scope: "Upload & Map"
+### 4.1 Why This Matters for AI-Native Mpango
+
+Mpango is not just a human-operated ERP. It is being built as an **AI-native platform** where agents, CLI tools, and automated workflows can perform business operations with the same safety guarantees as human users. The product import capability must serve **two equally important audiences**:
+
+| Audience | Entry Point | Needs |
+|----------|------------|-------|
+| **Human user** | Frontend Import Wizard (3-step UI) | Visual field mapping, drag-and-drop, progress bar |
+| **AI agent / CLI / script** | REST API → `mpango` CLI | Structured JSON responses, idempotent steps, auditable decisions |
+
+**Key principle:** The frontend Wizard is a consumer of the API contract, not the definition of it. The API contract must be designed for programmatic callers first, with the Wizard layered on top.
+
+**Why this matters for AI agents specifically:**
+1. AI should not guess database state — it must call tools that return structured results
+2. High-risk writes must pass through system validation before any data is committed
+3. An agent calling `apply` must be able to point to an audit record proving what happened
+4. The same contract can be driven by `mpango products import --preview/--validate/--apply` CLI commands
+5. Future AI assistants (CodeBuddy, Copilot, custom agents) can safely onboard tenant product catalogs without touching the UI
+
+### 4.2 The Three-Phase Import Contract
+
+Every product import — whether initiated by a human wizard, a CLI command, or an AI agent — MUST follow this contract:
+
+```
+Phase 1: PREVIEW   →  Phase 2: VALIDATE  →  Phase 3: APPLY
+(no writes)            (no writes)           (writes + audit)
+```
+
+#### Phase 1: `preview`
+
+**Purpose:** Parse the input, detect structure, return a stable `import_id` for subsequent phases. **No business table writes.**
+
+| Input | Output |
+|-------|--------|
+| `POST /api/v1/skus/import/preview` | `{import_id, columns, sample_rows, row_count, detected_encoding}` |
+| Body: CSV file (`multipart/form-data`) OR JSON rows + mapping | |
+
+```json
+// Response
+{
+  "import_id": "imp_a1b2c3d4",
+  "source": {"filename": "products.csv", "encoding": "utf-8", "row_count": 150},
+  "columns_detected": ["Product Code", "Product Name", "Category", "Unit", "Brand", "Weight"],
+  "sample_rows": [
+    {"Product Code": "F001", "Product Name": "Maize Flour 2kg", "Category": "Flour", "Unit": "bag", "Brand": "Jogoo", "Weight": "2kg"},
+    {"Product Code": "F002", "Product Name": "Wheat Flour 1kg", "Category": "Flour", "Unit": "pack", "Brand": "Pembe", "Weight": "1kg"}
+  ]
+}
+```
+
+**Design rules:**
+- The `import_id` is a system-generated UUID, opaque to the caller
+- The import run record is stored in a new table (see Section 4.3) with status `previewed`
+- Preview results are cached by `import_id` for subsequent phases
+- Re-uploading generates a NEW `import_id` — previews are immutable snapshots
+
+#### Phase 2: `validate`
+
+**Purpose:** Apply field mapping and run all validation rules. Return structured row-level errors and warnings. **No business table writes.**
+
+| Input | Output |
+|-------|--------|
+| `POST /api/v1/skus/import/{import_id}/validate` | `{import_id, valid_rows, error_rows, warning_rows, errors: [...], warnings: [...]}` |
+| Body: field mapping JSON | |
+
+```json
+// Request
+{
+  "mapping": {
+    "Product Code": "sku_code",
+    "Product Name": "name",
+    "Category": "category",
+    "Unit": "unit",
+    "Brand": "custom_attributes.brand",
+    "Weight": "custom_attributes.weight"
+  }
+}
+
+// Response
+{
+  "import_id": "imp_a1b2c3d4",
+  "status": "needs_review",
+  "valid_rows": 143,
+  "error_rows": 7,
+  "warning_rows": 12,
+  "errors": [
+    {"row": 5, "field": "sku_code", "message": "Missing required field"},
+    {"row": 12, "field": "sku_code", "message": "Duplicate: F001 already exists in preview row 1"},
+    {"row": 23, "field": "sku_code", "message": "F001 already exists in tenant database"},
+    {"row": 45, "field": "name", "message": "Product name exceeds 255 characters"}
+  ],
+  "warnings": [
+    {"row": 12, "field": "unit", "message": "Unknown unit: 'carton' (will be stored as-is)"},
+    {"row": 67, "field": "category", "message": "New category: 'Beverages' (will be created)"}
+  ]
+}
+```
+
+**Validation rules (minimum):**
+- Required fields present (`sku_code`, `name`)
+- Duplicate `sku_code` within the import batch
+- Duplicate `sku_code` against existing tenant products
+- String length limits (`sku_code` ≤ 64, `name` ≤ 255, `unit` ≤ 32, `category` ≤ 64)
+- Custom attribute keys are valid JSON keys (no dots, no spaces — or explicitly allowed)
+- No SQL injection or XSS via field values
+
+**Design rules:**
+- Validation is idempotent — calling it twice with the same `import_id` + mapping returns the same result
+- Mapping can be re-submitted to fix errors — each call re-validates
+- Import run status updates to `validated` (with error counts)
+- Caller decides whether to proceed with apply despite warnings
+
+#### Phase 3: `apply`
+
+**Purpose:** Execute the import. Write SKUs, custom attributes, and inventory stock rows. Create audit records. **Protected by `skus:import` permission.**
+
+| Input | Output |
+|-------|--------|
+| `POST /api/v1/skus/import/{import_id}/apply` | `{import_id, created, skipped, updated, errors, audit_run_id}` |
+| Body: `{on_conflict: "skip" | "update" | "error"}` | |
+
+```json
+// Response
+{
+  "import_id": "imp_a1b2c3d4",
+  "status": "completed",
+  "created": 140,
+  "skipped": 3,
+  "updated": 0,
+  "errors": [
+    {"row": 5, "sku_code": null, "error": "Missing sku_code — row was not imported"},
+    {"row": 23, "sku_code": "F001", "error": "Already exists in tenant, skipped per on_conflict=skip"}
+  ],
+  "audit_run_id": "aud_run_x9y0z1",
+  "applied_at": "2026-06-12T10:30:00Z",
+  "applied_by": "user-uuid-here"
+}
+```
+
+**Design rules:**
+- Apply is **only callable on an import that has been validated** (status `validated` or `needs_review`)
+- Apply is **not idempotent** — calling it twice on the same import with `on_conflict: skip` will skip all rows on the second call (already imported)
+- Apply writes within a **database transaction** — partial success possible (some rows succeed, some fail)
+- Every apply call creates an **audit record** (see Section 4.3)
+- **Must be protected by `RequirePermission("skus:import")`** (same as preview/validate)
+- The `applied_by` field captures the authenticated user UUID from the JWT
+
+### 4.3 Import Run & Audit Record Model
+
+To support the 3-phase contract and provide auditable import history, a new tenant-schema table is required:
+
+```sql
+CREATE TABLE import_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    import_id VARCHAR(64) NOT NULL UNIQUE,    -- matches the API import_id
+    tenant_id UUID NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'previewed',  -- previewed | validated | needs_review | applied | failed
+    source_filename VARCHAR(255),
+    source_encoding VARCHAR(32),
+    total_rows INTEGER NOT NULL DEFAULT 0,
+    valid_rows INTEGER,
+    error_rows INTEGER,
+    warning_rows INTEGER,
+    mapping JSONB,                              -- the field mapping used
+    validation_result JSONB,                    -- snapshot of validation output
+    apply_result JSONB,                         -- snapshot of apply output
+    created_rows INTEGER DEFAULT 0,
+    skipped_rows INTEGER DEFAULT 0,
+    updated_rows INTEGER DEFAULT 0,
+    applied_by UUID REFERENCES users(id),
+    applied_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Why this table exists:**
+- Agents (and humans) need a stable reference to an import session across phases
+- Audit requires knowing WHO imported WHAT, WHEN, and with WHAT RESULT
+- The `validation_result` and `apply_result` JSONB columns capture full snapshots for post-mortem analysis
+- This is **not** a replacement for `sys_audit_logs` — it is a business-level record of the import run. System-level audit (who called which endpoint) should also be written to `sys_audit_logs.metadata_` (using the existing JSONB audit precedent)
+
+### 4.4 CLI Vision (Future)
+
+The 3-phase contract enables a future `mpango` CLI:
+
+```bash
+# Step 1: Preview — what's in this file?
+mpango products import --tenant TEST001 --file products.csv --preview
+# → returns import_id, columns, sample_rows
+
+# Step 2: Validate — does it pass our rules?
+mpango products import --import-id imp_a1b2c3d4 --mapping mapping.json --validate
+# → returns valid_rows, errors, warnings
+
+# Iterate: fix errors, update mapping, re-validate
+mpango products import --import-id imp_a1b2c3d4 --mapping mapping_v2.json --validate
+
+# Step 3: Apply — go!
+mpango products import --import-id imp_a1b2c3d4 --apply --on-conflict skip
+# → returns created/skipped/errors + audit_run_id
+```
+
+This CLI does NOT need to be built in U3-B. It is a natural consumer of the API contract once the endpoints exist.
+
+### 4.5 Contract Enforcement in U3-B
+
+All three phases (`preview`, `validate`, `apply`) MUST:
+1. Be accessible as REST endpoints under `/api/v1/skus/import/`
+2. Be protected by `RequirePermission("skus:import")`
+3. Return structured JSON responses as specified above
+4. Carry the `import_id` through all phases
+5. Log each phase transition to the `import_runs` table
+
+The frontend Import Wizard (U3-B4) will call these same endpoints — it is a consumer, not a separate implementation path.
+
+---
+
+## 5. Recommended MVP Slice (U3-B Scope)
+
+### 5.1 MVP Scope: "Upload & Map"
 
 The MVP implements the minimum viable version of Option B:
 
@@ -252,40 +473,19 @@ The MVP implements the minimum viable version of Option B:
 | Component | Change | Files |
 |-----------|--------|-------|
 | **SKU Model** | Add `custom_attributes JSONB DEFAULT '{}'` | `backend/models/sku.py` |
-| **Alembic Migration** | New migration adding `custom_attributes` column | `backend/alembic/versions/0xx_sku_custom_attributes.py` |
-| **Pydantic Schemas** | Add `custom_attributes: Optional[Dict[str, Any]]` to Create/Update/Read | `backend/schemas/sku.py` |
-| **Batch Endpoint** | `POST /api/v1/skus/batch` — accepts array of SKU dicts + field mapping spec | `backend/api/v1/skus.py` |
-| **Batch Service** | `SKUService.create_skus_batch()` — validates, deduplicates, inserts within transaction | `backend/services/sku_service.py` |
-| **Import Endpoint** | `POST /api/v1/skus/import` — accepts CSV file upload, returns parsed columns + preview | `backend/api/v1/skus.py` |
-| **Import Service** | `ImportService.parse_csv()` — CSV parsing with encoding detection | New: `backend/services/import_service.py` |
-| **Permission: skus:import** | New permission code + seed in `create_wholesaler.py` & `seed_demo_data.py`; assign to `admin` role at bootstrap | `backend/scripts/create_wholesaler.py`, `backend/scripts/seed_demo_data.py` |
-| **Batch/Import RBAC** | Protect `POST /skus/batch` and `POST /skus/import` with `RequirePermission("skus:import")` | `backend/api/v1/skus.py` |
+| **Alembic Migration** | New migration: `custom_attributes` on `skus` + new `import_runs` table | `backend/alembic/versions/0xx_sku_custom_attributes.py` |
+| **Import Run Model** | ORM model for `import_runs` table (Section 4.3) | New: `backend/models/import_run.py` |
+| **Pydantic Schemas** | Add `custom_attributes: Optional[Dict[str, Any]]` to Create/Update/Read; new `ImportPreview`, `ImportValidate`, `ImportApply` request/response schemas | `backend/schemas/sku.py`, New: `backend/schemas/import_schemas.py` |
+| **Preview Endpoint** | `POST /api/v1/skus/import/preview` — CSV upload, returns `import_id` + columns + sample rows. **No writes.** | `backend/api/v1/skus.py` |
+| **Validate Endpoint** | `POST /api/v1/skus/import/{import_id}/validate` — accepts mapping, returns row-level errors/warnings. **No writes.** | `backend/api/v1/skus.py` |
+| **Apply Endpoint** | `POST /api/v1/skus/import/{import_id}/apply` — writes SKUs + custom_attributes + inventory + audit. **Writes + audit.** | `backend/api/v1/skus.py` |
+| **Import Service** | `ImportService` with three public methods: `preview()`, `validate()`, `apply()`. `ImportService.parse_csv()` handles encoding detection. | New: `backend/services/import_service.py` |
+| **Permission: skus:import** | New permission code + seed in `create_wholesaler.py` & `seed_demo_data.py`; assign to `admin` role. All three import endpoints protected by `RequirePermission("skus:import")`. | `backend/scripts/create_wholesaler.py`, `backend/scripts/seed_demo_data.py` |
+| **Audit Logging** | Every `apply` call writes to `sys_audit_logs.metadata_` (using existing JSONB precedent) | `backend/services/import_service.py` |
 
-**Batch endpoint behavior:**
-```python
-# Request
-POST /api/v1/skus/batch
-{
-  "skus": [
-    {"sku_code": "F001", "name": "Maize Flour 2kg", "category": "Flour",
-     "custom_attributes": {"brand": "Jogoo", "grade": "Grade 1"}},
-    ...
-  ],
-  "on_conflict": "skip"  # or "update" or "error"
-}
+**The three-phase contract replaces the monolithic `POST /skus/batch` design in the original U3-A report.** See Section 4 for the full contract specification. The Frontend Import Wizard (U3-B4) will call these same endpoints — it is a consumer of the contract, not a separate code path.
 
-# Response
-{
-  "created": 45,
-  "skipped": 3,
-  "updated": 0,
-  "errors": [
-    {"row": 12, "sku_code": "F001", "error": "duplicate sku_code"}
-  ]
-}
-```
-
-#### Frontend Changes
+#### Frontend Changes (consuming the 3-phase API)
 
 | Component | Change | Files |
 |-----------|--------|-------|
@@ -316,7 +516,7 @@ Step 3: Preview & Import
   → Results summary: "Created 45, Skipped 3, Errors 2"
 ```
 
-### 4.2 Explicitly Out of Scope for MVP
+### 5.2 Explicitly Out of Scope for MVP
 
 | Feature | Reason |
 |---------|--------|
@@ -327,76 +527,100 @@ Step 3: Preview & Import
 | Webhook/API-based product sync | Requires external API design — long-term roadmap |
 | Product variants (size, flavor) | Requires variant data model design — separate discovery |
 
-### 4.3 U3-B Sub-Slice Breakdown (4 Slices)
+### 5.3 U3-B Sub-Slice Breakdown (5 Slices — Backend-First, Contract-First)
 
-The original 5-day U3-B estimate is split into 4 independently shippable sub-slices. Each slice produces a working, testable increment and can be reviewed/merged independently.
+The U3-B implementation is split into 5 independently shippable sub-slices. **The ordering is deliberate: the agent-operable API contract comes first, the human-friendly wizard comes later.** Each slice produces a working, testable increment that can be reviewed and merged independently.
 
 ---
 
-#### Slice U3-B1: Permission Foundation (0.5 day)
+#### Slice U3-B1: Permission Foundation + Import Run Contract Model (0.5 day)
 
-**Goal:** Define `skus:import` permission so batch endpoints have RBAC enforcement from day one.
+**Goal:** Seed `skus:import` permission AND design the `import_runs` table contract. **No endpoints, no frontend.**
 
 | Task | File(s) | Notes |
 |------|---------|-------|
-| Add `skus:import` permission code | `backend/scripts/create_wholesaler.py` | Add `("skus:import", "Import SKUs in bulk via CSV upload")` to `permissions_data` list |
+| Add `skus:import` permission code | `backend/scripts/create_wholesaler.py` | Add `("skus:import", "Import SKUs via preview/validate/apply contract")` to `permissions_data` list |
 | Add `skus:import` permission code | `backend/scripts/seed_demo_data.py` | Add `("skus:import", "Import SKUs")` to `PERMISSION_CODES` list |
-| Assign to `admin` role | `backend/scripts/create_wholesaler.py` | Already auto-assigned: `assign_all_permissions_to_admin()` picks up all permissions |
-| Test: existing bootstrap creates the permission | `backend/scripts/create_wholesaler.py` | Run bootstrap, verify `skus:import` exists in `permissions` table |
+| Create `import_runs` table migration | `backend/alembic/versions/0xx_import_runs.py` | Schema as defined in Section 4.3 |
+| Create `ImportRun` ORM model | New: `backend/models/import_run.py` | Maps to `import_runs` table, with status enum |
+| Write design-level tests | `backend/tests/` | Test that bootstrap creates the permission; test that `import_runs` DDL applies cleanly |
 
 **Acceptance criteria:**
 - `skus:import` permission exists in tenant `permissions` table after bootstrap
 - `admin` role holds `skus:import`
-- No API changes — this is purely seed data
+- `import_runs` table exists with all columns from Section 4.3 contract
+- No API endpoints or frontend changes in this slice
 
 ---
 
-#### Slice U3-B2: Backend Batch + CSV Import (1.5 days)
+#### Slice U3-B2: Backend Preview + Validate Services (1.5 days)
 
-**Goal:** Working `POST /skus/batch` and `POST /skus/import` endpoints with RBAC enforcement.
+**Goal:** Working `preview` and `validate` endpoints. **No writes to business tables.** These are read-only safety gates.
 
 | Task | File(s) | Notes |
 |------|---------|-------|
-| Alembic migration: add `custom_attributes JSONB` | `backend/alembic/versions/0xx_sku_custom_attributes.py` | `ALTER TABLE skus ADD COLUMN custom_attributes JSONB DEFAULT '{}'` |
-| Update SKU ORM model | `backend/models/sku.py` | Add `custom_attributes: Mapped[dict] = mapped_column(JSONB, ...)` |
-| Update Pydantic schemas | `backend/schemas/sku.py` | Add `custom_attributes: Optional[Dict[str, Any]]` to `SKUCreateRequest`, `SKUUpdateRequest`, `SKURead` |
-| Implement `POST /api/v1/skus/batch` | `backend/api/v1/skus.py` | Array input, duplicate detection, `on_conflict` strategy, row-level errors, **protected by `RequirePermission("skus:import")`** |
-| Implement `POST /api/v1/skus/import` | `backend/api/v1/skus.py` | `multipart/form-data` CSV upload, **protected by `RequirePermission("skus:import")`** |
-| CSV parsing service | New: `backend/services/import_service.py` | `chardet` encoding detection, BOM stripping, column/row extraction |
-| Unit tests | `backend/tests/` | Batch duplicate handling, CSV edge cases (BOM, encoding, empty file) |
+| Alembic migration: add `custom_attributes JSONB` to `skus` | `backend/alembic/versions/0xx_sku_custom_attributes.py` | `ALTER TABLE skus ADD COLUMN custom_attributes JSONB DEFAULT '{}'` |
+| Update SKU ORM model | `backend/models/sku.py` | Add `custom_attributes` mapped column |
+| Update Pydantic schemas | `backend/schemas/sku.py` | Add `custom_attributes` to Create/Update/Read |
+| Create import Pydantic schemas | New: `backend/schemas/import_schemas.py` | `ImportPreviewResponse`, `ImportValidateRequest/Response` as defined in Section 4.2 |
+| Implement `POST /import/preview` | `backend/api/v1/skus.py` | CSV/JSON input, `chardet` encoding detection, returns `import_id` + columns + sample_rows. Creates `import_runs` row with status `previewed`. **Protected by `RequirePermission("skus:import")`.** |
+| Implement `POST /import/{id}/validate` | `backend/api/v1/skus.py` | Accepts mapping JSON, validates all rules (Section 4.2), returns row-level errors/warnings. Updates `import_runs` status. **Protected by `RequirePermission("skus:import")`.** |
+| ImportService: `preview()` + `validate()` | New: `backend/services/import_service.py` | CSV parsing + validation logic as pure service methods (testable without HTTP) |
+| Unit tests | `backend/tests/` | CSV encoding edge cases, mapping validation, missing required fields, duplicate detection |
 
 **Acceptance criteria:**
-- `POST /skus/import` accepts CSV and returns `{columns, rows_preview, row_count}`
-- `POST /skus/batch` creates SKUs with `on_conflict: skip | update | error`
-- Both endpoints return 403 when user lacks `skus:import`
-- Existing `POST /skus` (single create) unchanged, still requires `skus:create`
-- Row-level errors returned for invalid entries without failing the batch
+- `POST /import/preview` accepts CSV, returns `import_id`, creates `import_runs` row
+- `POST /import/{id}/validate` returns structured errors/warnings per Section 4.2
+- Both endpoints return 403 without `skus:import`
+- **No SKU rows are written to the database by either endpoint**
+- Existing `POST /skus` (single create) unchanged
 
 ---
 
-#### Slice U3-B3: Frontend Import Wizard (2 days)
+#### Slice U3-B3: Backend Apply + Audit (1 day)
 
-**Goal:** Complete 3-step import wizard in the frontend.
+**Goal:** Working `apply` endpoint that does the actual write + audit trail.
 
 | Task | File(s) | Notes |
 |------|---------|-------|
-| Import service (API wrapper) | New: `frontend/src/services/importService.ts` | `uploadCSV()`, `batchImport()`, typed responses |
-| Step 1: Upload | New: `frontend/src/pages/skus/ImportWizard/Step1Upload.tsx` | Drag-and-drop / click upload, calls `/skus/import`, shows raw preview table |
-| Step 2: Field Mapping | New: `frontend/src/pages/skus/ImportWizard/Step2FieldMapping.tsx` | Dropdown selectors: CSV column → Mpango field. Auto-detect by header name. Unmapped → custom attribute. |
-| Step 3: Preview & Confirm | New: `frontend/src/pages/skus/ImportWizard/Step3Preview.tsx` | Show mapped data preview, highlight validation errors, confirm button calls `/skus/batch`, results summary |
+| Implement `POST /import/{id}/apply` | `backend/api/v1/skus.py` | Accepts `{on_conflict}`, writes SKUs + custom_attributes + inventory_stocks (via `ensure_stock_row()`). Protected by `RequirePermission("skus:import")`. |
+| ImportService: `apply()` | `backend/services/import_service.py` | Transaction-managed batch insert with row-level error handling |
+| Audit logging on apply | `backend/services/import_service.py` | Writes apply result to `sys_audit_logs.metadata_` (JSONB precedent); updates `import_runs` with final status |
+| Unit tests | `backend/tests/` | `on_conflict: skip | error`, partial failure, 403 on missing permission, audit record verification, idempotency (double-apply with skip) |
+
+**Acceptance criteria:**
+- `POST /import/{id}/apply` creates SKUs with inventory rows
+- Apply only works on validated imports (not on raw `previewed` status)
+- Returns created/skipped/errors summary per Section 4.2
+- 403 without `skus:import`
+- Audit record written to `sys_audit_logs.metadata_` and `import_runs`
+- Existing single-SKU creation flow unchanged, still requires `skus:create`
+
+---
+
+#### Slice U3-B4: Frontend Import Wizard (calling the 3-phase API) (2 days)
+
+**Goal:** Human-friendly import wizard that consumes the same preview/validate/apply endpoints used by agents.
+
+| Task | File(s) | Notes |
+|------|---------|-------|
+| Import service (API wrapper) | New: `frontend/src/services/importService.ts` | `previewCSV()`, `validateMapping()`, `applyImport()` — typed wrappers around the 3-phase API |
+| Wizard shell + step navigation | New: `frontend/src/pages/skus/ImportWizard/ImportWizard.tsx` | 3-step wizard state machine (preview → validate → apply) |
+| Step 1: Upload & Preview | New: `frontend/src/pages/skus/ImportWizard/Step1Preview.tsx` | Drag-and-drop / click upload, calls `POST /import/preview`, shows raw columns + sample rows |
+| Step 2: Map & Validate | New: `frontend/src/pages/skus/ImportWizard/Step2Validate.tsx` | Dropdown selectors mapping CSV columns → Mpango fields + custom attributes. Calls `POST /import/{id}/validate`. Shows error/warning table. Re-validate on mapping change. |
+| Step 3: Apply & Results | New: `frontend/src/pages/skus/ImportWizard/Step3Apply.tsx` | Confirmation screen with error/warning summary. Calls `POST /import/{id}/apply`. Shows created/skipped/errors result. |
 | Wire from SKU List | `frontend/src/pages/skus/SKUListPage.tsx` | Replace disabled "Import Products" placeholder with working button → opens ImportWizard |
 
 **Acceptance criteria:**
-- User can upload a CSV file and see raw preview
-- Field mapping correctly dispatches CSV columns to Mpango fields
-- Unmapped columns become custom attributes
-- Preview shows validation errors before import
+- Human user experiences the same 3-phase flow as an agent calling the API
+- Field mapping wizard correctly dispatches CSV columns to Mpango fields
+- Validation errors shown before apply is allowed
+- Step 2 re-validates when mapping changes
 - Results summary shows created/skipped/errored counts
-- Import button in SKU list opens the wizard
 
 ---
 
-#### Slice U3-B4: Custom Attributes in SKU UI (1 day)
+#### Slice U3-B5: Custom Attributes in SKU UI (1 day)
 
 **Goal:** Display and edit `custom_attributes` in the existing SKU form and list.
 
@@ -413,22 +637,23 @@ The original 5-day U3-B estimate is split into 4 independently shippable sub-sli
 
 ---
 
-### 4.4 Total Effort Summary
+### 5.4 Total Effort Summary
 
 | Slice | Duration | Deliverable |
 |-------|----------|-------------|
-| U3-B1: Permission Foundation | 0.5 day | `skus:import` in RBAC tables |
-| U3-B2: Backend Batch + CSV | 1.5 days | Working import/batch endpoints with RBAC |
-| U3-B3: Frontend Import Wizard | 2 days | Complete 3-step import wizard |
-| U3-B4: Custom Attributes UI | 1 day | Custom attributes in SKU form + list |
-| **Total** | **5 days** | |
+| U3-B1: Permission + Import Run Contract | 0.5 day | `skus:import` seeded, `import_runs` DDL + model |
+| U3-B2: Preview + Validate (read-only gates) | 1.5 days | `POST /import/preview`, `POST /import/{id}/validate` |
+| U3-B3: Apply + Audit (writes) | 1 day | `POST /import/{id}/apply` with audit trail |
+| U3-B4: Frontend Wizard (API consumer) | 2 days | 3-step wizard calling the 3-phase API |
+| U3-B5: Custom Attributes UI | 1 day | Custom attributes in SKU form + list |
+| **Total** | **6 days** | |
 
 ---
 
-## 5. Future Roadmap
+## 6. Future Roadmap
 
-### Phase 1 (U3-B1 through U3-B4): CSV Import with Field Mapping — 5 days
-Split into 4 sub-slices as detailed in Section 4.3: Permission Foundation → Backend Batch/CSV → Frontend Import Wizard → Custom Attributes UI.
+### Phase 1 (U3-B1 through U3-B5): Agent-Operable Import + Human Wizard — 6 days
+Split into 5 backend-first sub-slices as detailed in Section 5.3: Permission + Contract Model → Preview/Validate → Apply/Audit → Frontend Wizard → Custom Attributes UI.
 
 ### Phase 2 (U3-C): Product Images — 3 days
 - Add `image_url` column to `skus` (VARCHAR, nullable)
@@ -462,9 +687,9 @@ Split into 4 sub-slices as detailed in Section 4.3: Permission Foundation → Ba
 
 ---
 
-## 6. Risks and Open Questions
+## 7. Risks and Open Questions
 
-### 6.1 Risks
+### 7.1 Risks
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
@@ -476,7 +701,7 @@ Split into 4 sub-slices as detailed in Section 4.3: Permission Foundation → Ba
 | **Duplicate sku_code handling** in batch | Medium | Support `on_conflict: skip | update | error` strategies — let tenant choose |
 | **Data quality** from messy spreadsheets | High | Provide clear validation feedback with row numbers; require manual fix before import |
 
-### 6.2 Open Questions for CTO
+### 7.2 Open Questions for CTO
 
 1. **Custom attributes scope**: Should custom attributes be searchable/filterable in the product list, or display-only initially? (Recommendation: display-only for MVP, searchable in Phase 5)
 
@@ -494,7 +719,7 @@ Split into 4 sub-slices as detailed in Section 4.3: Permission Foundation → Ba
 
 ---
 
-## 7. Exact Files Read
+## 8. Exact Files Read
 
 ### Backend — Models
 | File | Purpose |
@@ -555,65 +780,72 @@ Split into 4 sub-slices as detailed in Section 4.3: Permission Foundation → Ba
 
 ---
 
-## 8. Proposed U3-B Implementation Plan (4 Sub-Slices)
+## 9. Proposed U3-B Implementation Plan (5 Sub-Slices — Backend-First)
 
-### 8.1 Branch Strategy
+### 9.1 Branch Strategy
 
 ```
 Branch: codebuddy/u3b-product-csv-import-2026-06-12
 Base:   origin/product-dev-recovered
 ```
 
-### 8.2 Slice U3-B1: Permission Foundation (0.5 day)
+### 9.2 Slice U3-B1: Permission + Import Run Contract (0.5 day)
 
-**Commit:** `u3b1_permission_skus_import`
+**Commit:** `u3b1_permission_and_contract`
 
-1. Add `("skus:import", "Import SKUs in bulk via CSV upload")` to `create_wholesaler.py` → `permissions_data` list
+1. Add `("skus:import", "Import SKUs via preview/validate/apply contract")` to `create_wholesaler.py` → `permissions_data` list
 2. Add `("skus:import", "Import SKUs")` to `seed_demo_data.py` → `PERMISSION_CODES` list
-3. Verify: run bootstrap → `skus:import` exists in `permissions` table, `admin` role holds it
-4. No API route changes in this slice
+3. Create Alembic migration for `import_runs` table (DDL from Section 4.3)
+4. Create `ImportRun` ORM model (`backend/models/import_run.py`)
+5. Design-level tests: verify permission seeded, DDL applies cleanly
+6. **No API endpoints, no frontend**
 
-### 8.3 Slice U3-B2: Backend Batch + CSV Import (1.5 days)
+### 9.3 Slice U3-B2: Backend Preview + Validate (1.5 days)
 
-**Commit:** `u3b2_backend_batch_csv_import`
+**Commit:** `u3b2_preview_validate`
 
 1. Create Alembic migration adding `custom_attributes JSONB DEFAULT '{}'` to `skus`
 2. Update `SKU` model (`backend/models/sku.py`) — add `custom_attributes` column
-3. Update Pydantic schemas (`backend/schemas/sku.py`) — add `custom_attributes` to Create/Update/Read
-4. Implement `POST /api/v1/skus/batch` endpoint:
-   - Array input validation
-   - Duplicate `sku_code` detection within batch + against existing
-   - `on_conflict` strategy (skip / update / error)
-   - Row-level error reporting
-   - **Protected by `RequirePermission("skus:import")`**
-5. Implement `POST /api/v1/skus/import` endpoint:
-   - Accept `multipart/form-data` CSV file upload
-   - Parse CSV with `chardet` encoding detection
-   - Return `{columns, rows_preview, row_count}`
-   - **Protected by `RequirePermission("skus:import")`**
-6. Create `ImportService.parse_csv()` (`backend/services/import_service.py`)
-7. Unit tests: batch duplicates, partial failure, CSV encoding edge cases, 403 on missing permission
+3. Update Pydantic schemas (`backend/schemas/sku.py`)
+4. Create import schemas (`backend/schemas/import_schemas.py`)
+5. Implement `POST /api/v1/skus/import/preview` — CSV upload → `import_id` + columns + sample_rows. Creates `import_runs` row. RBAC: `RequirePermission("skus:import")`.
+6. Implement `POST /api/v1/skus/import/{import_id}/validate` — accepts mapping → row-level errors/warnings. Updates `import_runs` status. RBAC: `RequirePermission("skus:import")`.
+7. `ImportService.preview()` + `ImportService.validate()` service methods
+8. Unit tests: CSV edge cases, mapping validation, 403 enforcement
+9. **No writes to SKU table — these are read-only safety gates**
 
-### 8.4 Slice U3-B3: Frontend Import Wizard (2 days)
+### 9.4 Slice U3-B3: Backend Apply + Audit (1 day)
 
-**Commit:** `u3b3_frontend_import_wizard`
+**Commit:** `u3b3_apply_audit`
 
-1. Create `frontend/src/services/importService.ts` — `uploadCSV()`, `batchImport()`
-2. Create ImportWizard component structure under `frontend/src/pages/skus/ImportWizard/`:
-   - `Step1Upload.tsx` — file drop zone, calls `/skus/import`, shows raw preview
-   - `Step2FieldMapping.tsx` — dropdown selectors mapping CSV columns to Mpango fields, unmapped → custom attribute
-   - `Step3Preview.tsx` — mapped data preview, validation error highlights, confirm button → `/skus/batch`, results summary
-3. Wire up ImportWizard from SKUListPage "Import Products" button (replacing disabled placeholder)
+1. Implement `POST /api/v1/skus/import/{import_id}/apply` — writes SKUs + custom_attributes + inventory (via `ensure_stock_row()`). RBAC: `RequirePermission("skus:import")`.
+2. `ImportService.apply()` — transaction-managed batch insert with row-level errors
+3. Audit: write apply result to `sys_audit_logs.metadata_` + update `import_runs` final status
+4. Unit tests: `on_conflict` strategies, partial failure, 403 enforcement, double-apply idempotency
+5. **First slice that writes to business tables**
 
-### 8.5 Slice U3-B4: Custom Attributes in SKU UI (1 day)
+### 9.5 Slice U3-B4: Frontend Import Wizard (2 days)
 
-**Commit:** `u3b4_custom_attributes_ui`
+**Commit:** `u3b4_frontend_wizard`
+
+1. Create `frontend/src/services/importService.ts` — `previewCSV()`, `validateMapping()`, `applyImport()`
+2. Create ImportWizard under `frontend/src/pages/skus/ImportWizard/`:
+   - `ImportWizard.tsx` — 3-step state machine
+   - `Step1Preview.tsx` — file drop zone → calls `/import/preview`, shows raw columns + sample rows
+   - `Step2Validate.tsx` — dropdown mapping → calls `/import/{id}/validate`, shows error/warning table, re-validates on mapping change
+   - `Step3Apply.tsx` — confirmation → calls `/import/{id}/apply`, shows created/skipped/errors result
+3. Wire from SKUListPage "Import Products" button (replacing disabled placeholder)
+4. **The wizard calls the same 3-phase API used by agents/CLI**
+
+### 9.6 Slice U3-B5: Custom Attributes in SKU UI (1 day)
+
+**Commit:** `u3b5_custom_attrs_ui`
 
 1. Update `SKUFormModal.tsx` — key-value pair editor for custom attributes
 2. Update `SKUListPage.tsx` — show custom attribute columns, toggle visibility
 3. Update `skuService.ts` — support `custom_attributes` in create/update payloads
 
-### 8.6 Validation Commands
+### 9.7 Validation Commands
 
 ```bash
 pnpm lint                          # 0 errors
@@ -621,16 +853,18 @@ pnpm build                         # pass
 git diff --check origin/product-dev-recovered..HEAD  # no whitespace issues
 ```
 
-### 8.7 Definition of Done
+### 9.8 Definition of Done
 
-- [ ] `skus:import` permission exists, enforced on batch/import endpoints, admin role holds it
-- [ ] Tenant can upload a CSV file with any column structure
-- [ ] Field mapping wizard correctly maps CSV columns to Mpango fields
-- [ ] Unmapped columns are stored as custom attributes
-- [ ] Batch import creates SKUs with row-level error reporting
-- [ ] Both batch/import endpoints return 403 without `skus:import`
+- [ ] `skus:import` permission exists, admin role holds it
+- [ ] `import_runs` table exists per tenant schema
+- [ ] `POST /import/preview` returns `import_id` + columns + sample rows (no writes to SKU table)
+- [ ] `POST /import/{id}/validate` returns structured row-level errors/warnings (no writes)
+- [ ] `POST /import/{id}/apply` creates SKUs with inventory rows + audit record
+- [ ] All three endpoints return 403 without `skus:import`
+- [ ] Frontend wizard calls the same 3-phase API (consumer, not separate code path)
 - [ ] Existing single-SKU creation flow unchanged, still requires `skus:create`
-- [ ] Import results show created/skipped/errored counts
+- [ ] Agent/CLI can drive the same endpoints without touching the UI
+- [ ] Audit record written to `sys_audit_logs.metadata_` and `import_runs` on every apply
 - [ ] No production code changes outside the U3-B scope
 
 ---
@@ -695,16 +929,33 @@ git diff --check origin/product-dev-recovered..HEAD  # no whitespace issues
 
 ---
 
-**End of U3-A-R1 Discovery Report — Awaiting CTO Final Approval**
+**End of U3-A-R2 Discovery Report — Awaiting CTO Final Approval**
+
+### R2 Revision Changelog
+
+| Change | Section(s) |
+|--------|------------|
+| Added Agent-Operable / CLI-Friendly Import Contract (3-phase: preview→validate→apply) | 4 (new) |
+| Defined `import_runs` audit table as architecture constraint | 4.3 (new) |
+| Added CLI vision (`mpango products import --preview/--validate/--apply`) | 4.4 (new) |
+| Added structured JSON response examples for all 3 phases | 4.2 |
+| Explained why AI-native Mpango needs an agent-operable contract separate from the human wizard | 4.1 |
+| Re-ordered U3-B slices to 5 backend-first slices (B1: Permission+Contract, B2: Preview/Validate, B3: Apply/Audit, B4: Frontend Wizard, B5: Custom Attrs UI) | 5.3, 5.4, 6, 9.2-9.6 |
+| Replaced monolithic `POST /skus/batch` with 3-phase `POST /import/preview|validate|apply` | 5.1 |
+| Updated Backend Changes table with import run model, audit logging, and 3-phase endpoints | 5.1 |
+| Added `import_runs` to Definition of Done | 9.8 |
+| Added agent/CLI accessibility to Definition of Done | 9.8 |
+| Renumbered all sections (4→5, 5→6, 6→7, 7→8, 8→9) | Throughout |
+| No mojibake — all UTF-8 and box-drawing characters confirmed valid | (file scan) |
 
 ### R1 Revision Changelog
 
 | Change | Section(s) |
 |--------|------------|
-| Corrected "no permission gating" claim — RBAC system documented | 1.7 (new), 2.2.7, 6.2.4, 7 (appended) |
-| Defined `skus:import` as a new permission (not reuse `skus:create`) | 1.7, 4.1, 4.2, 8.7 |
-| Split U3-B into 4 sub-slices (B1: Permission, B2: Backend, B3: Frontend, B4: UI) | 4.3, 5, 8.2-8.5 |
-| Removed "Role-based import permissions" from Out of Scope | 4.2 |
-| Added sub-slice commit strategy to implementation plan | 8.2-8.5 |
-| Added Definition of Done item for 403 on missing `skus:import` | 8.7 |
+| Corrected "no permission gating" claim — RBAC system documented | 1.7 (new), 2.2.7, 7.2.4, 8 (appended) |
+| Defined `skus:import` as a new permission (not reuse `skus:create`) | 1.7, 5.1, 5.2, 9.8 |
+| Split U3-B into 4 sub-slices (B1: Permission, B2: Backend, B3: Frontend, B4: UI) | 5.3, 6, 9.2-9.5 |
+| Removed "Role-based import permissions" from Out of Scope | 5.2 |
+| Added sub-slice commit strategy to implementation plan | 9.2-9.5 |
+| Added Definition of Done item for 403 on missing `skus:import` | 9.7 |
 | No mojibake found — all text confirmed valid UTF-8 / proper box-drawing characters | (file scan) |

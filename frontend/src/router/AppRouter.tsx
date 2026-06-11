@@ -28,6 +28,7 @@ import { PlatformTenantDirectoryPage } from '@/pages/platform/PlatformTenantDire
 import { PlatformAuditEventsPage } from '@/pages/platform/PlatformAuditEventsPage';
 import { PlatformTenantHealthPage } from '@/pages/platform/PlatformTenantHealthPage';
 import { PlatformSystemHealthPage } from '@/pages/platform/PlatformSystemHealthPage';
+import { SupportConsolePage } from '@/pages/platform/SupportConsolePage';
 
 const router = createBrowserRouter([
   {
@@ -92,6 +93,7 @@ const router = createBrowserRouter([
               { path: '/platform/audit', element: <PlatformAuditEventsPage /> },
               { path: '/platform/tenants/:tenantId/health', element: <PlatformTenantHealthPage /> },
               { path: '/platform/system/health', element: <PlatformSystemHealthPage /> },
+              { path: '/platform/support', element: <SupportConsolePage /> },
             ],
           },
         ],

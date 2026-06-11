@@ -10,7 +10,6 @@ This is a static analysis test — no database or server required.
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 import pytest
@@ -44,13 +43,59 @@ def _extract_require_permission_calls(api_dir: Path) -> set[str]:
 
 def _extract_permissions_from_script(script_path: Path) -> set[str]:
     """Extract the permission codes from permissions_data / permission_codes
-    list literal in a bootstrap script."""
-    text = script_path.read_text(encoding="utf-8")
+    list literal in a bootstrap script using AST.
 
-    # Find tuples like ("some:permission", "description")
+    Uses AST to find the exact list variable (permissions_data or
+    permission_codes) and extracts only its string-tuple elements.
+    This avoids false positives from unrelated string tuples elsewhere
+    in the file (e.g. demo data SKU definitions).
+    """
+    tree = ast.parse(script_path.read_text(encoding="utf-8"))
+
     codes: set[str] = set()
-    for match in re.finditer(r'\(\s*"(?P<code>[a-z_:]+)"\s*,\s*"[^"]*"\s*\)', text):
-        codes.add(match.group("code"))
+
+    # ---- Step 1: Find the target variable name ----
+    # Look for assignments like:  permissions_data = [...]  OR  permission_codes = [...]
+    target_names = {"permissions_data", "permission_codes"}
+    target_node: ast.List | None = None
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id in target_names:
+                if isinstance(node.value, ast.List):
+                    target_node = node.value
+                    break
+        if target_node is not None:
+            break
+
+    if target_node is None:
+        raise RuntimeError(
+            f"Could not find permissions_data or permission_codes list in {script_path}"
+        )
+
+    # ---- Step 2: Extract ("code", "description") tuples ----
+    for element in target_node.elts:
+        if not isinstance(element, ast.Tuple):
+            continue
+        elts = element.elts
+        # Must be a 2-element tuple of string literals
+        if len(elts) != 2:
+            continue
+        if not isinstance(elts[0], ast.Constant) or not isinstance(
+            elts[0].value, str
+        ):
+            continue
+        if not isinstance(elts[1], ast.Constant) or not isinstance(
+            elts[1].value, str
+        ):
+            continue
+        code = elts[0].value
+        # Only permissions look like "resource:action"
+        if ":" in code:
+            codes.add(code)
+
     return codes
 
 

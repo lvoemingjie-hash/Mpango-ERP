@@ -47,94 +47,24 @@ def _require_safe_environment(*, allow_production: bool) -> None:
 
 
 async def _ensure_tenant_tables(db, tenant_schema: str) -> None:
-    from sqlalchemy import text
+    """Reuse the canonical bootstrap_tenant_schema module for full schema creation.
 
-    await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{tenant_schema}"'))
-    await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
+    U1-R1: Previously this function only created 5 RBAC tables (users, roles,
+    permissions, user_roles, role_permissions). Now it delegates to the canonical
+    bootstrap_tenant_schema.bootstrap() which creates ALL MVP tables including
+    skus, inventory_stocks, inventory_movements, orders, order_items, payments,
+    ledger_entries, retailer_prices, enums, indexes, and reconciliation.
+    """
+    import os
 
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                email VARCHAR(255) NOT NULL UNIQUE,
-                password_hash VARCHAR(255) NOT NULL,
-                full_name TEXT,
-                is_active BOOLEAN NOT NULL DEFAULT true,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                is_deleted BOOLEAN DEFAULT false,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID
-            )
-            """
-        )
-    )
+    from core.config import get_settings
+    from scripts import bootstrap_tenant_schema
 
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS roles (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                name VARCHAR(100) NOT NULL UNIQUE,
-                description TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                is_deleted BOOLEAN DEFAULT false,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID
-            )
-            """
-        )
-    )
+    settings = get_settings()
+    database_url = settings.DATABASE_URL
 
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS permissions (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                code VARCHAR(100) NOT NULL UNIQUE,
-                description TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                is_deleted BOOLEAN DEFAULT false,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID
-            )
-            """
-        )
-    )
-
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS user_roles (
-                user_id UUID NOT NULL,
-                role_id UUID NOT NULL,
-                PRIMARY KEY (user_id, role_id),
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
-            )
-            """
-        )
-    )
-
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS role_permissions (
-                role_id UUID NOT NULL,
-                permission_id UUID NOT NULL,
-                PRIMARY KEY (role_id, permission_id),
-                FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
-                FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
-            )
-            """
-        )
-    )
+    # bootstrap() creates its own engine/session internally
+    await bootstrap_tenant_schema.bootstrap(tenant_schema, database_url)
 
 
 async def _seed_admin_rbac(

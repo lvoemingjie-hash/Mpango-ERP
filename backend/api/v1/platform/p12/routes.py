@@ -112,6 +112,53 @@ async def require_platform_operator_with_audit(
         raise
 
 
+# -- Reason validation audit helper --
+
+
+async def _write_reason_denied_audit(
+    db: AsyncSession,
+    request: Request,
+    code: str,
+    message: str,
+) -> None:
+    """Write support_access_denied audit for missing/short reason.
+    Best-effort -- failure here must not prevent the 400 response."""
+    try:
+        actor_id = None
+        actor_role = None
+        try:
+            from api.context.auth import get_auth_context
+            auth_ctx = get_auth_context(request)
+            token = auth_ctx.token
+            actor_id = token.user_id
+            if getattr(token, "is_super_admin", False):
+                actor_role = "super_admin"
+        except Exception:
+            pass
+
+        from services.platform_audit_service import append_audit_entry
+
+        await append_audit_entry(
+            db,
+            actor_type="api",
+            action="support_access_denied",
+            resource=f"support{request.url.path}",
+            actor_id=PyUUID(actor_id) if actor_id else None,
+            wholesaler_id=None,
+            audit_metadata={
+                "code": code,
+                "reason": message,
+                "path": str(request.url.path),
+                "actor_id": actor_id,
+                "actor_role": actor_role,
+                "denial_type": "invalid_reason",
+            },
+        )
+        await db.commit()
+    except Exception:
+        pass  # Audit failure must not prevent 400 response
+
+
 # -- POST /sessions --
 
 
@@ -130,8 +177,31 @@ async def create_session(
     Create a new support session.
 
     Requires a support reason (minimum 10 characters).
-    Creates a support_session_start audit event.
+    Missing or short reason returns 400 with support_access_denied audit.
+    Creates a support_session_start audit event on success.
     """
+    # Validate reason -- return 400 with audit, not 422
+    if body.reason is None or body.reason.strip() == "":
+        await _write_reason_denied_audit(
+            db, request, "MISSING_REASON",
+            "Support reason is required",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "MISSING_REASON", "message": "Support reason is required"},
+        )
+    if len(body.reason.strip()) < 10:
+        await _write_reason_denied_audit(
+            db, request, "REASON_TOO_SHORT",
+            f"Support reason must be at least 10 characters, got {len(body.reason.strip())}",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "REASON_TOO_SHORT",
+                "message": f"Support reason must be at least 10 characters, got {len(body.reason.strip())}",
+            },
+        )
     try:
         session = await services.create_support_session(
             db,

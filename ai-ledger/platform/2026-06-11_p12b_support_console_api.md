@@ -3,7 +3,7 @@
 **Date:** 2026-06-11
 **Branch:** `codex/platform-p12b-support-console-api-2026-06-11`
 **Base:** `origin/platform-dev` at `1ff8d3c` (P12-A merge)
-**R1 commit:** (pending)
+**R1 commit:** `2f5a712`
 **Status:** P12-B + R1 complete -- request-scoped diagnostics, access-denied audit, reason sanitization, expiry audit
 
 ---
@@ -107,14 +107,36 @@ The keyword alone (e.g., "password reset failures") is preserved. Only key=value
 
 ## GitNexus
 
+### Analyze
+
 | Field | Value |
 |-------|-------|
-| Nodes | 6,204 |
-| Edges | 18,405 |
-| Clusters | 404 |
+| Nodes | 6,203 |
+| Edges | 18,409 |
+| Clusters | 399 |
 | Flows | 270 |
-| Impact (sanitize_reason) | LOW (1 caller: create_support_session) |
-| Impact (require_platform_operator_with_audit) | LOW (0 upstream callers, route-level only) |
+
+### detect_changes compare origin/platform-dev
+
+| Field | Value |
+|-------|-------|
+| risk_level | **CRITICAL** |
+| changed_files | 7 |
+| insertions | 2,521 |
+| deletions | 0 |
+| affected_processes | 20 |
+
+**CRITICAL explanation:** GitNexus rates this CRITICAL because the change set introduces a new platform runtime API surface (`/platform/p12/`) with 4 endpoints, audit persistence via `platform_audit_service`, a guard wrapper (`require_platform_operator_with_audit`) that intercepts access denial, in-memory session management with lazy expiry, and diagnostic data gathering from P10 services. No product business code, auth middleware, RBAC, tenancy, payment, or session management was touched -- the blast radius is confined to the platform layer.
+
+### Impact Analysis (R1 symbols)
+
+| Symbol | Risk | Impacted | Notes |
+|--------|------|----------|-------|
+| `require_platform_operator_with_audit` | LOW | 0 | Route-level only, no upstream callers |
+| `sanitize_reason` | LOW | 1 | Called by `create_support_session` only |
+| `_audit_expired_sessions` | HIGH | 5 (3 direct, 2 indirect) | Called by `get_diagnostics`, `generate_bundle`, `close_support_session` -- all within P12 |
+
+All impacts are contained within the P12 module boundary. No external callers affected.
 
 ## Forbidden Path Audit
 
@@ -133,13 +155,17 @@ The keyword alone (e.g., "password reset failures") is preserved. Only key=value
 
 | Check | Result |
 |-------|--------|
-| P12-B-R1 tests | 58 passed, 0 failed |
-| P10/P11 regression | 137 passed, 0 failed |
+| P12-B-R1 tests | **58 passed**, 0 failed |
+| P10/P11 regression | **137 passed**, 0 failed |
+| Agent mission gate | **62 passed** |
+| Runner gate | **6 passed** |
+| Directive gate | **23 passed** |
 | `git diff --check` | PASS |
 | Non-ASCII scan | 0 hits (all files ASCII-only) |
-| Forbidden path audit | PASS |
-| GitNexus analyze | PASS -- 6,204 nodes, 18,405 edges |
-| GitNexus impact | LOW on all new R1 symbols |
+| Forbidden path audit | PASS (0 hits) |
+| GitNexus analyze | PASS -- 6,203 nodes, 18,409 edges |
+| GitNexus detect_changes | CRITICAL (7 files, 20 processes, platform runtime API + audit persistence + guard wrapper) |
+| GitNexus impact (R1 symbols) | LOW/LOW/HIGH -- all within P12 boundary |
 | No frontend files changed | CONFIRMED |
 | No migrations introduced | CONFIRMED |
 | No auth/RBAC/session/tenancy/payment changes | CONFIRMED |
@@ -168,17 +194,18 @@ The keyword alone (e.g., "password reset failures") is preserved. Only key=value
 
 | Factor | Rating | Notes |
 |--------|--------|-------|
-| Scope | **HIGH** | Platform runtime API surface under /platform/p12/ |
-| Test coverage | **HIGH** | 58 P12 tests + 137 regression tests |
+| Scope | **HIGH** | Platform runtime API surface under /platform/p12/ -- new endpoints exposed to authenticated operators |
+| Test coverage | **HIGH** | 58 P12 tests + 137 regression tests + 62 agent + 6 runner + 23 directive gates |
 | Runtime impact | **LOW** | Reuses P10 guard and services, no existing code paths changed |
 | Session storage | **LOW** | In-memory only -- process-local, acceptable for request-scoped design |
-| Audit persistence | **LOW** | Only allowed write via existing platform_audit_service |
+| Audit persistence | **HIGH** | Writes audit entries via platform_audit_service on session lifecycle, access denial, and expiry -- persistent side-effect |
+| Guard wrapper | **HIGH** | `require_platform_operator_with_audit` wraps P10 guard -- if wrapper fails open, platform endpoints are unprotected |
 | Redaction | **LOW** | Reuses P10 redact_metadata, applied at gathering layer |
 | Reason sanitization | **LOW** | Regex-based, strips credential patterns only |
 | Access-denied audit | **LOW** | Best-effort write, failure does not prevent denial |
 | Expiry audit | **LOW** | Lazy on next access, best-effort write |
 
-**Overall risk: HIGH (platform runtime API surface) -- mitigated by 58 tests covering all paths.**
+**Overall risk: HIGH.** GitNexus rates CRITICAL because this slice introduces platform runtime API surface with audit persistence and a guard wrapper. Human assessment: HIGH mitigated by 58 tests covering all paths, identity enforcement, redaction, sanitization, and access-denied audit. No product business code, auth middleware, RBAC, tenancy, payment, or session management was touched.
 
 ## Limitations Stated Honestly
 

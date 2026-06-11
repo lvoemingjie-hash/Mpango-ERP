@@ -31,10 +31,13 @@ For P9+ SaaS platform product work, read these after the general context above a
 9. `docs/ai/PLATFORM_PRODUCT_CONTRACT_FIXTURES.md`
 10. `docs/ai/PLATFORM_PRODUCT_P10A_TEST_PLAN.md`
 11. `docs/ai/PLATFORM_PRODUCT_P11_FRONTEND_BOUNDARY.md`
+12. `docs/ai/PLATFORM_PRODUCT_P12_SUPPORT_CONSOLE_CONTRACT.md`
 
 P10 must start with a data-contract-only slice unless a later CTO decision explicitly broadens scope. Do not begin P10 with migrations, API handlers, frontend UI, auth/RBAC/tenancy/session changes, payment changes, or tenant business-data edits.
 
 P11 frontend work must start with the boundary map (`PLATFORM_PRODUCT_P11_FRONTEND_BOUNDARY.md`) and must not begin P11-B until the platform auth transport question is resolved.
+
+P12 support console work must start with the contract (`PLATFORM_PRODUCT_P12_SUPPORT_CONSOLE_CONTRACT.md`) and must not begin P12-B (API implementation) until the contract is accepted. P12-B must not begin P12-C (frontend support UI) until API contract tests pass. No runtime code, migrations, or frontend UI in P12-A.
 
 ## Purpose
 

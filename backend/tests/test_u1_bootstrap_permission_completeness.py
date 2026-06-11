@@ -151,14 +151,29 @@ class TestOnboardTenantPermissionCompleteness:
         self, api_permissions: set[str], onboard_permissions: set[str]
     ):
         """Permissions in onboard that are NOT in the API are either legacy
-        aliases or unused. We warn but don't fail."""
+        aliases, bootstrap-only permissions, or valid future-use permissions.
+        We document them but don't fail.
+
+        U1-R2 CTO directive: orders:confirm/ship/cancel and role CRUD
+        permissions are valid bootstrap permissions."
+        """
         extra = onboard_permissions - api_permissions
         # inventory:write is a known legacy alias kept for backward compat
-        known_legacy = {"inventory:write"}
-        unexpected = extra - known_legacy
+        # orders:confirm/ship/cancel are bootstrap-only (used in seed/validation logic)
+        # roles:create/update/delete are bootstrap-only (admin seed, not yet in API decorators)
+        known_valid_extras = {
+            "inventory:write",       # legacy alias
+            "orders:confirm",        # bootstrap-only
+            "orders:ship",           # bootstrap-only
+            "orders:cancel",         # bootstrap-only
+            "roles:create",          # bootstrap-only (seed creates admin role)
+            "roles:update",          # bootstrap-only
+            "roles:delete",          # bootstrap-only
+        }
+        unexpected = extra - known_valid_extras
         assert not unexpected, (
             f"Unexpected permissions in onboard_tenant.py not enforced by "
-            f"any API endpoint: {sorted(unexpected)}"
+            f"any API endpoint and not in known-valid-extra list: {sorted(unexpected)}"
         )
 
 

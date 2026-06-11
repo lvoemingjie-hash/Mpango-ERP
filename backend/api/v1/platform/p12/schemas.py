@@ -57,13 +57,17 @@ SupportAction = Literal[
 
 
 class CreateSessionRequest(BaseModel):
-    """Request body for creating a support session."""
+    """Request body for creating a support session.
+
+    Reason validation (min 10 chars) is enforced at the route layer
+    so that missing/short reason returns 400 with support_access_denied
+    audit, not a bare 422 from Pydantic.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    reason: str = Field(
-        ...,
-        min_length=10,
+    reason: Optional[str] = Field(
+        None,
         description="Support reason, minimum 10 characters",
     )
     category: SupportCategory = Field(

@@ -96,16 +96,17 @@ def _make_guarded_app(mock_db=None):
 class TestSchemas:
     """P12-A-R1 contract schema validation."""
 
-    def test_reason_min_length_enforced(self):
-        """reason shorter than 10 chars must be rejected."""
+    def test_reason_null_accepted_in_schema(self):
+        """Schema accepts null reason; route layer enforces min 10 chars."""
         from api.v1.platform.p12.schemas import CreateSessionRequest
-        with pytest.raises(Exception):
-            CreateSessionRequest(reason="short", category="general")
+        req = CreateSessionRequest(reason=None, category="general")
+        assert req.reason is None
 
-    def test_reason_min_length_10_accepted(self):
+    def test_reason_short_accepted_in_schema(self):
+        """Schema accepts short reason; route layer enforces min 10 chars."""
         from api.v1.platform.p12.schemas import CreateSessionRequest
-        req = CreateSessionRequest(reason="1234567890", category="general")
-        assert req.reason == "1234567890"
+        req = CreateSessionRequest(reason="short", category="general")
+        assert req.reason == "short"
 
     def test_extra_fields_rejected(self):
         from api.v1.platform.p12.schemas import CreateSessionRequest
@@ -200,7 +201,7 @@ class TestCreateSession:
         assert data["closed_at"] is None
 
     def test_create_session_short_reason_rejected(self):
-        """Reason shorter than 10 chars returns 422."""
+        """Reason shorter than 10 chars returns 400."""
         from api.v1.platform.p12.services import _session_store
         _session_store.clear_all()
         app = _make_guarded_app()
@@ -210,10 +211,11 @@ class TestCreateSession:
             json={"reason": "short", "category": "general"},
             headers=AUTH_HEADERS,
         )
-        assert resp.status_code == 422
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "REASON_TOO_SHORT"
 
     def test_create_session_missing_reason_rejected(self):
-        """Missing reason field returns 422."""
+        """Missing reason field returns 400."""
         from api.v1.platform.p12.services import _session_store
         _session_store.clear_all()
         app = _make_guarded_app()
@@ -223,7 +225,8 @@ class TestCreateSession:
             json={"category": "general"},
             headers=AUTH_HEADERS,
         )
-        assert resp.status_code == 422
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "MISSING_REASON"
 
     def test_create_session_missing_category_rejected(self):
         """Missing category field returns 422."""
@@ -1177,3 +1180,85 @@ class TestSessionExpiryAudit:
         assert resp.status_code == 404
         # No expiry audit -- session never existed
         assert not mock_db.add.called
+
+
+# ============================================================
+# 13. Reason Contract Patch (R3)
+# ============================================================
+
+
+class TestReasonContractPatch:
+    """P12-B-R3: missing/short reason returns 400 + support_access_denied audit."""
+
+    def test_missing_reason_returns_400_with_audit(self):
+        """Missing reason -> 400 + support_access_denied audit written."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={"category": "general"},
+            headers=AUTH_HEADERS,
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "MISSING_REASON"
+        # Verify support_access_denied audit was written
+        assert mock_db.add.called
+        audit_entry = mock_db.add.call_args[0][0]
+        assert audit_entry.action == "support_access_denied"
+        assert audit_entry.audit_metadata["code"] == "MISSING_REASON"
+        assert audit_entry.audit_metadata["denial_type"] == "invalid_reason"
+        mock_db.commit.assert_called()
+
+    def test_short_reason_returns_400_with_audit(self):
+        """Short reason -> 400 + support_access_denied audit written."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={"reason": "short", "category": "general"},
+            headers=AUTH_HEADERS,
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "REASON_TOO_SHORT"
+        assert mock_db.add.called
+        audit_entry = mock_db.add.call_args[0][0]
+        assert audit_entry.action == "support_access_denied"
+        assert audit_entry.audit_metadata["code"] == "REASON_TOO_SHORT"
+        assert audit_entry.audit_metadata["denial_type"] == "invalid_reason"
+
+    def test_valid_reason_creates_session_start_audit(self):
+        """Valid reason creates support_session_start, not support_access_denied."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={"reason": VALID_REASON, "category": "general"},
+            headers=AUTH_HEADERS,
+        )
+        assert resp.status_code == 201
+        assert mock_db.add.called
+        audit_entry = mock_db.add.call_args[0][0]
+        assert audit_entry.action == "support_session_start"
+
+    def test_missing_category_still_422(self):
+        """Missing category still returns 422 (not changed by R3)."""
+        from api.v1.platform.p12.services import _session_store
+        _session_store.clear_all()
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+        resp = client.post(
+            "/api/v1/platform/p12/sessions",
+            json={"reason": VALID_REASON},
+            headers=AUTH_HEADERS,
+        )
+        assert resp.status_code == 422

@@ -31,7 +31,7 @@ export function InventoryPage() {
       const res = await inventoryService.getStocks(1, 50);
       setStocks(res.data.data.items);
     } catch {
-      setError('Failed to load inventory.');
+      setError('Could not load stock levels. Check your connection and try again. If the problem persists, contact support.');
     } finally {
       setLoading(false);
     }
@@ -72,17 +72,27 @@ export function InventoryPage() {
       />
 
       {loading && <CardGridSkeleton />}
-      {error && <p className="mt-6 text-sm text-red-600">{error}</p>}
+      {error && (
+        <div className="mt-6 flex items-center gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            onClick={load}
+            className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {!loading && !error && stocks.length === 0 && (
         <EmptyState
           icon={CubeIcon}
-          title="Your warehouse is empty."
-          description="Add your first product to start tracking inventory."
+          title="No stock yet"
+          description="Your warehouse is empty. Add products first, then stock levels will appear here as you create orders or adjust inventory."
           action={
-            <button className="btn-primary text-sm" disabled title="Coming soon">
-              Add First Product
-            </button>
+            <Link to="/skus" className="btn-primary text-sm">
+              Go to Products
+            </Link>
           }
         />
       )}

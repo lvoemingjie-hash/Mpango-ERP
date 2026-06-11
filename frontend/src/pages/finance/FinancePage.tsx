@@ -153,7 +153,7 @@ export function FinancePage() {
             setTotalItems(pagination.total);
             setTotalPages(pagination.pages);
         } catch {
-            setError('Failed to load accounts receivable data.');
+            setError('Could not load accounts receivable data. Check your connection and try again. If the problem persists, contact support.');
         } finally {
             setLoading(false);
         }
@@ -330,7 +330,7 @@ export function FinancePage() {
                     <EmptyState
                         icon={BanknotesIcon}
                         title="No outstanding receivables"
-                        description="All visible credit accounts are settled. New credit sales and unpaid orders will appear here for follow-up."
+                        description="All credit accounts are settled, or you have not made any credit sales yet. Create orders and accept payments to see activity here."
                     />
                 </div>
             ) : (

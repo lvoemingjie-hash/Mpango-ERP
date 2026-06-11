@@ -10,7 +10,7 @@ export function RetailerListPage() {
   const [retailers, setRetailers] = useState<RetailerWithBinding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Pagination state
   const [page, setPage] = useState(1);
   const [size] = useState(20);
@@ -24,7 +24,7 @@ export function RetailerListPage() {
       setRetailers(res.data.data.items);
       setTotal(res.data.data.pagination.total);
     } catch {
-      setError('Failed to load customers. Please try again.');
+      setError('Could not load customers. Check your connection and try again. If the problem persists, contact support.');
     } finally {
       setLoading(false);
     }
@@ -49,8 +49,14 @@ export function RetailerListPage() {
       {loading && <TableSkeleton />}
 
       {error && (
-        <div className="mt-6 rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error}</div>
+        <div className="mt-6 flex items-center gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            onClick={load}
+            className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -58,7 +64,7 @@ export function RetailerListPage() {
         <EmptyState
           icon={UsersIcon}
           title="No customers yet"
-          description="Retailers will appear here once they register using your invitation link."
+          description="Customers will appear here once they register using your invitation link. Share your business link to start building your customer base."
         />
       )}
 
@@ -118,7 +124,7 @@ export function RetailerListPage() {
               </tbody>
             </table>
           </div>
-          
+
           <Pagination
             page={page}
             totalPages={Math.ceil(total / size)}

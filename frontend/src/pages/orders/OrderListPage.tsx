@@ -50,7 +50,7 @@ export function OrderListPage() {
       const res = await orderService.getAll(1, 50);
       setOrders(res.data.data.items);
     } catch {
-      setError('Failed to load orders.');
+      setError('Could not load orders. Check your connection and try refreshing. If the problem persists, contact support.');
     } finally {
       setLoading(false);
     }
@@ -308,13 +308,24 @@ export function OrderListPage() {
       />
 
       {loading && <TableSkeleton />}
-      {error && <p className="mt-6 text-sm text-red-600">{error}</p>}
+      {error && (
+        <div className="mt-6 flex items-center gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {!loading && !error && orders.length === 0 && (
         <EmptyState
           icon={ClipboardDocumentListIcon}
           title="Ready to make your first sale?"
-          description="Share your catalog link or create an order manually."
+          description="Create an order to get started. Add products and customers first, then come back here to record sales."
           action={
             <button
               onClick={() => navigate('/orders/new')}

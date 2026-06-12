@@ -19,6 +19,7 @@ from models.report import SysReport
 from models.platform_tenant import PlatformTenant
 from models.platform_audit_log import PlatformAuditLog
 from models.job import Job
+from models.import_run import ImportRun
 
 __all__ = [
     # Base classes
@@ -68,4 +69,7 @@ __all__ = [
 
     # S4-B: Persistent job tracking (public schema)
     "Job",
+
+    # U3-B1: Import run tracker (tenant schema)
+    "ImportRun",
 ]

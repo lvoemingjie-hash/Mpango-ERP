@@ -244,6 +244,7 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
         ("skus:read", "Read SKUs"),
         ("skus:create", "Create SKUs"),
         ("skus:update", "Update SKUs"),
+        ("skus:import", "Import SKUs via preview/validate/apply contract"),
         # ── Inventory management ──
         ("inventory:read", "Read inventory"),
         ("inventory:write", "Write inventory (legacy alias)"),

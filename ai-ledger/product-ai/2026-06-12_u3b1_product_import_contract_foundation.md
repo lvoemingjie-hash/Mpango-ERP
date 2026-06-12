@@ -130,7 +130,62 @@ pytest tests/test_u3b1_contract_foundation.py -v -m "not integration"
 ## 8. Next Steps
 
 U3-B2: Backend Preview + Validate (read-only endpoints)
-- Implement `POST /api/v1/skus/import/preview` (CSV upload → import_id + columns + sample)
-- Implement `POST /api/v1/skus/import/{import_id}/validate` (mapping → errors/warnings)
+- Implement `POST /api/v1/skus/import/preview` (CSV upload -> import_id + columns + sample)
+- Implement `POST /api/v1/skus/import/{import_id}/validate` (mapping -> errors/warnings)
 - Add `custom_attributes JSONB` column to `skus` table
 - Both endpoints protected by `RequirePermission("skus:import")`
+
+---
+
+## 9. U3-B1-R1 Revision (CTO Review Fixes)
+
+**Date:** 2026-06-12 (same day)
+**Trigger:** CTO review identified 4 gaps in the initial U3-B1 delivery.
+
+### 9.1 Issues Found
+
+| # | Issue | Root Cause | Fix |
+|---|-------|-----------|-----|
+| 1 | `skus:import` only in 2 of 4 seed scripts | Missed `onboard_tenant.py` and `seed_test_tenant.py` | Added to both |
+| 2 | `ImportRun` not exported from `models/__init__.py` | Oversight | Added import + `__all__` entry |
+| 3 | Tests used hand-written DDL pseudo-validation | Did not actually validate the migration file | Rewrote with AST/static analysis of `022_import_runs.py` |
+| 4 | `test_no_import_routes_registered` imported `main` | Could fail on env vars like `REPORTING_USER_PASSWORD` | Changed to static AST check of `backend/api/v1/skus.py` |
+
+### 9.2 Files Changed in R1
+
+```
+M  backend/scripts/onboard_tenant.py       (+1 line: skus:import in permissions_data)
+M  backend/scripts/seed_test_tenant.py      (+1 line: skus:import in permission_codes)
+M  backend/models/__init__.py               (+3 lines: ImportRun import + __all__ entry)
+M  backend/tests/test_u3b1_contract_foundation.py  (rewrite: 27 tests, AST-based)
+```
+
+### 9.3 Test Results (R1)
+
+```
+27 passed in 0.81s
+```
+
+| Test Class | Tests | What It Proves |
+|------------|-------|---------------|
+| `TestSkusImportPermission` | 4 | `skus:import` in ALL 4 scripts (create_wholesaler, seed_demo_data, onboard_tenant, seed_test_tenant) |
+| `TestImportRunsMigration` | 10 | Migration file: upgrade/downgrade exist, create_table + 20 columns, 4 indexes, tenant guard, table_exists guard, revision metadata |
+| `TestImportRunModel` | 4 | ORM: 20 columns, tablename, repr, exported from `models.__init__` |
+| `TestImportPydanticSchemas` | 8 | All schemas serialize/deserialize round-trip |
+| `TestNoImportEndpoints` | 1 | Static AST check: no `/import` routes in `skus.py` |
+
+### 9.4 Quality Gates (R1)
+
+| Check | Result |
+|-------|--------|
+| `git diff --check` | PASS (0 whitespace issues) |
+| Mojibake scan (rg) | PASS (0 hits in all new Python files) |
+| AST parse check | PASS (all 4 new .py files parse cleanly) |
+| Pre-commit hooks | PASS |
+
+### 9.5 Confirmations (unchanged)
+
+- No endpoint added
+- No CSV parser added
+- No frontend changes
+- No deployment

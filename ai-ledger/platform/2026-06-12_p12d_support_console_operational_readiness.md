@@ -3,7 +3,7 @@
 **Date:** 2026-06-12
 **Branch:** `codex/platform-p12d-support-console-operational-readiness-2026-06-12`
 **Base:** `origin/platform-dev` at `bc621df` (P12-C1/C2 merge)
-**D commit:** (pending)
+**D commit:** `89e991f`
 **Status:** Operational readiness -- test gap closure, boundary verification, P12 completion evidence.
 
 ---

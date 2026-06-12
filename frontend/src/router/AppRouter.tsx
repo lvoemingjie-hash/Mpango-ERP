@@ -28,6 +28,7 @@ import { PlatformTenantDirectoryPage } from '@/pages/platform/PlatformTenantDire
 import { PlatformAuditEventsPage } from '@/pages/platform/PlatformAuditEventsPage';
 import { PlatformTenantHealthPage } from '@/pages/platform/PlatformTenantHealthPage';
 import { PlatformSystemHealthPage } from '@/pages/platform/PlatformSystemHealthPage';
+import { SupportConsolePage } from '@/pages/platform/SupportConsolePage';
 
 const router = createBrowserRouter([
   {
@@ -36,17 +37,17 @@ const router = createBrowserRouter([
       { path: '/login', element: <LoginPage /> },
     ],
   },
-  // Client login — separate from wholesaler login
+  // Client login -- separate from wholesaler login
   {
     path: '/client/login',
     element: <ClientLoginPage />,
   },
-  // Workspace selector — after login, but before app
+  // Workspace selector -- after login, but before app
   {
     path: '/select-workspace',
     element: <WorkspaceSelectorPage />,
   },
-  // Invite page — public, no auth required
+  // Invite page -- public, no auth required
   {
     path: '/invite/:code',
     element: <InvitePage />,
@@ -80,7 +81,7 @@ const router = createBrowserRouter([
           { path: '/client/orders/:orderId', element: <OrderDetailPage /> },
         ],
       },
-      // Platform Admin Cockpit routes (P11) — super_admin only
+      // Platform Admin Cockpit routes (P11) -- super_admin only
       {
         element: <PlatformRoute />,
         children: [
@@ -92,6 +93,7 @@ const router = createBrowserRouter([
               { path: '/platform/audit', element: <PlatformAuditEventsPage /> },
               { path: '/platform/tenants/:tenantId/health', element: <PlatformTenantHealthPage /> },
               { path: '/platform/system/health', element: <PlatformSystemHealthPage /> },
+              { path: '/platform/support', element: <SupportConsolePage /> },
             ],
           },
         ],

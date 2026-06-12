@@ -26,7 +26,7 @@ export function SKUListPage() {
       const res = await skuService.getAll(1, 100);
       setSkus(res.data.data.items);
     } catch {
-      setError('Failed to load products. Please try again.');
+      setError('Could not load your product catalog. Check your connection and try again. If the problem persists, contact support.');
     } finally {
       setLoading(false);
     }
@@ -65,21 +65,41 @@ export function SKUListPage() {
 
       {error && (
         <div className="mt-6 rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error}</div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-red-700">{error}</div>
+            <button
+              onClick={load}
+              className="rounded-md bg-red-100 px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       )}
 
       {!loading && !error && skus.length === 0 && (
         <EmptyState
           icon={CubeIcon}
-          title="No products found"
-          description="Get started by creating your first product SKU."
+          title="No products yet"
+          description="Your product catalog is empty. Add your first product to start selling, or import products from a spreadsheet."
           action={
-            canWrite ? (
-              <button onClick={handleCreate} className="btn-primary mt-4">
-                Add Product
+            <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row">
+              {canWrite && (
+                <button onClick={handleCreate} className="btn-primary">
+                  Add Product
+                </button>
+              )}
+              <button
+                className="btn-secondary flex items-center gap-2 opacity-50 cursor-not-allowed"
+                disabled
+                title="Coming soon"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                Import Products
               </button>
-            ) : undefined
+            </div>
           }
         />
       )}

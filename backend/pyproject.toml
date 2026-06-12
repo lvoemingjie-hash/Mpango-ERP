@@ -29,6 +29,14 @@ authors = ["Mpango Team"]
 license = "Proprietary"
 package-mode = false
 
+# Build reproducibility: primary PyPI source set to Aliyun mirror for China/Tencent VPS deployment.
+# Developers outside China can override locally or remove this source — dependency versions are
+# pinned exactly and will not differ regardless of which mirror serves the packages.
+[[tool.poetry.source]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+priority = "primary"
+
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
 

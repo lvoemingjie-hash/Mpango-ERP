@@ -21,6 +21,7 @@ export function RetailerPricingPage() {
   const [loading, setLoading] = useState(true);
   const [pricesLoading, setPricesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorSource, setErrorSource] = useState<'retailers' | 'prices' | null>(null);
 
   // Selection state
   const [retailerId, setRetailerId] = useState<string>('');
@@ -38,21 +39,25 @@ export function RetailerPricingPage() {
 
   const hasWritePermission = user?.permissions.includes('pricing:write') || user?.roles.includes('admin');
 
-  // Load Retailers on mount
-  useEffect(() => {
-    async function loadInitial() {
-      setLoading(true);
-      try {
-        const res = await retailerService.getAll(1, 100);
-        setRetailers(res.data.data.items);
-      } catch {
-        setError('Failed to load customers.');
-      } finally {
-        setLoading(false);
-      }
+  // Load Retailers — extracted so Retry can call it
+  const loadRetailers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setErrorSource(null);
+    try {
+      const res = await retailerService.getAll(1, 100);
+      setRetailers(res.data.data.items);
+    } catch {
+      setError('Could not load customers. Check your connection and try again.');
+      setErrorSource('retailers');
+    } finally {
+      setLoading(false);
     }
-    loadInitial();
   }, []);
+
+  useEffect(() => {
+    loadRetailers();
+  }, [loadRetailers]);
 
   // Load Prices when retailer or page changes
   const loadPrices = useCallback(async () => {
@@ -62,12 +67,14 @@ export function RetailerPricingPage() {
     }
     setPricesLoading(true);
     setError(null);
+    setErrorSource(null);
     try {
       const res = await pricingService.getPrices(retailerId, page, size);
       setPrices(res.data.data.items);
       setTotal(res.data.data.total);
     } catch {
-      setError('Failed to load prices for this customer.');
+      setError('Could not load prices for this customer. Try selecting the customer again or refresh the page.');
+      setErrorSource('prices');
     } finally {
       setPricesLoading(false);
     }
@@ -175,8 +182,22 @@ export function RetailerPricingPage() {
 
         {/* Error State */}
         {error && (
-          <div className="rounded-md bg-red-50 p-4">
+          <div className="flex items-center justify-between rounded-md bg-red-50 p-4">
             <div className="text-sm text-red-700">{error}</div>
+            <button
+              onClick={() => {
+                setError(null);
+                setErrorSource(null);
+                if (errorSource === 'retailers') {
+                  loadRetailers();
+                } else {
+                  loadPrices();
+                }
+              }}
+              className="rounded-md bg-red-100 px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -184,8 +205,8 @@ export function RetailerPricingPage() {
         {!retailerId ? (
           <EmptyState
             icon={CurrencyDollarIcon}
-            title="No customer selected"
-            description="Please select a customer from the dropdown above to manage their pricing."
+            title="Select a customer to manage pricing"
+            description="Choose a customer from the dropdown above to view and set their custom product prices."
           />
         ) : pricesLoading ? (
           <TableSkeleton />
@@ -193,7 +214,7 @@ export function RetailerPricingPage() {
           <EmptyState
             icon={CurrencyDollarIcon}
             title="No prices configured"
-            description="This customer does not have any custom prices set. They cannot order items without prices."
+            description="This customer has no custom prices yet. Set prices for your products so this customer can place orders."
             action={
               <button
                 onClick={handleOpenAddModal}

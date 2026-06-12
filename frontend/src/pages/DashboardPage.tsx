@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { dashboardService } from '@/services/dashboardService';
 import { orderService } from '@/services/orderService';
@@ -10,6 +10,8 @@ import type { KpiCard as KpiCardType, ChartDataPoint } from '@/services/dashboar
 
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DashboardSkeleton } from '@/components/skeletons/DashboardSkeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { HomeIcon } from '@heroicons/react/24/outline';
 
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -27,43 +29,56 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        // Parallel fetch: BI endpoints + legacy lists
-        const [kpiRes, trendRes, ordersRes, stocksRes] = await Promise.allSettled([
-          dashboardService.getKpiSummary(),
-          dashboardService.getSalesTrend(),
-          orderService.getAll(1, 50),
-          inventoryService.getStocks(1, 50),
-        ]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [kpiRes, trendRes, ordersRes, stocksRes] = await Promise.allSettled([
+        dashboardService.getKpiSummary(),
+        dashboardService.getSalesTrend(),
+        orderService.getAll(1, 50),
+        inventoryService.getStocks(1, 50),
+      ]);
 
-        // BI endpoints — graceful fallback if not available
-        if (kpiRes.status === 'fulfilled') {
-          setKpiCards(kpiRes.value.data.data.cards);
-          setCurrency(kpiRes.value.data.data.currency);
-        }
-        if (trendRes.status === 'fulfilled') {
-          setSalesTrend(trendRes.value.data.data.data);
-        }
+      let failedCount = 0;
 
-        // Legacy lists — always needed for orders table
-        if (ordersRes.status === 'fulfilled') {
-          setOrders(ordersRes.value.data.data.items);
-        }
-        if (stocksRes.status === 'fulfilled') {
-          setStocks(stocksRes.value.data.data.items);
-        }
-      } catch {
-        setError('Failed to load dashboard data. Is the backend running?');
-      } finally {
-        setLoading(false);
+      if (kpiRes.status === 'fulfilled') {
+        setKpiCards(kpiRes.value.data.data.cards);
+        setCurrency(kpiRes.value.data.data.currency);
+      } else {
+        failedCount++;
       }
+      if (trendRes.status === 'fulfilled') {
+        setSalesTrend(trendRes.value.data.data.data);
+      } else {
+        failedCount++;
+      }
+      if (ordersRes.status === 'fulfilled') {
+        setOrders(ordersRes.value.data.data.items);
+      } else {
+        failedCount++;
+      }
+      if (stocksRes.status === 'fulfilled') {
+        setStocks(stocksRes.value.data.data.items);
+      } else {
+        failedCount++;
+      }
+
+      if (failedCount === 4) {
+        setError('Could not load any dashboard data. Check your connection and try again. If the problem persists, contact support.');
+      } else if (failedCount > 0) {
+        setError('Some dashboard data failed to load. Some sections may show incomplete data. Try refreshing to reload everything.');
+      }
+    } catch {
+      setError('Could not load dashboard data. Check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Count orders by status (for breakdown section)
   const statusCounts = orders.reduce<Record<string, number>>((acc, o) => {
@@ -93,10 +108,29 @@ export function DashboardPage() {
         description={`Welcome back${user?.full_name ? `, ${user.full_name}` : ''}.${tenantCode ? ` (${tenantCode})` : ''}`}
       />
 
-      {error && <p className="mt-6 text-sm text-red-600">{error}</p>}
+      {error && (
+        <div className="mt-6 flex items-center justify-between gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            onClick={load}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {!error && (
         <div className="space-y-6">
+          {/* First-use state: show guidance when there is no data at all */}
+          {orders.length === 0 && kpiCards.length === 0 && salesTrend.length === 0 && (
+            <EmptyState
+              icon={HomeIcon}
+              title="Welcome to your dashboard"
+              description="Your business overview will appear here as you get started. Add products, create orders, and onboard customers to see your metrics come to life."
+            />
+          )}
+
           {/* KPI Cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {kpiCards.map((card, i) => (
@@ -150,7 +184,7 @@ export function DashboardPage() {
                   </div>
                 ))}
                 {orders.length === 0 && (
-                  <p className="text-sm text-gray-400">No orders yet.</p>
+                  <p className="text-sm text-gray-400">No orders yet. Create your first order to see status breakdown here.</p>
                 )}
               </div>
             </div>
@@ -192,7 +226,7 @@ export function DashboardPage() {
                   {orders.length === 0 && (
                     <tr>
                       <td colSpan={4} className="px-6 py-8 text-center text-gray-400">
-                        No recent orders found.
+                        No orders yet. Go to Sales to create your first order.
                       </td>
                     </tr>
                   )}

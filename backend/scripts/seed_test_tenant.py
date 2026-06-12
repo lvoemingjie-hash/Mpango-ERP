@@ -47,94 +47,24 @@ def _require_safe_environment(*, allow_production: bool) -> None:
 
 
 async def _ensure_tenant_tables(db, tenant_schema: str) -> None:
-    from sqlalchemy import text
+    """Reuse the canonical bootstrap_tenant_schema module for full schema creation.
 
-    await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{tenant_schema}"'))
-    await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
+    U1-R1: Previously this function only created 5 RBAC tables (users, roles,
+    permissions, user_roles, role_permissions). Now it delegates to the canonical
+    bootstrap_tenant_schema.bootstrap() which creates ALL MVP tables including
+    skus, inventory_stocks, inventory_movements, orders, order_items, payments,
+    ledger_entries, retailer_prices, enums, indexes, and reconciliation.
+    """
+    import os
 
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                email VARCHAR(255) NOT NULL UNIQUE,
-                password_hash VARCHAR(255) NOT NULL,
-                full_name TEXT,
-                is_active BOOLEAN NOT NULL DEFAULT true,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                is_deleted BOOLEAN DEFAULT false,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID
-            )
-            """
-        )
-    )
+    from core.config import get_settings
+    from scripts import bootstrap_tenant_schema
 
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS roles (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                name VARCHAR(100) NOT NULL UNIQUE,
-                description TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                is_deleted BOOLEAN DEFAULT false,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID
-            )
-            """
-        )
-    )
+    settings = get_settings()
+    database_url = settings.DATABASE_URL
 
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS permissions (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                code VARCHAR(100) NOT NULL UNIQUE,
-                description TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-                is_deleted BOOLEAN DEFAULT false,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID
-            )
-            """
-        )
-    )
-
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS user_roles (
-                user_id UUID NOT NULL,
-                role_id UUID NOT NULL,
-                PRIMARY KEY (user_id, role_id),
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
-            )
-            """
-        )
-    )
-
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS role_permissions (
-                role_id UUID NOT NULL,
-                permission_id UUID NOT NULL,
-                PRIMARY KEY (role_id, permission_id),
-                FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
-                FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
-            )
-            """
-        )
-    )
+    # bootstrap() creates its own engine/session internally
+    await bootstrap_tenant_schema.bootstrap(tenant_schema, database_url)
 
 
 async def _seed_admin_rbac(
@@ -287,13 +217,59 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     admin_password = "testpassword"
     admin_full_name = "Test Admin"
 
+    # U1: Complete permission list matching onboard_tenant.py
     permission_codes = [
-        ("payments:create", "Create payments"),
-        ("payments:read", "Read payments"),
-        ("orders:read", "Read orders"),
-        ("orders:write", "Write orders"),
+        # ── User management ──
         ("users:read", "Read users"),
         ("users:create", "Create users"),
+        ("users:update", "Update users"),
+        ("users:deactivate", "Deactivate users"),
+        # ── Wholesaler ──
+        ("wholesalers:read", "Read wholesalers"),
+        ("wholesalers:write", "Create/update/delete wholesalers"),
+        # ── Role management ──
+        ("roles:read", "Read roles"),
+        ("roles:create", "Create roles"),
+        ("roles:update", "Update roles"),
+        ("roles:delete", "Delete roles"),
+        ("roles:assign", "Assign roles to users"),
+        # ── Order management ──
+        ("orders:read", "Read orders"),
+        ("orders:create", "Create orders"),
+        ("orders:update", "Update orders"),
+        ("orders:confirm", "Confirm orders"),
+        ("orders:ship", "Ship orders"),
+        ("orders:cancel", "Cancel orders"),
+        # ── SKU / Product management ──
+        ("skus:read", "Read SKUs"),
+        ("skus:create", "Create SKUs"),
+        ("skus:update", "Update SKUs"),
+        ("skus:import", "Import SKUs via preview/validate/apply contract"),
+        # ── Inventory management ──
+        ("inventory:read", "Read inventory"),
+        ("inventory:write", "Write inventory (legacy alias)"),
+        ("inventory:update", "Update inventory (adjustments)"),
+        # ── Payment management ──
+        ("payments:read", "Read payments"),
+        ("payments:create", "Create payments"),
+        # ── Retailer management ──
+        ("retailers:read", "Read retailers"),
+        # ── Invitations ──
+        ("invitations:create", "Create invitations"),
+        # ── Pricing ──
+        ("pricing:read", "Read pricing"),
+        ("pricing:write", "Write pricing"),
+        # ── Finance ──
+        ("finance:read", "View invoices, receivables, financial summary"),
+        # ── Dashboards & Reports ──
+        ("dashboards:read", "View dashboard KPIs and charts"),
+        ("reports:read", "Read reports"),
+        ("reports:analyze", "Analyze reports"),
+        # ── Exports ──
+        ("exports:create", "Request data exports"),
+        # ── System ──
+        ("system:admin", "Full system administration (job queues, debug endpoints)"),
+        ("metrics:admin", "Reset application metrics"),
     ]
 
     async with AsyncSessionLocal() as db:

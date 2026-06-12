@@ -35,32 +35,34 @@ The P13 Operations Observability Cockpit extends the P11 read-only platform cock
 
 ## 2. Personas
 
-### Super Admin
+### Super Admin (Only Active Role in P13-B)
 
 - Full platform owner (Jeff or explicitly trusted operator).
-- Can view system health, error rates, slow routes, resource summaries, and tenant-scoped operational signals.
-- Can view noisy-neighbor analysis (which tenants consume disproportionate resources).
+- **Only role with P13 operational cockpit access in P13-B.**
+- Can view system health, error rates, slow routes, resource summaries, noisy-neighbor analysis, and tenant-scoped operational signals.
 - Must authenticate via identity-only (global) `super_admin` Bearer token (P11-B0-R1).
 - All views generate audit events.
+- `actor_role` in audit events is always `"super_admin"` in P13-B.
 
-### Engineering Operator
+### Engineering Operator (Deferred)
 
 - Restricted platform role focused on system health and incident response.
-- Can view system health, error rates, slow routes, and resource summaries.
-- Can view tenant-scoped error rates but cannot see raw tenant business data.
-- Cannot change tenant lifecycle state, platform configuration, or billing.
-- **P13-A status:** contract only. Role assignment mechanism is deferred to implementation.
+- **P13-A status: contract placeholder only.** Not implemented in P13-B.
+- Requires a separate auth/RBAC gate before any non-super_admin role can access P13 endpoints.
+- Role assignment mechanism is deferred until platform auth supports scoped operational roles.
 
-### Support Operator
+### Support Operator (Deferred)
 
-- Can view system health as context for support sessions.
-- Cannot view noisy-neighbor analysis or cross-tenant resource breakdowns.
-- **P13-A status:** contract only. Scoped to system-level read-only views only.
+- Restricted to system health overview as context for support sessions.
+- **P13-A status: contract placeholder only.** Not implemented in P13-B.
+- Requires the same auth/RBAC gate as engineering_operator.
+- Even when implemented, cannot view error analysis, slow routes, resources, or noisy-neighbor views.
 
 ### Explicitly Denied
 
 - **Product Admin / Tenant-contextual admin:** Must not access P13 operational endpoints even if the tenant-contextual token carries `super_admin` role.
 - **Tenant users:** No tenant user may access platform operational features.
+- **Any non-super_admin identity role in P13-B:** All P13 endpoints require `actor_role: "super_admin"`. Other roles are denied until an auth/RBAC gate explicitly approves them.
 
 ---
 
@@ -99,7 +101,7 @@ The P13 Operations Observability Cockpit extends the P11 read-only platform cock
 
 1. Actor navigates to `/platform/ops/noisy-neighbors`.
 2. System displays `NoisyNeighborSummary` -- tenants with disproportionate error rates, slow routes, or resource consumption.
-3. Only super_admin and engineering_operator may access this view.
+3. Only super_admin may access this view (identity-only Bearer token).
 4. Data is aggregated: tenant ID + error count + slow route count. No raw business payloads.
 5. System writes an `ops_noisy_neighbor_view` audit event.
 
@@ -118,14 +120,25 @@ The P13 Operations Observability Cockpit extends the P11 read-only platform cock
 
 ```
 ErrorRateSummary {
+  source_status        : enum        NOT NULL   -- available | unavailable | unknown
   window_minutes       : integer     NOT NULL   -- aggregation window (e.g., 5, 15, 60)
-  total_errors         : integer     NOT NULL   -- >= 0
-  error_classes        : ErrorClassBreakdown[] NOT NULL
-  top_routes           : RouteErrorBreakdown[] NOT NULL
-  top_tenants          : TenantErrorBreakdown[] NULLABLE   -- null if actor lacks cross-tenant scope
+  total_errors         : integer     NULLABLE   -- >= 0 when available, null when source unavailable
+  error_classes        : ErrorClassBreakdown[] NOT NULL   -- empty array when source unavailable
+  top_routes           : RouteErrorBreakdown[] NOT NULL   -- empty array when source unavailable
+  top_tenants          : TenantErrorBreakdown[] NULLABLE   -- null if actor lacks cross-tenant scope or source unavailable
   generated_at         : timestamp   NOT NULL   -- UTC ISO-8601
 }
 ```
+
+#### Source Status Semantics
+
+| Value | Meaning |
+|-------|---------|
+| `available` | Telemetry source returned real data. All totals and breakdowns are populated from actual measurements. |
+| `unavailable` | Telemetry source is not instrumented or did not respond. `total_errors` is `null`. Arrays are empty. |
+| `unknown` | Cannot determine whether the source is available. Treated the same as `unavailable` for display. |
+
+**Key rule:** `total_errors: null` means "we don't know" (source unavailable). `total_errors: 0` means "we measured zero errors" (source available, no errors occurred). These are semantically different and must display differently in the UI.
 
 #### ErrorClassBreakdown
 
@@ -164,17 +177,20 @@ TenantErrorBreakdown {
 
 1. `ErrorRateSummary` containing raw request body or stack trace -- redaction violation.
 2. `ErrorClassBreakdown` with more than 5 `sample_correlation_ids` -- must cap at 5.
-3. `TenantErrorBreakdown` accessible to support_operator -- cross-tenant scope denied.
+3. `TenantErrorBreakdown` accessible to any non-super_admin role in P13-B -- cross-tenant scope denied.
 4. `ErrorRateSummary` with `window_minutes: 0` -- invalid window.
+5. `ErrorRateSummary` with `source_status: "available"` but `total_errors: null` -- inconsistent. If source is available, total must be an integer.
+6. `ErrorRateSummary` with `source_status: "unavailable"` but `total_errors: 0` -- misleading. Unavailable sources must use `null`.
 
 ### 4.2 SlowRouteSummary
 
 ```
 SlowRouteSummary {
+  source_status        : enum        NOT NULL   -- available | unavailable | unknown
   window_minutes       : integer     NOT NULL   -- aggregation window
   threshold_ms         : integer     NOT NULL   -- what counts as "slow" (e.g., 1000)
-  total_slow_requests  : integer     NOT NULL   -- >= 0
-  routes               : SlowRouteEntry[] NOT NULL
+  total_slow_requests  : integer     NULLABLE   -- >= 0 when available, null when source unavailable
+  routes               : SlowRouteEntry[] NOT NULL   -- empty array when source unavailable
   generated_at         : timestamp   NOT NULL   -- UTC ISO-8601
 }
 ```
@@ -197,6 +213,8 @@ SlowRouteEntry {
 1. `SlowRouteEntry` with full URL including query parameters -- must strip query params.
 2. `SlowRouteEntry` containing request body or response body -- redaction violation.
 3. `SlowRouteSummary` with `threshold_ms: 0` -- invalid threshold.
+4. `SlowRouteSummary` with `source_status: "available"` but `total_slow_requests: null` -- inconsistent.
+5. `SlowRouteSummary` with `source_status: "unavailable"` but `total_slow_requests: 0` -- misleading.
 
 ### 4.3 ResourceHealthSummary
 
@@ -277,7 +295,7 @@ NoisyNeighborEntry {
 #### Counterexamples (Rejected)
 
 1. `NoisyNeighborEntry` containing raw tenant business data -- only counts and route names allowed.
-2. `NoisyNeighborSummary` accessible to support_operator -- restricted to super_admin and engineering_operator.
+2. `NoisyNeighborSummary` accessible to any non-super_admin role -- restricted to super_admin only in P13-B.
 3. `NoisyNeighborEntry` with `impact_score` > 1.0 or < 0.0 -- invalid range.
 4. `NoisyNeighborEntry` listing other tenants' raw order or payment counts -- only error/slow-route counts.
 
@@ -314,7 +332,7 @@ OpsAuditEvent extends PlatformAuditEvent {
 
 1. `ops_health_view` with `scope: "tenant"` -- ops events must use `scope: "operations"`.
 2. `OpsAuditEvent` for a tenant-contextual token accessing ops endpoints -- must be `denied`.
-3. `ops_noisy_neighbor_view` by support_operator -- must be denied.
+3. `ops_noisy_neighbor_view` by any non-super_admin role -- must be denied.
 
 ---
 
@@ -335,10 +353,11 @@ OpsAuditEvent extends PlatformAuditEvent {
 | Field | Source | Availability | Fallback |
 |-------|--------|-------------|----------|
 | `window_minutes` | Configuration | Always | N/A |
-| `total_errors` | Application log aggregation | `telemetry_required` | `0` with `source_status: "unavailable"` |
-| `error_classes` | Log error class extraction | `telemetry_required` | Empty array with status note |
-| `top_routes` | Route + error correlation | `telemetry_required` | Empty array with status note |
-| `top_tenants` | Tenant + error correlation | `telemetry_required` | `null` (requires cross-tenant scope) |
+| `source_status` | Telemetry availability | Always | `"unavailable"` if telemetry not instrumented |
+| `total_errors` | Application log aggregation | `telemetry_required` | `null` when `source_status` is not `"available"` |
+| `error_classes` | Log error class extraction | `telemetry_required` | Empty array when unavailable |
+| `top_routes` | Route + error correlation | `telemetry_required` | Empty array when unavailable |
+| `top_tenants` | Tenant + error correlation | `telemetry_required` | `null` (requires cross-tenant scope + available source) |
 | `generated_at` | System timestamp | Always | N/A |
 
 ### SlowRouteSummary Source Map
@@ -347,8 +366,9 @@ OpsAuditEvent extends PlatformAuditEvent {
 |-------|--------|-------------|----------|
 | `window_minutes` | Configuration | Always | N/A |
 | `threshold_ms` | Configuration | Always | N/A |
-| `total_slow_requests` | Latency log aggregation | `telemetry_required` | `0` with status note |
-| `routes` | Route latency extraction | `telemetry_required` | Empty array with status note |
+| `source_status` | Telemetry availability | Always | `"unavailable"` if telemetry not instrumented |
+| `total_slow_requests` | Latency log aggregation | `telemetry_required` | `null` when `source_status` is not `"available"` |
+| `routes` | Route latency extraction | `telemetry_required` | Empty array when unavailable |
 | `generated_at` | System timestamp | Always | N/A |
 
 ### ResourceHealthSummary Source Map
@@ -374,41 +394,59 @@ OpsAuditEvent extends PlatformAuditEvent {
 
 When a data source is unavailable:
 
-1. The corresponding field must be `null` or the parent object must have `status: "unknown"`.
-2. `total_errors: 0` is NOT the same as "no data available." If the source is uninstrumented, the response must indicate `unavailable`, not `0`.
-3. UI must display uninstrumented sources distinctly: gray indicator + "Data unavailable" or "Not instrumented."
-4. **Counterexample:** An unavailable data source must NEVER produce `status: "healthy"`, `total_errors: 0` (when unknown), or `usage_percent: 0.0` (when unknown).
+1. The corresponding `source_status` field must be `"unavailable"` or `"unknown"` (not `"available"`).
+2. Telemetry-dependent totals (`total_errors`, `total_slow_requests`) must be `null` when `source_status` is not `"available"`.
+3. Breakdown arrays (`error_classes`, `top_routes`, `routes`) must be empty arrays when unavailable.
+4. `total_errors: null` (unavailable) and `total_errors: 0` (measured zero errors) are semantically different. The UI must display them differently: null shows "Data unavailable" with gray indicator; 0 shows "0 errors" with green indicator.
+5. UI must display uninstrumented sources distinctly: gray indicator + "Data unavailable" or "Not instrumented."
+6. **Counterexample:** An unavailable data source must NEVER produce `source_status: "available"`, `total_errors: 0` (when unknown), or `usage_percent: 0.0` (when unknown).
 
 ---
 
 ## 6. Permission Matrix
 
-### Role-Action Matrix for Operations Cockpit
+### P13-B Default: Identity-Only Super Admin Only
 
-| Action | super_admin (identity-only) | engineering_operator | support_operator | tenant-contextual admin |
-|--------|-----------------------------|---------------------|-----------------|------------------------|
-| View system health overview | **Allow** + audit | **Allow** + audit | **Allow** + audit | **Deny** |
-| View error rate analysis | **Allow** + audit | **Allow** + audit | **Deny** | **Deny** |
-| View slow route analysis | **Allow** + audit | **Allow** + audit | **Deny** | **Deny** |
-| View resource health summary | **Allow** + audit | **Allow** + audit | **Deny** | **Deny** |
-| View noisy-neighbor analysis | **Allow** + audit | **Allow** + audit | **Deny** | **Deny** |
-| View tenant-scoped operational data | **Allow** + audit | **Allow** + audit | **Deny** | **Deny** |
-| Access ops cockpit at all | **Allow** | **Allow** | **Allow** (health only) | **Deny** |
+**P13-B enforces a single active role: identity-only `super_admin`.** All other roles are denied until a separate auth/RBAC gate explicitly approves them.
+
+| Action | super_admin (identity-only) | other roles |
+|--------|-----------------------------|-------------|
+| View system health overview | **Allow** + audit | **Deny** |
+| View error rate analysis | **Allow** + audit | **Deny** |
+| View slow route analysis | **Allow** + audit | **Deny** |
+| View resource health summary | **Allow** + audit | **Deny** |
+| View noisy-neighbor analysis | **Allow** + audit | **Deny** |
+| View tenant-scoped operational data | **Allow** + audit | **Deny** |
+| Access ops cockpit at all | **Allow** | **Deny** |
+
+### Deferred Role Matrix (Post-Auth/RBAC Gate)
+
+This matrix shows the intended role scope once platform auth supports scoped operational roles. **Do not implement these permissions in P13-B.** They require a dedicated auth/RBAC approval gate.
+
+| Action | engineering_operator (deferred) | support_operator (deferred) |
+|--------|-------------------------------|----------------------------|
+| View system health overview | Allow + audit | Allow + audit |
+| View error rate analysis | Allow + audit | Deny |
+| View slow route analysis | Allow + audit | Deny |
+| View resource health summary | Allow + audit | Deny |
+| View noisy-neighbor analysis | Allow + audit | Deny |
+| View tenant-scoped operational data | Allow + audit | Deny |
 
 ### Identity-Only Enforcement
 
 Per P11-B0-R1 resolution:
 
-- **Only identity-only (global) `super_admin` Bearer tokens** are accepted for P13 operational cockpit access.
+- **Only identity-only (global) `super_admin` Bearer tokens** are accepted for P13 operational cockpit access in P13-B.
 - A **tenant-contextual token** with `super_admin` role is **NOT sufficient** -- must be **denied**.
 - The `X-Platform-Operator` header remains available for server/operator contexts but is not used in the browser.
+- All P13-B audit events have `actor_role: "super_admin"`.
 
 ### Counterexamples (Rejected)
 
-1. Support operator viewing error rate analysis -- must deny with audit event.
+1. Any non-super_admin role accessing any P13-B endpoint -- must deny with 403 + audit event.
 2. Tenant-contextual admin accessing any ops endpoint -- must deny with 403.
-3. Engineering operator viewing raw tenant business data through ops views -- not possible; ops views only expose counts and statuses.
-4. Any actor modifying system state through the ops cockpit -- no write operations allowed.
+3. Any actor modifying system state through the ops cockpit -- no write operations allowed.
+4. Audit event with `actor_role` other than `"super_admin"` in P13-B -- invalid.
 
 ---
 
@@ -452,7 +490,7 @@ Every P13 audit event must include:
 |-------|------|----------|-------|
 | `event_id` | uuid | YES | Unique event identifier |
 | `actor_id` | string | YES | Platform operator identity |
-| `actor_role` | enum | YES | `super_admin` or `engineering_operator` |
+| `actor_role` | enum | YES | `super_admin` (only active role in P13-B; other roles deferred to auth/RBAC gate) |
 | `tenant_id` | uuid | YES for tenant-scoped views, `null` for system views | Target tenant or null |
 | `action` | string | YES | From ops audit action enum (Section 4.5) |
 | `result` | enum | YES | `allowed` or `denied` |
@@ -471,7 +509,7 @@ Every P13 audit event must include:
 | Actor views resources | `ops_resource_view` | `allowed` | YES |
 | Actor views noisy neighbors | `ops_noisy_neighbor_view` | `allowed` | YES |
 | Actor views tenant ops data | `ops_tenant_view` | `allowed` | YES |
-| Support operator views errors | `ops_access_denied` | `denied` | YES |
+| Non-super_admin role accesses any ops endpoint | `ops_access_denied` | `denied` | YES |
 | Tenant-contextual token accesses ops | `ops_access_denied` | `denied` | YES |
 
 ---
@@ -534,9 +572,9 @@ P13-C (frontend ops UI) may not begin until:
 | AC-02 | Error rate summary redacts raw request/response bodies | Summary scan finds zero raw payloads |
 | AC-03 | Slow route entries show route path only, no query params | Entry scan finds no `?` or `&` in route field |
 | AC-04 | Resource health shows `unknown` distinctly from `healthy` | UI displays gray indicator for unknown |
-| AC-05 | Noisy-neighbor view denied for support_operator | API returns 403, audit event written |
+| AC-05 | Noisy-neighbor view denied for any non-super_admin role | API returns 403, audit event written |
 | AC-06 | Every ops view generates an audit event | Audit log contains corresponding event |
-| AC-07 | `total_errors: 0` only when data is confirmed zero, not when source is unavailable | Unavailable sources show `null` or status note |
+| AC-07 | `total_errors: null` when telemetry source is unavailable (not `0`) | `source_status` field is `"unavailable"`, total is `null` |
 | AC-08 | No runtime code changes in P13-A | Only docs/ai/ and ai-ledger/ files modified |
 | AC-09 | No migrations in P13-A | Zero migration files in diff |
 | AC-10 | No frontend UI in P13-A | Zero frontend files in diff |
@@ -550,9 +588,9 @@ P13-C (frontend ops UI) may not begin until:
 | CE-02 | Error summary containing raw request body `{"order_id": 123}` | Rejected by redaction filter |
 | CE-03 | Slow route entry with full URL `/api/v1/orders?tenant_id=x&status=active` | Must strip to `/api/v1/orders` |
 | CE-04 | `ResourceHealthSummary.database.status: "healthy"` with all null metrics | Inconsistent -- must be `"unknown"` |
-| CE-05 | `ErrorRateSummary.total_errors: 0` when telemetry is uninstrumented | Must be `null` or flagged unavailable |
+| CE-05 | `ErrorRateSummary.total_errors: 0` when telemetry is uninstrumented | Must be `null` with `source_status: "unavailable"` |
 | CE-06 | Noisy-neighbor entry listing raw order counts per tenant | Only error/slow-route counts allowed |
-| CE-07 | Support operator viewing error rate analysis | 403 FORBIDDEN |
+| CE-07 | Any non-super_admin role viewing error rate analysis | 403 FORBIDDEN |
 | CE-08 | Ops audit event with `scope: "tenant"` instead of `"operations"` | Invalid scope for P13 events |
 | CE-09 | P13-A branch containing runtime code changes | Rejected at merge gate |
 | CE-10 | `ComponentHealth.usage_percent: 150.0` | Invalid range -- must be 0.0-100.0 or null |
@@ -566,15 +604,25 @@ P13-C (frontend ops UI) may not begin until:
 
 | Category | Count (est.) | Description |
 |----------|-------------|-------------|
-| Error rate summary | 8 | Shape validation, redaction, empty/unavailable, window validation |
-| Slow route summary | 8 | Shape validation, URL stripping, latency buckets, threshold validation |
+| Error rate summary | 8 | Shape validation, redaction, source_status unavailable, null totals, window validation |
+| Slow route summary | 8 | Shape validation, URL stripping, latency buckets, source_status unavailable, threshold validation |
 | Resource health | 10 | DB/queue/CPU/memory/disk status, unknown behavior, null handling |
 | Noisy-neighbor | 8 | Permission (super_admin only), aggregation, impact score range, redaction |
-| Permission enforcement | 10 | super_admin allow, engineering_operator scope, support_operator deny, tenant-contextual deny |
-| Audit events | 8 | All view types, access denied events, required fields |
+| Permission enforcement | 10 | super_admin allow, non-super_admin deny, tenant-contextual deny, deferred-role placeholder |
+| Audit events | 8 | All view types, access denied events, required fields, actor_role always super_admin |
 | Unknown state | 6 | Unknown != healthy, null != 0, unavailable status |
 | Counterexample validation | 10 | All 15 counterexamples covered in test fixtures |
 | **Total estimate** | **~68** | |
+
+---
+
+## Phase Realignment Note
+
+**Current platform-dev state:** `origin/platform-dev` at `51cfb41`, which includes P9 (PRD/safety boundary), P10 (data contracts + read-only API), P11 (super admin cockpit frontend), P12 (support console), and now P13-A (this contract).
+
+**P13 relationship to PLATFORM_PRODUCT_PRD.md:** The PRD was written before P13 was scoped. It defines the general platform product vision but does not contain specific P13 operations observability feature definitions. P13's scope comes from `PLATFORM_PRODUCT_ROADMAP.md` section "P13 - Operations Observability." The PRD reference below is for the overall product context, not as a P13-specific feature specification.
+
+**Role model alignment:** P12 defined three personas (super_admin, support_operator, engineering_operator) but P12-B and P12-C implemented only identity-only super_admin access. P13 follows the same pattern: the contract documents future-role intent, but P13-B will only implement super_admin access. Expanding to additional roles requires a separate auth/RBAC gate.
 
 ---
 
@@ -595,7 +643,7 @@ This document does NOT:
 
 ## References
 
-- `PLATFORM_PRODUCT_PRD.md` -- P13 feature definitions
+- `PLATFORM_PRODUCT_PRD.md` -- Overall platform product vision (P13 scope comes from ROADMAP, not PRD)
 - `PLATFORM_PRODUCT_SECURITY_BOUNDARY.md` -- Operational mode rules, data redaction
 - `PLATFORM_PRODUCT_CONTRACTS.md` -- P10-A-R1 data contract shapes (SystemHealth, PlatformAuditEvent)
 - `PLATFORM_PRODUCT_P10_DATA_SOURCE_MAP.md` -- Source zone definitions

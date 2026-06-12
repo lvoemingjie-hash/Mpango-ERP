@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-13
 **Branch:** `codex/platform-p13-operations-cockpit-batch-2026-06-12`
-**HEAD:** `64465a0`
+**Validated HEAD before R3 ledger correction:** `7ce74ee`
 **Author:** Codex (Claude Opus 4.8)
 
 ---
@@ -17,6 +17,7 @@ P13-C-R1 hardens the P13 Operations Observability Cockpit API with Pydantic v2 `
 
 | Commit | Message |
 |--------|---------|
+| `7ce74ee` | docs(platform): P13-C-R2 evidence polish -- ledger-only update |
 | `64465a0` | docs(platform): P13-C-R1 ledger evidence |
 | `d0e076d` | fix(platform): P13-C-R1 contract enforcement + evidence fix |
 | `ddd92fc` | test(platform): P13 contract + security tests -- 43 tests |
@@ -71,8 +72,8 @@ P13-C-R1 hardens the P13 Operations Observability Cockpit API with Pydantic v2 `
 
 ## GitNexus
 
-- `npx gitnexus analyze` -- 6,339 nodes, 19,126 edges, 290 flows
-- `git diff --stat origin/platform-dev..HEAD` -- 8 files, +1,649 lines (all P13 additions)
+- `npx gitnexus analyze` -- 6,332 nodes, 19,126 edges, 290 flows
+- `git diff --stat origin/platform-dev..HEAD` -- 8 files, +1,659 lines (all P13 additions)
 
 **CRITICAL risk explanation:** P13 is a platform runtime API that exposes operational telemetry (error rates, slow routes, resource health, noisy-neighbor analysis) to platform operators. It writes audit events via `append_audit_entry`. It is **not** a product/runtime tenant business API. The risk scope is:
 - Platform operator access control (mitigated by P10 identity-only super_admin guard)
@@ -98,7 +99,7 @@ P13-C-R1 hardens the P13 Operations Observability Cockpit API with Pydantic v2 `
 ## Non-ASCII Evidence
 
 - **No non-ASCII introduced by this diff.** Verified by scanning `git diff origin/platform-dev..HEAD` on all changed files -- zero non-ASCII bytes found.
-- **Pre-existing non-ASCII remains in `backend/api/app.py`:** em-dash characters (U+2014 `—`) in comments at lines 126, 165, 180. These are pre-existing and untouched by P13 changes.
+- **Pre-existing non-ASCII remains in `backend/api/app.py`:** U+2014 em-dash characters in comments at lines 126, 165, 180. These are pre-existing and untouched by P13 changes.
 
 ---
 

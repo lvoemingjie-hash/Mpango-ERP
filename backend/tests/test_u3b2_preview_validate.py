@@ -331,7 +331,11 @@ def _make_mock_db(rows, columns, run_status="previewed"):
         tenant_id=uuid.uuid4(),
         status=run_status,
         total_rows=len(rows),
-        mapping={"columns": columns, "sample_rows": rows},
+        mapping={
+            "columns": columns,
+            "rows": rows,
+            "sample_rows": rows[:5],
+        },
     )
     mock_db = AsyncMock()
     mock_result = MagicMock()
@@ -361,7 +365,8 @@ class TestRowLevelValidation:
     @pytest.mark.asyncio
     async def test_validate_missing_required_field_in_mapping(self):
         from services.import_service import ImportService
-        db = _make_mock_db([], [])
+        rows = [{"sku_code": "S1", "name": "A"}]
+        db = _make_mock_db(rows, ["sku_code", "name"])
         with pytest.raises(Exception) as exc_info:
             await ImportService().validate(
                 db, import_id="imp_test", mapping={"name": "name"},
@@ -568,3 +573,123 @@ class TestPermissionEnforcement:
         perms = re.findall(r'RequirePermission\("([^"]+)"\)', source)
         for p in perms:
             assert p == "skus:import", f"Unexpected permission: {p}"
+
+
+# ====================================================================
+# 13. R3: Full Rows Storage + Dedup Error Counting
+# ====================================================================
+
+class TestR3FullRowsAndCounting:
+    """CTO R3: preview stores full rows, validate uses full rows,
+    invalid_row_numbers set ensures correct error_rows counting."""
+
+    @pytest.mark.asyncio
+    async def test_six_row_csv_sixth_row_missing_required(self):
+        """6-row CSV, row 6 missing required field -> validate catches it."""
+        from services.import_service import ImportService
+        rows = [
+            {"sku_code": f"SKU-{i:03d}", "name": f"Item {i}"}
+            for i in range(1, 6)
+        ] + [{"sku_code": "", "name": ""}]  # row 6: both required fields empty
+        db = _make_mock_db(rows, ["sku_code", "name"])
+        result = await ImportService().validate(
+            db, import_id="imp_test",
+            mapping={"sku_code": "sku_code", "name": "name"},
+        )
+        assert result.status == "needs_review"
+        row6_errors = [e for e in result.errors if e.row == 6]
+        assert len(row6_errors) >= 1, "Row 6 must have error(s)"
+        assert any(e.field == "sku_code" for e in row6_errors)
+
+    @pytest.mark.asyncio
+    async def test_six_row_csv_row6_duplicate_of_row1(self):
+        """6-row CSV, row 6 duplicates row 1's sku_code -> validate catches it."""
+        from services.import_service import ImportService
+        rows = [
+            {"sku_code": f"SKU-{i:03d}", "name": f"Item {i}"}
+            for i in range(1, 6)
+        ] + [{"sku_code": "SKU-001", "name": "Duplicate of row 1"}]
+        db = _make_mock_db(rows, ["sku_code", "name"])
+        result = await ImportService().validate(
+            db, import_id="imp_test",
+            mapping={"sku_code": "sku_code", "name": "name"},
+        )
+        assert result.status == "needs_review"
+        assert any(
+            "Duplicate" in e.message and "SKU-001" in e.message
+            for e in result.errors
+        )
+
+    @pytest.mark.asyncio
+    async def test_duplicate_row_with_other_error_counts_once(self):
+        """Row with both duplicate sku_code AND missing field: error_rows
+        counts that row only once, not twice."""
+        from services.import_service import ImportService
+        rows = [
+            {"sku_code": "SKU-001", "name": "Valid"},
+            {"sku_code": "SKU-002", "name": "Valid"},
+            {"sku_code": "SKU-001", "name": ""},  # dup + missing name
+        ]
+        db = _make_mock_db(rows, ["sku_code", "name"])
+        result = await ImportService().validate(
+            db, import_id="imp_test",
+            mapping={"sku_code": "sku_code", "name": "name"},
+        )
+        # Row 3 has 2 errors (duplicate + missing name), but counts as 1 error row
+        assert result.error_rows == 1, (
+            f"Expected error_rows=1 (row 3 only), got {result.error_rows}"
+        )
+        assert result.valid_rows == 2
+        row3_errors = [e for e in result.errors if e.row == 3]
+        assert len(row3_errors) == 2, (
+            "Row 3 should have 2 error details (dup + missing name)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_rows_returns_explicit_error(self):
+        """If import_run has no rows (legacy data), validate returns error."""
+        from services.import_service import ImportService
+        from models.import_run import ImportRun
+        run = ImportRun(
+            import_id="imp_old",
+            tenant_id=uuid.uuid4(),
+            status="previewed",
+            total_rows=0,
+            mapping={"columns": ["sku_code"], "sample_rows": []},
+            # No "rows" key -- simulates legacy preview data
+        )
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = run
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        with pytest.raises(Exception) as exc_info:
+            await ImportService().validate(
+                mock_db, import_id="imp_old",
+                mapping={"sku_code": "sku_code", "name": "name"},
+            )
+        assert "NO_ROWS" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_preview_saves_full_rows_and_returns_sample(self):
+        """Preview must store full rows in mapping but return only sample_rows."""
+        from services.import_service import ImportService
+
+        csv_bytes = b"sku_code,name\n" + b"\n".join(
+            f"SKU-{i:03d},Item {i}".encode() for i in range(1, 8)
+        )
+        captured_run = {}
+
+        mock_db = AsyncMock()
+        mock_db.flush = AsyncMock()
+        mock_db.add = lambda r: captured_run.update({"mapping": r.mapping})
+
+        result = await ImportService().preview(
+            mock_db, tenant_id=uuid.uuid4(),
+            filename="test.csv", file_bytes=csv_bytes,
+        )
+        # Response sample_rows = 5 rows
+        assert len(result.sample_rows) == 5
+        # Mapping stored full 7 rows
+        assert len(captured_run["mapping"]["rows"]) == 7
+        # sample_rows in mapping also 5
+        assert len(captured_run["mapping"]["sample_rows"]) == 5

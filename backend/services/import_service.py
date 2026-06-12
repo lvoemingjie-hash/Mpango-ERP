@@ -98,7 +98,11 @@ class ImportService:
             source_filename=filename,
             source_encoding=source_encoding,
             total_rows=len(rows),
-            mapping={"columns": columns, "sample_rows": rows[:PREVIEW_SAMPLE_SIZE]},
+            mapping={
+                "columns": columns,
+                "rows": rows,
+                "sample_rows": rows[:PREVIEW_SAMPLE_SIZE],
+            },
         )
         db.add(run)
         await db.flush()
@@ -174,19 +178,24 @@ class ImportService:
         # -- Retrieve stored rows --
         mapping_data = run.mapping or {}
         columns: List[str] = mapping_data.get("columns", [])
-        sample_or_rows: List[Dict] = mapping_data.get("sample_rows", [])
+        rows: List[Dict] = mapping_data.get("rows", [])
 
-        # We only stored sample rows in preview; for full validation
-        # we need all rows.  Reload from mapping if available, otherwise
-        # validate only sample rows (limited but functional for now).
-        # NOTE: In production, raw file bytes would be stored in object
-        # storage and re-read here.  For U3-B2, validate sample rows.
-        rows = sample_or_rows
+        if not rows:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "NO_ROWS",
+                    "message": (
+                        f"Import run '{import_id}' has no row data stored.  "
+                        "Re-run preview to upload the CSV again."
+                    ),
+                },
+            )
 
         # -- Map + validate each row --
         errors: List[ImportErrorDetail] = []
         warnings: List[ImportWarningDetail] = []
-        valid_count = 0
+        invalid_row_numbers: set = set()
 
         required_target_fields = REQUIRED_FIELDS
         mapped_targets = set(mapping.values())
@@ -287,8 +296,8 @@ class ImportService:
             errors.extend(row_errors)
             warnings.extend(row_warnings)
 
-            if not row_errors:
-                valid_count += 1
+            if row_errors:
+                invalid_row_numbers.add(idx)
 
         # -- Intra-file duplicate sku_code detection --
         seen_sku_codes: Dict[str, int] = {}
@@ -312,7 +321,7 @@ class ImportService:
                         ),
                     )
                 )
-                valid_count = max(0, valid_count - 1)
+                invalid_row_numbers.add(idx)
             else:
                 seen_sku_codes[code] = idx
 
@@ -336,7 +345,8 @@ class ImportService:
                         )
                     )
 
-        error_count = len(rows) - valid_count
+        error_count = len(invalid_row_numbers)
+        valid_count = len(rows) - error_count
 
         # -- Determine status --
         new_status = "validated" if error_count == 0 else "needs_review"

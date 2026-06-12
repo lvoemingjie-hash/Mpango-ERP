@@ -188,6 +188,7 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
         ("skus:read", "Read SKUs"),
         ("skus:create", "Create SKUs"),
         ("skus:update", "Update SKUs"),
+        ("skus:import", "Import SKUs via preview/validate/apply contract"),
         # ── Inventory management ──
         ("inventory:read", "Read inventory"),
         ("inventory:write", "Write inventory (legacy alias)"),

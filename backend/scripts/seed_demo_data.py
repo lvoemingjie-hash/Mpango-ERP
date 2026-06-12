@@ -43,7 +43,8 @@ PERMISSION_CODES = [
     ("orders:write", "Write/update orders"), ("orders:delete", "Delete orders"),
     ("payments:read", "Read payments"), ("payments:create", "Create payments"),
     ("skus:read", "Read SKUs"), ("skus:create", "Create SKUs"),
-    ("skus:update", "Update SKUs"), ("inventory:read", "Read inventory"),
+    ("skus:update", "Update SKUs"), ("skus:import", "Import SKUs via preview/validate/apply contract"),
+    ("inventory:read", "Read inventory"),
     ("inventory:update", "Update inventory"), ("reports:read", "Read reports"),
     ("dashboards:read", "Read dashboard KPIs and charts"),
     ("reports:analyze", "Execute ad-hoc semantic analysis queries"),
@@ -123,11 +124,11 @@ def _add_backend_to_path() -> None:
     # In Docker, backend code is at /app/ directly, not /app/backend/
     script_dir = Path(__file__).resolve().parent
     backend_dir = script_dir.parent  # backend/ locally, /app/ in Docker
-    
+
     # Verify this is the backend root by checking for main.py or database/
     if not (backend_dir / "main.py").exists() and (backend_dir / "backend" / "main.py").exists():
         backend_dir = backend_dir / "backend"
-    
+
     if str(backend_dir) not in sys.path:
         sys.path.insert(0, str(backend_dir))
 

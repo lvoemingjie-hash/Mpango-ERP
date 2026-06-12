@@ -220,6 +220,17 @@ describe('SupportBundleCard', () => {
     expect(screen.queryByTestId('bundle-diagnostics')).not.toBeInTheDocument();
   });
 
+  it('SB-014: initial state shows generate form only, no bundle metadata', () => {
+    renderCard();
+    expect(screen.getByTestId('bundle-type-select')).toBeInTheDocument();
+    const btn = screen.getByTestId('generate-bundle-btn');
+    expect(btn).toBeInTheDocument();
+    expect(btn).not.toBeDisabled();
+    expect(btn).toHaveTextContent('Generate Bundle');
+    expect(screen.queryByTestId('bundle-metadata')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bundle-error')).not.toBeInTheDocument();
+  });
+
   it('TF-002: no download/export buttons', async () => {
     mockPost.mockResolvedValueOnce({ data: mockBundle });
     renderCard();

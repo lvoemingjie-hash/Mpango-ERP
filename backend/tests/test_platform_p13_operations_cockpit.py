@@ -182,6 +182,87 @@ class TestSchemas:
                 sample_correlation_ids=["id1", "id2", "id3", "id4", "id5", "id6"],
             )
 
+    def test_error_rate_summary_available_rejects_null(self):
+        """ErrorRateSummary rejects source_status='available' with total_errors=None."""
+        from api.v1.platform.p13.schemas import ErrorRateSummary
+        with pytest.raises(Exception, match="total_errors must be an integer"):
+            ErrorRateSummary(
+                source_status="available",
+                window_minutes=15,
+                total_errors=None,
+                error_classes=[],
+                top_routes=[],
+                top_tenants=None,
+                generated_at=datetime.now(timezone.utc),
+            )
+
+    def test_error_rate_summary_unavailable_rejects_int(self):
+        """ErrorRateSummary rejects source_status='unavailable' with total_errors=0."""
+        from api.v1.platform.p13.schemas import ErrorRateSummary
+        with pytest.raises(Exception, match="total_errors must be None"):
+            ErrorRateSummary(
+                source_status="unavailable",
+                window_minutes=15,
+                total_errors=0,
+                error_classes=[],
+                top_routes=[],
+                top_tenants=None,
+                generated_at=datetime.now(timezone.utc),
+            )
+
+    def test_slow_route_summary_available_rejects_null(self):
+        """SlowRouteSummary rejects source_status='available' with total_slow_requests=None."""
+        from api.v1.platform.p13.schemas import SlowRouteSummary
+        with pytest.raises(Exception, match="total_slow_requests must be an integer"):
+            SlowRouteSummary(
+                source_status="available",
+                window_minutes=15,
+                threshold_ms=1000,
+                total_slow_requests=None,
+                routes=[],
+                generated_at=datetime.now(timezone.utc),
+            )
+
+    def test_slow_route_summary_unavailable_rejects_int(self):
+        """SlowRouteSummary rejects source_status='unavailable' with total_slow_requests=0."""
+        from api.v1.platform.p13.schemas import SlowRouteSummary
+        with pytest.raises(Exception, match="total_slow_requests must be None"):
+            SlowRouteSummary(
+                source_status="unavailable",
+                window_minutes=15,
+                threshold_ms=1000,
+                total_slow_requests=0,
+                routes=[],
+                generated_at=datetime.now(timezone.utc),
+            )
+
+    def test_error_rate_summary_unknown_rejects_int(self):
+        """ErrorRateSummary rejects source_status='unknown' with total_errors=5."""
+        from api.v1.platform.p13.schemas import ErrorRateSummary
+        with pytest.raises(Exception, match="total_errors must be None"):
+            ErrorRateSummary(
+                source_status="unknown",
+                window_minutes=15,
+                total_errors=5,
+                error_classes=[],
+                top_routes=[],
+                top_tenants=None,
+                generated_at=datetime.now(timezone.utc),
+            )
+
+    def test_slow_route_summary_unknown_rejects_int(self):
+        """SlowRouteSummary rejects source_status='unknown' with total_slow_requests=3."""
+        from api.v1.platform.p13.schemas import SlowRouteSummary
+        with pytest.raises(Exception, match="total_slow_requests must be None"):
+            SlowRouteSummary(
+                source_status="unknown",
+                window_minutes=15,
+                threshold_ms=1000,
+                total_slow_requests=3,
+                routes=[],
+                generated_at=datetime.now(timezone.utc),
+            )
+
 
 # ============================================================
 # 2. Response Shape Tests
@@ -518,15 +599,37 @@ class TestAuditEvents:
             call_kwargs = mock_audit.call_args
             assert call_kwargs[1]["action"] == "ops_noisy_neighbor_view"
 
-    def test_access_denied_writes_audit(self):
-        """Denied access (401) writes ops_access_denied audit."""
+    def test_access_denied_no_auth_writes_audit(self):
+        """No-auth request writes ops_access_denied audit with scope=operations."""
         app, mock_db = self._make_audited_app()
         with patch("services.platform_audit_service.append_audit_entry", new_callable=AsyncMock) as mock_audit:
             client = TestClient(app)
             response = client.get(f"{P13_BASE}/ops/errors")
             assert response.status_code in (401, 403)
-            # Audit is best-effort for access denied; it may or may not be called
-            # depending on whether auth context is available. The guard fires first.
+            mock_audit.assert_called()
+            call_kwargs = mock_audit.call_args[1]
+            assert call_kwargs["action"] == "ops_access_denied"
+            meta = call_kwargs["audit_metadata"]
+            assert meta["scope"] == "operations"
+            assert "path" in meta
+            assert "/ops/errors" in meta["path"]
+
+    def test_access_denied_wrong_secret_writes_audit(self):
+        """Wrong secret request writes ops_access_denied audit."""
+        app, mock_db = self._make_audited_app()
+        with patch("services.platform_audit_service.append_audit_entry", new_callable=AsyncMock) as mock_audit:
+            client = TestClient(app)
+            response = client.get(
+                f"{P13_BASE}/ops/errors",
+                headers={"X-Platform-Test-Override": "wrong-secret"},
+            )
+            assert response.status_code == 403
+            mock_audit.assert_called()
+            call_kwargs = mock_audit.call_args[1]
+            assert call_kwargs["action"] == "ops_access_denied"
+            meta = call_kwargs["audit_metadata"]
+            assert meta["scope"] == "operations"
+            assert "path" in meta
 
 
 # ============================================================
@@ -578,8 +681,7 @@ class TestCounterexamples:
 
     def test_ce01_tenant_contextual_token_denied(self):
         """CE-01: Tenant-contextual super_admin is denied."""
-        # This is tested via the guard -- no tenant-contextual mock available
-        # in test env. Verified by the guard unit tests in P10.
+        # Real route-level identity test in TestRouteLevelIdentity below.
         # Here we confirm the endpoint exists and rejects no-auth.
         app = _make_guarded_app()
         client = TestClient(app)
@@ -613,3 +715,105 @@ class TestCounterexamples:
             # POST should be rejected (405)
             response = client.post(f"{P13_BASE}{ep}", headers=AUTH_HEADERS)
             assert response.status_code == 405, f"POST {ep} should be 405"
+
+
+# ============================================================
+# 9. Route-Level Identity Tests
+# ============================================================
+
+
+class TestRouteLevelIdentity:
+    """P13 route-level identity enforcement via Bearer/auth context.
+
+    Reuses P10/P12 auth_context injection pattern:
+      - identity-only super_admin Bearer token allowed
+      - tenant-contextual super_admin denied
+      - non-super_admin identity denied
+    """
+
+    def test_identity_only_super_admin_allowed(self):
+        """Identity-only global super_admin Bearer/auth context is allowed."""
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+
+        token = MagicMock()
+        token.user_id = "b2c3d4e5-f6a7-48b8-9c0d-1e2f3a4b5c6d"
+        token.roles = ["super_admin"]
+        token.tenant_id = None
+        token.tenant_schema = None
+        token.is_identity_only = True
+        token.is_super_admin = True
+
+        auth_ctx = MagicMock()
+        auth_ctx.token = token
+
+        with patch("api.context.auth.get_auth_context", return_value=auth_ctx):
+            response = client.get(f"{P13_BASE}/ops/errors")
+        assert response.status_code == 200
+        data = response.json()
+        assert "source_status" in data
+
+    def test_contextual_super_admin_denied(self):
+        """Tenant-contextual super_admin Bearer/auth context is denied."""
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+
+        token = MagicMock()
+        token.user_id = "c3d4e5f6-a7b8-49c9-0d1e-2f3a4b5c6d7e"
+        token.roles = ["super_admin"]
+        token.tenant_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        token.tenant_schema = "t_test"
+        token.is_identity_only = False
+        token.is_super_admin = True
+
+        auth_ctx = MagicMock()
+        auth_ctx.token = token
+
+        with patch("api.context.auth.get_auth_context", return_value=auth_ctx):
+            response = client.get(f"{P13_BASE}/ops/errors")
+        assert response.status_code in (401, 403)
+
+    def test_non_super_admin_denied(self):
+        """Identity-only token without super_admin role is denied."""
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+
+        token = MagicMock()
+        token.user_id = "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b"
+        token.roles = ["support_operator"]
+        token.tenant_id = None
+        token.tenant_schema = None
+        token.is_identity_only = True
+        token.is_super_admin = False
+
+        auth_ctx = MagicMock()
+        auth_ctx.token = token
+
+        with patch("api.context.auth.get_auth_context", return_value=auth_ctx):
+            response = client.get(f"{P13_BASE}/ops/errors")
+        assert response.status_code in (401, 403)
+
+    def test_identity_only_super_admin_allowed_all_endpoints(self):
+        """Identity-only super_admin is allowed on ALL P13 endpoints."""
+        mock_db = _mock_db()
+        app = _make_app(mock_db)
+        client = TestClient(app)
+
+        token = MagicMock()
+        token.user_id = "b2c3d4e5-f6a7-48b8-9c0d-1e2f3a4b5c6d"
+        token.roles = ["super_admin"]
+        token.tenant_id = None
+        token.tenant_schema = None
+        token.is_identity_only = True
+        token.is_super_admin = True
+
+        auth_ctx = MagicMock()
+        auth_ctx.token = token
+
+        with patch("api.context.auth.get_auth_context", return_value=auth_ctx):
+            for ep in ["/ops/health", "/ops/errors", "/ops/slow-routes", "/ops/resources", "/ops/noisy-neighbors"]:
+                response = client.get(f"{P13_BASE}{ep}")
+                assert response.status_code == 200, f"{ep} should allow identity-only super_admin"

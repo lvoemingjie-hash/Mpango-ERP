@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from api.v1.platform.p10.schemas import (
     ComponentStatus,
@@ -122,12 +122,24 @@ class ErrorRateSummary(BaseModel):
     )
     generated_at: datetime = Field(..., description="UTC ISO-8601")
 
-    @field_validator("total_errors")
-    @classmethod
-    def check_source_status_consistency(cls, v: Optional[int], info) -> Optional[int]:
-        """If source_status is available, total_errors must be an integer."""
-        # Cross-field validation is done in services; this is a safety net.
-        return v
+    @model_validator(mode="after")
+    def check_source_status_consistency(self) -> "ErrorRateSummary":
+        """Enforce source_status / total_errors contract.
+
+        - available: total_errors must be an integer >= 0 (not None).
+        - unavailable/unknown: total_errors must be None.
+        """
+        if self.source_status == "available":
+            if self.total_errors is None:
+                raise ValueError(
+                    "total_errors must be an integer >= 0 when source_status is 'available'"
+                )
+        else:
+            if self.total_errors is not None:
+                raise ValueError(
+                    f"total_errors must be None when source_status is '{self.source_status}'"
+                )
+        return self
 
 
 # -- SlowRouteSummary sub-structures --
@@ -166,6 +178,25 @@ class SlowRouteSummary(BaseModel):
         default_factory=list, description="Empty when source unavailable"
     )
     generated_at: datetime = Field(..., description="UTC ISO-8601")
+
+    @model_validator(mode="after")
+    def check_source_status_consistency(self) -> "SlowRouteSummary":
+        """Enforce source_status / total_slow_requests contract.
+
+        - available: total_slow_requests must be an integer >= 0 (not None).
+        - unavailable/unknown: total_slow_requests must be None.
+        """
+        if self.source_status == "available":
+            if self.total_slow_requests is None:
+                raise ValueError(
+                    "total_slow_requests must be an integer >= 0 when source_status is 'available'"
+                )
+        else:
+            if self.total_slow_requests is not None:
+                raise ValueError(
+                    f"total_slow_requests must be None when source_status is '{self.source_status}'"
+                )
+        return self
 
 
 # -- ResourceHealthSummary sub-structures --

@@ -335,12 +335,18 @@ class TestImportPydanticSchemas:
         assert resp_ok.status == "validated"
 
     def test_import_apply_request(self):
-        """ImportApplyRequest must accept all conflict strategies."""
+        """ImportApplyRequest must accept skip and fail conflict strategies."""
         from schemas.import_schemas import ImportApplyRequest
+        import pydantic
 
-        for strategy in ("skip", "update", "error"):
+        for strategy in ("skip", "fail"):
             req = ImportApplyRequest(on_conflict=strategy)
             assert req.on_conflict == strategy
+
+        # 'update' and 'error' must be rejected (CTO directive: not yet approved)
+        for bad_strategy in ("update", "error"):
+            with pytest.raises(pydantic.ValidationError):
+                ImportApplyRequest(on_conflict=bad_strategy)
 
     def test_import_apply_response(self):
         """ImportApplyResponse must serialize full result."""
@@ -365,20 +371,23 @@ class TestImportPydanticSchemas:
         resp2 = ImportApplyResponse.model_validate(data)
         assert resp2.import_id == resp.import_id
 
-    def test_import_apply_response_completed_with_errors(self):
-        """ImportApplyResponse must handle completed_with_errors status."""
+    def test_import_apply_response_failed_with_errors(self):
+        """ImportApplyResponse must handle failed status (fail-closed contract).
+
+        U3-C removed completed_with_errors -- errors always mean failed.
+        """
         from schemas.import_schemas import ImportApplyResponse, ImportErrorDetail
 
         resp = ImportApplyResponse(
             import_id="imp_a1b2c3d4",
-            status="completed_with_errors",
-            created=138,
-            skipped=5,
+            status="failed",
+            created=0,
+            skipped=0,
             errors=[
                 ImportErrorDetail(row=5, sku_code=None, message="Missing sku_code"),
             ],
         )
-        assert resp.status == "completed_with_errors"
+        assert resp.status == "failed"
         assert len(resp.errors) == 1
 
 

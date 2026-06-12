@@ -1,4 +1,4 @@
-"""U3-B2 SKU Import Router -- preview + validate endpoints.
+"""U3-B2/B3 SKU Import Router -- preview + validate + apply endpoints.
 
 Phase 1: POST /api/v1/skus/import/preview
     Accept CSV file, parse structure, return import_id.  No SKU writes.
@@ -7,7 +7,10 @@ Phase 2: POST /api/v1/skus/import/{import_id}/validate
     Accept field mapping, validate rows against rules, update import_runs.
     No SKU/inventory writes.
 
-Both endpoints use RequirePermission("skus:import") per U3-B1 contract.
+Phase 3: POST /api/v1/skus/import/{import_id}/apply
+    Write validated rows to SKU table.  Only status=validated allowed.
+
+All endpoints use RequirePermission("skus:import") per U3-B1 contract.
 """
 from __future__ import annotations
 
@@ -23,7 +26,7 @@ from api.middleware.rbac import RequirePermission
 from core.logging_config import get_request_logger
 from core.security import TokenPayload
 from schemas.common import DataResponse
-from schemas.import_schemas import ImportValidateRequest, ImportValidateResponse
+from schemas.import_schemas import ImportApplyRequest, ImportValidateRequest, ImportValidateResponse
 from services.import_service import ImportService
 
 router = APIRouter()
@@ -241,6 +244,93 @@ async def validate_import(
             "validate_import_failed",
             extra={
                 "action": "validate_import",
+                "import_id": import_id,
+                "error": str(e),
+                "error_type": type(e).__name__,
+            },
+        )
+        raise
+
+
+@router.post(
+    "/{import_id}/apply",
+    response_model=DataResponse[dict],
+    status_code=status.HTTP_200_OK,
+    summary="Phase 3: Apply validated import to create SKUs",
+)
+async def apply_import(
+    import_id: str,
+    body: ImportApplyRequest,
+    request: Request,
+    token: TokenPayload = Depends(RequirePermission("skus:import")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    """Write validated import rows to the SKU table.
+
+    Only processes import_runs with status='validated'.
+    Supports on_conflict='skip' (skip duplicates) or 'fail' (abort on duplicate).
+    All writes happen in a single transaction.
+    """
+    request_id = getattr(request.state, "request_id", "N/A")
+    tenant_id_str = getattr(request.state, "tenant_id", None)
+    logger = get_request_logger(request_id, tenant_id_str)
+
+    logger.info(
+        "apply_import_started",
+        extra={
+            "action": "apply_import",
+            "user_id": token.user_id,
+            "import_id": import_id,
+            "on_conflict": body.on_conflict,
+        },
+    )
+
+    try:
+        import uuid as _uuid
+        try:
+            applied_by = _uuid.UUID(token.user_id) if token.user_id else None
+        except (ValueError, AttributeError):
+            applied_by = None
+
+        service = ImportService()
+        result = await service.apply(
+            db,
+            import_id=import_id,
+            on_conflict=body.on_conflict,
+            applied_by=applied_by,
+        )
+
+        await db.commit()
+
+        response = DataResponse(
+            success=True,
+            data=result.model_dump(),
+            timestamp=datetime.utcnow(),
+        )
+
+        logger.info(
+            "apply_import_completed",
+            extra={
+                "action": "apply_import",
+                "import_id": import_id,
+                "on_conflict": body.on_conflict,
+                "created": result.created,
+                "skipped": result.skipped,
+                "success": True,
+            },
+        )
+
+        return response
+
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(
+            "apply_import_failed",
+            extra={
+                "action": "apply_import",
                 "import_id": import_id,
                 "error": str(e),
                 "error_type": type(e).__name__,

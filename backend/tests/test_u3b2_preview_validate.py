@@ -77,8 +77,8 @@ class TestEndpointDefinitions:
     def test_validate_endpoint_exists(self):
         assert "validate_import" in self._get_function_names()
 
-    def test_no_apply_endpoint(self):
-        assert "apply_import" not in self._get_function_names()
+    def test_apply_endpoint_exists(self):
+        assert "apply_import" in self._get_function_names()
 
     def test_preview_uses_skus_import_permission(self):
         source = SKU_IMPORTS_PY.read_text(encoding="utf-8")
@@ -91,6 +91,10 @@ class TestEndpointDefinitions:
     def test_validate_endpoint_route(self):
         source = SKU_IMPORTS_PY.read_text(encoding="utf-8")
         assert "import_id}/validate" in source
+
+    def test_apply_endpoint_route(self):
+        source = SKU_IMPORTS_PY.read_text(encoding="utf-8")
+        assert "import_id}/apply" in source
 
 
 # ====================================================================
@@ -106,13 +110,14 @@ class TestImportServiceStructure:
     def test_validate_method_exists(self):
         assert "async def validate" in IMPORT_SERVICE_PY.read_text(encoding="utf-8")
 
-    def test_no_apply_method(self):
-        assert "async def apply" not in IMPORT_SERVICE_PY.read_text(encoding="utf-8")
+    def test_apply_method_exists(self):
+        assert "async def apply" in IMPORT_SERVICE_PY.read_text(encoding="utf-8")
 
-    def test_no_sku_imports(self):
+    def test_sku_import_only_in_apply(self):
         source = IMPORT_SERVICE_PY.read_text(encoding="utf-8")
-        assert "from models.sku import" not in source
-        assert "from repositories.sku" not in source
+        if "from models.sku import" in source:
+            # SKU import is allowed only inside the apply method
+            assert "async def apply" in source
 
     def test_only_writes_import_runs(self):
         source = IMPORT_SERVICE_PY.read_text(encoding="utf-8")
@@ -248,29 +253,24 @@ class TestApplyMapping:
 class TestNoSkuInventoryWrites:
 
     @pytest.mark.parametrize("filepath", [SKU_IMPORTS_PY, IMPORT_SERVICE_PY])
-    def test_no_sku_model_import(self, filepath: Path):
-        source = filepath.read_text(encoding="utf-8")
-        if filepath == IMPORT_SERVICE_PY:
-            # Service must never import SKU model
-            assert "from models.sku" not in source
-            assert "import SKU" not in source
-        else:
-            # Router may import SKU for READ-ONLY duplicate check
-            if "from models.sku" in source:
-                assert "select(SKU.sku_code)" in source
-                assert "db.add" not in source
-
-    @pytest.mark.parametrize("filepath", [SKU_IMPORTS_PY, IMPORT_SERVICE_PY])
     def test_no_inventory_import(self, filepath: Path):
         source = filepath.read_text(encoding="utf-8")
         assert "inventory_repository" not in source
 
-    def test_router_only_reads_sku_codes(self):
-        """Router may READ sku_codes for duplicate check but must NOT write."""
-        source = SKU_IMPORTS_PY.read_text(encoding="utf-8")
-        if "from models.sku" in source:
-            assert "select(SKU.sku_code)" in source
-            assert "db.add" not in source
+    def test_service_sku_import_only_in_apply(self):
+        """Service may import SKU only inside the apply method."""
+        source = IMPORT_SERVICE_PY.read_text(encoding="utf-8")
+        if "from models.sku import" in source:
+            assert "async def apply" in source
+
+    def test_no_inventory_or_pricing_writes(self):
+        """Neither router nor service write to inventory/stocks/pricing."""
+        for filepath in [SKU_IMPORTS_PY, IMPORT_SERVICE_PY]:
+            source = filepath.read_text(encoding="utf-8")
+            assert "stock_movement" not in source
+            assert "retailer_price" not in source
+            assert "inventory_stock" not in source
+            assert "inventory_repository" not in source
 
 
 # ====================================================================

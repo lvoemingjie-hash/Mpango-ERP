@@ -1,11 +1,12 @@
-"""U3-B2 Import Service -- preview + validate logic for SKU bulk import.
+"""U3-B2/B3 Import Service -- preview + validate + apply logic for SKU bulk import.
 
-This service handles the first two phases of the 3-phase import contract:
+This service handles the three phases of the import contract:
   Phase 1 (preview):  Parse CSV, detect columns, store raw rows in ImportRun.
   Phase 2 (validate): Apply field mapping, run row-level validation rules.
+  Phase 3 (apply):    Write validated rows to SKU table.
 
-CRITICAL constraint (CTO directive): only write to import_runs,
-never to SKU/inventory tables.  Real persistence is left for U3-C apply.
+Phases 1-2 only write to import_runs.  Phase 3 writes to the SKU table
+within a single transaction.
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ from schemas.import_schemas import (
     ImportSourceInfo,
     ImportValidateResponse,
     ImportWarningDetail,
+    ImportApplyResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -383,6 +385,239 @@ class ImportService:
             warning_rows=len(warnings),
             errors=errors,
             warnings=warnings,
+        )
+
+    # ----------------------------------------------------------
+    # Phase 3: Apply
+    # ----------------------------------------------------------
+    async def apply(
+        self,
+        db: AsyncSession,
+        *,
+        import_id: str,
+        on_conflict: str,
+        applied_by: Optional[uuid.UUID] = None,
+        existing_sku_codes: Optional[set] = None,
+    ) -> ImportApplyResponse:
+        """Write validated rows to the SKU table.
+
+        Only processes import_runs with status='validated'.
+        All writes happen within the caller's transaction.
+
+        Args:
+            on_conflict: 'skip' (skip duplicates) or 'fail' (abort on any duplicate).
+            applied_by: UUID of the user who triggered apply.
+            existing_sku_codes: Optional pre-queried set of existing SKU codes.
+                If None, will query from DB.
+
+        Raises:
+            HTTPException on precondition failures.
+        """
+        from datetime import datetime, timezone
+        from models.sku import SKU
+
+        # -- Load ImportRun --
+        run = await self._get_run(db, import_id)
+
+        if run.status != "validated":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "INVALID_STATUS",
+                    "message": (
+                        f"Import run '{import_id}' is in status '{run.status}', "
+                        "expected 'validated'"
+                    ),
+                },
+            )
+
+        # -- Retrieve stored rows and field_mapping --
+        mapping_data = run.mapping or {}
+        rows: List[Dict] = mapping_data.get("rows", [])
+        field_mapping: Dict[str, str] = mapping_data.get("field_mapping", {})
+
+        if not rows:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "NO_ROWS",
+                    "message": (
+                        f"Import run '{import_id}' has no row data stored.  "
+                        "Re-run preview to upload the CSV again."
+                    ),
+                },
+            )
+
+        # -- STOP_AND_REPORT_CTO: check for custom_attributes in mapping --
+        custom_attr_mappings = {
+            k: v for k, v in field_mapping.items()
+            if v.startswith(CUSTOM_ATTR_PREFIX)
+        }
+        if custom_attr_mappings:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "code": "STOP_AND_REPORT_CTO",
+                    "message": (
+                        f"Field mapping contains custom_attributes entries: "
+                        f"{list(custom_attr_mappings.values())}. "
+                        f"The SKU model has no 'custom_attributes' column. "
+                        f"CTO must approve either adding the column or removing "
+                        f"these mappings before apply can proceed."
+                    ),
+                },
+            )
+
+        # -- Query existing SKU codes if not provided --
+        if existing_sku_codes is None:
+            code_result = await db.execute(
+                select(SKU.sku_code).where(SKU.is_deleted.is_(False))
+            )
+            existing_sku_codes = set(code_result.scalars().all())
+
+        # -- Pre-scan for conflicts when on_conflict='fail' --
+        if on_conflict == "fail":
+            conflict_errors: List[ImportErrorDetail] = []
+            for idx, row in enumerate(rows, start=1):
+                mapped_row = self._apply_mapping(row, field_mapping)
+                sku_code = mapped_row.get("sku_code")
+                if not sku_code or not isinstance(sku_code, str):
+                    continue
+                sku_code = sku_code.strip()
+                if sku_code in existing_sku_codes:
+                    conflict_errors.append(
+                        ImportErrorDetail(
+                            row=idx,
+                            field="sku_code",
+                            sku_code=sku_code,
+                            message=(
+                                f"sku_code '{sku_code}' already exists in catalog "
+                                f"and on_conflict='fail' was specified"
+                            ),
+                        )
+                    )
+            if conflict_errors:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "CONFLICT_DETECTED",
+                        "message": (
+                            f"Found {len(conflict_errors)} conflicting sku_code(s) "
+                            f"and on_conflict='fail'. No SKUs were created."
+                        ),
+                        "conflicts": [e.model_dump() for e in conflict_errors],
+                    },
+                )
+
+        # -- Process rows --
+        created_count = 0
+        skipped_count = 0
+        apply_errors: List[ImportErrorDetail] = []
+
+        for idx, row in enumerate(rows, start=1):
+            mapped_row = self._apply_mapping(row, field_mapping)
+
+            sku_code = mapped_row.get("sku_code")
+            if not sku_code or not isinstance(sku_code, str):
+                apply_errors.append(
+                    ImportErrorDetail(
+                        row=idx,
+                        field="sku_code",
+                        message="Missing or invalid sku_code in mapped row",
+                    )
+                )
+                continue
+
+            sku_code = sku_code.strip()
+
+            if sku_code in existing_sku_codes:
+                # skip strategy (fail already handled in pre-scan)
+                skipped_count += 1
+                continue
+
+            # -- Create SKU --
+            is_active_val = mapped_row.get("is_active")
+            if isinstance(is_active_val, str):
+                is_active_val = is_active_val.lower() in ("true", "1", "yes")
+
+            sku = SKU(
+                sku_code=sku_code,
+                name=mapped_row.get("name", ""),
+                description=mapped_row.get("description"),
+                unit=mapped_row.get("unit", "unit"),
+                category=mapped_row.get("category"),
+                is_active=is_active_val if is_active_val is not None else True,
+            )
+            db.add(sku)
+            existing_sku_codes.add(sku_code)
+            created_count += 1
+
+        # -- Fail-closed: if any row-level errors exist, abort BEFORE marking applied --
+        if apply_errors:
+            logger.error(
+                "import_apply_row_errors",
+                extra={
+                    "action": "import_apply",
+                    "import_id": import_id,
+                    "on_conflict": on_conflict,
+                    "error_count": len(apply_errors),
+                },
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "ROW_PROCESSING_ERRORS",
+                    "message": (
+                        f"Apply aborted: {len(apply_errors)} row-level error(s) "
+                        f"detected during processing. No SKUs were created and "
+                        f"import_run was NOT marked as applied. Fix the data and "
+                        f"re-validate before applying again."
+                    ),
+                    "errors": [e.model_dump() for e in apply_errors],
+                },
+            )
+
+        # -- Update ImportRun (only on success, no errors) --
+        now = datetime.now(timezone.utc)
+        run.status = "applied"
+        run.created_rows = created_count
+        run.skipped_rows = skipped_count
+        run.updated_rows = 0
+        run.applied_by = applied_by
+        run.applied_at = now
+        run.apply_result = {
+            "on_conflict": on_conflict,
+            "created": created_count,
+            "skipped": skipped_count,
+            "updated": 0,
+            "errors": [],
+            "applied_at": now.isoformat(),
+        }
+        await db.flush()
+
+        logger.info(
+            "import_apply_completed",
+            extra={
+                "action": "import_apply",
+                "import_id": import_id,
+                "on_conflict": on_conflict,
+                "created": created_count,
+                "skipped": skipped_count,
+                "updated": 0,
+            },
+        )
+
+        return ImportApplyResponse(
+            import_id=import_id,
+            status="completed",
+            created=created_count,
+            skipped=skipped_count,
+            updated=0,
+            errors=[],
+            audit_run_id=import_id,
+            applied_at=now,
+            applied_by=str(applied_by) if applied_by else None,
         )
 
     # ----------------------------------------------------------

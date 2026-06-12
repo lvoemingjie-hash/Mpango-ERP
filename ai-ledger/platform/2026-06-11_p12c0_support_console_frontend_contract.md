@@ -3,8 +3,9 @@
 **Date:** 2026-06-11
 **Branch:** `codex/platform-p12c0-support-console-frontend-contract-2026-06-11`
 **Base:** `origin/platform-dev` at `3fca6d2` (P12-B + R1 + R3 merge)
-**C0 commit:** (pending)
-**Status:** Frontend wiring/contract slice -- types, API client, route shell, reason-required form shell
+**C0 commit:** `d6201ef`
+**R1 commit:** `TBD` (will be filled post-commit)
+**Status:** Frontend wiring/contract slice -- types, API client, route shell, reason-required form shell. R1 evidence + ASCII closure.
 
 ---
 
@@ -75,12 +76,19 @@
 
 ## GitNexus
 
+### detect_changes compare origin/platform-dev
+
 | Field | Value |
 |-------|-------|
-| Nodes | 6,257 |
-| Edges | 18,504 |
-| Clusters | 413 |
-| Flows | 272 |
+| risk_level | LOW |
+| changed_files | 9 |
+| affected_processes | 0 (frontend-only, no backend graph nodes) |
+| Nodes | 6,262 |
+| Edges | 18,525 |
+| Clusters | 399 |
+| Flows | 273 |
+
+LOW because all changes are frontend-only (types, API client, route shell, tests). No backend graph nodes affected. No product business code touched.
 
 ## Validation
 
@@ -93,11 +101,13 @@
 | Runner gate | **6 passed** |
 | Directive gate | **23 passed** |
 | `git diff --check` | PASS |
+| Non-ASCII scan | 0 hits (all files ASCII-only; pre-existing em dashes replaced) |
 | Forbidden path audit | PASS (0 hits) |
 | No new package dependencies | CONFIRMED |
 | No backend files changed | CONFIRMED |
 | No auth/RBAC/session/tenancy/payment changes | CONFIRMED |
-| GitNexus analyze | PASS -- 6,257 nodes, 18,504 edges |
+| GitNexus analyze | PASS -- 6,262 nodes, 18,525 edges |
+| GitNexus detect_changes | LOW -- 9 files, 0 affected processes (frontend-only) |
 
 ## Forbidden Path Audit
 

@@ -76,7 +76,7 @@ export function Sidebar() {
           );
         })}
 
-        {/* Platform Admin — identity-only super_admin */}
+        {/* Platform Admin -- identity-only super_admin */}
         {showPlatformNav && (
           <>
             <div className="my-2 border-t border-gray-200" />

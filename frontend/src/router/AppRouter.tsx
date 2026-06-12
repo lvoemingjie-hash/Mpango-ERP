@@ -37,17 +37,17 @@ const router = createBrowserRouter([
       { path: '/login', element: <LoginPage /> },
     ],
   },
-  // Client login — separate from wholesaler login
+  // Client login -- separate from wholesaler login
   {
     path: '/client/login',
     element: <ClientLoginPage />,
   },
-  // Workspace selector — after login, but before app
+  // Workspace selector -- after login, but before app
   {
     path: '/select-workspace',
     element: <WorkspaceSelectorPage />,
   },
-  // Invite page — public, no auth required
+  // Invite page -- public, no auth required
   {
     path: '/invite/:code',
     element: <InvitePage />,
@@ -81,7 +81,7 @@ const router = createBrowserRouter([
           { path: '/client/orders/:orderId', element: <OrderDetailPage /> },
         ],
       },
-      // Platform Admin Cockpit routes (P11) — super_admin only
+      // Platform Admin Cockpit routes (P11) -- super_admin only
       {
         element: <PlatformRoute />,
         children: [

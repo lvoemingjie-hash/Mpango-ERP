@@ -61,6 +61,9 @@ def upgrade() -> None:
                   server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False,
                   server_default=sa.text("now()")),
+        sa.Column("is_deleted", sa.Boolean(), nullable=False,
+                  server_default=sa.text("false")),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_index("ix_import_runs_import_id", "import_runs", ["import_id"], unique=True)

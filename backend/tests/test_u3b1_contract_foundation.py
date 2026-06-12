@@ -107,6 +107,7 @@ class TestImportRunsMigration:
         "mapping", "validation_result", "apply_result",
         "created_rows", "skipped_rows", "updated_rows",
         "applied_by", "applied_at", "created_at", "updated_at",
+        "is_deleted", "deleted_at",
     }
 
     EXPECTED_INDEX_NAMES = {
@@ -206,6 +207,7 @@ class TestImportRunModel:
         "mapping", "validation_result", "apply_result",
         "created_rows", "skipped_rows", "updated_rows",
         "applied_by", "applied_at", "created_at", "updated_at",
+        "is_deleted", "deleted_at",
     }
 
     def test_import_run_model_attributes(self):

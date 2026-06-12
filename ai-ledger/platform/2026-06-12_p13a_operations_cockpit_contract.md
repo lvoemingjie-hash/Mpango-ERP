@@ -15,7 +15,7 @@
 |---|------|-------------|
 | 1 | `fbdd9f0` | Initial P13-A contract, README update, ledger |
 | 2 | `56a35d8` | P13-A-R1: role model fix, unknown semantics fix, PRD alignment fix, ledger update |
-| 3 | R2 evidence polish | Fixes ledger commit chain and platform-dev phase wording |
+| 3 | `e576a72` | P13-A-R2: evidence polish, R1 commit chain, platform-dev phase wording |
 
 ## P13-A Deliverables
 
@@ -23,7 +23,7 @@
 |---|------|--------|
 | 1 | `docs/ai/PLATFORM_PRODUCT_P13_OPERATIONS_COCKPIT_CONTRACT.md` | New -- P13 operations cockpit contract (+653) |
 | 2 | `docs/ai/README.md` | Modified -- add P13 to Platform Product Track read order (+3) |
-| 3 | `ai-ledger/platform/2026-06-12_p13a_operations_cockpit_contract.md` | New -- this ledger (+147 after R2) |
+| 3 | `ai-ledger/platform/2026-06-12_p13a_operations_cockpit_contract.md` | New -- this ledger (+148 after R3) |
 
 ## R1 Fixes Applied
 

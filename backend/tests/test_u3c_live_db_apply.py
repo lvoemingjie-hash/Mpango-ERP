@@ -205,11 +205,22 @@ async def import_runs_table(async_session: AsyncSession):
 
 @pytest_asyncio.fixture(scope="function")
 async def clean_skus(async_session: AsyncSession):
-    """Ensure no pre-existing SKUs interfere with tests."""
+    """Ensure no pre-existing SKUs interfere with tests.
+
+    The DELETE is committed so that a test-level rollback does not
+    undo it.  After committing we must re-set the tenant search_path
+    because conftest's ``after_begin`` listener only fires on a new
+    transaction, and the next statement is in the same implicit txn
+    started by the commit.
+    """
     await async_session.execute(
         text(f'DELETE FROM "{TEST_TENANT_SCHEMA}".skus')
     )
-    await async_session.flush()
+    await async_session.commit()
+    # Re-set search_path for the new implicit transaction
+    await async_session.execute(
+        text(f'SET LOCAL search_path TO "{TEST_TENANT_SCHEMA}", public')
+    )
 
 
 # ====================================================================

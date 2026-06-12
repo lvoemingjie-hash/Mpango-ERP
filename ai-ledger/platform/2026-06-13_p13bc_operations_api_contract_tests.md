@@ -72,8 +72,8 @@ P13-C-R1 hardens the P13 Operations Observability Cockpit API with Pydantic v2 `
 
 ## GitNexus
 
-- `npx gitnexus analyze` -- 6,332 nodes, 19,126 edges, 290 flows
-- `git diff --stat origin/platform-dev..HEAD` -- 8 files, +1,659 lines (all P13 additions)
+- `npx gitnexus analyze` -- 6,340 nodes, 19,126 edges, 290 flows
+- `git diff --stat origin/platform-dev..HEAD` -- 8 files, +1,660 lines (all P13 additions)
 
 **CRITICAL risk explanation:** P13 is a platform runtime API that exposes operational telemetry (error rates, slow routes, resource health, noisy-neighbor analysis) to platform operators. It writes audit events via `append_audit_entry`. It is **not** a product/runtime tenant business API. The risk scope is:
 - Platform operator access control (mitigated by P10 identity-only super_admin guard)

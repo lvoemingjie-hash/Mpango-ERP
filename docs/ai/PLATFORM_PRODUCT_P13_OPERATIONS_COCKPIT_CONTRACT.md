@@ -618,7 +618,7 @@ P13-C (frontend ops UI) may not begin until:
 
 ## Phase Realignment Note
 
-**Current platform-dev state:** `origin/platform-dev` at `51cfb41`, which includes P9 (PRD/safety boundary), P10 (data contracts + read-only API), P11 (super admin cockpit frontend), P12 (support console), and now P13-A (this contract).
+**Current platform-dev state:** `origin/platform-dev` at `51cfb41`, which includes P9 (PRD/safety boundary), P10 (data contracts + read-only API), P11 (super admin cockpit frontend), and P12 (support console). P13-A is proposed on this isolated branch and enters `platform-dev` only after approved merge.
 
 **P13 relationship to PLATFORM_PRODUCT_PRD.md:** The PRD was written before P13 was scoped. It defines the general platform product vision but does not contain specific P13 operations observability feature definitions. P13's scope comes from `PLATFORM_PRODUCT_ROADMAP.md` section "P13 - Operations Observability." The PRD reference below is for the overall product context, not as a P13-specific feature specification.
 

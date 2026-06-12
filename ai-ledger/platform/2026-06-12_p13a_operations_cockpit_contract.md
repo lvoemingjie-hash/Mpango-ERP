@@ -4,7 +4,7 @@
 **Branch:** `codex/platform-p13a-operations-cockpit-contract-2026-06-12`
 **Base:** `origin/platform-dev` at `51cfb41` (P12-D merge)
 **A commit:** `fbdd9f0` (initial contract)
-**R1 commit:** pending
+**R1 commit:** `56a35d8` (role model, unknown semantics, PRD alignment fixes)
 **Status:** Contract/design/test-plan only -- no runtime code, no migrations, no API handlers, no frontend UI.
 
 ---
@@ -14,15 +14,16 @@
 | # | Hash | Description |
 |---|------|-------------|
 | 1 | `fbdd9f0` | Initial P13-A contract, README update, ledger |
-| 2 | pending | P13-A-R1: role model fix, unknown semantics fix, PRD alignment fix, ledger update |
+| 2 | `56a35d8` | P13-A-R1: role model fix, unknown semantics fix, PRD alignment fix, ledger update |
+| 3 | R2 evidence polish | Fixes ledger commit chain and platform-dev phase wording |
 
 ## P13-A Deliverables
 
 | # | File | Action |
 |---|------|--------|
-| 1 | `docs/ai/PLATFORM_PRODUCT_P13_OPERATIONS_COCKPIT_CONTRACT.md` | New -- P13 operations cockpit contract (605 initial, +R1 edits) |
+| 1 | `docs/ai/PLATFORM_PRODUCT_P13_OPERATIONS_COCKPIT_CONTRACT.md` | New -- P13 operations cockpit contract (+653) |
 | 2 | `docs/ai/README.md` | Modified -- add P13 to Platform Product Track read order (+3) |
-| 3 | `ai-ledger/platform/2026-06-12_p13a_operations_cockpit_contract.md` | New -- this ledger |
+| 3 | `ai-ledger/platform/2026-06-12_p13a_operations_cockpit_contract.md` | New -- this ledger (+147 after R2) |
 
 ## R1 Fixes Applied
 

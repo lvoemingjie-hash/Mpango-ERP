@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Dict
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_tenant_db_session
@@ -197,11 +198,20 @@ async def validate_import(
     )
 
     try:
+        # Query existing SKU codes for duplicate detection.
+        # This is a READ-ONLY query -- no SKU writes happen here.
+        from models.sku import SKU
+        code_result = await db.execute(
+            select(SKU.sku_code).where(SKU.is_deleted.is_(False))
+        )
+        existing_sku_codes = set(code_result.scalars().all())
+
         service = ImportService()
         result = await service.validate(
             db,
             import_id=import_id,
             mapping=body.mapping,
+            existing_sku_codes=existing_sku_codes,
         )
 
         response = DataResponse(

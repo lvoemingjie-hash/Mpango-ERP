@@ -65,16 +65,7 @@ class ImportService:
         Does NOT write to any table other than import_runs.
         """
         # -- Parse CSV --
-        try:
-            text = file_bytes.decode(source_encoding)
-        except (UnicodeDecodeError, LookupError) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": "ENCODING_ERROR",
-                    "message": f"Cannot decode file with encoding '{source_encoding}': {exc}",
-                },
-            )
+        text = self._decode_bytes(file_bytes, source_encoding)
 
         rows, columns = self._parse_csv(text)
 
@@ -142,10 +133,17 @@ class ImportService:
         *,
         import_id: str,
         mapping: Dict[str, str],
+        existing_sku_codes: Optional[set] = None,
     ) -> ImportValidateResponse:
         """Apply field mapping, validate rows, update ImportRun status.
 
         Does NOT write to SKU/inventory tables.
+
+        Args:
+            existing_sku_codes: Optional set of sku_code values that already
+                exist in the tenant catalog.  Used for duplicate detection.
+                In production this would be queried from DB; for testability
+                it is injected.
         """
         # -- Load ImportRun --
         run = await self._get_run(db, import_id)
@@ -292,6 +290,52 @@ class ImportService:
             if not row_errors:
                 valid_count += 1
 
+        # -- Intra-file duplicate sku_code detection --
+        seen_sku_codes: Dict[str, int] = {}
+        for idx, row in enumerate(rows, start=1):
+            mapped_row = self._apply_mapping(row, mapping)
+            sku_code = mapped_row.get("sku_code")
+            if not sku_code or not isinstance(sku_code, str):
+                continue
+            code = sku_code.strip()
+            if not code:
+                continue
+            if code in seen_sku_codes:
+                errors.append(
+                    ImportErrorDetail(
+                        row=idx,
+                        field="sku_code",
+                        sku_code=code,
+                        message=(
+                            f"Duplicate sku_code '{code}' in file "
+                            f"(first seen at row {seen_sku_codes[code]})"
+                        ),
+                    )
+                )
+                valid_count = max(0, valid_count - 1)
+            else:
+                seen_sku_codes[code] = idx
+
+        # -- Existing catalog duplicate detection --
+        if existing_sku_codes:
+            for idx, row in enumerate(rows, start=1):
+                mapped_row = self._apply_mapping(row, mapping)
+                sku_code = mapped_row.get("sku_code")
+                if not sku_code or not isinstance(sku_code, str):
+                    continue
+                code = sku_code.strip()
+                if code and code in existing_sku_codes:
+                    warnings.append(
+                        ImportWarningDetail(
+                            row=idx,
+                            field="sku_code",
+                            message=(
+                                f"sku_code '{code}' already exists in catalog; "
+                                "apply with on_conflict='skip' or 'update' to handle"
+                            ),
+                        )
+                    )
+
         error_count = len(rows) - valid_count
 
         # -- Determine status --
@@ -334,6 +378,29 @@ class ImportService:
     # ----------------------------------------------------------
     # Helpers
     # ----------------------------------------------------------
+    @staticmethod
+    def _decode_bytes(file_bytes: bytes, source_encoding: str = "utf-8") -> str:
+        """Decode file bytes to text, auto-detecting UTF-8 BOM (UTF-8-sig).
+
+        If bytes start with the UTF-8 BOM (\\xef\\xbb\\xbf), force UTF-8-sig
+        decoding regardless of the source_encoding parameter.  This ensures
+        Excel-exported CSVs with BOM are parsed correctly.
+        """
+        if file_bytes[:3] == b"\xef\xbb\xbf":
+            return file_bytes.decode("utf-8-sig")
+        try:
+            return file_bytes.decode(source_encoding)
+        except (UnicodeDecodeError, LookupError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "ENCODING_ERROR",
+                    "message": (
+                        f"Cannot decode file with encoding '{source_encoding}': {exc}"
+                    ),
+                },
+            )
+
     @staticmethod
     def _parse_csv(text: str) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Parse CSV text into list-of-dicts + column names.

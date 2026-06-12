@@ -4,7 +4,7 @@
 **Branch:** `codex/platform-p12c0-support-console-frontend-contract-2026-06-11`
 **Base:** `origin/platform-dev` at `3fca6d2` (P12-B + R1 + R3 merge)
 **C0 commit:** `d6201ef`
-**R1 commit:** `TBD` (will be filled post-commit)
+**R1 commit:** `c882608`
 **Status:** Frontend wiring/contract slice -- types, API client, route shell, reason-required form shell. R1 evidence + ASCII closure.
 
 ---

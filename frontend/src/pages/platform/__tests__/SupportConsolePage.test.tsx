@@ -259,4 +259,44 @@ describe('SupportConsolePage', () => {
       expect(screen.getByText('Support Bundle')).toBeInTheDocument();
     });
   });
+
+  it('SP-014: closed session shows bundle_count clearly', async () => {
+    mockPost
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+          status: 'active',
+          reason: 'Test reason',
+          category: 'general',
+          started_at: '2026-06-11T10:00:00Z',
+          bundle_count: 0,
+          expires_at: '2026-06-11T11:00:00Z',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+          status: 'closed',
+          reason: 'Test reason',
+          category: 'general',
+          started_at: '2026-06-11T10:00:00Z',
+          bundle_count: 2,
+          closed_at: '2026-06-11T10:05:00Z',
+        },
+      });
+    mockGet.mockResolvedValueOnce({ data: [] });
+    renderPage();
+    const input = screen.getByTestId('reason-input');
+    fireEvent.change(input, { target: { value: 'Valid reason text for testing this' } });
+    const startBtn = screen.getByTestId('start-session-btn');
+    fireEvent.click(startBtn);
+    await waitFor(() => {
+      expect(screen.getByTestId('diagnostics-panel')).toBeInTheDocument();
+    });
+    const closeBtn = screen.getByTestId('close-session-btn');
+    fireEvent.click(closeBtn);
+    await waitFor(() => {
+      expect(screen.getByText(/Bundles generated: 2/)).toBeInTheDocument();
+    });
+  });
 });

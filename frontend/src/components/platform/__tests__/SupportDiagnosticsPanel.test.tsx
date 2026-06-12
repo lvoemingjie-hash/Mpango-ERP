@@ -232,6 +232,18 @@ describe('SupportDiagnosticsPanel', () => {
     expect(availableBadge.className).toContain('bg-green-100');
   });
 
+  it('SD-015: degraded status shows yellow badge', async () => {
+    mockGet.mockResolvedValueOnce({ data: mockDiagnostics });
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.getByTestId('diagnostics-panel')).toBeInTheDocument();
+    });
+    const degradedBadge = screen.getByTestId('status-badge-degraded');
+    expect(degradedBadge.textContent).toBe('degraded');
+    expect(degradedBadge.className).toContain('bg-yellow-100');
+    expect(degradedBadge.className).toContain('text-yellow-800');
+  });
+
   it('TF-001: no mutation/edit/delete controls', async () => {
     mockGet.mockResolvedValueOnce({ data: mockDiagnostics });
     renderPanel();

@@ -232,7 +232,17 @@ describe('SupportDiagnosticsPanel', () => {
     expect(availableBadge.className).toContain('bg-green-100');
   });
 
-  it('SD-015: degraded status shows yellow badge', async () => {
+  it('SD-015: empty diagnostics shows no-data message', async () => {
+    mockGet.mockResolvedValueOnce({ data: [] });
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.getByTestId('diagnostics-panel')).toBeInTheDocument();
+    });
+    expect(screen.getByText('No diagnostics available for this session.')).toBeInTheDocument();
+    expect(screen.getByTestId('diagnostics-count').textContent).toContain('0 diagnostic items');
+  });
+
+  it('SD-016: degraded status shows yellow badge', async () => {
     mockGet.mockResolvedValueOnce({ data: mockDiagnostics });
     renderPanel();
     await waitFor(() => {

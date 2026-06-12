@@ -3,7 +3,7 @@
 **Date:** 2026-06-12
 **Branch:** `codex/platform-p12d-support-console-operational-readiness-2026-06-12`
 **Base:** `origin/platform-dev` at `bc621df` (P12-C1/C2 merge)
-**D commit:** `89e991f`
+**D commit:** `89e991f` (initial), final commit pending
 **Status:** Operational readiness -- test gap closure, boundary verification, P12 completion evidence.
 
 ---
@@ -50,17 +50,18 @@
 
 | ID | Test | Why needed |
 |----|------|------------|
-| SD-015 | Degraded status shows yellow badge | Only available=green was explicitly verified; degraded is a critical operational state |
+| SD-015 | Empty diagnostics shows no-data message | Empty array returned "No diagnostics available" but was untested -- critical empty-state UX |
+| SD-016 | Degraded status shows yellow badge | Only available=green was explicitly verified; degraded is a critical operational state |
 | SB-014 | Initial state shows generate form only | No test verified the card before any bundle is generated |
 | SP-014 | Closed session shows bundle_count | No test verified the closed-session summary with bundle_count > 0 |
 
 ## Tests
 
-### Frontend: 122 passed, 0 failed (3 P12-D new, 119 existing)
+### Frontend: 123 passed, 0 failed (4 P12-D new, 119 existing)
 
 | File | Tests | New |
 |------|-------|-----|
-| `components/platform/__tests__/SupportDiagnosticsPanel.test.tsx` | 16 | +1 (SD-015) |
+| `components/platform/__tests__/SupportDiagnosticsPanel.test.tsx` | 17 | +2 (SD-015, SD-016) |
 | `components/platform/__tests__/SupportBundleCard.test.tsx` | 15 | +1 (SB-014) |
 | `pages/platform/__tests__/SupportConsolePage.test.tsx` | 14 | +1 (SP-014) |
 
@@ -97,7 +98,7 @@ LOW because all changes are test-only (3 test files) plus a markdown ledger.
 
 | Check | Result |
 |-------|--------|
-| Frontend tests | **122 passed**, 0 failed |
+| Frontend tests | **123 passed**, 0 failed |
 | Backend P12 tests | **62 passed**, 0 failed |
 | Backend P10 tests | **137 passed**, 0 failed |
 | `git diff --check` | PASS |
@@ -121,10 +122,10 @@ LOW because all changes are test-only (3 test files) plus a markdown ledger.
 
 | Factor | Rating | Notes |
 |--------|--------|-------|
-| Scope | MINIMAL | 3 new test assertions, no component changes |
+| Scope | MINIMAL | 4 new test assertions, no component changes |
 | Backend impact | NONE | No backend files |
 | Component changes | NONE | Only test files modified |
-| Test coverage | COMPLETE | All states now tested: loading, error, retry, empty, degraded, initial, closed |
+| Test coverage | COMPLETE | All states now tested: loading, error, retry, empty (diagnostics + bundle), degraded, initial, closed |
 
 **Overall risk: MINIMAL.** Test-only changes with no behavioral modifications.
 

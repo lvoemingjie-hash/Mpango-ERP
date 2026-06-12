@@ -3,7 +3,7 @@
 **Date:** 2026-06-12
 **Branch:** `codex/platform-p12c1c2-support-console-diagnostics-bundle-2026-06-12`
 **Base:** `origin/platform-dev` at `b39f15e` (P12-C0 merge)
-**C1/C2 commit:** (pending)
+**C1/C2 commit:** `2ff26f6`
 **Status:** Read-only diagnostics panel (C1) + bundle generation/preview (C2). Frontend-only, no backend changes.
 
 ---

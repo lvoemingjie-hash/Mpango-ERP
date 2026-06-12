@@ -7,7 +7,7 @@
 - C0 commit: `d6201ef`
 - R1 evidence/ascii commit: `c882608`
 - R1 hash-fill commit / pre-R2 HEAD: `551c22f`
-- R2 final commit: `TBD`
+- R2 final commit: `a18359e`
 **Status:** Frontend wiring/contract slice -- types, API client, route shell, reason-required form shell. R1 evidence + ASCII closure. R2 final head evidence fix.
 
 ---

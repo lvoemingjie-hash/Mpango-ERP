@@ -92,7 +92,8 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
         retailers, skus, inventory, metrics, payments, prometheus,
         wholesalers,
         profiling_test,  # S3-A Part 4
-        jobs_test  # S4-A
+        jobs_test,  # S4-A
+        sku_imports,  # U3-B2: SKU import preview/validate
     )
 
     app.include_router(health.router, prefix="/health", tags=["health"])
@@ -117,6 +118,8 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(roles.router, prefix="/api/v1/roles", tags=["roles"])
     app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
     app.include_router(skus.router, prefix="/api/v1/skus", tags=["skus"])
+    # U3-B2: SKU import preview + validate (write to import_runs only)
+    app.include_router(sku_imports.router, prefix="/api/v1/skus/import", tags=["sku-imports"])
     app.include_router(inventory.router, prefix="/api/v1/inventory", tags=["inventory"])
     app.include_router(wholesalers.router, prefix="/api/v1/wholesalers", tags=["wholesalers"])
     app.include_router(invitations.router, prefix="/api/v1", tags=["invitations"])

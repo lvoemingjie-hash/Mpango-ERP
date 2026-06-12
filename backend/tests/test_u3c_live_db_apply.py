@@ -355,7 +355,11 @@ class TestFailDuplicate:
     async def test_fail_on_existing_sku_rolls_back(
         self, async_session: AsyncSession, import_runs_table, clean_skus
     ):
-        """Pre-existing SKU with on_conflict=fail -> 409, zero new SKUs."""
+        """Pre-existing SKU with on_conflict=fail -> 409, zero new SKUs.
+
+        Setup data (conflict SKU + import_run) is committed so that
+        the test-level rollback only undoes svc.apply writes.
+        """
         existing = SKU(
             sku_code="EXIST-FAIL-001",
             name="Already There",
@@ -372,7 +376,13 @@ class TestFailDuplicate:
         ]
         await _create_validated_import_run(async_session, import_id, rows)
 
-        # Count SKUs before
+        # Commit setup so rollback only affects svc.apply
+        await async_session.commit()
+        await async_session.execute(
+            text(f'SET LOCAL search_path TO "{TEST_TENANT_SCHEMA}", public')
+        )
+
+        # Count SKUs before (setup SKU is committed)
         skus_before = await _count_skus(async_session)
 
         svc = ImportService()
@@ -386,15 +396,30 @@ class TestFailDuplicate:
         err = str(exc_info.value).upper()
         assert "CONFLICT" in err
 
-        # Rollback
+        # Rollback the failed apply (not the setup)
         await async_session.rollback()
+        await async_session.execute(
+            text(f'SET LOCAL search_path TO "{TEST_TENANT_SCHEMA}", public')
+        )
 
-        # Verify no SKUs were added (count unchanged)
-        # Need a fresh query
-        stmt = select(SKU).where(SKU.is_deleted.is_(False))
+        # NEW-FAIL-001 must NOT exist after rollback
+        stmt = select(SKU.sku_code).where(SKU.is_deleted.is_(False))
         fresh_res = await async_session.execute(stmt)
-        skus_after = len(fresh_res.scalars().all())
-        assert skus_after == skus_before
+        codes = set(fresh_res.scalars().all())
+        assert "NEW-FAIL-001" not in codes, (
+            "NEW-FAIL-001 should not exist after fail rollback"
+        )
+
+        # EXIST-FAIL-001 must still exist (committed before apply)
+        assert "EXIST-FAIL-001" in codes, (
+            "EXIST-FAIL-001 should survive the rollback"
+        )
+
+        # Total count unchanged
+        skus_after = await _count_skus(async_session)
+        assert skus_after == skus_before, (
+            f"SKU count changed: {skus_before} -> {skus_after}"
+        )
 
         # import_run should NOT be applied
         run_res = await async_session.execute(

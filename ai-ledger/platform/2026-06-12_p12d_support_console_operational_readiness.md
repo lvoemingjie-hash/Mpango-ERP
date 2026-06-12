@@ -12,8 +12,8 @@
 
 | Slice | Scope | Status |
 |-------|-------|--------|
-| P12-A | Backend support console API scaffolding | DONE (merged to platform-dev) |
-| P12-B | Backend session/diagnostics/bundle endpoints + R1/R3 patches | DONE (merged to platform-dev) |
+| P12-A | Support console contract / docs-only / no runtime code | DONE (merged to platform-dev) |
+| P12-B | Backend support console API endpoints + tests + R patches | DONE (merged to platform-dev) |
 | P12-C0 | Frontend wiring contract: types, API client, route shell, reason form | DONE (merged to platform-dev) |
 | P12-C1 | Frontend diagnostics panel: grouped display, status badges, refresh | DONE (merged to platform-dev) |
 | P12-C2 | Frontend bundle generation/preview: type selector, metadata, diagnostics | DONE (merged to platform-dev) |

@@ -126,11 +126,11 @@ class ImportValidateResponse(BaseModel):
 
 class ImportApplyRequest(BaseModel):
     """Request body for POST /api/v1/skus/import/{import_id}/apply."""
-    on_conflict: Literal["skip", "update", "error"] = Field(
+    on_conflict: Literal["skip", "fail"] = Field(
         default="skip",
         description=(
             "Conflict strategy when sku_code already exists in tenant: "
-            "skip = skip row, update = overwrite, error = fail the row"
+            "skip = skip row, fail = abort entire import"
         ),
     )
 

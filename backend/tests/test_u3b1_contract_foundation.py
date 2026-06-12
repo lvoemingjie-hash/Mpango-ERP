@@ -335,12 +335,18 @@ class TestImportPydanticSchemas:
         assert resp_ok.status == "validated"
 
     def test_import_apply_request(self):
-        """ImportApplyRequest must accept all conflict strategies."""
+        """ImportApplyRequest must accept skip and fail conflict strategies."""
         from schemas.import_schemas import ImportApplyRequest
+        import pydantic
 
-        for strategy in ("skip", "update", "error"):
+        for strategy in ("skip", "fail"):
             req = ImportApplyRequest(on_conflict=strategy)
             assert req.on_conflict == strategy
+
+        # 'update' and 'error' must be rejected (CTO directive: not yet approved)
+        for bad_strategy in ("update", "error"):
+            with pytest.raises(pydantic.ValidationError):
+                ImportApplyRequest(on_conflict=bad_strategy)
 
     def test_import_apply_response(self):
         """ImportApplyResponse must serialize full result."""

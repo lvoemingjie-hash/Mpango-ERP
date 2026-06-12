@@ -161,6 +161,7 @@ class TestOnboardTenantPermissionCompleteness:
         # inventory:write is a known legacy alias kept for backward compat
         # orders:confirm/ship/cancel are bootstrap-only (used in seed/validation logic)
         # roles:create/update/delete are bootstrap-only (admin seed, not yet in API decorators)
+        # skus:import is a U3 import-contract permission; endpoints land in a later slice.
         known_valid_extras = {
             "inventory:write",       # legacy alias
             "orders:confirm",        # bootstrap-only
@@ -169,6 +170,7 @@ class TestOnboardTenantPermissionCompleteness:
             "roles:create",          # bootstrap-only (seed creates admin role)
             "roles:update",          # bootstrap-only
             "roles:delete",          # bootstrap-only
+            "skus:import",           # future-use import contract
         }
         unexpected = extra - known_valid_extras
         assert not unexpected, (

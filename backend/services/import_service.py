@@ -552,7 +552,33 @@ class ImportService:
             existing_sku_codes.add(sku_code)
             created_count += 1
 
-        # -- Update ImportRun --
+        # -- Fail-closed: if any row-level errors exist, abort BEFORE marking applied --
+        if apply_errors:
+            logger.error(
+                "import_apply_row_errors",
+                extra={
+                    "action": "import_apply",
+                    "import_id": import_id,
+                    "on_conflict": on_conflict,
+                    "error_count": len(apply_errors),
+                },
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "ROW_PROCESSING_ERRORS",
+                    "message": (
+                        f"Apply aborted: {len(apply_errors)} row-level error(s) "
+                        f"detected during processing. No SKUs were created and "
+                        f"import_run was NOT marked as applied. Fix the data and "
+                        f"re-validate before applying again."
+                    ),
+                    "errors": [e.model_dump() for e in apply_errors],
+                },
+            )
+
+        # -- Update ImportRun (only on success, no errors) --
         now = datetime.now(timezone.utc)
         run.status = "applied"
         run.created_rows = created_count
@@ -565,7 +591,7 @@ class ImportService:
             "created": created_count,
             "skipped": skipped_count,
             "updated": 0,
-            "errors": [e.model_dump() for e in apply_errors],
+            "errors": [],
             "applied_at": now.isoformat(),
         }
         await db.flush()
@@ -588,7 +614,7 @@ class ImportService:
             created=created_count,
             skipped=skipped_count,
             updated=0,
-            errors=apply_errors,
+            errors=[],
             audit_run_id=import_id,
             applied_at=now,
             applied_by=str(applied_by) if applied_by else None,

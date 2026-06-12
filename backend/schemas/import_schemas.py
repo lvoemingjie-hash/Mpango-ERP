@@ -1,7 +1,7 @@
-"""U3-B1 Import Contract Schemas — 3-phase preview/validate/apply.
+"""U3-B1 Import Contract Schemas -- 3-phase preview/validate/apply.
 
 These Pydantic schemas define the API contract for the agent-operable
-SKU import pipeline.  They are contract-only — no business logic here.
+SKU import pipeline.  They are contract-only -- no business logic here.
 
 Phase 1 (preview):  Parse input, detect structure, return import_id.
 Phase 2 (validate): Apply field mapping, return row-level errors/warnings.
@@ -81,11 +81,11 @@ class ImportFieldMapping(BaseModel):
     Keys are source column names; values are Mpango field names.
     Use 'custom_attributes.<key>' for custom attributes.
     """
-    # Use a plain dict — Pydantic will validate structure at runtime
+    # Use a plain dict -- Pydantic will validate structure at runtime
     mapping: Dict[str, str] = Field(
         ...,
         description=(
-            "Column mapping: source column → Mpango field. "
+            "Column mapping: source column -> Mpango field. "
             "Use 'custom_attributes.<key>' for unmapped columns."
         ),
     )
@@ -96,7 +96,7 @@ class ImportValidateRequest(BaseModel):
     mapping: Dict[str, str] = Field(
         ...,
         description=(
-            "Column mapping: source column name → Mpango field name. "
+            "Column mapping: source column name -> Mpango field name. "
             "Use 'custom_attributes.<key>' for custom attribute fields."
         ),
     )
@@ -139,9 +139,11 @@ class ImportApplyResponse(BaseModel):
     """Response from POST /api/v1/skus/import/{import_id}/apply.
 
     Returns the result of the import with audit trail reference.
+    Only returns 'completed' (zero errors) or 'failed' (exception raised).
+    Never returns non-empty errors with a completed status.
     """
     import_id: str
-    status: Literal["completed", "completed_with_errors", "failed"] = Field(
+    status: Literal["completed", "failed"] = Field(
         ..., description="Final status of the import run"
     )
     created: int = Field(default=0, description="SKUs successfully created")

@@ -588,6 +588,104 @@ class TestCustomAttributesGuard:
 
 
 # ====================================================================
+# k. U3-C-R1: Corrupted validated rows -- fail-closed, no SKU added, run NOT applied
+# ====================================================================
+
+class TestCorruptedValidatedRows:
+    """R1: When validated import_run rows have corruption (missing/invalid
+    sku_code), the apply method MUST raise 422 WITHOUT marking the run as
+    applied and WITHOUT adding any SKU (all db.add calls rolled back).
+    """
+
+    @pytest.mark.asyncio
+    async def test_missing_sku_code_column_raises_422(self):
+        """Row where mapping can't produce sku_code -> 422, run not applied."""
+        from services.import_service import ImportService
+
+        # Field mapping maps "sku_code" but row doesn't have that column
+        rows = [{"product_code": "PRD-001", "name": "Widget"}]
+        fm = {"sku_code": "sku_code", "name": "name"}
+        db, run = _make_mock_db_for_apply(rows, fm)
+
+        with pytest.raises(Exception) as exc_info:
+            await ImportService().apply(
+                db, import_id="imp_test", on_conflict="skip",
+                existing_sku_codes=set(),
+            )
+        err = str(exc_info.value).upper()
+        assert "ROW_PROCESSING_ERRORS" in err or "422" in err
+        # import_run NOT marked applied
+        assert run.status == "validated"
+        # no SKU was added
+        db.add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_sku_code_raises_422(self):
+        """Row with empty sku_code -> 422, run not applied."""
+        from services.import_service import ImportService
+
+        rows = [{"sku_code": "", "name": "Empty Code"}]
+        fm = {"sku_code": "sku_code", "name": "name"}
+        db, run = _make_mock_db_for_apply(rows, fm)
+
+        with pytest.raises(Exception) as exc_info:
+            await ImportService().apply(
+                db, import_id="imp_test", on_conflict="skip",
+                existing_sku_codes=set(),
+            )
+        err = str(exc_info.value).upper()
+        assert "ROW_PROCESSING_ERRORS" in err or "422" in err
+        assert run.status == "validated"
+        db.add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mixed_valid_and_corrupt_fails_entirely(self):
+        """Mixed valid+corrupt rows -> entire apply fails, no partial writes."""
+        from services.import_service import ImportService
+
+        # Row 1 is valid, row 2 has no sku_code source column
+        rows = [
+            {"sku_code": "GOOD-001", "name": "Good One"},
+            {"wrong_col": "BAD-001", "name": "Bad One"},
+        ]
+        fm = {"sku_code": "sku_code", "name": "name"}
+        db, run = _make_mock_db_for_apply(rows, fm)
+
+        with pytest.raises(Exception) as exc_info:
+            await ImportService().apply(
+                db, import_id="imp_test", on_conflict="skip",
+                existing_sku_codes=set(),
+            )
+        err = str(exc_info.value).upper()
+        assert "ROW_PROCESSING_ERRORS" in err or "422" in err
+        # Status NOT applied (fail-closed)
+        assert run.status == "validated"
+
+    @pytest.mark.asyncio
+    async def test_all_rows_corrupt_no_db_add(self):
+        """All rows corrupt -> zero db.add calls, run stays validated."""
+        from services.import_service import ImportService
+
+        rows = [
+            {"wrong_col": "X", "name": "A"},
+            {"wrong_col": "Y", "name": "B"},
+            {"wrong_col": "Z", "name": "C"},
+        ]
+        fm = {"sku_code": "sku_code", "name": "name"}
+        db, run = _make_mock_db_for_apply(rows, fm)
+
+        with pytest.raises(Exception) as exc_info:
+            await ImportService().apply(
+                db, import_id="imp_test", on_conflict="skip",
+                existing_sku_codes=set(),
+            )
+        err = str(exc_info.value).upper()
+        assert "ROW_PROCESSING_ERRORS" in err or "422" in err
+        assert run.status == "validated"
+        db.add.assert_not_called()
+
+
+# ====================================================================
 # j. U3-B1/B2/B2.1 regression (implicit -- test runner covers this)
 # ====================================================================
 

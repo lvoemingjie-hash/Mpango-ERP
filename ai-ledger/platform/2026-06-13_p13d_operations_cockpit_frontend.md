@@ -16,6 +16,7 @@ P13-D-R1 adds 3 missing page tests (OpsHealthPage, OpsResourcesPage, OpsNoisyNei
 P13-D-R2 corrects ledger evidence counts.
 P13-D-R3 finalises SHA and diff stat.
 P13-D-R4 restores ledger from HEAD version, applies self-reference policy, corrects batch diff stat.
+P13-D-R5 finalizes evidence counts from latest reviewer-verified run.
 
 This is **frontend-only**. No backend files were changed. P13-D depends on the P13-B/C backend already committed to this same isolated branch.
 
@@ -82,7 +83,7 @@ This is **frontend-only**. No backend files were changed. P13-D depends on the P
 
 ---
 
-## Full Batch Diff (26 files, +3,413 -1 vs origin/platform-dev)
+## Full Batch Diff (26 files, +3,415 -1 vs origin/platform-dev)
 
 Backend (7): `backend/.gitignore`, `backend/api/app.py`, `backend/api/v1/platform/p13/__init__.py`, `backend/api/v1/platform/p13/routes.py`, `backend/api/v1/platform/p13/schemas.py`, `backend/api/v1/platform/p13/services.py`, `backend/tests/test_platform_p13_operations_cockpit.py`
 Frontend (17): 5 pages, 8 tests, types, API client, router, sidebar
@@ -117,9 +118,10 @@ P13 page component tests: **24** (5+5+4+5+5)
 
 ## GitNexus
 
-- `npx gitnexus analyze` -- 6,390 nodes, 19,235 edges, 417 clusters, 290 flows
+- `npx gitnexus analyze` -- 6,395 nodes, 19,235 edges, 422 clusters, 290 flows
 - P13-D is **frontend-only**. No HIGH/CRITICAL risk.
 - No product/runtime tenant business risk. Read-only frontend shell.
+- Exact mutable counts are reviewer-verified during merge readiness; this ledger records the latest pre-merge review run.
 
 ---
 

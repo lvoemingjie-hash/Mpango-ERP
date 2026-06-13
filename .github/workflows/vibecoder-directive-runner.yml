@@ -115,6 +115,9 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           RUNNER_NAME: ${{ runner.name }}
         run: |
+          rm -rf "$GITHUB_WORKSPACE/generated-reports"
+          mkdir -p "$GITHUB_WORKSPACE/generated-reports"
+          echo "Generated reports directory reset: $GITHUB_WORKSPACE/generated-reports"
           RUNNER_SCRIPT="$GITHUB_WORKSPACE/directives/scripts/runner/run_directive.sh"
           HELPER_SCRIPT="$GITHUB_WORKSPACE/directives/scripts/runner/extract_leo_evidence.py"
           chmod +x "$RUNNER_SCRIPT" "$HELPER_SCRIPT"

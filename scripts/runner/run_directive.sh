@@ -911,8 +911,7 @@ case "$EXECUTOR_TYPE" in
   leo-headless)
     checkpoint "executor_leo_headless_start"
     _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
-    run_leo_headless > "$_tmp_out" 2>&1
-    rc=$?
+    run_leo_headless > "$_tmp_out" 2>&1 || rc=$?
     EXECUTOR_OUTPUT="$(cat "$_tmp_out")"
 
     # R6: Parse Leo's structured evidence directly from raw JSON output

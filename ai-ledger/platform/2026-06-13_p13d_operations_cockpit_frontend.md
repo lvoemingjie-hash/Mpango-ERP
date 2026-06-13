@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-13
 **Branch:** `codex/platform-p13-operations-cockpit-batch-2026-06-12`
-**HEAD:** `23c9ac7`
+**HEAD:** `pending R2 commit`
 **Author:** Codex (Claude Opus 4.8)
 
 ---
@@ -12,6 +12,7 @@
 P13-D implements the frontend Operations Cockpit shell for the P13 platform API. It provides 5 read-only pages (health, errors, slow routes, resources, noisy neighbors) using the P13-B/C backend API skeleton already on this branch. All pages enforce source_status semantics (unavailable = gray "Data unavailable", null = N/A not 0, unknown != healthy) and have no mutation controls.
 
 P13-D-R1 adds 3 missing page tests (OpsHealthPage, OpsResourcesPage, OpsNoisyNeighborsPage) for full 5-of-5 page coverage.
+P13-D-R2 corrects ledger evidence counts.
 
 This is **frontend-only**. No backend files were changed. P13-D depends on the P13-B/C backend already committed to this same isolated branch.
 
@@ -21,6 +22,8 @@ This is **frontend-only**. No backend files were changed. P13-D depends on the P
 
 | Commit | Message |
 |--------|---------|
+| *(this commit)* | docs(platform): P13-D-R2 ledger evidence correction |
+| `3e1a815` | docs(platform): P13-D-R1 ledger update -- full evidence + coverage closure |
 | `23c9ac7` | test(platform): P13-D-R1 add 3 missing ops page tests |
 | `b3716a7` | docs(platform): P13-D ledger evidence |
 | `a447594` | feat(platform): P13-D frontend operations cockpit shell |
@@ -34,7 +37,7 @@ This is **frontend-only**. No backend files were changed. P13-D depends on the P
 
 ---
 
-## P13-D Delta (17 files, frontend-only)
+## P13-D Delta (18 files, frontend-only)
 
 ### Types (1 new)
 | File | Change |
@@ -61,12 +64,12 @@ This is **frontend-only**. No backend files were changed. P13-D depends on the P
 | `frontend/src/pages/platform/ops/OpsResourcesPage.tsx` | Resource health via P13 /ops/resources |
 | `frontend/src/pages/platform/ops/OpsNoisyNeighborsPage.tsx` | Noisy-neighbor analysis via P13 /ops/noisy-neighbors |
 
-### Tests (8 new, all 5 pages covered)
+### Tests (9 new: 8 test suites + ledger update)
 | File | Tests |
 |------|-------|
 | `frontend/src/types/__tests__/platformOps.test.ts` | 11: type helpers, null != 0, source_status labels |
 | `frontend/src/services/__tests__/platformOpsApi.test.ts` | 8: all 5 endpoint paths + params |
-| `frontend/src/pages/platform/ops/__tests__/OpsHealthPage.test.tsx` | 6: title, no mutations, no sensitive, no business, unknown+N/A |
+| `frontend/src/pages/platform/ops/__tests__/OpsHealthPage.test.tsx` | 5: title, no mutations, no sensitive, no business, unknown+N/A |
 | `frontend/src/pages/platform/ops/__tests__/OpsErrorsPage.test.tsx` | 5: title, no mutations, no sensitive, no business, loading |
 | `frontend/src/pages/platform/ops/__tests__/OpsSlowRoutesPage.test.tsx` | 4: title, no mutations, no sensitive, loading |
 | `frontend/src/pages/platform/ops/__tests__/OpsResourcesPage.test.tsx` | 5: title, no mutations, no sensitive, no business, loading |
@@ -75,9 +78,9 @@ This is **frontend-only**. No backend files were changed. P13-D depends on the P
 
 ---
 
-## Full Batch Diff (26 files, +3,382 lines vs origin/platform-dev)
+## Full Batch Diff (26 files, +3,406 -1 vs origin/platform-dev)
 
-Backend (8): `backend/.gitignore`, `backend/api/app.py`, `backend/api/v1/platform/p13/__init__.py`, `backend/api/v1/platform/p13/routes.py`, `backend/api/v1/platform/p13/schemas.py`, `backend/api/v1/platform/p13/services.py`, `backend/tests/test_platform_p13_operations_cockpit.py`
+Backend (7): `backend/.gitignore`, `backend/api/app.py`, `backend/api/v1/platform/p13/__init__.py`, `backend/api/v1/platform/p13/routes.py`, `backend/api/v1/platform/p13/schemas.py`, `backend/api/v1/platform/p13/services.py`, `backend/tests/test_platform_p13_operations_cockpit.py`
 Frontend (17): 5 pages, 8 tests, types, API client, router, sidebar
 Ledger (2): P13-C evidence, P13-D evidence (this file)
 
@@ -91,7 +94,7 @@ Ledger (2): P13-C evidence, P13-D evidence (this file)
 |-------|-------|--------|
 | P13 platformOps types | 11 | PASS |
 | P13 ops API client | 8 | PASS |
-| OpsHealthPage | 6 | PASS |
+| OpsHealthPage | 5 | PASS |
 | OpsErrorsPage | 5 | PASS |
 | OpsSlowRoutesPage | 4 | PASS |
 | OpsResourcesPage | 5 | PASS |
@@ -99,6 +102,8 @@ Ledger (2): P13-C evidence, P13-D evidence (this file)
 | SidebarOps | 5 | PASS |
 | Existing P10/P12 platform tests | all | PASS (regression) |
 | Existing guards/types/services | all | PASS (regression) |
+
+P13 page component tests: **24** (5+5+4+5+5)
 
 ### Backend: Not modified in P13-D. P13 54 + P10/P12 199 = 253 passed.
 
@@ -108,7 +113,7 @@ Ledger (2): P13-C evidence, P13-D evidence (this file)
 
 ## GitNexus
 
-- `npx gitnexus analyze` -- 6,394 nodes, 19,232 edges, 424 clusters, 290 flows
+- `npx gitnexus analyze` -- 6,390 nodes, 19,235 edges, 417 clusters, 290 flows
 - P13-D is **frontend-only**. No HIGH/CRITICAL risk.
 - No product/runtime tenant business risk. Read-only frontend shell.
 
@@ -147,7 +152,7 @@ Ledger (2): P13-C evidence, P13-D evidence (this file)
 | API client | LOW -- 5 GET endpoints, no mutations | 8 path/param tests |
 | Route guard | NONE -- reuses existing PlatformRoute | No auth changes |
 | Sidebar nav | LOW -- conditional render for identity-only super_admin | 5 visibility tests |
-| Page rendering | LOW -- read-only, no action buttons | 30 page component tests |
+| Page rendering | LOW -- read-only, no action buttons | 24 page component tests |
 | Full page coverage | NONE -- all 5 pages tested | 5/5 pages have dedicated test suites |
 
 ---

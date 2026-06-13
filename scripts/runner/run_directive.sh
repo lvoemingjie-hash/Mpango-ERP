@@ -913,6 +913,7 @@ case "$EXECUTOR_TYPE" in
     _tmp_out="$STATE_DIR/exec_output_${run_id}.txt"
     run_leo_headless > "$_tmp_out" 2>&1 || rc=$?
     EXECUTOR_OUTPUT="$(cat "$_tmp_out")"
+    echo -e "$EXECUTOR_OUTPUT" >> "$log_file"
 
     # R6: Parse Leo's structured evidence directly from raw JSON output
     parse_leo_evidence "$EXECUTOR_OUTPUT"

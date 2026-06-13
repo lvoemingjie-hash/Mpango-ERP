@@ -1,8 +1,8 @@
-# P14 Operations Cockpit — Real Signals Source Contract
+# P14 Operations Cockpit -- Real Signals Source Contract
 
 **Date:** 2026-06-13
 **Branch:** `codex/platform-p14-operations-real-signals-2026-06-13`
-**Base:** `41181fc` (origin/platform-dev — P13 batch merge)
+**Base:** `41181fc` (origin/platform-dev -- P13 batch merge)
 **Phase:** P14-A Source Contract
 
 ---
@@ -41,10 +41,10 @@ presentation) implement.
 
 | Source | Table / object | Safe? | Used by P14 |
 |--------|----------------|-------|-------------|
-| SQLAlchemy async engine pool | `async_engine.pool` (QueuePool, `pool_size`/`max_overflow`) | Yes — local runtime object, no credentials | Database pool stats |
-| DB connectivity ping | `SELECT 1` on the public-schema session | Yes — trivial read-only query | Database latency + status |
-| Platform audit log | `public.platform_audit_logs` (append-only) | Yes — but lacks correlation IDs | Not wired (see below) |
-| P10 `get_system_health` | stub — returns all `None` | N/A (stub) | Not a real source today |
+| SQLAlchemy async engine pool | `async_engine.pool` (QueuePool, `pool_size`/`max_overflow`) | Yes -- local runtime object, no credentials | Database pool stats |
+| DB connectivity ping | `SELECT 1` on the public-schema session | Yes -- trivial read-only query | Database latency + status |
+| Platform audit log | `public.platform_audit_logs` (append-only) | Yes -- but lacks correlation IDs | Not wired (see below) |
+| P10 `get_system_health` | stub -- returns all `None` | N/A (stub) | Not a real source today |
 
 **Key finding (why most fields stay unavailable):** The platform audit log records
 `ops_*_view` and `ops_access_denied` events, but it has **no request correlation
@@ -60,7 +60,7 @@ documented reason.
 
 ## Per-field source map
 
-### Database health (`ResourceHealthSummary.database`) — **Wired REAL in P14-B**
+### Database health (`ResourceHealthSummary.database`) -- **Wired REAL in P14-B**
 
 | Attribute | Value |
 |-----------|-------|
@@ -73,7 +73,7 @@ documented reason.
 | Fallback | Ping failure -> `status="unhealthy"`, `latency_ms=null`, pool stats `null`. Pool introspection failure -> pool stats `null` but latency/status still real. |
 | Redaction | No host/port/DSN/credentials. Only integer counts + latency + status. `pool.status()` raw string is parsed server-side and never serialized. |
 
-### Queue / CPU / Memory / Disk (`ResourceHealthSummary.*`) — **unavailable**
+### Queue / CPU / Memory / Disk (`ResourceHealthSummary.*`) -- **unavailable**
 
 | Attribute | Value |
 |-----------|-------|
@@ -82,19 +82,19 @@ documented reason.
 | Fallback | `null` (component omitted). UI shows "Not instrumented". |
 | Redaction | N/A |
 
-### Error rate (`ErrorRateSummary`) — **unavailable**
+### Error rate (`ErrorRateSummary`) -- **unavailable**
 
 | Attribute | Value |
 |-----------|-------|
 | Source | None honest. Application error telemetry not instrumented; audit log lacks correlation IDs. |
 | `total_errors` | `null` (not `0`). |
-| `error_classes` / `top_routes` | `[]` — require `sample_correlation_ids`. |
-| `top_tenants` | `null` — identity-only operator has no cross-tenant scope. |
+| `error_classes` / `top_routes` | `[]` -- require `sample_correlation_ids`. |
+| `top_tenants` | `null` -- identity-only operator has no cross-tenant scope. |
 | `unavailable_reason` | **NEW (P14-B):** surfaced so the UI can state why. Value: `"Request error telemetry is not instrumented; correlation IDs are required for class/route breakdown."` |
 | Freshness | `generated_at` = request time. |
 | Redaction | N/A (no payloads). |
 
-### Slow routes (`SlowRouteSummary`) — **unavailable**
+### Slow routes (`SlowRouteSummary`) -- **unavailable**
 
 | Attribute | Value |
 |-----------|-------|
@@ -104,7 +104,7 @@ documented reason.
 | Freshness | `generated_at` = request time. |
 | Redaction | N/A. |
 
-### Noisy neighbors (`NoisyNeighborSummary`) — **unavailable**
+### Noisy neighbors (`NoisyNeighborSummary`) -- **unavailable**
 
 | Attribute | Value |
 |-----------|-------|
@@ -114,7 +114,7 @@ documented reason.
 | Freshness | `generated_at` = request time. |
 | Redaction | N/A. |
 
-### System health (`GET /ops/health`) — unchanged
+### System health (`GET /ops/health`) -- unchanged
 
 Delegates to P10 `get_system_health` (currently a stub returning `unknown`/`None`).
 P14 does not alter this endpoint; it remains honest about its stub state.
@@ -142,11 +142,11 @@ endpoints.
 
 | Area | Risk | Mitigation |
 |------|------|------------|
-| DB ping on each `/ops/resources` call | LOW — trivial `SELECT 1`, read-only, identity-only audience | One query/request; same cost as any health check |
-| Pool introspection fragility | LOW — best-effort, falls back to `null` | Defensive parse; `null` preserves honest semantics |
-| Audit-log access-denied mislabel as "error rate" | AVOIDED — kept `unavailable` | Principle #1: no fabricated/mislabeled signals |
+| DB ping on each `/ops/resources` call | LOW -- trivial `SELECT 1`, read-only, identity-only audience | One query/request; same cost as any health check |
+| Pool introspection fragility | LOW -- best-effort, falls back to `null` | Defensive parse; `null` preserves honest semantics |
+| Audit-log access-denied mislabel as "error rate" | AVOIDED -- kept `unavailable` | Principle #1: no fabricated/mislabeled signals |
 
 ## Blockers
 
 None. Fields without a safe real source are explicitly documented as
-`unavailable` with a reason — this is the intended, honest P14 outcome.
+`unavailable` with a reason -- this is the intended, honest P14 outcome.

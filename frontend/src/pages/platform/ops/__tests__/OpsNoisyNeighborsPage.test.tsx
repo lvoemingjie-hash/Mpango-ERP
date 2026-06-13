@@ -10,18 +10,18 @@
  *
  * API client paths verified separately in platformOpsApi.test.ts.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-// Mock api to prevent real network calls
-vi.mock('@/services/api', () => ({
-  api: {
-    get: vi.fn().mockResolvedValue({ data: {} }),
-    post: vi.fn(),
+// Mock platform service to prevent real network calls.
+vi.mock('@/services/platformApi', () => ({
+  platformService: {
+    getOpsNoisyNeighbors: vi.fn().mockResolvedValue({ data: {} }),
   },
 }));
 
+import { platformService } from '@/services/platformApi';
 import { OpsNoisyNeighborsPage } from '@/pages/platform/ops/OpsNoisyNeighborsPage';
 
 function renderPage() {
@@ -35,6 +35,10 @@ function renderPage() {
 }
 
 describe('OpsNoisyNeighborsPage', () => {
+  beforeEach(() => {
+    vi.mocked(platformService.getOpsNoisyNeighbors).mockResolvedValue({ data: {} });
+  });
+
   it('renders page title and read-only description', () => {
     renderPage();
     expect(screen.getByText('Noisy Neighbors')).toBeInTheDocument();
@@ -69,5 +73,20 @@ describe('OpsNoisyNeighborsPage', () => {
     renderPage();
     const skeletons = document.querySelectorAll('.animate-pulse');
     expect(skeletons.length).toBeGreaterThan(0);
+  });
+
+  it('surfaces unavailable_reason in empty state when source unavailable (P14-C)', async () => {
+    vi.mocked(platformService.getOpsNoisyNeighbors).mockResolvedValue({
+      data: {
+        window_minutes: 15,
+        tenants: [],
+        unavailable_reason: 'Cross-tenant activity telemetry is not available.',
+        generated_at: '2026-06-13T00:00:00Z',
+      },
+    });
+    renderPage();
+    expect(await screen.findByTestId('unavailable-reason')).toHaveTextContent(
+      'Cross-tenant activity telemetry is not available.',
+    );
   });
 });

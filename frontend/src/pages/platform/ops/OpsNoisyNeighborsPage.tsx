@@ -22,7 +22,8 @@ export function OpsNoisyNeighborsPage() {
     platformService
       .getOpsNoisyNeighbors()
       .then((res) => setData(res.data?.data ?? res.data))
-      .catch((err) => setError(err.message ?? 'Failed to load noisy neighbor data'));
+      .catch((err) => setError(err.message ?? 'Failed to load noisy neighbor data'))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -68,7 +69,14 @@ export function OpsNoisyNeighborsPage() {
             <h2 className="text-lg font-semibold text-gray-900 mb-3">Tenant Impact Analysis</h2>
             {data.tenants.length === 0 ? (
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center">
-                <p className="text-sm text-gray-400">No noisy-neighbor data available. Cross-tenant telemetry is not yet instrumented.</p>
+                <p className="text-sm text-gray-400">No noisy-neighbor data available.</p>
+                {data.unavailable_reason ? (
+                  <p className="mt-2 text-sm text-gray-500" data-testid="unavailable-reason">
+                    {data.unavailable_reason}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm text-gray-400">Cross-tenant telemetry is not yet instrumented.</p>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">

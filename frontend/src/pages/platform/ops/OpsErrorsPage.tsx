@@ -23,7 +23,8 @@ export function OpsErrorsPage() {
     platformService
       .getOpsErrors()
       .then((res) => setData(res.data?.data ?? res.data))
-      .catch((err) => setError(err.message ?? 'Failed to load error data'));
+      .catch((err) => setError(err.message ?? 'Failed to load error data'))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -61,6 +62,11 @@ export function OpsErrorsPage() {
               </span>
               <span className="text-sm text-gray-600">{sourceStatusLabel(data.source_status)}</span>
             </div>
+            {unavailable && data.unavailable_reason ? (
+              <p className="mt-2 text-sm text-gray-500" data-testid="unavailable-reason">
+                {data.unavailable_reason}
+              </p>
+            ) : null}
           </div>
 
           {/* Total errors */}

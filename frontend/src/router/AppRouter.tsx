@@ -29,6 +29,12 @@ import { PlatformAuditEventsPage } from '@/pages/platform/PlatformAuditEventsPag
 import { PlatformTenantHealthPage } from '@/pages/platform/PlatformTenantHealthPage';
 import { PlatformSystemHealthPage } from '@/pages/platform/PlatformSystemHealthPage';
 import { SupportConsolePage } from '@/pages/platform/SupportConsolePage';
+// P13 Operations Cockpit pages
+import { OpsHealthPage } from '@/pages/platform/ops/OpsHealthPage';
+import { OpsErrorsPage } from '@/pages/platform/ops/OpsErrorsPage';
+import { OpsSlowRoutesPage } from '@/pages/platform/ops/OpsSlowRoutesPage';
+import { OpsResourcesPage } from '@/pages/platform/ops/OpsResourcesPage';
+import { OpsNoisyNeighborsPage } from '@/pages/platform/ops/OpsNoisyNeighborsPage';
 
 const router = createBrowserRouter([
   {
@@ -94,6 +100,12 @@ const router = createBrowserRouter([
               { path: '/platform/tenants/:tenantId/health', element: <PlatformTenantHealthPage /> },
               { path: '/platform/system/health', element: <PlatformSystemHealthPage /> },
               { path: '/platform/support', element: <SupportConsolePage /> },
+              // P13 Operations Cockpit routes
+              { path: '/platform/ops/health', element: <OpsHealthPage /> },
+              { path: '/platform/ops/errors', element: <OpsErrorsPage /> },
+              { path: '/platform/ops/slow-routes', element: <OpsSlowRoutesPage /> },
+              { path: '/platform/ops/resources', element: <OpsResourcesPage /> },
+              { path: '/platform/ops/noisy-neighbors', element: <OpsNoisyNeighborsPage /> },
             ],
           },
         ],

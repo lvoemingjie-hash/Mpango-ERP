@@ -9,6 +9,7 @@ import {
   CreditCardIcon,
   ShieldCheckIcon,
   WrenchScrewdriverIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
 import { isIdentityPlatformOperator } from '@/router/guards';
@@ -110,6 +111,20 @@ export function Sidebar() {
               />
               Support Console
               {isActive('/platform/support') && <div className="absolute left-0 h-8 w-1 rounded-r-full bg-primary-600" />}
+            </Link>
+            <Link
+              to="/platform/ops/health"
+              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isActive('/platform/ops')
+                  ? 'bg-primary-50 text-primary-700 ring-1 ring-inset ring-primary-200'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+            >
+              <ChartBarIcon
+                className={`h-5 w-5 shrink-0 transition-colors ${isActive('/platform/ops') ? 'text-primary-700' : 'text-gray-400 group-hover:text-gray-500'
+                  }`}
+              />
+              Ops Cockpit
+              {isActive('/platform/ops') && <div className="absolute left-0 h-8 w-1 rounded-r-full bg-primary-600" />}
             </Link>
           </>
         )}

@@ -2,7 +2,7 @@
  * Platform Admin Cockpit API client service.
  *
  * Uses the existing Axios singleton (api.ts) with Bearer token injection.
- * All calls go to P10 contract-backed endpoints.
+ * All calls go to P10/P12/P13 contract-backed endpoints.
  *
  * Auth transport (P11-B0-R1 resolved): The backend P10 guard accepts
  * identity-only (global) super_admin Bearer tokens only. The frontend
@@ -20,8 +20,15 @@ import type {
   PlatformAuditEventList,
   PlatformAuditEvent,
 } from '@/types/platform';
+import type {
+  ErrorRateSummary,
+  SlowRouteSummary,
+  ResourceHealthSummary,
+  NoisyNeighborSummary,
+} from '@/types/platformOps';
 
 const P10_BASE = '/platform/p10';
+const P13_BASE = '/platform/p13';
 
 export const platformService = {
   /** List tenants with optional pagination */
@@ -51,4 +58,32 @@ export const platformService = {
   /** Get a single audit event */
   getAuditEvent: (eventId: string) =>
     api.get<PlatformAuditEvent>(`${P10_BASE}/audit/events/${eventId}`),
+
+  // -- P13 Operations Cockpit (read-only) --
+
+  /** P13: Get ops system health */
+  getOpsHealth: () =>
+    api.get<PlatformSystemHealth>(`${P13_BASE}/ops/health`),
+
+  /** P13: Get error rate analysis */
+  getOpsErrors: (window = 15) =>
+    api.get<ErrorRateSummary>(`${P13_BASE}/ops/errors`, {
+      params: { window },
+    }),
+
+  /** P13: Get slow route analysis */
+  getOpsSlowRoutes: (window = 15, threshold = 1000) =>
+    api.get<SlowRouteSummary>(`${P13_BASE}/ops/slow-routes`, {
+      params: { window, threshold },
+    }),
+
+  /** P13: Get resource health summary */
+  getOpsResources: () =>
+    api.get<ResourceHealthSummary>(`${P13_BASE}/ops/resources`),
+
+  /** P13: Get noisy-neighbor analysis */
+  getOpsNoisyNeighbors: (window = 15) =>
+    api.get<NoisyNeighborSummary>(`${P13_BASE}/ops/noisy-neighbors`, {
+      params: { window },
+    }),
 };

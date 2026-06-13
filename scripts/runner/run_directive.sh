@@ -453,7 +453,7 @@ run_leo_headless() {
 
   checkpoint "directive_sections_extracted" "preflight=${PREFLIGHT_CMD_COUNT} validation=${VALIDATION_CMD_COUNT} total=${TOTAL_CMD_COUNT}"
 
-  LEO_INVOCATION_CMD="${openclaw_runner[*]} agent --agent main --message 'CTO_DIRECTIVE_TRIGGER'"
+  LEO_INVOCATION_CMD="printf prompt | ${openclaw_runner[*]} agent --agent main --json"
   LEO_EXECUTED="true"
 
   checkpoint "leo_invoked"
@@ -532,10 +532,9 @@ run_leo_headless() {
   leo_prompt+="Do NOT wait for human input. Execute and output evidence immediately.\n"
 
   # Wrap in timeout, capture exit code properly
-  raw_output="$(timeout "$EXECUTOR_TIMEOUT_SECS" \
+  raw_output="$(printf '%s\n' "$leo_prompt" | timeout "$EXECUTOR_TIMEOUT_SECS" \
     "${openclaw_runner[@]}" agent \
       --agent main \
-      --message "$leo_prompt" \
       --timeout 3600 --json 2>&1)" || rc=$?
 
   # LEO_COMMANDS_RUN=1  # available if needed

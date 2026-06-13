@@ -173,12 +173,27 @@ jobs:
 
           echo "Using report: $REPORT_SRC"
 
+          clone_reports_branch() {
+            local target_dir="$1"
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              rm -rf "$target_dir" 2>/dev/null || true
+              echo "Clone reports branch attempt ${attempt}/5"
+              if git -c http.version=HTTP/1.1 clone --depth 1 --branch reports/lubuntu-validation \
+                https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git \
+                "$target_dir" 2>&1; then
+                return 0
+              fi
+              echo "WARN: reports branch clone failed on attempt ${attempt}; retrying..."
+              sleep $((attempt * 5))
+            done
+            echo "FATAL: reports branch clone failed after 5 attempts"
+            return 1
+          }
+
           # Clone reports branch
           REPORTS_CHECKOUT="$GITHUB_WORKSPACE/reports-branch"
-          rm -rf "$REPORTS_CHECKOUT" 2>/dev/null || true
-          git clone --depth 1 --branch reports/lubuntu-validation \
-            https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git \
-            "$REPORTS_CHECKOUT" 2>&1
+          clone_reports_branch "$REPORTS_CHECKOUT"
 
           # Determine target path on reports branch
           if [ -z "$REPORT_DECLARED_PATH" ]; then
@@ -239,16 +254,30 @@ jobs:
           echo "Expected report basename: $REPORT_BASENAME"
           echo "Directive file: ${DIRECTIVE_FILE:-unknown}"
 
+          clone_reports_branch() {
+            local target_dir="$1"
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              rm -rf "$target_dir" 2>/dev/null || true
+              echo "Clone reports branch attempt ${attempt}/5"
+              if git -c http.version=HTTP/1.1 clone --depth 1 --branch reports/lubuntu-validation \
+                https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git \
+                "$target_dir" 2>&1; then
+                return 0
+              fi
+              echo "WARN: reports branch clone failed on attempt ${attempt}; retrying..."
+              sleep $((attempt * 5))
+            done
+            echo "FATAL: reports branch clone failed after 5 attempts"
+            return 1
+          }
+
           # Clone fresh copy of reports branch
           VERIFY_DIR="$GITHUB_WORKSPACE/reports-verify"
-          rm -rf "$VERIFY_DIR" 2>/dev/null || true
-          rm -rf "$VERIFY_DIR"
-          git clone --depth 1 --branch reports/lubuntu-validation \
-            https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git \
-            "$VERIFY_DIR" 2>&1 || {
-              echo "FATAL: Cannot clone reports/lubuntu-validation"
-              exit 1
-            }
+          clone_reports_branch "$VERIFY_DIR" || {
+            echo "FATAL: Cannot clone reports/lubuntu-validation"
+            exit 1
+          }
 
           VERIFY_FILE="$VERIFY_DIR/$REPORT_DECLARED_PATH"
 

@@ -415,6 +415,21 @@ run_leo_headless() {
     return 1
   fi
 
+  local openclaw_bin
+  openclaw_bin="$(command -v openclaw)"
+  local -a openclaw_runner
+  openclaw_runner=("$openclaw_bin")
+  if ! head -n 1 "$openclaw_bin" 2>/dev/null | grep -qE '^#!.*(node|env node)'; then
+    if head -n 30 "$openclaw_bin" 2>/dev/null | grep -qE '^(import |const |let |var |//|//#)'; then
+      if ! command -v node &>/dev/null; then
+        checkpoint_fail "leo_executor" "openclaw appears to be JavaScript but node is not in PATH"
+        echo "BLOCKED_ENVIRONMENT: openclaw requires node but node is not in PATH"
+        return 1
+      fi
+      openclaw_runner=(node "$openclaw_bin")
+    fi
+  fi
+
   checkpoint "leo_cli_verified"
 
   local directive_content
@@ -438,7 +453,7 @@ run_leo_headless() {
 
   checkpoint "directive_sections_extracted" "preflight=${PREFLIGHT_CMD_COUNT} validation=${VALIDATION_CMD_COUNT} total=${TOTAL_CMD_COUNT}"
 
-  LEO_INVOCATION_CMD="openclaw agent --agent main --message 'CTO_DIRECTIVE_TRIGGER'"
+  LEO_INVOCATION_CMD="${openclaw_runner[*]} agent --agent main --message 'CTO_DIRECTIVE_TRIGGER'"
   LEO_EXECUTED="true"
 
   checkpoint "leo_invoked"
@@ -518,7 +533,7 @@ run_leo_headless() {
 
   # Wrap in timeout, capture exit code properly
   raw_output="$(timeout "$EXECUTOR_TIMEOUT_SECS" \
-    openclaw agent \
+    "${openclaw_runner[@]}" agent \
       --agent main \
       --message "$leo_prompt" \
       --timeout 3600 --json 2>&1)" || rc=$?

@@ -348,6 +348,7 @@ run_deterministic_validation_fallback() {
 
   local executed=0
   local validation_passed=0
+  local preflight_passed=0
   local failures=0
   local head_hash=""
   local status_output=""
@@ -355,6 +356,7 @@ run_deterministic_validation_fallback() {
 
   if git -C "$VALIDATION_TARGET" fetch origin --prune > "$command_dir/cmd1_fetch.log" 2>&1; then
     EVIDENCE_CMD1_FETCH="PASS"
+    preflight_passed=$((preflight_passed + 1))
     executed=$((executed + 1))
   else
     EVIDENCE_CMD1_FETCH="FAIL"
@@ -363,6 +365,7 @@ run_deterministic_validation_fallback() {
 
   if git -C "$VALIDATION_TARGET" checkout "origin/$TARGET_BRANCH" --detach > "$command_dir/cmd2_checkout.log" 2>&1; then
     EVIDENCE_CMD2_CHECKOUT="PASS"
+    preflight_passed=$((preflight_passed + 1))
     executed=$((executed + 1))
   else
     EVIDENCE_CMD2_CHECKOUT="FAIL"
@@ -372,6 +375,7 @@ run_deterministic_validation_fallback() {
   if head_hash="$(git -C "$VALIDATION_TARGET" rev-parse HEAD 2> "$command_dir/cmd3_revparse.err")"; then
     EVIDENCE_CMD3_REVPARSE="$head_hash"
     EVIDENCE_COMMIT_HASH="$head_hash"
+    preflight_passed=$((preflight_passed + 1))
     executed=$((executed + 1))
     if [ -n "$TARGET_COMMIT" ] && [ "$head_hash" != "$TARGET_COMMIT" ]; then
       checkpoint_fail "target_commit_gate" "HEAD $head_hash != Target-Commit $TARGET_COMMIT"
@@ -385,6 +389,7 @@ run_deterministic_validation_fallback() {
   status_output="$(git -C "$VALIDATION_TARGET" status --short 2> "$command_dir/cmd4_status.err" || true)"
   if [ -z "$status_output" ]; then
     EVIDENCE_CMD4_STATUS="clean"
+    preflight_passed=$((preflight_passed + 1))
     executed=$((executed + 1))
   else
     EVIDENCE_CMD4_STATUS="dirty"
@@ -395,6 +400,7 @@ run_deterministic_validation_fallback() {
   if latest_log="$(git -C "$VALIDATION_TARGET" log -1 --oneline 2> "$command_dir/cmd5_log.err")"; then
     EVIDENCE_CMD5_LOG="$latest_log"
     EVIDENCE_LATEST_COMMIT="$latest_log"
+    preflight_passed=$((preflight_passed + 1))
     executed=$((executed + 1))
   else
     EVIDENCE_CMD5_LOG="FAIL"
@@ -405,7 +411,7 @@ run_deterministic_validation_fallback() {
   validation_cmds="$(extract_directive_section 'Required validation commands' "$latest_directive")" || true
 
   local validation_list="$command_dir/validation_commands.txt"
-  printf '%s\n' "$validation_cmds" | grep -oP '`[^`]+`' | sed 's/^`//;s/`$//' > "$validation_list" || true
+  printf '%s\n' "$validation_cmds" | sed -n 's/^[[:space:]]*`\([^`].*\)`[[:space:]]*$/\1/p' > "$validation_list" || true
 
   local idx=0
   local cmd=""
@@ -438,7 +444,7 @@ run_deterministic_validation_fallback() {
     fi
   done < "$validation_list"
 
-  EVIDENCE_PREFLIGHT="${PREFLIGHT_CMD_COUNT}/${PREFLIGHT_CMD_COUNT}"
+  EVIDENCE_PREFLIGHT="${preflight_passed}/${PREFLIGHT_CMD_COUNT}"
   EVIDENCE_VALIDATION="${validation_passed}/${VALIDATION_CMD_COUNT}"
   EVIDENCE_COMMANDS="${executed}/${TOTAL_CMD_COUNT}"
   EVIDENCE_SCHEMA_SKIP_REASONS="NONE"

@@ -3,9 +3,10 @@ import { skuService, type SKU } from '@/services/skuService';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { useAuthStore } from '@/stores/authStore';
-import { PlusIcon, CubeIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, CubeIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SKUFormModal } from './SKUFormModal';
+import { SKUImportModal } from './SKUImportModal';
 
 export function SKUListPage() {
   const [skus, setSkus] = useState<SKU[]>([]);
@@ -14,10 +15,12 @@ export function SKUListPage() {
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [selectedSku, setSelectedSku] = useState<SKU | null>(null);
 
   const user = useAuthStore((s) => s.user);
   const canWrite = user?.permissions.includes('inventory:write') || user?.roles.includes('admin');
+  const canImport = user?.permissions.includes('skus:import') || user?.roles.includes('admin');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,10 +56,21 @@ export function SKUListPage() {
         description="Manage your product catalog and SKU codes."
         action={
           canWrite && (
-            <button onClick={handleCreate} className="btn-primary flex items-center gap-2">
-              <PlusIcon className="h-5 w-5" />
-              Add Product
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={handleCreate} className="btn-primary flex items-center gap-2">
+                <PlusIcon className="h-5 w-5" />
+                Add Product
+              </button>
+              {canImport && (
+                <button
+                  onClick={() => setIsImportOpen(true)}
+                  className="btn-secondary flex items-center gap-2"
+                >
+                  <ArrowUpTrayIcon className="h-5 w-5" />
+                  Import Products
+                </button>
+              )}
+            </div>
           )
         }
       />
@@ -89,16 +103,15 @@ export function SKUListPage() {
                   Add Product
                 </button>
               )}
-              <button
-                className="btn-secondary flex items-center gap-2 opacity-50 cursor-not-allowed"
-                disabled
-                title="Coming soon"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                </svg>
-                Import Products
-              </button>
+              {canImport && (
+                <button
+                  onClick={() => setIsImportOpen(true)}
+                  className="btn-secondary flex items-center gap-2"
+                >
+                  <ArrowUpTrayIcon className="h-4 w-4" />
+                  Import Products
+                </button>
+              )}
             </div>
           }
         />
@@ -141,7 +154,7 @@ export function SKUListPage() {
                     {sku.name}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {sku.category || '—'}
+                    {sku.category || '--'}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                     {sku.unit}
@@ -175,6 +188,12 @@ export function SKUListPage() {
         onClose={() => setIsModalOpen(false)}
         onSuccess={load}
         sku={selectedSku}
+      />
+
+      <SKUImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onSuccess={load}
       />
     </div>
   );

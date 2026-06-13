@@ -319,7 +319,9 @@ class TestResponseShapes:
         data = response.json()
         assert "database" in data
         assert "generated_at" in data
-        assert data["database"]["status"] == "unknown"
+        # P14: database health is now a REAL measured signal, not fabricated 'unknown'.
+        assert data["database"]["status"] in ("healthy", "degraded", "unhealthy")
+        assert data["database"]["latency_ms"] is not None
 
     def test_ops_noisy_neighbors_returns_noisy_neighbor_summary(self):
         """GET /ops/noisy-neighbors returns NoisyNeighborSummary shape."""
@@ -377,13 +379,22 @@ class TestSourceStatusSemantics:
         data = response.json()
         assert data["tenants"] == []
 
-    def test_resource_db_status_is_unknown_not_healthy(self):
-        """Database health is 'unknown' (not fabricated 'healthy')."""
+    def test_resource_db_status_is_measured_not_fabricated(self):
+        """P14: Database health is measured (real ping), not fabricated 'unknown'.
+        Unmeasured components remain null rather than fabricated."""
         app = _make_guarded_app()
         client = TestClient(app)
         response = client.get(f"{P13_BASE}/ops/resources", headers=AUTH_HEADERS)
         data = response.json()
-        assert data["database"]["status"] == "unknown"
+        db_status = data["database"]["status"]
+        assert db_status in ("healthy", "degraded", "unhealthy")
+        assert db_status != "unknown"  # now measured, not fabricated
+        assert data["database"]["latency_ms"] is not None
+        # Unmeasured components stay null (null != fabricated 0/status).
+        assert data["queue"] is None
+        assert data["memory"] is None
+        assert data["cpu"] is None
+        assert data["disk"] is None
 
     def test_resource_optional_components_are_null(self):
         """Queue, memory, CPU, disk are null when not instrumented."""
@@ -688,14 +699,18 @@ class TestCounterexamples:
         response = client.get(f"{P13_BASE}/ops/errors")
         assert response.status_code in (401, 403)
 
-    def test_ce04_unknown_not_healthy(self):
-        """CE-04: Resource health status is 'unknown' not 'healthy' when metrics unavailable."""
-        app = _make_guarded_app()
+    def test_ce04_ping_failure_is_unhealthy_not_fabricated_healthy(self):
+        """CE-04 (P14): when the DB ping fails, status is 'unhealthy' -- never a fabricated 'healthy'."""
+        failing_db = _mock_db()
+        failing_db.execute = AsyncMock(side_effect=Exception("db unreachable"))
+        app = _make_app(failing_db)
         client = TestClient(app)
         response = client.get(f"{P13_BASE}/ops/resources", headers=AUTH_HEADERS)
+        assert response.status_code == 200
         data = response.json()
-        assert data["database"]["status"] == "unknown"
+        assert data["database"]["status"] == "unhealthy"
         assert data["database"]["status"] != "healthy"
+        assert data["database"]["latency_ms"] is None  # null != 0; no fabricated latency
 
     def test_ce05_unavailable_not_zero(self):
         """CE-05: Error total is null (not 0) when telemetry uninstrumented."""
@@ -817,3 +832,126 @@ class TestRouteLevelIdentity:
             for ep in ["/ops/health", "/ops/errors", "/ops/slow-routes", "/ops/resources", "/ops/noisy-neighbors"]:
                 response = client.get(f"{P13_BASE}{ep}")
                 assert response.status_code == 200, f"{ep} should allow identity-only super_admin"
+
+
+# ============================================================
+# 10. P14-B Real Database Health Adapter
+# ============================================================
+
+
+class TestP14DatabaseHealthAdapter:
+    """P14-B: real read-only DB health (ping latency + engine pool stats).
+
+    Covers: real source used when available, unhealthy fallback on ping error,
+    pool-status parsing, no sensitive payloads, unavailable_reason surfaced,
+    and no mutation routes.
+    """
+
+    def test_database_health_uses_real_ping(self):
+        """_database_health runs a SELECT 1 and records measured latency + status."""
+        import asyncio
+        from api.v1.platform.p13.services import _database_health
+
+        db = _mock_db()
+        health = asyncio.run(_database_health(db))
+        # The mock execute resolves without error -> measured healthy with latency.
+        assert health.status == "healthy"
+        assert isinstance(health.latency_ms, int) and health.latency_ms >= 0
+        # Pool introspection on a MagicMock returns non-string -> honest nulls.
+        assert health.connection_pool_active is None
+        assert health.connection_pool_idle is None
+        assert health.connection_pool_max is None
+
+    def test_database_health_unhealthy_on_ping_error(self):
+        """When the DB ping raises, status is unhealthy and latency is null."""
+        import asyncio
+        from api.v1.platform.p13.services import _database_health
+
+        db = _mock_db()
+        db.execute = AsyncMock(side_effect=RuntimeError("connection refused"))
+        health = asyncio.run(_database_health(db))
+        assert health.status == "unhealthy"
+        assert health.latency_ms is None  # null, never fabricated 0
+
+    def test_parse_pool_status_queuepool(self):
+        """_parse_pool_status parses a real QueuePool.status() string."""
+        from api.v1.platform.p13.services import _parse_pool_status
+
+        status_text = (
+            "Pool size: 5 Connections in pool: 2 "
+            "Current Overflow: 3 Current Checked out connections: 1"
+        )
+        active, idle, mx = _parse_pool_status(status_text)
+        assert active == 1   # checked out
+        assert idle == 2     # in pool
+        assert mx == 8       # size(5) + overflow(3)
+
+    def test_parse_pool_status_garbage_returns_none(self):
+        """Non-string / unparseable input falls back to honest None triple."""
+        from api.v1.platform.p13.services import _parse_pool_status
+
+        assert _parse_pool_status(None) == (None, None, None)
+        assert _parse_pool_status("") == (None, None, None)
+        assert _parse_pool_status("not a pool status string") == (None, None, None)
+
+    def test_resources_surfaces_real_pool_when_available(self):
+        """When the engine pool reports stats, the endpoint surfaces them."""
+        pool = MagicMock()
+        pool.status.return_value = (
+            "Pool size: 10 Connections in pool: 4 "
+            "Current Overflow: 0 Current Checked out connections: 2"
+        )
+        bind = MagicMock()
+        bind.pool = pool
+        db = _mock_db()
+        db.bind = bind
+        app = _make_app(db)
+        client = TestClient(app)
+        response = client.get(f"{P13_BASE}/ops/resources", headers=AUTH_HEADERS)
+        data = response.json()
+        assert data["database"]["connection_pool_active"] == 2
+        assert data["database"]["connection_pool_idle"] == 4
+        assert data["database"]["connection_pool_max"] == 10
+
+    def test_resources_no_sensitive_payload(self):
+        """Real DB health response leaks no host/port/DSN/credentials."""
+        app = _make_guarded_app()
+        client = TestClient(app)
+        response = client.get(f"{P13_BASE}/ops/resources", headers=AUTH_HEADERS)
+        body = response.json()
+        dumped = str(body).lower()
+        for forbidden in ("host", "port", "dsn", "password", "secret", "credential", "connection_string"):
+            assert forbidden not in dumped, f"sensitive token '{forbidden}' leaked in resources response"
+
+    def test_unavailable_reason_surfaced_on_errors(self):
+        """P14: /ops/errors surfaces unavailable_reason for the UI."""
+        app = _make_guarded_app()
+        client = TestClient(app)
+        response = client.get(f"{P13_BASE}/ops/errors", headers=AUTH_HEADERS)
+        data = response.json()
+        assert data["source_status"] == "unavailable"
+        assert isinstance(data.get("unavailable_reason"), str) and data["unavailable_reason"]
+
+    def test_unavailable_reason_surfaced_on_slow_routes(self):
+        """P14: /ops/slow-routes surfaces unavailable_reason for the UI."""
+        app = _make_guarded_app()
+        client = TestClient(app)
+        response = client.get(f"{P13_BASE}/ops/slow-routes", headers=AUTH_HEADERS)
+        data = response.json()
+        assert data["source_status"] == "unavailable"
+        assert isinstance(data.get("unavailable_reason"), str) and data["unavailable_reason"]
+
+    def test_unavailable_reason_surfaced_on_noisy_neighbors(self):
+        """P14: /ops/noisy-neighbors surfaces unavailable_reason for the UI."""
+        app = _make_guarded_app()
+        client = TestClient(app)
+        response = client.get(f"{P13_BASE}/ops/noisy-neighbors", headers=AUTH_HEADERS)
+        data = response.json()
+        assert isinstance(data.get("unavailable_reason"), str) and data["unavailable_reason"]
+
+    def test_resources_is_read_only(self):
+        """P14-B: real DB health is still read-only (no mutation route)."""
+        app = _make_guarded_app()
+        client = TestClient(app)
+        response = client.post(f"{P13_BASE}/ops/resources", headers=AUTH_HEADERS)
+        assert response.status_code == 405

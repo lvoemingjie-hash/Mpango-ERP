@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-13
 **Branch:** `codex/platform-p13-operations-cockpit-batch-2026-06-12`
-**HEAD:** `pending R2 commit`
+**HEAD:** `95bf88c`
 **Author:** Codex (Claude Opus 4.8)
 
 ---
@@ -13,6 +13,7 @@ P13-D implements the frontend Operations Cockpit shell for the P13 platform API.
 
 P13-D-R1 adds 3 missing page tests (OpsHealthPage, OpsResourcesPage, OpsNoisyNeighborsPage) for full 5-of-5 page coverage.
 P13-D-R2 corrects ledger evidence counts.
+P13-D-R3 finalises SHA and diff stat.
 
 This is **frontend-only**. No backend files were changed. P13-D depends on the P13-B/C backend already committed to this same isolated branch.
 
@@ -22,7 +23,8 @@ This is **frontend-only**. No backend files were changed. P13-D depends on the P
 
 | Commit | Message |
 |--------|---------|
-| *(this commit)* | docs(platform): P13-D-R2 ledger evidence correction |
+| `95bf88c` | docs(platform): P13-D-R3 final ledger SHA polish |
+| `2cbce02` | docs(platform): P13-D-R2 ledger evidence correction |
 | `3e1a815` | docs(platform): P13-D-R1 ledger update -- full evidence + coverage closure |
 | `23c9ac7` | test(platform): P13-D-R1 add 3 missing ops page tests |
 | `b3716a7` | docs(platform): P13-D ledger evidence |
@@ -78,7 +80,7 @@ This is **frontend-only**. No backend files were changed. P13-D depends on the P
 
 ---
 
-## Full Batch Diff (26 files, +3,406 -1 vs origin/platform-dev)
+## Full Batch Diff (26 files, +3,411 -1 vs origin/platform-dev)
 
 Backend (7): `backend/.gitignore`, `backend/api/app.py`, `backend/api/v1/platform/p13/__init__.py`, `backend/api/v1/platform/p13/routes.py`, `backend/api/v1/platform/p13/schemas.py`, `backend/api/v1/platform/p13/services.py`, `backend/tests/test_platform_p13_operations_cockpit.py`
 Frontend (17): 5 pages, 8 tests, types, API client, router, sidebar

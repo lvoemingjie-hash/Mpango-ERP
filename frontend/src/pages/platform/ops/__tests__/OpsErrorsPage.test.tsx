@@ -12,18 +12,18 @@
  * Uses direct state injection via useState mock pattern.
  * API client paths verified separately in platformOpsApi.test.ts.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-// Mock api to prevent real network calls
-vi.mock('@/services/api', () => ({
-  api: {
-    get: vi.fn().mockResolvedValue({ data: {} }),
-    post: vi.fn(),
+// Mock platform service to prevent real network calls.
+vi.mock('@/services/platformApi', () => ({
+  platformService: {
+    getOpsErrors: vi.fn().mockResolvedValue({ data: {} }),
   },
 }));
 
+import { platformService } from '@/services/platformApi';
 import { OpsErrorsPage } from '@/pages/platform/ops/OpsErrorsPage';
 
 function renderPage() {
@@ -37,6 +37,10 @@ function renderPage() {
 }
 
 describe('OpsErrorsPage', () => {
+  beforeEach(() => {
+    vi.mocked(platformService.getOpsErrors).mockResolvedValue({ data: {} });
+  });
+
   it('renders page title and read-only description', () => {
     renderPage();
     expect(screen.getByText('Error Analysis')).toBeInTheDocument();
@@ -73,5 +77,43 @@ describe('OpsErrorsPage', () => {
     // Skeletons have animate-pulse class
     const skeletons = document.querySelectorAll('.animate-pulse');
     expect(skeletons.length).toBeGreaterThan(0);
+  });
+
+  it('surfaces unavailable_reason when source is unavailable (P14-C)', async () => {
+    vi.mocked(platformService.getOpsErrors).mockResolvedValue({
+      data: {
+        source_status: 'unavailable',
+        window_minutes: 15,
+        total_errors: null,
+        error_classes: [],
+        top_routes: [],
+        top_tenants: null,
+        unavailable_reason: 'Request error telemetry is not instrumented.',
+        generated_at: '2026-06-13T00:00:00Z',
+      },
+    });
+    renderPage();
+    expect(await screen.findByTestId('unavailable-reason')).toHaveTextContent(
+      'Request error telemetry is not instrumented.',
+    );
+  });
+
+  it('does not surface unavailable_reason when source is available (P14-C)', async () => {
+    vi.mocked(platformService.getOpsErrors).mockResolvedValue({
+      data: {
+        source_status: 'available',
+        window_minutes: 15,
+        total_errors: 3,
+        error_classes: [],
+        top_routes: [],
+        top_tenants: null,
+        unavailable_reason: null,
+        generated_at: '2026-06-13T00:00:00Z',
+      },
+    });
+    renderPage();
+    // Wait for data to render, then confirm no reason banner.
+    expect(await screen.findByText('Live data')).toBeInTheDocument();
+    expect(screen.queryByTestId('unavailable-reason')).not.toBeInTheDocument();
   });
 });

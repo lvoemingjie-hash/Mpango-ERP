@@ -120,6 +120,10 @@ class ErrorRateSummary(BaseModel):
     top_tenants: Optional[list[TenantErrorBreakdown]] = Field(
         None, description="null if actor lacks cross-tenant scope or source unavailable"
     )
+    unavailable_reason: Optional[str] = Field(
+        None,
+        description="Human-readable reason when source_status is unavailable/unknown (P14). None when available.",
+    )
     generated_at: datetime = Field(..., description="UTC ISO-8601")
 
     @model_validator(mode="after")
@@ -176,6 +180,10 @@ class SlowRouteSummary(BaseModel):
     )
     routes: list[SlowRouteEntry] = Field(
         default_factory=list, description="Empty when source unavailable"
+    )
+    unavailable_reason: Optional[str] = Field(
+        None,
+        description="Human-readable reason when source_status is unavailable/unknown (P14). None when available.",
     )
     generated_at: datetime = Field(..., description="UTC ISO-8601")
 
@@ -302,5 +310,9 @@ class NoisyNeighborSummary(BaseModel):
     tenants: list[NoisyNeighborEntry] = Field(
         default_factory=list,
         description="Sorted by impact descending, empty when source unavailable",
+    )
+    unavailable_reason: Optional[str] = Field(
+        None,
+        description="Human-readable reason when the source is unavailable (P14). None when populated.",
     )
     generated_at: datetime = Field(..., description="UTC ISO-8601")

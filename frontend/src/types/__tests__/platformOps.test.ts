@@ -109,4 +109,33 @@ describe('platformOps types', () => {
       expect(summary.total_slow_requests).toBe(5);
     });
   });
+
+  describe('P14 unavailable_reason field (optional)', () => {
+    it('ErrorRateSummary may carry unavailable_reason when unavailable', () => {
+      const summary: ErrorRateSummary = {
+        source_status: 'unavailable',
+        window_minutes: 15,
+        total_errors: null,
+        error_classes: [],
+        top_routes: [],
+        top_tenants: null,
+        unavailable_reason: 'Request error telemetry is not instrumented.',
+        generated_at: '2026-06-13T00:00:00Z',
+      };
+      expect(summary.unavailable_reason).toBe('Request error telemetry is not instrumented.');
+    });
+
+    it('SlowRouteSummary omits unavailable_reason cleanly when available', () => {
+      const summary: SlowRouteSummary = {
+        source_status: 'available',
+        window_minutes: 15,
+        threshold_ms: 1000,
+        total_slow_requests: 5,
+        routes: [],
+        generated_at: '2026-06-13T00:00:00Z',
+      };
+      // Optional field is absent / undefined for available sources -- never blocks consumers.
+      expect(summary.unavailable_reason ?? null).toBeNull();
+    });
+  });
 });

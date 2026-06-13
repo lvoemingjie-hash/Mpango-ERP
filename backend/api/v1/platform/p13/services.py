@@ -14,14 +14,16 @@ Key design decisions:
 """
 from __future__ import annotations
 
+import re
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Request
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.v1.platform.p10.services import get_system_health
 from services.platform_audit_service import append_audit_entry
 
 from .schemas import (
@@ -33,6 +35,26 @@ from .schemas import (
     ResourceHealthSummary,
     SlowRouteSummary,
 )
+
+
+# -- P14-B documented unavailable reasons (see P14-A source contract) --
+
+_ERROR_RATE_UNAVAILABLE_REASON = (
+    "Request error telemetry is not instrumented; correlation IDs are required "
+    "for class/route breakdown."
+)
+_SLOW_ROUTE_UNAVAILABLE_REASON = (
+    "Per-request latency telemetry is not instrumented."
+)
+_NOISY_NEIGHBOR_UNAVAILABLE_REASON = (
+    "Cross-tenant activity telemetry is not available; requires business-scope "
+    "instrumentation outside platform-runtime scope."
+)
+
+
+# -- DB latency thresholds (P14-B) --
+_DB_HEALTHY_LATENCY_MS = 200
+_DB_DEGRADED_LATENCY_MS = 1000
 
 
 # -- Helpers --
@@ -100,6 +122,103 @@ async def _write_ops_audit(
 # -- Service functions --
 
 
+def _parse_pool_status(status_text: Optional[str]) -> tuple[Optional[int], Optional[int], Optional[int]]:
+    """Parse a SQLAlchemy pool.status() string into (active, idle, max).
+
+    Typical QueuePool output:
+      "Pool size: 5 Connections in pool: 2 Current Overflow: 0 Current Checked out connections: 1"
+
+    - active = checked-out connections
+    - idle   = connections in pool
+    - max    = pool size + overflow (capacity)
+
+    Returns (None, None, None) for any non-string / unparseable input so callers
+    can fall back to honest nulls (null != 0). The raw string is never serialized.
+    """
+    if not isinstance(status_text, str) or not status_text:
+        return None, None, None
+
+    def _grab(label: str) -> Optional[int]:
+        m = re.search(rf"{re.escape(label)}\s*:\s*(\d+)", status_text)
+        return int(m.group(1)) if m else None
+
+    size = _grab("Pool size")
+    in_pool = _grab("Connections in pool")
+    overflow = _grab("Current Overflow")
+    checked_out = _grab("Checked out connections")
+
+    idle = in_pool
+    active = checked_out
+    mx: Optional[int] = None
+    if size is not None and overflow is not None:
+        mx = size + overflow
+    elif size is not None:
+        mx = size
+    return active, idle, mx
+
+
+def _engine_pool_status(db: AsyncSession) -> Optional[str]:
+    """Best-effort read of the bound engine's pool.status() string.
+
+    Returns None if the session has no introspectable pool (NullPool, mock, etc.).
+    Never raises -- pool introspection is best-effort, not load-bearing.
+    """
+    try:
+        bind = getattr(db, "bind", None)
+        pool = getattr(bind, "pool", None)
+        status_fn = getattr(pool, "status", None)
+        if status_fn is None:
+            return None
+        result = status_fn()
+        return result if isinstance(result, str) else None
+    except Exception:
+        return None
+
+
+async def _database_health(db: AsyncSession) -> DatabaseHealth:
+    """Measure real database health (P14-B).
+
+    - latency_ms: wall-clock of a `SELECT 1` ping on the request session.
+    - status: threshold-derived from latency (healthy/degraded/unhealthy).
+    - pool stats: parsed from the engine pool, best-effort (null if unavailable).
+
+    On ping failure the database is reported unhealthy with latency null --
+    never fabricated healthy. On pool-introspection failure the pool stats are
+    null while latency/status remain real. No host/port/DSN/credentials leak.
+    """
+    active: Optional[int] = None
+    idle: Optional[int] = None
+    mx: Optional[int] = None
+    latency_ms: Optional[int] = None
+
+    # Real pool stats (best-effort, independent of the ping).
+    active, idle, mx = _parse_pool_status(_engine_pool_status(db))
+
+    # Real DB connectivity ping.
+    try:
+        start = time.perf_counter()
+        await db.execute(text("SELECT 1"))
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        if latency_ms < _DB_HEALTHY_LATENCY_MS:
+            status = "healthy"
+        elif latency_ms < _DB_DEGRADED_LATENCY_MS:
+            status = "degraded"
+        else:
+            status = "unhealthy"
+    except Exception:
+        # Ping failed: real unhealthy, not fabricated healthy. Latency unknown.
+        status = "unhealthy"
+        latency_ms = None
+
+    return DatabaseHealth(
+        status=status,
+        connection_pool_active=active,
+        connection_pool_max=mx,
+        connection_pool_idle=idle,
+        latency_ms=latency_ms,
+    )
+
+
 async def get_error_rate_summary(
     db: AsyncSession,
     window_minutes: int = 15,
@@ -109,6 +228,7 @@ async def get_error_rate_summary(
 
     Telemetry is not yet instrumented, so source_status is "unavailable"
     and total_errors is null. This is the honest state -- not fabricated 0.
+    The unavailable_reason (P14) explains why for the UI.
     """
     return ErrorRateSummary(
         source_status="unavailable",
@@ -117,6 +237,7 @@ async def get_error_rate_summary(
         error_classes=[],
         top_routes=[],
         top_tenants=None,
+        unavailable_reason=_ERROR_RATE_UNAVAILABLE_REASON,
         generated_at=_utcnow(),
     )
 
@@ -130,7 +251,7 @@ async def get_slow_route_summary(
     Return slow route summary.
 
     Telemetry is not yet instrumented, so source_status is "unavailable"
-    and total_slow_requests is null.
+    and total_slow_requests is null. The unavailable_reason (P14) explains why.
     """
     return SlowRouteSummary(
         source_status="unavailable",
@@ -138,6 +259,7 @@ async def get_slow_route_summary(
         threshold_ms=threshold_ms,
         total_slow_requests=None,
         routes=[],
+        unavailable_reason=_SLOW_ROUTE_UNAVAILABLE_REASON,
         generated_at=_utcnow(),
     )
 
@@ -148,19 +270,11 @@ async def get_resource_health_summary(
     """
     Return resource health summary.
 
-    Reuses P10 system health for database pool stats where available.
-    CPU, memory, disk are not instrumented -- returned as unknown.
+    Database health is a REAL signal (P14-B): measured ping latency + engine
+    pool stats, with a threshold-derived status (no fabricated 'unknown').
+    Queue, CPU, memory, disk are not instrumented -- returned as null.
     """
-    # Reuse P10 system health for DB connection data
-    system_health = await get_system_health(db)
-
-    db_health = DatabaseHealth(
-        status="unknown",
-        connection_pool_active=system_health.database_connections.active if system_health.database_connections else None,
-        connection_pool_max=system_health.database_connections.max if system_health.database_connections else None,
-        connection_pool_idle=system_health.database_connections.idle if system_health.database_connections else None,
-        latency_ms=None,
-    )
+    db_health = await _database_health(db)
 
     return ResourceHealthSummary(
         database=db_health,
@@ -180,10 +294,11 @@ async def get_noisy_neighbor_summary(
     Return noisy-neighbor summary.
 
     Requires cross-tenant telemetry which is not yet instrumented.
-    Returns empty tenants list.
+    Returns empty tenants list. The unavailable_reason (P14) explains why.
     """
     return NoisyNeighborSummary(
         window_minutes=window_minutes,
         tenants=[],
+        unavailable_reason=_NOISY_NEIGHBOR_UNAVAILABLE_REASON,
         generated_at=_utcnow(),
     )

@@ -23,7 +23,8 @@ export function OpsSlowRoutesPage() {
     platformService
       .getOpsSlowRoutes()
       .then((res) => setData(res.data?.data ?? res.data))
-      .catch((err) => setError(err.message ?? 'Failed to load slow route data'));
+      .catch((err) => setError(err.message ?? 'Failed to load slow route data'))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -58,6 +59,11 @@ export function OpsSlowRoutesPage() {
               </span>
               <span className="text-sm text-gray-600">{sourceStatusLabel(data.source_status)}</span>
             </div>
+            {unavailable && data.unavailable_reason ? (
+              <p className="mt-2 text-sm text-gray-500" data-testid="unavailable-reason">
+                {data.unavailable_reason}
+              </p>
+            ) : null}
           </div>
 
           {/* Summary cards */}

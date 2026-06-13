@@ -25,7 +25,8 @@ export function OpsResourcesPage() {
     platformService
       .getOpsResources()
       .then((res) => setData(res.data?.data ?? res.data))
-      .catch((err) => setError(err.message ?? 'Failed to load resource data'));
+      .catch((err) => setError(err.message ?? 'Failed to load resource data'))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -59,7 +60,15 @@ export function OpsResourcesPage() {
 
           {/* Database */}
           <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Database</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-gray-900">Database</h2>
+              <span
+                className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800"
+                data-testid="db-source"
+              >
+                Live probe
+              </span>
+            </div>
             <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-3 mb-4">
                 <PlatformStatusBadge status={data.database.status} />

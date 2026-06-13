@@ -45,6 +45,11 @@ export interface ErrorRateSummary {
   error_classes: ErrorClassBreakdown[];
   top_routes: RouteErrorBreakdown[];
   top_tenants: TenantErrorBreakdown[] | null;
+  /**
+   * P14: human-readable reason when source_status is unavailable/unknown.
+   * null/undefined when the source is available. Lets the UI state *why*.
+   */
+  unavailable_reason?: string | null;
   generated_at: string;
 }
 
@@ -65,6 +70,8 @@ export interface SlowRouteSummary {
   threshold_ms: number;
   total_slow_requests: number | null;
   routes: SlowRouteEntry[];
+  /** P14: reason when source_status is unavailable/unknown. null/undefined when available. */
+  unavailable_reason?: string | null;
   generated_at: string;
 }
 
@@ -115,6 +122,8 @@ export interface NoisyNeighborEntry {
 export interface NoisyNeighborSummary {
   window_minutes: number;
   tenants: NoisyNeighborEntry[];
+  /** P14: reason when the source is unavailable. null/undefined when populated. */
+  unavailable_reason?: string | null;
   generated_at: string;
 }
 

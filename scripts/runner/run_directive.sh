@@ -1149,8 +1149,13 @@ if [ "$EXECUTOR_TYPE" = "leo-headless" ]; then
     VERDICT="FAIL_RUNNER_INFRA"
     checkpoint_fail "leo_evidence_gate" "Leo was NOT invoked"
   elif [ "$EVIDENCE_COMMANDS" != "${TOTAL_CMD_COUNT}/${TOTAL_CMD_COUNT}" ]; then
-    VERDICT="FAIL_RUNNER_INFRA"
-    checkpoint_fail "leo_commands_gate" "Leo commands: $EVIDENCE_COMMANDS (expected ${TOTAL_CMD_COUNT}/${TOTAL_CMD_COUNT})"
+    if [ "$EVIDENCE_VERDICT" = "FAIL_VALIDATION" ]; then
+      VERDICT="FAIL_VALIDATION"
+      checkpoint_fail "leo_commands_gate" "Validation command failed: $EVIDENCE_COMMANDS (expected ${TOTAL_CMD_COUNT}/${TOTAL_CMD_COUNT})"
+    else
+      VERDICT="FAIL_RUNNER_INFRA"
+      checkpoint_fail "leo_commands_gate" "Leo commands: $EVIDENCE_COMMANDS (expected ${TOTAL_CMD_COUNT}/${TOTAL_CMD_COUNT})"
+    fi
   elif echo "$EVIDENCE_PRODUCT_MODIFIED" | grep -qiE "^no$|^false$"; then
     checkpoint "leo_product_modified_gate" "product code not modified"
   else

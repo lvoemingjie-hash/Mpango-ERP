@@ -35,6 +35,7 @@ import { OpsErrorsPage } from '@/pages/platform/ops/OpsErrorsPage';
 import { OpsSlowRoutesPage } from '@/pages/platform/ops/OpsSlowRoutesPage';
 import { OpsResourcesPage } from '@/pages/platform/ops/OpsResourcesPage';
 import { OpsNoisyNeighborsPage } from '@/pages/platform/ops/OpsNoisyNeighborsPage';
+import { IncidentTriagePage } from '@/pages/platform/ops/IncidentTriagePage';
 
 const router = createBrowserRouter([
   {
@@ -106,6 +107,7 @@ const router = createBrowserRouter([
               { path: '/platform/ops/slow-routes', element: <OpsSlowRoutesPage /> },
               { path: '/platform/ops/resources', element: <OpsResourcesPage /> },
               { path: '/platform/ops/noisy-neighbors', element: <OpsNoisyNeighborsPage /> },
+              { path: '/platform/ops/incidents/triage', element: <IncidentTriagePage /> },
             ],
           },
         ],

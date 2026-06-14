@@ -26,9 +26,11 @@ import type {
   ResourceHealthSummary,
   NoisyNeighborSummary,
 } from '@/types/platformOps';
+import type { IncidentTriageSnapshot } from '@/types/platformIncident';
 
 const P10_BASE = '/platform/p10';
 const P13_BASE = '/platform/p13';
+const P15_BASE = '/platform/p15';
 
 export const platformService = {
   /** List tenants with optional pagination */
@@ -86,4 +88,10 @@ export const platformService = {
     api.get<NoisyNeighborSummary>(`${P13_BASE}/ops/noisy-neighbors`, {
       params: { window },
     }),
+
+  // -- P15 Incident Triage (read-only snapshot) --
+
+  /** P15: Get incident triage snapshot (read-only) */
+  getIncidentTriageSnapshot: () =>
+    api.get<IncidentTriageSnapshot>(`${P15_BASE}/incidents/triage/snapshot`),
 };

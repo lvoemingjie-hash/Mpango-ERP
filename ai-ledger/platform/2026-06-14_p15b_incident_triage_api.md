@@ -70,9 +70,14 @@ business fields).
 
 - `npx gitnexus analyze` -- index current: **6,548 nodes, 19,697 edges, 424
   clusters, 300 flows**.
-- Impact: P15 adds a new self-contained read-only module; it calls P10/P13/P14
-  read-only helpers. No existing symbols modified. **LOW risk**.
-- detect_changes vs platform-dev: expected **LOW**, platform-runtime scope.
+- detect_changes (repo `platform-p15bcd-incident-triage-batch-2026-06-14`, base
+  `origin/platform-dev`): **changed_files 17, changed_symbols 116,
+  affected_processes 15, risk_level HIGH**.
+- Risk explanation: **HIGH by graph** because P15 adds platform runtime API flows
+  (new symbols/processes on the platform operations surface). **Mitigated to
+  MEDIUM operational** because scope is platform-only, read-only, identity-only
+  super_admin guarded, no product business mutation, no migrations, no auth/RBAC
+  rewrite.
 
 ---
 
@@ -91,8 +96,10 @@ business fields).
 
 ## Risk
 
-LOW. New read-only module; consumes existing helpers; no schema/auth/migration/
-business changes. graceful_degraded ensures source failures degrade honestly.
+MEDIUM operational (HIGH by graph, mitigated). New read-only platform module; no
+schema/auth/migration/business changes. graceful_degraded ensures source failures
+degrade honestly. See GitNexus detect_changes evidence above for the graph-level
+HIGH classification and mitigations.
 
 ---
 

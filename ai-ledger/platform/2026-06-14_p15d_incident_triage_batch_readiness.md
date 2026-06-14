@@ -147,12 +147,15 @@ fields). No contradiction remains.
 
 - `npx gitnexus analyze` -- index current: **6,548 nodes, 19,697 edges, 424
   clusters, 300 flows**.
-- Impact: P15-B is a new self-contained read-only module that calls existing
-  P10/P13/P14 read-only helpers; no existing symbols modified. P15-C is a new
-  read-only page + types + service method. **LOW risk**.
-- detect_changes vs origin/platform-dev: expected **LOW, platform-runtime scope**.
-  Any HIGH/CRITICAL would be read-only ops flows only -> "CRITICAL by graph /
-  MEDIUM mitigated platform-runtime, no product business risk."
+- detect_changes (repo `platform-p15bcd-incident-triage-batch-2026-06-14`, base
+  `origin/platform-dev`): **changed_files 17, changed_symbols 116,
+  affected_processes 15, risk_level HIGH**.
+- Risk explanation: **HIGH by graph** because P15 adds platform runtime API +
+  frontend flows (new symbols/processes on the platform operations surface).
+  **Mitigated to MEDIUM operational** because scope is platform-only, read-only,
+  identity-only super_admin guarded, no product business mutation, no migrations,
+  no auth/RBAC rewrite. (i.e. "HIGH by graph / MEDIUM mitigated platform-runtime,
+  no product business risk".)
 
 ---
 
@@ -171,9 +174,12 @@ No write/mutation endpoints (GET-only). No lockfile change.
 
 ## Risk
 
-LOW. Read-only triage surface; consumes existing helpers; graceful_degraded
-ensures honest degradation on source failures; no schema/auth/migration/business
-changes.
+MEDIUM operational (HIGH by graph, mitigated). Read-only platform triage surface;
+graceful_degraded ensures honest degradation on source failures; no schema/auth/
+migration/business changes. detect_changes rates HIGH by graph (P15 adds platform
+runtime flows); mitigated to MEDIUM because scope is platform-only, read-only,
+identity-super-admin guarded, no product business mutation. See GitNexus evidence
+above.
 
 ---
 

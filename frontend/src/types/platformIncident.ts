@@ -49,7 +49,7 @@ export interface IncidentSignal {
   kind: IncidentCategory;
   severity: IncidentSeverity;
   source_ref: string;
-  observed_value: string | null;
+  observed_value: string | number | null;
   source_status: OpsSourceStatus;
   unavailable_reason: string | null;
   degraded_reason: string | null;

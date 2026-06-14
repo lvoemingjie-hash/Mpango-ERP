@@ -20,15 +20,36 @@ branch for CTO review.
 
 ---
 
-## Commit Chain (P15-B/C/D)
+## Commit Chain (P15-B/C/D + R1)
 
 | Commit | Message |
 |--------|---------|
+| (P15-R1) | fix(platform): P15-R1 graceful degraded contract |
 | (P15-D) | docs(platform): P15-D incident triage readiness packet |
 | (P15-C) | feat(platform): P15-C incident triage frontend |
 | (P15-B) | feat(platform): P15-B incident triage snapshot API |
 
 Branched from `5bbd75c` (origin/platform-dev, post P15-A.1 merge).
+
+### P15-R1 changes (CTO review fixes)
+
+- **[P1] DB-failure graceful-degraded contract:** `build_triage_snapshot` now
+  detects a P14 DB probe that represents a *failed source*
+  (`status="unhealthy"`, `latency_ms is None`, all pool fields `None` -- the
+  shape P14 returns when it swallows a ping exception). Such a probe is treated
+  as an unavailable DB source: `graceful_degraded=true`, `unavailable_reason`
+  names the DB probe, and the database signal is `source_status="unavailable"`
+  with a visible reason. A *measured* unhealthy (latency present, critical) is
+  NOT treated as a failed source. See the counterexample replay below.
+- **[P2] Read-only / audit evidence correction (Option A):** kept the best-effort
+  platform audit writes (consistent with P13/P10). Updated ledgers/docstrings to
+  state: "read-only" means no business/domain mutation and no repair/write
+  endpoints; best-effort platform audit entries may be appended. Audit metadata
+  is redaction-safe (no payloads/credentials/business fields).
+- **[P3] `IncidentSignal.observed_value` type:** backend schema now
+  `Optional[Union[str, int]]`; frontend type `string | number | null`, matching
+  the P15-A contract. Added schema/type tests proving integer observed values are
+  accepted. No sensitive/business data.
 
 ---
 
@@ -58,6 +79,45 @@ Ledger:
 - `ai-ledger/platform/2026-06-14_p15d_incident_triage_batch_readiness.md` (this)
 
 ---
+
+## Read-only definition (P15-R1 [P2] clarification)
+
+"Read-only" in P15 means **no business/domain mutation and no repair/write
+endpoints**. P15-B appends best-effort **platform audit** entries (access-denied
+and successful read), matching the existing P13/P10 platform-audit pattern. These
+are not business/domain writes; their metadata is redaction-safe (view_type,
+actor_role, scope, path, code/reason -- no payloads, credentials, or business
+fields). No contradiction remains.
+
+## Counterexample Replay (P15-R1 [P1])
+
+- **Counterexample (exact CTO case):** P10 system health and tenant summaries
+  succeed; the DB ping raises (e.g. `db.execute` -> `RuntimeError`). P14
+  `_database_health` swallows the ping error and returns
+  `DatabaseHealth(status="unhealthy", latency_ms=None, connection_pool_active=None,
+  connection_pool_idle=None, connection_pool_max=None)` instead of raising.
+- **Pre-fix actual result (the bug):** P15 saw `status="unhealthy"`, treated the
+  probe as a measured/available signal (`source_status="available"`), and left
+  `graceful_degraded=false` with no DB unavailable reason -- violating the P15-A
+  source-failure contract.
+- **Expected result (contract):** `graceful_degraded=true`;
+  `unavailable_reason` mentions the DB probe; the database signal
+  `source_status != "available"` (it is `"unavailable"`) with a visible
+  `unavailable_reason`; `database_probe` is None or its `latency_ms` is None
+  (`null != 0`); HTTP 200 (no 500).
+- **Post-fix actual result:** all expected conditions hold. Verified by
+  `TestGracefulDegraded::test_db_source_failure_is_graceful_degraded_and_unavailable_unit`
+  (service-level, P10 patched to success, only DB fails) and
+  `TestGracefulDegraded::test_db_source_failure_is_graceful_degraded_route`
+  (same case through `GET /api/v1/platform/p15/incidents/triage/snapshot`).
+  P10-only source failures remain gracefully degraded
+  (`test_p10_source_failures_still_graceful_degraded`).
+- **Tests that cover it:**
+  `test_db_source_failure_is_graceful_degraded_and_unavailable_unit`,
+  `test_db_source_failure_is_graceful_degraded_route`,
+  `test_p10_source_failures_still_graceful_degraded`,
+  `test_snapshot_returns_200_with_reason_on_db_failure`,
+  `test_db_probe_null_when_ping_fails`.
 
 ## Tests
 

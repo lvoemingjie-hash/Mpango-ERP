@@ -78,5 +78,16 @@ describe('platformIncident types', () => {
       // no 'healthy' severity exists for signals
       expect((sig as unknown as { severity: string }).severity).not.toBe('healthy');
     });
+
+    it('P15-R1 [P3]: IncidentSignal.observed_value accepts integer count', () => {
+      const sig: IncidentSignal = {
+        signal_id: 's2', kind: 'tenant_health', severity: 'warning',
+        source_ref: 'p10.tenants.summary', observed_value: 7,
+        source_status: 'available', unavailable_reason: null, degraded_reason: null,
+        observed_at: '2026-06-14T00:00:00Z',
+      };
+      expect(sig.observed_value).toBe(7);
+      expect(typeof sig.observed_value).toBe('number');
+    });
   });
 });

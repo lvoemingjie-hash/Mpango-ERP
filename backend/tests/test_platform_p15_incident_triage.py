@@ -93,6 +93,27 @@ class TestSchemas:
                 evil_field="leak",
             )
 
+    def test_signal_accepts_integer_observed_value(self):
+        """P15-R1 [P3]: observed_value accepts int (counts) per P15-A contract."""
+        from api.v1.platform.p15.schemas import IncidentSignal
+        s = IncidentSignal(
+            signal_id="abc", kind="tenant_health", severity="warning",
+            source_ref="p10.tenants.summary", observed_value=7,
+            source_status="available", observed_at=datetime.now(timezone.utc),
+        )
+        assert s.observed_value == 7
+        assert isinstance(s.observed_value, int)
+
+    def test_signal_accepts_string_observed_value(self):
+        """P15-R1 [P3]: observed_value still accepts str (status labels)."""
+        from api.v1.platform.p15.schemas import IncidentSignal
+        s = IncidentSignal(
+            signal_id="abc", kind="system", severity="info",
+            source_ref="p10.system.health", observed_value="healthy",
+            source_status="available", observed_at=datetime.now(timezone.utc),
+        )
+        assert s.observed_value == "healthy"
+
     def test_snapshot_requires_graceful_degraded_and_overall_status(self):
         from api.v1.platform.p15.schemas import IncidentTriageSnapshot
         snap = IncidentTriageSnapshot(
@@ -338,6 +359,90 @@ class TestGracefulDegraded:
         if probe is not None:
             assert probe["latency_ms"] is None
             assert probe["status"] == "unhealthy"
+
+    # -- P15-R1 [P1]: exact CTO counterexample --
+    def test_db_source_failure_is_graceful_degraded_and_unavailable_unit(self):
+        """P15-R1 [P1] unit: P10 sources succeed, only DB ping fails.
+
+        P14 _database_health swallows the ping error and returns an
+        unhealthy/null probe. P15 MUST treat that as a failed DB source.
+        """
+        import asyncio
+        from api.v1.platform.p15.services import build_triage_snapshot
+
+        db = _mock_db()
+        db.execute = AsyncMock(side_effect=RuntimeError("db unreachable"))
+
+        # P10 sources succeed (isolate the DB failure as the only failing source).
+        ok_sys = MagicMock()
+        ok_sys.overall_status = "healthy"
+        ok_tenants = MagicMock()
+        ok_tenants.total = 5
+        ok_tenants.items = []
+        with patch(
+            "api.v1.platform.p15.services.get_system_health",
+            new=AsyncMock(return_value=ok_sys),
+        ), patch(
+            "api.v1.platform.p15.services.list_tenant_summaries",
+            new=AsyncMock(return_value=ok_tenants),
+        ):
+            snap = asyncio.run(build_triage_snapshot(db))
+
+        assert snap.graceful_degraded is True
+        assert snap.unavailable_reason and "database probe" in snap.unavailable_reason.lower()
+        # database signal must NOT be marked available
+        db_signals = [s for s in snap.signals if s.kind == "database"]
+        assert db_signals, "expected a database signal"
+        assert db_signals[0].source_status != "available"
+        assert db_signals[0].source_status == "unavailable"
+        assert db_signals[0].unavailable_reason  # visible, non-empty
+        # database_probe is None OR its latency is None (null != 0; no fabrication)
+        if snap.database_probe is not None:
+            assert snap.database_probe.latency_ms is None
+
+    def test_db_source_failure_is_graceful_degraded_route(self):
+        """P15-R1 [P1] route: same counterexample through the GET endpoint."""
+        db = _mock_db()
+        db.execute = AsyncMock(side_effect=RuntimeError("db unreachable"))
+        ok_sys = MagicMock()
+        ok_sys.overall_status = "healthy"
+        ok_tenants = MagicMock()
+        ok_tenants.total = 5
+        ok_tenants.items = []
+        with patch(
+            "api.v1.platform.p15.services.get_system_health",
+            new=AsyncMock(return_value=ok_sys),
+        ), patch(
+            "api.v1.platform.p15.services.list_tenant_summaries",
+            new=AsyncMock(return_value=ok_tenants),
+        ):
+            app = _make_app(db)
+            client = TestClient(app)
+            r = client.get(SNAPSHOT_PATH, headers=AUTH_HEADERS)
+        assert r.status_code == 200  # graceful, no 500
+        d = r.json()
+        assert d["graceful_degraded"] is True
+        assert d.get("unavailable_reason") and "database probe" in d["unavailable_reason"].lower()
+        db_signals = [s for s in d["signals"] if s["kind"] == "database"]
+        assert db_signals and db_signals[0]["source_status"] != "available"
+        assert db_signals[0]["source_status"] == "unavailable"
+        assert db_signals[0]["unavailable_reason"]
+
+    def test_p10_source_failures_still_graceful_degraded(self):
+        """P15-R1 [P1]: existing P10 tenant/system source failures still degrade gracefully."""
+        db = _mock_db()
+        with patch(
+            "api.v1.platform.p15.services.get_system_health",
+            new=AsyncMock(side_effect=RuntimeError("p10 system down")),
+        ), patch(
+            "api.v1.platform.p15.services.list_tenant_summaries",
+            new=AsyncMock(side_effect=RuntimeError("p10 tenants down")),
+        ):
+            app = _make_app(db)
+            client = TestClient(app)
+            d = client.get(SNAPSHOT_PATH, headers=AUTH_HEADERS).json()
+        assert d["graceful_degraded"] is True
+        assert d.get("unavailable_reason")
 
 
 # ============================================================

@@ -13,8 +13,16 @@
 P15-B implements the read-only incident triage snapshot API defined in the P15-A
 contract. A single GET endpoint aggregates existing P10/P13/P14 read-only
 sources into an `IncidentTriageSnapshot` with graceful degradation, redaction,
-and full unknown/unavailable/null semantics. No writes, no migrations, no new
-data sources, no auth/RBAC changes.
+and full unknown/unavailable/null semantics. No business/domain writes, no
+repair/write endpoints, no migrations, no new data sources, no auth/RBAC changes.
+
+**Read-only definition (P15-R1 clarification):** "read-only" means **no
+business/domain mutation and no repair/write endpoints**. P15-B does append
+best-effort **platform audit** entries on access-denied and successful reads,
+matching the existing P13/P10 platform-audit pattern. These audit entries are
+not business/domain writes; their metadata is redaction-safe (view_type,
+actor_role, scope, path, code/reason only -- no payloads, credentials, or
+business fields).
 
 ---
 

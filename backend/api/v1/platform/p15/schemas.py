@@ -15,7 +15,7 @@ P15-A is contract-only; P15-B implements these as a read-only snapshot adapter.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -49,8 +49,9 @@ class IncidentSignal(BaseModel):
     kind: IncidentCategory = Field(..., description="Suggested incident category")
     severity: IncidentSeverity = Field(..., description="unknown != healthy")
     source_ref: str = Field(..., description="Originating P10/P13/P14 endpoint or field")
-    observed_value: Optional[str] = Field(
-        None, description="Live value or null when source unavailable"
+    observed_value: Optional[Union[str, int]] = Field(
+        None,
+        description="Live value (string or integer count/status) or null when source unavailable. No sensitive/business data.",
     )
     source_status: OpsSourceStatus = Field(..., description="available|unavailable|unknown")
     unavailable_reason: Optional[str] = Field(

@@ -142,6 +142,33 @@ def _classify_overall(db_status: Optional[str]) -> tuple[str, Optional[str], Opt
     return "unknown", None, "Database probe reported unknown status."
 
 
+def _is_db_source_failed(probe) -> bool:
+    """True when the P14 DB probe represents a FAILED/UNAVAILABLE source.
+
+    P14 `_database_health` swallows ping exceptions and returns
+    DatabaseHealth(status="unhealthy", latency_ms=None, pool fields None) instead
+    of raising. That shape means the DB source could not be measured -- it must be
+    treated as a failed source (graceful_degraded + unavailable), NOT as an
+    available-but-unhealthy measurement. A *measured* unhealthy (latency present,
+    critical) is a different, genuinely-available case and is NOT failed here.
+    """
+    if probe is None:
+        return True
+    return (
+        probe.status == "unhealthy"
+        and probe.latency_ms is None
+        and probe.connection_pool_active is None
+        and probe.connection_pool_idle is None
+        and probe.connection_pool_max is None
+    )
+
+
+_DB_PROBE_FAILED_REASON = (
+    "Database probe source unavailable: ping failed or returned unhealthy with no "
+    "latency or pool data."
+)
+
+
 # -- Public service functions --
 
 
@@ -161,24 +188,35 @@ async def build_triage_snapshot(db: AsyncSession) -> IncidentTriageSnapshot:
     # --- P14 real DB probe (strongest signal) ---
     db_health = None
     db_status: Optional[str] = None
+    db_source_failed = False
     try:
         db_health = await _database_health(db)
         db_status = db_health.status
+        db_source_failed = _is_db_source_failed(db_health)
     except Exception:
+        # _database_health swallows ping errors internally (returns unhealthy
+        # probe), so this is defensive only.
+        db_source_failed = True
+        db_status = None
+
+    if db_source_failed:
+        # P15-R1: a failed/unavailable DB source MUST be explicit -- graceful_degraded
+        # + unavailable_reason + a database signal that is NOT marked "available".
         graceful = True
-        unavailable_reasons.append("Database probe failed during snapshot assembly.")
-        db_signal = IncidentSignal(
-            signal_id=_short_id(),
-            kind="database",
-            severity="unknown",
-            source_ref="p14.ops.resources.database",
-            observed_value=None,
-            source_status="unavailable",
-            unavailable_reason="Database probe raised an error.",
-            degraded_reason=None,
-            observed_at=now,
+        unavailable_reasons.append(_DB_PROBE_FAILED_REASON)
+        signals.append(
+            IncidentSignal(
+                signal_id=_short_id(),
+                kind="database",
+                severity="unknown",
+                source_ref="p14.ops.resources.database",
+                observed_value=None,
+                source_status="unavailable",
+                unavailable_reason=_DB_PROBE_FAILED_REASON,
+                degraded_reason=None,
+                observed_at=now,
+            )
         )
-        signals.append(db_signal)
     else:
         sev = {
             "healthy": "info",
@@ -190,7 +228,7 @@ async def build_triage_snapshot(db: AsyncSession) -> IncidentTriageSnapshot:
         if db_status == "degraded":
             degraded_reason = "Database latency above healthy threshold."
         elif db_status == "unhealthy":
-            degraded_reason = "Database ping failed or latency critical."
+            degraded_reason = "Database latency critical (measured)."
         elif db_status == "unknown":
             degraded_reason = "Database status could not be determined."
         signals.append(

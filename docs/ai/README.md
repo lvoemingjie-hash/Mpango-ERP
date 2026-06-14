@@ -33,6 +33,7 @@ For P9+ SaaS platform product work, read these after the general context above a
 11. `docs/ai/PLATFORM_PRODUCT_P11_FRONTEND_BOUNDARY.md`
 12. `docs/ai/PLATFORM_PRODUCT_P12_SUPPORT_CONSOLE_CONTRACT.md`
 13. `docs/ai/PLATFORM_PRODUCT_P13_OPERATIONS_COCKPIT_CONTRACT.md`
+14. `docs/ai/PLATFORM_PRODUCT_P15_INCIDENT_TRIAGE_CONTRACT.md`
 
 P10 must start with a data-contract-only slice unless a later CTO decision explicitly broadens scope. Do not begin P10 with migrations, API handlers, frontend UI, auth/RBAC/tenancy/session changes, payment changes, or tenant business-data edits.
 
@@ -41,6 +42,8 @@ P11 frontend work must start with the boundary map (`PLATFORM_PRODUCT_P11_FRONTE
 P12 support console work must start with the contract (`PLATFORM_PRODUCT_P12_SUPPORT_CONSOLE_CONTRACT.md`) and must not begin P12-B (API implementation) until the contract is accepted. P12-B must not begin P12-C (frontend support UI) until API contract tests pass. No runtime code, migrations, or frontend UI in P12-A.
 
 P13 operations observability work must start with the contract (`PLATFORM_PRODUCT_P13_OPERATIONS_COCKPIT_CONTRACT.md`) and must not begin P13-B (API implementation) until the contract is accepted. P13-B must not introduce new observability infrastructure -- it consumes existing logs, DB metadata, and runtime signals. No runtime code, migrations, or frontend UI in P13-A.
+
+P15 incident triage work must start with the contract (`PLATFORM_PRODUCT_P15_INCIDENT_TRIAGE_CONTRACT.md`) and must not begin P15-B (read-only snapshot API adapter) until the contract is accepted. P15 is read-only triage only: no repair, no impersonation, no tenant business data, no mutation endpoints, no migrations. No runtime code, migrations, or frontend UI in P15-A.
 
 ## Purpose
 

@@ -82,3 +82,11 @@ describe('platformService P13 ops endpoints', () => {
     });
   });
 });
+
+describe('platformService P15 incident triage endpoint', () => {
+  it('P15-001: getIncidentTriageSnapshot calls GET /platform/p15/incidents/triage/snapshot', async () => {
+    mockGet.mockResolvedValueOnce({ data: {} });
+    await platformService.getIncidentTriageSnapshot();
+    expect(mockGet).toHaveBeenCalledWith('/platform/p15/incidents/triage/snapshot');
+  });
+});

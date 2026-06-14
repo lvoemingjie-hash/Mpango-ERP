@@ -10,6 +10,7 @@ import {
   ShieldCheckIcon,
   WrenchScrewdriverIcon,
   ChartBarIcon,
+  MagnifyingGlassCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
 import { isIdentityPlatformOperator } from '@/router/guards';
@@ -125,6 +126,20 @@ export function Sidebar() {
               />
               Ops Cockpit
               {isActive('/platform/ops') && <div className="absolute left-0 h-8 w-1 rounded-r-full bg-primary-600" />}
+            </Link>
+            <Link
+              to="/platform/ops/incidents/triage"
+              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isActive('/platform/ops/incidents/triage')
+                  ? 'bg-primary-50 text-primary-700 ring-1 ring-inset ring-primary-200'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+            >
+              <MagnifyingGlassCircleIcon
+                className={`h-5 w-5 shrink-0 transition-colors ${isActive('/platform/ops/incidents/triage') ? 'text-primary-700' : 'text-gray-400 group-hover:text-gray-500'
+                  }`}
+              />
+              Incident Triage
+              {isActive('/platform/ops/incidents/triage') && <div className="absolute left-0 h-8 w-1 rounded-r-full bg-primary-600" />}
             </Link>
           </>
         )}

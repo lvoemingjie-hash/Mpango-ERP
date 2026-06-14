@@ -1,0 +1,92 @@
+# P15-B Incident Triage Snapshot API -- Ledger
+
+**Date:** 2026-06-14
+**Branch:** `codex/platform-p15bcd-incident-triage-batch-2026-06-14`
+**Base:** `5bbd75c` (origin/platform-dev -- P15-A contract merge)
+**HEAD:** Final pushed branch HEAD externally verified after push.
+**Author:** Codex (Claude worker)
+
+---
+
+## Summary
+
+P15-B implements the read-only incident triage snapshot API defined in the P15-A
+contract. A single GET endpoint aggregates existing P10/P13/P14 read-only
+sources into an `IncidentTriageSnapshot` with graceful degradation, redaction,
+and full unknown/unavailable/null semantics. No writes, no migrations, no new
+data sources, no auth/RBAC changes.
+
+---
+
+## Modified Files
+
+- `backend/api/v1/platform/p15/__init__.py` -- new package
+- `backend/api/v1/platform/p15/schemas.py` -- 5 contract models
+  (IncidentSignal, IncidentClassification, IncidentRunbookHint,
+  IncidentTriageSnapshot, IncidentHandoffSummary)
+- `backend/api/v1/platform/p15/services.py` -- snapshot/handoff assembly,
+  graceful degradation, doc-driven runbook hints
+- `backend/api/v1/platform/p15/routes.py` -- GET-only endpoint + P10 guard +
+  best-effort access-denied/view audit
+- `backend/api/app.py` -- register P15 router (2 lines)
+- `backend/tests/test_platform_p15_incident_triage.py` -- 26 tests
+- `ai-ledger/platform/2026-06-14_p15b_incident_triage_api.md` -- this ledger
+
+---
+
+## Endpoint
+
+`GET /api/v1/platform/p15/incidents/triage/snapshot`
+- P10 identity-only platform operator guard (tenant-contextual denied).
+- Aggregates: P14 `_database_health` (live probe), P10 system/tenant summaries
+  (counts/status only), P13 ops summaries (source_status + reasons).
+- graceful_degraded=true on any single source failure; never 500, never fabricated.
+- GET-only; POST/PUT/PATCH/DELETE rejected (405).
+
+---
+
+## Checks
+
+- `git diff --check` -- clean.
+- P15-B tests: **26 passed** (schemas, shape, source_status semantics,
+  permissions incl. tenant-contextual denied, redaction, graceful degraded,
+  GET-only, P15-A counterexamples).
+- Regression: P13 64 + P10 137 + P12 62 = **263 passed**, 0 failed.
+- non-ASCII scan on new code/ledger: 0 hits.
+- Forbidden path audit: only `backend/api/v1/platform/p15/`, `backend/api/app.py`,
+  `backend/tests/`, `ai-ledger/platform/` touched.
+
+---
+
+## GitNexus
+
+- `npx gitnexus analyze` -- index current (run in P15-D final gate).
+- Impact: P15 adds a new self-contained read-only module; it calls P10/P13/P14
+  read-only helpers. No existing symbols modified. **LOW risk**.
+- detect_changes vs platform-dev: expected **LOW**, platform-runtime scope.
+
+---
+
+## Security / Redaction
+
+- identity-only super_admin required; tenant-contextual denied (tested).
+- No credentials/DSN/host/port/raw `pool.status()`/tenant business records.
+- Redaction is structural (upstream models already allowlisted; handoff
+  `redacted=true`, `sensitive_keys_dropped=0`).
+- Support-operator narrower scope: **deferred** -- the current platform guard
+  grants identity-only super_admin only; there is no distinct support-operator
+  read-scope enforcement to wire in P15-B without fabricating permission. The
+  contract records this; P15-B does not fake a narrower support scope.
+
+---
+
+## Risk
+
+LOW. New read-only module; consumes existing helpers; no schema/auth/migration/
+business changes. graceful_degraded ensures source failures degrade honestly.
+
+---
+
+## Blockers
+
+None. (Support-operator narrower scope deferred per contract -- not faked.)

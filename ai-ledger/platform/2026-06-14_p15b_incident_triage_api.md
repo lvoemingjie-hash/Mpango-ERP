@@ -37,7 +37,7 @@ business fields).
 - `backend/api/v1/platform/p15/routes.py` -- GET-only endpoint + P10 guard +
   best-effort access-denied/view audit
 - `backend/api/app.py` -- register P15 router (2 lines)
-- `backend/tests/test_platform_p15_incident_triage.py` -- 26 tests
+- `backend/tests/test_platform_p15_incident_triage.py` -- 31 tests
 - `ai-ledger/platform/2026-06-14_p15b_incident_triage_api.md` -- this ledger
 
 ---
@@ -56,9 +56,9 @@ business fields).
 ## Checks
 
 - `git diff --check` -- clean.
-- P15-B tests: **26 passed** (schemas, shape, source_status semantics,
+- P15-B tests: **31 passed** (schemas, shape, source_status semantics,
   permissions incl. tenant-contextual denied, redaction, graceful degraded,
-  GET-only, P15-A counterexamples).
+  GET-only, P15-A counterexamples, P15-R1 DB-source-failure contract).
 - Regression: P13 64 + P10 137 + P12 62 = **263 passed**, 0 failed.
 - non-ASCII scan on new code/ledger: 0 hits.
 - Forbidden path audit: only `backend/api/v1/platform/p15/`, `backend/api/app.py`,
@@ -68,7 +68,8 @@ business fields).
 
 ## GitNexus
 
-- `npx gitnexus analyze` -- index current (run in P15-D final gate).
+- `npx gitnexus analyze` -- index current: **6,548 nodes, 19,697 edges, 424
+  clusters, 300 flows**.
 - Impact: P15 adds a new self-contained read-only module; it calls P10/P13/P14
   read-only helpers. No existing symbols modified. **LOW risk**.
 - detect_changes vs platform-dev: expected **LOW**, platform-runtime scope.

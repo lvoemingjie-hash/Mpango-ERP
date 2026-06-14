@@ -36,14 +36,16 @@ No lockfile change (`pnpm install --frozen-lockfile`). No new dependencies.
 
 ## Checks
 
-- Frontend suite: **194 passed (22 files)**, 0 failed. Includes new IncidentTriage
+- Frontend suite: **195 passed (22 files)**, 0 failed. Includes new IncidentTriage
   page tests (title/read-only, no mutation, no sensitive/business fields, loading,
-  real snapshot render, graceful-degraded + reasons, null != 0 N/A), type tests,
-  and the P15 service-path test.
+  real snapshot render, graceful-degraded + reasons, null != 0 N/A), type tests
+  (incl. P15-R1 integer observed_value), and the P15 service-path test.
 - `git diff --check` -- clean.
 - non-ASCII scan on new/changed frontend + ledger: 0 hits (ASCII-only).
 - Forbidden path audit: only frontend platform-ops + types + services + ledger
   touched; no product pages, no backend, no migrations.
+- GitNexus `npx gitnexus analyze` -- index current: **6,548 nodes, 19,697 edges,
+  424 clusters, 300 flows**.
 
 ---
 

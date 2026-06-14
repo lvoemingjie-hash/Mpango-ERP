@@ -11,9 +11,10 @@
 ## Summary
 
 P15-B/C/D implements the read-only Incident Triage surface defined in the P15-A
-contract: a GET-only snapshot API (P15-B) aggregating P10/P13/P14 read-only
-sources with graceful degradation and redaction, plus a read-only frontend view
-(P15-C). No writes, no migrations, no auth/RBAC rewrite, no tenant business data.
+contract: a GET-only snapshot API aggregating P10/P13/P14 read-only sources with
+graceful degradation and redaction, plus a read-only frontend view. No business/
+domain writes, no repair/write endpoints, no migrations, no auth/RBAC rewrite, no
+tenant business data.
 
 This packet is **not** merged into platform-dev. It is pushed to the isolated
 branch for CTO review.
@@ -24,10 +25,10 @@ branch for CTO review.
 
 | Commit | Message |
 |--------|---------|
-| (P15-R1) | fix(platform): P15-R1 graceful degraded contract |
-| (P15-D) | docs(platform): P15-D incident triage readiness packet |
-| (P15-C) | feat(platform): P15-C incident triage frontend |
-| (P15-B) | feat(platform): P15-B incident triage snapshot API |
+| `17f3190` | fix(platform): P15-R1 graceful degraded contract |
+| `97c5ac3` | docs(platform): P15-D incident triage readiness packet |
+| `f2775cb` | feat(platform): P15-C incident triage frontend |
+| `e8a7fd3` | feat(platform): P15-B incident triage snapshot API |
 
 Branched from `5bbd75c` (origin/platform-dev, post P15-A.1 merge).
 
@@ -55,15 +56,15 @@ Branched from `5bbd75c` (origin/platform-dev, post P15-A.1 merge).
 
 ## Modified Files
 
-Backend (P15-B):
+Backend:
 - `backend/api/v1/platform/p15/__init__.py` (new)
 - `backend/api/v1/platform/p15/schemas.py` (new, 5 contract models)
 - `backend/api/v1/platform/p15/services.py` (new, snapshot/handoff + graceful degradation)
 - `backend/api/v1/platform/p15/routes.py` (new, GET-only + P10 guard + audit)
 - `backend/api/app.py` (router registration)
-- `backend/tests/test_platform_p15_incident_triage.py` (new, 26 tests)
+- `backend/tests/test_platform_p15_incident_triage.py` (new, 31 tests)
 
-Frontend (P15-C):
+Frontend:
 - `frontend/src/types/platformIncident.ts` (new)
 - `frontend/src/types/__tests__/platformIncident.test.ts` (new)
 - `frontend/src/services/platformApi.ts` (P15 method)
@@ -121,14 +122,13 @@ fields). No contradiction remains.
 
 ## Tests
 
-- **P15-B backend:** 26 passed (schemas, shape, source_status semantics,
+- **P15-B backend:** 31 passed (schemas, shape, source_status semantics,
   permissions incl. tenant-contextual denied, redaction, graceful degraded,
-  GET-only, P15-A counterexamples).
-- **P15-C frontend:** 194 passed (22 files), incl. IncidentTriage page + type +
+  GET-only, P15-A counterexamples, P15-R1 DB-source-failure contract).
+- **P15-C frontend:** 195 passed (22 files), incl. IncidentTriage page + type +
   service-path tests.
 - **Regression:** P13 64 + P10 137 + P12 62 = 263 backend passed, 0 failed.
-- Exact combined counts captured in merge readiness gate output (per the
-  P13-D-R6 count-deferral policy).
+- **Total:** 31 + 195 + 263 = **489 passed**, 0 failed.
 
 ---
 
@@ -145,8 +145,8 @@ fields). No contradiction remains.
 
 ## GitNexus
 
-- `npx gitnexus analyze` -- index current; exact node/edge/cluster/flow counts are
-  captured in the merge readiness gate output (per P13-D-R6 count-deferral policy).
+- `npx gitnexus analyze` -- index current: **6,548 nodes, 19,697 edges, 424
+  clusters, 300 flows**.
 - Impact: P15-B is a new self-contained read-only module that calls existing
   P10/P13/P14 read-only helpers; no existing symbols modified. P15-C is a new
   read-only page + types + service method. **LOW risk**.

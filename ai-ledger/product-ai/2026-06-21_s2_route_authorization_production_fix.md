@@ -4,6 +4,7 @@
 **Branch:** `codebuddy/s2-route-authorization-production-fix-2026-06-21`
 **Base:** `738395e` (S1-R1 HEAD on `codebuddy/s1-route-authorization-policy-harness-2026-06-18`)
 **Status:** COMPLETE — all 12 findings fixed, 25/25 tests green
+**Commit:** `99c91f3` — pushed to `origin/codebuddy/s2-route-authorization-production-fix-2026-06-21`
 
 ---
 

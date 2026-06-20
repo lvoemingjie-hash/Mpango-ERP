@@ -1,8 +1,29 @@
 # S1 Route Authorization Policy Harness
 
 **Date:** 2026-06-18
-**Status:** Test/contract-only. Phase 1 delivered. 10 non-compliant routes discovered and surfaced as P0/P1/P2 findings.
+**Status:** Test/contract-only. Phase 1 delivered.
 **Production code changed:** NO (test + ledger only)
+
+> **WARNING -- DO NOT MERGE THIS BRANCH TO `product-dev-recovered`.**
+> This is a **test / contract evidence branch**, not a merge candidate.
+> The master contract gate (`TestRoutePolicyContract::test_no_unclassified_business_routes`)
+> is **intentionally designed to FAIL** (per CTO requirement #5: "routes without
+> policy and not on allowlist must fail tests"). Merging this branch into the
+> product line would break CI. The branch exists only to (a) land the harness
+> infrastructure and (b) freeze the findings inventory as governance evidence.
+> Once Phase 2 fixes the underlying routes in production code, the master gate
+> will turn green on the Phase 2 branch -- at that point the harness file can be
+> cherry-picked, but this specific S1 branch should remain archived, not merged.
+
+## Findings Summary (R1 clarification)
+
+| Bucket | Count | Mechanism | Routes |
+|--------|-------|-----------|--------|
+| **Master gate hard-fail routes** | **10** | `pytest.fail()` in `TestRoutePolicyContract::test_no_unclassified_business_routes` | 8 P0 platform + 2 P1 export |
+| **Strict xfail findings** | **2** | `@pytest.mark.xfail(strict=True)` in `TestInternalRoutePolicy` | 2 P2 internal profiling |
+| **TOTAL non-compliant findings** | **12** | -- | 8 P0 + 2 P1 + 2 P2 |
+
+The 10 master-gate routes and the 2 P2 xfail routes are distinct, non-overlapping sets.
 
 ---
 
@@ -12,8 +33,10 @@
 |------|-------|
 | Branch | `codebuddy/s1-route-authorization-policy-harness-2026-06-18` |
 | Base commit | `53ca2143f5e43b918c258e3f488e6944c5a7a41b` (= `origin/product-dev-recovered` HEAD) |
+| Current commit (post-R1) | see `git log -1` on the branch |
 | Files added | 2 (1 test file + 1 ledger) |
 | Production code modified | 0 |
+| Mergeable to `product-dev-recovered` | **NO** (master gate intentionally fails) |
 
 ## 2. Changed Files
 
@@ -142,13 +165,36 @@ These routes expose platform-wide multi-tenant data (tenant list, audit logs, pr
 ```
 20 tests collected
 14 passed
-5 xfailed  (P0 platform, P1 exports, P2 internal -- each finding documented as strict xfail)
-1 FAILED   (master gate -- intentionally hard-fails to surface the 10-route findings inventory)
+5 xfailed  (8 P0 platform + 2 P1 export are surfaced by per-category xfails;
+            2 P2 internal profiling are surfaced by a separate xfail test)
+1 FAILED   (master gate -- intentionally hard-fails to surface the 10-route
+            findings inventory: 8 platform + 2 export)
 ```
 
-**Why the master gate hard-fails instead of xfailing:** Per CTO requirement #5 ("routes without policy and not on allowlist must fail tests"), the master contract gate `TestRoutePolicyContract::test_no_unclassified_business_routes` does NOT xfail -- it `pytest.fail()`s with the full findings list. This guarantees the policy gap stays visible in CI until Phase 2 fixes land. The per-category xfail tests provide finer-grained visibility per route class.
+### 6.1 Master-gate vs xfail breakdown
 
-### Test classes
+The 10 routes that trigger the master-gate hard-fail are exactly:
+
+- 8 P0 `/api/v1/platform/**` routes (health, info, tenants/, tenants/{id}, audit/, audit/summary, audit/{id}, stats/)
+- 2 P1 `/api/v1/exports/{job_id}` and `/api/v1/exports/{job_id}/download`
+
+The 2 additional routes surfaced only via strict xfail (not part of the master-gate count) are:
+
+- 2 P2 `/api/v1/test/profiling-test` and `/api/v1/test/profiling-test-slow` (gated by `MPANGO_ENV != production`, lower severity)
+
+**Total non-compliant findings: 10 (master gate) + 2 (strict xfail) = 12.**
+
+### 6.2 Why the master gate hard-fails instead of xfailing
+
+Per CTO requirement #5 ("routes without policy and not on allowlist must fail tests"), the master contract gate `TestRoutePolicyContract::test_no_unclassified_business_routes` does NOT xfail -- it `pytest.fail()`s with the full 10-route findings list. This guarantees the policy gap stays visible in CI until Phase 2 fixes land.
+
+The P2 internal profiling routes are tracked via a separate strict xfail test rather than the master gate, because they are non-production diagnostic endpoints (only registered when `MPANGO_ENV != production`). Keeping them out of the master-gate count keeps the gate focused on real production exposure while still surfacing the P2 gap.
+
+When Phase 2 fixes the underlying routes:
+- The 5 strict xfails will flip to xpass; with `strict=True`, xpass itself becomes a failure, signaling that the xfail marker should be removed.
+- The master gate will turn green once all 10 master-gate routes have explicit auth policies.
+
+### 6.3 Test classes
 
 | Class | Tests | Purpose |
 |-------|-------|---------|
@@ -156,22 +202,23 @@ These routes expose platform-wide multi-tenant data (tenant list, audit logs, pr
 | `TestRoutePolicyContract` | 2 | Master contract gate: all routes classified, NO business routes unclassified (this is the FAIL) |
 | `TestPlatformRoutePolicy` | 3 | All `/api/v1/platform/**` must require `platform:*` permission (2 xfail P0) |
 | `TestExportRoutePolicy` | 4 | Export create/streaming compliant; status/download lack explicit permission (2 xfail P1) |
-| `TestInternalRoutePolicy` | 2 | `/api/v1/test/**` must require `system:admin` (1 xfail P2) |
+| `TestInternalRoutePolicy` | 2 | `/api/v1/test/**` must require `system:admin` (1 xfail P2 covering both profiling routes) |
 | `TestPublicAllowlistIntegrity` | 3 | Allowlist minimal, no platform routes, allowlisted routes resolve as public |
 | `TestFindingsInventory` | 1 | Prints full classification table for human review |
 
 ---
 
-## 7. Verifications Run
+## 7. Verifications Run (R1)
 
 | Check | Result |
 |-------|--------|
-| Test suite runs | YES -- 20 tests, 14 pass / 5 xfail / 1 fail (intentional finding surface) |
-| Findings list printed | YES -- master gate prints 10 non-compliant routes with deps |
-| `git diff --check` | PASS (no whitespace errors on new files) |
-| Mojibake / non-ASCII scan | PASS -- `test_route_authorization_policy.py` is pure ASCII (0 non-ASCII bytes) |
-| Pre-commit hooks | Will run at commit (expected: trailing-whitespace, end-of-file-fixer, check-yaml, detect-secrets) |
-| GitNexus detect_changes | CLI has no `detect_changes` subcommand (only `status`); scope verified manually via `git diff --stat` -- only 2 new files added, 0 production code touched |
+| Test suite runs | YES -- `pytest tests/test_route_authorization_policy.py -q -rxX --tb=short` -> 20 tests: 14 passed, 5 xfailed, 1 failed (intentional) |
+| Findings list printed | YES -- master gate prints 10 non-compliant routes with deps; full classification table printed by `TestFindingsInventory` |
+| `git diff --check` | PASS (no whitespace errors) |
+| Mojibake / non-ASCII scan | PASS -- both files pure ASCII (0 non-ASCII bytes) |
+| Pre-commit hooks | PASS 5/5 (trim-trailing-whitespace, end-of-file-fixer, check-yaml skip, check-large-files, detect-secrets with pragma allowlist) |
+| `git diff --name-status origin/product-dev-recovered..HEAD` | 2 files: `A ai-ledger/product-ai/2026-06-18_s1_route_authorization_policy_harness.md`, `A backend/tests/test_route_authorization_policy.py` -- zero production code touched |
+| GitNexus detect_changes | CLI has no `detect_changes` subcommand (only `status`); scope verified manually via `git diff --stat` |
 | Production code modified | NO |
 | Migration modified | NO |
 | Frontend modified | NO |
@@ -210,4 +257,25 @@ The harness DOES NOT relax any test to make unsafe behavior pass. The 5 xfail ma
 - Commit hash: see `git log -1` on the branch
 - Test file: `backend/tests/test_route_authorization_policy.py`
 - Ledger: this file
-- Findings inventory: section 5 above (10 routes: 8 P0 + 2 P1 + 2 P2)
+- Findings inventory: section 5 above (10 master-gate routes: 8 P0 + 2 P1; plus 2 P2 strict-xfail routes = 12 total)
+
+---
+
+## 11. Task Status / Closure Table
+
+| Step | Status | Notes |
+|------|--------|-------|
+| Explore backend route structure and permission decorators | DONE | Examined `api/app.py`, `api/middleware/rbac.py`, `api/middleware/auth.py`, `api/middleware/bi_access.py`, all `api/v1/**/*.py` route files, `api/dependencies.py`, `api/v1/client/dependencies.py` |
+| Build route scanning helper | DONE | Integrated into test file: `_collect_all_dependencies()`, `_dependency_name()`, `classify_route()` |
+| Create `test_route_authorization_policy.py` | DONE | 20 tests across 7 test classes; harness walks full FastAPI dependency tree recursively |
+| Run tests / capture findings / write ledger | DONE | 14 passed, 5 xfailed, 1 failed (master gate); findings: 10 master-gate + 2 P2 xfail = 12 total |
+| Verify (diff --check, mojibake, pre-commit, detect scope) | DONE | All checks pass; `git diff --name-status` confirms only 2 new files, 0 production code |
+| Self-iteration Round 3 | NOT NEEDED | R1 (initial build) resolved all harness logic bugs (dependency name resolution, MPANGO_ENV bootstrap). S1-R1 (this correction) is a ledger-clarity pass, not a logic iteration. No test logic changed. |
+| Final report completed | DONE | This document |
+
+### Self-iteration history
+
+| Round | What happened |
+|-------|---------------|
+| **R1 (initial)** | Built harness. Fixed 3 bugs during build: (1) `_dependency_name` returning `"function"` instead of actual function name; (2) `APIRoute` import path; (3) `MPANGO_ENV` hard-set to override `.env=production`. Also discovered 2 pre-auth public routes (invitations, retailers/register) that belonged on allowlist. |
+| **S1-R1 (this round)** | Ledger clarity correction only. Clarified 10 master-gate vs 2 P2 xfail distinction, added DO-NOT-MERGE warning, added closure table. No test logic or failure semantics changed. |

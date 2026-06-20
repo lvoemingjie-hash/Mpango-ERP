@@ -35,6 +35,7 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 
 from api.context.tenant import TenantContext, get_tenant_context
+from api.dependencies import get_current_user_context
 from api.middleware.rbac import RequirePermission
 from api.schemas.dashboard import make_success, make_error
 from core.security import TokenPayload
@@ -202,6 +203,7 @@ async def create_export(
 async def get_export_status(
     request: Request,
     job_id: str,
+    token: TokenPayload = Depends(get_current_user_context),
 ) -> JSONResponse:
     """
     Return the current status of an export job.
@@ -290,6 +292,7 @@ async def get_export_status(
 async def download_export(
     request: Request,
     job_id: str,
+    token: TokenPayload = Depends(get_current_user_context),
 ) -> Any:
     """
     Serve the exported file for download.

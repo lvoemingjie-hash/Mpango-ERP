@@ -8,14 +8,19 @@ This module provides safe, read-only platform endpoints that do NOT:
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from datetime import datetime
+
+from api.middleware.rbac import RequirePermission
+from core.security import TokenPayload
 
 router = APIRouter(prefix="/api/v1/platform", tags=["platform"])
 
 
 @router.get("/health")
-async def platform_health():
+async def platform_health(
+    token: TokenPayload = Depends(RequirePermission("system:admin")),
+):
     """Platform layer health check - confirms platform routing is active."""
     return {
         "status": "ok",
@@ -25,7 +30,9 @@ async def platform_health():
 
 
 @router.get("/info")
-async def platform_info():
+async def platform_info(
+    token: TokenPayload = Depends(RequirePermission("system:admin")),
+):
     """Platform metadata - describes current platform track status."""
     return {
         "track": "platform-p0",

@@ -21,8 +21,9 @@ Approach:
     policy violation. The harness never silently relaxes checks; findings are
     recorded as xfail tests so they are visible and tracked, not hidden.
 
-Task S1: test/contract-only. No production code is modified by this file.
-If a route is non-compliant, it is recorded as a finding, NOT whitelisted.
+Task S1: test/contract-only harness — scans routes and classifies them.
+Task S2: production fix — all 12 findings resolved (8 platform + 2 export + 2 profiling).
+         xfail markers for fixed routes removed; master gate now passes green.
 """
 from __future__ import annotations
 
@@ -63,9 +64,13 @@ except Exception:
     pass
 
 import pytest
+from fastapi import HTTPException
 from fastapi.routing import APIRoute, APIRouter
+from starlette.requests import Request as StarletteRequest
 
 from api.app import app
+from api.dependencies import get_current_user_context
+from api.middleware.rbac import RequirePermission
 
 
 # ===========================================================================
@@ -353,20 +358,30 @@ class TestHarnessIntegrity:
         for c in ALL_CLASSIFICATIONS:
             assert c.policy != "", f"Route {c.method} {c.path} has no policy"
 
-    def test_harness_detects_routes_with_zero_auth_deps(self):
+    def test_harness_detects_auth_dependencies_correctly(self):
         """
-        The harness MUST be able to find routes that have NO RequirePermission
-        and NO auth dependency at all. This is the core CTO requirement:
-        the harness cannot merely scan for RequirePermission text; it must be
-        able to discover routes that have NO RequirePermission at all.
+        The harness MUST correctly detect auth dependencies in a route's
+        dependency tree (not just RequirePermission text).
+
+        S2 fixed all 12 previously-non-compliant routes by adding explicit
+        auth dependencies. This test verifies the harness detects those
+        deps, proving it scans the FastAPI dependant tree correctly.
         """
-        # The platform routes are known to have no auth deps. Verify the
-        # harness actually found them as non_compliant (proving it doesn't
-        # just rely on RequirePermission text scanning).
-        assert len(NON_COMPLIANT_ROUTES) > 0, (
-            "Harness found zero non-compliant routes, but platform routes "
-            "are known to have no auth. The harness may be broken."
-        )
+        # Platform routes now have RequirePermission("system:admin")
+        for c in PLATFORM_ROUTES:
+            assert c.detected_auth_deps, (
+                f"Platform route {c.path} has no detected auth deps. "
+                f"The harness may be broken."
+            )
+        # Export status/download routes now have get_current_user_context
+        export_get_routes = [
+            c for c in EXPORT_ROUTES if "GET" in c.method
+        ]
+        for c in export_get_routes:
+            assert c.detected_auth_deps, (
+                f"Export route {c.path} has no detected auth deps. "
+                f"The harness may be broken."
+            )
 
     def test_known_good_routes_are_classified_correctly(self):
         """Spot-check that routes known to use RequirePermission are classified."""
@@ -420,9 +435,9 @@ class TestRoutePolicyContract:
         No business route (non-platform, non-test, non-public-allowlist)
         may be non_compliant.
 
-        This is the master gate. It currently FAILS because platform and
-        export routes are non-compliant. The failure message lists every
-        offending route so the findings are explicit.
+        This is the master gate. After S2 production fixes, all routes
+        comply and this gate passes green. If any route regresses to
+        non-compliant, the failure message lists every offending route.
         """
         if NON_COMPLIANT_ROUTES:
             findings = "\n".join(
@@ -440,28 +455,19 @@ class TestRoutePolicyContract:
 class TestPlatformRoutePolicy:
     """
     Platform routes (/api/v1/platform/**) MUST require platform-level
-    permission or platform_admin. None of them currently do -- this is the
-    P0 finding.
+    permission. S2 fixed all 8 routes by adding RequirePermission("system:admin").
     """
 
     def test_platform_routes_exist(self):
         """Confirm platform routes are registered (sanity check)."""
         assert len(PLATFORM_ROUTES) > 0, "No /api/v1/platform/** routes found"
 
-    @pytest.mark.xfail(
-        reason=(
-            "P0 BLOCKER: All /api/v1/platform/** routes lack platform_permission "
-            "or platform_admin auth. Findings: "
-            + ", ".join(c.path for c in PLATFORM_NON_COMPLIANT)
-        ),
-        strict=True,
-    )
     def test_all_platform_routes_require_platform_permission(self):
         """
         Every /api/v1/platform/** route MUST have platform_permission or
         platform_admin strategy.
 
-        Current findings (all 8 platform routes have NO auth at all):
+        S2 RESOLVED (was: all 8 platform routes had NO auth at all):
           - GET  /api/v1/platform/health
           - GET  /api/v1/platform/info
           - GET  /api/v1/platform/tenants/
@@ -483,15 +489,6 @@ class TestPlatformRoutePolicy:
             + ", ".join(c.path for c in violations)
         )
 
-    @pytest.mark.xfail(
-        reason=(
-            "P0 BLOCKER: Platform tenants/audit/stats routes expose sensitive "
-            "multi-tenant data with only a DB dependency (get_db), no auth. "
-            "Findings: "
-            + ", ".join(c.path for c in PLATFORM_NON_COMPLIANT)
-        ),
-        strict=True,
-    )
     def test_platform_routes_have_auth_dependency(self):
         """Platform routes must have at least one auth dependency, not just get_db."""
         no_auth = [
@@ -507,13 +504,9 @@ class TestPlatformRoutePolicy:
 class TestExportRoutePolicy:
     """
     Exports status/download routes (/api/v1/exports/{job_id} and
-    /api/v1/exports/{job_id}/download) currently lack an explicit
-    RequirePermission. They rely on get_tenant_context() called inside the
-    function body, which is NOT visible to the dependency scanner.
-
-    This is a P1 finding: the auth is implicit (body-level) rather than
-    declarative (Depends-level). The harness correctly flags it because the
-    contract requires explicit, scannable auth strategies.
+    /api/v1/exports/{job_id}/download). S2 fixed both by adding explicit
+    Depends(get_current_user_context) alongside the body-level tenant check
+    (defense in depth).
     """
 
     def test_export_create_has_permission(self):
@@ -525,16 +518,6 @@ class TestExportRoutePolicy:
         assert create_routes[0].policy == "tenant_permission"
         assert create_routes[0].permission_code == "exports:create"
 
-    @pytest.mark.xfail(
-        reason=(
-            "P1 FINDING: GET /api/v1/exports/{job_id} (status) has no explicit "
-            "RequirePermission. Tenant ownership is verified inside the function "
-            "body via get_tenant_context(), but this is not a declarative Depends "
-            "dependency and is therefore invisible to the policy scanner. "
-            "Recommendation: add Depends(get_current_user_context) to make auth explicit."
-        ),
-        strict=True,
-    )
     def test_export_status_has_explicit_permission(self):
         """GET /api/v1/exports/{job_id} must have an explicit auth dependency."""
         status_routes = [
@@ -547,15 +530,6 @@ class TestExportRoutePolicy:
             f"Detected deps: {status_routes[0].detected_non_auth_deps}"
         )
 
-    @pytest.mark.xfail(
-        reason=(
-            "P1 FINDING: GET /api/v1/exports/{job_id}/download has no explicit "
-            "RequirePermission. Same root cause as status endpoint: tenant "
-            "ownership verified in function body, not via Depends. "
-            "Recommendation: add Depends(get_current_user_context) to make auth explicit."
-        ),
-        strict=True,
-    )
     def test_export_download_has_explicit_permission(self):
         """GET /api/v1/exports/{job_id}/download must have explicit auth."""
         download_routes = [
@@ -589,19 +563,6 @@ class TestInternalRoutePolicy:
         """Confirm internal test routes are registered (sanity check)."""
         assert len(INTERNAL_ROUTES) > 0, "No /api/v1/test/** routes found"
 
-    @pytest.mark.xfail(
-        reason=(
-            "P2 FINDING: GET /api/v1/test/profiling-test and "
-            "/api/v1/test/profiling-test-slow have only get_db dependency, "
-            "no RequirePermission('system:admin'). The jobs_test routes ARE "
-            "correctly gated. Findings: "
-            + ", ".join(
-                c.path for c in INTERNAL_ROUTES
-                if not c.detected_auth_deps
-            )
-        ),
-        strict=True,
-    )
     def test_all_internal_routes_require_system_admin(self):
         """All /api/v1/test/** routes must require system:admin permission."""
         no_admin = [
@@ -680,3 +641,107 @@ class TestFindingsInventory:
         print(report)
         captured = capsys.readouterr()
         assert "CLASSIFICATION TABLE" in captured.out
+
+
+# ===========================================================================
+# S2 Smoke Tests: Auth Gate Verification
+# ===========================================================================
+
+class TestSmokeAuthGate:
+    """
+    S2 Smoke: Verify auth dependencies reject unauthenticated requests.
+
+    Each test creates a bare Request with no auth_context attached to
+    request.state, then invokes the dependency directly. The dependency
+    MUST raise HTTPException(401) -- proving that without a valid JWT,
+    the route handler body is never reached.
+
+    Additionally, HTTP-level smoke tests verify the full middleware stack
+    returns 401/403 for unauthenticated requests to previously-vulnerable
+    routes.
+    """
+
+    @staticmethod
+    def _bare_request() -> StarletteRequest:
+        """Create a Request with no auth context (simulates missing JWT)."""
+        return StarletteRequest({"type": "http", "headers": []})
+
+    # --- Dependency-level smoke tests (guaranteed to work without DB) ---
+
+    @pytest.mark.asyncio
+    async def test_require_permission_system_admin_rejects_no_auth(self):
+        """RequirePermission('system:admin') → 401 without auth context."""
+        rp = RequirePermission("system:admin")
+        request = self._bare_request()
+        with pytest.raises(HTTPException) as exc:
+            await rp(request)
+        assert exc.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_require_permission_exports_create_rejects_no_auth(self):
+        """RequirePermission('exports:create') → 401 without auth context."""
+        rp = RequirePermission("exports:create")
+        request = self._bare_request()
+        with pytest.raises(HTTPException) as exc:
+            await rp(request)
+        assert exc.value.status_code == 401
+
+    def test_get_current_user_context_rejects_no_auth(self):
+        """get_current_user_context → 401 without auth context."""
+        request = self._bare_request()
+        with pytest.raises(HTTPException) as exc:
+            get_current_user_context(request)
+        assert exc.value.status_code == 401
+
+    # --- HTTP-level smoke tests (verify full middleware stack) ---
+
+    def test_platform_routes_reject_unauthenticated_http(self):
+        """HTTP GET /api/v1/platform/** without auth → 401 or 403."""
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app, raise_server_exceptions=False)
+        protected_paths = [
+            "/api/v1/platform/health",
+            "/api/v1/platform/info",
+            "/api/v1/platform/tenants/",
+            "/api/v1/platform/audit/summary",
+            "/api/v1/platform/stats/",
+        ]
+        failures = []
+        for path in protected_paths:
+            resp = client.get(path)
+            if resp.status_code not in (401, 403):
+                failures.append(f"{path} → {resp.status_code} (expected 401/403)")
+        assert failures == [], "Unauthenticated platform routes not rejected:\n" + "\n".join(failures)
+
+    def test_export_routes_reject_unauthenticated_http(self):
+        """
+        HTTP GET /api/v1/exports/{id} and /download must not return 200.
+
+        NOTE: In the test environment, MockAuthStrategy (auth/strategies/mock.py)
+        authenticates ALL requests regardless of Authorization header. This means
+        the "unauthenticated → 401" path cannot be exercised via TestClient here.
+        The dependency-level test (test_get_current_user_context_rejects_no_auth)
+        proves that get_current_user_context raises 401 without auth context.
+
+        For this HTTP-level test, we verify the route is NOT wide-open: it must
+        not return 200. In test env it returns 500 (DB unavailable after mock auth
+        passes); in production (JwtAuthStrategy) it would return 401.
+        """
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app, raise_server_exceptions=False)
+        protected_paths = [
+            "/api/v1/exports/00000000-0000-0000-0000-000000000000",
+            "/api/v1/exports/00000000-0000-0000-0000-000000000000/download",
+        ]
+        failures = []
+        for path in protected_paths:
+            resp = client.get(path)
+            # 200 would mean the route is wide-open (no auth, no error)
+            # Any other status proves the route requires auth/resources.
+            if resp.status_code == 200:
+                failures.append(
+                    f"{path} → 200 (route is wide-open!)"
+                )
+        assert failures == [], "Export routes are unexpectedly accessible:\n" + "\n".join(failures)

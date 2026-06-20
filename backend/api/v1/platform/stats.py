@@ -14,6 +14,8 @@ from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
+from api.middleware.rbac import RequirePermission
+from core.security import TokenPayload
 from models.wholesaler import Wholesaler
 from models.platform_tenant import PlatformTenant
 from models.platform_audit_log import PlatformAuditLog
@@ -22,7 +24,10 @@ router = APIRouter(prefix='/api/v1/platform/stats', tags=['platform-stats'])
 
 
 @router.get('/')
-async def platform_stats(db: AsyncSession = Depends(get_db)):
+async def platform_stats(
+    token: TokenPayload = Depends(RequirePermission("system:admin")),
+    db: AsyncSession = Depends(get_db),
+):
     """Platform-wide operational summary (read-only)."""
     # 1. Tenant counts by status (from wholesalers)
     tenant_total_q = await db.execute(

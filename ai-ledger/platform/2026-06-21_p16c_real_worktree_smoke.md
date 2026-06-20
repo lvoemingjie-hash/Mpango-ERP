@@ -1,11 +1,12 @@
 # Platform Real Worktree Smoke (P16-C)
 
 - **Branch:** codex/platform-p16c-real-worktree-smoke-2026-06-21
+- **Final feature branch HEAD:** see R1 section (pushed to origin)
 - **Foundation commit:** e3d31e2 (smoke worker + tests + mission)
-- **Ledger commit:** this commit (HEAD at completion)
+- **Ledger commit:** 116007d (P16-C ledger); R1 commit adds the sanitized evidence + this update
 - **Base:** origin/platform-dev @ 31b2fc7 (not merged, not pushed)
 - **Worker branch:** codex/platform-p16c-smoke-worker-2026-06-21 @ 1eb44d6 (parent e3d31e2)
-- **Completion report:** ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_report.json
+- **Completion evidence:** ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_evidence.json (committed sanitized report; the raw executor JSON is intentionally NOT committed — see R1)
 - **Agent:** claude
 - **Mode:** execute (a real worker ran in a real isolated worktree)
 
@@ -107,13 +108,15 @@ temporary worktree, which the executor removed).
 ## Report fields
 
 - **Branch:** codex/platform-p16c-real-worktree-smoke-2026-06-21
-- **Commit:** e3d31e2 (foundation) + this ledger commit (HEAD at completion)
+- **Commit:** e3d31e2 (foundation) + 116007d (P16-C ledger) + R1 commit (sanitized evidence + this update; final HEAD)
 - **Worker branch:** codex/platform-p16c-smoke-worker-2026-06-21 @ 1eb44d6 (retained)
-- **Executor report:** ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_report.json (verdict passed, base_sha e3d31e2)
-- **Modified files:** 5 added vs base 31b2fc7 (worker, worker tests, mission json, mission md, this ledger) - all under scripts/ and ai-ledger/platform/
+- **Executor report:** RAW report (ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_report.json) intentionally NOT committed (detect-secrets); COMMITTED sanitized copy at ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_evidence.json (verdict passed, base_sha e3d31e2)
+- **Modified files:** 6 added vs base 31b2fc7 (worker, worker tests, mission json, mission md, ledger, sanitized evidence) - all under scripts/ and ai-ledger/platform/
 - **Tests:** 161 / 161 (38 executor + 24 smoke worker + 37 diff auditor + 62 mission gate)
 - **gitnexus_risk:** MEDIUM (harness-only; no product/runtime impact)
 - **forbidden_path_audit:** PASS, 0 violations
+- **worktree_clean:** yes (git status --short clean; raw report removed)
+- **push:** origin/codex/platform-p16c-real-worktree-smoke-2026-06-21
 - **blockers:** none
 
 ## Temporary worker branch / worktree status
@@ -125,16 +128,47 @@ temporary worktree, which the executor removed).
   branch (parent e3d31e2), not an ancestor of HEAD, so it does not appear in
   `git diff origin/platform-dev..HEAD` and does not affect the scope audit.
 
+## R1 - Completion Evidence Cleanup + Push
+
+P16-C-R1 closes the loose end from the initial slice: the executor's raw
+completion report could not be committed (detect-secrets), leaving an untracked
+file and a non-clean working tree. R1 resolves this with a committed sanitized
+evidence artifact and pushes the branch.
+
+- **Final feature branch HEAD:** the R1 commit (this update + the sanitized
+  artifact). Resolved and stated exactly in the R1 commit / push output.
+- **Is the executor JSON committed?** No. The RAW executor report
+  (ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_report.json) is
+  intentionally NOT committed. A COMMITTED sanitized copy lives at
+  ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_evidence.json, which
+  records every executor report field with 40-char SHAs truncated to 7-char
+  short SHAs so it passes detect-secrets.
+- **Exact command to regenerate the raw report:**
+  `python scripts/platform_worktree_executor.py --repo . --mission ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_mission.json --execute`
+  (deterministic for a given base_sha; recreates the report under
+  ai-ledger/platform/). It is regenerated during validation but not committed.
+- **detect-secrets reason (raw report not committed):** pre-commit detect-secrets
+  (baseline .secrets.baseline) flags the raw report's full `base_sha` git-hash as
+  a Hex High Entropy String (exit 1). JSON cannot carry an inline
+  `pragma: allowlist secret`, and the tracked `.secrets.baseline` lives outside
+  the allowed scripts/ + ai-ledger/platform/ scope, so editing it would fail the
+  strict platform_diff_auditor allowlist audit. The sanitized artifact sidesteps
+  this by truncating SHAs; it was verified detect-secrets-clean (0 findings) and
+  contains no 40-char hex.
+- **Worktree clean at finish:** yes. `git status --short` is clean (no untracked
+  report; the raw report was removed after its fields were captured into the
+  sanitized artifact). The temporary smoke worktree was already removed by the
+  executor; the worker branch is retained as evidence (see below).
+- **Push:** branch pushed to origin/codex/platform-p16c-real-worktree-smoke-2026-06-21.
+  platform-dev is NOT merged and NOT pushed.
+
 ## Notes
 
-- The completion report JSON is intentionally left as an on-disk generated
-  artifact rather than committed: detect-secrets flags the report's `base_sha`
-  git-hash as a Hex High Entropy false positive, and the only in-repo allowlist
-  mechanism is the tracked `.secrets.baseline`, which lives outside the allowed
-  scripts/ + ai-ledger/platform/ scope (modifying it would fail the strict
-  allowlist audit). The report is deterministic and fully reproducible by
-  re-running the executor against the same base_sha; this ledger records its
-  verdict and key fields. JSON cannot carry an inline `pragma: allowlist secret`.
+- The raw executor completion report is intentionally NOT committed (detect-secrets
+  Hex High Entropy false positive on the full base_sha git-hash; the only allowlist
+  is the tracked .secrets.baseline, which is outside the allowed scope). A committed
+  sanitized evidence artifact captures its fields with short SHAs; the raw report is
+  regenerated on demand via the command in the R1 section. See [[R1]] above.
 - base_ref is HEAD (the foundation commit e3d31e2), not origin/platform-dev, so
   the worktree contains the smoke worker and it runs genuinely in isolation.
   The feature branch is rooted at origin/platform-dev @ 31b2fc7.

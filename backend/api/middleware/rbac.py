@@ -77,15 +77,22 @@ class RequirePermission:
 
 class RequirePlatformAdmin:
     """
-    Platform-level dependency that ONLY accepts identity-only super admin tokens.
+    Platform-level dependency that ONLY accepts strict identity-only super admin tokens.
 
     S2-R1 boundary fix: ``RequirePermission("system:admin")`` is insufficient
     for ``/api/v1/platform/**`` routes because a contextual tenant admin whose
     tenant role grants ``system:admin`` permission can access cross-tenant
-    platform data.  This dependency closes that gap by requiring **both**:
+    platform data.  This dependency closes that gap by requiring **all**:
 
-    - ``token.is_identity_only == True``  (no tenant selected)
-    - ``token.is_super_admin == True``    (carries the ``super_admin`` role)
+    - ``token.tenant_id is None``       (no tenant selected)
+    - ``token.tenant_schema is None``   (no tenant schema)
+    - ``token.is_super_admin == True``  (carries the ``super_admin`` role)
+
+    S2-R2 strict identity context fix: We do NOT use ``TokenPayload.is_identity_only``
+    because that property uses OR semantics (``tenant_id is None OR tenant_schema is
+    None``).  A partial-context token where one field is set and the other is None
+    would incorrectly pass that check.  For a platform security boundary we require
+    strict AND semantics: **both** ``tenant_id`` and ``tenant_schema`` must be None.
 
     A contextual super admin (one who has selected a tenant) is rejected
     because platform endpoints expose cross-tenant data that must only be
@@ -96,18 +103,33 @@ class RequirePlatformAdmin:
         self.permission = "platform:admin"
 
     async def __call__(self, request: Request) -> TokenPayload:
-        """Validate that the caller is a platform super admin with identity-only JWT."""
+        """Validate that the caller is a platform super admin with strict identity-only JWT."""
         auth_ctx = get_auth_context(request)
         token = auth_ctx.token
 
-        if not (token.is_identity_only and token.is_super_admin):
+        # S2-R2: Use explicit field checks, NOT token.is_identity_only.
+        #
+        # TokenPayload.is_identity_only is defined as:
+        #   tenant_id is None OR tenant_schema is None
+        # This OR semantics is designed for the legacy identity/context token
+        # distinction, where it signals "this token may not have full tenant
+        # context." For a PLATFORM SECURITY BOUNDARY, OR is dangerous: a
+        # crafted or malformed token with tenant_id set but tenant_schema None
+        # (or vice versa) would pass is_identity_only and bypass the gate.
+        #
+        # We require strict AND: both fields must be None.
+        is_strict_identity = (
+            token.tenant_id is None and token.tenant_schema is None
+        )
+
+        if not (is_strict_identity and token.is_super_admin):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "code": "PLATFORM_ADMIN_REQUIRED",
                     "message": (
-                        "Platform endpoints require an identity-only super admin "
-                        "token (no tenant context)."
+                        "Platform endpoints require a strict identity-only "
+                        "super admin token (no tenant context)."
                     ),
                 },
             )

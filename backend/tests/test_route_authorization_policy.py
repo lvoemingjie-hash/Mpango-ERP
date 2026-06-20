@@ -28,6 +28,10 @@ Task S2-R1: platform super-admin boundary fix — replaced RequirePermission("sy
          on all 8 platform routes with RequirePlatformAdmin() which requires an
          identity-only super admin token, closing the gap where contextual tenant
          admins with system:admin could access cross-tenant platform data.
+Task S2-R2: strict identity context fix — RequirePlatformAdmin now uses explicit
+         AND checks (tenant_id is None AND tenant_schema is None) instead of
+         TokenPayload.is_identity_only (OR semantics), rejecting partial-context
+         tokens that could bypass the platform gate.
 """
 from __future__ import annotations
 
@@ -529,6 +533,10 @@ class TestPlatformAdminBoundary:
       platform scope.
     - A tenant admin whose tenant role grants ``system:admin`` is rejected
       because their token is contextual (has tenant_id/tenant_schema).
+
+    S2-R2: Partial-context tokens (one field set, other None) are also rejected.
+    The dependency uses strict AND checks (tenant_id is None AND tenant_schema
+    is None), NOT TokenPayload.is_identity_only which uses OR semantics.
     """
 
     @staticmethod
@@ -600,6 +608,70 @@ class TestPlatformAdminBoundary:
         with pytest.raises(HTTPException) as exc:
             await rp(request)
         assert exc.value.status_code == 403
+
+    # --- S2-R2: Partial-context boundary tests ---
+
+    @pytest.mark.asyncio
+    async def test_partial_context_tenant_id_set_schema_none_rejected(self):
+        """
+        Token with tenant_id set but tenant_schema None + super_admin → 403.
+
+        S2-R2 finding: TokenPayload.is_identity_only uses OR semantics:
+            tenant_id is None OR tenant_schema is None
+        This token has tenant_schema=None, so is_identity_only returns True.
+        Under S2-R1's implementation, this token would have been ALLOWED
+        because the check was `token.is_identity_only and token.is_super_admin`.
+
+        S2-R2 fix: RequirePlatformAdmin now checks explicitly:
+            token.tenant_id is None AND token.tenant_schema is None
+        This partial-context token is correctly rejected.
+        """
+        token = TokenPayload(
+            user_id="sa-1",
+            tenant_id="00000000-0000-0000-0000-000000000001",
+            tenant_schema=None,  # partial: tenant_id set, schema missing
+            roles=["super_admin"],
+        )
+        # Verify the token WOULD pass the old OR-based check
+        assert token.is_identity_only is True  # OR: True OR False = True
+        assert token.is_super_admin is True
+
+        request = self._authed_request(token)
+
+        rp = RequirePlatformAdmin()
+        with pytest.raises(HTTPException) as exc:
+            await rp(request)
+        assert exc.value.status_code == 403
+        assert exc.value.detail["code"] == "PLATFORM_ADMIN_REQUIRED"
+
+    @pytest.mark.asyncio
+    async def test_partial_context_tenant_id_none_schema_set_rejected(self):
+        """
+        Token with tenant_id None but tenant_schema set + super_admin → 403.
+
+        S2-R2 finding: Same OR-vs-AND gap as the previous test, but in the
+        opposite direction. This token has tenant_id=None, so
+        is_identity_only returns True via OR. Under S2-R1, it would pass.
+
+        S2-R2 fix: Explicit AND check rejects this partial-context token.
+        """
+        token = TokenPayload(
+            user_id="sa-1",
+            tenant_id=None,  # partial: schema set, tenant_id missing
+            tenant_schema="t_abc123",
+            roles=["super_admin"],
+        )
+        # Verify the token WOULD pass the old OR-based check
+        assert token.is_identity_only is True  # OR: True OR False = True
+        assert token.is_super_admin is True
+
+        request = self._authed_request(token)
+
+        rp = RequirePlatformAdmin()
+        with pytest.raises(HTTPException) as exc:
+            await rp(request)
+        assert exc.value.status_code == 403
+        assert exc.value.detail["code"] == "PLATFORM_ADMIN_REQUIRED"
 
     @pytest.mark.asyncio
     async def test_regular_user_rejected(self):

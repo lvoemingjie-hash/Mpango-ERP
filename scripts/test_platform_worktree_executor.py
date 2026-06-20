@@ -285,5 +285,86 @@ class TestFailureReporting(unittest.TestCase):
             self.assertEqual(report["verdict"], "failed")
 
 
+class TestImmutableBaseShaAudit(unittest.TestCase):
+    def setUp(self):
+        os.environ["GIT_AUTHOR_NAME"] = "t"
+        os.environ["GIT_AUTHOR_EMAIL"] = "t@t"
+        os.environ["GIT_COMMITTER_NAME"] = "t"
+        os.environ["GIT_COMMITTER_EMAIL"] = "t@t"
+
+    def _write_worker(self, tmp, name, lines):
+        worker = os.path.join(tmp, name)
+        with open(worker, "w", encoding="utf-8") as fh:
+            fh.write(chr(10).join(lines) + chr(10))
+        return worker
+
+    def _clean_lines(self, path):
+        q = chr(34)
+        return [
+            "import os, subprocess",
+            "os.makedirs(" + q + "scripts" + q + ", exist_ok=True)",
+            "open(" + q + path + q + ", " + q + "w" + q + ").write(" + q + "x" + q + ")",
+            "subprocess.run([" + q + "git" + q + ", " + q + "add" + q + ", " + q + path + q + "])",
+            "subprocess.run([" + q + "git" + q + ", " + q + "commit" + q + ", " + q + "-q" + q + ", " + q + "-m" + q + ", " + q + "w" + q + "])",
+        ]
+
+    def test_committed_forbidden_file_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _make_repo(tmp)
+            q = chr(34)
+            lines = [
+                "import os, subprocess",
+                "os.makedirs(" + q + "backend" + q + ", exist_ok=True)",
+                "open(" + q + "backend/evil.txt" + q + ", " + q + "w" + q + ").write(" + q + "x" + q + ")",
+                "open(" + q + "allowed.txt" + q + ", " + q + "w" + q + ").write(" + q + "x" + q + ")",
+                "subprocess.run([" + q + "git" + q + ", " + q + "add" + q + ", " + q + "backend/evil.txt" + q + "])",
+                "subprocess.run([" + q + "git" + q + ", " + q + "commit" + q + ", " + q + "-q" + q + ", " + q + "-m" + q + ", " + q + "w" + q + "])",
+            ]
+            worker = self._write_worker(tmp, "evil.py", lines)
+            mission = dict(VALID_MISSION)
+            mission["worker_command"] = [sys.executable, worker]
+            mission["expected_files"] = ["allowed.txt"]
+            verdict, payload = exe.execute(mission, repo, write_completion=False)
+            self.assertEqual(verdict, "failed")
+            self.assertIn("backend/evil.txt", payload["details"]["audit"]["forbidden"])
+
+    def test_committed_allowlisted_file_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _make_repo(tmp)
+            worker = self._write_worker(tmp, "ok.py", self._clean_lines("scripts/feature.txt"))
+            mission = dict(VALID_MISSION)
+            mission["worker_command"] = [sys.executable, worker]
+            mission["expected_files"] = ["scripts/feature.txt"]
+            verdict, payload = exe.execute(mission, repo, write_completion=False)
+            self.assertEqual(verdict, "passed", payload)
+
+    def test_unresolved_base_ref_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _make_repo(tmp)
+            mission = dict(VALID_MISSION)
+            mission["base_ref"] = "no-such-ref-xyz"
+            verdict, payload = exe.execute(mission, repo, write_completion=False)
+            self.assertEqual(verdict, "failed")
+            self.assertEqual(payload["details"]["failure"], "unresolved base_ref")
+            self.assertIsNone(payload["base_sha"])
+
+    def test_report_contains_base_sha(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _make_repo(tmp)
+            worker = self._write_worker(tmp, "ok2.py", self._clean_lines("scripts/feature.txt"))
+            mission = dict(VALID_MISSION)
+            mission["worker_command"] = [sys.executable, worker]
+            mission["expected_files"] = ["scripts/feature.txt"]
+            mission["report"] = "ai-ledger/platform/sha.json"
+            verdict, payload = exe.execute(mission, repo, write_completion=True)
+            self.assertEqual(verdict, "passed", payload)
+            self.assertIsNotNone(payload.get("base_sha"))
+            self.assertIn("audit_command", payload)
+            with open(os.path.join(repo, mission["report"]), encoding="utf-8") as fh:
+                report = json.load(fh)
+            self.assertIsNotNone(report.get("base_sha"))
+            self.assertIn("base_ref", report)
+
+
 if __name__ == "__main__":
     unittest.main()

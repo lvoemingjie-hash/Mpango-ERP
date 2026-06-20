@@ -362,15 +362,23 @@ def run_git(args, cwd, timeout=30):
         return 1, "", "git not found"
 
 
-def collect_changed_files(worktree_dir, base_ref):
-    """Files changed in the worktree between base_ref and HEAD, plus untracked."""
-    rc, out, _ = run_git(
-        ["diff", "--no-renames", "--name-only", base_ref, "HEAD"], worktree_dir
-    )
-    files = [f for f in out.splitlines() if f.strip()] if rc == 0 else []
-    rc2, out2, _ = run_git(["ls-files", "--others", "--exclude-standard"], worktree_dir)
-    if rc2 == 0:
-        files.extend(f for f in out2.splitlines() if f.strip())
+def collect_changed_files(worktree_dir, base_sha):
+    """All files differing from the immutable base_sha.
+
+    Covers committed (base_sha..HEAD), staged, unstaged, and untracked files.
+    Using an immutable SHA (not a symbolic ref) closes the committed-change
+    bypass: a file the worker committed still appears here.
+    """
+    files = []
+    for args in (
+        ["diff", "--no-renames", "--name-only", base_sha, "HEAD"],
+        ["diff", "--no-renames", "--name-only", "--cached"],
+        ["diff", "--no-renames", "--name-only"],
+        ["ls-files", "--others", "--exclude-standard"],
+    ):
+        rc, out, _ = run_git(args, worktree_dir)
+        if rc == 0:
+            files.extend(f for f in out.splitlines() if f.strip())
     seen = set()
     unique = []
     for f in files:
@@ -412,13 +420,17 @@ def run_worker(command, cwd, timeout):
 # ---------------------------------------------------------------------------
 
 def build_report(mission, verdict, details):
+    audit = details.get("audit") or {}
     return {
         "phase": mission.get("phase"),
         "branch": mission.get("branch"),
         "base_ref": mission.get("base_ref"),
+        "base_sha": details.get("base_sha"),
         "worktree_dir": mission.get("worktree_dir"),
         "verdict": verdict,
         "expected_files": [normalize_path(f) for f in mission.get("expected_files", [])],
+        "audit_command": details.get("audit_command"),
+        "changed_files": audit.get("total", 0),
         "details": details,
     }
 
@@ -447,25 +459,44 @@ def write_report(report_path, payload, repo_path):
 # ---------------------------------------------------------------------------
 
 def execute(mission, repo_path, timeout=None, write_completion=True):
-    """Create the worktree, run the worker, audit, and write a report.
+    """Create the worktree at an immutable base SHA, run the worker, audit, report.
 
-    Returns (verdict, report_payload). Worker failure -> verdict failed;
-    scope violation -> verdict failed with a scope_violation detail. Never
-    swallows a non-zero worker exit. Always removes the worktree it created.
+    base_ref is resolved to an immutable commit SHA (base_sha) in the parent
+    repo BEFORE the worktree is created. Both git worktree add and the post-run
+    audit use base_sha, so a file the worker commits cannot hide from the audit
+    (closes the committed-change bypass a symbolic HEAD would allow). Worker
+    failure is never swallowed; the worktree is always removed.
     """
     repo = Path(repo_path).resolve()
     timeout = timeout or mission["timeout_seconds"]
     worktree_abs = (repo / mission["worktree_dir"]).resolve()
-
+    base_ref = mission["base_ref"]
     details = {
+        "base_ref": base_ref,
         "worktree_command": build_worktree_command(mission),
         "worker_command": build_worker_command(mission),
         "worktree_path": str(worktree_abs),
     }
 
+    # 1. Resolve base_ref to an immutable commit SHA in the parent repo.
+    rc, out, err = run_git(
+        ["rev-parse", "--verify", base_ref + "^{commit}"], repo
+    )
+    details["base_resolve"] = {"returncode": rc, "stdout": out, "stderr": err}
+    if rc != 0:
+        details["base_sha"] = None
+        details["failure"] = "unresolved base_ref"
+        payload = build_report(mission, "failed", details)
+        if write_completion:
+            write_report(mission["report"], payload, repo)
+        return "failed", payload
+    base_sha = out
+    details["base_sha"] = base_sha
+
+    # 2. Create the worktree AT the immutable base_sha (not the symbolic ref).
     rc, out, err = run_git(
         ["worktree", "add", "-b", mission["branch"],
-         mission["worktree_dir"], mission["base_ref"]],
+         mission["worktree_dir"], base_sha],
         repo,
     )
     details["worktree_add"] = {"returncode": rc, "stdout": out, "stderr": err}
@@ -486,11 +517,13 @@ def execute(mission, repo_path, timeout=None, write_completion=True):
             "stderr": err,
         }
 
-        changed = collect_changed_files(worktree_abs, mission["base_ref"])
+        # 3. Audit against the immutable base_sha (surfaces committed changes).
+        changed = collect_changed_files(worktree_abs, base_sha)
         audit = audit_against_expected(
             changed, mission["expected_files"], mission.get("forbidden_extra")
         )
         details["audit"] = audit
+        details["audit_command"] = build_audit_command(mission["worktree_dir"], base_sha)
 
         if timed_out:
             verdict = "failed"

@@ -73,3 +73,43 @@ class RequirePermission:
             )
 
         return token
+
+
+class RequirePlatformAdmin:
+    """
+    Platform-level dependency that ONLY accepts identity-only super admin tokens.
+
+    S2-R1 boundary fix: ``RequirePermission("system:admin")`` is insufficient
+    for ``/api/v1/platform/**`` routes because a contextual tenant admin whose
+    tenant role grants ``system:admin`` permission can access cross-tenant
+    platform data.  This dependency closes that gap by requiring **both**:
+
+    - ``token.is_identity_only == True``  (no tenant selected)
+    - ``token.is_super_admin == True``    (carries the ``super_admin`` role)
+
+    A contextual super admin (one who has selected a tenant) is rejected
+    because platform endpoints expose cross-tenant data that must only be
+    accessed from the platform scope, not from within a tenant boundary.
+    """
+
+    def __init__(self):
+        self.permission = "platform:admin"
+
+    async def __call__(self, request: Request) -> TokenPayload:
+        """Validate that the caller is a platform super admin with identity-only JWT."""
+        auth_ctx = get_auth_context(request)
+        token = auth_ctx.token
+
+        if not (token.is_identity_only and token.is_super_admin):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "PLATFORM_ADMIN_REQUIRED",
+                    "message": (
+                        "Platform endpoints require an identity-only super admin "
+                        "token (no tenant context)."
+                    ),
+                },
+            )
+
+        return token

@@ -13,7 +13,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
-from api.middleware.rbac import RequirePermission
+from api.middleware.rbac import RequirePlatformAdmin
 from core.security import TokenPayload
 from models.platform_audit_log import PlatformAuditLog
 
@@ -48,7 +48,7 @@ def _get_default_since() -> datetime:
 
 @router.get('/')
 async def list_audit_logs(
-    token: TokenPayload = Depends(RequirePermission("system:admin")),
+    token: TokenPayload = Depends(RequirePlatformAdmin()),
     since: Optional[str] = Query(
         None,
         description=f"Filter entries created after this ISO datetime (default: {DEFAULT_SINCE_DAYS} days ago)"
@@ -135,7 +135,7 @@ async def list_audit_logs(
 
 @router.get('/summary')
 async def audit_summary(
-    token: TokenPayload = Depends(RequirePermission("system:admin")),
+    token: TokenPayload = Depends(RequirePlatformAdmin()),
     since: Optional[str] = Query(
         None,
         description=f"Start of period (default: {DEFAULT_SINCE_DAYS} days ago)"
@@ -197,7 +197,7 @@ async def audit_summary(
 @router.get('/{log_id}')
 async def get_audit_log(
     log_id: str,
-    token: TokenPayload = Depends(RequirePermission("system:admin")),
+    token: TokenPayload = Depends(RequirePlatformAdmin()),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single audit log entry (read-only)."""

@@ -24,6 +24,10 @@ Approach:
 Task S1: test/contract-only harness — scans routes and classifies them.
 Task S2: production fix — all 12 findings resolved (8 platform + 2 export + 2 profiling).
          xfail markers for fixed routes removed; master gate now passes green.
+Task S2-R1: platform super-admin boundary fix — replaced RequirePermission("system:admin")
+         on all 8 platform routes with RequirePlatformAdmin() which requires an
+         identity-only super admin token, closing the gap where contextual tenant
+         admins with system:admin could access cross-tenant platform data.
 """
 from __future__ import annotations
 
@@ -70,7 +74,8 @@ from starlette.requests import Request as StarletteRequest
 
 from api.app import app
 from api.dependencies import get_current_user_context
-from api.middleware.rbac import RequirePermission
+from api.middleware.rbac import RequirePermission, RequirePlatformAdmin
+from core.security import TokenPayload
 
 
 # ===========================================================================
@@ -82,6 +87,7 @@ from api.middleware.rbac import RequirePermission
 # NOT "non_compliant" (it requires some form of auth).
 AUTH_DEPENDENCY_NAMES: Set[str] = {
     "RequirePermission",       # api.middleware.rbac.RequirePermission
+    "RequirePlatformAdmin",    # api.middleware.rbac.RequirePlatformAdmin (S2-R1)
     "RequireBIPermission",     # api.middleware.bi_access.RequireBIPermission
     "get_current_user_context",  # api.dependencies (validates JWT)
     "resolve_client_identity",   # api.v1.client.dependencies (JWT + retailer binding)
@@ -245,7 +251,7 @@ def classify_route(route: APIRoute) -> RouteClassification:
         name = _dependency_name(dep)
         if name in AUTH_DEPENDENCY_NAMES:
             auth_deps.append(name)
-            if name in ("RequirePermission", "RequireBIPermission"):
+            if name in ("RequirePermission", "RequirePlatformAdmin", "RequireBIPermission"):
                 found_require_permission = True
                 code = _extract_permission_code(dep)
                 if code and permission_code is None:
@@ -367,7 +373,7 @@ class TestHarnessIntegrity:
         auth dependencies. This test verifies the harness detects those
         deps, proving it scans the FastAPI dependant tree correctly.
         """
-        # Platform routes now have RequirePermission("system:admin")
+        # Platform routes now use RequirePlatformAdmin (S2-R1)
         for c in PLATFORM_ROUTES:
             assert c.detected_auth_deps, (
                 f"Platform route {c.path} has no detected auth deps. "
@@ -455,7 +461,8 @@ class TestRoutePolicyContract:
 class TestPlatformRoutePolicy:
     """
     Platform routes (/api/v1/platform/**) MUST require platform-level
-    permission. S2 fixed all 8 routes by adding RequirePermission("system:admin").
+    permission. S2 added RequirePermission("system:admin") to all 8 routes;
+    S2-R1 upgraded them to RequirePlatformAdmin() for tighter boundary control.
     """
 
     def test_platform_routes_exist(self):
@@ -476,6 +483,11 @@ class TestPlatformRoutePolicy:
           - GET  /api/v1/platform/audit/summary
           - GET  /api/v1/platform/audit/{log_id}
           - GET  /api/v1/platform/stats/
+
+        S2-R1: Routes upgraded from RequirePermission("system:admin") to
+        RequirePlatformAdmin() — only identity-only super admin tokens are
+        accepted, preventing contextual tenant admins with system:admin
+        from accessing cross-tenant platform data.
 
         Impact: Any caller (including unauthenticated) can list ALL tenants,
         read provisioning logs, read audit logs, and view platform stats.
@@ -498,6 +510,159 @@ class TestPlatformRoutePolicy:
         assert no_auth == [], (
             "Platform routes with zero auth dependencies: "
             + ", ".join(c.path for c in no_auth)
+        )
+
+
+# ===========================================================================
+# S2-R1: Platform Admin Boundary Tests
+# ===========================================================================
+
+class TestPlatformAdminBoundary:
+    """
+    S2-R1: Verify that RequirePlatformAdmin enforces the correct boundary.
+
+    RequirePlatformAdmin is stricter than RequirePermission("system:admin"):
+    - It requires ``token.is_identity_only == True`` (no tenant context)
+    - It requires ``token.is_super_admin == True`` (carries super_admin role)
+    - A contextual token (tenant selected) is ALWAYS rejected, even if the
+      user is a super_admin — platform data must only be accessed from the
+      platform scope.
+    - A tenant admin whose tenant role grants ``system:admin`` is rejected
+      because their token is contextual (has tenant_id/tenant_schema).
+    """
+
+    @staticmethod
+    def _authed_request(token: TokenPayload) -> StarletteRequest:
+        """Create a Request with a specific auth context attached."""
+        from api.context.auth import AuthContext
+        request = StarletteRequest({"type": "http", "headers": []})
+        request.state.auth_context = AuthContext(token=token, raw_token="test-token")
+        return request
+
+    @staticmethod
+    def _bare_request() -> StarletteRequest:
+        """Create a Request with no auth context (simulates missing JWT)."""
+        return StarletteRequest({"type": "http", "headers": []})
+
+    @pytest.mark.asyncio
+    async def test_identity_only_super_admin_allowed(self):
+        """Identity-only super admin token → access granted."""
+        token = TokenPayload(user_id="sa-1", roles=["super_admin"])
+        # is_identity_only=True (no tenant_id/tenant_schema), is_super_admin=True
+        request = self._authed_request(token)
+
+        rp = RequirePlatformAdmin()
+        result = await rp(request)
+        assert result.is_super_admin
+        assert result.is_identity_only
+
+    @pytest.mark.asyncio
+    async def test_contextual_tenant_admin_rejected(self):
+        """
+        Contextual tenant admin with system:admin in their tenant role → 403.
+
+        This is the core S2-R1 fix: RequirePermission("system:admin") would
+        have allowed this token (it checks tenant role permissions), but
+        RequirePlatformAdmin rejects it because the token is NOT identity-only.
+        """
+        token = TokenPayload(
+            user_id="admin-1",
+            tenant_id="00000000-0000-0000-0000-000000000001",
+            tenant_schema="t_abc123",
+            roles=["admin"],  # system:admin would come from tenant role, not token
+        )
+        request = self._authed_request(token)
+
+        rp = RequirePlatformAdmin()
+        with pytest.raises(HTTPException) as exc:
+            await rp(request)
+        assert exc.value.status_code == 403
+        assert exc.value.detail["code"] == "PLATFORM_ADMIN_REQUIRED"
+
+    @pytest.mark.asyncio
+    async def test_contextual_super_admin_rejected(self):
+        """
+        Contextual super admin (selected a tenant) → 403.
+
+        Even though the user IS a super_admin, their token carries tenant
+        context. Platform endpoints must be accessed from identity-only scope.
+        """
+        token = TokenPayload(
+            user_id="sa-1",
+            tenant_id="00000000-0000-0000-0000-000000000001",
+            tenant_schema="t_abc123",
+            roles=["super_admin"],
+        )
+        # is_identity_only=False, is_super_admin=True
+        request = self._authed_request(token)
+
+        rp = RequirePlatformAdmin()
+        with pytest.raises(HTTPException) as exc:
+            await rp(request)
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_regular_user_rejected(self):
+        """Regular tenant user → 403."""
+        token = TokenPayload(
+            user_id="user-1",
+            tenant_id="00000000-0000-0000-0000-000000000001",
+            tenant_schema="t_abc123",
+            roles=["cashier"],
+        )
+        request = self._authed_request(token)
+
+        rp = RequirePlatformAdmin()
+        with pytest.raises(HTTPException) as exc:
+            await rp(request)
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated_rejected(self):
+        """No auth context → 401."""
+        request = self._bare_request()
+
+        rp = RequirePlatformAdmin()
+        with pytest.raises(HTTPException) as exc:
+            await rp(request)
+        assert exc.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_platform_routes_use_require_platform_admin(self):
+        """All 8 platform routes MUST use RequirePlatformAdmin (not RequirePermission)."""
+        for c in PLATFORM_ROUTES:
+            assert "RequirePlatformAdmin" in c.detected_auth_deps, (
+                f"Platform route {c.path} does NOT use RequirePlatformAdmin. "
+                f"Detected auth deps: {c.detected_auth_deps}"
+            )
+
+    def test_platform_routes_reject_non_platform_admin_http(self):
+        """
+        HTTP GET /api/v1/platform/** with mock (non-super-admin) auth → 403.
+
+        In the test environment, MockAuthStrategy authenticates all requests
+        with a contextual non-super-admin token (tenant_id=t_dev, roles=[]).
+        RequirePlatformAdmin rejects this with 403 PLATFORM_ADMIN_REQUIRED.
+        """
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app, raise_server_exceptions=False)
+        protected_paths = [
+            "/api/v1/platform/health",
+            "/api/v1/platform/info",
+            "/api/v1/platform/tenants/",
+            "/api/v1/platform/audit/summary",
+            "/api/v1/platform/stats/",
+        ]
+        failures = []
+        for path in protected_paths:
+            resp = client.get(path)
+            if resp.status_code not in (401, 403):
+                failures.append(
+                    f"{path} -> {resp.status_code} (expected 401/403)"
+                )
+        assert failures == [], (
+            "Platform routes accessible by non-platform-admin:\n" + "\n".join(failures)
         )
 
 
@@ -695,24 +860,8 @@ class TestSmokeAuthGate:
 
     # --- HTTP-level smoke tests (verify full middleware stack) ---
 
-    def test_platform_routes_reject_unauthenticated_http(self):
-        """HTTP GET /api/v1/platform/** without auth → 401 or 403."""
-        from fastapi.testclient import TestClient
-
-        client = TestClient(app, raise_server_exceptions=False)
-        protected_paths = [
-            "/api/v1/platform/health",
-            "/api/v1/platform/info",
-            "/api/v1/platform/tenants/",
-            "/api/v1/platform/audit/summary",
-            "/api/v1/platform/stats/",
-        ]
-        failures = []
-        for path in protected_paths:
-            resp = client.get(path)
-            if resp.status_code not in (401, 403):
-                failures.append(f"{path} → {resp.status_code} (expected 401/403)")
-        assert failures == [], "Unauthenticated platform routes not rejected:\n" + "\n".join(failures)
+    # NOTE: Platform HTTP smoke test moved to TestPlatformAdminBoundary
+    # (test_platform_routes_reject_non_platform_admin_http) for S2-R1.
 
     def test_export_routes_reject_unauthenticated_http(self):
         """

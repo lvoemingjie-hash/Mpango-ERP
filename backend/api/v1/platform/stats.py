@@ -14,7 +14,7 @@ from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
-from api.middleware.rbac import RequirePermission
+from api.middleware.rbac import RequirePlatformAdmin
 from core.security import TokenPayload
 from models.wholesaler import Wholesaler
 from models.platform_tenant import PlatformTenant
@@ -25,7 +25,7 @@ router = APIRouter(prefix='/api/v1/platform/stats', tags=['platform-stats'])
 
 @router.get('/')
 async def platform_stats(
-    token: TokenPayload = Depends(RequirePermission("system:admin")),
+    token: TokenPayload = Depends(RequirePlatformAdmin()),
     db: AsyncSession = Depends(get_db),
 ):
     """Platform-wide operational summary (read-only)."""

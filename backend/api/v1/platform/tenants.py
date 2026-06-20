@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
-from api.middleware.rbac import RequirePermission
+from api.middleware.rbac import RequirePlatformAdmin
 from core.security import TokenPayload
 from models.wholesaler import Wholesaler
 from models.platform_tenant import PlatformTenant
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/v1/platform/tenants", tags=["platform-tenants"])
 
 @router.get("/")
 async def list_tenants(
-    token: TokenPayload = Depends(RequirePermission("system:admin")),
+    token: TokenPayload = Depends(RequirePlatformAdmin()),
     db: AsyncSession = Depends(get_db),
 ):
     """List all tenants with platform lifecycle status (read-only)."""
@@ -57,7 +57,7 @@ async def list_tenants(
 @router.get("/{wholesaler_id}")
 async def get_tenant(
     wholesaler_id: str,
-    token: TokenPayload = Depends(RequirePermission("system:admin")),
+    token: TokenPayload = Depends(RequirePlatformAdmin()),
     db: AsyncSession = Depends(get_db),
 ):
     """Get detailed platform lifecycle info for a single tenant (read-only)."""

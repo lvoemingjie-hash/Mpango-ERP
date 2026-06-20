@@ -3,6 +3,7 @@
 - **Branch:** codex/platform-p16a-worktree-harness-2026-06-20
 - **Foundation commit:** e2b559e
 - **R1 commit:** 06fed2d
+- **Final HEAD:** 049ccce
 - **Base:** codex/platform-p15bcd-incident-triage-batch-2026-06-14 @ 2211512
 - **Generated output path:** ai-ledger/platform/2026-06-20_p16_worktree_execution_harness.md
 
@@ -41,14 +42,14 @@ Review found that execute() created the worktree and audited against the symboli
 - python scripts/test_platform_agent_mission_gate.py: PASS, 62 tests (regression)
 - platform_diff_auditor.audit_files on the 5 branch files: PASS, 0 violations
 - git diff --check 2211512..HEAD: PASS (rc 0, no whitespace errors)
-- npx gitnexus analyze: PASS, 6644 nodes / 19993 edges / 435 clusters / 300 flows (re-indexed after R1 commit)
+- npx gitnexus analyze: PASS, 6645 nodes / 19993 edges / 436 clusters / 300 flows (re-indexed after R1 commit)
 - committed-change bypass test: a worker that commits backend/evil.txt (leaving allowlisted allowed.txt uncommitted) now correctly FAILs.
 
 ## Report Fields
 
 - **Branch:** codex/platform-p16a-worktree-harness-2026-06-20
-- **Commit:** e2b559e (foundation) + 06fed2d (R1 immutable base SHA)
-- **Modified files:** scripts/platform_worktree_executor.py, scripts/test_platform_worktree_executor.py, ai-ledger/platform/2026-06-20_p16_worktree_execution_harness_mission.json, ai-ledger/platform/2026-06-20_p16_worktree_execution_harness_mission.md, ai-ledger/platform/2026-06-20_p16_worktree_execution_harness.md (5 files in branch; 0 added or removed vs base)
+- **Commit:** e2b559e (foundation) + 06fed2d (R1 immutable base SHA) + 049ccce (final HEAD)
+- **Modified files:** scripts/platform_worktree_executor.py, scripts/test_platform_worktree_executor.py, ai-ledger/platform/2026-06-20_p16_worktree_execution_harness_mission.json, ai-ledger/platform/2026-06-20_p16_worktree_execution_harness_mission.md, ai-ledger/platform/2026-06-20_p16_worktree_execution_harness.md (5 files added vs base 2211512)
 - **Tests:** 38 / 38 new; 99 / 99 regression (diff_auditor 37 + mission_gate 62)
 - **Report path:** ai-ledger/platform/2026-06-20_p16_worktree_execution_harness.md
 - **Risk:** MEDIUM (harness-only). MEDIUM because this is the load-bearing control plane that turns human relay into automated execution, so its audit gates must hold under adversarial worker behavior. R1 specifically fixes the committed-change bypass; the remaining surface (worktree creation is the only git mutation, default dry-run) is bounded and tested. No product/backend/frontend/auth/migration/payment code touched.

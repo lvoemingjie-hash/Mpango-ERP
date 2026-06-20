@@ -3,13 +3,62 @@ Request-level API tests for Platform Track P0 — platform_audit_logs.
 
 Tests the external read-only API contract including new time-range filtering
 and summary endpoints.
+
+S2-R3 alignment: Platform routes now require RequirePlatformAdmin (identity-only
+super admin). Business semantics tests run with a mock platform-admin auth
+context via middleware. Separate boundary tests verify 401/403 for
+unauthenticated and non-platform-admin requests.
 """
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
+from api.context.auth import AuthContext, attach_auth_context
+from core.security import TokenPayload
+
+
+# ---------------------------------------------------------------------------
+# Auth helpers
+# ---------------------------------------------------------------------------
+
+def _platform_admin_token() -> TokenPayload:
+    """Identity-only super admin token that passes RequirePlatformAdmin."""
+    return TokenPayload(user_id="platform-admin-001", roles=["super_admin"])
+
+
+def _contextual_admin_token() -> TokenPayload:
+    """Contextual token (tenant selected) — fails RequirePlatformAdmin."""
+    return TokenPayload(
+        user_id="tenant-admin-001",
+        tenant_id="00000000-0000-0000-0000-000000000001",
+        tenant_schema="t_dev",
+        roles=["super_admin"],
+    )
+
+
+def _add_platform_admin_auth(app: FastAPI) -> None:
+    """Add middleware that attaches identity-only super admin auth context."""
+    @app.middleware("http")
+    async def _attach_admin_auth(request: Request, call_next):
+        token = _platform_admin_token()
+        attach_auth_context(request, AuthContext(token=token, raw_token="test"))
+        return await call_next(request)
+
+
+def _add_contextual_auth(app: FastAPI) -> None:
+    """Add middleware that attaches contextual (tenant) auth context."""
+    @app.middleware("http")
+    async def _attach_ctx_auth(request: Request, call_next):
+        token = _contextual_admin_token()
+        attach_auth_context(request, AuthContext(token=token, raw_token="test"))
+        return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# DB + App helpers
+# ---------------------------------------------------------------------------
 
 def _make_empty_list_result():
     """Mock result set: count=0, items=[], summary=empty."""
@@ -30,8 +79,15 @@ def _make_404_result():
     return result
 
 
-def _make_app(mock_db):
-    """Build app with dependency overrides for get_db."""
+def _make_app(mock_db, auth: str = "platform_admin"):
+    """
+    Build app with dependency overrides for get_db.
+
+    auth modes:
+        "platform_admin" — identity-only super admin (passes RequirePlatformAdmin)
+        "contextual"     — contextual token (rejected by RequirePlatformAdmin)
+        "none"           — no auth context (rejected, 401)
+    """
     app = FastAPI()
     from api.v1.platform.audit import router
     from api.dependencies import get_db
@@ -42,15 +98,59 @@ def _make_app(mock_db):
     app.dependency_overrides[get_db] = override
     app.dependency_overrides[db_get_db] = override
     app.include_router(router)
+
+    if auth == "platform_admin":
+        _add_platform_admin_auth(app)
+    elif auth == "contextual":
+        _add_contextual_auth(app)
+
     return app
 
 
-def _list_client():
+def _list_client(auth: str = "platform_admin"):
     """Client with mock returning empty list."""
     mock_db = MagicMock()
     mock_db.execute = AsyncMock(side_effect=_make_empty_list_result())
-    return TestClient(_make_app(mock_db))
+    return TestClient(_make_app(mock_db, auth=auth))
 
+
+# ===========================================================================
+# Boundary tests: auth required
+# ===========================================================================
+
+class TestAuditAuthBoundary:
+
+    def test_unauthenticated_list_rejected(self):
+        """No auth context on list endpoint -> 401."""
+        client = _list_client(auth="none")
+        resp = client.get("/api/v1/platform/audit/")
+        assert resp.status_code == 401
+
+    def test_contextual_admin_list_rejected(self):
+        """Contextual token on list endpoint -> 403."""
+        client = _list_client(auth="contextual")
+        resp = client.get("/api/v1/platform/audit/")
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "PLATFORM_ADMIN_REQUIRED"
+
+    def test_unauthenticated_summary_rejected(self):
+        """No auth context on summary endpoint -> 401."""
+        client = _list_client(auth="none")
+        resp = client.get("/api/v1/platform/audit/summary")
+        assert resp.status_code == 401
+
+    def test_unauthenticated_detail_rejected(self):
+        """No auth context on detail endpoint -> 401."""
+        mock_db = MagicMock()
+        mock_db.execute = AsyncMock(return_value=_make_404_result())
+        client = TestClient(_make_app(mock_db, auth="none"))
+        resp = client.get("/api/v1/platform/audit/00000000-0000-0000-0000-000000000000")
+        assert resp.status_code == 401
+
+
+# ===========================================================================
+# Business semantics tests (run with platform admin auth)
+# ===========================================================================
 
 # === List endpoint with time-range ===
 

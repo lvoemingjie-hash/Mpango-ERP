@@ -1,8 +1,15 @@
 """
-S3-B: Fresh Tenant Live Runtime Proof.
+S3-B: Prepared Live Tenant Runtime Proof.
 
-Verifies with REAL DB / REAL tenant schema / REAL admin user that a fresh
-tenant admin can access all core business APIs without 401/403/500.
+Verifies with REAL DB / REAL tenant schema / REAL admin user that a
+PREPARED (previously-bootstrapped) tenant admin can access all core
+business APIs without 401/403/500.
+
+This is NOT a complete fresh-bootstrap proof.  The tenant schema
+(t_u1r1_test) and admin user (admin@u1r1.test) were bootstrapped
+beforehand.  S3-C (TODO) will add fresh tenant creation via the real
+bootstrap/onboarding path, at which point this becomes a true
+end-to-end fresh tenant live runtime proof.
 
 Required verifications (per task spec):
   1. Tenant schema fully bootstrapped (all required tables present)
@@ -28,7 +35,8 @@ Implementation notes:
   - Fully async (httpx.AsyncClient + ASGITransport) so the engine, the
     ASGI app, and all requests share ONE event loop (session-scoped via
     conftest.py).  This avoids asyncpg "Event loop is closed" errors.
-  - If live DB is unreachable -> entire module SKIPS (not a failure).
+  - When S3B_REQUIRE_LIVE_DB=1, unreachable DB is a FAILURE (not a skip).
+    Otherwise, unreachable DB defaults to skip for convenience.
 """
 from __future__ import annotations
 
@@ -77,13 +85,22 @@ REQUIRED_PERMISSIONS = {
 
 @pytest_asyncio.fixture(scope="module")
 async def live_engine():
-    """Real SQLAlchemy async engine; skips module if DB unreachable."""
+    """Real SQLAlchemy async engine.
+
+    - S3B_REQUIRE_LIVE_DB=1: unreachable DB -> FAIL (strict CI gate).
+    - Default (unset or any other value): unreachable DB -> skip (convenience).
+    """
+    require_db = os.environ.get("S3B_REQUIRE_LIVE_DB", "").strip() == "1"
     engine = create_async_engine(LIVE_DB_URL, pool_pre_ping=True, pool_size=2)
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as exc:
         await engine.dispose()
+        if require_db:
+            pytest.fail(
+                f"S3-B live DB REQUIRED but not reachable at {LIVE_DB_URL}: {exc}"
+            )
         pytest.skip(f"S3-B live DB not reachable at {LIVE_DB_URL}: {exc}")
     yield engine
     await engine.dispose()
@@ -435,10 +452,21 @@ def _build_live_app(live_engine, admin_data: Dict) -> FastAPI:
 @pytest_asyncio.fixture(scope="module")
 async def live_client(live_engine, live_admin_data):
     """AsyncClient backed by the live-router app (shared event loop)."""
+    import api.v1.dashboards as _dashboards_mod
+    import database.session as _db_session_mod
+
+    # Save originals before _build_live_app patches them.
+    _orig_rsl = _dashboards_mod.ReportingSessionLocal
+    _orig_asl = _db_session_mod.AsyncSessionLocal
+
     app = _build_live_app(live_engine, live_admin_data)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://s3b-live") as client:
         yield client
+
+    # Teardown: restore originals so other test modules are not affected.
+    _dashboards_mod.ReportingSessionLocal = _orig_rsl
+    _db_session_mod.AsyncSessionLocal = _orig_asl
 
 
 # ===========================================================================

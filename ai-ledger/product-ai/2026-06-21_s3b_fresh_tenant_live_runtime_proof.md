@@ -1,4 +1,4 @@
-# S3-B: Fresh Tenant Live Runtime Proof
+# S3-B: Prepared Live Tenant Runtime Proof
 
 | Field | Value |
 |-------|-------|
@@ -13,23 +13,30 @@
 
 ## Objective
 
-Establish a **live-DB runtime proof** that a freshly-bootstrapped tenant admin
-can access all core business APIs **without 401/403/500** — using a **real
-database**, **real tenant schema**, **real admin user**, and a **near-real
-contextual JWT** issued via the production `create_contextual_token()`
+Establish a **live-DB runtime proof** that a **prepared** (previously-bootstrapped)
+tenant admin can access all core business APIs **without 401/403/500** -- using
+a **real database**, **real tenant schema**, **real admin user**, and a
+**near-real contextual JWT** issued via the production `create_contextual_token()`
 function.
+
+This is a **Prepared Live Tenant Proof**, NOT a complete fresh-bootstrap
+proof.  The tenant schema (`t_u1r1_test`) and admin user (`admin@u1r1.test`)
+were bootstrapped beforehand.  The test verifies that a tenant admin whose
+tenant was created by a prior bootstrap process can access all core APIs on
+the live database.  True fresh bootstrap (creating the schema and admin in
+the test itself) is deferred to **S3-C** (see Residual Limits below).
 
 Where S3-A used a mock DB layer and a synthetic `super_admin` token (bypassing
 per-permission checks), S3-B upgrades the proof to:
 
-1. **Real DB** — a live PostgreSQL instance with a fully-bootstrapped tenant
+1. **Real DB** -- a live PostgreSQL instance with a fully-bootstrapped tenant
    schema (`t_u1r1_test`, 15 tables).
-2. **Real admin user** — `admin@u1r1.test` loaded from the live `users` table,
+2. **Real admin user** -- `admin@u1r1.test` loaded from the live `users` table,
    with real roles and real `role_permissions` rows.
-3. **Real "admin" role (NOT super_admin)** — the strictest configuration. The
+3. **Real "admin" role (NOT super_admin)** -- the strictest configuration. The
    `RequirePermission` super-admin bypass is NOT triggered; every permission
    check runs end-to-end against real `role_permissions` data.
-4. **Near-real JWT** — issued by the production `create_contextual_token()`
+4. **Near-real JWT** -- issued by the production `create_contextual_token()`
    function (same as `POST /auth/select-tenant`), carrying the real `user_id`,
    real `roles=["admin"]`, real `tenant_id`, and real `tenant_schema`. Only
    password verification is skipped.
@@ -90,13 +97,13 @@ after a successful password login + tenant selection. The resulting
 - `is_super_admin` = False (`"super_admin" not in ["admin"]`)
 
 Therefore `RequirePermission` runs the **full** permission check against the
-real `admin` role's 36 permissions — no bypass.
+real `admin` role's 36 permissions -- no bypass.
 
 ---
 
 ## Endpoint Coverage Matrix
 
-Captured live via `_s3b_matrix_probe.py` against the real DB + real admin:
+Captured live against the real DB + real admin:
 
 | # | Category | Method | Path | Permission | Status | Verdict |
 |---|----------|--------|------|------------|--------|---------|
@@ -115,10 +122,10 @@ Captured live via `_s3b_matrix_probe.py` against the real DB + real admin:
 **All 11 endpoints passed the auth gate with no 401/403/500.**
 
 The two non-200 responses are proven business empty-states, not system errors:
-- `/pricing/prices` → 400: `_assert_binding` rejects because the test
+- `/pricing/prices` -> 400: `_assert_binding` rejects because the test
   retailer has no price binding configured (no `retailer_bindings` row).
   Error body contains business message, NOT an auth error code.
-- `/exports/{job_id}` → 404: the probe uses a synthetic job_id that does not
+- `/exports/{job_id}` -> 404: the probe uses a synthetic job_id that does not
   exist. The auth gate (`get_current_user_context`) passed; the 404 is
   returned by the export-status lookup.
 
@@ -126,7 +133,7 @@ The two non-200 responses are proven business empty-states, not system errors:
 
 ## 403/500 Root Cause Classification
 
-### Initial run (before session.info propagation): 7 × 500
+### Initial run (before session.info propagation): 7 x 500
 
 After migrating from the sync `TestClient` (which failed with "Event loop is
 closed" because asyncpg connections bind to their creation loop) to a fully
@@ -154,7 +161,7 @@ the ORM filter blocked every ORM-backed query. Endpoints using raw SQL
 (pricing, payments, exports) were unaffected.
 
 **This is NOT an auth/permission regression.** The auth gate
-(`RequirePermission`) passed on all 7 endpoints — the 500 occurred in the
+(`RequirePermission`) passed on all 7 endpoints -- the 500 occurred in the
 ORM data layer, after authorization.
 
 **Resolution (test-only):** Added a `_new_live_tenant_session()` helper that
@@ -167,10 +174,22 @@ every session, and propagated it to:
   factories that bypass FastAPI DI.
 
 Also stopped overriding `get_tenant_db_session` so that endpoints read from
-`request.state.tenant_context.session` — the same session instance the
-middleware attached — guaranteeing `session.info` is consistent.
+`request.state.tenant_context.session` -- the same session instance the
+middleware attached -- guaranteeing `session.info` is consistent.
 
-### After session.info propagation: 0 × 401, 0 × 403, 0 × 500
+### Module-level patches: save and restore (R1 fix)
+
+`_build_live_app()` patches `api.v1.dashboards.ReportingSessionLocal` and
+`database.session.AsyncSessionLocal` at module scope.  In the original S3-B
+commit, these patches were never restored.  S3-B-R1 fixes this:
+
+- The `live_client` fixture saves both originals before calling
+  `_build_live_app()`.
+- Fixture teardown (code after `yield`) restores the originals.
+- This ensures other test modules loaded in the same process are not
+  contaminated by S3-B's module-level patches.
+
+### After session.info propagation: 0 x 401, 0 x 403, 0 x 500
 
 All 11 endpoints pass with acceptable status codes (200, 400, 404).
 
@@ -203,36 +222,82 @@ tests/test_security_s2_5.py                               30 passed
 
 S3-B introduces NO production code changes and NO regressions in S3-A or S2.5.
 
+### Live DB gate: S3B_REQUIRE_LIVE_DB=1
+
+When `S3B_REQUIRE_LIVE_DB=1` is set and the live DB is unreachable, the
+`live_engine` fixture calls `pytest.fail()` (hard failure) instead of
+`pytest.skip()`.  This allows CI pipelines to gate on a live DB being
+available.  When unset, the default is skip for local convenience.
+
 ---
 
 ## Harness Architecture
 
 The proof uses a **live-DB hybrid** approach:
 
-- **Real routers** — all 9 business routers (orders, skus, inventory, pricing,
+- **Real routers** -- all 9 business routers (orders, skus, inventory, pricing,
   payments, retailers, dashboards, reports, exports) mounted on a real
   FastAPI app.
-- **Real `RequirePermission`** — production auth gate; super-admin bypass
+- **Real `RequirePermission`** -- production auth gate; super-admin bypass
   NOT triggered (admin role only).
-- **Real DB engine** — `create_async_engine(LIVE_DB_URL)` bound to the Docker
+- **Real DB engine** -- `create_async_engine(LIVE_DB_URL)` bound to the Docker
   PostgreSQL instance; `SET search_path TO "t_u1r1_test", public` applied
   per session.
-- **Near-real JWT middleware** — decodes the real
+- **Near-real JWT middleware** -- decodes the real
   `create_contextual_token()` JWT, attaches `AuthContext` +
   `TenantContext` to `request.state` exactly like production
   `AuthenticationMiddleware`.
-- **`session.info` propagation** — every session (middleware, public override,
+- **`session.info` propagation** -- every session (middleware, public override,
   reporting factory, async factory) carries `tenant_schema` + `tenant_id`
   so the ORM tenant filter is satisfied.
+- **Module-level patch save/restore** -- `ReportingSessionLocal` and
+  `AsyncSessionLocal` originals are saved before patching and restored on
+  fixture teardown, preventing contamination of other test modules.
 
-The harness auto-skips if the live DB is unreachable (`pytest.skip`), so it
-degrades gracefully in environments without Docker.
+When `S3B_REQUIRE_LIVE_DB` is unset (default), the harness auto-skips if the
+live DB is unreachable (`pytest.skip`), so it degrades gracefully in
+environments without Docker.  When `S3B_REQUIRE_LIVE_DB=1`, an unreachable
+DB is a hard failure (`pytest.fail`).
+
+---
+
+## Residual Limits
+
+This section documents what S3-B does NOT verify against real production
+code paths -- i.e., what remains near-real, synthetic, or deferred.
+
+| Aspect | S3-B status | Why | Target |
+|--------|-------------|-----|--------|
+| `/auth/login` endpoint | **NOT real** -- password verification skipped | JWT constructed directly via `create_contextual_token()` | S3-C |
+| `/auth/select-tenant` endpoint | **NOT real** -- user/roles/permissions loaded directly from DB | Avoids needing a real password in test | S3-C |
+| `AuthenticationMiddleware` | **NOT real** -- test middleware strips token decode and directly attaches `AuthContext` + `TenantContext` | Real middleware requires raw JWT in Authorization header + full decode chain; test middleware bypasses decode to focus on endpoint behaviour | S3-C |
+| Fresh tenant creation | **NOT real** -- tenant schema `t_u1r1_test` was bootstrapped before the test run | The test uses an existing prepared tenant; it does not create a schema or admin user itself | S3-C |
+| `create_contextual_token()` | **REAL** -- production function called with real DB data | Only password verification is skipped; the JWT structure, claims, and signing are production-identical | -- |
+| `RequirePermission` | **REAL** -- production decorator, no super_admin bypass | Admin role has 36 real permissions from live `role_permissions` table | -- |
+| ORM tenant filter | **REAL** -- `db/tenant_filter.py` live, `session.info` set | Same guard that runs on every production ORM query | -- |
+| DB connection | **REAL** -- live PostgreSQL, real `search_path`, real schema | Docker `mpango_postgres`, real `t_u1r1_test` schema with 15 tables | -- |
+| All business routers | **REAL** -- no router patches, no route overrides | 9 routers mounted as-is from production code | -- |
+
+### S3-C TODO
+
+S3-C will close the residual gaps above by:
+1. Creating a **unique fresh tenant schema** in the test (real bootstrap path).
+2. Creating a **fresh admin user** in that schema (real onboarding path).
+3. Calling the **real `/auth/select-tenant`** endpoint (or its full
+   middleware chain) to produce a JWT from the bootstrap flow.
+4. Running the same endpoint smoke matrix against the freshly-created tenant.
+
+Until S3-C is complete, S3-B is a **Prepared Live Tenant Proof**: it
+verifies that a PREVIOUSLY-bootstrapped tenant admin can access all core
+APIs on a live database with a near-real JWT and real (non-super_admin)
+permission checks.  It does NOT claim the full fresh-bootstrap lifecycle is
+verified.
 
 ---
 
 ## Key Findings
 
-1. **Fresh tenant admin can access all core APIs with no 403/500 on a live
+1. **Prepared tenant admin can access all core APIs with no 403/500 on a live
    DB.** The real `admin` role (36 permissions) passes every required
    `RequirePermission` check end-to-end, without the super-admin bypass.
 
@@ -250,17 +315,9 @@ degrades gracefully in environments without Docker.
 4. **No production code defects found.** All initial 500s were a test-harness
    gap (missing `session.info`), not an auth or endpoint bug.
 
-5. **Pricing 400 and Exports 404 are correct business empty-states** — not
+5. **Pricing 400 and Exports 404 are correct business empty-states** -- not
    auth failures. Their response bodies contain business messages, not auth
    error codes.
-
----
-
-## S3-C Production Fix Needed?
-
-**NO.** No production code defects were found. The fresh tenant admin runtime
-path is fully functional on a live database with a real (non-super_admin)
-role and a near-real JWT. No production code changes are required.
 
 ---
 
@@ -271,6 +328,4 @@ role and a near-real JWT. No production code changes are required.
 - No S4 work.
 - No production code changes.
 - Test-only addition (`backend/tests/test_s3b_fresh_tenant_live_runtime_proof.py`).
-- Temporary probe artifacts (`_s3b_matrix_probe.py`, `_s3b_out.txt`,
-  `_s3b_matrix_out.txt`, `_s3b_probe_out.txt`) are git-ignored / removed
-  before commit.
+- Temporary probe artifacts removed before commit.

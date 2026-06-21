@@ -1,7 +1,7 @@
 # Platform Real Worktree Smoke (P16-C)
 
 - **Branch:** codex/platform-p16c-real-worktree-smoke-2026-06-21
-- **Final feature branch HEAD:** see R1 section (pushed to origin)
+- **Final feature branch HEAD:** 65b65f73e0f36a947d81574230e8995fcb809127 <!-- pragma: allowlist secret -->
 - **Foundation commit:** e3d31e2 (smoke worker + tests + mission)
 - **Ledger commit:** 116007d (P16-C ledger); R1 commit adds the sanitized evidence + this update
 - **Base:** origin/platform-dev @ 31b2fc7 (not merged, not pushed)
@@ -48,6 +48,7 @@ temporary worktree, which the executor removed).
 - ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_mission.json - machine mission contract.
 - ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_mission.md - human mission.
 - ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke.md - this report.
+- ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_evidence.json - committed sanitized completion report (R1).
 
 ## Smoke worker contract
 
@@ -97,7 +98,7 @@ temporary worktree, which the executor removed).
 
 - The P16-C slice adds one new worker module + its tests + ledger/mission docs.
   No existing symbol is modified; impact analysis is N/A for net-new files.
-- detect_changes compare vs origin/platform-dev shows only the 5 new files, all
+- detect_changes compare vs origin/platform-dev shows only the 6 new files, all
   under scripts/ and ai-ledger/platform/. No product/backend/frontend/auth path.
 - Risk: MEDIUM (harness-only). MEDIUM because the worktree executor is the
   load-bearing control plane that turns human relay into automated execution, so

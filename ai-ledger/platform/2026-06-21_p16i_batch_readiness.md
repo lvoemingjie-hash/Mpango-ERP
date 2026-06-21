@@ -1,31 +1,45 @@
-# P16-I Batch Readiness Packet
+# P16-I-R1 Batch Readiness Packet (Evidence Accuracy Fix)
 
 Branch: codex/platform-p16efghi-worktree-harness-closeout-2026-06-21
 Base: origin/platform-dev (short f98e637)
-Date: 2026-06-21
+Final HEAD: 0ce6dbf8846d63453ccea3933dfad7faf0cdf04a pragma: allowlist secret
+Date: 2026-06-22
 Merge target: none (isolated branch; not merged to platform-dev)
 
-## Commit chain (oldest first)
+## Commit chain (5, oldest first)
 
 1. P16-E artifact lifecycle report sanitization
 2. P16-F queue resume retry contract
 3. P16-G CTO review packet generator
 4. P16-H end to end harness trial
+5. P16-I batch readiness packet
 
-The machine-readable CTO review packet is 2026-06-21_p16i_review_packet.json
-(branch, commit subjects, modified files, forbidden audit, risk).
+## Modified files (15)
 
-## Slice summary
+All under scripts/ and ai-ledger/platform/:
+- scripts/platform_worktree_executor.py
+- scripts/platform_worktree_batch_runner.py
+- scripts/platform_worktree_review_packet.py
+- scripts/platform_p16h_trial.py
+- scripts/test_platform_worktree_executor.py
+- scripts/test_platform_worktree_batch_runner.py
+- scripts/test_platform_worktree_review_packet.py
+- ai-ledger/platform/2026-06-21_p16e_artifact_lifecycle.md
+- ai-ledger/platform/2026-06-21_p16f_queue_resume_retry.md
+- ai-ledger/platform/2026-06-21_p16g_cto_review_packet.md
+- ai-ledger/platform/2026-06-21_p16h_end_to_end_trial.md
+- ai-ledger/platform/2026-06-21_p16h_trial_batch_report.json
+- ai-ledger/platform/2026-06-21_p16h_trial_proofs.json
+- ai-ledger/platform/2026-06-21_p16i_batch_readiness.md
+- ai-ledger/platform/2026-06-21_p16i_review_packet.json
 
-- P16-E: executor reports are sanitized so no 40-char hex run reaches disk;
-  batch runner gains a keep_reports option and a sanitize_report_file helper.
-- P16-F: queue resume and retry contract; statuses pending, passed, retried,
-  failed, skipped; max_retries and resume_from; aggregate stays failed when any
-  required mission fails.
-- P16-G: new platform_worktree_review_packet.py builds a CTO review packet.
-- P16-H: end-to-end trial proves success, controlled failure, retry-then-pass,
-  resume, sanitized evidence, and automatic cleanup; executor switched to
-  git worktree add -B so retries are idempotent.
+## Risk: HIGH (harness-only)
+
+HIGH reflects the worktree execution harness control plane (executor, batch
+runner, review packet generator, trial), not product or runtime risk. The
+forbidden path audit passed, all platform tests pass, and detect-secrets passes.
+No backend, frontend, product, auth, RBAC, migration, payment, or session code
+is touched. The elevated level flags harness review attention only.
 
 ## Tests
 
@@ -36,32 +50,20 @@ The machine-readable CTO review packet is 2026-06-21_p16i_review_packet.json
 - test_platform_diff_auditor.py: unchanged from base
 - test_platform_agent_mission_gate.py: unchanged from base
 
-## Forbidden path audit
+## Forbidden path audit (this revision)
 
-All changes are under scripts/ and ai-ledger/platform/. No backend, frontend,
-migrations, product-dev-recovered, .github, or .claude paths touched. The review
-packet forbidden audit returns PASS.
+Only two P16-I evidence files change in this revision:
+- ai-ledger/platform/2026-06-21_p16i_batch_readiness.md
+- ai-ledger/platform/2026-06-21_p16i_review_packet.json
+Both are under ai-ledger/platform/. No scripts, tests, backend, frontend,
+migrations, product-dev-recovered, .github, or .claude paths are touched.
 
 ## detect-secrets
 
-pre-commit detect-secrets (baseline) passes on every committed file. Committed
-evidence uses symbolic refs, integer counts, and commit subjects instead of
-object ids; the one mandatory test fixture is marked pragma allowlist secret.
-
-## Risks and open limitations
-
-- The retry feature retries the whole mission (fresh worktree each attempt).
-  Workers that need cross-attempt state must persist it outside the worktree,
-  as the trial retry worker does via a marker file.
-- The risk assessor in the review packet treats any non-passed batch aggregate
-  as high risk; a batch that intentionally includes a controlled failure (like
-  the P16-H trial) should be read with that in mind.
-- Per-mission executor reports are sanitized to a 12-char short id; a 12-char
-  hex run can still be flagged by detect-secrets, so per-mission reports are not
-  committed (only the clean batch report is committed).
-- GitNexus analyze and detect_changes are run in the final validation step.
+pre-commit detect-secrets (baseline) passes on both changed files. The full
+final HEAD is recorded with a pragma allowlist secret marker so the 40-char run
+is permitted explicitly.
 
 ## Not merged
 
-This branch is pushed isolated only. platform-dev is not merged and no product
-branch is pushed.
+Isolated branch only. platform-dev is not merged and no product branch is pushed.

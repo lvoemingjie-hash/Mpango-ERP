@@ -691,5 +691,142 @@ class TestCLI(unittest.TestCase):
             self.assertEqual(data["failed"], 1)
 
 
+class TestReportSanitizationBatch(unittest.TestCase):
+    def _build(self, repo):
+        data = _mission(branch="codex/san-ok", worktree_dir="../wt-san-ok",
+                        worker_command=_success_worker_cmd("scripts/san_ok.txt"),
+                        expected_files=["scripts/san_ok.txt"],
+                        report="ai-ledger/platform/san_ok_report.json")
+        _write_json(os.path.join(repo, "ai-ledger", "platform", "ok.json"), data)
+        return _manifest(["ai-ledger/platform/ok.json"], "ai-ledger/platform/san_batch.json")
+
+    def test_per_mission_reports_have_no_full_sha(self):
+        import re as _re
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _setup_repo_with_ledger(tmp)
+            manifest = self._build(repo)
+            aggregate, payload = batch.run_batch(manifest, repo, execute=True)
+            self.assertEqual(aggregate, "passed")
+            rep = os.path.join(repo, "ai-ledger", "platform", "san_ok_report.json")
+            self.assertTrue(os.path.exists(rep))
+            with open(rep, encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertEqual(_re.findall(r"[0-9A-Fa-f]{40}", text), [])
+
+    def test_remove_reports_drops_per_mission_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _setup_repo_with_ledger(tmp)
+            manifest = self._build(repo)
+            aggregate, payload = batch.run_batch(manifest, repo, execute=True, keep_reports=False)
+            self.assertEqual(aggregate, "passed")
+            rep = os.path.join(repo, "ai-ledger", "platform", "san_ok_report.json")
+            self.assertFalse(os.path.exists(rep))
+            self.assertEqual(payload.get("keep_reports"), False)
+            self.assertIn("ai-ledger/platform/san_ok_report.json", payload.get("removed_reports", []))
+            batch_rep = os.path.join(repo, "ai-ledger", "platform", "san_batch.json")
+            self.assertTrue(os.path.exists(batch_rep))
+
+class TestRetryResumeContract(unittest.TestCase):
+    def _stub(self, mp, verdict, failure=None):
+        return {"mission": batch.exe.normalize_path(mp), "mode": "execute",
+                "verdict": verdict, "report": "ai-ledger/platform/r.json",
+                "changed_files": 0 if verdict == "passed" else None,
+                "failure": failure, "attempts": 1, "resumed": False}
+
+    def test_statuses_vocabulary(self):
+        self.assertEqual(set(batch.STATUSES), {"pending", "passed", "retried", "failed", "skipped"})
+        self.assertEqual(set(batch.SUCCESS_STATUSES), {"passed", "retried"})
+
+    def test_retry_eventual_pass_is_retried(self):
+        calls = {"n": 0}
+        def fake(mp, repo, execute):
+            calls["n"] += 1
+            return self._stub(mp, "failed" if calls["n"] == 1 else "passed", "boom")
+        orig = batch.run_mission
+        batch.run_mission = fake
+        try:
+            res = batch.run_mission_with_retries("ai-ledger/platform/x.json", "/tmp/r", True, 2)
+        finally:
+            batch.run_mission = orig
+        self.assertEqual(res["verdict"], "retried")
+        self.assertEqual(res["attempts"], 2)
+
+    def test_retry_exhausts_to_failed(self):
+        orig = batch.run_mission
+        batch.run_mission = lambda mp, repo, execute: self._stub(mp, "failed", "boom")
+        try:
+            res = batch.run_mission_with_retries("ai-ledger/platform/x.json", "/tmp/r", True, 1)
+        finally:
+            batch.run_mission = orig
+        self.assertEqual(res["verdict"], "failed")
+        self.assertEqual(res["attempts"], 2)
+
+    def test_no_retry_single_attempt(self):
+        orig = batch.run_mission
+        batch.run_mission = lambda mp, repo, execute: self._stub(mp, "passed")
+        try:
+            res = batch.run_mission_with_retries("ai-ledger/platform/x.json", "/tmp/r", True, 0)
+        finally:
+            batch.run_mission = orig
+        self.assertEqual(res["verdict"], "passed")
+        self.assertEqual(res["attempts"], 1)
+
+    def test_load_resume_state_only_carries_successes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            prior = os.path.join(tmp, "prior.json")
+            _write_json(prior, {"missions": [
+                {"mission": "ai-ledger/platform/a.json", "verdict": "passed"},
+                {"mission": "ai-ledger/platform/b.json", "verdict": "retried"},
+                {"mission": "ai-ledger/platform/c.json", "verdict": "failed"},
+                {"mission": "ai-ledger/platform/d.json", "verdict": "pending"},
+                {"mission": "ai-ledger/platform/e.json", "verdict": "skipped"}]})
+            done = batch.load_resume_state(prior, tmp)
+        self.assertEqual(done, {"ai-ledger/platform/a.json": "passed", "ai-ledger/platform/b.json": "retried"})
+
+    def test_resume_carries_forward_passed_mission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _setup_repo_with_ledger(tmp)
+            for nm in ("p.json", "q.json"):
+                stem = nm.replace(".", "")
+                data = _mission(branch="codex/res-" + stem, worktree_dir="../wt-res-" + stem,
+                                worker_command=_success_worker_cmd("scripts/" + stem + ".txt"),
+                                expected_files=["scripts/" + stem + ".txt"],
+                                report="ai-ledger/platform/" + stem + "_rep.json")
+                _write_json(os.path.join(repo, "ai-ledger", "platform", nm), data)
+            manifest = _manifest(["ai-ledger/platform/p.json", "ai-ledger/platform/q.json"],
+                                 "ai-ledger/platform/resume_batch.json")
+            prior_path = os.path.join(repo, "ai-ledger", "platform", "prior.json")
+            _write_json(prior_path, {"missions": [{"mission": "ai-ledger/platform/p.json", "verdict": "passed"}]})
+            called = []
+            orig = batch.run_mission
+            def fake(mp, repo2, execute):
+                called.append(mp)
+                return orig(mp, repo2, execute)
+            batch.run_mission = fake
+            try:
+                agg, payload = batch.run_batch(manifest, repo, execute=True, resume_from=prior_path)
+            finally:
+                batch.run_mission = orig
+            self.assertEqual(agg, "passed")
+            self.assertEqual(called, ["ai-ledger/platform/q.json"])
+            self.assertTrue(payload["missions"][0]["resumed"])
+            self.assertEqual(payload["missions"][0]["verdict"], "passed")
+            self.assertTrue(payload["resumed"])
+
+    def test_aggregate_fails_when_required_mission_fails_after_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _setup_repo_with_ledger(tmp)
+            data = _mission(branch="codex/agg-fail", worktree_dir="../wt-agg-fail",
+                            worker_command=_exit_worker_cmd(2),
+                            expected_files=["scripts/agg_fail.txt"],
+                            report="ai-ledger/platform/agg_fail_rep.json")
+            _write_json(os.path.join(repo, "ai-ledger", "platform", "agg.json"), data)
+            manifest = _manifest(["ai-ledger/platform/agg.json"], "ai-ledger/platform/agg_batch.json")
+            agg, payload = batch.run_batch(manifest, repo, execute=True, max_retries=2, continue_on_failure=True)
+        self.assertEqual(agg, "failed")
+        self.assertEqual(payload["missions"][0]["verdict"], "failed")
+        self.assertEqual(payload["missions"][0]["attempts"], 3)
+        self.assertEqual(payload["max_retries"], 2)
+
 if __name__ == "__main__":
     unittest.main()

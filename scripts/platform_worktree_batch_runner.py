@@ -49,6 +49,9 @@ LEDGER_PREFIX = exe.LEDGER_PREFIX  # "ai-ledger/platform/"
 REQUIRED_MANIFEST_KEYS = ["phase", "missions", "report"]
 OPTIONAL_MANIFEST_KEYS = ["notes"]
 
+STATUSES = ("pending", "passed", "retried", "failed", "skipped")
+SUCCESS_STATUSES = ("passed", "retried")
+
 
 # ---------------------------------------------------------------------------
 # Manifest path safety (mirrors the executor's report-path rules)
@@ -175,6 +178,8 @@ def run_mission(mission_path, repo_path, execute):
         "report": None,
         "changed_files": None,
         "failure": None,
+        "attempts": 1,
+        "resumed": False,
     }
 
     # 1. Parse the mission file.
@@ -216,7 +221,57 @@ def _skipped_result(mission_path, execute, reason):
         "report": None,
         "changed_files": None,
         "failure": reason,
+        "attempts": 0,
+        "resumed": False,
     }
+
+
+def run_mission_with_retries(mission_path, repo, execute, max_retries):
+    attempts = 0
+    res = None
+    while True:
+        attempts += 1
+        res = run_mission(mission_path, repo, execute)
+        if res["verdict"] == "passed":
+            break
+        if attempts > max_retries:
+            break
+    res["attempts"] = attempts
+    if res["verdict"] == "passed" and attempts > 1:
+        res["verdict"] = "retried"
+    return res
+
+
+def _resumed_result(mission_path, execute, prior_verdict):
+    return {
+        "mission": exe.normalize_path(mission_path),
+        "mode": "execute" if execute else "dry-run",
+        "verdict": prior_verdict,
+        "report": None,
+        "changed_files": None,
+        "failure": None,
+        "attempts": 0,
+        "resumed": True,
+    }
+
+
+def load_resume_state(resume_from, repo):
+    if not resume_from:
+        return {}
+    p = Path(resume_from)
+    if not p.is_absolute():
+        p = Path(repo) / exe.normalize_path(str(resume_from))
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return {}
+    done = {}
+    for m in data.get("missions", []):
+        if m.get("verdict") in SUCCESS_STATUSES:
+            done[exe.normalize_path(m.get("mission", ""))] = m.get("verdict")
+    return done
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +279,8 @@ def _skipped_result(mission_path, execute, reason):
 # ---------------------------------------------------------------------------
 
 def run_batch(manifest, repo_path, execute=False, continue_on_failure=False,
-              write_report=True):
+              write_report=True, keep_reports=True, max_retries=0,
+              resume_from=None):
     """Run all missions in order through the executor.
 
     Returns (aggregate_verdict, payload). aggregate_verdict is ``passed`` only
@@ -237,12 +293,17 @@ def run_batch(manifest, repo_path, execute=False, continue_on_failure=False,
     results = []
     aggregate = "passed"
     stopped_early = False
+    resume_done = load_resume_state(resume_from, repo)
 
     for idx, mission_path in enumerate(missions):
-        res = run_mission(mission_path, repo, execute)
+        norm = exe.normalize_path(mission_path)
+        if norm in resume_done:
+            results.append(_resumed_result(mission_path, execute, resume_done[norm]))
+            continue
+        res = run_mission_with_retries(mission_path, repo, execute, max_retries)
         results.append(res)
 
-        if res["verdict"] != "passed":
+        if res["verdict"] not in SUCCESS_STATUSES:
             aggregate = "failed"
             if not continue_on_failure:
                 # stop-on-first-failure: record the rest as skipped and stop.
@@ -256,8 +317,22 @@ def run_batch(manifest, repo_path, execute=False, continue_on_failure=False,
                 break
 
     payload = build_batch_payload(
-        manifest, results, mode, continue_on_failure, aggregate, stopped_early
+        manifest, results, mode, continue_on_failure, aggregate, stopped_early,
+        max_retries=max_retries, resume_from=resume_from,
     )
+    per_mission_reports = [r["report"] for r in results if r.get("report")]
+    for rp in per_mission_reports:
+        sanitize_report_file(rp, repo)
+    payload["keep_reports"] = bool(keep_reports)
+    removed = []
+    if not keep_reports:
+        for rp in per_mission_reports:
+            tgt = repo / exe.normalize_path(rp)
+            if tgt.exists():
+                tgt.unlink()
+                removed.append(exe.normalize_path(rp))
+    if removed:
+        payload["removed_reports"] = sorted(removed)
     write_issue = None
     if write_report:
         _, write_issue = write_batch_report(manifest["report"], payload, repo)
@@ -267,9 +342,10 @@ def run_batch(manifest, repo_path, execute=False, continue_on_failure=False,
 
 
 def build_batch_payload(manifest, results, mode, continue_on_failure,
-                        aggregate, stopped_early):
+                        aggregate, stopped_early, max_retries=0,
+                        resume_from=None):
     """Assemble the batch report payload (no 40-char SHAs by construction)."""
-    counts = {"passed": 0, "failed": 0, "skipped": 0}
+    counts = {"passed": 0, "failed": 0, "skipped": 0, "retried": 0}
     ordered = []
     for i, res in enumerate(results):
         entry = {
@@ -280,6 +356,8 @@ def build_batch_payload(manifest, results, mode, continue_on_failure,
             "report": res["report"],
             "changed_files": res["changed_files"],
             "failure": res["failure"],
+            "attempts": res.get("attempts"),
+            "resumed": res.get("resumed", False),
         }
         if entry["verdict"] in counts:
             counts[entry["verdict"]] += 1
@@ -294,8 +372,11 @@ def build_batch_payload(manifest, results, mode, continue_on_failure,
         "stopped_early": stopped_early,
         "total_missions": len(manifest["missions"]),
         "passed": counts["passed"],
+        "retried": counts["retried"],
         "failed": counts["failed"],
         "skipped": counts["skipped"],
+        "max_retries": max_retries,
+        "resumed": any(r.get("resumed") for r in results),
         "report": exe.normalize_path(manifest["report"]),
         "missions": ordered,
         "notes": manifest.get("notes"),
@@ -318,6 +399,23 @@ def write_batch_report(report_path, payload, repo_path):
         return None, f"report {report_path} resolves outside {LEDGER_PREFIX}"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return str(target), None
+
+
+def sanitize_report_file(report_path, repo_path):
+    issue = validate_batch_report_path(report_path)
+    if issue:
+        return None, issue
+    repo = Path(repo_path).resolve()
+    target = repo / exe.normalize_path(report_path)
+    if not target.exists():
+        return None, None
+    try:
+        target.resolve().relative_to(repo / LEDGER_PREFIX)
+    except ValueError:
+        return None, "report resolves outside ledger"
+    text = target.read_text(encoding="utf-8")
+    target.write_text(exe.shorten_shas(text), encoding="utf-8")
     return str(target), None
 
 
@@ -357,6 +455,20 @@ def main(argv=None):
     parser.add_argument(
         "--continue-on-failure", action="store_true",
         help="Run remaining missions after a failure; aggregate still fails",
+    )
+    parser.add_argument(
+        "--remove-reports", action="store_true",
+        help="Drop per-mission executor reports after the batch (only the "
+             "clean batch report remains)",
+    )
+    parser.add_argument(
+        "--max-retries", type=int, default=0,
+        help="Re-run a failed mission up to N extra times before giving up",
+    )
+    parser.add_argument(
+        "--resume-from",
+        help="Path to a prior batch report; missions that passed there are "
+             "carried forward and not re-run",
     )
     args = parser.parse_args(argv)
 
@@ -408,6 +520,9 @@ def main(argv=None):
         execute=execute,
         continue_on_failure=args.continue_on_failure,
         write_report=True,
+        keep_reports=not args.remove_reports,
+        max_retries=args.max_retries,
+        resume_from=args.resume_from,
     )
 
     for entry in payload["missions"]:

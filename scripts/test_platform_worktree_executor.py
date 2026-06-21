@@ -366,5 +366,35 @@ class TestImmutableBaseShaAudit(unittest.TestCase):
             self.assertIn("base_ref", report)
 
 
+class TestReportShaSanitization(unittest.TestCase):
+    def test_shorten_shas_truncates_full_hex(self):
+        full = "f98e637f4563b47c0f5f0e01e2322e6cdf8bc4b4"  # pragma: allowlist secret
+        out = exe.shorten_shas("base=" + full)
+        self.assertNotIn(full, out)
+        self.assertIn(full[:12], out)
+
+    def test_shorten_shas_keeps_short_hex(self):
+        short = "f98e637f4563"  # pragma: allowlist secret
+        self.assertEqual(exe.shorten_shas("v=" + short), "v=" + short)
+
+    def test_written_report_has_no_full_object_sha(self):
+        import re as _re
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _make_repo(tmp)
+            worker = os.path.join(tmp, "wk.py")
+            with open(worker, "w", encoding="utf-8") as fh:
+                fh.write("open(" + chr(34) + "out.txt" + chr(34) + ", " + chr(34) + "w" + chr(34) + ").write(" + chr(34) + "x" + chr(34) + ")")
+            mission = dict(VALID_MISSION)
+            mission["worker_command"] = [sys.executable, worker]
+            mission["expected_files"] = ["out.txt"]
+            mission["report"] = "ai-ledger/platform/san_check.json"
+            verdict, payload = exe.execute(mission, repo, write_completion=True)
+            self.assertEqual(verdict, "passed", payload)
+            with open(os.path.join(repo, mission["report"]), encoding="utf-8") as fh:
+                text = fh.read()
+        self.assertEqual(_re.findall(r"[0-9A-Fa-f]{40}", text), [])
+        self.assertIsNotNone(payload.get("base_sha"))
+        self.assertTrue(0 < len(payload.get("base_sha")) < 40)
+
 if __name__ == "__main__":
     unittest.main()

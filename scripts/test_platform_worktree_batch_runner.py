@@ -691,5 +691,40 @@ class TestCLI(unittest.TestCase):
             self.assertEqual(data["failed"], 1)
 
 
+class TestReportSanitizationBatch(unittest.TestCase):
+    def _build(self, repo):
+        data = _mission(branch="codex/san-ok", worktree_dir="../wt-san-ok",
+                        worker_command=_success_worker_cmd("scripts/san_ok.txt"),
+                        expected_files=["scripts/san_ok.txt"],
+                        report="ai-ledger/platform/san_ok_report.json")
+        _write_json(os.path.join(repo, "ai-ledger", "platform", "ok.json"), data)
+        return _manifest(["ai-ledger/platform/ok.json"], "ai-ledger/platform/san_batch.json")
+
+    def test_per_mission_reports_have_no_full_sha(self):
+        import re as _re
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _setup_repo_with_ledger(tmp)
+            manifest = self._build(repo)
+            aggregate, payload = batch.run_batch(manifest, repo, execute=True)
+            self.assertEqual(aggregate, "passed")
+            rep = os.path.join(repo, "ai-ledger", "platform", "san_ok_report.json")
+            self.assertTrue(os.path.exists(rep))
+            with open(rep, encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertEqual(_re.findall(r"[0-9A-Fa-f]{40}", text), [])
+
+    def test_remove_reports_drops_per_mission_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _setup_repo_with_ledger(tmp)
+            manifest = self._build(repo)
+            aggregate, payload = batch.run_batch(manifest, repo, execute=True, keep_reports=False)
+            self.assertEqual(aggregate, "passed")
+            rep = os.path.join(repo, "ai-ledger", "platform", "san_ok_report.json")
+            self.assertFalse(os.path.exists(rep))
+            self.assertEqual(payload.get("keep_reports"), False)
+            self.assertIn("ai-ledger/platform/san_ok_report.json", payload.get("removed_reports", []))
+            batch_rep = os.path.join(repo, "ai-ledger", "platform", "san_batch.json")
+            self.assertTrue(os.path.exists(batch_rep))
+
 if __name__ == "__main__":
     unittest.main()

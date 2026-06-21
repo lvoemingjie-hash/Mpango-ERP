@@ -29,6 +29,7 @@ Design invariants (enforced here and by the test suite):
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,17 @@ LEDGER_PREFIX = "ai-ledger/platform/"
 
 # Default worker timeout cap matches platform_agent_mission_gate (12 hours).
 MAX_TIMEOUT_SECONDS = 43200
+
+SHA40_RE = re.compile(r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{40}(?![0-9A-Fa-f])")
+SHORT_SHA_LEN = 12
+
+
+def shorten_shas(text):
+    return SHA40_RE.sub(lambda m: m.group(0)[:SHORT_SHA_LEN], text)
+
+
+def sanitize_payload(payload):
+    return json.loads(shorten_shas(json.dumps(payload, indent=2)))
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +433,7 @@ def run_worker(command, cwd, timeout):
 
 def build_report(mission, verdict, details):
     audit = details.get("audit") or {}
-    return {
+    payload = {
         "phase": mission.get("phase"),
         "branch": mission.get("branch"),
         "base_ref": mission.get("base_ref"),
@@ -433,6 +445,7 @@ def build_report(mission, verdict, details):
         "changed_files": audit.get("total", 0),
         "details": details,
     }
+    return sanitize_payload(payload)
 
 
 def write_report(report_path, payload, repo_path):

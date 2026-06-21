@@ -224,7 +224,7 @@ def _skipped_result(mission_path, execute, reason):
 # ---------------------------------------------------------------------------
 
 def run_batch(manifest, repo_path, execute=False, continue_on_failure=False,
-              write_report=True):
+              write_report=True, keep_reports=True):
     """Run all missions in order through the executor.
 
     Returns (aggregate_verdict, payload). aggregate_verdict is ``passed`` only
@@ -258,6 +258,19 @@ def run_batch(manifest, repo_path, execute=False, continue_on_failure=False,
     payload = build_batch_payload(
         manifest, results, mode, continue_on_failure, aggregate, stopped_early
     )
+    per_mission_reports = [r["report"] for r in results if r.get("report")]
+    for rp in per_mission_reports:
+        sanitize_report_file(rp, repo)
+    payload["keep_reports"] = bool(keep_reports)
+    removed = []
+    if not keep_reports:
+        for rp in per_mission_reports:
+            tgt = repo / exe.normalize_path(rp)
+            if tgt.exists():
+                tgt.unlink()
+                removed.append(exe.normalize_path(rp))
+    if removed:
+        payload["removed_reports"] = sorted(removed)
     write_issue = None
     if write_report:
         _, write_issue = write_batch_report(manifest["report"], payload, repo)
@@ -321,6 +334,23 @@ def write_batch_report(report_path, payload, repo_path):
     return str(target), None
 
 
+def sanitize_report_file(report_path, repo_path):
+    issue = validate_batch_report_path(report_path)
+    if issue:
+        return None, issue
+    repo = Path(repo_path).resolve()
+    target = repo / exe.normalize_path(report_path)
+    if not target.exists():
+        return None, None
+    try:
+        target.resolve().relative_to(repo / LEDGER_PREFIX)
+    except ValueError:
+        return None, "report resolves outside ledger"
+    text = target.read_text(encoding="utf-8")
+    target.write_text(exe.shorten_shas(text), encoding="utf-8")
+    return str(target), None
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -357,6 +387,11 @@ def main(argv=None):
     parser.add_argument(
         "--continue-on-failure", action="store_true",
         help="Run remaining missions after a failure; aggregate still fails",
+    )
+    parser.add_argument(
+        "--remove-reports", action="store_true",
+        help="Drop per-mission executor reports after the batch (only the "
+             "clean batch report remains)",
     )
     args = parser.parse_args(argv)
 
@@ -408,6 +443,7 @@ def main(argv=None):
         execute=execute,
         continue_on_failure=args.continue_on_failure,
         write_report=True,
+        keep_reports=not args.remove_reports,
     )
 
     for entry in payload["missions"]:

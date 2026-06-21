@@ -417,6 +417,7 @@ run_deterministic_validation_fallback() {
   local cmd=""
   local out_file=""
   local summary=""
+  local schema_skip_reasons="NONE"
   while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
     idx=$((idx + 1))
@@ -424,13 +425,18 @@ run_deterministic_validation_fallback() {
     if (cd "$VALIDATION_TARGET/backend" && bash -lc "$cmd") > "$out_file" 2>&1; then
       validation_passed=$((validation_passed + 1))
       executed=$((executed + 1))
-      summary="$(grep -E '([0-9]+ passed|[0-9]+ failed|[0-9]+ xfailed|u3d_scope_contract=pass|built in|PASS)' "$out_file" | tail -3 | tr '\n' ';' | sed 's/[[:space:]]*$//')"
+      summary="$(grep -E '([0-9]+ passed|[0-9]+ failed|[0-9]+ skipped|[0-9]+ xfailed|u3d_scope_contract=pass|built in|PASS)' "$out_file" | tail -3 | tr '\n' ';' | sed 's/[[:space:]]*$//')"
       [ -z "$summary" ] && summary="passed"
       case "$idx" in
-        1) EVIDENCE_APP_IMPORT="u3d_frontend_tests=passed; frontend_build=passed" ;;
-        2) EVIDENCE_RECEIVABLES="u3_import_regression=passed; ${summary}" ;;
+        1) EVIDENCE_APP_IMPORT="u3c_s4_combined=${summary}" ;;
+        2) EVIDENCE_RECEIVABLES="inventory_selection=${summary}" ;;
         3) EVIDENCE_PHASE5_PAYMENT="$summary" ;;
-        4) EVIDENCE_SCHEMA_CONTRACT="u3d_scope_contract=pass 11 files 0 skipped 0 failed" ;;
+        4)
+          EVIDENCE_SCHEMA_CONTRACT="s3c_live_fresh_tenant=${summary}"
+          if echo "$summary" | grep -qE '[1-9][0-9]* skipped'; then
+            schema_skip_reasons="S3-C live fresh tenant command reported skipped tests; inspect validation_4.log"
+          fi
+          ;;
       esac
     else
       failures=$((failures + 1))
@@ -447,7 +453,7 @@ run_deterministic_validation_fallback() {
   EVIDENCE_PREFLIGHT="${preflight_passed}/${PREFLIGHT_CMD_COUNT}"
   EVIDENCE_VALIDATION="${validation_passed}/${VALIDATION_CMD_COUNT}"
   EVIDENCE_COMMANDS="${executed}/${TOTAL_CMD_COUNT}"
-  EVIDENCE_SCHEMA_SKIP_REASONS="NONE"
+  EVIDENCE_SCHEMA_SKIP_REASONS="$schema_skip_reasons"
 
   status_output="$(git -C "$VALIDATION_TARGET" status --short 2>/dev/null || true)"
   if [ -z "$status_output" ]; then

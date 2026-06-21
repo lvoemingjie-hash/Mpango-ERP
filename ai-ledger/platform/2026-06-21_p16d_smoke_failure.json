@@ -1,0 +1,18 @@
+{
+  "phase": "P16-D",
+  "branch": "codex/platform-p16d-smoke-failure-2026-06-21",
+  "base_ref": "HEAD",
+  "worktree_dir": "../platform-p16d-smoke-failure-2026-06-21",
+  "worker_command": [
+    "python",
+    "-c",
+    "import sys; print('p16d controlled failure probe'); sys.exit(2)"
+  ],
+  "expected_files": [
+    "scripts/p16d_smoke_failure_probe.json"
+  ],
+  "report": "ai-ledger/platform/2026-06-21_p16d_smoke_failure_report.json",
+  "timeout_seconds": 600,
+  "allow_edits": true,
+  "notes": "P16-D batch smoke mission B (controlled failure). The worker exits non-zero immediately without writing its expected output. This is a valid mission contract (so dry-run passes) that fails at execution, exercising the executor's never-swallow-worker-failure contract and the batch runner's stop-on-first-failure + failed-aggregate invariants."
+}

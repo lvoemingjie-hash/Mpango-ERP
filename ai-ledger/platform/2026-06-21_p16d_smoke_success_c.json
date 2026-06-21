@@ -1,0 +1,19 @@
+{
+  "phase": "P16-D",
+  "branch": "codex/platform-p16d-smoke-success-c-2026-06-21",
+  "base_ref": "HEAD",
+  "worktree_dir": "../platform-p16d-smoke-success-c-2026-06-21",
+  "worker_command": [
+    "python",
+    "scripts/platform_worktree_smoke_worker.py",
+    "--output",
+    "scripts/p16d_smoke_success_c_output.json"
+  ],
+  "expected_files": [
+    "scripts/p16d_smoke_success_c_output.json"
+  ],
+  "report": "ai-ledger/platform/2026-06-21_p16d_smoke_success_c_report.json",
+  "timeout_seconds": 600,
+  "allow_edits": true,
+  "notes": "P16-D batch smoke mission C (second success, uncommitted output). Under stop-on-first-failure this mission is SKIPPED because mission B failed first; under --continue-on-failure it runs and passes. Together with A and B it demonstrates the skip-vs-run and aggregate-verdict behavior."
+}

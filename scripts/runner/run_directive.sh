@@ -425,7 +425,7 @@ run_deterministic_validation_fallback() {
     if (cd "$VALIDATION_TARGET/backend" && bash -lc "$cmd") > "$out_file" 2>&1; then
       validation_passed=$((validation_passed + 1))
       executed=$((executed + 1))
-      summary="$(grep -E '([0-9]+ passed|[0-9]+ failed|[0-9]+ skipped|[0-9]+ xfailed|u3d_scope_contract=pass|built in|PASS)' "$out_file" | tail -3 | tr '\n' ';' | sed 's/[[:space:]]*$//')"
+      summary="$(grep -E '(SKIPPED|XFAIL|XPASS|[0-9]+ passed|[0-9]+ failed|[0-9]+ skipped|[0-9]+ xfailed|u3d_scope_contract=pass|built in|PASS)' "$out_file" | tail -5 | tr '\n' ';' | sed 's/[[:space:]]*$//')"
       [ -z "$summary" ] && summary="passed"
       case "$idx" in
         1) EVIDENCE_APP_IMPORT="u3c_s4_combined=${summary}" ;;

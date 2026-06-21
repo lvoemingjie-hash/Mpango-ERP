@@ -2,15 +2,19 @@
   "evidence_kind": "platform_cto_review_packet",
   "branch": "codex/platform-p16efghi-worktree-harness-closeout-2026-06-21",
   "base_ref": "origin/platform-dev",
-  "head": "0ce6dbf8846d63453ccea3933dfad7faf0cdf04a pragma: allowlist secret",
-  "commits": [
-    "docs(platform): P16-I batch readiness packet",
-    "feat(platform): P16-H end to end harness trial",
-    "feat(platform): P16-G CTO review packet generator",
-    "feat(platform): P16-F queue resume retry contract",
-    "feat(platform): P16-E artifact lifecycle report sanitization"
-  ],
-  "commit_count": 5,
+  "commits": {
+    "delivery": [
+      "feat(platform): P16-E artifact lifecycle report sanitization",
+      "feat(platform): P16-F queue resume retry contract",
+      "feat(platform): P16-G CTO review packet generator",
+      "feat(platform): P16-H end to end harness trial",
+      "docs(platform): P16-I batch readiness packet"
+    ],
+    "evidence_polish": [
+      "docs(platform): P16-I-R1 evidence accuracy fix",
+      "docs(platform): P16-I-R2 evidence head clarification"
+    ]
+  },
   "modified_files": [
     "ai-ledger/platform/2026-06-21_p16e_artifact_lifecycle.md",
     "ai-ledger/platform/2026-06-21_p16f_queue_resume_retry.md",
@@ -38,12 +42,28 @@
   "gitnexus_summary": null,
   "test_results": null,
   "risk": {
-    "level": "high",
-    "scope": "harness-only",
-    "reasons": [
-      "HIGH reflects the worktree execution harness control plane (executor, batch runner, review packet, trial), not product or runtime risk",
-      "forbidden path audit passed; all platform tests pass; detect-secrets passes",
-      "no backend, frontend, product, auth, RBAC, migration, payment, or session code is touched"
-    ]
-  }
+    "full_branch": {
+      "level": "high",
+      "scope": "harness-only",
+      "reasons": [
+        "worktree execution harness control plane (executor, batch runner, review packet, trial); not product or runtime risk",
+        "forbidden path audit passed; all platform tests pass; detect-secrets passes"
+      ]
+    },
+    "r2_delta": {
+      "level": "low",
+      "scope": "docs-only",
+      "reasons": [
+        "R2 edits only two P16-I evidence files under ai-ledger/platform/",
+        "no scripts, tests, or runtime code changed"
+      ]
+    }
+  },
+  "implementation_head": "0ce6dbf",
+  "r1_evidence_fix_head": "9cccea2",
+  "heads_note": "implementation_head is the P16 delivery tip (E/F/G/H/I). r1_evidence_fix_head is the R1 evidence-accuracy commit. R2 (this commit) advances the branch tip; its short SHA is reported post-commit since a commit cannot contain its own SHA.",
+  "delivery_commit_count": 5,
+  "evidence_polish_commit_count": 2,
+  "total_commits_vs_base": 7,
+  "modified_file_count": 15
 }

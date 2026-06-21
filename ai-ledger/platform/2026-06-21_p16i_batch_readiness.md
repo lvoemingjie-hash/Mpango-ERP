@@ -1,68 +1,43 @@
-# P16-I-R1 Batch Readiness Packet (Evidence Accuracy Fix)
+# P16-I-R2 Evidence Head Clarification
 
 Branch: codex/platform-p16efghi-worktree-harness-closeout-2026-06-21
 Base: origin/platform-dev (short f98e637)
-Final HEAD: 0ce6dbf8846d63453ccea3933dfad7faf0cdf04a pragma: allowlist secret
 Date: 2026-06-22
 Merge target: none (isolated branch; not merged to platform-dev)
 
-## Commit chain (5, oldest first)
+## Heads (clarified)
 
-1. P16-E artifact lifecycle report sanitization
-2. P16-F queue resume retry contract
-3. P16-G CTO review packet generator
-4. P16-H end to end harness trial
-5. P16-I batch readiness packet
+This revision stops calling any single SHA the Final HEAD and distinguishes the
+stable heads from the moving branch tip:
+
+- implementation_head: 0ce6dbf  (P16 delivery tip: E/F/G/H/I)
+- r1_evidence_fix_head: 9cccea2  (R1 evidence accuracy fix)
+- branch tip after R2: reported post-commit (a commit cannot contain its own SHA)
+
+Heads use 7-char git short SHAs so they are machine-readable and pass
+detect-secrets with no pragma marker (12-char short SHAs trip the
+HexHighEntropyString detector, so 7-char git-abbreviated SHAs are used).
+
+## Commit chain vs origin/platform-dev
+
+- P16 delivery commits: 5 (E/F/G/H/I), up to implementation_head 0ce6dbf
+- Evidence polish commits: 2 (R1 9cccea2, R2 this commit)
+- Total branch commits vs origin/platform-dev: 7
 
 ## Modified files (15)
 
-All under scripts/ and ai-ledger/platform/:
-- scripts/platform_worktree_executor.py
-- scripts/platform_worktree_batch_runner.py
-- scripts/platform_worktree_review_packet.py
-- scripts/platform_p16h_trial.py
-- scripts/test_platform_worktree_executor.py
-- scripts/test_platform_worktree_batch_runner.py
-- scripts/test_platform_worktree_review_packet.py
-- ai-ledger/platform/2026-06-21_p16e_artifact_lifecycle.md
-- ai-ledger/platform/2026-06-21_p16f_queue_resume_retry.md
-- ai-ledger/platform/2026-06-21_p16g_cto_review_packet.md
-- ai-ledger/platform/2026-06-21_p16h_end_to_end_trial.md
-- ai-ledger/platform/2026-06-21_p16h_trial_batch_report.json
-- ai-ledger/platform/2026-06-21_p16h_trial_proofs.json
-- ai-ledger/platform/2026-06-21_p16i_batch_readiness.md
-- ai-ledger/platform/2026-06-21_p16i_review_packet.json
+All under scripts/ and ai-ledger/platform/ (full list in the companion JSON).
+This R2 revision itself changes only the two P16-I evidence files.
 
-## Risk: HIGH (harness-only)
+## Risk
 
-HIGH reflects the worktree execution harness control plane (executor, batch
-runner, review packet generator, trial), not product or runtime risk. The
-forbidden path audit passed, all platform tests pass, and detect-secrets passes.
-No backend, frontend, product, auth, RBAC, migration, payment, or session code
-is touched. The elevated level flags harness review attention only.
-
-## Tests
-
-- test_platform_worktree_executor.py: 42 passed
-- test_platform_worktree_batch_runner.py: 47 passed
-- test_platform_worktree_review_packet.py: 5 passed
-- test_platform_worktree_smoke_worker.py: unchanged from base
-- test_platform_diff_auditor.py: unchanged from base
-- test_platform_agent_mission_gate.py: unchanged from base
-
-## Forbidden path audit (this revision)
-
-Only two P16-I evidence files change in this revision:
-- ai-ledger/platform/2026-06-21_p16i_batch_readiness.md
-- ai-ledger/platform/2026-06-21_p16i_review_packet.json
-Both are under ai-ledger/platform/. No scripts, tests, backend, frontend,
-migrations, product-dev-recovered, .github, or .claude paths are touched.
-
-## detect-secrets
-
-pre-commit detect-secrets (baseline) passes on both changed files. The full
-final HEAD is recorded with a pragma allowlist secret marker so the 40-char run
-is permitted explicitly.
+- Full branch risk: HIGH (harness-only). Reflects the worktree execution
+  harness control plane (executor, batch runner, review packet, trial), not
+  product or runtime risk. Forbidden path audit passed, all platform tests pass,
+  detect-secrets passes. No backend, frontend, product, auth, RBAC, migration,
+  payment, or session code is touched.
+- R2 delta risk: LOW (docs-only). R2 edits only the two P16-I evidence files
+  under ai-ledger/platform/; no scripts, tests, or runtime code changed.
 
 ## Not merged
 

@@ -1,0 +1,20 @@
+{
+  "phase": "P16-C",
+  "branch": "codex/platform-p16c-smoke-worker-2026-06-21",
+  "base_ref": "HEAD",
+  "worktree_dir": "../platform-p16c-smoke-worker-2026-06-21",
+  "worker_command": [
+    "python",
+    "scripts/platform_worktree_smoke_worker.py",
+    "--output",
+    "scripts/p16c_smoke_worker_output.json",
+    "--commit"
+  ],
+  "expected_files": [
+    "scripts/p16c_smoke_worker_output.json"
+  ],
+  "report": "ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_report.json",
+  "timeout_seconds": 600,
+  "allow_edits": true,
+  "notes": "P16-C real worktree smoke. base_ref HEAD resolves to the foundation commit that contains the smoke worker, so the worker is genuinely runnable inside the isolated worktree. The worker writes exactly one allowlisted output and commits it, proving the executor's committed-change audit (diff base_sha..HEAD) catches the change."
+}

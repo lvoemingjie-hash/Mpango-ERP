@@ -112,6 +112,74 @@ class InventoryService:
         await db.flush()
         return stock
 
+    async def deduct_on_fulfillment(
+        self,
+        db: AsyncSession,
+        *,
+        sku_code: str,
+        quantity: Decimal,
+        order_id: uuid.UUID,
+        fulfilled_by: str | None = None,
+    ) -> tuple[InventoryStock, InventoryMovement]:
+        """Deduct on-hand stock for a fulfilled order and write a journal entry."""
+        row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
+            )
+
+        sku, stock = row
+        if stock is None:
+            stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
+
+        result = await db.execute(
+            select(InventoryStock)
+            .where(InventoryStock.id == stock.id)
+            .where(InventoryStock.is_deleted.is_(False))
+            .with_for_update()
+        )
+        stock = result.scalar_one()
+
+        quantity = Decimal(str(quantity))
+        quantity_before = stock.quantity_on_hand
+        quantity_after = quantity_before - quantity
+        if quantity_after < Decimal("0.00"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "INSUFFICIENT_STOCK",
+                    "message": (
+                        f"Insufficient stock for '{sku_code}': "
+                        f"requested {quantity}, available {quantity_before}"
+                    ),
+                },
+            )
+
+        stock.quantity_on_hand = quantity_after
+
+        fulfilled_by_uuid = None
+        if fulfilled_by:
+            try:
+                fulfilled_by_uuid = uuid.UUID(str(fulfilled_by))
+            except Exception:
+                pass
+
+        movement = InventoryMovement(
+            sku_id=sku.id,
+            movement_type="deduction",
+            quantity=-quantity,
+            quantity_before=quantity_before,
+            quantity_after=quantity_after,
+            reason=f"Order fulfillment for order {order_id} SKU {sku_code}",
+            reference_type="order",
+            reference_id=order_id,
+            created_by=fulfilled_by_uuid,
+        )
+        db.add(movement)
+        await db.flush()
+        return stock, movement
+
     async def adjust_stock(
         self,
         db: AsyncSession,
@@ -245,4 +313,3 @@ class InventoryService:
         stock.quantity_on_hand = stock.quantity_on_hand + quantity
         await db.flush()
         return stock
-

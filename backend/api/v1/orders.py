@@ -682,27 +682,18 @@ async def fulfill_order(
             updated_by=token.user_id
         )
 
-        # Inventory auto-deduction: deduct quantity_on_hand for each order item
-        from sqlalchemy import select as sa_select, update as sa_update
-        from models.sku import SKU
-        from models.inventory_stock import InventoryStock
+        from services.inventory_service import InventoryService
 
         await db.refresh(order, ["items"])
+        inventory_service = InventoryService()
         for item in order.items:
-            # Look up the SKU by sku_code to get its id
-            sku_result = await db.execute(
-                sa_select(SKU.id).where(SKU.sku_code == item.sku_code)
+            await inventory_service.deduct_on_fulfillment(
+                db,
+                sku_code=item.sku_code,
+                quantity=Decimal(str(item.quantity)),
+                order_id=order.id,
+                fulfilled_by=token.user_id,
             )
-            sku_row = sku_result.first()
-            if sku_row:
-                sku_id = sku_row[0]
-                await db.execute(
-                    sa_update(InventoryStock)
-                    .where(InventoryStock.sku_id == sku_id)
-                    .values(
-                        quantity_on_hand=InventoryStock.quantity_on_hand - item.quantity
-                    )
-                )
 
         await db.flush()
 
@@ -714,6 +705,13 @@ async def fulfill_order(
                 "message": str(e)
             }
         )
+    except HTTPException as e:
+        if isinstance(e.detail, dict) and e.detail.get("code") in {
+            "INSUFFICIENT_STOCK",
+            "SKU_NOT_FOUND",
+        }:
+            await db.rollback()
+        raise
     except Exception as e:
         if "Invalid state transition" in str(e) or "invariant" in str(e).lower():
             raise HTTPException(

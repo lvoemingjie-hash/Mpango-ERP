@@ -602,7 +602,7 @@ class ImportService:
                 "action": "import_apply",
                 "import_id": import_id,
                 "on_conflict": on_conflict,
-                "created": created_count,
+                "created_count": created_count,
                 "skipped": skipped_count,
                 "updated": 0,
             },

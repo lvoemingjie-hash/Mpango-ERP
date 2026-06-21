@@ -1,0 +1,20 @@
+{
+  "phase": "P16-D",
+  "branch": "codex/platform-p16d-smoke-success-a-2026-06-21",
+  "base_ref": "HEAD",
+  "worktree_dir": "../platform-p16d-smoke-success-a-2026-06-21",
+  "worker_command": [
+    "python",
+    "scripts/platform_worktree_smoke_worker.py",
+    "--output",
+    "scripts/p16d_smoke_success_a_output.json",
+    "--commit"
+  ],
+  "expected_files": [
+    "scripts/p16d_smoke_success_a_output.json"
+  ],
+  "report": "ai-ledger/platform/2026-06-21_p16d_smoke_success_a_report.json",
+  "timeout_seconds": 600,
+  "allow_edits": true,
+  "notes": "P16-D batch smoke mission A (success). Reuses the P16-C smoke worker to write exactly one allowlisted output and commit it, proving the executor's committed-change audit holds when the mission is driven by the batch runner rather than invoked directly."
+}

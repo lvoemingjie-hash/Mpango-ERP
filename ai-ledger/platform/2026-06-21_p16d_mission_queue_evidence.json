@@ -1,0 +1,188 @@
+{
+  "evidence_kind": "p16d_batch_sanitized_evidence",
+  "phase": "P16-D",
+  "sanitization_note": "Sanitized, committable capture of the platform_worktree_executor raw per-mission completion reports for the P16-D batch smoke. Every 40-char git commit SHA is truncated to its 7-char short SHA so the artifact passes the repo's detect-secrets pre-commit hook (Hex High Entropy false positive on full commit hashes). All other fields mirror the executor's raw reports verbatim.",
+  "regenerate_raw_reports_note": "Raw per-mission reports are regenerated on demand by running `python scripts/platform_worktree_batch_runner.py --repo . --manifest ai-ledger/platform/2026-06-21_p16d_mission_queue_manifest.json --execute`. Operator must first delete any retained worker branches (codex/platform-p16d-smoke-*) because platform_worktree_executor retains them across runs (by design, as P16-C worker-branch evidence).",
+  "raw_reports_not_committed_reason": "detect-secrets (pre-commit, baseline .secrets.baseline) flags each raw report's full base_sha git-hash as a Hex High Entropy String (exit 1). JSON cannot carry an inline 'pragma: allowlist secret' comment, and the tracked .secrets.baseline lives outside the allowed scripts/ + ai-ledger/platform/ scope, so editing it would fail the strict platform_diff_auditor allowlist audit. The raw reports are therefore regenerated on demand; this sanitized artifact plus the SHA-free batch report are the committed evidence.",
+  "run": {
+    "mode": "execute",
+    "continue_on_failure": false,
+    "description": "Stop-on-first-failure execute run (the batch runner default). Mission A passes for real (smoke worker writes + commits one allowlisted file); mission B is a controlled failure (worker exits 2); mission C is skipped because B failed first.",
+    "base_sha_short": "75d0102",
+    "missions": [
+      {
+        "order": 0,
+        "mission": "ai-ledger/platform/2026-06-21_p16d_smoke_success_a.json",
+        "verdict": "passed",
+        "executor_report": {
+          "phase": "P16-D",
+          "branch": "codex/platform-p16d-smoke-success-a-2026-06-21",
+          "base_ref": "HEAD",
+          "base_sha": "75d0102",
+          "worktree_dir": "../platform-p16d-smoke-success-a-2026-06-21",
+          "verdict": "passed",
+          "expected_files": [
+            "scripts/p16d_smoke_success_a_output.json"
+          ],
+          "audit_command": [
+            "git",
+            "-C",
+            "../platform-p16d-smoke-success-a-2026-06-21",
+            "diff",
+            "--name-only",
+            "75d0102",
+            "HEAD"
+          ],
+          "changed_files": 1,
+          "details": {
+            "base_ref": "HEAD",
+            "worktree_command": [
+              "git",
+              "worktree",
+              "add",
+              "-b",
+              "codex/platform-p16d-smoke-success-a-2026-06-21",
+              "../platform-p16d-smoke-success-a-2026-06-21",
+              "HEAD"
+            ],
+            "worker_command": [
+              "python",
+              "scripts/platform_worktree_smoke_worker.py",
+              "--output",
+              "scripts/p16d_smoke_success_a_output.json",
+              "--commit"
+            ],
+            "worktree_path": "C:\\Users\\Jeff0\\MPANGO ERP\\platform-p16d-smoke-success-a-2026-06-21",
+            "base_resolve": {
+              "returncode": 0,
+              "stdout": "75d0102",
+              "stderr": ""
+            },
+            "base_sha": "75d0102",
+            "worktree_add": {
+              "returncode": 0,
+              "stdout": "HEAD is now at 75d0102 merge: P16-C real worktree smoke mission into platform-dev",
+              "stderr": "Preparing worktree (new branch 'codex/platform-p16d-smoke-success-a-2026-06-21')"
+            },
+            "worker": {
+              "returncode": 0,
+              "timed_out": false,
+              "stdout": "smoke worker: wrote scripts/p16d_smoke_success_a_output.json (committed)\n",
+              "stderr": ""
+            },
+            "audit": {
+              "passed": true,
+              "violations": [],
+              "unexpected": [],
+              "forbidden": [],
+              "missing": [],
+              "total": 1
+            },
+            "audit_command": [
+              "git",
+              "-C",
+              "../platform-p16d-smoke-success-a-2026-06-21",
+              "diff",
+              "--name-only",
+              "75d0102",
+              "HEAD"
+            ]
+          }
+        }
+      },
+      {
+        "order": 1,
+        "mission": "ai-ledger/platform/2026-06-21_p16d_smoke_failure.json",
+        "verdict": "failed",
+        "executor_report": {
+          "phase": "P16-D",
+          "branch": "codex/platform-p16d-smoke-failure-2026-06-21",
+          "base_ref": "HEAD",
+          "base_sha": "75d0102",
+          "worktree_dir": "../platform-p16d-smoke-failure-2026-06-21",
+          "verdict": "failed",
+          "expected_files": [
+            "scripts/p16d_smoke_failure_probe.json"
+          ],
+          "audit_command": [
+            "git",
+            "-C",
+            "../platform-p16d-smoke-failure-2026-06-21",
+            "diff",
+            "--name-only",
+            "75d0102",
+            "HEAD"
+          ],
+          "changed_files": 0,
+          "details": {
+            "base_ref": "HEAD",
+            "worktree_command": [
+              "git",
+              "worktree",
+              "add",
+              "-b",
+              "codex/platform-p16d-smoke-failure-2026-06-21",
+              "../platform-p16d-smoke-failure-2026-06-21",
+              "HEAD"
+            ],
+            "worker_command": [
+              "python",
+              "-c",
+              "import sys; print('p16d controlled failure probe'); sys.exit(2)"
+            ],
+            "worktree_path": "C:\\Users\\Jeff0\\MPANGO ERP\\platform-p16d-smoke-failure-2026-06-21",
+            "base_resolve": {
+              "returncode": 0,
+              "stdout": "75d0102",
+              "stderr": ""
+            },
+            "base_sha": "75d0102",
+            "worktree_add": {
+              "returncode": 0,
+              "stdout": "HEAD is now at 75d0102 merge: P16-C real worktree smoke mission into platform-dev",
+              "stderr": "Preparing worktree (new branch 'codex/platform-p16d-smoke-failure-2026-06-21')"
+            },
+            "worker": {
+              "returncode": 2,
+              "timed_out": false,
+              "stdout": "p16d controlled failure probe\n",
+              "stderr": ""
+            },
+            "audit": {
+              "passed": false,
+              "violations": [
+                {
+                  "file": "scripts/p16d_smoke_failure_probe.json",
+                  "reason": "missing expected file"
+                }
+              ],
+              "unexpected": [],
+              "forbidden": [],
+              "missing": [
+                "scripts/p16d_smoke_failure_probe.json"
+              ],
+              "total": 0
+            },
+            "audit_command": [
+              "git",
+              "-C",
+              "../platform-p16d-smoke-failure-2026-06-21",
+              "diff",
+              "--name-only",
+              "75d0102",
+              "HEAD"
+            ],
+            "failure": "worker exited 2"
+          }
+        }
+      },
+      {
+        "order": 2,
+        "mission": "ai-ledger/platform/2026-06-21_p16d_smoke_success_c.json",
+        "verdict": "skipped",
+        "executor_report": null,
+        "note": "Not executed under stop-on-first-failure (skipped after mission B failed). Under --continue-on-failure it runs and passes; see the P16-D ledger."
+      }
+    ]
+  }
+}

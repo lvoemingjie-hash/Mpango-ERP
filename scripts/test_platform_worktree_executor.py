@@ -113,7 +113,7 @@ class TestBuildWorktreeCommand(unittest.TestCase):
         self.assertEqual(cmd[0], "git")
         self.assertEqual(cmd[1], "worktree")
         self.assertEqual(cmd[2], "add")
-        self.assertIn("-b", cmd)
+        self.assertIn("-B", cmd)
         self.assertIn(VALID_MISSION["branch"], cmd)
         self.assertIn(VALID_MISSION["worktree_dir"], cmd)
         self.assertIn(VALID_MISSION["base_ref"], cmd)
@@ -395,6 +395,21 @@ class TestReportShaSanitization(unittest.TestCase):
         self.assertEqual(_re.findall(r"[0-9A-Fa-f]{40}", text), [])
         self.assertIsNotNone(payload.get("base_sha"))
         self.assertTrue(0 < len(payload.get("base_sha")) < 40)
+
+class TestRerunSameBranch(unittest.TestCase):
+    def test_rerun_same_branch_resets_and_succeeds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = _make_repo(tmp)
+            worker = os.path.join(tmp, "w.py")
+            with open(worker, "w", encoding="utf-8") as fh:
+                fh.write("open(" + chr(34) + "out.txt" + chr(34) + ", " + chr(34) + "w" + chr(34) + ").write(" + chr(34) + "x" + chr(34) + ")")
+            mission = dict(VALID_MISSION)
+            mission["worker_command"] = [sys.executable, worker]
+            mission["expected_files"] = ["out.txt"]
+            v1, p1 = exe.execute(mission, repo, write_completion=False)
+            v2, p2 = exe.execute(mission, repo, write_completion=False)
+        self.assertEqual(v1, "passed", p1)
+        self.assertEqual(v2, "passed", p2)
 
 if __name__ == "__main__":
     unittest.main()

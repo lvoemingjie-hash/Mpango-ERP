@@ -285,7 +285,7 @@ def build_worktree_command(mission):
         "git",
         "worktree",
         "add",
-        "-b",
+        "-B",
         mission["branch"],
         mission["worktree_dir"],
         mission["base_ref"],
@@ -508,7 +508,7 @@ def execute(mission, repo_path, timeout=None, write_completion=True):
 
     # 2. Create the worktree AT the immutable base_sha (not the symbolic ref).
     rc, out, err = run_git(
-        ["worktree", "add", "-b", mission["branch"],
+        ["worktree", "add", "-B", mission["branch"],
          mission["worktree_dir"], base_sha],
         repo,
     )

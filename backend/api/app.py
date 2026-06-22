@@ -182,6 +182,11 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(platform_p15_router)
     logger.info("Platform P15 router registered (incident triage, read-only)")
 
+    # Platform Track P17 -- Platform Registry (read-only tenant registry, P17-B)
+    from api.v1.platform.p17.routes import router as platform_p17_router
+    app.include_router(platform_p17_router)
+    logger.info("Platform P17 router registered (platform registry, read-only)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

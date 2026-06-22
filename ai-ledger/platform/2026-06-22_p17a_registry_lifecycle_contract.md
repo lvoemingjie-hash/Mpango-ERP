@@ -3,10 +3,12 @@
 **Date:** 2026-06-22
 **Branch:** `codex/platform-p17a-registry-lifecycle-contract-2026-06-22`
 **Base:** `9e46a32` (origin/platform-dev -- P16 worktree execution harness closeout)
-**Commit:** tip of `codex/platform-p17a-registry-lifecycle-contract-2026-06-22`
-(3 files, 727 insertions; isolated branch; exact SHA captured in the final report
-and via `git rev-parse`). Push target
-`origin/codex/platform-p17a-registry-lifecycle-contract-2026-06-22`)
+**Commit:** `0a5724e` (P17-A contract commit on the isolated branch; 3 files,
+744 insertions). Push target:
+`origin/codex/platform-p17a-registry-lifecycle-contract-2026-06-22`.
+**R1 (this revision):** evidence polish only -- pins the exact contract commit SHA
+`0a5724e` in this ledger and refreshes the validation counts; it changes only this
+ledger file and adds no runtime code.
 **Report path:** `ai-ledger/platform/2026-06-22_p17a_registry_lifecycle_contract.md`
 (this ledger is the persisted report; the final human-readable report is delivered
 in the work session).
@@ -63,14 +65,16 @@ No `backend/`, `frontend/`, `migrations/`, `alembic/`, `.github/`, `.claude/`, o
   `product-dev-recovered/`, or auth/RBAC/session/payment/tenancy paths.
 - Non-ASCII scan on the three new/changed files -- **0 hits** (ASCII-only).
 - detect-secrets scan on the three files -- **`results: {}` (clean)**. Short SHAs
-  only (7-char short SHAs, e.g. base `9e46a32`); no long hex object ids.
+  only (7-char short SHAs, e.g. base `9e46a32` and contract commit `0a5724e`); no
+  long hex object ids (full 40-char SHAs are intentionally omitted to keep the
+  detect-secrets scan clean).
 - Pre-commit hooks at commit -- **all Passed**: trim trailing whitespace, fix end
   of files, check yaml (skipped, no yaml), check for added large files, Detect
   secrets.
-- `npx gitnexus analyze` -- **PASS** (indexed successfully: 6,828 nodes / 20,853
-  edges / 452 clusters / 300 flows).
+- `npx gitnexus analyze` -- **PASS** (indexed successfully: 6,829 nodes / 20,853
+  edges / 453 clusters / 300 flows).
 - `npx gitnexus status` -- **up-to-date** (indexed commit == current commit at
-  the branch tip).
+  the P17-A contract commit `0a5724e`).
 - GitNexus `detect_changes` -- not exposed as a CLI command in this gitnexus build
   (MCP-only; no gitnexus MCP tools are connected in this session). Equivalent scope
   verified via `git diff`: exactly three files, all markdown, zero source files,
@@ -82,9 +86,9 @@ No runtime tests apply (no runtime code in P17-A).
 
 ## GitNexus
 
-- `npx gitnexus analyze` -- index current (6,828 nodes / 20,853 edges / 452
+- `npx gitnexus analyze` -- index current (6,829 nodes / 20,853 edges / 453
   clusters / 300 flows).
-- `npx gitnexus status` -- up-to-date at the branch tip.
+- `npx gitnexus status` -- up-to-date at the P17-A contract commit `0a5724e`.
 - Impact: none (docs-only change; no symbols, callers, or execution flows changed).
 - Risk classification: **LOW / docs-only**.
 

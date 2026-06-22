@@ -22,6 +22,10 @@ from api.dependencies import get_tenant_db_session
 from api.dependencies import get_current_user_context
 from api.middleware.rbac import RequirePermission  # S2.5: Added RBAC import
 from core.security import TokenPayload
+from core.domain.order_state import (
+    InvalidStateTransitionError as DomainInvalidStateTransitionError,
+    OrderInvariantViolation,
+)
 from crud.order import (
     get_order_by_id,
     get_orders_paginated,
@@ -794,7 +798,7 @@ async def return_order(
     1. Validates order is in "fulfilled" status
     2. Transitions order status to "returned"
     3. Posts reversal ledger entries (via OrderService)
-    4. Restocking is manual in MVP - inventory is NOT auto-adjusted
+    4. Restores fulfilled inventory and writes restock movement entries
 
     Returns:
         OrderActionResponse with updated status
@@ -811,9 +815,11 @@ async def return_order(
         )
 
     try:
-        # Use OrderService for atomic transition + ledger posting
+        # Use OrderService for atomic transition + ledger posting, then restore
+        # inventory in the same DB transaction before the request commits.
         from services.order_service import OrderService
         from core.domain.order_state import OrderState
+        from services.inventory_service import InventoryService
 
         order_service = OrderService(db)
         order = await order_service.transition(
@@ -822,7 +828,20 @@ async def return_order(
             reason="Full return requested",
             updated_by=token.user_id
         )
-    except InvalidStateTransitionError as e:
+
+        await db.refresh(order, ["items"])
+        inventory_service = InventoryService()
+        for item in order.items:
+            await inventory_service.restock_on_return(
+                db,
+                sku_code=item.sku_code,
+                quantity=Decimal(str(item.quantity)),
+                order_id=order.id,
+                returned_by=token.user_id,
+            )
+
+        await db.flush()
+    except (InvalidStateTransitionError, DomainInvalidStateTransitionError, OrderInvariantViolation) as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -830,7 +849,11 @@ async def return_order(
                 "message": str(e)
             }
         )
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
+        await db.rollback()
         if "Invalid state transition" in str(e):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -847,6 +870,6 @@ async def return_order(
             "order_id": str(order.id),
             "status": order.status.value
         },
-        message="Order returned successfully. Refund ledger entries posted.",
+        message="Order returned successfully. Refund ledger entries posted and inventory restored.",
         timestamp=datetime.utcnow()
     )

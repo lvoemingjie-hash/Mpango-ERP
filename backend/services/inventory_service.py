@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import InventoryShortageError
 from models.inventory_stock import InventoryStock
-from models.inventory_movement import InventoryMovement
+from models.inventory_movement import InventoryMovement, MovementType
 from models.sku import SKU
 from repositories.inventory_repository import InventoryRepository
 
@@ -313,3 +313,82 @@ class InventoryService:
         stock.quantity_on_hand = stock.quantity_on_hand + quantity
         await db.flush()
         return stock
+
+    async def restock_on_return(
+        self,
+        db: AsyncSession,
+        *,
+        sku_code: str,
+        quantity: Decimal,
+        order_id: uuid.UUID,
+        returned_by: str | None = None,
+    ) -> tuple[InventoryStock, InventoryMovement]:
+        """Restore on-hand stock for a returned fulfilled order and journal it."""
+        row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
+            )
+
+        sku, stock = row
+        if stock is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "STOCK_NOT_FOUND",
+                    "message": f"Stock row for SKU '{sku_code}' not found",
+                },
+            )
+
+        result = await db.execute(
+            select(InventoryStock)
+            .where(InventoryStock.id == stock.id)
+            .where(InventoryStock.is_deleted.is_(False))
+            .with_for_update()
+        )
+        stock = result.scalar_one_or_none()
+        if stock is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "STOCK_NOT_FOUND",
+                    "message": f"Stock row for SKU '{sku_code}' not found",
+                },
+            )
+
+        quantity = Decimal(str(quantity))
+        if quantity <= Decimal("0.00"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "INVALID_RESTOCK_QUANTITY",
+                    "message": f"Return quantity for SKU '{sku_code}' must be positive",
+                },
+            )
+
+        quantity_before = stock.quantity_on_hand
+        quantity_after = quantity_before + quantity
+        stock.quantity_on_hand = quantity_after
+
+        returned_by_uuid = None
+        if returned_by:
+            try:
+                returned_by_uuid = uuid.UUID(str(returned_by))
+            except Exception:
+                pass
+
+        movement = InventoryMovement(
+            sku_id=sku.id,
+            movement_type=MovementType.RESTOCK.value,
+            quantity=quantity,
+            quantity_before=quantity_before,
+            quantity_after=quantity_after,
+            reason=f"Order return for order {order_id} SKU {sku_code}",
+            reference_type="order",
+            reference_id=order_id,
+            created_by=returned_by_uuid,
+        )
+        db.add(movement)
+        await db.flush()
+        return stock, movement

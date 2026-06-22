@@ -20,8 +20,8 @@ Required verifications (per task spec):
   5. Any 400/404 is proven to be business empty-state, not a system error
 
 Live environment:
-  - PostgreSQL: localhost:5432 (Docker mpango_postgres)
-  - Credentials: mpango:MpangoDBV0.1.4 / Database: mpango_erp
+  - DB URL must be supplied explicitly via S3B_LIVE_DB_URL, TEST_DATABASE_URL,
+    or DATABASE_URL.
   - Tenant schema: t_u1r1_test (15 tables, complete bootstrap)
   - Admin user: admin@u1r1.test
 
@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import os
 from typing import Dict, List, Optional
+from urllib.parse import urlsplit
 
 import pytest
 import pytest_asyncio
@@ -54,10 +55,38 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 # Live DB configuration
 # ===========================================================================
 
-LIVE_DB_URL = os.environ.get(
-    "S3B_LIVE_DB_URL",
-    "postgresql+asyncpg://mpango:MpangoDBV0.1.4@localhost:5432/mpango_erp",  # pragma: allowlist secret  # local Docker dev DB only
-)
+def _normalize_asyncpg_url(url: str) -> str:
+    if url.startswith("postgresql://") and "+asyncpg" not in url:
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
+
+
+def _is_conftest_fallback_url(url: str) -> bool:
+    """Detect the host-unreachable default injected by tests/conftest.py."""
+    parsed = urlsplit(url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    userinfo, separator, hostinfo = parsed.netloc.partition("@")
+    return (
+        separator == "@"
+        and userinfo.split(":", 1) == ["postgres", "postgres"]
+        and hostinfo == "postgres:5432"
+        and parsed.hostname == "postgres"
+        and parsed.port == 5432
+        and parsed.path == "/mpango_erp"
+    )
+
+
+def _resolve_live_db_url() -> str:
+    """Resolve S3-B live DB URL without hardcoded local credentials."""
+    for key in ("S3B_LIVE_DB_URL", "TEST_DATABASE_URL", "DATABASE_URL"):
+        url = os.environ.get(key, "").strip()
+        if url:
+            if key != "S3B_LIVE_DB_URL" and _is_conftest_fallback_url(url):
+                continue
+            return _normalize_asyncpg_url(url)
+    return ""
+
+
+LIVE_DB_URL = _resolve_live_db_url()
 LIVE_TENANT_SCHEMA = os.environ.get("S3B_TENANT_SCHEMA", "t_u1r1_test")
 LIVE_ADMIN_EMAIL = os.environ.get("S3B_ADMIN_EMAIL", "admin@u1r1.test")
 # t_u1r1_test has no matching public.wholesalers row; use stable placeholder.
@@ -91,19 +120,58 @@ async def live_engine():
     - Default (unset or any other value): unreachable DB -> skip (convenience).
     """
     require_db = os.environ.get("S3B_REQUIRE_LIVE_DB", "").strip() == "1"
+    if not LIVE_DB_URL:
+        message = (
+            "S3-B live DB not configured. Set S3B_LIVE_DB_URL, "
+            "TEST_DATABASE_URL, or DATABASE_URL."
+        )
+        if require_db:
+            pytest.fail(message)
+        pytest.skip(message)
+
     engine = create_async_engine(LIVE_DB_URL, pool_pre_ping=True, pool_size=2)
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as exc:
         await engine.dispose()
+        error_type = type(exc).__name__
         if require_db:
-            pytest.fail(
-                f"S3-B live DB REQUIRED but not reachable at {LIVE_DB_URL}: {exc}"
-            )
-        pytest.skip(f"S3-B live DB not reachable at {LIVE_DB_URL}: {exc}")
+            pytest.fail(f"S3-B live DB REQUIRED but not reachable ({error_type}).")
+        pytest.skip(f"S3-B live DB not reachable ({error_type}).")
     yield engine
     await engine.dispose()
+
+
+def test_s3b_live_db_url_has_no_hardcoded_default(monkeypatch):
+    for key in ("S3B_LIVE_DB_URL", "TEST_DATABASE_URL", "DATABASE_URL"):
+        monkeypatch.delenv(key, raising=False)
+
+    assert _resolve_live_db_url() == ""
+
+
+def test_s3b_live_db_url_accepts_runner_database_url(monkeypatch):
+    monkeypatch.delenv("S3B_LIVE_DB_URL", raising=False)
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql://db:5432/mpango")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    assert (
+        _resolve_live_db_url()
+        == "postgresql+asyncpg://db:5432/mpango"
+    )
+
+
+def test_s3b_live_db_url_ignores_conftest_postgres_fallback(monkeypatch):
+    monkeypatch.delenv("S3B_LIVE_DB_URL", raising=False)
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://{}:{}@postgres:5432/mpango_erp".format(
+            "postgres", "postgres"
+        ),
+    )
+
+    assert _resolve_live_db_url() == ""
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -510,7 +578,7 @@ class TestLiveEndpointSmoke:
         resp = await live_client.get("/api/v1/skus")
         assert resp.status_code not in (401, 403, 500), _diag(resp)
 
-    async def test_inventory_stocks(self, live_client):
+    async def test_stock_list_endpoint(self, live_client):
         resp = await live_client.get("/api/v1/inventory/stocks")
         assert resp.status_code not in (401, 403, 500), _diag(resp)
 

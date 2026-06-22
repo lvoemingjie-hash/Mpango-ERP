@@ -678,9 +678,14 @@ async def fulfill_order(
         from services.order_service import OrderService
         from core.domain.order_state import OrderState
 
+        # Expire the preflight object so OrderService.transition() reloads the
+        # locked row from the database instead of reusing stale identity-map state.
+        order_uuid = order.id
+        db.expire(order)
+
         order_service = OrderService(db)
         order = await order_service.transition(
-            order_id=order.id,
+            order_id=order_uuid,
             target_state=OrderState.FULFILLED,
             reason="Order fulfilled",
             updated_by=token.user_id
@@ -701,7 +706,7 @@ async def fulfill_order(
 
         await db.flush()
 
-    except InvalidStateTransitionError as e:
+    except (InvalidStateTransitionError, DomainInvalidStateTransitionError, OrderInvariantViolation) as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={

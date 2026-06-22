@@ -26,13 +26,6 @@ from models.order import Order, OrderItem, OrderStatus
 from models.sku import SKU
 
 
-CONCURRENT_FULFILLMENT_GAP = (
-    "S4-C2 required: concurrent fulfill_order calls can both report success for "
-    "the same constrained stock/order path, exposing lost-update or duplicate "
-    "fulfillment risk in stock, movement, or order state invariants."
-)
-
-
 def _tenant_id(async_session: AsyncSession) -> uuid.UUID:
     return uuid.UUID(str(async_session.info["tenant_id"]))
 
@@ -320,7 +313,6 @@ async def _prepare_shadow_tenant_stock(
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(strict=True, reason=CONCURRENT_FULFILLMENT_GAP)
 async def test_same_sku_two_paid_orders_stock_only_enough_for_one(async_session):
     await _prepare_inventory_schema(async_session)
     tenant_schema = async_session.info["tenant_schema"]
@@ -363,7 +355,6 @@ async def test_same_sku_two_paid_orders_stock_only_enough_for_one(async_session)
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(strict=True, reason=CONCURRENT_FULFILLMENT_GAP)
 async def test_same_sku_two_paid_orders_stock_enough_for_both(async_session):
     await _prepare_inventory_schema(async_session)
     tenant_schema = async_session.info["tenant_schema"]
@@ -402,7 +393,6 @@ async def test_same_sku_two_paid_orders_stock_enough_for_both(async_session):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(strict=True, reason=CONCURRENT_FULFILLMENT_GAP)
 async def test_multi_item_order_competing_with_single_item_rolls_back_loser(async_session):
     await _prepare_inventory_schema(async_session)
     tenant_schema = async_session.info["tenant_schema"]
@@ -461,7 +451,6 @@ async def test_multi_item_order_competing_with_single_item_rolls_back_loser(asyn
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(strict=True, reason=CONCURRENT_FULFILLMENT_GAP)
 async def test_duplicate_fulfillment_race_on_same_order_deducts_once(async_session):
     await _prepare_inventory_schema(async_session)
     tenant_schema = async_session.info["tenant_schema"]
@@ -491,7 +480,6 @@ async def test_duplicate_fulfillment_race_on_same_order_deducts_once(async_sessi
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(strict=True, reason=CONCURRENT_FULFILLMENT_GAP)
 async def test_tenant_isolation_under_concurrent_fulfillment(async_session):
     await _prepare_inventory_schema(async_session)
     tenant_schema = async_session.info["tenant_schema"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -8,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import InventoryShortageError
-from models.inventory_stock import InventoryStock
 from models.inventory_movement import InventoryMovement, MovementType
+from models.inventory_reservation import InventoryReservation
+from models.inventory_stock import InventoryStock
 from models.sku import SKU
 from repositories.inventory_repository import InventoryRepository
 
@@ -21,6 +23,183 @@ class InventoryService:
     @staticmethod
     def _available(on_hand: Decimal, reserved: Decimal) -> Decimal:
         return on_hand - reserved
+
+    async def _locked_stock_by_sku_code(
+        self,
+        db: AsyncSession,
+        *,
+        sku_code: str,
+        create_if_missing: bool = True,
+    ) -> tuple[SKU, InventoryStock]:
+        row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
+            )
+
+        sku, stock = row
+        if stock is None:
+            if not create_if_missing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "STOCK_NOT_FOUND",
+                        "message": f"Stock row for SKU '{sku_code}' not found",
+                    },
+                )
+            stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
+
+        result = await db.execute(
+            select(InventoryStock)
+            .where(InventoryStock.id == stock.id)
+            .where(InventoryStock.is_deleted.is_(False))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        stock = result.scalar_one_or_none()
+        if stock is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "STOCK_NOT_FOUND",
+                    "message": f"Stock row for SKU '{sku_code}' not found",
+                },
+            )
+        return sku, stock
+
+    async def _locked_stock_by_sku_id(
+        self,
+        db: AsyncSession,
+        *,
+        sku_id: uuid.UUID,
+        sku_code: str,
+    ) -> InventoryStock:
+        result = await db.execute(
+            select(InventoryStock)
+            .where(InventoryStock.sku_id == sku_id)
+            .where(InventoryStock.is_deleted.is_(False))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        stock = result.scalar_one_or_none()
+        if stock is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "STOCK_NOT_FOUND",
+                    "message": f"Stock row for SKU '{sku_code}' not found",
+                },
+            )
+        return stock
+
+    async def reserve_on_confirm(
+        self,
+        db: AsyncSession,
+        *,
+        order,
+    ) -> list[InventoryReservation]:
+        """Create owned reservation rows and update aggregate reserved stock."""
+        existing = await db.execute(
+            select(InventoryReservation.id)
+            .where(InventoryReservation.order_id == order.id)
+            .where(InventoryReservation.status == "reserved")
+            .limit(1)
+        )
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "DUPLICATE_RESERVATION",
+                    "message": f"Order '{order.id}' already has active reservations",
+                },
+            )
+
+        reservations: list[InventoryReservation] = []
+        for item in sorted(order.items, key=lambda order_item: (order_item.sku_code, str(order_item.id))):
+            quantity = Decimal(str(item.quantity))
+            if quantity <= Decimal("0.00"):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "INVALID_RESERVATION_QUANTITY",
+                        "message": f"Reservation quantity for SKU '{item.sku_code}' must be positive",
+                    },
+                )
+
+            sku, stock = await self._locked_stock_by_sku_code(
+                db, sku_code=item.sku_code, create_if_missing=True
+            )
+            available = self._available(stock.quantity_on_hand, stock.quantity_reserved)
+            if available < quantity:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "INSUFFICIENT_AVAILABLE_STOCK",
+                        "message": (
+                            f"Insufficient available stock for '{item.sku_code}': "
+                            f"requested {quantity}, available {available}"
+                        ),
+                    },
+                )
+
+            reservation = InventoryReservation(
+                order_id=order.id,
+                order_item_id=item.id,
+                sku_id=sku.id,
+                sku_code=item.sku_code,
+                quantity=quantity,
+                status="reserved",
+                reference_type="order",
+                reference_id=order.id,
+            )
+            db.add(reservation)
+            stock.quantity_reserved = stock.quantity_reserved + quantity
+            reservations.append(reservation)
+
+        await db.flush()
+        return reservations
+
+    async def release_on_cancel(
+        self,
+        db: AsyncSession,
+        *,
+        order,
+    ) -> list[InventoryReservation]:
+        """Release only reservation rows owned by the cancelled order."""
+        result = await db.execute(
+            select(InventoryReservation)
+            .where(InventoryReservation.order_id == order.id)
+            .where(InventoryReservation.status == "reserved")
+            .where(InventoryReservation.is_deleted.is_(False))
+            .order_by(InventoryReservation.sku_code.asc(), InventoryReservation.id.asc())
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        reservations = list(result.scalars().all())
+        now = datetime.now(timezone.utc)
+
+        for reservation in reservations:
+            stock = await self._locked_stock_by_sku_id(
+                db, sku_id=reservation.sku_id, sku_code=reservation.sku_code
+            )
+            if stock.quantity_reserved < reservation.quantity:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "RESERVATION_AGGREGATE_MISMATCH",
+                        "message": (
+                            f"Aggregate reserved stock for '{reservation.sku_code}' "
+                            "is lower than owned reservation quantity"
+                        ),
+                    },
+                )
+            stock.quantity_reserved = stock.quantity_reserved - reservation.quantity
+            reservation.status = "released"
+            reservation.released_at = now
+
+        await db.flush()
+        return reservations
 
     async def get_stock_by_sku_code(self, db: AsyncSession, *, sku_code: str):
         row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
@@ -119,29 +298,11 @@ class InventoryService:
         sku_code: str,
         quantity: Decimal,
         order_id: uuid.UUID,
+        order_item_id: uuid.UUID | None = None,
         fulfilled_by: str | None = None,
     ) -> tuple[InventoryStock, InventoryMovement]:
         """Deduct on-hand stock for a fulfilled order and write a journal entry."""
-        row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
-        if not row:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
-            )
-
-        sku, stock = row
-        if stock is None:
-            stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
-
-        result = await db.execute(
-            select(InventoryStock)
-            .where(InventoryStock.id == stock.id)
-            .where(InventoryStock.is_deleted.is_(False))
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        stock = result.scalar_one()
-
+        sku, stock = await self._locked_stock_by_sku_code(db, sku_code=sku_code)
         quantity = Decimal(str(quantity))
         quantity_before = stock.quantity_on_hand
         quantity_after = quantity_before - quantity
@@ -157,7 +318,50 @@ class InventoryService:
                 },
             )
 
+        reservations: list[InventoryReservation] = []
+        if order_item_id is not None:
+            reservation_result = await db.execute(
+                select(InventoryReservation)
+                .where(InventoryReservation.order_id == order_id)
+                .where(InventoryReservation.order_item_id == order_item_id)
+                .where(InventoryReservation.status == "reserved")
+                .where(InventoryReservation.is_deleted.is_(False))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            reservations = list(reservation_result.scalars().all())
+
+        reserved_quantity = sum((reservation.quantity for reservation in reservations), Decimal("0.00"))
+        if reservations and reserved_quantity != quantity:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "RESERVATION_QUANTITY_MISMATCH",
+                    "message": (
+                        f"Reservation quantity for order item '{order_item_id}' "
+                        f"is {reserved_quantity}, expected {quantity}"
+                    ),
+                },
+            )
+
         stock.quantity_on_hand = quantity_after
+        if reservations:
+            if stock.quantity_reserved < reserved_quantity:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "RESERVATION_AGGREGATE_MISMATCH",
+                        "message": (
+                            f"Aggregate reserved stock for '{sku_code}' "
+                            "is lower than owned reservation quantity"
+                        ),
+                    },
+                )
+            now = datetime.now(timezone.utc)
+            stock.quantity_reserved = stock.quantity_reserved - reserved_quantity
+            for reservation in reservations:
+                reservation.status = "consumed"
+                reservation.consumed_at = now
 
         fulfilled_by_uuid = None
         if fulfilled_by:

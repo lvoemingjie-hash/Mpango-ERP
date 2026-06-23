@@ -352,6 +352,12 @@ async def confirm_order(
 
     try:
         order = await crud_confirm_order(db, order, updated_by=token.user_id)
+
+        from services.inventory_service import InventoryService
+
+        await db.refresh(order, ["items"])
+        await InventoryService().reserve_on_confirm(db, order=order)
+        await db.flush()
     except InvalidStateTransitionError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -360,6 +366,12 @@ async def confirm_order(
                 "message": str(e)
             }
         )
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        raise
 
     return OrderActionResponse(
         success=True,
@@ -701,6 +713,7 @@ async def fulfill_order(
                 sku_code=item.sku_code,
                 quantity=Decimal(str(item.quantity)),
                 order_id=order.id,
+                order_item_id=item.id,
                 fulfilled_by=token.user_id,
             )
 
@@ -714,12 +727,8 @@ async def fulfill_order(
                 "message": str(e)
             }
         )
-    except HTTPException as e:
-        if isinstance(e.detail, dict) and e.detail.get("code") in {
-            "INSUFFICIENT_STOCK",
-            "SKU_NOT_FOUND",
-        }:
-            await db.rollback()
+    except HTTPException:
+        await db.rollback()
         raise
     except Exception as e:
         if "Invalid state transition" in str(e) or "invariant" in str(e).lower():
@@ -768,8 +777,15 @@ async def cancel_order(
             }
         )
 
+    release_reservation = order.status.value == "confirmed"
     try:
         order = await crud_cancel_order(db, order, updated_by=token.user_id)
+        if release_reservation:
+            from services.inventory_service import InventoryService
+
+            await db.refresh(order, ["items"])
+            await InventoryService().release_on_cancel(db, order=order)
+            await db.flush()
     except InvalidStateTransitionError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -778,6 +794,12 @@ async def cancel_order(
                 "message": str(e)
             }
         )
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        raise
 
     return OrderActionResponse(
         success=True,

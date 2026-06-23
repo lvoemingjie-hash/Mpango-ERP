@@ -27,10 +27,15 @@ import type {
   NoisyNeighborSummary,
 } from '@/types/platformOps';
 import type { IncidentTriageSnapshot } from '@/types/platformIncident';
+import type {
+  PlatformTenantRegistry,
+  PlatformTenantRegistryList,
+} from '@/types/platformRegistry';
 
 const P10_BASE = '/platform/p10';
 const P13_BASE = '/platform/p13';
 const P15_BASE = '/platform/p15';
+const P17_BASE = '/platform/p17';
 
 export const platformService = {
   /** List tenants with optional pagination */
@@ -94,4 +99,16 @@ export const platformService = {
   /** P15: Get incident triage snapshot (read-only) */
   getIncidentTriageSnapshot: () =>
     api.get<IncidentTriageSnapshot>(`${P15_BASE}/incidents/triage/snapshot`),
+
+  // -- P17 Platform Registry (read-only tenant registry) --
+
+  /** P17: List tenant registry (read-only) */
+  listTenantRegistry: (limit = 50, offset = 0) =>
+    api.get<PlatformTenantRegistryList>(`${P17_BASE}/registry`, {
+      params: { limit, offset },
+    }),
+
+  /** P17: Get a single tenant registry (read-only) */
+  getTenantRegistry: (tenantId: string) =>
+    api.get<PlatformTenantRegistry>(`${P17_BASE}/registry/${tenantId}`),
 };

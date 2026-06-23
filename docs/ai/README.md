@@ -35,6 +35,7 @@ For P9+ SaaS platform product work, read these after the general context above a
 13. `docs/ai/PLATFORM_PRODUCT_P13_OPERATIONS_COCKPIT_CONTRACT.md`
 14. `docs/ai/PLATFORM_PRODUCT_P15_INCIDENT_TRIAGE_CONTRACT.md`
 15. `docs/ai/PLATFORM_PRODUCT_P17_REGISTRY_LIFECYCLE_CONTRACT.md`
+16. `docs/ai/PLATFORM_PRODUCT_P18_CONTROLLED_ACTIONS_CONTRACT.md`
 
 P10 must start with a data-contract-only slice unless a later CTO decision explicitly broadens scope. Do not begin P10 with migrations, API handlers, frontend UI, auth/RBAC/tenancy/session changes, payment changes, or tenant business-data edits.
 
@@ -47,6 +48,8 @@ P13 operations observability work must start with the contract (`PLATFORM_PRODUC
 P15 incident triage work must start with the contract (`PLATFORM_PRODUCT_P15_INCIDENT_TRIAGE_CONTRACT.md`) and must not begin P15-B (read-only snapshot API adapter) until the contract is accepted. P15 is read-only triage only: no repair, no impersonation, no tenant business data, no mutation endpoints, no migrations. No runtime code, migrations, or frontend UI in P15-A.
 
 P17 platform registry and tenant lifecycle work must start with the contract (`PLATFORM_PRODUCT_P17_REGISTRY_LIFECYCLE_CONTRACT.md`). P17 is read and contract only: no mutation of registry fields, no runtime code, no migrations, no frontend UI, and no auth/RBAC/session/tenancy/payment changes. Only future, separately approved controlled-action phases may mutate registry fields. No runtime code, migrations, or frontend UI in P17-A.
+
+P18 controlled platform actions work must start with the contract (`PLATFORM_PRODUCT_P18_CONTROLLED_ACTIONS_CONTRACT.md`). P18 is contract only: no execution of any controlled action, no runtime code, no migrations, no frontend UI, and no auth/RBAC/session/tenancy/payment changes. Only a separately approved future phase may implement the action-request skeleton, and even then destructive actions remain blocked unless separately approved. No runtime code, migrations, or frontend UI in P18-A.
 
 ## Purpose
 

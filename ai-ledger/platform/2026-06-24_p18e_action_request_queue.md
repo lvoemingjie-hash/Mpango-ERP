@@ -19,7 +19,7 @@ Raw action_type, reason, idempotency_key, requested_state, correlation_id, and
 metadata values are not exposed. The queue response carries `executed=false` and
 `storage=memory`.
 
-**Risk:** MEDIUM / platform-runtime additive, contained to P18. No product
+**Risk:** CRITICAL / platform-runtime additive / mitigated, contained to P18. No product
 business paths, auth/RBAC rewrite, migrations, payment/billing, or product branch
 changes.
 
@@ -33,12 +33,22 @@ changes.
 **Tests:** Backend P18/P18-D: 64 passed. Frontend P18 page: 9 passed. Backend
 regression P10 + P17 + P15: 208 passed.
 
-**Checks:** `git diff --check` PASS before commit on the working tree. Non-ASCII
+**Checks:** `git diff --check origin/platform-dev..HEAD` PASS. Non-ASCII
 added-line scan: 0 hits. detect-secrets scan on changed files: clean. Forbidden
-path audit: P18 platform files plus platform ledger only; no migrations, auth/RBAC
+path audit: 11 files checked, 0 forbidden violations; no migrations, auth/RBAC
 rewrite, product business paths, payment/billing paths, or product branch paths.
 
-**GitNexus:** Pending final post-commit analyze/detect_changes. Expected risk is
-MEDIUM/HIGH platform-runtime additive, contained to P18 request queue.
+**GitNexus:** `npx gitnexus analyze` PASS at final P18-E HEAD.
+`detect_changes compare origin/platform-dev..HEAD`: CRITICAL, 11 files, 106
+changed symbols, 17 affected processes. This is expected because P18-D/P18-E
+add platform runtime routes/services/UI, not just documentation. Targeted
+impact for `list_stored_requests`: LOW, one direct caller
+(`list_recorded_requests`). API impact for
+`backend/api/v1/platform/p18/routes.py`: LOW; the new queue route has zero
+direct consumers and is protected by the existing P18 platform operator guard.
+Overall risk is CRITICAL by full-branch graph classification, mitigated by
+identity-only platform guard, no real action execution, no tenant mutation, no
+persistent queue storage, no migrations, redacted responses, and targeted P18
+test coverage.
 
-**Blockers:** None known before final post-commit gate.
+**Blockers:** None.

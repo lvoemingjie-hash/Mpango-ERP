@@ -352,6 +352,12 @@ async def confirm_order(
 
     try:
         order = await crud_confirm_order(db, order, updated_by=token.user_id)
+
+        from services.inventory_service import InventoryService
+
+        await db.refresh(order, ["items"])
+        await InventoryService().reserve_on_confirm(db, order_items=order.items)
+        await db.flush()
     except InvalidStateTransitionError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -360,6 +366,12 @@ async def confirm_order(
                 "message": str(e)
             }
         )
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        raise
 
     return OrderActionResponse(
         success=True,
@@ -768,8 +780,16 @@ async def cancel_order(
             }
         )
 
+    previous_status = order.status.value
+
     try:
         order = await crud_cancel_order(db, order, updated_by=token.user_id)
+        if previous_status == OrderStatus.CONFIRMED.value:
+            from services.inventory_service import InventoryService
+
+            await db.refresh(order, ["items"])
+            await InventoryService().release_on_cancel(db, order_items=order.items)
+            await db.flush()
     except InvalidStateTransitionError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -778,6 +798,12 @@ async def cancel_order(
                 "message": str(e)
             }
         )
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        raise
 
     return OrderActionResponse(
         success=True,

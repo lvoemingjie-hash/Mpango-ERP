@@ -320,12 +320,19 @@ async def cancel_order(
 
     # Validate cancellation is allowed
     from crud.order import InvalidStateTransitionError
+    previous_status = order.status.value
     try:
         order = await crud_cancel_order(
             db=db,
             order=order,
             updated_by=client.user_id,
         )
+        if previous_status == "confirmed":
+            from services.inventory_service import InventoryService
+
+            await db.refresh(order, ["items"])
+            await InventoryService().release_on_cancel(db, order_items=order.items)
+            await db.flush()
     except InvalidStateTransitionError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -334,6 +341,12 @@ async def cancel_order(
                 "message": str(e),
             },
         )
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        raise
 
     return DataResponse(
         success=True,

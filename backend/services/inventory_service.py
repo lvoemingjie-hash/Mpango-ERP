@@ -22,6 +22,114 @@ class InventoryService:
     def _available(on_hand: Decimal, reserved: Decimal) -> Decimal:
         return on_hand - reserved
 
+    async def _locked_stock_by_sku_code(
+        self,
+        db: AsyncSession,
+        *,
+        sku_code: str,
+        create_if_missing: bool = True,
+    ) -> tuple[SKU, InventoryStock]:
+        row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
+            )
+
+        sku, stock = row
+        if stock is None:
+            if not create_if_missing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "STOCK_NOT_FOUND",
+                        "message": f"Stock row for SKU '{sku_code}' not found",
+                    },
+                )
+            stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
+
+        result = await db.execute(
+            select(InventoryStock)
+            .where(InventoryStock.id == stock.id)
+            .where(InventoryStock.is_deleted.is_(False))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        stock = result.scalar_one_or_none()
+        if stock is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "STOCK_NOT_FOUND",
+                    "message": f"Stock row for SKU '{sku_code}' not found",
+                },
+            )
+        return sku, stock
+
+    async def reserve_on_confirm(
+        self,
+        db: AsyncSession,
+        *,
+        order_items,
+    ) -> list[InventoryStock]:
+        """Reserve available stock for a confirmed order without movement entries."""
+        stocks: list[InventoryStock] = []
+        for item in sorted(order_items, key=lambda order_item: order_item.sku_code):
+            quantity = Decimal(str(item.quantity))
+            if quantity <= Decimal("0.00"):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "INVALID_RESERVATION_QUANTITY",
+                        "message": f"Reservation quantity for SKU '{item.sku_code}' must be positive",
+                    },
+                )
+
+            _, stock = await self._locked_stock_by_sku_code(
+                db, sku_code=item.sku_code, create_if_missing=True
+            )
+            available = self._available(stock.quantity_on_hand, stock.quantity_reserved)
+            if available < quantity:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "INSUFFICIENT_AVAILABLE_STOCK",
+                        "message": (
+                            f"Insufficient available stock for '{item.sku_code}': "
+                            f"requested {quantity}, available {available}"
+                        ),
+                    },
+                )
+
+            stock.quantity_reserved = stock.quantity_reserved + quantity
+            stocks.append(stock)
+
+        await db.flush()
+        return stocks
+
+    async def release_on_cancel(
+        self,
+        db: AsyncSession,
+        *,
+        order_items,
+    ) -> list[InventoryStock]:
+        """Release reserved stock for a cancelled order without movement entries."""
+        stocks: list[InventoryStock] = []
+        for item in sorted(order_items, key=lambda order_item: order_item.sku_code):
+            quantity = Decimal(str(item.quantity))
+            if quantity <= Decimal("0.00"):
+                continue
+
+            _, stock = await self._locked_stock_by_sku_code(
+                db, sku_code=item.sku_code, create_if_missing=False
+            )
+            release_quantity = min(stock.quantity_reserved, quantity)
+            stock.quantity_reserved = stock.quantity_reserved - release_quantity
+            stocks.append(stock)
+
+        await db.flush()
+        return stocks
+
     async def get_stock_by_sku_code(self, db: AsyncSession, *, sku_code: str):
         row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
         if not row:
@@ -122,26 +230,7 @@ class InventoryService:
         fulfilled_by: str | None = None,
     ) -> tuple[InventoryStock, InventoryMovement]:
         """Deduct on-hand stock for a fulfilled order and write a journal entry."""
-        row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
-        if not row:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
-            )
-
-        sku, stock = row
-        if stock is None:
-            stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
-
-        result = await db.execute(
-            select(InventoryStock)
-            .where(InventoryStock.id == stock.id)
-            .where(InventoryStock.is_deleted.is_(False))
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        stock = result.scalar_one()
-
+        sku, stock = await self._locked_stock_by_sku_code(db, sku_code=sku_code)
         quantity = Decimal(str(quantity))
         quantity_before = stock.quantity_on_hand
         quantity_after = quantity_before - quantity
@@ -158,6 +247,7 @@ class InventoryService:
             )
 
         stock.quantity_on_hand = quantity_after
+        stock.quantity_reserved = stock.quantity_reserved - min(stock.quantity_reserved, quantity)
 
         fulfilled_by_uuid = None
         if fulfilled_by:

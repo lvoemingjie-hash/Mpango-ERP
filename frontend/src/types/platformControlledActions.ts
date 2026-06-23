@@ -61,3 +61,12 @@ export interface ControlledActionRequestResponse {
   correlation_id: string | null;
   created_at: string;
 }
+
+export interface ControlledActionRequestQueue {
+  items: ControlledActionRequestResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+  storage: 'memory';
+  executed: boolean;
+}

@@ -161,3 +161,20 @@ class ActionRequestResponse(BaseModel):
     )
     correlation_id: Optional[str] = Field(None, description="Echoed correlation id")
     created_at: datetime = Field(..., description="UTC ISO-8601 timestamp")
+
+
+class ActionRequestQueueResponse(BaseModel):
+    """Ephemeral operator queue of recorded P18 action requests."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ActionRequestResponse]
+    total: int
+    limit: int
+    offset: int
+    storage: str = Field(
+        "memory", description="Ephemeral in-process storage; no database persistence"
+    )
+    executed: bool = Field(
+        False, description="Always False -- listing the queue never executes actions"
+    )

@@ -34,6 +34,7 @@ import type {
 import type {
   ControlledActionCatalog,
   ControlledActionRequestPayload,
+  ControlledActionRequestQueue,
   ControlledActionRequestResponse,
 } from '@/types/platformControlledActions';
 
@@ -131,6 +132,12 @@ export const platformService = {
   /** P18: Record a controlled-action request (not executed) */
   submitControlledAction: (payload: ControlledActionRequestPayload) =>
     api.post<ControlledActionRequestResponse>(`${P18_BASE}/actions/request`, payload),
+
+  /** P18: List recorded controlled-action requests (ephemeral; not executed) */
+  listControlledActionRequests: (limit = 20, offset = 0) =>
+    api.get<ControlledActionRequestQueue>(`${P18_BASE}/actions/requests`, {
+      params: { limit, offset },
+    }),
 
   /** P18: Read a recorded controlled-action request by id (not executed) */
   getControlledActionRequest: (actionId: string) =>

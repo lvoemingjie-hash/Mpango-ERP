@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import type {
   ControlledActionCatalog,
   ControlledActionRequestPayload,
+  ControlledActionRequestQueue,
   ControlledActionRequestResponse,
 } from '@/types/platformControlledActions';
 
@@ -52,6 +53,7 @@ export function PlatformControlledActionsPage() {
   const [confirm, setConfirm] = useState(true);
 
   const [result, setResult] = useState<ControlledActionRequestResponse | null>(null);
+  const [queue, setQueue] = useState<ControlledActionRequestQueue | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -95,6 +97,13 @@ export function PlatformControlledActionsPage() {
       .then((res) => setResult(unwrap<ControlledActionRequestResponse>(res)))
       .catch((err) => setError(err.message ?? 'Controlled-action request failed'))
       .finally(() => setBusy(false));
+  };
+
+  const refreshQueue = () => {
+    platformService
+      .listControlledActionRequests(20, 0)
+      .then((res) => setQueue(unwrap<ControlledActionRequestQueue>(res)))
+      .catch((err) => setError(err.message ?? 'Controlled-action queue failed'));
   };
 
   const sourceWarning = !!result && result.source_status !== 'available';
@@ -269,16 +278,75 @@ export function PlatformControlledActionsPage() {
                 <p className="mt-1 text-xs text-gray-500">action id: {result.action_id}</p>
               ) : null}
               {sourceWarning ? (
-                <p
-                  className="mt-2 rounded bg-yellow-50 p-2 text-xs text-yellow-800"
+                <div
+                  className="mt-2 rounded bg-yellow-50 p-2 text-xs text-yellow-800 space-y-1"
                   data-testid="ca-source-warning"
                 >
-                  Warning: registry source is {result.source_status}. No safe execution is
-                  possible against an unknown source; this request was not executed.
-                </p>
+                  <p>
+                    {result.result === "degraded"
+                      ? "Degraded request: registry source is " + result.source_status + "."
+                      : "Not requestable: registry source is " + result.source_status + "."}{" "}
+                    No safe execution is possible against an unknown or unavailable source; this
+                    request was not executed.
+                  </p>
+                  {result.degraded_reason ? (
+                    <p data-testid="ca-degraded-reason">{result.degraded_reason}</p>
+                  ) : null}
+                </div>
               ) : null}
             </section>
           ) : null}
+
+          <section className="rounded-lg border border-gray-200 bg-white p-4" data-testid="ca-queue">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Operator queue</h2>
+                <p className="text-xs text-gray-500">
+                  Ephemeral memory queue; requests are listed for review and are not executed.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={refreshQueue}
+                className="rounded bg-gray-200 px-3 py-2 text-sm font-medium text-gray-800"
+                data-testid="ca-refresh-queue-btn"
+              >
+                Refresh queue
+              </button>
+            </div>
+            {queue ? (
+              <div className="mt-3">
+                <p className="text-xs text-gray-500" data-testid="ca-queue-summary">
+                  {queue.total} recorded requests; storage={queue.storage}; executed={String(queue.executed)}
+                </p>
+                <ul className="mt-2 divide-y divide-gray-100">
+                  {queue.items.map((item) => (
+                    <li
+                      key={item.action_id ?? `${item.action_type}-${item.created_at}`}
+                      className="py-2"
+                      data-testid="ca-queue-item"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="font-mono text-gray-900">{item.action_type}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${RESULT_TONE[item.result] ?? 'bg-gray-100 text-gray-600'}`}
+                        >
+                          {item.result}
+                        </span>
+                        <span className="text-xs text-gray-500">source: {item.source_status}</span>
+                        <span className="text-xs text-gray-400">executed={String(item.executed)}</span>
+                      </div>
+                      {item.action_id ? (
+                        <p className="mt-1 text-xs text-gray-500">action id: {item.action_id}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-gray-400">Refresh to load the current request queue.</p>
+            )}
+          </section>
         </>
       ) : null}
     </div>

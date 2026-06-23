@@ -138,6 +138,7 @@ class InventoryService:
             .where(InventoryStock.id == stock.id)
             .where(InventoryStock.is_deleted.is_(False))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         stock = result.scalar_one()
 

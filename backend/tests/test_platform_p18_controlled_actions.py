@@ -716,3 +716,164 @@ class TestReasonRedaction:
         assert redacted["password"] == "[redacted]"
         assert redacted["dsn"] == "[redacted]"
         assert "hunter2" not in str(body)
+
+
+# ============================================================
+# 10. Generalized sensitive-input boundary (P18-B/C-R2)
+# ============================================================
+
+
+class TestGeneralizedSensitiveBoundary:
+    """R2: every client-supplied echo field is sanitized -- action_type (unsupported
+    + sensitive), idempotency_key, requested_state, correlation_id -- so no raw
+    sensitive value appears in any response or audit. Clean values are preserved.
+    Duplicate / conflict semantics are unchanged (raw values still drive the internal
+    store key and one-way fingerprint).
+    """
+
+    def test_sensitive_idempotency_key_not_leaked_in_response_or_audit(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        with patch(
+            "services.platform_audit_service.append_audit_entry", new=AsyncMock()
+        ) as mock_audit:
+            body = client.post(
+                REQUEST_PATH,
+                headers=AUTH_HEADERS,
+                json=_payload(idempotency_key="password=abc123"),  # pragma: allowlist secret
+            ).json()
+        assert body["idempotency_key"] == "[redacted]"
+        assert "abc123" not in str(body)
+        # Audit metadata must not carry the raw key either.
+        assert mock_audit.called
+        meta = mock_audit.call_args.kwargs.get("audit_metadata", {}) or {}
+        assert meta.get("idempotency_key") == "[redacted]"
+        assert "abc123" not in str(meta)
+
+    def test_unsupported_sensitive_action_type_not_leaked(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(action_type="postgres://u:p@10.0.0.5:5432/db"),  # pragma: allowlist secret
+        ).json()
+        assert body["result"] == "denied"
+        assert body["action_type"] == "[redacted]"
+        serialized = str(body)
+        for leak in ("postgres://", "u:p", "10.0.0.5", "5432", "/db"):
+            assert leak not in serialized
+
+    def test_benign_unsupported_action_type_still_echoed(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(action_type="evil.mutate"),
+        ).json()
+        assert body["result"] == "denied"
+        assert body["action_type"] == "evil.mutate"
+
+    def test_sensitive_requested_state_not_leaked(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(
+                idempotency_key="k-state",
+                requested_state="host=db.internal:5432",  # pragma: allowlist secret
+            ),
+        ).json()
+        assert body["result"] == "accepted"
+        assert body["requested_state"] == "[redacted]"
+        assert "5432" not in str(body)
+        assert "db.internal" not in str(body)
+
+    def test_sensitive_correlation_id_not_leaked(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(
+                idempotency_key="k-corr",
+                correlation_id="token abc123",  # pragma: allowlist secret
+            ),
+        ).json()
+        assert body["result"] == "accepted"
+        assert body["correlation_id"] == "[redacted]"
+        assert "abc123" not in str(body)
+
+    def test_duplicate_with_sensitive_key_does_not_leak(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        first = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(idempotency_key="password=abc123"),  # pragma: allowlist secret
+        ).json()
+        assert first["result"] == "accepted"
+        dup = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(idempotency_key="password=abc123"),  # pragma: allowlist secret
+        ).json()
+        assert dup["result"] == "duplicate"
+        assert dup["idempotency_key"] == "[redacted]"
+        assert "abc123" not in str(dup)
+
+    def test_conflict_with_sensitive_key_does_not_leak(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(idempotency_key="password=abc123", reason="reason one"),  # pragma: allowlist secret
+        ).json()
+        conflict = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(idempotency_key="password=abc123", reason="reason two"),  # pragma: allowlist secret
+        ).json()
+        assert conflict["result"] == "conflict"
+        assert conflict["idempotency_key"] == "[redacted]"
+        assert "abc123" not in str(conflict)
+
+    def test_get_by_id_does_not_leak_sensitive_echo_fields(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        action_id = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(
+                idempotency_key="token xyz999",  # pragma: allowlist secret
+                requested_state="postgres://u:p@10.0.0.5:5432/db",  # pragma: allowlist secret
+                correlation_id="api_key=sk_123",  # pragma: allowlist secret
+            ),
+        ).json()["action_id"]
+        got = client.get(recorded_path(action_id), headers=AUTH_HEADERS).json()
+        assert got["idempotency_key"] == "[redacted]"
+        assert got["requested_state"] == "[redacted]"
+        assert got["correlation_id"] == "[redacted]"
+        serialized = str(got)
+        for leak in ("xyz999", "postgres://", "10.0.0.5", "5432", "sk_123"):
+            assert leak not in serialized
+
+    def test_clean_echo_fields_preserved(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(
+                idempotency_key="clean-key-1",
+                requested_state="paused",
+                correlation_id="req-abc-123",
+            ),
+        ).json()
+        assert body["result"] == "accepted"
+        assert body["idempotency_key"] == "clean-key-1"
+        assert body["requested_state"] == "paused"
+        assert body["correlation_id"] == "req-abc-123"

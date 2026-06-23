@@ -302,6 +302,38 @@ def _redact_reason(reason: str) -> str:
     return reason
 
 
+def _sanitize_text(value: Optional[str]) -> Optional[str]:
+    """Return a safe value for any free-text client input echoed in responses/audit.
+
+    P18-B/C-R2 generalizes the reason boundary to ALL client-supplied echo fields:
+    idempotency_key, requested_state, and correlation_id. If the value carries any
+    sensitive pattern it is replaced with "[redacted]"; None stays None; a clean
+    value is returned verbatim. The RAW value is still used internally for the store
+    key and the one-way idempotency fingerprint (a hash that is never echoed/audited).
+    """
+    if value is None:
+        return None
+    if _reason_is_sensitive(value):
+        return "[redacted]"
+    return value
+
+
+def _sanitize_action_type(action_type: str) -> str:
+    """Echo-safe action_type.
+
+    Catalog values come from a fixed, safe enum and are returned verbatim. An
+    unsupported value that contains a sensitive pattern is replaced with "[redacted]"
+    (so a hostile action_type such as a DSN cannot be echoed); a benign unsupported
+    value is echoed so the client can see what was rejected. The RAW action_type is
+    still used internally for catalog lookup and the one-way fingerprint.
+    """
+    if known_action_type(action_type):
+        return action_type
+    if _reason_is_sensitive(action_type):
+        return "[redacted]"
+    return action_type
+
+
 # -- Response builder --------------------------------------------------------
 
 
@@ -366,22 +398,29 @@ async def evaluate_request(
     """
     now = datetime.now(timezone.utc)
     raw_reason = (reason or "").strip()
-    safe_reason = _redact_reason(raw_reason)
     raw_key = (idempotency_key or "").strip()
+    # Echo-safe values for every client-supplied field (P18-B/C-R2). RAW values are
+    # still used internally: catalog lookup (action_type), the store key (raw_key),
+    # and the one-way fingerprint (raw payload). Nothing raw is echoed or audited.
+    safe_reason = _redact_reason(raw_reason)
+    safe_action_type = _sanitize_action_type(action_type)
+    safe_key = _sanitize_text(raw_key) or ""
+    safe_requested_state = _sanitize_text(requested_state)
+    safe_correlation_id = _sanitize_text(correlation_id)
     redacted_md = redact_metadata(metadata)
 
     def denied(message: str, source_status: RegistrySourceStatus = "unknown") -> ActionRequestResponse:
         return _make_response(
-            action_type=action_type,
+            action_type=safe_action_type,
             result="denied",
             message=message,
             reason=safe_reason,
-            idempotency_key=raw_key,
-            requested_state=requested_state,
+            idempotency_key=safe_key,
+            requested_state=safe_requested_state,
             source_status=source_status,
             dry_run=not persist,
             metadata_redacted=redacted_md,
-            correlation_id=correlation_id,
+            correlation_id=safe_correlation_id,
             created_at=now,
         )
 
@@ -416,20 +455,20 @@ async def evaluate_request(
             )
         if item.degraded_allowed:
             return _make_response(
-                action_type=action_type,
+                action_type=safe_action_type,
                 result="degraded",
                 message=(
                     "Degraded: source unavailable; the request was accepted as a "
                     "degraded read. No state changed and no execution was performed."
                 ),
                 reason=safe_reason,
-                idempotency_key=raw_key,
-                requested_state=requested_state,
+                idempotency_key=safe_key,
+                requested_state=safe_requested_state,
                 source_status=source_status,
                 degraded_reason=f"Source status is '{source_status}'; degraded read only.",
                 dry_run=not persist,
                 metadata_redacted=redacted_md,
-                correlation_id=correlation_id,
+                correlation_id=safe_correlation_id,
                 created_at=now,
             )
         return denied(
@@ -455,7 +494,7 @@ async def evaluate_request(
                         "action was NOT re-executed."
                     ),
                     reason=existing.reason,
-                    idempotency_key=raw_key,
+                    idempotency_key=safe_key,
                     requested_state=existing.requested_state,
                     source_status=existing.source_status,  # type: ignore[arg-type]
                     action_id=existing.action_id,
@@ -465,71 +504,71 @@ async def evaluate_request(
                     created_at=existing.created_at,
                 )
             return _make_response(
-                action_type=action_type,
+                action_type=safe_action_type,
                 result="conflict",
                 message=(
                     "Conflict: idempotency_key already recorded with a different "
                     "request payload; the request is rejected and NOT executed."
                 ),
                 reason=safe_reason,
-                idempotency_key=raw_key,
-                requested_state=requested_state,
+                idempotency_key=safe_key,
+                requested_state=safe_requested_state,
                 source_status=source_status,
                 dry_run=False,
                 metadata_redacted=redacted_md,
-                correlation_id=correlation_id,
+                correlation_id=safe_correlation_id,
                 created_at=now,
             )
 
         action_id = str(uuid4())
         rec = _StoredRequest(
             action_id=action_id,
-            action_type=action_type,
+            action_type=safe_action_type,
             tenant_id=tenant_id,
             reason=safe_reason,
-            idempotency_key=raw_key,
-            requested_state=requested_state,
+            idempotency_key=safe_key,
+            requested_state=safe_requested_state,
             result=projected,
             source_status=source_status,
             created_at=now,
             fingerprint=fp,
-            correlation_id=correlation_id,
+            correlation_id=safe_correlation_id,
             metadata_redacted=redacted_md,
         )
         _STORE[raw_key] = rec
         _STORE_BY_ACTION_ID[action_id] = rec
         return _make_response(
-            action_type=action_type,
+            action_type=safe_action_type,
             result=projected,
             message=(
                 "Accepted: the request was recorded and audited, NOT executed. No "
                 "registry, lifecycle, flag, provisioning, or backup state was changed."
             ),
             reason=safe_reason,
-            idempotency_key=raw_key,
-            requested_state=requested_state,
+            idempotency_key=safe_key,
+            requested_state=safe_requested_state,
             source_status=source_status,
             action_id=action_id,
             dry_run=False,
             metadata_redacted=redacted_md,
-            correlation_id=correlation_id,
+            correlation_id=safe_correlation_id,
             created_at=now,
         )
 
     # validate (dry run) -- accepted projection, no persistence
     return _make_response(
-        action_type=action_type,
+        action_type=safe_action_type,
         result=projected,
         message=(
             "Accepted (dry run): the request is valid and would be recorded. Nothing "
             "was persisted and the action was NOT executed."
         ),
         reason=safe_reason,
-        idempotency_key=raw_key,
-        requested_state=requested_state,
+        idempotency_key=safe_key,
+        requested_state=safe_requested_state,
         source_status=source_status,
         dry_run=True,
         metadata_redacted=redacted_md,
-        correlation_id=correlation_id,
+        correlation_id=safe_correlation_id,
         created_at=now,
     )

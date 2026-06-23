@@ -527,6 +527,26 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
             "created_by UUID, updated_by UUID)",
 
+            f'CREATE TABLE IF NOT EXISTS "{ts}".inventory_reservations ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            f'order_id UUID NOT NULL REFERENCES "{ts}".orders(id) ON DELETE CASCADE,'
+            f'order_item_id UUID NOT NULL REFERENCES "{ts}".order_items(id) ON DELETE CASCADE,'
+            f'sku_id UUID NOT NULL REFERENCES "{ts}".skus(id) ON DELETE CASCADE,'
+            "sku_code VARCHAR(64) NOT NULL,"
+            "quantity NUMERIC(12,2) NOT NULL,"
+            "status VARCHAR(32) NOT NULL DEFAULT 'reserved',"
+            "reserved_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "consumed_at TIMESTAMPTZ,"
+            "released_at TIMESTAMPTZ,"
+            "reference_type VARCHAR(50) NOT NULL DEFAULT 'order',"
+            "reference_id UUID NOT NULL,"
+            "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
+            "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
+            "created_by UUID, updated_by UUID,"
+            "CONSTRAINT ck_inventory_reservations_quantity_positive CHECK (quantity > 0),"
+            "CONSTRAINT ck_inventory_reservations_status "
+            "CHECK (status IN ('reserved', 'consumed', 'released')))",
+
             f'CREATE TABLE IF NOT EXISTS "{ts}".payments ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
             f'order_id UUID NOT NULL REFERENCES "{ts}".orders(id) ON DELETE CASCADE,'
@@ -571,6 +591,23 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
         ]
         for ddl in tables:
             await db.execute(text(ddl))
+
+        await db.execute(text(
+            f'CREATE INDEX IF NOT EXISTS ix_inventory_reservations_order_id '
+            f'ON "{ts}".inventory_reservations(order_id)'
+        ))
+        await db.execute(text(
+            f'CREATE INDEX IF NOT EXISTS ix_inventory_reservations_sku_id '
+            f'ON "{ts}".inventory_reservations(sku_id)'
+        ))
+        await db.execute(text(
+            f'CREATE INDEX IF NOT EXISTS ix_inventory_reservations_status '
+            f'ON "{ts}".inventory_reservations(status)'
+        ))
+        await db.execute(text(
+            f'CREATE UNIQUE INDEX IF NOT EXISTS ux_inventory_reservations_active_order_item '
+            f'ON "{ts}".inventory_reservations(order_item_id) WHERE status = \'reserved\''
+        ))
 
         # Ledger immutability trigger
         await db.execute(text(

@@ -218,6 +218,7 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             sku_id UUID NOT NULL,
             quantity_on_hand NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            quantity_reserved NUMERIC(12, 2) NOT NULL DEFAULT 0,
             is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
             deleted_at TIMESTAMP WITH TIME ZONE,
             created_by UUID,
@@ -225,6 +226,75 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
             created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
+    """))
+
+    await session.execute(text(f"""
+        ALTER TABLE "{tenant_schema}".inventory_stocks
+        ADD COLUMN IF NOT EXISTS quantity_reserved NUMERIC(12, 2) NOT NULL DEFAULT 0
+    """))
+
+    await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".inventory_movements (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            sku_id UUID NOT NULL,
+            movement_type VARCHAR(32) NOT NULL,
+            quantity NUMERIC(12, 2) NOT NULL,
+            quantity_before NUMERIC(12, 2) NOT NULL,
+            quantity_after NUMERIC(12, 2) NOT NULL,
+            reason TEXT,
+            reference_type VARCHAR(50),
+            reference_id UUID,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".inventory_reservations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL REFERENCES "{tenant_schema}".orders(id) ON DELETE CASCADE,
+            order_item_id UUID NOT NULL REFERENCES "{tenant_schema}".order_items(id) ON DELETE CASCADE,
+            sku_id UUID NOT NULL REFERENCES "{tenant_schema}".skus(id) ON DELETE CASCADE,
+            sku_code VARCHAR(64) NOT NULL,
+            quantity NUMERIC(12, 2) NOT NULL,
+            status VARCHAR(32) NOT NULL DEFAULT 'reserved',
+            reserved_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            consumed_at TIMESTAMP WITH TIME ZONE,
+            released_at TIMESTAMP WITH TIME ZONE,
+            reference_type VARCHAR(50) NOT NULL DEFAULT 'order',
+            reference_id UUID NOT NULL,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT ck_inventory_reservations_quantity_positive CHECK (quantity > 0),
+            CONSTRAINT ck_inventory_reservations_status
+                CHECK (status IN ('reserved', 'consumed', 'released'))
+        )
+    """))
+
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_inventory_reservations_order_id
+        ON "{tenant_schema}".inventory_reservations(order_id)
+    """))
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_inventory_reservations_sku_id
+        ON "{tenant_schema}".inventory_reservations(sku_id)
+    """))
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_inventory_reservations_status
+        ON "{tenant_schema}".inventory_reservations(status)
+    """))
+    await session.execute(text(f"""
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_inventory_reservations_active_order_item
+        ON "{tenant_schema}".inventory_reservations(order_item_id)
+        WHERE status = 'reserved'
     """))
 
     await session.execute(text(f"""

@@ -174,3 +174,32 @@ describe('PlatformControlledActionsPage', () => {
     expect(screen.getByTestId('ca-result-badge')).toHaveTextContent('degraded');
   });
 });
+
+
+it("denied with unavailable source shows not-requestable wording", async () => {
+  renderPage();
+  await screen.findAllByTestId("ca-catalog-item");
+  fillForm();
+  vi.mocked(api.post).mockResolvedValueOnce(
+    response({ result: "denied", source_status: "unavailable", dry_run: false }),
+  );
+  fireEvent.click(screen.getByTestId("ca-submit-btn"));
+  const warning = await screen.findByTestId("ca-source-warning");
+  expect(warning.textContent?.toLowerCase()).toContain("not requestable");
+});
+
+it("degraded result surfaces the degraded reason", async () => {
+  renderPage();
+  await screen.findAllByTestId("ca-catalog-item");
+  fillForm();
+  vi.mocked(api.post).mockResolvedValueOnce(
+    response({
+      result: "degraded",
+      source_status: "unavailable",
+      degraded_reason: "Source status is unavailable; degraded read only.",
+      dry_run: false,
+    }),
+  );
+  fireEvent.click(screen.getByTestId("ca-submit-btn"));
+  expect(await screen.findByTestId("ca-degraded-reason")).toHaveTextContent("degraded read only");
+});

@@ -269,13 +269,21 @@ export function PlatformControlledActionsPage() {
                 <p className="mt-1 text-xs text-gray-500">action id: {result.action_id}</p>
               ) : null}
               {sourceWarning ? (
-                <p
-                  className="mt-2 rounded bg-yellow-50 p-2 text-xs text-yellow-800"
+                <div
+                  className="mt-2 rounded bg-yellow-50 p-2 text-xs text-yellow-800 space-y-1"
                   data-testid="ca-source-warning"
                 >
-                  Warning: registry source is {result.source_status}. No safe execution is
-                  possible against an unknown source; this request was not executed.
-                </p>
+                  <p>
+                    {result.result === "degraded"
+                      ? "Degraded request: registry source is " + result.source_status + "."
+                      : "Not requestable: registry source is " + result.source_status + "."}{" "}
+                    No safe execution is possible against an unknown or unavailable source; this
+                    request was not executed.
+                  </p>
+                  {result.degraded_reason ? (
+                    <p data-testid="ca-degraded-reason">{result.degraded_reason}</p>
+                  ) : null}
+                </div>
               ) : null}
             </section>
           ) : null}

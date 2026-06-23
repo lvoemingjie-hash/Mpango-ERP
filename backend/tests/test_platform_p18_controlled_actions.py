@@ -91,7 +91,7 @@ def _mock_db():
     return db
 
 
-def _make_app(mock_db=None, *, source_status=None):
+def _make_app(mock_db=None, *, source_status=None, registry=None):
     """Build an app with the P18 router; reset the store; optionally fix source status."""
     from api.v1.platform.p18 import services
     from api.v1.platform.p18.routes import router
@@ -108,8 +108,13 @@ def _make_app(mock_db=None, *, source_status=None):
 
     if source_status is not None:
         _start_patch(
-            "api.v1.platform.p18.services._resolve_registry_source_status",
+            "api.v1.platform.p18.services._resolve_action_source_status",
             AsyncMock(return_value=source_status),
+        )
+    else:
+        _start_patch(
+            "api.v1.platform.p18.services.get_tenant_registry",
+            AsyncMock(return_value=registry),
         )
     return app
 

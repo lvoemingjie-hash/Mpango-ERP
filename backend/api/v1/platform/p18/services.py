@@ -7,12 +7,16 @@ provisioning, backup, or any tenant business data. Recorded requests are
 ephemeral (in-process memory) -- there is intentionally no database table and
 no migration.
 
-The registry source-status resolver ``_resolve_registry_source_status`` is the
-deferred seam: real wiring to the P17 registry read is deferred to a later
-phase. The conservative default is "unknown", which denies write / write_request
-actions and allows only the two degraded read actions, exactly as P18-A requires
-(no action when the registry source is unknown unless the contract explicitly
-allows a degraded request). Tests patch this function for determinism.
+The registry source-status resolver ``_resolve_action_source_status`` reads the
+REAL P17 registry (read-only) and maps each action type to the source status of
+the specific P17 sub-source it targets (lifecycle / operational flags /
+provisioning / backup). It is conservative on every failure path: a missing or
+null tenant, or any read error, resolves to "unknown", which denies write /
+write_request actions and allows only the two degraded read actions, exactly as
+P18-A requires (no action when the registry source is unknown unless the
+contract explicitly allows a degraded request). Nothing is executed and nothing
+is mutated; tests patch ``get_tenant_registry`` (or the resolver) for
+determinism.
 """
 from __future__ import annotations
 
@@ -23,6 +27,9 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from api.v1.platform.p17.schemas import PlatformTenantRegistry
+from api.v1.platform.p17.services import get_tenant_registry
 
 from .schemas import (
     ActionCatalogItem,
@@ -140,21 +147,51 @@ def _item_for(action_type: str) -> Optional[ActionCatalogItem]:
     return _CATALOG_BY_TYPE.get(action_type)
 
 
-# -- Registry source-status resolution (deferred seam) ----------------------
+# -- Registry source-status resolution (real P17 read, P18-D) ---------------
+
+_LIFECYCLE_ACTIONS: frozenset[str] = frozenset(
+    {"tenant.pause", "tenant.resume", "lifecycle.transition"}
+)
+_FLAG_ACTIONS: frozenset[str] = frozenset(
+    {"support_mode.on", "support_mode.off", "incident.flag_set", "incident.flag_clear"}
+)
+_PROVISIONING_ACTION = "provisioning.recheck"
+_BACKUP_ACTIONS: frozenset[str] = frozenset(
+    {"backup.check", "backup.restore_test_request"}
+)
 
 
-async def _resolve_registry_source_status(
-    tenant_id: Optional[str], db: AsyncSession
+def _action_source_status(action_type: str, registry: PlatformTenantRegistry) -> RegistrySourceStatus:
+    """Map an action_type to the source_status of its targeted P17 sub-source."""
+    if action_type in _LIFECYCLE_ACTIONS:
+        return registry.lifecycle_state.state_source_status
+    if action_type in _FLAG_ACTIONS:
+        return registry.operational_flags.flags_source_status
+    if action_type == _PROVISIONING_ACTION:
+        prov = registry.provisioning_status
+        return prov.provisioning_source_status if prov is not None else "unavailable"
+    if action_type in _BACKUP_ACTIONS:
+        backup = registry.backup_status
+        return backup.backup_source_status if backup is not None else "unavailable"
+    return registry.registry_source_status
+
+
+async def _resolve_action_source_status(
+    action_type: str, tenant_id: Optional[str], db: AsyncSession
 ) -> RegistrySourceStatus:
-    """Best-effort registry source status for the target tenant.
-
-    Conservative default is "unknown": real wiring to the P17 registry read is
-    deferred to a later phase. "unknown" denies write / write_request actions and
-    allows only the two degraded read actions, matching P18-A (no action when the
-    registry source is unknown unless the contract explicitly allows a degraded
-    request). Tests patch this function for determinism.
-    """
-    return "unknown"
+    """Resolve the real P17 source status for an action target; unknown on any failure."""
+    if not tenant_id:
+        return "unknown"
+    try:
+        registry = await get_tenant_registry(db, tenant_id)
+    except Exception:
+        return "unknown"
+    if registry is None:
+        return "unknown"
+    try:
+        return _action_source_status(action_type, registry)
+    except Exception:
+        return "unknown"
 
 
 # -- In-memory request store (ephemeral, process-local) ---------------------
@@ -441,8 +478,8 @@ async def evaluate_request(
     if item.confirmation_required and not confirm:
         return denied("Denied: this action requires explicit confirmation (confirm=true).")
 
-    # 5) resolve registry source status
-    source_status = await _resolve_registry_source_status(tenant_id, db)
+    # 5) resolve registry source status (real P17 read, P18-D)
+    source_status = await _resolve_action_source_status(action_type, tenant_id, db)
     is_write = item.classification in ("write", "write_request")
 
     # 6) unknown / unavailable source: writes denied; degraded read only when allowed

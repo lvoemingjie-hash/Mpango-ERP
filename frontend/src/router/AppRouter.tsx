@@ -30,6 +30,7 @@ import { PlatformTenantHealthPage } from '@/pages/platform/PlatformTenantHealthP
 import { PlatformSystemHealthPage } from '@/pages/platform/PlatformSystemHealthPage';
 import { SupportConsolePage } from '@/pages/platform/SupportConsolePage';
 import { PlatformRegistryPage } from '@/pages/platform/PlatformRegistryPage';
+import { PlatformControlledActionsPage } from '@/pages/platform/PlatformControlledActionsPage';
 // P13 Operations Cockpit pages
 import { OpsHealthPage } from '@/pages/platform/ops/OpsHealthPage';
 import { OpsErrorsPage } from '@/pages/platform/ops/OpsErrorsPage';
@@ -104,6 +105,8 @@ const router = createBrowserRouter([
               { path: '/platform/support', element: <SupportConsolePage /> },
               // P17 Platform Registry route (read-only, identity-only super_admin)
               { path: '/platform/registry', element: <PlatformRegistryPage /> },
+              // P18 Controlled Actions route (request skeleton, identity-only super_admin)
+              { path: '/platform/controlled-actions', element: <PlatformControlledActionsPage /> },
               // P13 Operations Cockpit routes
               { path: '/platform/ops/health', element: <OpsHealthPage /> },
               { path: '/platform/ops/errors', element: <OpsErrorsPage /> },

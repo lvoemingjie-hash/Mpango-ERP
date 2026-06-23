@@ -240,6 +240,12 @@ _SENSITIVE_VAL = re.compile(
     r"(?i)(password|passwd|secret|token|api[_-]?key|access[_-]?key|credential|"
     r"dsn|postgres(ql)?://|mysql://|mongodb(\+srv)?://|redis://|amqp://|://|@)"
 )
+# Host / IP + optional :port. Used to catch a bare host or endpoint embedded in
+# the free-text reason (a value the keyword regexes do not cover on their own).
+_HOST_PORT = re.compile(
+    r"(?i)(?:\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{2,5})?\b"
+    r"|\b[a-z][a-z0-9.-]*[a-z0-9]:\d{2,5}\b)"
+)
 
 
 def _redact_node(key: Optional[str], value: Any) -> Any:
@@ -265,11 +271,35 @@ def redact_metadata(metadata: Optional[dict]) -> Optional[dict]:
     return {key: _redact_node(key, value) for key, value in metadata.items()}
 
 
+def _reason_is_sensitive(reason: str) -> bool:
+    """True if the reason carries any secret keyword, scheme, or host:port pattern."""
+    if not reason:
+        return False
+    if _SENSITIVE_VAL.search(reason):
+        return True
+    if _HOST_PORT.search(reason):
+        return True
+    return False
+
+
 def _redact_reason(reason: str) -> str:
-    """Redact secret-like substrings from the operator reason; pass clean text through."""
+    """Return a safe reason for storage and echo.
+
+    Conservative policy (P18-B/C-R1): if the reason contains ANY sensitive pattern
+    -- a secret keyword (password / token / api_key / dsn / credential / ...), a
+    connection scheme (postgres://, mysql://, redis://, ://), an '@' credential
+    separator, or a host / IP : port pair -- the ENTIRE reason is replaced with
+    "[redacted]" so that no secret VALUE can remain (the previous keyword-sub
+    approach left the value, for example "abc123" in "password=abc123"). A clean
+    reason is returned verbatim. The raw reason is never stored or echoed: only the
+    idempotency fingerprint uses the raw payload, and that is a one-way hash that is
+    never returned in any response.
+    """
     if not reason:
         return ""
-    return _SENSITIVE_VAL.sub("[redacted]", reason)
+    if _reason_is_sensitive(reason):
+        return "[redacted]"
+    return reason
 
 
 # -- Response builder --------------------------------------------------------
@@ -456,7 +486,7 @@ async def evaluate_request(
             action_id=action_id,
             action_type=action_type,
             tenant_id=tenant_id,
-            reason=raw_reason,
+            reason=safe_reason,
             idempotency_key=raw_key,
             requested_state=requested_state,
             result=projected,

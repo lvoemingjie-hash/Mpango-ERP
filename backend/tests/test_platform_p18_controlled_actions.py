@@ -595,3 +595,124 @@ class TestValidateDryRun:
         ).json()
         assert body["result"] == "denied"
         assert body["dry_run"] is True
+
+
+# ============================================================
+# 9. Reason redaction (P18-B/C-R1: no secret value leaks)
+# ============================================================
+
+
+class TestReasonRedaction:
+    """R1: a sensitive reason is wholesale-redacted so no secret VALUE remains in
+    any response, stored request, or duplicate echo. A clean reason is preserved.
+    """
+
+    def test_reason_password_value_not_leaked(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(reason="password=abc123"),  # pragma: allowlist secret
+        ).json()
+        assert body["reason"] == "[redacted]"
+        assert "abc123" not in str(body)
+
+    def test_reason_token_value_not_leaked(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(reason="token abc123"),  # pragma: allowlist secret
+        ).json()
+        assert body["reason"] == "[redacted]"
+        assert "abc123" not in str(body)
+
+    def test_reason_dsn_connection_string_not_leaked(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(reason="postgres://u:p@10.0.0.5:5432/db"),  # pragma: allowlist secret
+        ).json()
+        assert body["reason"] == "[redacted]"
+        serialized = str(body)
+        for leak in ("postgres://", "u:p", "10.0.0.5", "5432", "/db"):
+            assert leak not in serialized
+
+    def test_reason_host_port_not_leaked(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(reason="connect to db.internal:5432 now"),  # pragma: allowlist secret
+        ).json()
+        assert body["reason"] == "[redacted]"
+        assert "5432" not in str(body)
+        assert "db.internal" not in str(body)
+
+    def test_accepted_request_get_by_id_does_not_leak_raw_reason(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        action_id = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(reason="password=secret_value", idempotency_key="k-id"),  # pragma: allowlist secret
+        ).json()["action_id"]
+        got = client.get(recorded_path(action_id), headers=AUTH_HEADERS).json()
+        assert got["reason"] == "[redacted]"
+        assert "secret_value" not in str(got)
+
+    def test_duplicate_response_does_not_leak_raw_reason(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        first = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(reason="api_key=sk_987654321", idempotency_key="k-dup"),  # pragma: allowlist secret
+        ).json()
+        assert first["result"] == "accepted"
+        dup = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(reason="api_key=sk_987654321", idempotency_key="k-dup"),  # pragma: allowlist secret
+        ).json()
+        assert dup["result"] == "duplicate"
+        assert dup["reason"] == "[redacted]"
+        assert "sk_987654321" not in str(dup)
+
+    def test_clean_reason_is_preserved(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(reason="routine ops review", idempotency_key="k-clean"),
+        ).json()
+        assert body["reason"] == "routine ops review"
+        assert body["result"] == "accepted"
+
+    def test_metadata_redaction_still_passes(self):
+        # Regression guard: structured metadata redaction is unchanged by R1.
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(
+                idempotency_key="k-md",
+                metadata={
+                    "note": "ok to keep",
+                    "password": "hunter2",  # pragma: allowlist secret
+                    "dsn": "postgres://u:p@10.0.0.5:5432/db",  # pragma: allowlist secret
+                },
+            ),
+        ).json()
+        redacted = body["metadata_redacted"]
+        assert redacted["note"] == "ok to keep"
+        assert redacted["password"] == "[redacted]"
+        assert redacted["dsn"] == "[redacted]"
+        assert "hunter2" not in str(body)

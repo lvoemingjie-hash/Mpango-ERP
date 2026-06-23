@@ -422,6 +422,37 @@ async def test_fulfillment_without_reservation_keeps_reserved_non_negative(async
 
 
 @pytest.mark.asyncio
+async def test_direct_paid_fulfillment_preserves_unrelated_confirmed_reservation(async_session):
+    await _prepare_inventory_schema(async_session)
+    sku = await _create_sku_with_stock(
+        async_session, sku_code="S4E-DIRECT-PAID-UNRELATED", on_hand=Decimal("10.00")
+    )
+    reserved_order = await _create_order(
+        async_session,
+        status=OrderStatus.DRAFT,
+        items=[("S4E-DIRECT-PAID-UNRELATED", 3, Decimal("25.00"))],
+    )
+    direct_paid_order = await _create_order(
+        async_session,
+        status=OrderStatus.PAID,
+        items=[("S4E-DIRECT-PAID-UNRELATED", 3, Decimal("25.00"))],
+    )
+
+    await confirm_order(str(reserved_order.id), token=_token(async_session), db=async_session)
+    await async_session.commit()
+
+    await fulfill_order(str(direct_paid_order.id), token=_token(async_session), db=async_session)
+    await async_session.commit()
+
+    assert await _stock_snapshot(async_session, sku.id) == (
+        Decimal("7.00"),
+        Decimal("3.00"),
+        Decimal("4.00"),
+    )
+    assert await _order_status(async_session, reserved_order.id) == OrderStatus.CONFIRMED.value
+
+
+@pytest.mark.asyncio
 async def test_return_restores_on_hand_without_creating_reserved_stock(async_session):
     await _prepare_inventory_schema(async_session)
     sku = await _create_sku_with_stock(

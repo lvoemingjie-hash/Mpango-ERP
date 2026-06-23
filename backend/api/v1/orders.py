@@ -690,9 +690,14 @@ async def fulfill_order(
         from services.order_service import OrderService
         from core.domain.order_state import OrderState
 
+        order_uuid = order.id
+        # Aggregate reservations have no per-order owner yet. Only orders that
+        # have been transitioned by the route layer are allowed to consume from
+        # the aggregate reservation; directly seeded PAID rows must not steal it.
+        consume_reservation = order.updated_by is not None
+
         # Expire the preflight object so OrderService.transition() reloads the
         # locked row from the database instead of reusing stale identity-map state.
-        order_uuid = order.id
         db.expire(order)
 
         order_service = OrderService(db)
@@ -714,6 +719,7 @@ async def fulfill_order(
                 quantity=Decimal(str(item.quantity)),
                 order_id=order.id,
                 fulfilled_by=token.user_id,
+                consume_reservation=consume_reservation,
             )
 
         await db.flush()

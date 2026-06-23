@@ -228,6 +228,7 @@ class InventoryService:
         quantity: Decimal,
         order_id: uuid.UUID,
         fulfilled_by: str | None = None,
+        consume_reservation: bool = False,
     ) -> tuple[InventoryStock, InventoryMovement]:
         """Deduct on-hand stock for a fulfilled order and write a journal entry."""
         sku, stock = await self._locked_stock_by_sku_code(db, sku_code=sku_code)
@@ -247,7 +248,8 @@ class InventoryService:
             )
 
         stock.quantity_on_hand = quantity_after
-        stock.quantity_reserved = stock.quantity_reserved - min(stock.quantity_reserved, quantity)
+        if consume_reservation:
+            stock.quantity_reserved = stock.quantity_reserved - min(stock.quantity_reserved, quantity)
 
         fulfilled_by_uuid = None
         if fulfilled_by:

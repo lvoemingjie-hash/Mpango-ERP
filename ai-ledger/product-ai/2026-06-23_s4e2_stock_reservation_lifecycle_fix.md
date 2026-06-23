@@ -32,11 +32,34 @@ No migration, frontend, or deployment files were changed.
 - Added locked `InventoryService._locked_stock_by_sku_code()` helper using `SELECT FOR UPDATE` and `populate_existing=True`.
 - Added `InventoryService.reserve_on_confirm()` to reserve available stock without writing `InventoryMovement`.
 - Added `InventoryService.release_on_cancel()` to release reserved stock without writing `InventoryMovement`.
-- Updated `InventoryService.deduct_on_fulfillment()` so fulfillment deducts `quantity_on_hand` and consumes existing reservation with `min(quantity_reserved, quantity)`, never making reserved negative.
+- Updated `InventoryService.deduct_on_fulfillment()` so fulfillment deducts `quantity_on_hand` and consumes aggregate reservation only when the caller explicitly passes `consume_reservation=True`.
 - Wired admin `confirm_order()` to reserve stock after status transition inside the same request transaction.
 - Wired admin `cancel_order()` and retailer/client `cancel_order()` to release reservation when cancelling confirmed orders.
+- Wired admin `fulfill_order()` to pass `consume_reservation=True` only for route-transitioned orders with an existing `updated_by` marker. Direct seeded `paid` compatibility rows do not consume aggregate reservation.
 - Added rollback handling around reservation/release route work so failed reservation/release does not leave partial order status or stock changes.
 - Did not modify `OrderService.transition()`.
+
+---
+
+## R1 Review Finding and Fix
+
+Reviewer finding:
+
+- Direct-paid/no-reservation fulfillment could incorrectly consume aggregate `quantity_reserved` that belonged to another confirmed order on the same SKU.
+- Example: order A reserves `3`; unrelated direct `paid` order B fulfills `3`; the first implementation decremented aggregate reserved from `3` to `0`, stealing A's reservation.
+
+R1 fix:
+
+- Added `consume_reservation` to `InventoryService.deduct_on_fulfillment()`, defaulting to `False`.
+- Fulfillment now deducts `quantity_on_hand` for all valid paid orders.
+- Fulfillment consumes aggregate `quantity_reserved` only when the admin route has an existing route-transition marker (`order.updated_by is not None`).
+- Direct seeded `paid` rows, including backward-compatible/no-reservation orders, preserve unrelated aggregate reservations.
+- Added regression `test_direct_paid_fulfillment_preserves_unrelated_confirmed_reservation`.
+
+R1 residual limitation:
+
+- `updated_by` is transition evidence, not per-order reservation ownership. The schema still cannot prove which order owns an aggregate reserved quantity.
+- S4-E3 should introduce a per-order reservation ledger/table if exact ownership, partial reservations, or migration-safe historical fulfillment are required.
 
 ---
 
@@ -54,10 +77,10 @@ Pre-change GitNexus checks were run before production edits.
 
 Final `gitnexus_detect_changes(scope="staged")`:
 
-- Risk: CRITICAL.
-- Changed files: 5.
-- Changed symbols: 35.
-- Affected processes: 29.
+- Risk: HIGH.
+- Changed files: 4.
+- Changed symbols: 73.
+- Affected processes: 10.
 
 Reason:
 
@@ -72,14 +95,14 @@ S4-E2 target suite:
 
 ```text
 poetry run pytest tests/business/test_s4e_stock_reservation_lifecycle_audit.py -q -rxX --tb=short
-13 passed, 22 warnings
+14 passed, 24 warnings
 ```
 
 S4/S4-B/S4-C/S4-D/S4-E regression:
 
 ```text
 poetry run pytest tests/business/test_s4_order_fulfillment_inventory_invariants.py tests/business/test_s4b_inventory_reversal_invariants.py tests/business/test_s4c_concurrent_fulfillment_oversell_invariants.py tests/business/test_s4d_inventory_movement_ledger_integrity.py tests/business/test_s4e_stock_reservation_lifecycle_audit.py -q --tb=short
-42 passed, 53 warnings
+43 passed, 55 warnings
 ```
 
 S5/Phase5 regression:
@@ -167,27 +190,34 @@ PASS.
 
 - A paid order without prior reservation deducts on-hand and keeps reserved at `0`, never negative.
 
-### 9. Return restores on-hand and creates no reservation
+### 9. Direct paid fulfillment preserves unrelated reservation
+
+PASS.
+
+- A confirmed order's reserved quantity remains intact when an unrelated direct `paid` order for the same SKU is fulfilled.
+- The direct `paid` fulfillment changes stock from `on_hand=10,reserved=3,available=7` to `on_hand=7,reserved=3,available=4`.
+
+### 10. Return restores on-hand and creates no reservation
 
 PASS.
 
 - Return restores `quantity_on_hand` and leaves `quantity_reserved=0`.
 
-### 10. Reservation tenant isolation
+### 11. Reservation tenant isolation
 
 PASS.
 
 - Tenant A confirm reserves only tenant A stock.
 - Shadow tenant stock with the same SKU id/code remains unchanged.
 
-### 11. Reserve/release writes no InventoryMovement
+### 12. Reserve/release writes no InventoryMovement
 
 PASS.
 
 - Confirm reservation and cancel release write no physical movement entries.
 - Deduction/restock/adjustment movement semantics remain covered by S4-D.
 
-### 12. S4/S4-B/S4-C/S4-D regression
+### 13. S4/S4-B/S4-C/S4-D regression
 
 PASS.
 
@@ -215,7 +245,8 @@ PASS.
 
 ## Remaining Risks
 
-- The current schema has aggregate `quantity_reserved` only; it does not have per-order reservation rows. S4-E2 therefore releases/consumes aggregate reservation quantities and cannot attribute reservations to individual orders beyond the order lifecycle transaction.
+- The current schema has aggregate `quantity_reserved` only; it does not have per-order reservation rows. S4-E2 therefore releases/consumes aggregate reservation quantities and cannot attribute reservations to individual orders beyond route-transition evidence.
+- R1 avoids direct seeded `paid` orders stealing unrelated reservations, but `updated_by` is not a reservation ownership record. S4-E3 should add an explicit per-order reservation ledger/table before supporting precise ownership, partial fulfillment allocation, or historical migration reconciliation.
 - Client order creation still validates visible physical `quantity_on_hand`; final oversell protection is enforced at confirm reservation time.
 
 ---

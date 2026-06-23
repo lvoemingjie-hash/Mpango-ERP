@@ -31,11 +31,17 @@ import type {
   PlatformTenantRegistry,
   PlatformTenantRegistryList,
 } from '@/types/platformRegistry';
+import type {
+  ControlledActionCatalog,
+  ControlledActionRequestPayload,
+  ControlledActionRequestResponse,
+} from '@/types/platformControlledActions';
 
 const P10_BASE = '/platform/p10';
 const P13_BASE = '/platform/p13';
 const P15_BASE = '/platform/p15';
 const P17_BASE = '/platform/p17';
+const P18_BASE = '/platform/p18';
 
 export const platformService = {
   /** List tenants with optional pagination */
@@ -111,4 +117,22 @@ export const platformService = {
   /** P17: Get a single tenant registry (read-only) */
   getTenantRegistry: (tenantId: string) =>
     api.get<PlatformTenantRegistry>(`${P17_BASE}/registry/${tenantId}`),
+
+  // -- P18 Controlled Actions (request skeleton; not executed) --
+
+  /** P18: Get the controlled-action catalog (read-only) */
+  getControlledActionCatalog: () =>
+    api.get<ControlledActionCatalog>(`${P18_BASE}/actions/catalog`),
+
+  /** P18: Dry-run validate a controlled-action request (not executed) */
+  validateControlledAction: (payload: ControlledActionRequestPayload) =>
+    api.post<ControlledActionRequestResponse>(`${P18_BASE}/actions/validate`, payload),
+
+  /** P18: Record a controlled-action request (not executed) */
+  submitControlledAction: (payload: ControlledActionRequestPayload) =>
+    api.post<ControlledActionRequestResponse>(`${P18_BASE}/actions/request`, payload),
+
+  /** P18: Read a recorded controlled-action request by id (not executed) */
+  getControlledActionRequest: (actionId: string) =>
+    api.get<ControlledActionRequestResponse>(`${P18_BASE}/actions/requests/${actionId}`),
 };

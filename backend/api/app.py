@@ -187,6 +187,11 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(platform_p17_router)
     logger.info("Platform P17 router registered (platform registry, read-only)")
 
+    # Platform Track P18 -- Controlled Platform Actions (request skeleton, P18-B/C)
+    from api.v1.platform.p18.routes import router as platform_p18_router
+    app.include_router(platform_p18_router)
+    logger.info("Platform P18 router registered (controlled actions request skeleton)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

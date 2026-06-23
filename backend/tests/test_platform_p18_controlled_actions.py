@@ -503,6 +503,7 @@ class TestSafetyBoundaries:
         assert paths == [
             f"{P18_BASE}/actions/catalog",
             f"{P18_BASE}/actions/request",
+            f"{P18_BASE}/actions/requests",
             f"{P18_BASE}/actions/requests/{{action_id}}",
             f"{P18_BASE}/actions/validate",
         ]
@@ -882,3 +883,73 @@ class TestGeneralizedSensitiveBoundary:
         assert body["idempotency_key"] == "clean-key-1"
         assert body["requested_state"] == "paused"
         assert body["correlation_id"] == "req-abc-123"
+
+
+# ============================================================
+# 11. Operator queue (P18-E)
+# ============================================================
+
+
+class TestOperatorQueue:
+    def test_queue_lists_recorded_requests_newest_first(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        first = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(idempotency_key="queue-1"),
+        ).json()
+        second = client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(idempotency_key="queue-2"),
+        ).json()
+
+        body = client.get(f"{P18_BASE}/actions/requests", headers=AUTH_HEADERS).json()
+
+        assert body["storage"] == "memory"
+        assert body["executed"] is False
+        assert body["total"] == 2
+        assert [item["action_id"] for item in body["items"]] == [
+            second["action_id"],
+            first["action_id"],
+        ]
+        assert all(item["executed"] is False for item in body["items"])
+
+    def test_queue_paginates_and_never_leaks_sensitive_echo_fields(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(
+                idempotency_key="password=abc123",  # pragma: allowlist secret
+                requested_state="host=db.internal:5432",  # pragma: allowlist secret
+                correlation_id="token xyz999",  # pragma: allowlist secret
+            ),
+        ).json()
+        client.post(
+            REQUEST_PATH,
+            headers=AUTH_HEADERS,
+            json=_payload(idempotency_key="queue-clean"),
+        ).json()
+
+        body = client.get(
+            f"{P18_BASE}/actions/requests?limit=1&offset=1",
+            headers=AUTH_HEADERS,
+        ).json()
+
+        assert body["total"] == 2
+        assert body["limit"] == 1
+        assert body["offset"] == 1
+        assert len(body["items"]) == 1
+        serialized = str(body)
+        for leak in ("abc123", "db.internal", "5432", "xyz999"):
+            assert leak not in serialized
+        assert body["items"][0]["idempotency_key"] == "[redacted]"
+
+    def test_queue_requires_platform_auth(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        r = client.get(f"{P18_BASE}/actions/requests")
+        assert r.status_code in (401, 403)

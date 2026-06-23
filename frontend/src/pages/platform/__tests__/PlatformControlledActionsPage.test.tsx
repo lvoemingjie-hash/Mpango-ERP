@@ -203,3 +203,42 @@ it("degraded result surfaces the degraded reason", async () => {
   fireEvent.click(screen.getByTestId("ca-submit-btn"));
   expect(await screen.findByTestId("ca-degraded-reason")).toHaveTextContent("degraded read only");
 });
+
+it("renders the in-memory operator queue after refresh", async () => {
+  renderPage();
+  await screen.findAllByTestId("ca-catalog-item");
+  vi.mocked(api.get).mockResolvedValueOnce(
+    response({
+      items: [
+        {
+          action_id: "action-1",
+          action_type: "tenant.pause",
+          result: "accepted",
+          executed: false,
+          dry_run: false,
+          message: "Recorded request; not executed.",
+          reason: "routine support",
+          idempotency_key: "queue-1",
+          requested_state: null,
+          previous_state: null,
+          source_status: "available",
+          degraded_reason: null,
+          metadata_redacted: null,
+          correlation_id: null,
+          created_at: "2026-06-24T00:00:00Z",
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+      storage: "memory",
+      executed: false,
+    }),
+  );
+  fireEvent.click(screen.getByTestId("ca-refresh-queue-btn"));
+  expect(await screen.findByTestId("ca-queue-summary")).toHaveTextContent(
+    "1 recorded requests",
+  );
+  expect(await screen.findByTestId("ca-queue-item")).toHaveTextContent("tenant.pause");
+  expect(screen.getByTestId("ca-queue-item")).toHaveTextContent("executed=false");
+});

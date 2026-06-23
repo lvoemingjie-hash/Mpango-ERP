@@ -36,6 +36,7 @@ from .schemas import (
     ActionCatalogResponse,
     ActionClassification,
     ActionType,
+    ActionRequestQueueResponse,
     ActionRequestResponse,
     RegistrySourceStatus,
 )
@@ -264,6 +265,44 @@ def get_stored_request(action_id: str) -> Optional[ActionRequestResponse]:
         metadata_redacted=rec.metadata_redacted,
         correlation_id=rec.correlation_id,
         created_at=rec.created_at,
+    )
+
+
+def list_stored_requests(limit: int = 50, offset: int = 0) -> ActionRequestQueueResponse:
+    """Return the current process-local operator queue of recorded requests."""
+    safe_limit = max(1, min(limit, 100))
+    safe_offset = max(0, offset)
+    records = sorted(
+        _STORE_BY_ACTION_ID.values(),
+        key=lambda rec: rec.created_at or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    items = [
+        _make_response(
+            action_type=rec.action_type,
+            result=rec.result,
+            message=(
+                "Recorded request (ephemeral in-memory queue). The action was NOT "
+                "executed; no registry / lifecycle / flag / provisioning / backup "
+                "state was changed."
+            ),
+            reason=rec.reason,
+            idempotency_key=rec.idempotency_key,
+            requested_state=rec.requested_state,
+            source_status=rec.source_status,  # type: ignore[arg-type]
+            action_id=rec.action_id,
+            dry_run=False,
+            metadata_redacted=rec.metadata_redacted,
+            correlation_id=rec.correlation_id,
+            created_at=rec.created_at,
+        )
+        for rec in records[safe_offset : safe_offset + safe_limit]
+    ]
+    return ActionRequestQueueResponse(
+        items=items,
+        total=len(records),
+        limit=safe_limit,
+        offset=safe_offset,
     )
 
 

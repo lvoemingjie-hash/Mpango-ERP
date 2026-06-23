@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID as PyUUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -34,6 +34,7 @@ from . import services
 from .schemas import (
     ActionCatalogResponse,
     ActionRequest,
+    ActionRequestQueueResponse,
     ActionRequestResponse,
 )
 
@@ -153,6 +154,40 @@ async def _write_request_audit(
         pass  # Audit failure must never block the (non-executing) response
 
 
+async def _write_queue_audit(db: AsyncSession, request: Request, total: int) -> None:
+    """Best-effort audit for viewing the in-memory operator queue. Never blocks."""
+    try:
+        actor_id = None
+        try:
+            from api.context.auth import get_auth_context
+
+            auth_ctx = get_auth_context(request)
+            token = auth_ctx.token
+            actor_id = token.user_id
+        except Exception:
+            pass
+
+        from services.platform_audit_service import append_audit_entry
+
+        await append_audit_entry(
+            db,
+            actor_type="api",
+            action="p18_action_queue_list",
+            resource="ops/platform/p18/actions/requests",
+            actor_id=PyUUID(actor_id) if actor_id else None,
+            wholesaler_id=None,
+            audit_metadata={
+                "scope": "platform_p18",
+                "total": total,
+                "executed": False,
+                "storage": "memory",
+            },
+        )
+        await db.commit()
+    except Exception:
+        pass
+
+
 # -- Routes -----------------------------------------------------------------
 
 
@@ -212,6 +247,20 @@ async def submit_action(
         **payload.model_dump(),
     )
     await _write_request_audit(db, request, response, "request")
+    return response
+
+
+@router.get("/actions/requests", response_model=ActionRequestQueueResponse)
+async def list_recorded_requests(
+    request: Request,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _platform_auth: None = Depends(require_platform_operator_with_p18_audit),
+) -> ActionRequestQueueResponse:
+    """List the current ephemeral operator queue of recorded P18 requests."""
+    response = services.list_stored_requests(limit=limit, offset=offset)
+    await _write_queue_audit(db, request, response.total)
     return response
 
 

@@ -35,12 +35,12 @@ from api.v1.platform.p10.schemas import (
 )
 
 
-# ── Source-status vocabulary (reused from P13/P14, P10 §x-status) ──
+# -- Source-status vocabulary (reused from P13/P14, P10 section x-status) --
 
 RegistrySourceStatus = Literal["available", "unavailable", "unknown"]
 
 
-# ── 4.2 TenantLifecycleState ──
+# -- 4.2 TenantLifecycleState --
 
 LifecycleState = Literal[
     "draft",
@@ -107,7 +107,7 @@ class TenantLifecycleState(BaseModel):
         return self
 
 
-# ── 4.3 TenantOperationalFlags ──
+# -- 4.3 TenantOperationalFlags --
 
 
 class TenantOperationalFlags(BaseModel):
@@ -165,7 +165,7 @@ class TenantOperationalFlags(BaseModel):
         return self
 
 
-# ── 4.4 TenantProvisioningStatus ──
+# -- 4.4 TenantProvisioningStatus --
 
 SchemaStatus = Literal[
     "exists", "missing", "unreachable", "migration_misaligned", "unknown"
@@ -240,7 +240,7 @@ class TenantProvisioningStatus(BaseModel):
         return v
 
 
-# ── 4.5 TenantBackupStatus ──
+# -- 4.5 TenantBackupStatus --
 
 LastBackupStatus = Literal[
     "success", "partial", "failed", "in_progress", "stale", "unknown"
@@ -335,7 +335,7 @@ class TenantBackupStatus(BaseModel):
         return self
 
 
-# ── 4.1 PlatformTenantRegistry (root) ──
+# -- 4.1 PlatformTenantRegistry (root) --
 
 
 class PlatformTenantRegistry(BaseModel):
@@ -397,7 +397,7 @@ class PlatformTenantRegistryList(BaseModel):
     )
 
 
-# ── 4.6 TenantRegistryAuditEvent ──
+# -- 4.6 TenantRegistryAuditEvent --
 
 RegistryAction = Literal[
     "registry_view",
@@ -455,7 +455,7 @@ class TenantRegistryAuditEvent(BaseModel):
     _validate_tenant_id = field_validator("tenant_id")(validate_uuid_v4_v7)
 
 
-# ── Pure helpers (freshness + redaction) ──
+# -- Pure helpers (freshness + redaction) --
 
 
 def enforce_backup_freshness(

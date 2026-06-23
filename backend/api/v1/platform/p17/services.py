@@ -1,7 +1,7 @@
 """
 Service layer for P17 Platform Registry (read-only tenant registry adapter).
 
-Assembles EXISTING read-only sources only (contract §7 field source map):
+Assembles EXISTING read-only sources only (contract section 7 field source map):
   - P10 ``list_tenant_summaries`` / tenant identity (public platform metadata):
     tenant_id, tenant_name, tenant_schema, status, created_at,
     support_mode_active. This is the registry "public platform metadata" row.
@@ -50,7 +50,7 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# ── Source loaders (best-effort; degrade to empty/None on any failure) ──
+# -- Source loaders (best-effort; degrade to empty/None on any failure) --
 
 
 async def _load_provisioning_map(
@@ -76,7 +76,7 @@ async def _load_provisioning_map(
         return {}
 
 
-# ── Lifecycle derivation ──
+# -- Lifecycle derivation --
 
 # P10 TenantSummary.status -> P17 lifecycle state. The P10 enum is a subset of
 # the P17 enum; states P17 adds (provisioning / under_review /
@@ -138,7 +138,7 @@ def _derive_lifecycle_state(
     )
 
 
-# ── Operational flags ──
+# -- Operational flags --
 
 _FLAGS_UNAVAILABLE_REASON = (
     "Operational flag telemetry is not yet instrumented; all flags read false."
@@ -171,7 +171,7 @@ def _build_operational_flags(
     )
 
 
-# ── Provisioning status ──
+# -- Provisioning status --
 
 _PROVISIONING_UNAVAILABLE_REASON = (
     "Provisioning diagnostics (seed / admin_user / feature_config) are not yet "
@@ -212,7 +212,7 @@ def _build_provisioning_status(
     )
 
 
-# ── Backup status ──
+# -- Backup status --
 
 _BACKUP_UNAVAILABLE_REASON = (
     "Backup system source is not yet wired; backup status is unavailable."
@@ -225,7 +225,7 @@ _BACKUP_UNAVAILABLE_REASON = (
 # reason surfaced on the registry record.
 
 
-# ── Registry assembly ──
+# -- Registry assembly --
 
 
 def _build_registry(

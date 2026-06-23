@@ -183,7 +183,7 @@ export function PlatformRegistryPage() {
                             {flags.flags_source_status !== 'available' ? (
                               <div className="mt-1 text-xs text-gray-400">
                                 flags source: {flags.flags_source_status}
-                                {flags.flags_unavailable_reason ? ` — ${flags.flags_unavailable_reason}` : ''}
+                                {flags.flags_unavailable_reason ? ` - ${flags.flags_unavailable_reason}` : ''}
                               </div>
                             ) : null}
                           </td>
@@ -201,7 +201,7 @@ export function PlatformRegistryPage() {
                               <span>
                                 {backup.last_backup_status ?? 'N/A'}
                                 {backup.export_available != null
-                                  ? ` · export: ${displayNullableBool(backup.export_available)}`
+                                  ? ` - export: ${displayNullableBool(backup.export_available)}`
                                   : ''}
                               </span>
                             )}

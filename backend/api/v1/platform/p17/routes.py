@@ -4,7 +4,7 @@ FastAPI routes for P17 Platform Registry (read-only tenant registry API).
 All endpoints are GET-only (read-only). No mutations. There is intentionally no
 POST / PUT / PATCH / DELETE route: lifecycle transitions, flag changes,
 provisioning re-runs, and backup triggers are reserved for a separately
-approved controlled-action phase (contract §9 / counterexample C7 / C11).
+approved controlled-action phase (contract section 9 / counterexample C7 / C11).
 
 Responses match docs/ai/PLATFORM_PRODUCT_P17_REGISTRY_LIFECYCLE_CONTRACT.md.
 

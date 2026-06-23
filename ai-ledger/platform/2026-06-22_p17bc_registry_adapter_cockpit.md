@@ -120,12 +120,12 @@ Backend:
 - Whole-app build: `configure_app(app, settings)` registers both P17 GET routes
   (`/api/v1/platform/p17/registry`, `/api/v1/platform/p17/registry/{tenant_id}`).
 
-Frontend:
-- `src/types/__tests__/platformRegistry.test.ts` -- 18 passed.
+Frontend (P17):
+- `src/types/__tests__/platformRegistry.test.ts` -- 14 passed.
 - `src/services/__tests__/platformRegistryApi.test.ts` -- 4 passed.
 - `src/pages/platform/__tests__/PlatformRegistryPage.test.tsx` -- 10 passed.
-- Platform frontend regression -- **117 passed** across 15 platform type /
-  service / page test files; router guards -- 10 passed.
+- **P17 total: 28 passed**, RC 0. The page tests pass but emit React `act(...)` warnings on stderr (async state updates in `PlatformRegistryPage`); these are non-blocking and deferred to a future polish pass.
+- Platform frontend regression (broader, not re-run this slice) -- **117 passed** across 15 platform type / service / page test files; router guards -- 10 passed.
 
 ---
 
@@ -139,11 +139,12 @@ Frontend:
 | `git diff --check origin/platform-dev..HEAD` | Clean (no whitespace/conflict markers). |
 | Backend P17 tests | 40 passed. |
 | P10/P11/P12/P13/P15 platform regression | 418 passed (no regressions). |
-| Frontend platform tests | 117 passed (+10 router guards). |
+| Frontend P17 tests | 28 passed (14 type + 4 api + 10 page); RC 0; React act() warnings on stderr, non-blocking. |
 | Forbidden-path audit | PASS -- all change-set paths are platform-only; no mutation decorators; no business-table queries; no secret/DSN literals (warnings were docstrings / standard `X-Platform-Operator` header / data field names). |
-| Non-ASCII scan (changed/new files) | PASS -- all ASCII. |
+| Non-ASCII scan (changed/new files) | PASS -- 0 non-ASCII in the 4 new P17 source files and the app.py P17-added lines (3 pre-existing em-dashes in app.py comments are unrelated and out of scope). |
 | detect-secrets (changed files) | PASS -- 0 findings. Repo pre-commit `Detect secrets` hook also Passed on commit `79f306c`. |
-| GitNexus | See GitNexus section below. |
+| `npx gitnexus analyze` | RC 0; index up to date (refreshes again via the commit hook). |
+| GitNexus `detect_changes` (compare vs origin/platform-dev) | CRITICAL: 14 files, 89 symbols, 19 affected flows. Accepted by CTO review (additive read-only platform surface; see Risk). |
 
 ---
 
@@ -179,12 +180,29 @@ connection strings, migration history, raw audit-log payloads.
 
 ## Risk
 
-**LOW.** The change is a purely additive, read-only adapter behind an unchanged
-identity-only guard. It adds no migrations, no auth/RBAC/session/tenancy change,
-no new infrastructure, no mutation path, and no tenant business-data reads. All
-new sources degrade to documented null/unknown fallbacks with reasons. Backend
-(458 tests incl. regression) and frontend (127 tests) are green; detect-secrets
-and the repo pre-commit hook are clean.
+GitNexus `detect_changes` (compare vs `origin/platform-dev`) reports the change
+as **CRITICAL** by symbol/flow count: **14 files, 89 symbols, 19 affected
+execution flows.** The CTO review re-ran this on the branch tip and accepted
+it because the blast radius is wide-but-shallow and explainable:
+
+- **Platform-runtime additive.** Every changed symbol is under the platform
+  operations surface -- `backend/api/v1/platform/p17/` (backend) and
+  `frontend/src/{pages,services,types,router}/.../platform/...` (frontend).
+  The 89 symbols come from six new contract models plus a new read-only
+  router plus a new page; none of it is product business logic.
+- **Read-only by construction.** The only new routes are GET. There are no
+  mutation endpoints, no lifecycle / flag / provisioning / backup writes, and
+  the cockpit page has zero mutation controls. The 19 affected flows are read
+  paths (registry view / view-denied).
+- **No product business.** No orders / payments / invoices / customers tables
+  are queried or exposed (forbidden-path audit PASS).
+- **No migrations.** `backend/alembic/` and `migrations/` are untouched;
+  there is no schema change, so the database blast radius is zero.
+- **Mitigated by tests.** Backend P17 = 40 passed; frontend P17 = 28 passed;
+  P10/P11/P12/P13/P15 platform regression green (no regressions).
+
+Net: the change is **additive read-only platform surface (no product data,
+no migrations)**, and every read path it adds is covered by tests.
 
 ---
 
@@ -194,12 +212,13 @@ and the repo pre-commit hook are clean.
 469 clusters / 300 flows); indexed commit `79f306c`, status up-to-date.
 
 `npx gitnexus impact <symbol> -r platform-p17bc-registry-adapter-cockpit-2026-06-22`
-(blast radius / api_impact on the changed route handlers):
+(per-symbol upstream blast radius on the changed route handlers -- this is the
+per-symbol view and is distinct from the branch-level `detect_changes` below):
 
-- `list_tenant_registries` (new P17 service/route): **risk LOW,
-  impactedCount 0, processes 0, modules 0** -- the new read-only registry
-  surface has no upstream dependants; changing it breaks nothing.
-- `get_tenant_registry` (new P17 route): **risk LOW, impactedCount 0** -- same.
+- `list_tenant_registries` (new P17 service/route): **impactedCount 0,
+  processes 0, modules 0** -- the new read-only registry surface has no upstream
+  dependants, so changing it breaks nothing at the symbol level.
+- `get_tenant_registry` (new P17 route): **impactedCount 0** -- same.
 - `require_platform_operator` (the reused P10 identity-only guard -- **not
   modified**, only consumed): risk HIGH *if modified*, 4 direct dependants.
   All four are platform-only:
@@ -214,11 +233,19 @@ and the repo pre-commit hook are clean.
   conditions, a HIGH that is explainable as platform-only and reviewed is not a
   blocker.
 
-`detect_changes` (compare vs origin/platform-dev) is an MCP-only operation and
-was not available in this headless session; the equivalent structural diff was
-performed directly via `git diff --name-status origin/platform-dev..HEAD` and is
-the file inventory in the "Modified / new files" section above (13 files, all
-platform-only; +2719 / -0 on the implementation commit).
+`detect_changes` (compare vs `origin/platform-dev`) was run in the CTO review
+session (it is an MCP-only operation): **CRITICAL** -- **14 files, 89 symbols,
+19 affected execution flows.** The 14-file count is corroborated structurally
+by `git diff --name-status origin/platform-dev..HEAD` (the file inventory in
+the `Modified / new files` section: 13 source files plus this ledger).
 
-**Overall GitNexus risk for this change: LOW** (the changed/added surface is
-LOW; the one HIGH is on an unmodified shared symbol and is platform-only).
+This CRITICAL is the expected, explainable shape for an additive read-only
+adapter, not a regression. It is wide because the registry composes six new
+contract models and registers a new read-only router plus a page (89
+symbols), but shallow because every affected flow is a read path and the
+change is platform runtime-only -- no product business, no
+auth/RBAC/session change, no migrations, no mutation endpoints. See the
+`Risk` section above for the full rationale. The single HIGH in the
+per-symbol impact run is on the reused `require_platform_operator` guard,
+which this phase consumes but does **not** modify (confirmed green by the
+platform regression), so it is non-blocking.

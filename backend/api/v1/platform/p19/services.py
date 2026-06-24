@@ -79,7 +79,9 @@ class _StoredApproval:
 
 
 _STORE: dict[str, _StoredApproval] = {}  # approval_id -> record
-_STORE_BY_CREATE_KEY: dict[str, str] = {}  # raw create idempotency_key -> approval_id
+# SHA-256 digest of the create idempotency_key -> approval_id. The RAW
+# idempotency_key is never stored (P19-B-R1); only its one-way digest is.
+_STORE_BY_CREATE_KEY: dict[str, str] = {}
 _AUDIT_LOG: list[ControlledActionApprovalAuditEvent] = []
 
 
@@ -108,6 +110,17 @@ def _utc(value: Optional[datetime]) -> Optional[datetime]:
     return value.astimezone(timezone.utc)
 
 
+def _digest(value: Optional[str]) -> str:
+    """One-way SHA-256 hex digest of an idempotency key.
+
+    The RAW idempotency_key is never stored in the store, in a record slot, or in
+    an audit event (P19-B-R1). Dedup / duplicate / conflict checks compare these
+    digests; the echo-safe (sanitized) key returned in responses is separate and
+    is also never the raw key.
+    """
+    return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
+
+
 # -- Audit payload builder ---------------------------------------------------
 
 
@@ -123,7 +136,14 @@ def _emit(
     reason: str,
     now: datetime,
 ) -> ControlledActionApprovalAuditEvent:
-    """Build, record, and return an approval audit event. Reason must be redacted."""
+    """Build, record, and return an approval audit event.
+
+    Applies P18 reason redaction internally (P19-B-R1) so a raw reason value can
+    never reach the audit log, even if a caller forgets to pre-redact. The
+    redaction is idempotent on an already-redacted value ("[redacted]" is not
+    itself sensitive), so callers that already pass a safe reason are unaffected.
+    """
+    safe_reason = _p18._redact_reason(reason)
     event = ControlledActionApprovalAuditEvent(
         audit_event_id=str(uuid4()),
         event_type=event_type,  # type: ignore[arg-type]
@@ -134,7 +154,7 @@ def _emit(
         approval_id=approval_id,
         decision=decision,  # type: ignore[arg-type]
         redaction_applied=True,
-        reason=reason,
+        reason=safe_reason,
         timestamp=now,
     )
     _AUDIT_LOG.append(event)
@@ -155,9 +175,12 @@ def _build_approval_audit_event(
 ) -> ControlledActionApprovalAuditEvent:
     """Public test seam: build a redacted approval audit event without persisting.
 
-    Mirrors _emit but does not append to the in-memory log. Provided so tests can
-    assert the audit payload shape and redaction directly.
+    Applies P18 reason redaction internally (P19-B-R1): a caller passing a raw
+    reason such as "password=hunter2" or "token=abc" receives an event whose
+    reason is "[redacted]" -- the raw value never leaks. Mirrors _emit but does
+    not append to the in-memory log.
     """
+    safe_reason = _p18._redact_reason(reason)
     return ControlledActionApprovalAuditEvent(
         audit_event_id=str(uuid4()),
         event_type=event_type,  # type: ignore[arg-type]
@@ -168,7 +191,7 @@ def _build_approval_audit_event(
         approval_id=approval_id,
         decision=decision,  # type: ignore[arg-type]
         redaction_applied=True,
-        reason=reason,
+        reason=safe_reason,
         timestamp=timestamp or _now(),
     )
 
@@ -341,9 +364,11 @@ async def create_approval(
     resolved_action_type, source_status = ctx
     safe_action_type = _p18._sanitize_text(resolved_action_type) or resolved_action_type
 
-    # 7) create idempotency: duplicate / conflict
+    # 7) create idempotency: duplicate / conflict (keyed by the key DIGEST,
+    #    never the raw idempotency_key -- P19-B-R1)
     fp = _create_fingerprint(resolved_action_type, tenant_id, raw_reason)
-    existing_id = _STORE_BY_CREATE_KEY.get(raw_key)
+    create_digest = _digest(raw_key)
+    existing_id = _STORE_BY_CREATE_KEY.get(create_digest)
     if existing_id is not None:
         existing = _STORE[existing_id]
         if existing.create_fingerprint == fp:
@@ -397,12 +422,12 @@ async def create_approval(
         audit_event_id=audit.audit_event_id,
         created_at=now,
         updated_at=now,
-        create_key=raw_key,
+        create_key=create_digest,
         create_fingerprint=fp,
         decision_key=None,
     )
     _STORE[approval_id] = rec
-    _STORE_BY_CREATE_KEY[raw_key] = approval_id
+    _STORE_BY_CREATE_KEY[create_digest] = approval_id
     return _record_from(
         rec,
         result="recorded",
@@ -443,6 +468,7 @@ def submit_decision(
     raw_reviewed_by = (reviewed_by or "").strip()
     safe_reason = _p18._redact_reason(raw_reason)
     safe_key = _p18._sanitize_text(raw_key) or ""
+    decision_digest = _digest(raw_key)
 
     def denied(message: str, result: str = "denied") -> ControlledActionApprovalRecord:
         _emit(
@@ -494,7 +520,7 @@ def submit_decision(
 
     # 4) already-decided approvals: idempotent duplicate vs final conflict
     if rec.state in ("execution_blocked", "rejected"):
-        if rec.decision_key == raw_key and rec.decision == decision:
+        if rec.decision_key == decision_digest and rec.decision == decision:
             event_type = "approval_approved" if decision == "approve" else "approval_rejected"
             _emit(
                 event_type=event_type,
@@ -525,7 +551,7 @@ def submit_decision(
         rec.decision = "approve"
         rec.reviewed_by = _p18._sanitize_text(raw_reviewed_by)
         rec.reviewed_at = now
-        rec.decision_key = raw_key
+        rec.decision_key = decision_digest
         rec.updated_at = now
         audit = _emit(
             event_type="approval_approved",
@@ -547,7 +573,7 @@ def submit_decision(
     rec.decision = "reject"
     rec.reviewed_by = _p18._sanitize_text(raw_reviewed_by)
     rec.reviewed_at = now
-    rec.decision_key = raw_key
+    rec.decision_key = decision_digest
     rec.updated_at = now
     audit = _emit(
         event_type="approval_rejected",

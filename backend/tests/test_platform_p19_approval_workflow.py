@@ -598,25 +598,141 @@ class TestRedaction:
             assert "OH-NO-SECRET" not in str(event.reason)
             assert event.redaction_applied is True
 
-    def test_audit_helper_builds_redacted_event(self):
+    def test_audit_helper_redacts_raw_reason_value(self):
+        """_build_approval_audit_event redacts reason internally (P19-B-R1):
+        a raw 'password=...' / 'token=...' value becomes '[redacted]'."""
         from api.v1.platform.p19.services import _build_approval_audit_event
 
-        ev = _build_approval_audit_event(
+        raws = [
+            "password=hunter2",  # pragma: allowlist secret
+            "token=abc123",  # pragma: allowlist secret
+        ]
+        for raw in raws:
+            ev = _build_approval_audit_event(
+                event_type="approval_requested",
+                actor="ops",
+                identity_context="identity_only",
+                tenant_id=TENANT_ID,
+                action_id=None,
+                approval_id="appr-1",
+                decision=None,
+                reason=raw,
+            )
+            assert ev.redaction_applied is True
+            assert ev.reason == "[redacted]"
+            assert raw not in ev.reason
+
+    def test_emit_does_not_leak_raw_reason_into_audit_log(self):
+        """_emit applies redaction internally (P19-B-R1) so a raw reason value
+        fed straight to _emit never reaches audit_log."""
+        from api.v1.platform.p19 import services
+
+        services.reset_store()
+        services._emit(
             event_type="approval_requested",
             actor="ops",
             identity_context="identity_only",
             tenant_id=TENANT_ID,
             action_id=None,
-            approval_id="appr-1",
+            approval_id="appr-x",
             decision=None,
-            reason="password=hunter2",  # pragma: allowlist secret
+            reason="password=leaked-secret",  # pragma: allowlist secret
+            now=datetime(2026, 6, 24, tzinfo=timezone.utc),
         )
-        assert ev.redaction_applied is True
-        # The helper receives the already-redacted reason in normal use; assert the
-        # event shape carries all required fields and never re-introduces structure.
-        assert ev.event_type == "approval_requested"
-        assert ev.identity_context == "identity_only"
-        assert ev.approval_id == "appr-1"
+        for ev in services.audit_log():
+            assert "leaked-secret" not in ev.reason
+            assert ev.reason == "[redacted]"
+            assert ev.redaction_applied is True
+
+
+# ============================================================
+# 9b. R1 security: raw idempotency key never stored (digest only)
+# ============================================================
+
+
+class TestR1DigestStorage:
+    """P19-B-R1: the RAW idempotency_key is never stored in the store, in a
+    record slot, or in an audit event. Only its SHA-256 digest is stored, and
+    the response echoes the sanitized (redacted) key. Duplicate / conflict
+    semantics are unchanged."""
+
+    def test_raw_create_key_not_in_store_index_or_slot(self):
+        import hashlib
+
+        from api.v1.platform.p19 import services
+
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        raw = "my-raw-create-key"
+        approval_id, body = _create_approval(client, idempotency_key=raw)
+        assert body["result"] == "recorded"
+        # The raw key is NOT a key in the create-key index.
+        assert raw not in services._STORE_BY_CREATE_KEY
+        # The stored create_key slot is a 64-hex digest, not the raw key.
+        rec = services._STORE[approval_id]
+        assert rec.create_key != raw
+        assert rec.create_key == hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        assert all(c in "0123456789abcdef" for c in rec.create_key)
+
+    def test_raw_decision_key_not_stored(self):
+        from api.v1.platform.p19 import services
+
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        approval_id, _ = _create_approval(client, idempotency_key="create-k")
+        raw_dec = "my-raw-decision-key"
+        body = client.post(
+            decision_path(approval_id),
+            headers=AUTH_HEADERS,
+            json=_decision_payload(idempotency_key=raw_dec),
+        ).json()
+        assert body["result"] == "approved"
+        rec = services._STORE[approval_id]
+        assert rec.decision_key != raw_dec
+        assert all(c in "0123456789abcdef" for c in (rec.decision_key or ""))
+        assert len(rec.decision_key or "") == 64
+
+    def test_create_duplicate_same_payload_idempotent(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        first = client.post(
+            APPROVALS, headers=AUTH_HEADERS, json=_approval_payload(idempotency_key="dup-k")
+        ).json()
+        assert first["result"] == "recorded"
+        second = client.post(
+            APPROVALS, headers=AUTH_HEADERS, json=_approval_payload(idempotency_key="dup-k")
+        ).json()
+        assert second["result"] == "duplicate"
+        assert second["approval_id"] == first["approval_id"]
+
+    def test_create_conflict_different_payload_fails(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        first = client.post(
+            APPROVALS,
+            headers=AUTH_HEADERS,
+            json=_approval_payload(idempotency_key="conf-k", reason="reason A"),
+        ).json()
+        assert first["result"] == "recorded"
+        second = client.post(
+            APPROVALS,
+            headers=AUTH_HEADERS,
+            json=_approval_payload(idempotency_key="conf-k", reason="reason B"),
+        ).json()
+        assert second["result"] == "conflict"
+
+    def test_response_echoes_sanitized_key_never_raw_or_digest(self):
+        app = _make_app(source_status="available")
+        client = TestClient(app)
+        body = client.post(
+            APPROVALS,
+            headers=AUTH_HEADERS,
+            json=_approval_payload(idempotency_key="token=raw-secret-key"),  # pragma: allowlist secret
+        ).json()
+        # Echoed idempotency_key is sanitized (redacted): never the raw key,
+        # never the 64-char digest.
+        assert body["idempotency_key"] == "[redacted]"
+        assert "raw-secret-key" not in str(body)
 
 
 # ============================================================

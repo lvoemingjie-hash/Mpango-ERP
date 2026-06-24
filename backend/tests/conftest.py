@@ -91,12 +91,14 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
                 'paid',
                 'fulfilled',
                 'cancelled',
-                'voided'
+                'voided',
+                'returned'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
         END $$;
     """))
+    await session.execute(text("ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'returned'"))
 
     await session.execute(text("""
         DO $$ BEGIN

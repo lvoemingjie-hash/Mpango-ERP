@@ -197,13 +197,14 @@ async def _bootstrap_tenant_schema(db, ts: str) -> None:
 
     for enum_ddl in [
         "DO $$ BEGIN CREATE TYPE order_status AS ENUM "
-        "('draft','confirmed','partially_paid','paid','fulfilled','cancelled','voided'); "
+        "('draft','confirmed','partially_paid','paid','fulfilled','cancelled','voided','returned'); "
         "EXCEPTION WHEN duplicate_object THEN null; END $$",
         "DO $$ BEGIN CREATE TYPE account_type AS ENUM "
         "('receivable','revenue','cash','liability'); "
         "EXCEPTION WHEN duplicate_object THEN null; END $$",
     ]:
         await db.execute(text(enum_ddl))
+    await db.execute(text("ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'returned'"))
 
     tables = [
         f'CREATE TABLE IF NOT EXISTS "{ts}".users ('

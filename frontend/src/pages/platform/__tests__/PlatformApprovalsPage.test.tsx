@@ -184,6 +184,10 @@ describe('PlatformApprovalsPage', () => {
     expect(invariants).toContain('execution_allowed = false');
     expect(invariants).toContain('executed = false');
     expect(invariants.toLowerCase()).toContain('approved is blocked from execution');
+    // Await the mount-time useEffect queue load so the async state update
+    // (setQueue / setQueueLoading(false)) settles within act(...) and emits no
+    // React act warning.
+    await screen.findByTestId('ap-queue-summary');
   });
 
   it('renders the approval queue after load', async () => {

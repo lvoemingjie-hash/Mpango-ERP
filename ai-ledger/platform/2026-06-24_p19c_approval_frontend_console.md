@@ -4,7 +4,10 @@
 **Branch:** `codex/platform-p19c-approval-frontend-console-2026-06-24`
 **Base:** `b08b191` (origin/platform-dev -- P19-B approval backend skeleton + R1 security
 fix merged; local platform-dev == origin/platform-dev at base).
-**Commit:** `0a11de7` (7 files, +1350 lines).
+**Commit:** `0a11de7` (code: 7 files, +1350 lines) plus a P19-C-R1 follow-up commit on this
+branch (test-warning + ledger-evidence fix; see the P19-C-R1 section). The R1 short SHA is
+recorded in the R1 session report and intentionally kept out of this ledger so the ledger stays
+non-self-referential and the detect-secrets scan stays clean.
 **Push target:** `origin/codex/platform-p19c-approval-frontend-console-2026-06-24` (the
 isolated branch only). Pushed as a new branch; tracks origin. Not merged into platform-dev.
 **Report path:** `ai-ledger/platform/2026-06-24_p19c_approval_frontend_console.md`.
@@ -91,6 +94,8 @@ authenticated operator, no operator secret sent; full frontend suite green (251 
 
 ## Modified files
 
+8 files total against `origin/platform-dev` (7 frontend code files below + this ledger):
+
 - `frontend/src/types/platformApprovals.ts` -- approval contracts (NEW).
 - `frontend/src/services/platformApi.ts` -- four P19 service methods (MODIFIED, additive).
 - `frontend/src/pages/platform/PlatformApprovalsPage.tsx` -- approval console (NEW).
@@ -118,7 +123,11 @@ authenticated operator, no operator secret sent; full frontend suite green (251 
     logged-out.
 - Regression: `src/pages/platform/**` + layout + router/guards + platform service/type tests
   -> **142 passed** (includes the `PlatformControlledActionsPage` gate).
-- Full frontend suite: **28 files, 251 tests, 0 failed.**
+- Targeted P19/P18 frontend tests (`PlatformApprovalsPage` + `SidebarApprovals` +
+  `PlatformControlledActionsPage`): **28 passed** (14 + 5 + 9), 0 `act(...)` warnings.
+- Full frontend suite: **28 files, 251 tests, 0 failed.** (Pre-existing `act(...)` warnings in
+  other platform pages -- e.g. Ops / Registry -- are unrelated to P19-C, are not introduced by
+  it, and are out of P19-C scope; R1 clears only the P19-C-owned test's warning.)
 - Run config: vitest 1.6.1, jsdom, `include: ['src/**/*.{test,spec}.{ts,tsx}']`. The worktree
   has no tracked `node_modules`; the shared main-repo `frontend/node_modules` was junction'd
   in for the run only (untracked, gitignored, not committed).
@@ -130,16 +139,17 @@ authenticated operator, no operator secret sent; full frontend suite green (251 
   each of the 3 modified files. (ASCII-only throughout, no section-sign / em-dash / box-dash /
   middot mojibake.)
 - detect-secrets: the pre-commit detect-secrets hook (with the repo's configured baseline) on
-  all 7 changed files -> PASS (rc 0). Full pre-commit (`trailing-whitespace`,
-  `end-of-file-fixer`, `check-yaml`,
-  `check-added-large-files`, `detect-secrets`) on the 7 files -> all Passed; and all Passed
-  again at commit time. Short SHAs only; no 40-char SHA in any new file.
-- Forbidden-path audit: `git diff --name-only origin/platform-dev..HEAD` lists only the 7
-  frontend files above. No `backend/`, `migrations/`, `alembic/`, `product-dev-recovered`,
-  `payment`, `billing`, `frontend/package.json`, `frontend/pnpm-lock.yaml`, auth/RBAC, or
-  product-business path is touched. The only non-`pages/platform` edits are the additive
-  route line in `AppRouter.tsx`, the additive nav link in `Sidebar.tsx`, and the additive
-  methods in `services/platformApi.ts` -- all explicitly allowed.
+  all 8 changed files (7 frontend code + this ledger) -> PASS (rc 0). Full pre-commit
+  (`trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-added-large-files`,
+  `detect-secrets`) on the 8 files -> all Passed; and all Passed again at commit time. Short
+  SHAs only; no 40-char SHA in any new file.
+- Forbidden-path audit: `git diff --name-only origin/platform-dev..HEAD` lists 8 files (7
+  frontend + this ledger), all on allowed paths. No `backend/`, `migrations/`, `alembic/`,
+  `product-dev-recovered`, `payment`, `billing`, `frontend/package.json`,
+  `frontend/pnpm-lock.yaml`, auth/RBAC, or product-business path is touched. The only
+  non-`pages/platform` edits are the additive route line in `AppRouter.tsx`, the additive nav
+  link in `Sidebar.tsx`, the additive methods in `services/platformApi.ts`, and this ledger --
+  all explicitly allowed.
 
 ## GitNexus
 
@@ -148,13 +158,41 @@ authenticated operator, no operator secret sent; full frontend suite green (251 
   clusters / 300 flows): +34 nodes, +73 edges, +11 clusters from the new approval console
   types / service / page; **execution-flow count unchanged at 300** (no new execution path,
   consistent with approval-is-not-execution).
-- `detect_changes compare origin/platform-dev..HEAD`: `detect_changes` is MCP-only (no CLI
-  this session). The equivalent `git diff --name-only origin/platform-dev..HEAD` shows the 7
-  frontend-only files above (no backend, no migration, no product, no deployment/infra). The
-  change set is platform-frontend-only and additive; the risk classification is MEDIUM /
-  contained as stated, not HIGH/CRITICAL, because there is no execution, no tenant mutation,
-  no migration, no auth/RBAC change, no product business path, and all 251 frontend tests
-  pass.
+- GitNexus MCP `detect_changes compare origin/platform-dev..HEAD` = **MEDIUM**:
+  changed_files = **8**, changed_symbols = **34**, affected_processes = **1**; the single
+  affected execution flow is **PlatformApprovalsPage -> Unwrap** (the page's response-unwrapping
+  helper; all four approval service calls unwrap through it). `detect_changes` is MCP-only (no
+  CLI subcommand -- the CLI exposes `analyze` / `index` / `query` / `context` / `impact` /
+  `cypher` / `wiki` / `serve` / `mcp` but not `detect_changes`; this worker session and a
+  delegated subagent cannot invoke the MCP tool). These figures are the GitNexus MCP result
+  obtained during review; changed_files = 8 is independently corroborated by
+  `git diff --name-only origin/platform-dev..HEAD` (7 frontend code files + this ledger; no
+  backend, no migration, no product, no deployment/infra). MEDIUM, not HIGH/CRITICAL: there is
+  no execution, no tenant mutation, no migration, no auth/RBAC change, no product business
+  path, and all 251 frontend tests pass.
+
+## P19-C-R1 (test warning + evidence accuracy fix, 2026-06-24)
+
+Review of P19-C found one cosmetic test warning and asked for the real GitNexus `detect_changes`
+evidence. R1 fixes both. No scope expansion, no P19-D, no platform-dev merge.
+
+- React `act(...)` warning: the single P19-C-owned warning was in
+  `frontend/src/pages/platform/__tests__/PlatformApprovalsPage.test.tsx`, in the
+  "renders title, not-executed subtitle, and the console invariants" test, which asserted
+  synchronously before the mount-time `useEffect` queue load settled. Fixed by awaiting
+  `screen.findByTestId('ap-queue-summary')` so the `setQueue` / `setQueueLoading(false)`
+  update lands within `act(...)`. The P19-C page test now reports 0 `act(...)` warnings
+  (14 tests pass). Only the P19-C-owned test was changed; pre-existing `act(...)` warnings in
+  other platform pages (Ops / Registry, etc.) are untouched and remain pre-existing /
+  non-blocking / out of P19-C scope.
+- Ledger evidence accuracy: the GitNexus section now records the actual MCP `detect_changes`
+  result (MEDIUM; changed_files 8; changed_symbols 34; affected_processes 1;
+  PlatformApprovalsPage -> Unwrap), and the modified-files total is stated as 8 (7 code files
+  + this ledger).
+- Modified in R1: `frontend/src/pages/platform/__tests__/PlatformApprovalsPage.test.tsx` and
+  this ledger. No production code, no backend, no migration, no auth/RBAC, no
+  package/lockfile, no product path changed. `gitnexus analyze` re-run: index already up to
+  date (a test-only edit adds no production symbols); execution flows still 300.
 
 ## Explicit statements
 

@@ -95,7 +95,7 @@ def _run_alembic_upgrade_head(database: str) -> None:
     env["DATABASE_URL"] = _database_url(database)
     env["PYTHONIOENCODING"] = "utf-8"
     result = subprocess.run(
-        [str(Path(sys.executable).with_name("alembic.exe")), "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=BACKEND_DIR,
         env=env,
         text=True,

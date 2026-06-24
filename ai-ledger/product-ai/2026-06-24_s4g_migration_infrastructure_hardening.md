@@ -32,6 +32,25 @@ This is not a product behavior fix.
 
 ---
 
+## R1 Finding
+
+S4-G-R1 review found the targeted test helper hardcoded the Windows-only executable name `alembic.exe` when invoking `alembic upgrade head` in a subprocess.
+
+Fix:
+
+- Replaced the platform-specific command with `[sys.executable, "-m", "alembic", "upgrade", "head"]`.
+- This uses the active Poetry Python interpreter and works on Windows and Linux/Lubuntu without depending on executable suffixes or PATH lookup.
+- No production migration logic was expanded for R1; `backend/alembic/env.py` and `backend/alembic/versions/017_retailer_prices.py` were left unchanged.
+- R1 changed files only: this ledger and `backend/tests/test_s4g_migration_infrastructure_hardening.py`.
+
+Cross-environment note:
+
+- Windows validation is recorded below.
+- Leo/Lubuntu cross-env validation is still required before CTO merge because this machine cannot execute inside the Lubuntu validation host.
+- &#38656; Leo/Lubuntu cross-env validation before CTO merge.
+
+---
+
 ## Alembic Version Table Research
 
 Official Alembic docs confirm `EnvironmentContext.configure()` supports:
@@ -174,8 +193,8 @@ GitNexus analyze:
 
 ```text
 npx gitnexus analyze
-Repository indexed successfully (16.2s)
-5,678 nodes | 16,483 edges | 371 clusters | 222 flows
+Repository indexed successfully (15.2s)
+5,689 nodes | 16,484 edges | 381 clusters | 222 flows
 ```
 
 GitNexus detect changes, staged and compare vs `origin/product-dev-recovered`:
@@ -183,7 +202,7 @@ GitNexus detect changes, staged and compare vs `origin/product-dev-recovered`:
 ```text
 risk_level: medium
 changed_files: 4
-changed_count: 47
+changed_count: 48
 affected_count: 4
 affected_processes:
 - Upgrade -> _columns

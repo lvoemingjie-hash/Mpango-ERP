@@ -40,6 +40,81 @@ if _db_url:
 # Target metadata for autogenerate
 target_metadata = Base.metadata
 
+ALEMBIC_VERSION_TABLE = "alembic_version"
+ALEMBIC_VERSION_SCHEMA = "public"
+ALEMBIC_VERSION_NUM_LENGTH = 128
+
+
+def _ensure_alembic_version_table_capacity(connection: Connection) -> None:
+    """Keep Alembic's public version table compatible with long revision IDs.
+
+    Alembic 1.18 still creates ``version_num`` as ``VARCHAR(32)``. This repo
+    already has revision identifiers longer than 32 characters, so fresh and
+    existing databases must widen the column before Alembic writes a revision.
+    """
+    if connection.dialect.name != "postgresql":
+        return
+
+    connection.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS {ALEMBIC_VERSION_SCHEMA}.{ALEMBIC_VERSION_TABLE} (
+                version_num VARCHAR({ALEMBIC_VERSION_NUM_LENGTH}) NOT NULL,
+                CONSTRAINT {ALEMBIC_VERSION_TABLE}_pkc PRIMARY KEY (version_num)
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            DO $$
+            DECLARE
+                current_type TEXT;
+                current_length INTEGER;
+            BEGIN
+                SELECT data_type, character_maximum_length
+                  INTO current_type, current_length
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'alembic_version'
+                   AND column_name = 'version_num';
+
+                IF current_type = 'character varying'
+                   AND current_length IS NOT NULL
+                   AND current_length < 128 THEN
+                    ALTER TABLE public.alembic_version
+                    ALTER COLUMN version_num TYPE VARCHAR(128);
+                ELSIF current_type IN ('character varying', 'text') THEN
+                    NULL;
+                ELSE
+                    RAISE EXCEPTION
+                        'Unsupported public.alembic_version.version_num type: %',
+                        current_type;
+                END IF;
+            END $$;
+            """
+        )
+    )
+
+
+def _emit_alembic_version_table_capacity_sql() -> None:
+    """Emit offline SQL equivalent of _ensure_alembic_version_table_capacity."""
+    context.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {ALEMBIC_VERSION_SCHEMA}.{ALEMBIC_VERSION_TABLE} (
+            version_num VARCHAR({ALEMBIC_VERSION_NUM_LENGTH}) NOT NULL,
+            CONSTRAINT {ALEMBIC_VERSION_TABLE}_pkc PRIMARY KEY (version_num)
+        )
+        """
+    )
+    context.execute(
+        """
+        ALTER TABLE public.alembic_version
+        ALTER COLUMN version_num TYPE VARCHAR(128)
+        """
+    )
+
 
 def get_tenant_schema() -> str:
     """
@@ -67,11 +142,13 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table_schema="public",  # Version table always in public
+        version_table_schema=ALEMBIC_VERSION_SCHEMA,  # Version table always in public
+        version_table_pk=True,
         include_schemas=True,
     )
 
     with context.begin_transaction():
+        _emit_alembic_version_table_capacity_sql()
         if tenant_schema:
             # Set search_path for tenant migrations
             context.execute(f'SET search_path TO "{tenant_schema}", public')
@@ -92,13 +169,18 @@ def do_run_migrations(connection: Connection) -> None:
         connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{tenant_schema}"'))
         connection.commit()
 
+    _ensure_alembic_version_table_capacity(connection)
+    connection.commit()
+
+    if tenant_schema:
         # Set search_path to tenant schema
         connection.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        version_table_schema="public",  # Version table always in public
+        version_table_schema=ALEMBIC_VERSION_SCHEMA,  # Version table always in public
+        version_table_pk=True,
         include_schemas=True,
     )
 

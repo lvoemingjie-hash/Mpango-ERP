@@ -1,0 +1,4 @@
+sku_code,name,description,unit,category,is_active
+TEST-001,Test Product Alpha,First test product,pc,Test Category,true
+TEST-002,Test Product Beta,Second test product,box,Test Category,true
+TEST-003,Test Product Gamma,Third test product,pc,Test Category,true

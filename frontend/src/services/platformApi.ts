@@ -37,12 +37,19 @@ import type {
   ControlledActionRequestQueue,
   ControlledActionRequestResponse,
 } from '@/types/platformControlledActions';
+import type {
+  ControlledActionApprovalDecision,
+  ControlledActionApprovalQueue,
+  ControlledActionApprovalRecord,
+  ControlledActionApprovalRequest,
+} from '@/types/platformApprovals';
 
 const P10_BASE = '/platform/p10';
 const P13_BASE = '/platform/p13';
 const P15_BASE = '/platform/p15';
 const P17_BASE = '/platform/p17';
 const P18_BASE = '/platform/p18';
+const P19_BASE = '/platform/p19';
 
 export const platformService = {
   /** List tenants with optional pagination */
@@ -142,4 +149,37 @@ export const platformService = {
   /** P18: Read a recorded controlled-action request by id (not executed) */
   getControlledActionRequest: (actionId: string) =>
     api.get<ControlledActionRequestResponse>(`${P18_BASE}/actions/requests/${actionId}`),
+
+  // -- P19 Approval Workflow (approval read / write / decide; not executed) --
+  //
+  // Approval is not execution: an approved approval resolves to
+  // execution_blocked, never runs the wrapped P18 action, and every record and
+  // queue item carries execution_allowed === false and executed === false. No
+  // X-Platform-Operator secret is sent; these reuse the standard Axios Bearer
+  // token transport, identical to the P10..P18 platform calls above.
+
+  /** P19: Create (record) an approval request (not executed) */
+  createApprovalRequest: (payload: ControlledActionApprovalRequest) =>
+    api.post<ControlledActionApprovalRecord>(`${P19_BASE}/approvals`, payload),
+
+  /** P19: List the approval queue (ephemeral in-memory; not executed) */
+  listApprovals: (limit = 50, offset = 0) =>
+    api.get<ControlledActionApprovalQueue>(`${P19_BASE}/approvals`, {
+      params: { limit, offset },
+    }),
+
+  /** P19: Read a recorded approval by id (not executed) */
+  getApproval: (approvalId: string) =>
+    api.get<ControlledActionApprovalRecord>(`${P19_BASE}/approvals/${approvalId}`),
+
+  /** P19: Submit an approve / reject decision (approved resolves to
+   *  execution_blocked; reject is final; never executes) */
+  submitApprovalDecision: (
+    approvalId: string,
+    payload: ControlledActionApprovalDecision,
+  ) =>
+    api.post<ControlledActionApprovalRecord>(
+      `${P19_BASE}/approvals/${approvalId}/decision`,
+      payload,
+    ),
 };

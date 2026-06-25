@@ -37,6 +37,7 @@ For P9+ SaaS platform product work, read these after the general context above a
 15. `docs/ai/PLATFORM_PRODUCT_P17_REGISTRY_LIFECYCLE_CONTRACT.md`
 16. `docs/ai/PLATFORM_PRODUCT_P18_CONTROLLED_ACTIONS_CONTRACT.md`
 17. `docs/ai/PLATFORM_PRODUCT_P19_APPROVAL_WORKFLOW_CONTRACT.md`
+18. `docs/ai/PLATFORM_PRODUCT_P20_DURABLE_APPROVAL_GOVERNANCE_CONTRACT.md`
 
 P10 must start with a data-contract-only slice unless a later CTO decision explicitly broadens scope. Do not begin P10 with migrations, API handlers, frontend UI, auth/RBAC/tenancy/session changes, payment changes, or tenant business-data edits.
 
@@ -53,6 +54,8 @@ P17 platform registry and tenant lifecycle work must start with the contract (`P
 P18 controlled platform actions work must start with the contract (`PLATFORM_PRODUCT_P18_CONTROLLED_ACTIONS_CONTRACT.md`). P18 is contract only: no execution of any controlled action, no runtime code, no migrations, no frontend UI, and no auth/RBAC/session/tenancy/payment changes. Only a separately approved future phase may implement the action-request skeleton, and even then destructive actions remain blocked unless separately approved. No runtime code, migrations, or frontend UI in P18-A.
 
 P19 controlled action approval workflow work must start with the contract (`PLATFORM_PRODUCT_P19_APPROVAL_WORKFLOW_CONTRACT.md`). P19 is the approval boundary on top of the P18 request layer: approve and reject change approval state only, they never execute any action, and every approved approval resolves to execution_blocked with execution_allowed == false. P19 is contract only: no execution, no runtime code, no migrations, no frontend UI, no automation runner, and no auth/RBAC/session/tenancy/payment changes. Only a separately approved future phase may implement the backend approval read/write skeleton, and even then no execution, no tenant mutation, and no persistent storage unless separately gated and approved. No runtime code, migrations, or frontend UI in P19-A.
+
+P20 durable approval governance work must start with the contract (`docs/ai/PLATFORM_PRODUCT_P20_DURABLE_APPROVAL_GOVERNANCE_CONTRACT.md`). P20 is the durable governance layer on top of P19: a persistent approval store contract (digest-only idempotency, full reason/comment redaction, retention/purge/export, unknown/degraded/read-only fallback), a dual-control policy contract (maker-checker separation, quorum, tenant-contextual identity denied, emergency override forbidden by default), and an execution readiness gate contract. Approval is not execution and durability is not execution: an approved durable approval stays at approved_execution_blocked with execution_allowed == false, every destructive or tenant-mutating action stops, and backup.restore_test_request is request-only. P20 is contract only: no execution, no runtime code, no migrations, no frontend UI, no automation runner, no notification implementation, and no auth/RBAC/session/tenancy/payment changes. Only a separately approved future phase may implement a durable approval read/write skeleton or storage abstraction skeleton, and even then no execution, no tenant mutation, and no migration or real durable backend unless separately gated and approved by the CTO. No runtime code, migrations, or frontend UI in P20-A.
 
 ## Purpose
 

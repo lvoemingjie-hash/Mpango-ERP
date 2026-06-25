@@ -260,3 +260,23 @@ deferred). There is no frontend, no migration, no real execution, no tenant
 mutation, and no auth/RBAC rewrite, and no change to the configured secret
 baseline. P20-C is not started. Approval is not execution, and durability is not
 execution.
+
+## 12. CTO R1 review note
+
+- P1 finding (identity spoofing): CLOSED. The maker and the checker are bound to
+  the authenticated identity-only super_admin actor; a client-supplied maker /
+  approver_id that differs from the actor is denied; there is no system /
+  operator fallback for create / decision; the system path can never count
+  toward quorum. The maker cannot create as one identity and approve as another.
+- Remaining work after R1: comment / evidence cleanup only (this R2 revision).
+  R2 corrects the stale _actor_context_and_role docstring in routes.py (it had
+  described the R0 payload-driven model) and records this review note. There is
+  NO behavior change in R2 -- no service / schema / route logic changed.
+- GitNexus detect_changes remains CRITICAL because the change is platform
+  runtime additive (new P20 routes + symbols wired into configure_app), which is
+  expected for a backend skeleton. The affected flows are P20-only (18 affected
+  processes, all within the P20 durable-approval surface; 0 product business
+  processes). No stop condition is triggered.
+- Open carry-forward (not R2): support_operator / engineering_operator read-only
+  GET delegation remains deferred to P20-C / a P20-RBAC slice (super_admin-only
+  runtime). P20-C is not started.

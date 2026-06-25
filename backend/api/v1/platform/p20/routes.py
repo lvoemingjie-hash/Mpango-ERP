@@ -119,12 +119,16 @@ async def require_platform_operator_with_p20_audit(
 
 
 def _actor_context_and_role(request: Request) -> tuple[Optional[str], str, str]:
-    """Best-effort (actor_id, identity_context, actor_role) from the auth context.
+    """Best-effort (actor_id, identity_context, actor_role) read from the auth
+    context attached by the middleware.
 
-    Falls back to (None, 'system', 'system') for the test-override / operator
-    header path where no auth context is attached. Never raises. Dual-control
-    (maker-checker, quorum) is driven by the payload identities (maker /
-    approver_id), so the system fallback path is safe.
+    The actor is the authenticated identity (read from the token). The system /
+    operator-secret / test-override fallback has NO actor (it returns
+    (None, 'system', 'system')); in that case the create and decision services
+    deny the request, because the maker / checker must bind to a real
+    authenticated actor. Maker-checker separation and quorum are enforced in
+    services.py against this authenticated actor (never the client payload).
+    Never raises.
     """
     try:
         from api.context.auth import get_auth_context

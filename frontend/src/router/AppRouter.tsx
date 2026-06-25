@@ -32,6 +32,7 @@ import { SupportConsolePage } from '@/pages/platform/SupportConsolePage';
 import { PlatformRegistryPage } from '@/pages/platform/PlatformRegistryPage';
 import { PlatformControlledActionsPage } from '@/pages/platform/PlatformControlledActionsPage';
 import { PlatformApprovalsPage } from '@/pages/platform/PlatformApprovalsPage';
+import { PlatformDurableApprovalsPage } from '@/pages/platform/PlatformDurableApprovalsPage';
 // P13 Operations Cockpit pages
 import { OpsHealthPage } from '@/pages/platform/ops/OpsHealthPage';
 import { OpsErrorsPage } from '@/pages/platform/ops/OpsErrorsPage';
@@ -110,6 +111,9 @@ const router = createBrowserRouter([
               { path: '/platform/controlled-actions', element: <PlatformControlledActionsPage /> },
               // P19 Approval Workflow route (approval console, identity-only super_admin)
               { path: '/platform/approvals', element: <PlatformApprovalsPage /> },
+              // P20 Durable Approval Governance route (durable approval console,
+              // identity-only super_admin; maker-checker + quorum; not executed)
+              { path: '/platform/durable-approvals', element: <PlatformDurableApprovalsPage /> },
               // P13 Operations Cockpit routes
               { path: '/platform/ops/health', element: <OpsHealthPage /> },
               { path: '/platform/ops/errors', element: <OpsErrorsPage /> },

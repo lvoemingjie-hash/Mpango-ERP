@@ -429,22 +429,32 @@ async def create_durable_approval(
 ) -> DurableApprovalRecord:
     """Validate and record a durable approval request. Never executes anything.
 
-    Order of checks: reason -> idempotency_key -> maker -> confirm -> expires_at
-    (future) -> P18 reference resolvable -> create idempotency store. An
-    unresolvable P18 reference, a missing required field, a missing
-    confirmation, or a past expires_at yields a denied record (not recorded).
-    An unknown source status does NOT block creation -- it is stored verbatim
-    (validation_status = source_unknown) and blocks the later approve decision.
+    P20-B-R1 identity binding: the maker is the AUTHENTICATED identity-only
+    super_admin actor. An absent authenticated actor, or a client-supplied maker
+    that does not equal the authenticated actor, is denied (no identity spoof,
+    no system / operator fallback).
+
+    Order of checks: authenticated actor -> maker matches actor -> reason ->
+    idempotency_key -> confirm -> expires_at (future) -> P18 reference
+    resolvable -> create idempotency store. An unresolvable P18 reference, a
+    missing required field, a missing confirmation, or a past expires_at yields a
+    denied record (not recorded). An unknown source status does NOT block
+    creation -- it is stored verbatim (validation_status = source_unknown) and
+    blocks the later approve decision.
     """
     now = _now()
     raw_reason = (reason or "").strip()
     raw_key = (idempotency_key or "").strip()
     raw_maker = (maker or "").strip()
     safe_reason = _p18._redact_reason(raw_reason)
-    safe_maker = _p18._sanitize_text(raw_maker)
     safe_correlation_id = _p18._sanitize_text(correlation_id)
     # metadata is redacted for audit use; not echoed on the record (no leak).
     _p18.redact_metadata(metadata)
+    # P20-B-R1: the maker is the AUTHENTICATED identity-only super_admin actor.
+    # A client-supplied maker is accepted only as an explicit assertion that MUST
+    # equal the authenticated actor; otherwise the request is an identity spoof
+    # and is denied. There is no system / operator-secret fallback for the maker.
+    bound_maker = _p18._sanitize_text(actor) if actor else None
 
     def denied(message: str, result: str = "denied") -> DurableApprovalRecord:
         _emit(
@@ -468,23 +478,28 @@ async def create_durable_approval(
         )
         return _record_from(None, result=result, message=message, now=now)
 
-    # 1) reason required
+    # 1) authenticated actor required -- the maker binds to the authenticated
+    #    identity (no system / operator-secret fallback may be a maker)
+    if not bound_maker:
+        return denied("Denied: an authenticated identity-only super_admin actor is required to open a durable approval (maker binds to the authenticated actor; no system / operator fallback).")
+
+    # 2) a client-supplied maker must match the authenticated actor (spoof denied)
+    if raw_maker and raw_maker != actor:
+        return denied("Denied: the payload maker must match the authenticated actor; identity spoofing is denied.")
+
+    # 3) reason required
     if not raw_reason:
         return denied("Denied: a non-empty reason is required to open a durable approval.")
 
-    # 2) idempotency_key required
+    # 4) idempotency_key required
     if not raw_key:
         return denied("Denied: an idempotency_key is required to open a durable approval.")
 
-    # 3) maker required
-    if not raw_maker:
-        return denied("Denied: a maker is required to open a durable approval.")
-
-    # 4) explicit confirmation required to open the request
+    # 5) explicit confirmation required to open the request
     if not confirm:
         return denied("Denied: explicit confirmation (confirm=true) is required to open a durable approval.")
 
-    # 5) expires_at required and in the future (an approval must expire)
+    # 6) expires_at required and in the future (an approval must expire)
     exp = _utc(expires_at)
     if exp is None:
         return denied("Denied: expires_at is required (a durable approval must expire).")
@@ -494,7 +509,7 @@ async def create_durable_approval(
     # durable_retain_until defaults to expires_at (retention TTL)
     retain = _utc(durable_retain_until) or exp
 
-    # 6) P18 reference must be resolvable (never fabricate an available source)
+    # 7) P18 reference must be resolvable (never fabricate an available source)
     ctx = await _resolve_p18_context(action_id, action_type, tenant_id, db)
     if ctx is None:
         return denied(
@@ -507,9 +522,9 @@ async def create_durable_approval(
     quorum_required = _quorum_required_for(action_class)
     validation_status = "valid" if source_status == "available" else "source_unknown"
 
-    # 7) create idempotency: duplicate / conflict (keyed by the key DIGEST,
+    # 8) create idempotency: duplicate / conflict (keyed by the key DIGEST,
     #    never the raw idempotency_key)
-    fp = _create_fingerprint(resolved_action_type, tenant_id, raw_maker, raw_reason)
+    fp = _create_fingerprint(resolved_action_type, tenant_id, bound_maker, raw_reason)
     create_digest = _digest(raw_key)
     existing_id = _STORE_BY_CREATE_KEY.get(create_digest)
     if existing_id is not None:
@@ -545,9 +560,9 @@ async def create_durable_approval(
             result="conflict",
         )
 
-    # 8) record the durable approval at pending_review; execution_allowed stays False
+    # 9) record the durable approval at pending_review; execution_allowed stays False
     approval_id = str(uuid4())
-    req_digest = _request_digest(action_id, resolved_action_type, tenant_id, raw_maker)
+    req_digest = _request_digest(action_id, resolved_action_type, tenant_id, bound_maker)
     audit = _emit(
         event_type="approval_opened",
         actor_id=actor,
@@ -574,7 +589,7 @@ async def create_durable_approval(
         action_type=safe_action_type,
         action_class=action_class,
         state="pending_review",
-        maker=safe_maker,
+        maker=bound_maker,
         maker_at=now,
         checkers=[],
         quorum_required=quorum_required,
@@ -626,10 +641,15 @@ def submit_decision(
 ) -> DurableApprovalRecord:
     """Record one checker's approve / reject decision. Never executes anything.
 
-    Maker-checker: approver_id must differ from maker (self-approval forbidden).
-    Distinct checkers: each checker records at most one decision. reject is
-    final (any single reject vetoes). approve accumulates until the quorum floor
-    of distinct approve checkers is met, then resolves to
+    P20-B-R1 identity binding: the checker is the AUTHENTICATED identity-only
+    super_admin actor. An absent authenticated actor, or a client-supplied
+    approver_id that does not equal the authenticated actor, is denied (no
+    identity spoof, no system / operator fallback).
+
+    Maker-checker: the checker (authenticated actor) must differ from the maker
+    (self-approval forbidden). Distinct checkers: each checker records at most
+    one decision. reject is final (any single reject vetoes). approve accumulates
+    until the quorum floor of distinct approve checkers is met, then resolves to
     approved_execution_blocked. An approve against an unknown / unavailable P18
     source is denied. Transitions to expired / cancelled / superseded /
     failed_validation are not implemented in P20-B and are explicitly rejected.
@@ -641,10 +661,15 @@ def submit_decision(
     raw_key = (idempotency_key or "").strip()
     raw_approver = (approver_id or "").strip()
     safe_reason = _p18._redact_reason(raw_reason)
-    safe_approver = _p18._sanitize_text(raw_approver)
     safe_correlation_id = _p18._sanitize_text(correlation_id)
     _p18.redact_metadata(metadata)
     decision_digest = _digest(raw_key)
+    # P20-B-R1: the checker binds to the AUTHENTICATED identity-only super_admin
+    # actor. A client-supplied approver_id is accepted only as an explicit
+    # assertion that MUST equal the authenticated actor; otherwise it is an
+    # identity spoof and is denied. No system / operator fallback may count as a
+    # checker or toward quorum.
+    bound_approver = _p18._sanitize_text(actor) if actor else None
 
     def denied(message: str, result: str = "denied") -> DurableApprovalRecord:
         _emit(
@@ -662,7 +687,7 @@ def submit_decision(
             request_digest=rec.request_digest if rec else None,
             quorum_required=rec.quorum_required if rec else 0,
             quorum_met=rec.quorum_met if rec else False,
-            checker_id=safe_approver,
+            checker_id=bound_approver,
             correlation_id=safe_correlation_id,
             now=now,
         )
@@ -671,13 +696,20 @@ def submit_decision(
     if rec is None:
         return denied("Denied: approval_id not found.", result="not_found")
 
-    # 1) decision must be approve | reject
+    # 1) authenticated actor required -- the checker binds to the authenticated
+    #    identity (no system / operator-secret fallback may be a checker)
+    if not bound_approver:
+        return denied("Denied: an authenticated identity-only super_admin actor is required to record a decision (checker binds to the authenticated actor; no system / operator fallback).")
+
+    # 2) a client-supplied approver_id must match the authenticated actor (spoof)
+    if raw_approver and raw_approver != actor:
+        return denied("Denied: the payload approver_id must match the authenticated actor; identity spoofing is denied.")
+
+    # 3) decision must be approve | reject
     if decision not in ("approve", "reject"):
         return denied("Denied: decision must be 'approve' or 'reject'.")
 
-    # 2) approver_id / reason / idempotency_key / confirmation required
-    if not raw_approver:
-        return denied("Denied: an approver_id (checker) is required for a decision.")
+    # 4) reason / idempotency_key / confirmation required
     if not raw_reason:
         return denied("Denied: a non-empty reason is required for a decision.")
     if not raw_key:
@@ -685,20 +717,21 @@ def submit_decision(
     if not confirm:
         return denied("Denied: explicit confirmation (confirm=true) is required for a decision.")
 
-    # 3) unimplemented terminal transitions are explicitly rejected (P20-B
+    # 5) unimplemented terminal transitions are explicitly rejected (P20-B
     #    implements only pending_review / approved_execution_blocked / rejected)
     if rec.state in ("expired", "cancelled", "superseded", "failed_validation"):
         return denied(
             "Denied: the '%s' state transition is not implemented in P20-B; the approval is terminal and cannot be decided." % rec.state,
         )
 
-    # 4) maker-checker separation: the maker can never be a checker
-    if safe_approver == rec.maker:
+    # 6) maker-checker separation: the checker (authenticated actor) must differ
+    #    from the maker (the authenticated actor who opened the request)
+    if bound_approver == rec.maker:
         return denied("Denied: maker-checker separation forbids the maker from approving / rejecting their own durable approval (self-approval denied).")
 
-    # 5) already-rejected approval: reject is final
+    # 7) already-rejected approval: reject is final
     if rec.state == "rejected":
-        existing = next((c for c in rec.checkers if c.checker_id == safe_approver), None)
+        existing = next((c for c in rec.checkers if c.checker_id == bound_approver), None)
         if existing is not None and existing.decision == decision:
             _emit(
                 event_type="approval_rejected",
@@ -715,22 +748,22 @@ def submit_decision(
                 request_digest=rec.request_digest,
                 quorum_required=rec.quorum_required,
                 quorum_met=False,
-                checker_id=safe_approver,
+                checker_id=bound_approver,
                 correlation_id=safe_correlation_id,
                 now=now,
             )
             return _record_from(rec, result="duplicate", message="Duplicate: this checker already recorded this decision; reject is final. Nothing was executed.", now=now)
         return denied("Conflict: the durable approval is already rejected; reject is final and no further decision is accepted.", result="conflict")
 
-    # 6) quorum-met approval (approved_execution_blocked): no further state change
+    # 8) quorum-met approval (approved_execution_blocked): no further state change
     if rec.state == "approved_execution_blocked":
-        existing = next((c for c in rec.checkers if c.checker_id == safe_approver), None)
+        existing = next((c for c in rec.checkers if c.checker_id == bound_approver), None)
         if decision == "approve" and (existing is None or existing.decision == "approve"):
             return _record_from(rec, result="duplicate", message="Duplicate: the durable approval already reached quorum (approved_execution_blocked); the approve is idempotent. Nothing was executed.", now=now)
         return denied("Conflict: the durable approval already reached quorum (approved_execution_blocked); a reject after quorum is rejected.", result="conflict")
 
-    # 7) state is pending_review -> apply the decision
-    existing = next((c for c in rec.checkers if c.checker_id == safe_approver), None)
+    # 9) state is pending_review -> apply the decision
+    existing = next((c for c in rec.checkers if c.checker_id == bound_approver), None)
     if existing is not None:
         # distinct checker: one decision per checker
         if existing.decision == decision:
@@ -754,13 +787,13 @@ def submit_decision(
             request_digest=rec.request_digest,
             quorum_required=rec.quorum_required,
             quorum_met=False,
-            checker_id=safe_approver,
+            checker_id=bound_approver,
             correlation_id=safe_correlation_id,
             now=now,
         )
         rec.checkers.append(
             _CheckerDecision(
-                checker_id=safe_approver,
+                checker_id=bound_approver,
                 decided_at=now,
                 decision="reject",
                 reason_redacted=safe_reason,
@@ -787,7 +820,7 @@ def submit_decision(
             request_digest=rec.request_digest,
             quorum_required=rec.quorum_required,
             quorum_met=False,
-            checker_id=safe_approver,
+            checker_id=bound_approver,
             correlation_id=safe_correlation_id,
             now=now,
         )
@@ -815,13 +848,13 @@ def submit_decision(
         request_digest=rec.request_digest,
         quorum_required=rec.quorum_required,
         quorum_met=False,
-        checker_id=safe_approver,
+        checker_id=bound_approver,
         correlation_id=safe_correlation_id,
         now=now,
     )
     rec.checkers.append(
         _CheckerDecision(
-            checker_id=safe_approver,
+            checker_id=bound_approver,
             decided_at=now,
             decision="approve",
             reason_redacted=safe_reason,
@@ -851,7 +884,7 @@ def submit_decision(
             request_digest=rec.request_digest,
             quorum_required=rec.quorum_required,
             quorum_met=True,
-            checker_id=safe_approver,
+            checker_id=bound_approver,
             correlation_id=safe_correlation_id,
             now=now,
         )

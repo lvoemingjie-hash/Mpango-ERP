@@ -43,6 +43,12 @@ import type {
   ControlledActionApprovalRecord,
   ControlledActionApprovalRequest,
 } from '@/types/platformApprovals';
+import type {
+  DurableApprovalCreateRequest,
+  DurableApprovalDecisionRequest,
+  DurableApprovalQueue,
+  DurableApprovalRecord,
+} from '@/types/platformDurableApprovals';
 
 const P10_BASE = '/platform/p10';
 const P13_BASE = '/platform/p13';
@@ -50,6 +56,7 @@ const P15_BASE = '/platform/p15';
 const P17_BASE = '/platform/p17';
 const P18_BASE = '/platform/p18';
 const P19_BASE = '/platform/p19';
+const P20_BASE = '/platform/p20';
 
 export const platformService = {
   /** List tenants with optional pagination */
@@ -180,6 +187,45 @@ export const platformService = {
   ) =>
     api.post<ControlledActionApprovalRecord>(
       `${P19_BASE}/approvals/${approvalId}/decision`,
+      payload,
+    ),
+
+  // -- P20 Durable Approval Governance (maker-checker + quorum; not executed) --
+  //
+  // Durability is not execution: a quorum-met durable approval resolves to
+  // approved_execution_blocked, never runs the wrapped P18 action, and every
+  // record and queue item carries execution_allowed === false,
+  // execution_gate === 'blocked', and executed === false. The maker and the
+  // checker bind to the authenticated identity-only super_admin actor on the
+  // server. No X-Platform-Operator secret is sent; these reuse the standard
+  // Axios Bearer token transport, identical to the P10..P19 platform calls.
+
+  /** P20: Open (record) a durable approval request (not executed) */
+  createDurableApproval: (payload: DurableApprovalCreateRequest) =>
+    api.post<DurableApprovalRecord>(`${P20_BASE}/durable-approvals`, payload),
+
+  /** P20: List the durable approval queue (ephemeral in-memory; not executed) */
+  listDurableApprovals: (
+    limit = 50,
+    offset = 0,
+    filters?: { status?: string; action_type?: string; tenant_id?: string },
+  ) =>
+    api.get<DurableApprovalQueue>(`${P20_BASE}/durable-approvals`, {
+      params: { limit, offset, ...filters },
+    }),
+
+  /** P20: Read a recorded durable approval by id (not executed) */
+  getDurableApproval: (approvalId: string) =>
+    api.get<DurableApprovalRecord>(`${P20_BASE}/durable-approvals/${approvalId}`),
+
+  /** P20: Record one checker's approve / reject decision (approved resolves to
+   *  approved_execution_blocked; reject is final; never executes) */
+  submitDurableApprovalDecision: (
+    approvalId: string,
+    payload: DurableApprovalDecisionRequest,
+  ) =>
+    api.post<DurableApprovalRecord>(
+      `${P20_BASE}/durable-approvals/${approvalId}/decisions`,
       payload,
     ),
 };

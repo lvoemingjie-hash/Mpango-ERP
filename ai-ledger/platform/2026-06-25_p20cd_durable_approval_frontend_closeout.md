@@ -177,10 +177,16 @@ blocked" / "quorum met"), never as executed, applied, running, or done.
 - detect-secrets (detect-secrets-hook against the repo's configured baseline) on
   all changed files: PASS, exit 0, no new secrets. The baseline file was not
   modified (working-tree status clean for it).
-- npx gitnexus analyze: 7,638 nodes / 23,540 edges / 495 clusters / 300 flows;
-  re-indexed at the code commit (231cba1); graph intact.
+- npx gitnexus analyze (final branch tip): 7,645 nodes / 23,552 edges / 490
+  clusters / 300 flows; graph intact (300 execution flows stable across
+  re-indexes; node / edge counts grew slightly over the base because the new
+  console symbols and the ledger markdown headings are parsed as graph nodes).
+  For reference the base platform-dev index was 7,611 nodes / 23,493 edges.
 - GitNexus detect_changes compare origin/platform-dev..HEAD: risk_level medium,
-  changed_count 29, affected_count 1, changed_files 6. See section 6.
+  changed_count 42, affected_count 1, changed_files 8 (6 frontend code files +
+  this ledger and the docs/ai read-order edit). The changed_count above the 29
+  code symbols is markdown-heading nodes from the two docs (no symbols, no
+  flows). See section 6.
 - Route / API impact: ZERO backend route changes. P20-C is frontend-only; the
   console calls the existing, already-merged P20-B durable-approval endpoints.
   The app.py wiring is unchanged on this branch.
@@ -196,9 +202,11 @@ and is contained and acceptable because:
 - The single affected process is "PlatformDurableApprovalsPage -> Unwrap"
   (proc_232_platformdurableappro), entirely within the new P20-C console source
   (PlatformDurableApprovalsPage.tsx). It is NOT a product business process.
-- All 29 changed symbols are under frontend/ (Sidebar.tsx, AppRouter.tsx,
+- All 29 changed code symbols are under frontend/ (Sidebar.tsx, AppRouter.tsx,
   platformApi.ts, PlatformDurableApprovalsPage.tsx, platformDurableApprovals.ts).
-  Zero backend symbols changed.
+  The remaining changed_count entries are markdown-heading nodes from this
+  ledger and the docs/ai read-order edit (docs only, no symbols, no flows). Zero
+  backend symbols changed.
 - Product-business token scan across the affected process name and the changed
   symbols: 0 hits (no order / payment / invoice / inventory / ledger / customer
   / retail / wholesale / sku / finance / shipment / fulfillment / reservation /

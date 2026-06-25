@@ -78,7 +78,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     )
 
                     # Also update request.state for metrics
-                    request.state.tenant_id = tenant_ctx.tenant_schema
+                    request.state.tenant_id = str(tenant_ctx.tenant_id)
+                    request.state.tenant_schema = tenant_ctx.tenant_schema
 
             response = await call_next(request)
 

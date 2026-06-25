@@ -413,6 +413,58 @@ async def _reconcile_reporting(db, ts: str) -> None:
     print(f"[reconcile] {ts}: ensured reporting_role table privileges")
 
 
+async def _reconcile_import_runs(db, ts: str) -> None:
+    """Idempotent reconciliation of import_runs indexes (mirrors migration 022).
+
+    If the table does not exist, CREATE TABLE IF NOT EXISTS above handles it.
+    If the table exists, ensure all 4 indexes match the migration 022 contract.
+    """
+    if not await _table_exists(db, ts, "import_runs"):
+        return
+
+    # ix_import_runs_import_id — UNIQUE index on import_id
+    await _ensure_index(
+        db,
+        ts,
+        "ix_import_runs_import_id",
+        f'CREATE UNIQUE INDEX IF NOT EXISTS ix_import_runs_import_id '
+        f'ON "{ts}".import_runs (import_id)',
+        ("unique index", "import_runs", "(import_id)"),
+    )
+
+    # ix_import_runs_status
+    await _ensure_index(
+        db,
+        ts,
+        "ix_import_runs_status",
+        f'CREATE INDEX IF NOT EXISTS ix_import_runs_status '
+        f'ON "{ts}".import_runs (status)',
+        ("import_runs", "(status)"),
+    )
+
+    # ix_import_runs_tenant_id
+    await _ensure_index(
+        db,
+        ts,
+        "ix_import_runs_tenant_id",
+        f'CREATE INDEX IF NOT EXISTS ix_import_runs_tenant_id '
+        f'ON "{ts}".import_runs (tenant_id)',
+        ("import_runs", "(tenant_id)"),
+    )
+
+    # ix_import_runs_created_at
+    await _ensure_index(
+        db,
+        ts,
+        "ix_import_runs_created_at",
+        f'CREATE INDEX IF NOT EXISTS ix_import_runs_created_at '
+        f'ON "{ts}".import_runs (created_at)',
+        ("import_runs", "(created_at)"),
+    )
+
+    print(f"[reconcile] {ts}.import_runs: ensured indexes")
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -589,6 +641,32 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "created_by UUID, updated_by UUID,"
             "CONSTRAINT uq_retailer_prices_retailer_sku UNIQUE (retailer_id, sku_id),"
             "CONSTRAINT ck_retailer_prices_positive_price CHECK (price > 0))",
+
+            # import_runs - mirrors migration 022 contract exactly
+            # U3-B1: 3-phase import contract table (preview → validate → apply)
+            f'CREATE TABLE IF NOT EXISTS "{ts}".import_runs ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "import_id VARCHAR(64) NOT NULL UNIQUE,"
+            "tenant_id UUID NOT NULL,"
+            "status VARCHAR(32) NOT NULL DEFAULT 'previewed',"
+            "source_filename VARCHAR(255),"
+            "source_encoding VARCHAR(32),"
+            "total_rows INTEGER NOT NULL DEFAULT 0,"
+            "valid_rows INTEGER,"
+            "error_rows INTEGER,"
+            "warning_rows INTEGER,"
+            "mapping JSONB,"
+            "validation_result JSONB,"
+            "apply_result JSONB,"
+            "created_rows INTEGER DEFAULT 0,"
+            "skipped_rows INTEGER DEFAULT 0,"
+            "updated_rows INTEGER DEFAULT 0,"
+            "applied_by UUID,"
+            "applied_at TIMESTAMPTZ,"
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "is_deleted BOOLEAN NOT NULL DEFAULT false,"
+            "deleted_at TIMESTAMPTZ)",
         ]
         for ddl in tables:
             await db.execute(text(ddl))
@@ -644,6 +722,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- reporting views / matviews (mirrors 012 + 013) ---
         await _reconcile_reporting(db, ts)
+
+        # --- import_runs: reconcile indexes (mirrors 022) ---
+        await _reconcile_import_runs(db, ts)
 
         await db.commit()
 

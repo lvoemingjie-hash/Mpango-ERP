@@ -15,6 +15,16 @@ This phase implements a non-executing durable approval read/write skeleton under
 action, does not mutate tenant data, and does not merge anything into
 platform-dev. It is an isolated branch. P20-C is not started.
 
+P20-B-R1 (this revision): maker/checker identity binding + role-matrix evidence.
+The maker and the checker are bound to the AUTHENTICATED identity-only
+super_admin actor (not the client payload); a client-supplied maker /
+approver_id that differs from the authenticated actor is denied (the P1 identity
+spoofing path is closed); there is no system / operator-secret fallback for
+create / decision, and the system path can never count toward quorum. The P20-B
+runtime is documented as super_admin-only (support_operator /
+engineering_operator read-only GET is deferred to P20-C / a P20-RBAC slice) so
+the contract and the runtime do not contradict.
+
 ## 1. Phase inventory
 
 P20-B - durable approval backend skeleton (non-executing, in-memory)
@@ -91,12 +101,23 @@ No PUT / PATCH / DELETE verbs are registered (no mutation-by-effect verbs).
   stored, echoed, or audited.
 - Reason / comment / metadata redaction: the P18 allowlist redaction is reused;
   redaction_applied == true on every record and audit event.
-- Maker-checker enforced at the service layer (payload identities); reject is
-  final; quorum required for write / write_request.
-- Tenant-contextual super_admin, tenant admin, tenant-scoped tokens, and
+- P20-B-R1 identity binding: the maker and the checker are the AUTHENTICATED
+  identity-only super_admin actor, not the client payload. A client-supplied
+  maker / approver_id is accepted only as an explicit assertion that MUST equal
+  the authenticated actor (a mismatch is denied as an identity spoof); there is
+  no system / operator-secret fallback for create / decision, and the system
+  path can never count toward quorum. Maker-checker and quorum are evaluated on
+  the authenticated actor.
+- Maker-checker enforced on the authenticated actor; reject is final; quorum
+  required for write / write_request (two distinct authenticated checkers,
+  excluding the maker) and one for read.
+- Super_admin-only runtime: P20-B runtime is identity-only super_admin only.
+  Tenant-contextual super_admin, tenant admin, tenant-scoped tokens, and
   non-super_admin roles (support_operator / engineering_operator) are denied at
-  the boundary by the identity-only guard (strictly stronger than the contract's
-  read-only allowance; finer role delegation deferred).
+  the boundary by the identity-only guard. The contract's support_operator /
+  engineering_operator read-only GET allowance is NOT implemented in P20-B and
+  is deferred to P20-C / a P20-RBAC slice (Option A: explicit, no
+  contract-vs-runtime contradiction).
 
 ## 5. State machine
 
@@ -112,7 +133,7 @@ denial. reject is final/terminal.
 Run via the shared repo venv with PYTHONPATH=backend (conftest forces the test
 SECRET_KEY).
 
-- P20-B backend (new): 63 passed (>= 45 required). Coverage: create / list
+- P20-B backend (new): 71 passed (>= 45 required). Coverage: create / list
   (status / action_type / tenant_id filters) / read / decision; action class +
   quorum floor; identity-only guard; tenant-contextual / tenant-admin /
   support_operator / engineering_operator denied; maker cannot self-approve
@@ -125,7 +146,11 @@ SECRET_KEY).
   reason / metadata / decision redaction; unknown / not-found P18 source
   handling; available never fabricated; audit required fields + quorum_met /
   rejected / denial events; no-migration / no-mutation / route-registration
-  scope.
+  scope. P20-B-R1 coverage: maker == authenticated actor; payload maker mismatch
+  denied; payload approver_id mismatch denied; same authenticated actor cannot
+  create then approve; two distinct authenticated actors required for a write
+  quorum; no authenticated actor / system fallback cannot create, cannot decide,
+  and cannot count toward quorum; operator secret alone cannot create.
 - Regression P19 + P18 + P18-D + P10: 244 passed, 0 failed.
 
 Pre-existing warnings (datetime.utcnow deprecation in core/security.py; pytest
@@ -145,10 +170,10 @@ Verified on this branch versus origin/platform-dev = 670e9a3:
 - detect-secrets (detect-secrets-hook against the configured secret baseline)
   on all changed files: PASS, exit 0, no new secrets. The baseline file was not
   modified.
-- npx gitnexus analyze : 7,593 nodes / 23,373 edges / 488 clusters / 300 flows;
-  indexed at the branch HEAD; graph intact.
+- npx gitnexus analyze : 7,611 nodes / 23,493 edges / 490 clusters / 300 flows;
+  re-indexed at the R1 HEAD (2a8636c); graph intact.
 - GitNexus detect_changes compare origin/platform-dev..HEAD : risk_level
-  CRITICAL, changed_count 75, affected_count 18, changed_files 7. See section 8.
+  CRITICAL, changed_count 76, affected_count 18, changed_files 7. See section 8.
 - Route / API impact review: 3 new routes (POST/GET durable-approvals; GET
   durable-approvals/{id}; POST durable-approvals/{id}/decisions) under
   /api/v1/platform/p20, additive, platform-only; app.py change is a single
@@ -178,6 +203,14 @@ CRITICAL is contained and acceptable because:
 No product business process is affected. The stop condition (GitNexus shows
 product business processes affected) is NOT triggered.
 
+P20-B-R1 re-verification (HEAD 2a8636c): the R1 change touches only services.py
+(maker/checker actor binding) and the test file, both already inside the P20
+surface. detect_changes is unchanged in shape -- still CRITICAL, still the same
+18 affected processes, all P20-platform, 0 product-business. The P1 identity
+spoofing finding is closed: the maker and the checker are bound to the
+authenticated actor, payload mismatches are denied, and the system path cannot
+create, decide, or count toward quorum.
+
 ## 9. Open risks / non-goals
 
 The following are intentionally not done in P20-B and are NOT P20-B blockers.
@@ -187,8 +220,9 @@ They are deferred to P20-C (and later) under their own entry gates:
 - Real durable backend / migration (DEFAULT DENIED; requires separate explicit
   CTO approval in a contract revision). P20-B is in-memory only.
 - Role-granular runtime delegation (support_operator / engineering_operator
-  read-only within scope) -- deferred; the identity-only guard denies these
-  roles at the boundary today, which is stricter than read-only.
+  read-only GET within scope) -- explicitly deferred to P20-C / a P20-RBAC slice
+  (Option A). The P20-B runtime is super_admin-only; the identity-only guard
+  denies these roles at the boundary today.
 - Unimplemented state transitions (expired / cancelled / superseded /
   failed_validation) and TTL / supersession / retention purge / export -- the
   schema carries the full enum; transitions are explicitly rejected in P20-B.
@@ -217,8 +251,12 @@ P20-B_SKELETON_READY (non-executing backend skeleton, isolated branch, not
 merged to platform-dev).
 
 P20-B implements a non-executing, in-memory durable approval backend skeleton
-with maker-checker dual-control and quorum, 63 passing tests, and 244 passing
-regression tests. There is no frontend, no migration, no real execution, no
-tenant mutation, and no auth/RBAC rewrite, and no change to the configured
-secret baseline. P20-C is not started. Approval is not execution, and durability
-is not execution.
+with maker-checker dual-control and quorum, 71 passing tests, and 244 passing
+regression tests. P20-B-R1 binds the maker and the checker to the authenticated
+identity-only super_admin actor (payload maker / approver_id spoof denied; no
+system / operator fallback; the system path can never count toward quorum) and
+documents the runtime as super_admin-only (support / engineering read-only GET
+deferred). There is no frontend, no migration, no real execution, no tenant
+mutation, and no auth/RBAC rewrite, and no change to the configured secret
+baseline. P20-C is not started. Approval is not execution, and durability is not
+execution.

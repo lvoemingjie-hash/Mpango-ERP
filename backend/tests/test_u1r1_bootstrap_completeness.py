@@ -43,6 +43,7 @@ EXPECTED_MVP_TABLES = {
     "payments",
     "ledger_entries",
     "retailer_prices",
+    "import_runs",
 }
 
 # Complete 36-permission set (mirrors seed_test_tenant.py)
@@ -193,6 +194,264 @@ class TestTableCompleteness:
             assert public_result.first() is not None, (
                 "retailers must exist in public schema"
             )
+
+
+# ---------------------------------------------------------------------------
+# Test 1b: import_runs DDL and Index Completeness (S5-C-R6A)
+# ---------------------------------------------------------------------------
+
+EXPECTED_IMPORT_RUNS_COLUMNS = [
+    "id", "import_id", "tenant_id", "status",
+    "source_filename", "source_encoding", "total_rows",
+    "valid_rows", "error_rows", "warning_rows",
+    "mapping", "validation_result", "apply_result",
+    "created_rows", "skipped_rows", "updated_rows",
+    "applied_by", "applied_at", "created_at", "updated_at",
+    "is_deleted", "deleted_at",
+]
+
+EXPECTED_IMPORT_RUNS_INDEXES = {
+    "ix_import_runs_import_id",
+    "ix_import_runs_status",
+    "ix_import_runs_tenant_id",
+    "ix_import_runs_created_at",
+}
+
+
+class TestBootstrapImportRuns:
+    """Verify bootstrap creates import_runs with correct DDL and indexes."""
+
+    @pytest.mark.asyncio
+    async def test_import_runs_table_exists(self, _u1r1_bootstrap):
+        """import_runs must exist in tenant schema after bootstrap."""
+        from database.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                text(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = :schema AND table_name = 'import_runs'"
+                ),
+                {"schema": TEST_U1R1_SCHEMA},
+            )
+            assert result.first() is not None, (
+                "import_runs table missing in tenant schema after bootstrap"
+            )
+
+    @pytest.mark.asyncio
+    async def test_import_runs_all_columns_present(self, _u1r1_bootstrap):
+        """All 22 import_runs columns must exist after bootstrap."""
+        from database.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = :schema AND table_name = 'import_runs'"
+                ),
+                {"schema": TEST_U1R1_SCHEMA},
+            )
+            existing = {row[0] for row in result.fetchall()}
+
+        missing = set(EXPECTED_IMPORT_RUNS_COLUMNS) - existing
+        assert not missing, (
+            f"import_runs missing {len(missing)} column(s): {sorted(missing)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_import_runs_all_indexes_present(self, _u1r1_bootstrap):
+        """All 4 import_runs indexes must exist after bootstrap."""
+        from database.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes "
+                    "WHERE schemaname = :schema AND tablename = 'import_runs'"
+                ),
+                {"schema": TEST_U1R1_SCHEMA},
+            )
+            existing = {row[0] for row in result.fetchall()}
+
+        missing = EXPECTED_IMPORT_RUNS_INDEXES - existing
+        assert not missing, (
+            f"import_runs missing {len(missing)} index(es): {sorted(missing)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_import_runs_import_id_unique_index(self, _u1r1_bootstrap):
+        """ix_import_runs_import_id must be a UNIQUE index."""
+        from database.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                text(
+                    "SELECT indexdef FROM pg_indexes "
+                    "WHERE schemaname = :schema AND indexname = 'ix_import_runs_import_id'"
+                ),
+                {"schema": TEST_U1R1_SCHEMA},
+            )
+            indexdef = result.scalar()
+            assert indexdef is not None, "ix_import_runs_import_id must exist"
+            assert "UNIQUE" in indexdef.upper(), (
+                f"ix_import_runs_import_id must be UNIQUE, got: {indexdef}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_double_bootstrap_import_runs_idempotent(self, _u1r1_bootstrap):
+        """Running bootstrap twice must preserve import_runs and indexes."""
+        from scripts.bootstrap_tenant_schema import bootstrap as bootstrap_schema
+        from core.config import get_settings
+        from database.session import AsyncSessionLocal
+
+        settings = get_settings()
+        await bootstrap_schema(TEST_U1R1_SCHEMA, settings.DATABASE_URL)
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes "
+                    "WHERE schemaname = :schema AND tablename = 'import_runs'"
+                ),
+                {"schema": TEST_U1R1_SCHEMA},
+            )
+            existing = {row[0] for row in result.fetchall()}
+
+        missing = EXPECTED_IMPORT_RUNS_INDEXES - existing
+        assert not missing, (
+            f"import_runs missing {len(missing)} index(es) after second bootstrap: "
+            f"{sorted(missing)}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test 1c: Live DB import preview/validate through bootstrap (S5-C-R6A)
+# ---------------------------------------------------------------------------
+
+class TestBootstrapImportPreviewValidate:
+    """Prove bootstrap -> import_runs exists -> preview/validate works.
+
+    Uses the _u1r1_bootstrap session fixture (which runs the full
+    bootstrap_tenant_schema.py flow) and then calls ImportService.preview()
+    and ImportService.validate() against the bootstrapped import_runs table.
+
+    This is the key integration proof: existing tenants missing import_runs
+    will get it from bootstrap reconcile, and the import pipeline works
+    end-to-end on the bootstrapped table (not just the Alembic migration).
+
+    NOTE: ImportService uses ORM (select(ImportRun), session.add(), etc.)
+    which triggers the tenant_filter middleware.  The session MUST have
+    tenant_schema + tenant_id in its .info dict, matching the conftest
+    async_session fixture pattern.
+    """
+
+    _TENANT_SCHEMA = TEST_U1R1_SCHEMA
+    _TENANT_ID = TEST_U1R1_TENANT_ID
+
+    @staticmethod
+    def _prepare_session(db: "AsyncSession") -> None:
+        """Configure session for tenant-filtered ORM access."""
+        db.info["tenant_schema"] = TestBootstrapImportPreviewValidate._TENANT_SCHEMA
+        db.info["tenant_id"] = TestBootstrapImportPreviewValidate._TENANT_ID
+
+    @pytest.fixture(autouse=True)
+    def _require_u1r1_bootstrap(self, _u1r1_bootstrap):
+        """Ensure tenant is bootstrapped before any test runs."""
+        pass
+
+    @pytest.mark.asyncio
+    async def test_preview_creates_row_in_bootstrapped_import_runs(self):
+        """preview() against bootstrapped import_runs must insert a row."""
+        import uuid
+        from database.session import AsyncSessionLocal
+        from services.import_service import ImportService
+
+        csv_bytes = b"sku_code,name,unit\nSKU-001,Widget,pcs\nSKU-002,Gadget,pcs\n"
+
+        async with AsyncSessionLocal() as db:
+            self._prepare_session(db)
+            await db.execute(
+                text(f'SET LOCAL search_path TO "{self._TENANT_SCHEMA}", public')
+            )
+            result = await ImportService().preview(
+                db,
+                tenant_id=uuid.UUID(self._TENANT_ID),
+                filename="test_preview.csv",
+                file_bytes=csv_bytes,
+            )
+            await db.commit()
+
+            # Verify DB state (text query uses fully-qualified schema, safe after commit)
+            db_row = await db.execute(
+                text(
+                    f'SELECT import_id, status, total_rows, mapping '
+                    f'FROM "{self._TENANT_SCHEMA}".import_runs '
+                    f'WHERE import_id = :iid'
+                ),
+                {"iid": result.import_id},
+            )
+            row = db_row.first()
+            assert row is not None, "import_runs row must exist after preview"
+            assert row[1] == "previewed", f"Expected previewed, got {row[1]}"
+            assert row[2] == 2, f"Expected total_rows=2, got {row[2]}"
+            assert "rows" in row[3], "mapping must contain 'rows' key"
+            assert len(row[3]["rows"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_validate_updates_bootstrapped_import_runs(self):
+        """validate() against bootstrapped import_runs must update status."""
+        import uuid
+        from database.session import AsyncSessionLocal
+        from services.import_service import ImportService
+
+        csv_bytes = b"sku_code,name\nSKU-V01,ValidItem\nSKU-V02,AnotherItem\n"
+
+        async with AsyncSessionLocal() as db:
+            self._prepare_session(db)
+            await db.execute(
+                text(f'SET LOCAL search_path TO "{self._TENANT_SCHEMA}", public')
+            )
+            preview_result = await ImportService().preview(
+                db,
+                tenant_id=uuid.UUID(self._TENANT_ID),
+                filename="val_test.csv",
+                file_bytes=csv_bytes,
+            )
+            await db.commit()
+
+            # SET LOCAL search_path is transaction-scoped -- lost after commit.
+            # ImportService.validate() uses ORM tables without schema qualification,
+            # so we MUST re-set the tenant search_path before calling it.
+            await db.execute(
+                text(f'SET LOCAL search_path TO "{self._TENANT_SCHEMA}", public')
+            )
+
+            validate_result = await ImportService().validate(
+                db,
+                import_id=preview_result.import_id,
+                mapping={"sku_code": "sku_code", "name": "name"},
+            )
+            await db.commit()
+
+            assert validate_result.status in ("validated", "needs_review")
+            assert validate_result.valid_rows == 2
+            assert validate_result.error_rows == 0
+
+            # SET LOCAL lost again; text query uses fully-qualified schema, safe
+            # Verify DB state
+            db_row = await db.execute(
+                text(
+                    f'SELECT status, valid_rows, error_rows, validation_result '
+                    f'FROM "{self._TENANT_SCHEMA}".import_runs '
+                    f'WHERE import_id = :iid'
+                ),
+                {"iid": preview_result.import_id},
+            )
+            row = db_row.first()
+            assert row[0] == "validated"
+            assert row[1] == 2
+            assert row[2] == 0
+            assert row[3] is not None
 
 
 # ---------------------------------------------------------------------------

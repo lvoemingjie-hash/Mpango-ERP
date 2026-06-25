@@ -119,9 +119,9 @@ browser smoke when Docker PostgreSQL was available.
 
 | File | Change |
 |------|--------|
-| `backend/scripts/bootstrap_tenant_schema.py` | +52 lines: import_runs DDL + _reconcile_import_runs() + call site |
-| `backend/tests/test_u1r1_bootstrap_completeness.py` | +180 lines: TestBootstrapImportRuns (5 tests) + TestBootstrapImportPreviewValidate (2 tests) + import_runs in EXPECTED_MVP_TABLES |
-| `ai-ledger/product-ai/2026-06-25_s5c_r6a_import_runs_bootstrap_reconcile.md` | Ledger (this file) |
+| `backend/scripts/bootstrap_tenant_schema.py` | R6A: +81 lines (import_runs DDL + _reconcile_import_runs() + call site). R2: 2 ASCII comment fixes |
+| `backend/tests/test_u1r1_bootstrap_completeness.py` | R6A: +235 lines (TestBootstrapImportRuns + TestBootstrapImportPreviewValidate + EXPECTED_MVP_TABLES). R2: +15 lines (SET LOCAL search_path fix + _prepare_session helper) |
+| `ai-ledger/product-ai/2026-06-25_s5c_r6a_import_runs_bootstrap_reconcile.md` | R6A: initial ledger. R2: added R1/R2 closeout sections |
 
 ## Next Steps
 
@@ -131,9 +131,93 @@ browser smoke when Docker PostgreSQL was available.
 2. Future tenants will get `import_runs` automatically via `docker-entrypoint.sh`.
 3. No deploy, no frontend changes, no product-dev-recovered push required.
 
+## R1 -- CTO Review: SET LOCAL search_path Fix
+
+### CTO Finding
+
+`TestBootstrapImportPreviewValidate.test_validate_updates_bootstrapped_import_runs`
+called `ImportService.validate()` after `db.commit()`, which loses the
+`SET LOCAL search_path` scope.  Without re-setting search_path, the ORM
+cannot resolve `ImportRun` to the tenant schema because `search_path`
+reverts to `public`.
+
+### Fix
+
+Before calling `ImportService.validate()` (which uses ORM tables unqualified),
+re-apply `SET LOCAL search_path TO "{tenant_schema}", public`.
+Also added `_prepare_session()` helper to configure `db.info` with
+`tenant_schema` and `tenant_id` so the tenant_filter middleware can
+resolve ORM operations.
+
+Changes in `backend/tests/test_u1r1_bootstrap_completeness.py`:
+- Added `_prepare_session(db)` static method on `TestBootstrapImportPreviewValidate`
+- Added `self._prepare_session(db)` call before preview and validate
+- Added `SET LOCAL search_path` re-application after commit, before validate
+- Added explanatory comments documenting the search_path lifecycle
+
+### Evidence
+
+```
+poetry run pytest tests/test_u1r1_bootstrap_completeness.py -q -rxX --tb=short
+================= 17 passed, 6 xfailed, 0 failed in 24.17s =================
+```
+
+All 7 new import_runs tests pass:
+- TestBootstrapImportRuns: 5/5 PASS (table, columns, indexes, unique, idempotent)
+- TestBootstrapImportPreviewValidate: 2/2 PASS (preview inserts, validate updates)
+
+### ASCII Scan
+
+```
+rg -n "[non-ASCII chars]" backend/scripts/bootstrap_tenant_schema.py
+  -> CLEAN (em-dash and arrow fixed to -- and ->)
+
+rg -n "[non-ASCII chars]" backend/tests/test_u1r1_bootstrap_completeness.py
+  -> Pre-existing non-ASCII on OLD lines (em-dash, arrows in docstrings
+     written before R6A).  Not changed in this commit.
+  -> R6A-added lines are ASCII-clean.
+```
+
+## R2 -- GitNexus Impact Reassessment
+
+### bootstrap_tenant_schema.py
+
+- **Symbol**: `bootstrap()` in `backend/scripts/bootstrap_tenant_schema.py`
+- **GitNexus impact**: **HIGH** -- this is the tenant schema lifecycle path.
+  Every tenant creation, every Docker entrypoint startup, and every existing
+  tenant reconciliation passes through this function.
+- **Risk accepted** because:
+  1. All DDL is idempotent (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`)
+  2. `_ensure_index()` validates existing index definitions before skipping;
+     raises `RuntimeError` on incompatible index (fail-fast, no silent corruption)
+  3. `_reconcile_import_runs()` returns early if table absent (CREATE TABLE handles it)
+  4. Covered by live DB test (`test_u1r1_bootstrap_completeness.py`) that
+     proves the full bootstrap -> preview -> validate flow works end-to-end
+  5. Same pattern already proven safe for payments (migration 021) and
+     retailer_prices (migration 017) reconciliations
+- **No raw DDL on production. No new migration.**  The bootstrap script is the
+  single code path for both fresh and existing tenants.
+
+### test_u1r1_bootstrap_completeness.py
+
+- **GitNexus impact**: N/A -- test-only file, no production callers
+- New classes `TestBootstrapImportRuns` and `TestBootstrapImportPreviewValidate`
+  are test fixtures only
+
+### Verdict
+
+```
+PASS_FOR_CTO_REVIEW
+```
+
+The CTO finding (SET LOCAL search_path loss after commit) has been fixed.
+The GitNexus HIGH impact on bootstrap() is acknowledged and accepted
+with documented risk mitigations.  All tests pass with live DB verification.
+
 ## Evidence Trail
 
 - S5-C browser smoke: deploy gate passed, import CSV works when table exists
 - S5-C-R1: ledger cleanup, verdict corrected
 - U3-B1 static contract: 27/27 PASS (this branch)
-- GitNexus impact: LOW risk on bootstrap_tenant_schema.py
+- U1-R1 bootstrap completeness: 17 passed, 6 xfailed, 0 failed (this branch)
+- GitNexus impact: HIGH on `bootstrap()` (accepted -- idempotent DDL, live DB tested)

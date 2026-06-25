@@ -329,7 +329,7 @@ class TestBootstrapImportRuns:
 # ---------------------------------------------------------------------------
 
 class TestBootstrapImportPreviewValidate:
-    """Prove bootstrap → import_runs exists → preview/validate works.
+    """Prove bootstrap -> import_runs exists -> preview/validate works.
 
     Uses the _u1r1_bootstrap session fixture (which runs the full
     bootstrap_tenant_schema.py flow) and then calls ImportService.preview()
@@ -338,7 +338,21 @@ class TestBootstrapImportPreviewValidate:
     This is the key integration proof: existing tenants missing import_runs
     will get it from bootstrap reconcile, and the import pipeline works
     end-to-end on the bootstrapped table (not just the Alembic migration).
+
+    NOTE: ImportService uses ORM (select(ImportRun), session.add(), etc.)
+    which triggers the tenant_filter middleware.  The session MUST have
+    tenant_schema + tenant_id in its .info dict, matching the conftest
+    async_session fixture pattern.
     """
+
+    _TENANT_SCHEMA = TEST_U1R1_SCHEMA
+    _TENANT_ID = TEST_U1R1_TENANT_ID
+
+    @staticmethod
+    def _prepare_session(db: "AsyncSession") -> None:
+        """Configure session for tenant-filtered ORM access."""
+        db.info["tenant_schema"] = TestBootstrapImportPreviewValidate._TENANT_SCHEMA
+        db.info["tenant_id"] = TestBootstrapImportPreviewValidate._TENANT_ID
 
     @pytest.fixture(autouse=True)
     def _require_u1r1_bootstrap(self, _u1r1_bootstrap):
@@ -355,22 +369,23 @@ class TestBootstrapImportPreviewValidate:
         csv_bytes = b"sku_code,name,unit\nSKU-001,Widget,pcs\nSKU-002,Gadget,pcs\n"
 
         async with AsyncSessionLocal() as db:
+            self._prepare_session(db)
             await db.execute(
-                text(f'SET LOCAL search_path TO "{TEST_U1R1_SCHEMA}", public')
+                text(f'SET LOCAL search_path TO "{self._TENANT_SCHEMA}", public')
             )
             result = await ImportService().preview(
                 db,
-                tenant_id=uuid.UUID(TEST_U1R1_TENANT_ID),
+                tenant_id=uuid.UUID(self._TENANT_ID),
                 filename="test_preview.csv",
                 file_bytes=csv_bytes,
             )
             await db.commit()
 
-            # Verify DB state
+            # Verify DB state (text query uses fully-qualified schema, safe after commit)
             db_row = await db.execute(
                 text(
                     f'SELECT import_id, status, total_rows, mapping '
-                    f'FROM "{TEST_U1R1_SCHEMA}".import_runs '
+                    f'FROM "{self._TENANT_SCHEMA}".import_runs '
                     f'WHERE import_id = :iid'
                 ),
                 {"iid": result.import_id},
@@ -392,16 +407,24 @@ class TestBootstrapImportPreviewValidate:
         csv_bytes = b"sku_code,name\nSKU-V01,ValidItem\nSKU-V02,AnotherItem\n"
 
         async with AsyncSessionLocal() as db:
+            self._prepare_session(db)
             await db.execute(
-                text(f'SET LOCAL search_path TO "{TEST_U1R1_SCHEMA}", public')
+                text(f'SET LOCAL search_path TO "{self._TENANT_SCHEMA}", public')
             )
             preview_result = await ImportService().preview(
                 db,
-                tenant_id=uuid.UUID(TEST_U1R1_TENANT_ID),
+                tenant_id=uuid.UUID(self._TENANT_ID),
                 filename="val_test.csv",
                 file_bytes=csv_bytes,
             )
             await db.commit()
+
+            # SET LOCAL search_path is transaction-scoped -- lost after commit.
+            # ImportService.validate() uses ORM tables without schema qualification,
+            # so we MUST re-set the tenant search_path before calling it.
+            await db.execute(
+                text(f'SET LOCAL search_path TO "{self._TENANT_SCHEMA}", public')
+            )
 
             validate_result = await ImportService().validate(
                 db,
@@ -414,11 +437,12 @@ class TestBootstrapImportPreviewValidate:
             assert validate_result.valid_rows == 2
             assert validate_result.error_rows == 0
 
+            # SET LOCAL lost again; text query uses fully-qualified schema, safe
             # Verify DB state
             db_row = await db.execute(
                 text(
                     f'SELECT status, valid_rows, error_rows, validation_result '
-                    f'FROM "{TEST_U1R1_SCHEMA}".import_runs '
+                    f'FROM "{self._TENANT_SCHEMA}".import_runs '
                     f'WHERE import_id = :iid'
                 ),
                 {"iid": preview_result.import_id},

@@ -422,7 +422,7 @@ async def _reconcile_import_runs(db, ts: str) -> None:
     if not await _table_exists(db, ts, "import_runs"):
         return
 
-    # ix_import_runs_import_id — UNIQUE index on import_id
+    # ix_import_runs_import_id -- UNIQUE index on import_id
     await _ensure_index(
         db,
         ts,
@@ -643,7 +643,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "CONSTRAINT ck_retailer_prices_positive_price CHECK (price > 0))",
 
             # import_runs - mirrors migration 022 contract exactly
-            # U3-B1: 3-phase import contract table (preview → validate → apply)
+            # U3-B1: 3-phase import contract table (preview -> validate -> apply)
             f'CREATE TABLE IF NOT EXISTS "{ts}".import_runs ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
             "import_id VARCHAR(64) NOT NULL UNIQUE,"

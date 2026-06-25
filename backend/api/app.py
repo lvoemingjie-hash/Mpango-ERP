@@ -197,6 +197,11 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(platform_p19_router)
     logger.info("Platform P19 router registered (approval workflow backend skeleton)")
 
+    # Platform Track P20 -- Durable Approval Governance (backend skeleton, P20-B)
+    from api.v1.platform.p20.routes import router as platform_p20_router
+    app.include_router(platform_p20_router)
+    logger.info("Platform P20 router registered (durable approval governance backend skeleton)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

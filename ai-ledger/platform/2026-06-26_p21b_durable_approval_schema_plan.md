@@ -186,3 +186,47 @@ There is no runtime code, no migration file, no table, no execution, no tenant m
 no auth / RBAC rewrite, no frontend, no backend, no AI agent execution, no notification
 implementation, and no change to the configured secret baseline. P21-C is not started.
 Approval is not execution, and durability is not execution.
+
+## 10. Evidence completion (P21-B evidence request, 2026-06-26)
+
+This section consolidates the required evidence for the P21-B evidence-completion
+request. It records facts already established in sections 1-9 and adds the commit, push,
+and analyze specifics so the ledger is self-contained.
+
+- Branch: codex/platform-p21b-durable-approval-schema-plan-2026-06-26 (pushed).
+- Base: origin/platform-dev = df92bb0 (confirmed before work).
+- Commit (substantive P21-B plan, pushed): 863cd4f (short SHA; full SHA not pinned
+  here). The evidence-completion tip (this commit) is recorded in the session report; the
+  ledger stays non-self-referential.
+- Exact modified files (exactly three):
+  - docs/ai/PLATFORM_PRODUCT_P21_DURABLE_APPROVAL_SCHEMA_PLAN.md
+  - docs/ai/README.md
+  - ai-ledger/platform/2026-06-26_p21b_durable_approval_schema_plan.md (this file)
+- Ledger path: ai-ledger/platform/2026-06-26_p21b_durable_approval_schema_plan.md.
+- git diff --check origin/platform-dev..HEAD : clean (exit 0).
+- Non-ASCII scan on the three files: 0 hits.
+- detect-secrets (detect-secrets-hook against the configured baseline): PASS, exit 0, no
+  new secrets; configured baseline unchanged.
+- Forbidden path audit: 0 hits (only the three allowed docs / ledger files; no backend,
+  frontend, migrations, alembic, generated DB files, package / lockfile, auth / RBAC /
+  session, payment / billing, tenant business code, product-dev-recovered, .github,
+  .claude, or the configured baseline).
+- npx gitnexus analyze : success; indexed at the P21-B plan commit; 7,677 nodes /
+  23,578 edges / 496 clusters / 300 flows; status up-to-date.
+- GitNexus detect_changes compare vs origin/platform-dev : LOW / docs-only / 0 affected
+  processes (changed_count 32, affected_count 0, changed_files 3; affected_processes [];
+  all changed symbols are File / Section markdown nodes in the three docs / ledger files).
+- Working tree: clean after commit.
+- Push status: isolated branch pushed via the BR:BR refspec;
+  origin/codex/platform-p21b-durable-approval-schema-plan-2026-06-26 created; platform-dev
+  untouched at df92bb0 (not merged).
+- Risk: LOW (docs-only).
+- Explicit statement: docs-only, no runtime code, no migration, no execution, no tenant
+  mutation, no auth / RBAC rewrite, no frontend, no backend, no P21-C.
+
+Plan document contents (confirmed present in
+docs/ai/PLATFORM_PRODUCT_P21_DURABLE_APPROVAL_SCHEMA_PLAN.md): schema plan (section 3),
+enum plan (section 4), constraint plan (section 5), transaction plan (section 6), storage
+adapter interface contract (section 7), P21-C migration plan (section 8), P21-C / P21-D
+test plan (section 9), acceptance criteria (section 10), counterexamples (section 11),
+P21-C entry gate (section 12), future AI Operator Copilot trace (section 13).

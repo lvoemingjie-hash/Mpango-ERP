@@ -311,3 +311,60 @@ execution, and durability is not execution.
   (GitNexus 0 product tokens; 0 backend symbols).
 - No product-dev-recovered: not touched.
 - P21 not started.
+
+---
+
+## Merge Readiness Gate Evidence (P20-C/D -> platform-dev)
+
+Gate executed: 2026-06-26. Branch tip at gate time: source 6d037f3; merge dc9b481.
+
+### SHAs
+- Target branch: platform-dev.
+- Target before SHA: a62bcbe (origin/platform-dev == local platform-dev, confirmed after `git fetch --all --prune`).
+- Source branch: codex/platform-p20cd-durable-approval-frontend-closeout-2026-06-25.
+- Source commit SHA: 6d037f3 (origin == local, confirmed).
+- Merge commit SHA: dc9b481 (--no-ff; parents a62bcbe + 6d037f3; subject "merge: P20-C/D durable approval frontend console and closeout").
+- Target after SHA (local platform-dev): dc9b481 (a62bcbe -> dc9b481). origin/platform-dev: still a62bcbe (push pending, see Push status).
+
+### Modified files (8, exactly the expected P20-C/D scope)
+- A ai-ledger/platform/2026-06-25_p20cd_durable_approval_frontend_closeout.md
+- M docs/ai/README.md
+- M frontend/src/components/layout/Sidebar.tsx
+- A frontend/src/pages/platform/PlatformDurableApprovalsPage.tsx
+- A frontend/src/pages/platform/__tests__/PlatformDurableApprovalsPage.test.tsx
+- M frontend/src/router/AppRouter.tsx
+- M frontend/src/services/platformApi.ts
+- A frontend/src/types/platformDurableApprovals.ts
+8 files changed, 1926 insertions(+), 1 deletion(-). diff --name-status matches expected scope exactly; no extra files.
+
+### Test results (run at source tip 6d037f3 and re-run at merge commit dc9b481; identical)
+- Frontend targeted (PlatformDurableApprovalsPage.test.tsx): 17/17 passed.
+- Frontend full suite: 268/268 passed (29 files).
+- Backend P20 (test_platform_p20_durable_approval_governance.py): 71/71 passed.
+- Backend regression P10 + P18 + P18-D + P19: 244/244 passed.
+- Total failures: 0. vitest warnings (React Router v7 future flags; act() state-update notices) are pre-existing and benign. pytest warnings (Unknown config option: env_files; datetime.utcnow DeprecationWarning in core/security.py) are pre-existing and benign.
+
+### GitNexus
+- `npx gitnexus analyze` at merge commit dc9b481: 7,636 nodes | 23,541 edges | 492 clusters | 300 flows. (At source tip 6d037f3: 7,633 nodes | 23,541 edges | 489 clusters | 300 flows. Flow count is the stable metric at 300; node/edge/cluster counts are within the documented non-deterministic fluctuation.)
+- `npx gitnexus status` at dc9b481: indexed commit dc9b481 == current commit dc9b481; Status: up-to-date.
+- detect_changes compare origin/platform-dev..source (6d037f3): risk_level = medium, changed_count = 31, affected_count = 1, changed_files = 8. The single affected process is "PlatformDurableApprovalsPage -> Unwrap" (process_type intra_community, 3 steps) -- the new console's own render -> submitDecision -> unwrap flow. Product-business token scan over affected_processes[].name: 0 hits (the only "ledger" token is the ai-ledger doc filePath, not a process). No product business process affected.
+
+### Forbidden path audit
+- Path-based audit on the 8 changed files (pre-merge and post-merge HEAD~1..HEAD): PASS. No backend/, migrations/, alembic/, package/lockfile, auth/RBAC/session, product-dev-recovered, tenant business, payment/billing, or configured secret-detection baseline path.
+- Content-level keyword scan of the diff: every hit (alembic, migrations, product-dev-recovered, rbac, permission, session, payment, billing) is a documentation safety statement asserting "no ... change" / "deferred to a P20-RBAC slice", or empty mock data (permissions: []). No actual backend logic, migration script, or auth/RBAC/session rewrite.
+
+### Non-ASCII scan
+- All 8 changed files: valid UTF-8, 0 non-ASCII / control characters. No mojibake.
+
+### Whitespace
+- `git diff --check origin/platform-dev..source`: clean (exit 0).
+- `git diff --check HEAD~1..HEAD` (post-merge): clean (exit 0).
+
+### Risk classification
+- LOW. Frontend-only, read-only console plus governance closeout docs. No backend, no migration, no execution surface, no auth/RBAC/session change, no product business. detect_changes medium is the expected baseline for any new frontend console page (a new intra_community UI process appears) and is NOT a product-business signal.
+
+### Explicit safety statement
+- No execution. No migration. No real durable backend. No tenant mutation. No auth/RBAC/session rewrite. No product-dev-recovered. P21 not started.
+
+### Push status
+- PUSHED. Operator authorized the push on 2026-06-26. Merge commit dc9b481 pushed to origin/platform-dev (a62bcbe -> dc9b481); origin/platform-dev == local platform-dev == dc9b481. This evidence section was committed and pushed as the trailing docs commit on platform-dev. Post-merge gates (diff --check, forbidden-path audit, frontend 17/17 + 268/268, backend 71/71 + 244/244, gitnexus status up-to-date) all green before push.

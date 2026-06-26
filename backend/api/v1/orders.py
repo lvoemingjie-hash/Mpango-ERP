@@ -589,6 +589,18 @@ async def pay_order(
                 updated_by=token.user_id,
                 payment_method=payment_input.method,
             )
+
+            # S5-D4B: Once the order has transitioned into PAID, settle all
+            # cash/transfer payments for this order to 'completed' in the same
+            # transaction. Credit payments are intentionally left 'pending'
+            # (no cash settled). Partial payments do not reach PAID, so this
+            # block is skipped for them -- preventing premature settlement.
+            # Any failure here rolls back the entire transaction (no
+            # order=paid without payment=completed, and vice versa).
+            if target_state == OrderState.PAID:
+                await payment_repo.update_cash_transfer_to_completed(
+                    db, order_id=order.id,
+                )
         except InvalidStateTransitionError as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

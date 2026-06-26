@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -38,13 +38,15 @@ export function InventoryAdjustModal({ isOpen, onClose, onSubmit, initialSkuCode
     },
   });
 
-  // Reset form when modal opens with new init value
-  useState(() => {
+  // Reset form when modal opens or when initialSkuCode changes.
+  // useEffect ensures the reset runs on every relevant render (not just initial
+  // mount), so the disabled SKU field reflects the selected SKU code.
+  useEffect(() => {
     if (isOpen) {
       reset({ sku_code: initialSkuCode, quantity: 0, reason: '' });
       setError(null);
     }
-  });
+  }, [isOpen, initialSkuCode, reset, setError]);
 
   const handleFormSubmit = async (data: AdjustFormData) => {
     try {
@@ -83,10 +85,11 @@ export function InventoryAdjustModal({ isOpen, onClose, onSubmit, initialSkuCode
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label htmlFor="adjust-sku-code" className="block text-sm font-medium text-gray-700">
                   SKU Code
                 </label>
                 <input
+                  id="adjust-sku-code"
                   type="text"
                   {...register('sku_code')}
                   disabled={!!initialSkuCode}
@@ -98,11 +101,12 @@ export function InventoryAdjustModal({ isOpen, onClose, onSubmit, initialSkuCode
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label htmlFor="adjust-quantity" className="block text-sm font-medium text-gray-700">
                   Adjustment Quantity (+/-)
                 </label>
                 <div className="mt-1 relative rounded-md shadow-sm">
                   <input
+                    id="adjust-quantity"
                     type="number"
                     step="1"
                     {...register('quantity', { valueAsNumber: true })}
@@ -116,10 +120,11 @@ export function InventoryAdjustModal({ isOpen, onClose, onSubmit, initialSkuCode
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label htmlFor="adjust-reason" className="block text-sm font-medium text-gray-700">
                   Reason
                 </label>
                 <input
+                  id="adjust-reason"
                   type="text"
                   {...register('reason')}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm"

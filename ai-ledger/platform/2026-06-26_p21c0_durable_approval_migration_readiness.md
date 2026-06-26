@@ -143,7 +143,11 @@ Evidence supporting the public-schema boundary:
   analogues (platform_tenants, platform_audit_logs) are public-schema tables that reference
   public.wholesalers.id as a scoped tenant identifier and are created only in public.
 - env.py sets version_table_schema = public and the platform tables pin schema = 'public', so
-  explicit-public tables are never created in a tenant schema even under -x tenant_schema.
+  explicit-public tables are never created in a tenant schema. IMPORTANT CAVEAT (P21-C0-R1):
+  this does NOT remove env.py's tenant-schema creation side effect. do_run_migrations still
+  executes CREATE SCHEMA IF NOT EXISTS for the supplied tenant whenever -x tenant_schema is
+  passed. So the durable tables staying in public does not, by itself, prove no tenant-schema
+  change; tenant mode must simply not be invoked for P21-C1 (see sections 6 and 8).
 - The contract requires tenant_id to be a scoped identifier only, never a foreign key into a
   product business table (C-R4). A public-schema table with tenant_id as a plain nullable
   value (no business FK) satisfies this; a tenant-schema table would not.
@@ -249,10 +253,22 @@ conventions.
   nullability, defaults, enums, indexes, and unique constraints from section 5; confirm no
   existing table was altered (schema diff is additions-only); confirm the downgrade removes
   only the five tables and re-applies cleanly; pass G1 schema tests against the real schema.
-- Prove no tenant schema changed: assert that running the migration with and without
-  -x tenant_schema produces durable tables only in public (explicit schema = 'public'), and
-  that no durable_approval_* object appears in any tenant schema (G12 / public-schema
-  boundary tests).
+- Tenant mode is out of scope and must not be invoked (P21-C0-R1 correction). The P21-C1
+  migration invocation is public-schema-only: deployment and test commands MUST NOT pass
+  -x tenant_schema. backend/alembic/env.py (do_run_migrations) executes CREATE SCHEMA IF NOT
+  EXISTS for the supplied tenant whenever -x tenant_schema is given, so running the migration
+  in tenant mode would itself create a tenant schema. Therefore the absence of tenant-schema
+  change is NOT proven by running the migration with and without -x tenant_schema; it is
+  enforced by never invoking tenant mode for P21-C1 and by verifying, via catalog inspection
+  (information_schema) rather than tenant-mode execution, that no durable_approval_* object
+  exists in any tenant schema.
+- Operational preflight for P21-C1 (public mode only):
+  - Before upgrade, confirm the public migration head is 019_platform_audit_logs.
+  - Execute the new 020 migration in public mode only (alembic upgrade head, with NO
+    -x tenant_schema). No tenant-mode upgrade or downgrade is run for P21-C1.
+  - Before any later tenant-mode operations, confirm the public alembic revision is the new
+    020 revision, so a subsequent tenant-mode run does not carry the durable migration through
+    the tenant search_path.
 - Prove no product table changed: schema diff of public before vs after is additions-only;
   wholesalers, orders, payments, invoices, inventory, ledgers, and all tenant business tables
   are unchanged. No durable column references any product business table (C-R4).
@@ -281,14 +297,19 @@ rest land across P21-C1 / P21-D.
   process is affected.
 - Public / platform schema boundary tests, no-tenant-mutation tests, no-product-mutation
   tests, and no-execution / no-storage-switch tests are all covered by the G1, G2, G11, G12,
-  G13 groups above. No execution and no storage switch is asserted in P21-C1.
+  G13 groups above. No execution and no storage switch is asserted in P21-C1. The tenant-scope
+  proof is by public-mode catalog inspection (no durable_approval_* object appears in any
+  tenant schema), never by invoking tenant-mode migration; P21-C1 test commands MUST NOT pass
+  -x tenant_schema (see section 6).
 
 ## 8. P21-C1 entry gate (readiness conditions)
 
 P21-C1 may implement the migration only, and only after explicit CTO approval. It must:
 - remain additive and public / platform schema only (CREATE TABLE / INDEX / TYPE /
   CONSTRAINT for T1-T5; no ALTER / DROP / RENAME of any existing object);
-- perform no tenant schema migration and touch no product business paths;
+- perform no tenant schema migration and touch no product business paths; in particular P21-C1
+  is public-schema-only and its deployment / test commands MUST NOT pass -x tenant_schema
+  (tenant-mode migration is out of scope for P21-C1);
 - not switch runtime P20 storage (P20-B stays in-memory / existing-safe; cutover is P21-D);
 - satisfy every gate in section 6 (rollback, dry-run, pre / post validation) and pass G1 and
   G2 against a real ephemeral-test schema;
@@ -312,12 +333,16 @@ P21-C1 may implement the migration only, and only after explicit CTO approval. I
 
 ## 10. Go / no-go verdict for P21-C1
 
-Verdict: P21-C1_READY_TO_IMPLEMENT_MIGRATION (conditional).
+Verdict: P21-C1_READY_TO_IMPLEMENT_MIGRATION (conditional). The verdict is conditional in
+particular on the public-only invocation rule (P21-C0-R1): P21-C1 must never be run with
+-x tenant_schema; tenant-mode migration is out of scope for P21-C1.
 
 The migration system is ready: a single linear chain with current head 019_platform_audit_logs
 and a clear next slot (020_*); a documented public-schema, additive-only, fully reversible
-platform-table migration template (018 / 019); explicit-schema-public conventions that
-guarantee the durable tables land only in public and never in a tenant schema; an accepted
+platform-table migration template (018 / 019); explicit-schema-public conventions that place
+the durable tables in public only (with the explicit caveat that this does not remove env.py's
+tenant-schema creation side effect, so public-only invocation -- never -x tenant_schema -- is
+what actually excludes tenant mode); an accepted
 implementation-ready schema plan (P21-B) and contract (P21-A) with exact tables, columns,
 enums, constraints, indexes, a rollback plan, a dry-run procedure, and a G1-G14 test plan; and
 an existing migration test harness to extend.
@@ -330,9 +355,12 @@ caused by a defect):
    terms without a new accepted revision.
 3. P21-C1 uses the repo's numeric-prefix naming (020_*) with down_revision =
    019_platform_audit_logs, not the plan's illustrative timestamp name.
-4. P21-C1 passes the full entry gate (section 8), rollback / dry-run / pre / post validation
-   (section 6), and the G1 + G2 tests (section 7) against a real ephemeral-test schema, and
-   proves no tenant schema and no product table changed.
+4. P21-C1 runs public-mode only: deployment and test commands MUST NOT pass -x tenant_schema
+   (tenant-mode migration is out of scope). It passes the full entry gate (section 8), the
+   rollback / dry-run / pre / post validation (section 6), and the G1 + G2 tests (section 7)
+   against a real ephemeral-test schema; it verifies by public-mode catalog inspection that no
+   durable_approval_* object exists in any tenant schema; and it proves no product table
+   changed.
 5. P21-C1 performs no storage switch (P20-B stays in-memory / existing-safe; cutover is
    P21-D), no execution, and no tenant mutation.
 
@@ -350,8 +378,10 @@ Run on this branch versus origin/platform-dev = e873422:
 - detect-secrets (detect-secrets-hook against the configured secret baseline) on the changed
   file: PASS, exit 0, no new secrets. The configured baseline file is not modified.
 - Forbidden path audit: 0 hits. The only changed file is this readiness ledger.
-- npx gitnexus analyze: success (graph intact; 7,660 nodes / 23,560 edges / 497 clusters /
-  300 flows; a docs-only change affects no execution flow).
+- npx gitnexus analyze: success (graph intact; a docs-only change affects no execution flow).
+  Node / cluster counts fluctuate slightly across re-indexes (clustering is non-deterministic);
+  the stable metric is 300 flows (observed on the order of ~7,650 nodes / ~23,560 edges / ~490
+  clusters). Re-indexed and re-verified at the P21-C0-R1 tip.
 - GitNexus detect_changes compare origin/platform-dev..HEAD: LOW risk, docs-only, 0 affected
   processes (changed_count 15, affected_count 0, changed_files 1, risk_level low; all 15
   changed symbols are File / Section markdown nodes in the one ledger file;

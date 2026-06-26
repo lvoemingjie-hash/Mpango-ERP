@@ -212,3 +212,40 @@ migration, no execution, no tenant mutation, no auth / RBAC rewrite, no frontend
 backend, no AI agent execution, no notification implementation, and no change to the
 configured secret baseline. P21-B is not started. Approval is not execution, and
 durability is not execution.
+
+## 10. Merge evidence (P21-A.1 merge readiness gate, 2026-06-26)
+
+P21-A.1 merged the P21-A contract-only branch into platform-dev after all readiness
+gates passed. (Evidence appended at merge time; the original sections 1-9 above describe
+the contract branch as it stood before the merge.)
+
+- Gate: P21-A.1 merge readiness gate (contract-only, docs-only).
+- Date: 2026-06-26.
+- Source branch: codex/platform-p21a-durable-approval-store-contract-2026-06-26.
+- Source commit: 843aa70 (short SHA; full SHA not pinned here).
+- Merge target before: origin/platform-dev = 82ee1c1 (local platform-dev == origin ==
+  82ee1c1, confirmed before merge).
+- Merge commit (--no-ff, NOT a squash, NOT a fast-forward): 5442853 (short SHA); parents
+  82ee1c1 (platform-dev before) + 843aa70 (source); subject "merge: P21-A durable
+  approval store contract".
+- Tip after this evidence commit: branch tip (this evidence commit; short SHA recorded in
+  the session report; kept out of this file so the ledger stays non-self-referential).
+- Pre-merge gates (all PASS): git fetch --all --prune; source HEAD == 843aa70 and
+  origin/platform-dev == 82ee1c1; worktree clean; changed files == exactly the 3 P21-A
+  docs / ledger files; git diff --check origin/platform-dev..source clean; non-ASCII scan
+  0 hits; detect-secrets against the configured baseline PASS (exit 0); forbidden path
+  audit 0 hits; npx gitnexus analyze up-to-date; GitNexus detect_changes source vs
+  origin/platform-dev = LOW / docs-only / 0 affected processes (changed_count 32,
+  affected_count 0, changed_files 3; affected_processes []).
+- Post-merge gates on the merge commit (all PASS): git diff --check HEAD~1..HEAD clean;
+  forbidden path audit on the merge commit 0 hits (only the 3 docs / ledger files);
+  non-ASCII scan 0 hits; detect-secrets PASS (exit 0).
+- Pushed to: origin/platform-dev (single push carrying the merge commit plus this
+  evidence commit).
+- Risk: LOW (docs-only merge; no runtime code, no migration, no execution, no tenant
+  mutation, no auth / RBAC rewrite, no frontend, no backend).
+
+Status after P21-A.1: P21-A is MERGED into platform-dev. There is no runtime code, no
+migration, no execution, no tenant mutation, no auth / RBAC rewrite, no frontend, no
+backend, and no AI agent execution. P21-B is not started. Approval is not execution, and
+durability is not execution.

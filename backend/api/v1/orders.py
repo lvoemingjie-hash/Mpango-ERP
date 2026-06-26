@@ -597,7 +597,14 @@ async def pay_order(
             # block is skipped for them -- preventing premature settlement.
             # Any failure here rolls back the entire transaction (no
             # order=paid without payment=completed, and vice versa).
-            if target_state == OrderState.PAID:
+            #
+            # S5-D4B-R1: Guard on the ACTUAL returned order status, not merely
+            # the proposed target_state. transition() is authoritative -- if it
+            # returns a non-PAID status despite a PAID proposal, settlement must
+            # NOT run (defensive against any future divergence in the state
+            # machine). Comparing .value decouples from the OrderStatus vs
+            # OrderState enum type distinction.
+            if order.status.value == OrderState.PAID.value:
                 await payment_repo.update_cash_transfer_to_completed(
                     db, order_id=order.id,
                 )

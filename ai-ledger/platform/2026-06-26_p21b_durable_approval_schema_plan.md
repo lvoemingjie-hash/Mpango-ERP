@@ -230,3 +230,41 @@ enum plan (section 4), constraint plan (section 5), transaction plan (section 6)
 adapter interface contract (section 7), P21-C migration plan (section 8), P21-C / P21-D
 test plan (section 9), acceptance criteria (section 10), counterexamples (section 11),
 P21-C entry gate (section 12), future AI Operator Copilot trace (section 13).
+
+## 11. Merge evidence (P21-B.1 merge readiness gate, 2026-06-26)
+
+P21-B.1 merged the P21-B schema plan + test plan branch into platform-dev after all
+readiness gates passed.
+
+- Gate: P21-B.1 merge readiness gate (docs-only planning merge).
+- Date: 2026-06-26.
+- Source branch: codex/platform-p21b-durable-approval-schema-plan-2026-06-26.
+- Source commits: 863cd4f (P21-B plan) + 044652a (P21-B-R1 evidence completion); source
+  tip 044652a.
+- Merge target before: origin/platform-dev = df92bb0 (local platform-dev == origin ==
+  df92bb0, confirmed).
+- Merge commit (--no-ff, NOT a squash, NOT a fast-forward): cf48391 (short SHA); parents
+  df92bb0 (platform-dev before) + 044652a (source tip); subject "merge: P21-B durable
+  approval schema plan".
+- Tip after this evidence commit: branch tip (this evidence commit; short SHA recorded in
+  the session report; kept out of this file so the ledger stays non-self-referential).
+- Pre-merge gates (all PASS): git fetch --all --prune; origin/platform-dev == df92bb0;
+  source HEAD == 044652a and the chain contains 863cd4f + 044652a; the platform-dev
+  worktree clean on platform-dev @ df92bb0; changed files == exactly the 3 P21-B docs /
+  ledger files; git diff --name-status and git diff --check origin/platform-dev..source
+  clean; non-ASCII scan 0; detect-secrets against the configured baseline PASS (exit 0);
+  forbidden path audit 0; npx gitnexus analyze up-to-date; GitNexus detect_changes source
+  vs origin/platform-dev = LOW / docs-only / 0 affected processes (changed_count 33,
+  affected_count 0, changed_files 3; affected_processes []).
+- Post-merge gates on the merge commit (all PASS): git diff --check HEAD~1..HEAD clean;
+  forbidden path audit on the merge commit 0 (only the 3 docs / ledger files); non-ASCII
+  scan 0; detect-secrets PASS (exit 0); npx gitnexus analyze + status up-to-date.
+- Pushed to: origin/platform-dev (single push carrying the merge commit plus this evidence
+  commit).
+- Risk: LOW (docs-only planning merge; no runtime code, no migration, no execution, no
+  tenant mutation, no auth / RBAC rewrite, no frontend, no backend).
+
+Status after P21-B.1: P21-B is MERGED into platform-dev. There is no runtime code, no
+migration, no execution, no tenant mutation, no auth / RBAC rewrite, no frontend, no
+backend, and no AI agent execution. P21-C is not started. Approval is not execution, and
+durability is not execution.

@@ -2,7 +2,9 @@
 
 **Date:** 2026-06-29
 **Sprint:** S5-D4C (Redeploy to 1c2803d + verify cash payment settles to completed)
-**Verdict:** PASS_RUNTIME_SETTLED_PAYMENT_SMOKE
+**Verdict:** FAIL_INCOMPLETE_STRUCTURED_PAYMENT_PROOF
+
+> **Superseded by S5-D4C-R1:** This report used the state-only pay path (no `amount`), which creates no payment row. The corrected report at `2026-06-29_s5d4c_r1_structured_payment_runtime_proof.md` uses structured payment with `amount` field.
 **Deployed Commit:** `1c2803d9e68d25137ee90055f37678f9d67be46d` (merge: S5-D4B settled payment financial atomicity)
 **OPS Branch:** Direct deploy to VPS from origin/product-dev-recovered@1c2803d (detached HEAD)
 

@@ -137,7 +137,7 @@ Our test sent `{"method": "cash"}` without `amount`, triggering the state-only p
 
 ## Verdict
 
-**PASS_RUNTIME_SETTLED_PAYMENT_SMOKE**
+**FAIL_INCOMPLETE_STRUCTURED_PAYMENT_PROOF**
 
 ### What Works
 - Full order lifecycle (create → confirm → pay → paid) completes successfully

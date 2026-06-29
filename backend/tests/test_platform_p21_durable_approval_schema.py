@@ -13,7 +13,9 @@ migration 020_durable_approval_store against the real migrated database:
 These tests drive Alembic and inspect the live schema with psycopg2. They run ONLY against
 an explicit ephemeral database (TEST_DATABASE_URL / DATABASE_URL) and REFUSE to run against
 the developer mpango_erp database or any unset/shared target. Public mode only: no command
-passes -x tenant_schema.
+passes -x tenant_schema. A session bootstrap fixture applies the test-only DB prerequisites
+(pgcrypto, widened public.alembic_version, t_dev) so the tests reproduce from a clean
+throwaway container with only the DB URL set -- no manual SQL required.
 """
 import os
 from pathlib import Path
@@ -39,27 +41,80 @@ def _ephemeral_url():
     return u
 
 
-def _psql_url():
+def _psql(url):
     # psycopg2 uses the postgresql:// (sync) form; env.py / alembic rewrite to asyncpg.
-    u = _ephemeral_url()
-    return u.replace("postgresql+asyncpg://", "postgresql://")
+    return url.replace("postgresql+asyncpg://", "postgresql://")
+
+
+def _bootstrap_ephemeral(url):
+    """Test-only initialization mirroring database/init.sql (self-contained repro).
+
+    The base Alembic chain assumes three prerequisites a bare throwaway Postgres lacks: the
+    pgcrypto extension, a wide-enough public.alembic_version (this project uses long revision
+    ids), and the t_dev schema. This runs ONLY against the explicit ephemeral DB and is
+    idempotent, so the tests reproduce from a clean container with only the DB URL set.
+    """
+    import psycopg2
+    conn = psycopg2.connect(_psql(url))
+    conn.autocommit = True
+    cur = conn.cursor()
+    try:
+        cur.execute('CREATE EXTENSION IF NOT EXISTS pgcrypto')
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'alembic_version'
+            )
+        """)
+        has_av = cur.fetchone()[0]
+        if has_av:
+            cur.execute("""
+                SELECT character_maximum_length FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'alembic_version'
+                  AND column_name = 'version_num'
+            """)
+            row = cur.fetchone()
+            length = row[0] if row else 0
+            if length is None or length < 128:
+                cur.execute(
+                    "ALTER TABLE public.alembic_version "
+                    "ALTER COLUMN version_num TYPE varchar(128)"
+                )
+        else:
+            cur.execute("""
+                CREATE TABLE public.alembic_version (
+                    version_num varchar(128) NOT NULL,
+                    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+                )
+            """)
+        cur.execute('CREATE SCHEMA IF NOT EXISTS t_dev')
+    finally:
+        cur.close()
+        conn.close()
 
 
 @pytest.fixture(scope="module")
-def db():
-    """Ensure the migration is at head on the ephemeral DB and yield a sync connection."""
+def _boot():
+    """Resolve the ephemeral URL, set env, and run test-only DB initialization once."""
+    url = _ephemeral_url()
+    os.environ["DATABASE_URL"] = url
+    os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
+    _bootstrap_ephemeral(url)
+    return url
+
+
+@pytest.fixture(scope="module")
+def db(_boot):
+    """Bootstrap the ephemeral DB, upgrade to head, and yield a sync connection."""
     import psycopg2  # noqa: delayed import so module collection never needs a live DB
     from alembic import command
     from alembic.config import Config
 
-    url = _ephemeral_url()
-    os.environ["DATABASE_URL"] = url
-    os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     command.upgrade(cfg, "head")
 
-    conn = psycopg2.connect(_psql_url())
+    conn = psycopg2.connect(_psql(_boot))
     try:
         yield conn
     finally:

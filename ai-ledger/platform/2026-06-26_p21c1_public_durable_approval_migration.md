@@ -88,14 +88,20 @@ the developer mpango_erp database. They were run against a throwaway postgres:15
 container (NEVER against shared / production / developer databases). Public mode only: no
 alembic or pytest command passed -x tenant_schema.
 
-Setup (throwaway ephemeral DB):
+Setup (throwaway ephemeral DB) -- self-contained as of P21-C1-R1 (no manual SQL):
   - docker run --rm postgres:15-alpine with a dedicated ephemeral database / user / password
-    on an isolated port (not 5432, not mpango_erp).
-  - prerequisites mirroring database/init.sql applied to the ephemeral DB only: pgcrypto
-    extension, public.alembic_version widened to varchar(128), t_dev schema.
-  - env: TEST_DATABASE_URL -> ephemeral DSN; PYTHONIOENCODING=utf-8 (existing migrations
-    010 / 011 / 013 print a checkmark that the GBK console cannot encode);
-    REPORTING_USER_PASSWORD (existing migration 011 requires it).
+    on an isolated port (not 5432, not mpango_erp). No SQL is applied by hand.
+  - A session bootstrap fixture (_boot / _bootstrap_ephemeral in each test file) applies the
+    test-only prerequisites to the explicit ephemeral DB, idempotently, mirroring
+    database/init.sql: CREATE EXTENSION IF NOT EXISTS pgcrypto; ensure
+    public.alembic_version.version_num is varchar(128) (create the table if absent, else
+    ALTER the column wider if it is shorter than 128); CREATE SCHEMA IF NOT EXISTS t_dev.
+    This runs only against the explicit ephemeral URL and never against a shared / dev / prod
+    DB.
+  - env set by the runner: TEST_DATABASE_URL -> ephemeral DSN; PYTHONIOENCODING=utf-8
+    (existing migrations 010 / 011 / 013 print a checkmark the GBK console cannot encode);
+    REPORTING_USER_PASSWORD (existing migration 011 requires it; the fixture also setdefaults
+    it so the tests are self-contained from the URL alone for that variable).
 
 Command (from backend/):
   python -m pytest tests/test_platform_p21_durable_approval_schema.py \
@@ -202,12 +208,41 @@ None triggered:
   - Forbidden-path audit: only the four allowed files.
   - npx gitnexus analyze: success.
   - detect_changes compare origin/platform-dev..HEAD: LOW, docs+schema-only, 0 affected
-    processes (changed_count 45, affected_count 0, changed_files 4, risk_level low,
-    affected_processes []; all 45 changed symbols are in the four allowed files).
+    processes (changed_count 51, affected_count 0, changed_files 4, risk_level low,
+    affected_processes []; all 51 changed symbols are in the four allowed files).
   - Worktree clean after commit; isolated branch pushed only via the BR:BR refspec;
     origin/platform-dev untouched at b06b773 (not merged, not pushed).
 
-## 11. Final statement
+## 11. P21-C1-R1 reproducibility fix (CTO finding)
+
+CTO finding (P21-C1-R1): the original G1 / G2 tests depended on hidden, out-of-band manual
+database preconditions (the pgcrypto extension, a widened public.alembic_version, and the
+t_dev schema) that were applied by hand to the ephemeral container before pytest ran. A
+clean throwaway Postgres given only TEST_DATABASE_URL would therefore fail to reproduce,
+because those prerequisites were not part of the tests themselves.
+
+Fix: a session bootstrap fixture (_boot / _bootstrap_ephemeral, added to each of the two
+test files) now applies those test-only prerequisites to the explicit ephemeral DB
+idempotently: CREATE EXTENSION IF NOT EXISTS pgcrypto; create-or-widen
+public.alembic_version.version_num to varchar(128) (create the table if absent, else ALTER
+the column wider when it is shorter than 128); CREATE SCHEMA IF NOT EXISTS t_dev. The safety
+guards are unchanged: skip when TEST_DATABASE_URL / DATABASE_URL is unset and refuse any URL
+containing mpango_erp; the fixture never touches a shared / dev / prod DB. No migration,
+env.py, conftest.py, runtime, model, API, service, frontend, package, lockfile, or baseline
+file is changed -- only the two test files and this ledger.
+
+Repro proof (P21-C1-R1): a fresh throwaway postgres:15-alpine container was started with NO
+manual SQL applied; only TEST_DATABASE_URL, REPORTING_USER_PASSWORD, and
+PYTHONIOENCODING=utf-8 were set. Running the two P21-C1 test files produced 37 passed,
+0 failed -- the fixture bootstrapped the DB and the full base chain (001..019) plus the 020
+migration applied cleanly. The tests are now self-contained and reproducible from a clean
+container.
+
+Risk (unchanged): MEDIUM by nature (schema work), mitigated to LOW realized blast radius
+(additive, public-schema-only, reversible, 0 affected processes, self-contained ephemeral
+verification).
+
+## 12. Final statement
 
 P21-C1 implements the additive, reversible, public-schema-only durable approval migration
 and its real ephemeral-Postgres G1 / G2 tests. There is no runtime storage switch (P20-B

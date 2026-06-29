@@ -250,3 +250,82 @@ stays in-memory / existing-safe; runtime adapter wiring is P21-D), no execution 
 controlled action, no tenant mutation, no auth / RBAC rewrite, no model registration, no
 frontend, no package / lockfile change, and no change to the configured secret baseline.
 Approval is not execution, and durability is not execution. P21-D is not started.
+
+## 13. P21-C1.1 merge readiness gate (2026-06-29)
+
+P21-C1.1 merged the P21-C1 + P21-C1-R1 source branch into platform-dev after every
+readiness gate passed. This section records that merge evidence.
+
+- Gate: P21-C1.1 merge readiness gate (schema migration merge).
+- Date: 2026-06-29.
+- Source branch: codex/platform-p21c1-public-durable-approval-migration-2026-06-26.
+- Source tip: 2149ef8 (short SHA; full SHA not pinned here so the ledger stays
+  detect-secrets-clean).
+- Target before: origin/platform-dev = b06b773 (local platform-dev == origin == b06b773,
+  confirmed before merge; git fetch --all --prune run).
+- Merge commit (--no-ff, NOT a squash, NOT a fast-forward): cfa0ea0 (short SHA); parents
+  b06b773 (platform-dev before) + 2149ef8 (source tip); subject "merge: P21-C1 public
+  durable approval migration".
+- Target after: cfa0ea0 (merge), then this evidence commit (short SHA recorded in the
+  session report; kept out of this file so the ledger stays non-self-referential).
+- Changed files on the merge: exactly the four allowed files
+  (020_durable_approval_store.py, the two G1 / G2 test files, and this ledger); 1314
+  insertions, no deletions of pre-existing content.
+
+Pre-merge gates (all PASS):
+- git fetch --all --prune; origin/platform-dev == b06b773 (target had not moved); source
+  HEAD == 2149ef8; merge-base(source, origin/platform-dev) == b06b773.
+- Source diff vs origin/platform-dev == exactly the four allowed files.
+- git diff --check origin/platform-dev..source: clean (exit 0).
+- Non-ASCII scan of the four files: 0 hits.
+- detect-secrets (detect-secrets-hook against the configured baseline) on the four files:
+  PASS (exit 0); configured baseline unchanged.
+- Forbidden path audit: 0 hits (no env.py, no runtime backend API / service / model, no
+  frontend, no auth / RBAC / session, no package / lockfile, no configured baseline, no
+  product-dev-recovered).
+
+37-test throwaway-DB proof (self-contained, no manual SQL):
+- A fresh throwaway postgres:15-alpine container was started; NO SQL was applied by hand.
+  Only TEST_DATABASE_URL / DATABASE_URL, REPORTING_USER_PASSWORD, and PYTHONIOENCODING=utf-8
+  were set. The session bootstrap fixture applied the test-only prerequisites (pgcrypto,
+  widened public.alembic_version, t_dev) to the explicit ephemeral DB.
+- Command (from backend/): pytest tests/test_platform_p21_durable_approval_schema.py
+  tests/test_platform_p21_durable_approval_migration.py -q
+- Result: 37 passed, 0 failed.
+- The throwaway container was torn down; the developer databases mpango_postgres and
+  mpango_prod_postgres were untouched, and no shared / production database was contacted.
+
+Public-only and reversibility proof (carried from the source):
+- Public-mode only: no alembic or pytest command passed -x tenant_schema.
+- G2 test_upgrade_does_not_create_tenant_schema: the schema set is unchanged by the
+  public-mode upgrade; G2 test_no_durable_objects_in_tenant_schemas: no durable_approval_*
+  object exists outside public.
+- G2 test_downgrade_drops_only_p21_objects + test_reupgrade_recreates_tables: downgrade
+  removes only the five tables + fifteen enum types and leaves the base inventory intact;
+  re-upgrade recreates the five tables.
+
+Post-merge gates on the merge commit (all PASS):
+- git diff --check HEAD~1..HEAD: clean (exit 0).
+- Forbidden path audit on HEAD~1..HEAD: 0 hits (only the four allowed files).
+- Non-ASCII scan on the merged files: 0 hits.
+- detect-secrets (detect-secrets-hook against the configured baseline): PASS (exit 0).
+- npx gitnexus analyze: success (7,709 nodes / 23,659 edges / 503 clusters / 300 flows;
+  node / cluster counts fluctuate slightly across re-indexes; the stable metric is 300
+  flows).
+- GitNexus detect_changes compare vs origin/platform-dev (the pre-merge target): LOW risk,
+  docs+schema-only, 0 affected processes (changed_count 38, affected_count 0, changed_files
+  4, risk_level low; affected_processes []). No product / tenant / auth / payment execution
+  flow is affected.
+
+Pushed to: origin/platform-dev (single push carrying the merge commit plus this evidence
+commit).
+
+Risk: MEDIUM by nature (schema work), mitigated to LOW realized blast radius (additive,
+public-schema-only, fully reversible, 0 affected processes, self-contained ephemeral-DB
+verification with 37 passing tests).
+
+Status after P21-C1.1: the durable approval migration is MERGED into platform-dev. There is
+no runtime storage switch (P20-B stays in-memory / existing-safe; runtime adapter wiring is
+P21-D), no execution of any controlled action, no tenant mutation, no auth / RBAC rewrite,
+no frontend, no model registration, and no AI agent execution. P21-D is not started.
+Approval is not execution, and durability is not execution.

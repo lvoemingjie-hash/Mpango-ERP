@@ -590,14 +590,10 @@ async def pay_order(
                 payment_method=payment_input.method,
             )
 
-            # S5-D4B: Once the order has transitioned into PAID, settle all
-            # cash/transfer payments for this order to 'completed' in the same
-            # transaction. Credit payments are intentionally left 'pending'
-            # (no cash settled). Partial payments do not reach PAID, so this
-            # block is skipped for them -- preventing premature settlement.
-            # Any failure here rolls back the entire transaction (no
-            # order=paid without payment=completed, and vice versa).
-            if target_state == OrderState.PAID:
+            # S5-D4B: Settle only after the transition returns an actual PAID
+            # order, not merely because the proposed target was PAID.
+            order_status = getattr(order.status, "value", order.status)
+            if order_status == OrderState.PAID.value:
                 await payment_repo.update_cash_transfer_to_completed(
                     db, order_id=order.id,
                 )

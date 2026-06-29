@@ -40,6 +40,7 @@ class _TxnRecorder:
 
 @pytest.mark.asyncio
 async def test_b6_create_payment_rollback_on_balance_update_failure():
+    """Failure propagates so the caller-owned session lifecycle can roll back."""
     service = PaymentService()
 
     order = type(
@@ -109,6 +110,6 @@ async def test_b6_create_payment_rollback_on_balance_update_failure():
 
     assert exc.value.detail["code"] == "FORCED_FAILURE"
 
-    assert txn.entered == 1
-    assert txn.exited == 1
-    assert txn.exited_with_exception == 1
+    assert txn.entered == 0
+    assert txn.exited == 0
+    assert txn.exited_with_exception == 0

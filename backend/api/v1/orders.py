@@ -552,7 +552,10 @@ async def pay_order(
                 method=payment_input.method,
                 status=(
                     "completed"
-                    if payment_input.method == "transfer"
+                    if (
+                        payment_input.method == "transfer"
+                        and target_state == OrderState.PAID
+                    )
                     else "pending"
                 ),
                 created_by=(

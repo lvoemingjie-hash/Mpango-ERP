@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mpango Review Bus Task",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "project_line",
+    "phase",
+    "requested_by",
+    "objective",
+    "role_definition",
+    "scope",
+    "forbidden_changes",
+    "validation_gates",
+    "stop_conditions",
+    "report_path",
+    "handoff"
+  ],
+  "properties": {
+    "task_id": { "type": "string" },
+    "project_line": { "enum": ["saas-platform", "mpango-product"] },
+    "phase": { "type": "string" },
+    "requested_by": { "type": "string" },
+    "objective": { "type": "string" },
+    "role_definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role_name", "allowed_actions", "forbidden_actions"],
+      "properties": {
+        "role_name": { "type": "string" },
+        "allowed_actions": { "type": "array", "items": { "type": "string" } },
+        "forbidden_actions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "scope": { "type": "array", "items": { "type": "string" } },
+    "forbidden_changes": { "type": "array", "items": { "type": "string" } },
+    "validation_gates": { "type": "array", "items": { "type": "string" } },
+    "stop_conditions": { "type": "array", "items": { "type": "string" } },
+    "report_path": { "type": "string" },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_worker", "mode", "outbox_path", "audit_path"],
+      "properties": {
+        "target_worker": { "type": "string" },
+        "mode": { "enum": ["shadow", "manual", "scheduled"] },
+        "outbox_path": { "type": "string" },
+        "audit_path": { "type": "string" }
+      }
+    }
+  }
+}

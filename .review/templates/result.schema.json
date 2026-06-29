@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mpango Review Bus Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "status",
+    "worker",
+    "branch",
+    "commits",
+    "modified_files",
+    "tests",
+    "gitnexus",
+    "forbidden_audit",
+    "risk",
+    "blockers",
+    "report_path",
+    "next_action"
+  ],
+  "properties": {
+    "task_id": { "type": "string" },
+    "status": { "enum": ["complete", "blocked", "needs_review", "failed"] },
+    "worker": { "type": "string" },
+    "branch": { "type": "string" },
+    "commits": { "type": "array", "items": { "type": "string" } },
+    "modified_files": { "type": "array", "items": { "type": "string" } },
+    "tests": { "type": "array", "items": { "type": "string" } },
+    "gitnexus": { "type": "string" },
+    "forbidden_audit": { "type": "string" },
+    "risk": { "type": "string" },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "report_path": { "type": "string" },
+    "next_action": { "type": "string" }
+  }
+}

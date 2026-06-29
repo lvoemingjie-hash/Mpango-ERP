@@ -1,0 +1,60 @@
+{
+  "task_id": "P21-D0",
+  "project_line": "saas-platform",
+  "phase": "P21-D0 Goose Middleman Shadow Pilot",
+  "requested_by": "codex-cto",
+  "objective": "Validate Goose as a low-privilege middleman by reading this task, generating a Claude handoff packet, and writing an audit log without touching runtime code or dispatching automatically.",
+  "role_definition": {
+    "role_name": "goose-middleman-shadow",
+    "allowed_actions": [
+      "read .review/PROJECT_CONTEXT.md",
+      "read .review/tasks/P21-D0.task.json",
+      "write .review/outbox/P21-D0.to-claude.md",
+      "write .review/audit/P21-D0.audit.md",
+      "write .review/state/goose-runner-state.json"
+    ],
+    "forbidden_actions": [
+      "edit backend, frontend, docs/ai, ai-ledger, migrations, package, lockfile, or product files",
+      "run merge, push, reset, checkout, or destructive filesystem commands",
+      "invoke Claude automatically",
+      "write REVIEW_APPROVED or any final approval marker",
+      "claim CTO acceptance"
+    ]
+  },
+  "scope": [
+    "Review Bus protocol only",
+    "Goose shadow handoff only",
+    "No platform runtime behavior change"
+  ],
+  "forbidden_changes": [
+    "backend/",
+    "frontend/",
+    "backend/alembic/",
+    "docs/ai/",
+    "ai-ledger/",
+    "product-dev-recovered/",
+    "package.json",
+    "pnpm-lock.yaml",
+    ".secrets.baseline"
+  ],
+  "validation_gates": [
+    "outbox file exists and contains a Claude-ready task packet",
+    "audit file exists and records task_id, timestamp, files read, files written, and explicit shadow-mode statement",
+    "state file exists and records status=shadow_complete",
+    "no file outside .review/outbox, .review/audit, .review/state is modified by Goose"
+  ],
+  "stop_conditions": [
+    "task file cannot be parsed",
+    "Goose cannot write under .review",
+    "Goose attempts to edit runtime code",
+    "Goose attempts to merge or push",
+    "Goose cannot produce an audit trail"
+  ],
+  "report_path": ".review/audit/P21-D0.audit.md",
+  "handoff": {
+    "target_worker": "claude",
+    "mode": "shadow",
+    "outbox_path": ".review/outbox/P21-D0.to-claude.md",
+    "audit_path": ".review/audit/P21-D0.audit.md"
+  }
+}

@@ -1,0 +1,8 @@
+{
+    "task_id":  "P21-D0",
+    "status":  "shadow_complete",
+    "mode":  "shadow",
+    "outbox_path":  ".review/outbox/P21-D0.to-claude.md",
+    "audit_path":  ".review/audit/P21-D0.audit.md",
+    "next_action":  "Codex/user review"
+}

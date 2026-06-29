@@ -589,6 +589,14 @@ async def pay_order(
                 updated_by=token.user_id,
                 payment_method=payment_input.method,
             )
+
+            # S5-D4B: Settle only after the transition returns an actual PAID
+            # order, not merely because the proposed target was PAID.
+            order_status = getattr(order.status, "value", order.status)
+            if order_status == OrderState.PAID.value:
+                await payment_repo.update_cash_transfer_to_completed(
+                    db, order_id=order.id,
+                )
         except InvalidStateTransitionError as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

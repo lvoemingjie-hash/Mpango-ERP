@@ -164,6 +164,25 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
     """))
 
     await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".payments (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL REFERENCES "{tenant_schema}".orders(id) ON DELETE CASCADE,
+            retailer_id UUID NOT NULL,
+            transaction_id VARCHAR(64),
+            amount NUMERIC(12, 2) NOT NULL,
+            method VARCHAR(32) NOT NULL,
+            status VARCHAR(32) NOT NULL,
+            idempotency_key VARCHAR(64) UNIQUE,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    await session.execute(text(f"""
         CREATE INDEX IF NOT EXISTS ix_orders_wholesaler_id ON "{tenant_schema}".orders(wholesaler_id)
     """))
     await session.execute(text(f"""
@@ -194,6 +213,16 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
     await session.execute(text(f"""
         CREATE INDEX IF NOT EXISTS ix_ledger_entries_transaction_date
         ON "{tenant_schema}".ledger_entries(transaction_date)
+    """))
+
+    await session.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_payments_order_id
+        ON "{tenant_schema}".payments(order_id)
+    """))
+    await session.execute(text(f"""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_transaction_id
+        ON "{tenant_schema}".payments(transaction_id)
+        WHERE transaction_id IS NOT NULL
     """))
 
     # Phase 3: SKUs, inventory, and retailer pricing tables
@@ -406,6 +435,7 @@ async def async_session() -> AsyncGenerator[AsyncSession, None]:
         await session.execute(
             text(
                 f'TRUNCATE TABLE "{tenant_schema}".order_items, '
+                f'"{tenant_schema}".payments, '
                 f'"{tenant_schema}".ledger_entries, '
                 f'"{tenant_schema}".orders '
                 "RESTART IDENTITY CASCADE"

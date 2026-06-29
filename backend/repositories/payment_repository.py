@@ -152,6 +152,46 @@ class PaymentRepository:
         )
         return Decimal(str(result.scalar() or 0))
 
+    async def update_cash_transfer_to_completed(
+        self,
+        db: AsyncSession,
+        *,
+        order_id: uuid.UUID,
+    ) -> int:
+        """S5-D4B: Idempotently settle cash/transfer payments for a PAID order.
+
+        Advances `payments.status` from 'pending' to 'completed' for all rows
+        matching the order that are method IN ('cash', 'transfer') AND currently
+        'pending'. This closes the lifecycle gap where a fully-paid order left
+        its cash/transfer payments stuck at 'pending'.
+
+        Contract:
+          - Scoped to the single order_id (no cross-order side effects).
+          - Only cash/transfer rows touched; credit rows are left unchanged.
+          - Only 'pending' rows touched; already-'completed' rows are no-ops
+            (idempotent: safe to call repeatedly).
+          - Returns the number of rows actually updated.
+
+        Args:
+            db: AsyncSession (tenant schema).
+            order_id: Order whose cash/transfer payments should be settled.
+
+        Returns:
+            Count of payment rows updated (0 if none were pending).
+        """
+        result = await db.execute(
+            text(
+                "UPDATE payments "
+                "SET status = 'completed', updated_at = now() "
+                "WHERE order_id = :order_id "
+                "  AND is_deleted IS FALSE "
+                "  AND method IN ('cash', 'transfer') "
+                "  AND status = 'pending'"
+            ),
+            {"order_id": order_id},
+        )
+        return int(result.rowcount or 0)
+
     async def create(
         self,
         db: AsyncSession,

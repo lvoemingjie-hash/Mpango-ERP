@@ -1,14 +1,20 @@
-"""P20 Durable Approval Governance -- service layer (P20-B skeleton).
+"""P20 Durable Approval Governance -- service layer.
 
-SAFE skeleton: opens durable approval requests, lists and reads them, and
-records per-checker approve / reject DECISIONS under a maker-checker,
-quorum-based dual-control policy -- all in process-local memory. It NEVER
-executes any controlled action and NEVER mutates the P17 registry, tenant
-lifecycle, operational flags, provisioning, backup, or any tenant business
-data. Approval is NOT execution and durability is NOT execution: a quorum-met
-approval resolves to ``approved_execution_blocked`` and ``execution_allowed``
-is always false. Recorded approvals are ephemeral (in-process memory) -- there
-is intentionally no database table and no migration.
+This service opens durable approval requests, lists and reads them, and records
+per-checker approve / reject DECISIONS under a maker-checker, quorum-based
+dual-control policy. It NEVER executes any controlled action and NEVER mutates
+the P17 registry, tenant lifecycle, operational flags, provisioning, backup, or
+any tenant business data. Approval is NOT execution and durability is NOT
+execution: a quorum-met approval resolves to ``approved_execution_blocked`` and
+``execution_allowed`` is always false.
+
+P21-D-D runtime storage cutover gate: the DEFAULT backend is the durable store
+(the P21-D-C concrete adapter, restart-safe). An explicit memory backend is
+retained for test/dev only (``storage == "memory"``); production never silently
+falls back to it. When the durable store is not ready the gate fails CLOSED
+(``DurableStoreNotReady`` -> 503), never fabricating a record as success. The
+dual-control / P18 / redaction / state-machine policy below is mirrored by both
+backends (the in-memory logic is retained verbatim as the ``_memory_*`` path).
 
 Dual-control policy (P20-A section 4):
   - maker-checker: the maker (the actor who opened the request) can never be a

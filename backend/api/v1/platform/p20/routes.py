@@ -1,13 +1,17 @@
-"""FastAPI routes for P20 Durable Approval Governance (P20-B skeleton).
+"""FastAPI routes for P20 Durable Approval Governance.
 
-SAFE skeleton. These endpoints open durable approval requests, list and read
-them, and record per-checker approve / reject DECISIONS under a maker-checker,
-quorum-based dual-control policy -- all in process-local memory. No action is
-ever executed; every record and queue item carries execution_allowed == False
-and executed == False. The skeleton never mutates the P17 registry, tenant
-lifecycle, operational flags, provisioning, backup, or any tenant business
-data. Approval is not execution and durability is not execution: a quorum-met
-approval resolves to approved_execution_blocked.
+These endpoints open durable approval requests, list and read them, and record
+per-checker approve / reject DECISIONS under a maker-checker, quorum-based
+dual-control policy. No action is ever executed; every record and queue item
+carries execution_allowed == False and executed == False. The routes never
+mutate the P17 registry, tenant lifecycle, operational flags, provisioning,
+backup, or any tenant business data. Approval is not execution and durability
+is not execution: a quorum-met approval resolves to approved_execution_blocked.
+
+P21-D-D: each endpoint runs the storage gate (durable default; explicit memory
+test/dev backend). When the durable store is not ready the handler returns 503
+(``storage_not_ready`` / ``unavailable`` / ``degraded``) and never silently
+falls back to memory.
 
 Endpoints (all behind the identity-only P10 platform guard):
   POST /api/v1/platform/p20/durable-approvals                            create

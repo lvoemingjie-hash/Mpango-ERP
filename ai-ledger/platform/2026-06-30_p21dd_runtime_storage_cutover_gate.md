@@ -27,7 +27,14 @@ executed, no tenant state is mutated, and `execution_allowed` / `executed` /
 ## Modified files (scope)
 
 All changes are within the allowed platform scope (`backend/api/v1/platform/p20/**`,
-`backend/api/v1/platform/p21/**` is read-only here, `backend/tests/test_platform_p2*`):
+`backend/api/v1/platform/p21/**` is read-only here, `backend/tests/test_platform_p2*`).
+
+The P21-D-D commit contains 7 files total: the 6 code/test files below plus this
+ledger. (GitNexus `detect_changes` reports `changed_files=5` because it compares
+tracked content and excludes new/untracked files -- the new test file and this
+ledger.) The follow-up R1 correction edits only stale docstrings/comments in
+`p21/adapter.py` (text only, no logic) plus this count wording; it is recorded
+separately and does not change the P21-D-D runtime behavior described here.
 
 - `backend/api/v1/platform/p20/services.py` - storage-mode resolver, `DurableStoreNotReady`
   closed vocabulary, readiness gate, validating durable mapper, error maps, and four

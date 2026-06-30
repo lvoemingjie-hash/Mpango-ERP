@@ -1,9 +1,13 @@
-"""P21-D Durable Approval Runtime Adapter -- NON-EXECUTING SKELETON (P21-D-B).
+"""P21-D Durable Approval Runtime Adapter (P21-D-B skeleton + P21-D-C concrete).
 
-This module is the first runtime substrate of P21-D. It records the locked
-adapter design (the exact surface a future P21-D-1 implementation must satisfy)
-as importable, testable Python, WITHOUT becoming the live store and WITHOUT
-executing anything.
+This module is the runtime substrate of P21-D. It records the locked adapter
+design as a NON-EXECUTING skeleton (:class:`DurableApprovalStore`, P21-D-B) and
+a CONCRETE DB read/write adapter (:class:`DurableApprovalStoreAdapter`,
+P21-D-C) that realizes that surface against the P21-C1 public durable tables.
+Neither class ever executes a controlled action. The concrete adapter never
+self-elects as the live store (``is_live_store`` is False); the P20 service
+elects it through the P21-D-D readiness gate (durable default; in-memory retained
+as an explicit test/dev backend).
 
 What this skeleton IS:
   - The frozen operation -> durable-table mapping (P21-D design lock 4.1).
@@ -21,10 +25,11 @@ What this skeleton IS:
 What this skeleton is NOT:
   - It performs NO database I/O and mutates NO state. Every ``DurableApprovalStore``
     method raises :class:`StoreNotImplementedError`.
-  - It is NOT imported by ``api.v1.platform.p20`` (services / routes) or by
-    ``api.app``. The running durable approval store stays the in-memory P20-B
-    skeleton (``storage == "memory"``). Runtime storage cutover is a separately
-    CTO-gated P21-D-2 slice.
+  - The runtime storage cutover is DONE (P21-D-D): P20 services import the
+    concrete :class:`DurableApprovalStoreAdapter` below and elect it through a
+    readiness gate (durable default; in-memory retained as an explicit test/dev
+    backend). The non-executing ``DurableApprovalStore`` skeleton itself stays
+    unused by P20 and is never elected.
   - It adds NO migration, NO alembic change, NO table alteration, NO auth/RBAC/
     session/tenancy/payment change, and NO frontend.
 
@@ -66,9 +71,9 @@ from api.v1.platform.p21.models import (
 
 # P21-D-C concrete adapter consumes the P18 redaction helpers unchanged and
 # preserves the P20 response shapes (design lock 4.5 / 4.7). These imports are
-# one-way (p21 -> p18 / p20); the P20 routes / services never import p21 (the
-# no-cutover source-scan contract in test_platform_p21_durable_approval_adapter
-# _skeleton.py guards the reverse direction), so this adds no live coupling.
+# one-way (p21 -> p18 / p20 schemas). The reverse direction (p20 services ->
+# concrete adapter) is the P21-D-D cutover, governed by the readiness gate; the
+# skeleton class and these helpers stay free of any p20 -> p21 import cycle.
 from api.v1.platform.p18 import services as _p18
 from api.v1.platform.p20.schemas import (
     CheckerDecisionSummary,
@@ -84,14 +89,15 @@ from api.v1.platform.p20.schemas import (
 #: The storage_class value the adapter writes for every durable row.
 STORAGE_CLASS_DURABLE: str = "durable"
 
-#: Explicit flag: this skeleton is NOT the live running store. The running
-#: P20-B store stays in-memory until a separately approved P21-D-2 cutover.
+#: Explicit flag: this skeleton never self-elects as the live running store. The
+#: concrete adapter (P21-D-C) is elected by the P20 service through the P21-D-D
+#: readiness gate; this skeleton marker stays False.
 IS_LIVE_STORE: bool = False
 
-#: The P21-D slice this skeleton belongs to (relationship to the design-lock
-#: slice map: this is the non-executing definitions + skeleton portion of
-#: P21-D-1; the executing implementation and the P21-D-2 cutover remain
-#: not-started and CTO-gated).
+#: The P21-D slice this skeleton belongs to. This marker is the non-executing
+#: definitions + skeleton portion (P21-D-B); the concrete implementation
+#: (P21-D-C, :class:`DurableApprovalStoreAdapter`) and the runtime cutover
+#: (P21-D-D, the P20 readiness gate) are both complete.
 ADAPTER_PHASE: str = "P21-D-B-skeleton"
 
 
@@ -214,8 +220,8 @@ DEGRADED_SOURCE_STATUS: str = "degraded"
 #: idempotent / conflict for an ``approval_denied`` event depends on the
 #: operation outcome, so the runtime derivation refines this default via
 #: :func:`derive_audit_result(event_type, outcome)`. The exact final mapping is
-#: fixed in the P21-D-1 runtime slice and must lose no information relative to
-#: the in-memory event.
+#: realized by the P21-D-C concrete adapter and must lose no information
+#: relative to the in-memory event.
 AUDIT_RESULT_BY_EVENT_TYPE: dict[str, str] = {
     "approval_opened": "success",
     "approval_decision_recorded": "success",
@@ -337,9 +343,10 @@ class StoreNotImplementedError(NotImplementedError):
     """Raised by every adapter method in the P21-D-B skeleton.
 
     Signals that the planned surface exists and is typed but is deliberately
-    non-executing: the running store is still the in-memory P20-B skeleton and
-    the durable adapter implementation is deferred to the separately CTO-gated
-    P21-D-1 runtime slice.
+    non-executing. The concrete realization (:class:`DurableApprovalStoreAdapter`,
+    P21-D-C) implements the create / read / list / decide base surface and is
+    elected by the P20 service through the P21-D-D readiness gate; this skeleton
+    stays non-executing and is never elected at runtime.
     """
 
 
@@ -352,14 +359,16 @@ class DurableApprovalStore:
     """NON-EXECUTING skeleton of the durable approval store adapter.
 
     Every method raises :class:`StoreNotImplementedError`. The signatures and
-    docstrings freeze the surface a future P21-D-1 implementation must satisfy,
-    preserving the P20 service-function contract (create / list / read / decide)
-    while adding the durable idempotency, audit, retention, and export
-    operations. Nothing here performs database I/O, mutates state, executes a
-    controlled action, or mutates tenant / P17 registry data.
+    docstrings freeze the surface that the concrete P21-D-C realization
+    (:class:`DurableApprovalStoreAdapter`) satisfies, preserving the P20
+    service-function contract (create / list / read / decide) while adding the
+    durable idempotency, audit, retention, and export operations. Nothing here
+    performs database I/O, mutates state, executes a controlled action, or
+    mutates tenant / P17 registry data.
 
-    The class is NOT instantiated or imported by the P20 routes / services: the
-    running store is the P20-B in-memory skeleton until a P21-D-2 cutover.
+    This skeleton class is not imported by P20 routes / services; P20 imports and
+    elects the concrete adapter through the P21-D-D readiness gate (durable
+    default). The skeleton stays non-executing and is never elected at runtime.
     """
 
     __slots__ = ()
@@ -387,8 +396,8 @@ class DurableApprovalStore:
         """
         raise StoreNotImplementedError(
             "DurableApprovalStore.create_request is a P21-D-B non-executing skeleton; "
-            "the durable adapter implementation is deferred to the CTO-gated P21-D-1 "
-            "slice. The running store is the in-memory P20-B skeleton."
+            "the concrete DurableApprovalStoreAdapter (P21-D-C) realizes it and is "
+            "elected by the P20 service through the P21-D-D readiness gate."
         )
 
     def list_requests(
@@ -529,11 +538,11 @@ PLANNED_METHODS: tuple[str, ...] = (
 # reject-final, quorum, source-honesty, redaction, digest-only idempotency) and
 # persists every operation as a single atomic, restart-safe transaction.
 #
-# NO RUNTIME STORAGE CUTOVER (the directive's hard constraint). This class is
-# never imported by ``api.v1.platform.p20`` (services / routes) or by
-# ``api.app``; the running durable approval store stays the in-memory P20-B
-# skeleton (``storage == "memory"``). The concrete adapter is exercised only by
-# platform-only tests against an ephemeral DB. ``is_live_store`` is False.
+# P21-D-D RUNTIME STORAGE CUTOVER. P20 services import this concrete adapter and
+# elect it through the readiness gate (durable default; in-memory retained as an
+# explicit test/dev backend). The adapter never self-elects as the live store
+# (``is_live_store`` is False) and never executes a controlled action; it is also
+# exercised directly by platform-only tests against an ephemeral DB.
 #
 # NO EXECUTION. ``execution_allowed`` stays False, ``executed`` stays False,
 # ``execution_gate`` stays "blocked", and no P18 controlled action is ever run.
@@ -652,9 +661,9 @@ class DurableApprovalStoreAdapter:
     ``audit_result`` via :func:`derive_audit_result`, ``confirm``,
     ``metadata_redacted``).
 
-    NOT THE LIVE STORE. This class is never imported by P20 routes / services or
-    ``api.app`` (no runtime storage cutover); the running store stays the
-    in-memory P20-B skeleton. ``is_live_store`` is False. It is exercised only by
+    NEVER SELF-LIVE, NEVER EXECUTES. ``is_live_store`` is False: the adapter never
+    self-elects as the running store -- the P20 service elects it through the
+    P21-D-D readiness gate (durable default). It is also exercised directly by
     platform-only tests against an ephemeral DB. Approval is not execution and
     durability is not execution: ``execution_allowed`` / ``executed`` stay False
     and ``execution_gate`` stays "blocked"; no P18 action is ever run.
@@ -667,9 +676,10 @@ class DurableApprovalStoreAdapter:
 
     __slots__ = ("_session",)
 
-    #: Explicit flag: this concrete adapter is NOT the live running store. The
-    #: running P20-B store stays in-memory until a separately approved P21-D-2
-    #: cutover (which this slice does not perform).
+    #: Explicit flag: this concrete adapter never self-elects as the live running
+    #: store. The P20 service elects it through the P21-D-D readiness gate
+    #: (durable default); the flag stays False (the adapter does not decide its
+    #: own liveness).
     is_live_store: bool = False
 
     def __init__(self, session: AsyncSession) -> None:
@@ -678,8 +688,8 @@ class DurableApprovalStoreAdapter:
         # system-scope, not tenant-scoped business data (design lock: tenant_id is
         # a scoped identifier only, never an FK into a business table). Mark the
         # session for the global tenant guardrail bypass (db.tenant_filter) so the
-        # durable tables are read/written without a tenant context. This mirrors
-        # how the adapter must run once a future P21-D-2 cutover wires it live.
+        # durable tables are read/written without a tenant context. This is how
+        # the adapter runs once the P21-D-D gate elects it live.
         try:
             from db.tenant_filter import mark_session_as_system
 

@@ -300,15 +300,25 @@ the no-cutover source scans guard p20 -> p21, which remains clean.
   configured baseline file is not modified.
 
 8.9 npx gitnexus analyze:
-  Status: passed. 7,926 nodes / 24,276 edges / 515 clusters / 300 flows (forced
-  re-index after the working-tree change). Up from the base 7,858 nodes /
-  23,989 edges.
+  Status: passed. Re-verified at the branch tip: 7,939 nodes / 24,293 edges /
+  511 clusters / 300 flows. The STABLE metric is the flow count (300, unchanged
+  from the base); the node / edge / cluster counts fluctuate slightly across
+  re-indexes because clustering is non-deterministic, so they are reported as
+  "grew slightly / stable flows" rather than pinned to an exact cluster number.
 
 8.10 GitNexus detect_changes (MCP, driven over stdio JSON-RPC):
   Status: passed.
-  Result: changed_count = 40, affected_count = 0, changed_files = 2,
-  risk_level = low. Both changed paths are inside backend/api/v1/platform/p21/
-  (adapter.py, models.py). 0 affected processes. No HIGH / CRITICAL risk, and
+  Result: changed_count = 77, affected_count = 0, changed_files = 4,
+  risk_level = low. The four changed paths are adapter.py, models.py, the new
+  test file, and this ledger, all inside the P21 durable approval surface
+  (backend/api/v1/platform/p21, backend/tests, ai-ledger/platform). Per-file
+  changed symbols: adapter.py 20, models.py 20, the test file 20, this ledger
+  17 (markdown headings). The changed_count is inflated by the 17 markdown
+  headings gitnexus parses as graph nodes in this ledger plus the test file
+  symbols; that is doc / heading inflation, not a code-scope expansion. 0
+  affected processes; the product-business token grep over affected_processes is
+  clean (no order / payment / invoice / inventory / customer / finance /
+  shipment / tenant business process is touched). No HIGH / CRITICAL risk, and
   nothing outside the P21 durable approval surface.
 
 8.11 Clean worktree after commit:

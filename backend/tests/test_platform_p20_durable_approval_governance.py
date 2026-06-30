@@ -92,8 +92,15 @@ def _start_patch(target, new):
 
 @pytest.fixture(autouse=True)
 def _reset_auth_and_patches():
+    # P21-D-D: this suite exercises the in-memory backend explicitly. The runtime
+    # default is durable; force memory here and clear the override on teardown so
+    # the durable-default behavior (and the P21-D-D durable suite) is unaffected.
+    from api.v1.platform.p20 import services
+
+    services.set_storage_mode("memory")
     _CURRENT_AUTH["ctx"] = None
     yield
+    services.set_storage_mode(None)
     while _ACTIVE_PATCHERS:
         _ACTIVE_PATCHERS.pop().stop()
 

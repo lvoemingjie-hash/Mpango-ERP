@@ -46,13 +46,19 @@ superseded / failed_validation are NOT implemented and are explicitly rejected
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1.platform.p18 import services as _p18
+# P21-D-D runtime storage cutover: the durable backend is the P21-D-C concrete
+# adapter. This is a one-way dependency (p20 services -> p21 adapter); the
+# adapter mirrors the P20-B service logic and preserves the P20 response shapes.
+from api.v1.platform.p21.adapter import DurableApprovalStoreAdapter, StoreResult
 
 from .schemas import (
     CheckerDecisionSummary,
@@ -60,6 +66,205 @@ from .schemas import (
     DurableApprovalQueue,
     DurableApprovalRecord,
 )
+
+
+# -- P21-D-D runtime storage cutover gate ------------------------------------
+#
+# P21-D-D wires the P20 durable approval runtime to the P21-D-C durable store
+# adapter behind an EXPLICIT, auditable readiness gate. The default runtime
+# storage mode is DURABLE (production): every create / list / read / decision
+# persists through the durable adapter against the P21-C1 public tables. The
+# in-memory store below is RETAINED only as an explicit test / dev backend
+# (storage == "memory"); production never silently falls back to it. When the
+# durable store is not ready (DB unreachable, P21-C1 schema / tables missing, or
+# adapter initialization / operation failure), the gate fails CLOSED: it raises
+# DurableStoreNotReady and the route returns a clear 503 (storage_not_ready /
+# unavailable / degraded). It never fabricates an in-memory record as success.
+#
+# Approval is not execution and durability is not execution: the durable path
+# preserves execution_allowed == False, executed == False, execution_gate ==
+# "blocked" on every record (re-asserted by the mapper below, fail-closed).
+
+#: Environment flag selecting the explicit memory test / dev backend. The
+#: default (unset / any other value) is the production DURABLE mode.
+ENV_P20_STORAGE_MODE: str = "MPANGO_P20_DURABLE_APPROVAL_STORAGE"
+
+STORAGE_MODE_DURABLE: str = "durable"
+STORAGE_MODE_MEMORY: str = "memory"
+
+#: Closed vocabulary of DurableStoreNotReady failure codes (the directive's
+#: storage_not_ready / unavailable / degraded response shapes).
+STORAGE_NOT_READY_CODES: frozenset[str] = frozenset(
+    ("storage_not_ready", "unavailable", "degraded")
+)
+
+#: Test / dev override seam (takes precedence over the env flag). None resolves
+#: from the environment (durable default).
+_STORAGE_MODE_OVERRIDE: Optional[str] = None
+
+
+def set_storage_mode(mode: Optional[str]) -> None:
+    """TEST / DEV SEAM: force the runtime storage mode.
+
+    Accepts STORAGE_MODE_MEMORY, STORAGE_MODE_DURABLE, or None (clear the
+    override and fall back to the env flag / durable default). The platform test
+    harness uses this to select the in-memory backend deterministically.
+    """
+    global _STORAGE_MODE_OVERRIDE
+    if mode is not None and mode not in (STORAGE_MODE_DURABLE, STORAGE_MODE_MEMORY):
+        raise ValueError(f"unknown storage mode: {mode!r}")
+    _STORAGE_MODE_OVERRIDE = mode
+
+
+def get_storage_mode() -> str:
+    """Resolve the active runtime storage mode (override > env flag > durable)."""
+    if _STORAGE_MODE_OVERRIDE is not None:
+        return _STORAGE_MODE_OVERRIDE
+    flag = (os.environ.get(ENV_P20_STORAGE_MODE) or "").strip().lower()
+    if flag == STORAGE_MODE_MEMORY:
+        return STORAGE_MODE_MEMORY
+    return STORAGE_MODE_DURABLE
+
+
+class DurableStoreNotReady(Exception):
+    """Raised when the durable store gate fails CLOSED.
+
+    Carries a closed-vocabulary ``code`` (storage_not_ready | unavailable |
+    degraded) and a redaction-safe ``reason``. The P20 routes translate this into
+    a 503 response. The service NEVER silently falls back to the in-memory store
+    or fabricates a durable record as success when the store is not ready.
+    """
+
+    def __init__(self, code: str, reason: str = "") -> None:
+        if code not in STORAGE_NOT_READY_CODES:
+            raise ValueError(f"unknown DurableStoreNotReady code: {code!r}")
+        self.code = code
+        self.reason = reason
+        super().__init__(f"{code}: {reason}" if reason else code)
+
+
+#: The five P21-C1 public durable approval tables. The readiness gate requires
+#: every one to exist in the public schema (migration 020 applied).
+_DURABLE_REQUIRED_TABLES: tuple[str, ...] = (
+    "durable_approval_requests",
+    "durable_approval_decisions",
+    "durable_approval_audit_events",
+    "durable_approval_idempotency_keys",
+    "durable_approval_retention_jobs",
+)
+
+
+async def _check_durable_readiness(db: AsyncSession) -> tuple[bool, str]:
+    """Runtime storage readiness gate for the durable backend.
+
+    Returns ``(True, "ready")`` only when the database is reachable AND every
+    P21-C1 durable table exists in the public schema (migration 020 applied) AND
+    the adapter constructs. Any failure (DB unreachable, schema / tables missing,
+    adapter / tenant-filter init error) yields ``(False, <code>)`` where ``<code>``
+    is a member of STORAGE_NOT_READY_CODES. Never raises.
+    """
+    # Adapter construction marks the session system-scope for the tenant
+    # guardrail bypass; a construction failure is a not-ready signal.
+    try:
+        DurableApprovalStoreAdapter(db)
+    except Exception:
+        return False, "storage_not_ready"
+    try:
+        named = {f"t{i}": name for i, name in enumerate(_DURABLE_REQUIRED_TABLES)}
+        clauses = ", ".join(f":{key}" for key in named)
+        stmt = text(
+            "SELECT count(*) FROM information_schema.tables "
+            "WHERE table_schema = 'public' "
+            f"AND table_name IN ({clauses})"
+        )
+        present = int((await db.execute(stmt, named)).scalar_one())
+    except Exception:
+        # DB unreachable / connection refused / query error -> unavailable.
+        return False, "unavailable"
+    if present != len(_DURABLE_REQUIRED_TABLES):
+        # Reachable but the P21-C1 schema is not fully applied -> not ready.
+        return False, "storage_not_ready"
+    return True, "ready"
+
+
+def _from_durable_record(rec: DurableApprovalRecord) -> DurableApprovalRecord:
+    """EXPLICIT, validating mapper from a durable adapter record to the P20
+    response shape.
+
+    The durable adapter already returns a ``DurableApprovalRecord`` (design lock
+    4.5: identical P20 shape with ``storage == "durable"``). This mapper does NOT
+    loosely merge dicts or pass a foreign shape through: it re-asserts the
+    no-execution / redaction / storage invariants and fails CLOSED (raises
+    DurableStoreNotReady) if a durable record ever violated them, so a dangerous
+    record can never reach the API. It then returns the record unchanged.
+    """
+    if rec.execution_allowed is not False:
+        raise DurableStoreNotReady("degraded", "durable record violated execution_allowed invariant")
+    if rec.executed is not False:
+        raise DurableStoreNotReady("degraded", "durable record violated executed invariant")
+    if rec.execution_gate != "blocked":
+        raise DurableStoreNotReady("degraded", "durable record violated execution_gate invariant")
+    if rec.redaction_applied is not True:
+        raise DurableStoreNotReady("degraded", "durable record violated redaction invariant")
+    if rec.storage != STORAGE_MODE_DURABLE:
+        raise DurableStoreNotReady("degraded", "durable record storage invariant")
+    return rec
+
+
+def _durable_denial_record(
+    *, result: str, message: str, now: Optional[datetime] = None
+) -> DurableApprovalRecord:
+    """Build a ``storage="durable"`` shaped denial / not-found / conflict record.
+
+    Used when the durable adapter returns a StoreResult error that maps to a
+    contract-shaped P20 denial (the durable store is healthy; the request was
+    denied / not found / a conflict). ``execution_allowed`` / ``executed`` stay
+    False. This is NOT a memory fallback: it carries ``storage == "durable"`` and
+    the in-memory ``_STORE`` is never touched on this path.
+    """
+    return DurableApprovalRecord(
+        reason="",
+        source_status="unknown",
+        storage=STORAGE_MODE_DURABLE,
+        result=result,  # type: ignore[arg-type]
+        message=message,
+        executed=False,
+        execution_allowed=False,
+        execution_gate="blocked",
+        redaction_applied=True,
+        updated_at=now or _now(),
+    )
+
+
+#: adapter StoreResult error code -> P20 result string for a CREATE denial.
+_CREATE_ERR_RESULT: dict[str, str] = {
+    "not_authorized": "denied",
+    "not_found": "not_found",
+    "decision_conflict": "conflict",
+}
+
+#: adapter StoreResult error code -> P20 result string for a DECISION denial.
+_DECISION_ERR_RESULT: dict[str, str] = {
+    "not_found": "not_found",
+    "not_authorized": "denied",
+    "self_decision_denied": "denied",
+    "terminal": "denied",
+    "unknown_source": "denied",
+    "decision_conflict": "conflict",
+}
+
+#: adapter StoreResult codes that signal a STORE-HEALTH problem (not a contract
+#: denial): the durable store could not guarantee the write/read. These fail
+#: CLOSED to a degraded DurableStoreNotReady rather than a shaped success.
+_STORE_HEALTH_CODES: frozenset[str] = frozenset(
+    ("stale_write", "store_unknown", "idempotent_replay")
+)
+
+
+def _durable_store_health_error(res: StoreResult) -> DurableStoreNotReady:
+    """Map a store-health StoreResult error to a fail-closed degraded exception."""
+    code = res.error.code if res.error else "store_unknown"
+    return DurableStoreNotReady("degraded", f"durable store health: {code}")
 
 
 # -- In-memory durable store (ephemeral, process-local) ---------------------
@@ -409,7 +614,7 @@ def _create_fingerprint(action_type: Optional[str], tenant_id: Optional[str], ma
 # -- Open a durable approval request -----------------------------------------
 
 
-async def create_durable_approval(
+async def _memory_create_durable_approval(
     *,
     action_id: Optional[str],
     tenant_id: Optional[str],
@@ -625,7 +830,7 @@ async def create_durable_approval(
 # -- Record a checker decision -----------------------------------------------
 
 
-def submit_decision(
+def _memory_submit_decision(
     approval_id: str,
     *,
     decision: Optional[str],
@@ -899,7 +1104,7 @@ def submit_decision(
 # -- Read / list -------------------------------------------------------------
 
 
-def read_durable_approval(approval_id: str) -> Optional[DurableApprovalRecord]:
+def _memory_read_durable_approval(approval_id: str) -> Optional[DurableApprovalRecord]:
     """Return the record for an approval_id, or None when not found."""
     rec = _STORE.get(approval_id)
     if rec is None:
@@ -907,7 +1112,7 @@ def read_durable_approval(approval_id: str) -> Optional[DurableApprovalRecord]:
     return _record_from(rec, result="recorded", message="Read: durable approval record (ephemeral in-memory store). Nothing was executed.", now=rec.updated_at)
 
 
-def list_durable_approvals(
+def _memory_list_durable_approvals(
     limit: int = 50,
     offset: int = 0,
     status: Optional[str] = None,
@@ -943,3 +1148,216 @@ def list_durable_approvals(
         storage="memory",
         executed=False,
     )
+
+
+# -- P21-D-D public handlers (runtime storage gate) --------------------------
+#
+# Each public operation resolves the runtime storage mode and delegates to the
+# in-memory backend (explicit test / dev MEMORY mode) or the durable adapter
+# (default / production DURABLE mode) behind the readiness gate. The durable
+# path NEVER silently falls back to memory: on a not-ready store it raises
+# DurableStoreNotReady (the route returns 503), and on a healthy store it
+# persists through the adapter. Approval is not execution; durability is not
+# execution: every durable record is re-validated by _from_durable_record.
+
+
+async def create_durable_approval(
+    *,
+    action_id: Optional[str],
+    tenant_id: Optional[str],
+    action_type: Optional[str],
+    maker: Optional[str],
+    reason: Optional[str],
+    idempotency_key: Optional[str],
+    expires_at: Optional[datetime],
+    durable_retain_until: Optional[datetime],
+    confirm: bool,
+    correlation_id: Optional[str],
+    metadata: Optional[dict],
+    db: AsyncSession,
+    actor: Optional[str],
+    actor_role: str,
+    identity_context: str,
+) -> DurableApprovalRecord:
+    """Validate and record a durable approval request behind the storage gate.
+
+    DURABLE mode (default): readiness-gated durable adapter write. MEMORY mode
+    (explicit test / dev): the in-memory backend (``storage == "memory"``). Never
+    executes anything; never silently falls back to memory in durable mode.
+    """
+    if get_storage_mode() == STORAGE_MODE_MEMORY:
+        return await _memory_create_durable_approval(
+            action_id=action_id, tenant_id=tenant_id, action_type=action_type,
+            maker=maker, reason=reason, idempotency_key=idempotency_key,
+            expires_at=expires_at, durable_retain_until=durable_retain_until,
+            confirm=confirm, correlation_id=correlation_id, metadata=metadata,
+            db=db, actor=actor, actor_role=actor_role, identity_context=identity_context,
+        )
+    # DURABLE mode: fail CLOSED at the readiness gate before any write.
+    ready, code = await _check_durable_readiness(db)
+    if not ready:
+        raise DurableStoreNotReady(code, "durable approval store not ready for create")
+    # Resolve the P18 reference honestly (never fabricate an available source).
+    ctx = await _resolve_p18_context(action_id, action_type, tenant_id, db)
+    if ctx is None:
+        return _durable_denial_record(
+            result="not_found",
+            message="Denied: the P18 action reference could not be resolved (unknown action_id / action_type); durable approval not recorded.",
+        )
+    resolved_action_type, source_status, action_class = ctx
+    adapter = DurableApprovalStoreAdapter(db)
+    try:
+        res = await adapter.create_request(
+            action_id=action_id, tenant_id=tenant_id, action_type=resolved_action_type,
+            source_status=source_status, action_class=action_class, maker=maker,
+            reason=reason, idempotency_key=idempotency_key, expires_at=expires_at,
+            durable_retain_until=durable_retain_until, confirm=confirm,
+            correlation_id=correlation_id, metadata=metadata, actor=actor,
+            actor_role=actor_role, identity_context=identity_context,
+        )
+    except DurableStoreNotReady:
+        raise
+    except Exception:
+        # Pre-check passed but the write failed -> degraded (fail closed).
+        raise DurableStoreNotReady("degraded", "durable create failed after readiness check")
+    if res.ok:
+        return _from_durable_record(res.value)
+    if res.error and res.error.code in _STORE_HEALTH_CODES:
+        raise _durable_store_health_error(res)
+    result = _CREATE_ERR_RESULT.get(
+        res.error.code if res.error else "store_unknown", "denied"
+    )
+    return _durable_denial_record(result=result, message=res.error.message if res.error else "")
+
+
+async def submit_decision(
+    approval_id: str,
+    *,
+    decision: Optional[str],
+    approver_id: Optional[str],
+    reason: Optional[str],
+    idempotency_key: Optional[str],
+    confirm: bool,
+    correlation_id: Optional[str],
+    metadata: Optional[dict],
+    actor: Optional[str],
+    actor_role: str,
+    identity_context: str,
+    db: AsyncSession,
+) -> DurableApprovalRecord:
+    """Record one checker decision behind the storage gate. Never executes.
+
+    DURABLE mode: readiness-gated durable adapter write (maker-checker / quorum /
+    reject-final / source-honesty enforced by the adapter). MEMORY mode: the
+    in-memory backend. Never silently falls back to memory in durable mode.
+    """
+    if get_storage_mode() == STORAGE_MODE_MEMORY:
+        return _memory_submit_decision(
+            approval_id, decision=decision, approver_id=approver_id, reason=reason,
+            idempotency_key=idempotency_key, confirm=confirm, correlation_id=correlation_id,
+            metadata=metadata, actor=actor, actor_role=actor_role, identity_context=identity_context,
+        )
+    ready, code = await _check_durable_readiness(db)
+    if not ready:
+        raise DurableStoreNotReady(code, "durable approval store not ready for decision")
+    adapter = DurableApprovalStoreAdapter(db)
+    try:
+        res = await adapter.submit_decision(
+            approval_id, decision=decision, approver_id=approver_id, reason=reason,
+            idempotency_key=idempotency_key, confirm=confirm, correlation_id=correlation_id,
+            metadata=metadata, actor=actor, actor_role=actor_role, identity_context=identity_context,
+        )
+    except DurableStoreNotReady:
+        raise
+    except (ValueError, TypeError):
+        # A malformed approval_id (not a UUID) -> not-found denial (matching the
+        # in-memory contract), not a store-health failure.
+        return _durable_denial_record(result="not_found", message="Denied: approval_id not found.")
+    except Exception:
+        raise DurableStoreNotReady("degraded", "durable decision failed after readiness check")
+    if res.ok:
+        return _from_durable_record(res.value)
+    if res.error and res.error.code in _STORE_HEALTH_CODES:
+        raise _durable_store_health_error(res)
+    result = _DECISION_ERR_RESULT.get(
+        res.error.code if res.error else "store_unknown", "denied"
+    )
+    return _durable_denial_record(result=result, message=res.error.message if res.error else "")
+
+
+async def read_durable_approval(
+    approval_id: str, *, db: AsyncSession
+) -> Optional[DurableApprovalRecord]:
+    """Return the record for an approval_id behind the storage gate, or None.
+
+    DURABLE mode: readiness-gated durable adapter read; not-found returns None
+    (the route maps that to 404, matching the in-memory contract). MEMORY mode:
+    the in-memory backend.
+    """
+    if get_storage_mode() == STORAGE_MODE_MEMORY:
+        return _memory_read_durable_approval(approval_id)
+    ready, code = await _check_durable_readiness(db)
+    if not ready:
+        raise DurableStoreNotReady(code, "durable approval store not ready for read")
+    adapter = DurableApprovalStoreAdapter(db)
+    try:
+        res = await adapter.get_request(approval_id)
+    except DurableStoreNotReady:
+        raise
+    except (ValueError, TypeError):
+        # A malformed approval_id (not a UUID) is a not-found, not a store
+        # health issue -> None (the route returns 404), matching in-memory.
+        return None
+    except Exception:
+        raise DurableStoreNotReady("degraded", "durable read failed after readiness check")
+    if res.ok:
+        return _from_durable_record(res.value)
+    if res.error and res.error.code in _STORE_HEALTH_CODES:
+        raise _durable_store_health_error(res)
+    # not_found is the only expected non-health error from get_request -> None
+    # so the route returns 404 (matching the in-memory read contract).
+    return None
+
+
+async def list_durable_approvals(
+    limit: int = 50,
+    offset: int = 0,
+    status: Optional[str] = None,
+    action_type: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    *,
+    db: AsyncSession,
+) -> DurableApprovalQueue:
+    """Return the queue of durable approval records behind the storage gate.
+
+    DURABLE mode: readiness-gated durable adapter read (no audit write; list is
+    read-only). MEMORY mode: the in-memory backend.
+    """
+    if get_storage_mode() == STORAGE_MODE_MEMORY:
+        return _memory_list_durable_approvals(
+            limit=limit, offset=offset, status=status, action_type=action_type, tenant_id=tenant_id
+        )
+    ready, code = await _check_durable_readiness(db)
+    if not ready:
+        raise DurableStoreNotReady(code, "durable approval store not ready for list")
+    adapter = DurableApprovalStoreAdapter(db)
+    filters: dict = {}
+    if status:
+        filters["status"] = status
+    if action_type:
+        filters["action_type"] = action_type
+    if tenant_id:
+        filters["tenant_id"] = tenant_id
+    try:
+        res = await adapter.list_requests(filters, limit=limit, offset=offset)
+    except DurableStoreNotReady:
+        raise
+    except Exception:
+        raise DurableStoreNotReady("degraded", "durable list failed after readiness check")
+    if res.ok:
+        queue = res.value
+        # Re-assert the no-execution invariant on every queued record (fail-closed).
+        for item in queue.items:
+            _from_durable_record(item)
+        return queue
+    raise _durable_store_health_error(res)

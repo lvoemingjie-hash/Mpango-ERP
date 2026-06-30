@@ -27,16 +27,18 @@ Coverage (the directive's required surface):
     execution_gate always "blocked", on every record AND every StoreResult);
   - restart-safety (a NEW adapter instance on a NEW session reads the persisted
     state back unchanged; sequence_no ordering is preserved);
-  - P20 routes / services remain the in-memory store (no durable cutover).
+  - P21-D-D wires P20 services to this adapter behind an explicit readiness
+    gate (durable default; in-memory retained as explicit test / dev backend);
+    the dedicated P21-D-D cutover suite proves the gated wiring end to end.
 
 Plus durability hygiene: store_version increments on transitions; per-approval
 audit sequence_no is monotonic; the raw idempotency key is never persisted
 (digest-only); a raw secret in the reason is redacted before persistence.
 
 Approval is not execution, and durability is not execution. The concrete adapter
-is NOT the live store (``is_live_store == False``); it is never imported by P20
-routes / services (verified by the source-scan test below and by the unchanged
-P21-D-B skeleton suite).
+is exercised here directly; P21-D-D wires it behind the runtime readiness gate
+(``is_live_store`` stays False -- the adapter never self-elects as the live
+store; the P20 service gate decides that at runtime).
 """
 import os
 import subprocess
@@ -762,7 +764,9 @@ async def test_no_execution_invariant_across_lifecycle(engine):
 
 
 # ---------------------------------------------------------------------------
-# no-cutover: P20 routes / services remain the in-memory store (source scan)
+# P21-D-D cutover wiring: P20 services reference this adapter behind the
+# readiness gate; routes translate a gate failure to 503 and reach the store
+# only through services (no direct p21 import); app.py registers no p21 router.
 # ---------------------------------------------------------------------------
 
 
@@ -772,21 +776,25 @@ def _read(rel: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_p20_services_remain_in_memory_store():
+def test_p20_services_wire_durable_adapter_and_retain_memory_backend():
     src = _read("api/v1/platform/p20/services.py")
+    # The cutover: services reference the concrete adapter + the readiness gate.
+    assert "api.v1.platform.p21.adapter" in src
+    assert "DurableApprovalStoreAdapter" in src
+    assert "DurableStoreNotReady" in src
+    # The in-memory backend is retained as the explicit memory fallback.
     assert "_STORE" in src
     assert "_STORE_BY_CREATE_KEY" in src
     assert "_AUDIT_LOG" in src
     assert 'storage="memory"' in src or 'storage = "memory"' in src
-    # The running P20 store must NOT reference the durable adapter / models.
-    for token in ("api.v1.platform.p21", "DurableApprovalStoreAdapter", "p21.adapter", "p21.models"):
-        assert token not in src, f"P20 services must not reference durable adapter: {token}"
 
 
-def test_p20_routes_do_not_wire_durable_adapter():
+def test_p20_routes_reach_durable_store_via_services_only():
     src = _read("api/v1/platform/p20/routes.py")
+    assert "DurableStoreNotReady" in src
+    # Routes never import the durable adapter directly -- only via services.
     for token in ("api.v1.platform.p21", "DurableApprovalStoreAdapter", "p21.adapter", "p21.models"):
-        assert token not in src, f"P20 routes must not reference durable adapter: {token}"
+        assert token not in src, f"P20 routes must not import durable adapter directly: {token}"
 
 
 def test_app_does_not_register_durable_adapter_router():

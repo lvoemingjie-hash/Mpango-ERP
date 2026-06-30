@@ -195,6 +195,30 @@ async def _write_outcome_audit(
         pass  # Audit failure must never block the (non-executing) response
 
 
+def _raise_storage_not_ready(exc: Exception) -> None:
+    """Translate a P21-D-D DurableStoreNotReady gate failure into a 503 response.
+
+    The durable store was not ready (DB unreachable, P21-C1 schema / tables
+    missing, or adapter init / operation failure). The request was NOT recorded
+    or read and nothing was executed; the service did not silently fall back to
+    the in-memory store. The closed-vocabulary ``code`` (storage_not_ready /
+    unavailable / degraded) is echoed so the caller can tell the modes apart.
+    """
+    code = getattr(exc, "code", "storage_not_ready")
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": code,
+            "message": (
+                "Durable approval store is not ready; the request was not "
+                "recorded / read and nothing was executed."
+            ),
+            "storage": "durable",
+            "unavailable_reason": code,
+        },
+    )
+
+
 # -- Routes ------------------------------------------------------------------
 
 
@@ -214,13 +238,16 @@ async def create_durable_approval_route(
     always carries execution_allowed == False and executed == False.
     """
     actor, identity_context, actor_role = _actor_context_and_role(request)
-    record = await services.create_durable_approval(
-        db=db,
-        actor=actor,
-        actor_role=actor_role,
-        identity_context=identity_context,
-        **payload.model_dump(),
-    )
+    try:
+        record = await services.create_durable_approval(
+            db=db,
+            actor=actor,
+            actor_role=actor_role,
+            identity_context=identity_context,
+            **payload.model_dump(),
+        )
+    except services.DurableStoreNotReady as exc:
+        _raise_storage_not_ready(exc)
     await _write_outcome_audit(db, request, record, "create")
     return record
 
@@ -236,10 +263,18 @@ async def list_durable_approvals_route(
     db: AsyncSession = Depends(get_db),
     _platform_auth: None = Depends(require_platform_operator_with_p20_audit),
 ) -> DurableApprovalQueue:
-    """List the current ephemeral operator queue of durable approvals (with filters)."""
-    queue = services.list_durable_approvals(
-        limit=limit, offset=offset, status=status, action_type=action_type, tenant_id=tenant_id
-    )
+    """List the operator queue of durable approvals (with filters).
+
+    P21-D-D: the queue is served by the durable adapter in production (default)
+    and by the in-memory backend only in explicit test / dev memory mode.
+    """
+    try:
+        queue = await services.list_durable_approvals(
+            limit=limit, offset=offset, status=status, action_type=action_type,
+            tenant_id=tenant_id, db=db,
+        )
+    except services.DurableStoreNotReady as exc:
+        _raise_storage_not_ready(exc)
     summary = DurableApprovalRecord(
         reason="", source_status="unknown", result="recorded",
         message="queue_list", executed=False, execution_allowed=False,
@@ -257,16 +292,21 @@ async def read_durable_approval_route(
 ) -> DurableApprovalRecord:
     """Read a previously recorded durable approval by approval_id.
 
-    Returns 404 when the approval is not in the ephemeral in-memory store. The
-    returned record always carries executed == False; nothing is executed.
+    Returns 404 when the approval is not found. P21-D-D: the record is served by
+    the durable adapter in production (default) and by the in-memory backend only
+    in explicit test / dev memory mode. The returned record always carries
+    executed == False; nothing is executed.
     """
-    record = services.read_durable_approval(approval_id)
+    try:
+        record = await services.read_durable_approval(approval_id, db=db)
+    except services.DurableStoreNotReady as exc:
+        _raise_storage_not_ready(exc)
     if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": "P20_APPROVAL_NOT_FOUND",
-                "message": "Durable approval record not found (ephemeral in-memory store).",
+                "message": "Durable approval record not found.",
             },
         )
     await _write_outcome_audit(db, request, record, "read")
@@ -293,12 +333,16 @@ async def submit_decision_route(
     false.
     """
     actor, identity_context, actor_role = _actor_context_and_role(request)
-    record = services.submit_decision(
-        approval_id,
-        actor=actor,
-        actor_role=actor_role,
-        identity_context=identity_context,
-        **payload.model_dump(),
-    )
+    try:
+        record = await services.submit_decision(
+            approval_id,
+            actor=actor,
+            actor_role=actor_role,
+            identity_context=identity_context,
+            db=db,
+            **payload.model_dump(),
+        )
+    except services.DurableStoreNotReady as exc:
+        _raise_storage_not_ready(exc)
     await _write_outcome_audit(db, request, record, "decision")
     return record

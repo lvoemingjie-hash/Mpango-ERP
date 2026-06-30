@@ -16,9 +16,11 @@ occurred:
   - the StoreError vocabulary is the closed section-7 set;
   - every planned DurableApprovalStore method exists and raises
     StoreNotImplementedError (a NotImplementedError) -- nothing executes;
-  - P20 services / routes / schemas, api.app, models.__init__, and alembic do
-    NOT reference the p21 adapter / models / router -- the running store stays
-    in-memory, no router is registered, no migration is added.
+  - the P21-D-B skeleton surface itself is unchanged (non-executing,
+    is_live_store False); P21-D-D wires P20 services to the concrete adapter
+    behind an explicit readiness gate (verified by the cutover tests below);
+    api.app still registers no p21 router, models.__init__ still registers no
+    durable model, and alembic still adds no new migration.
 
 Pure-Python (metadata + source scans); runs by default (unit marker), no DB.
 """
@@ -216,8 +218,11 @@ def test_store_has_no_execution_unlocking_surface():
 
 
 # ---------------------------------------------------------------------------
-# No-cutover / forbidden-path audit (source scans + filesystem). The running
-# P20-B store stays in-memory; p21 is not imported or registered anywhere live.
+# P21-D-D cutover audit (source scans + filesystem). P20 services are wired to
+# the durable adapter BEHIND an explicit readiness gate; the in-memory store is
+# retained as the explicit test / dev memory backend; no p21 router is
+# registered; no durable model is registered in models.__init__; no new
+# migration is chained; env.py / deps / baseline are unchanged.
 # ---------------------------------------------------------------------------
 
 
@@ -226,31 +231,45 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize(
-    "rel",
-    [
-        "api/v1/platform/p20/services.py",
-        "api/v1/platform/p20/routes.py",
-        "api/v1/platform/p20/schemas.py",
-    ],
-)
-def test_p20_does_not_reference_p21_durable_adapter(rel):
-    """The running P20 store must NOT import or call the durable adapter/models."""
-    src = _read(BACKEND / rel)
-    forbidden = [
-        "api.v1.platform.p21",
-        "from api.v1.platform import p21",
-        "DurableApprovalStore",
-        "p21.adapter",
-        "p21.models",
-        "import p21",
-    ]
-    for token in forbidden:
-        assert token not in src, f"{rel} must not reference durable adapter symbol: {token}"
+def test_p20_schemas_do_not_reference_p21():
+    """P20 schemas stay free of any durable adapter / model reference."""
+    src = _read(BACKEND / "api" / "v1" / "platform" / "p20" / "schemas.py")
+    for token in ("api.v1.platform.p21", "DurableApprovalStore", "p21.adapter", "p21.models"):
+        assert token not in src, f"p20 schemas must not reference durable adapter: {token}"
 
 
-def test_p20_store_still_in_memory():
-    """P20 services still use the in-memory globals (no durable cutover)."""
+def test_p20_services_wire_durable_adapter_behind_gate():
+    """P21-D-D: P20 services import the concrete adapter and define the gate."""
+    src = _read(P20_DIR / "services.py")
+    # The cutover: services reference the concrete durable adapter.
+    assert "api.v1.platform.p21.adapter" in src
+    assert "DurableApprovalStoreAdapter" in src
+    # The explicit readiness gate + storage-mode resolver + fail-closed mapper.
+    assert "DurableStoreNotReady" in src
+    assert "_check_durable_readiness" in src
+    assert "get_storage_mode" in src
+    assert "_from_durable_record" in src
+    assert "STORAGE_MODE_DURABLE" in src
+    assert "STORAGE_MODE_MEMORY" in src
+    # No operation may set execution_allowed / executed true on the durable path.
+    assert "execution_allowed = True" not in src
+    assert "executed = True" not in src
+    assert "execution_allowed=True" not in src
+    assert "executed=True" not in src
+
+
+def test_p20_routes_handle_storage_gate_via_services():
+    """Routes translate the gate failure to 503 and never import p21 directly."""
+    src = _read(BACKEND / "api" / "v1" / "platform" / "p20" / "routes.py")
+    assert "DurableStoreNotReady" in src
+    assert "503" in src or "SERVICE_UNAVAILABLE" in src
+    # Routes reach the durable store ONLY through services (no direct p21 import).
+    for token in ("api.v1.platform.p21", "DurableApprovalStoreAdapter", "p21.adapter", "p21.models"):
+        assert token not in src, f"p20 routes must not import durable adapter directly: {token}"
+
+
+def test_p20_store_retains_explicit_memory_backend():
+    """P20 services retain the in-memory globals as the explicit memory backend."""
     src = _read(P20_DIR / "services.py")
     assert "_STORE" in src
     assert "_STORE_BY_CREATE_KEY" in src

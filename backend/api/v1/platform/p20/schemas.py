@@ -3,14 +3,15 @@
 Field-for-field aligned to
 docs/ai/PLATFORM_PRODUCT_P20_DURABLE_APPROVAL_GOVERNANCE_CONTRACT.md (P20-A).
 
-This is a DURABLE APPROVAL READ / WRITE skeleton only. It records maker-checker
-approval decisions in process-local memory. It NEVER executes any controlled
-action and NEVER mutates the P17 registry, tenant lifecycle, operational flags,
-provisioning, backup, or any tenant business data. Approval is not execution
-and durability is not execution: a quorum-met approval resolves to
-``approved_execution_blocked`` and ``execution_allowed`` / ``executed`` are
-always false. The skeleton is in-memory only (``storage == "memory"``); there is
-intentionally no database table and no migration.
+This is a DURABLE APPROVAL READ / WRITE package only. It records maker-checker
+approval decisions. It NEVER executes any controlled action and NEVER mutates
+the P17 registry, tenant lifecycle, operational flags, provisioning, backup, or
+any tenant business data. Approval is not execution and durability is not
+execution: a quorum-met approval resolves to ``approved_execution_blocked`` and
+``execution_allowed`` / ``executed`` are always false. These schemas preserve
+the P20 API shape across both runtime backends; the ``storage`` field
+distinguishes the durable store (``"durable"``, the P21-D-D default) from the
+explicit memory test/dev backend (``"memory"``).
 
 Contract rules carried from P10 / P17 / P18 / P19 / P20-A:
   - approval != execution; durability != execution.
@@ -225,7 +226,7 @@ class DurableApprovalRecord(BaseModel):
     execution_allowed: bool = Field(False, description="Always False -- a durable approval never permits execution.")
     execution_gate: ExecutionGate = Field("blocked", description="Always 'blocked' in P20.")
     redaction_applied: bool = Field(True, description="Always True.")
-    storage: str = Field("memory", description="In-memory only; no database persistence in P20.")
+    storage: str = Field("memory", description="durable | memory; the active backend (durable store via the P21-D-D gate, or explicit memory test/dev).")
     retention_class: RetentionClass = Field("standard", description="Retention class; legal_hold suspends purge (future).")
     validation_status: ValidationStatus = Field("valid", description="Durable re-validation result.")
     superseded_by: Optional[str] = Field(None, description="Approval that superseded this one (future).")
@@ -249,7 +250,7 @@ class DurableApprovalQueue(BaseModel):
     total: int
     limit: int
     offset: int
-    storage: str = Field("memory", description="In-process storage; no database persistence.")
+    storage: str = Field("memory", description="durable | memory; the queue backend (durable store via the P21-D-D gate, or explicit memory test/dev).")
     executed: bool = Field(False, description="Always False -- listing never executes.")
 
 

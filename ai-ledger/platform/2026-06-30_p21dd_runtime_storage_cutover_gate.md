@@ -205,3 +205,44 @@ None for CTO review.
 - `origin/platform-dev` is NOT merged and NOT pushed; only the isolated feature branch is
   pushed.
 - P22 is NOT started.
+
+## Revision history (text-only corrections; no runtime logic change)
+
+The P21-D-D runtime behavior is unchanged across these revisions; each only
+corrects stale boundary docstrings/comments/ledger wording left over from the
+P20-B / P21-D-B "in-memory skeleton" era.
+
+**R1 (commit `a2c1c6f`, on top of P21-D-D `872aff8`):** corrected stale cutover
+text in `backend/api/v1/platform/p21/adapter.py` (module + skeleton/concrete
+class docstrings, `IS_LIVE_STORE` / `ADAPTER_PHASE` / `is_live_store` /
+`__init__` / `AUDIT_RESULT_BY_EVENT_TYPE` comments, section header,
+`StoreNotImplementedError` docstring, and the skeleton `create_request` message
+string) and the top docstrings of `backend/api/v1/platform/p20/services.py` and
+`backend/api/v1/platform/p20/routes.py`; plus this ledger's file-count wording.
+Removed all "P20 never imports p21", "NO RUNTIME STORAGE CUTOVER", "running store
+stays memory", and "P21-D-1 / P21-D-2 deferred" claims. `is_live_store=False` and
+`ADAPTER_PHASE="P21-D-B-skeleton"` values unchanged. R1 commit = 4 files.
+
+**R2 (commit at branch tip, on top of `a2c1c6f`):** CTO-review follow-up fixing
+the remaining PACKAGE-LEVEL boundary text:
+- `backend/api/v1/platform/p21/__init__.py` - rewritten: states the package
+  contains the durable adapter (skeleton P21-D-B + concrete P21-D-C); the P20
+  P21-D-D readiness gate may select it as durable storage; the adapter never
+  executes a controlled action.
+- `backend/api/v1/platform/p20/__init__.py` - rewritten: durable approvals default
+  to P21 durable storage through the P21-D-D readiness gate; explicit memory mode
+  is test/dev only; approval is not execution.
+- `backend/api/v1/platform/p20/schemas.py` - module docstring + the two `storage`
+  field description strings rewritten: schemas preserve the P20 API shape across
+  durable and explicit memory modes; `storage` distinguishes `"durable"` vs
+  `"memory"`; no execution. The `storage` field default (`"memory"`) and type
+  (`str`) are unchanged (not a logic change).
+- this ledger - R2 section added; file counts kept accurate.
+
+R2 commit = 4 files (the three package files above plus this ledger).
+
+Post-R2 grep across `backend/api/v1/platform/p20/` and `p21/` shows 0 hits for:
+`no P20 route or service is rewired`, `runtime storage cutover / feature flag`,
+`NOT imported by api.v1.platform.p20`, `stays in-memory`, `in-memory only`,
+`all in process-local memory` (whole-file search, so line-wrapped phrasing is
+caught too). No runtime logic and no test was changed by R1 or R2.

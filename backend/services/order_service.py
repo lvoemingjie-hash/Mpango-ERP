@@ -107,8 +107,19 @@ class OrderService:
         # Convert current status to OrderState
         current_state = OrderState(order.status.value)
 
-        # S5-2: Check if transition is valid in state machine
-        if not is_valid_transition(current_state, target_state):
+        is_additional_partial_payment = (
+            current_state == OrderState.PARTIALLY_PAID
+            and target_state == OrderState.PARTIALLY_PAID
+            and payment_method in {"cash", "transfer"}
+        )
+
+        # S5-2: Check if transition is valid in state machine.
+        # S5-D6 allows same-state partial-payment progress only when the
+        # structured payment route provides cash/transfer payment context.
+        if (
+            not is_valid_transition(current_state, target_state)
+            and not is_additional_partial_payment
+        ):
             raise InvalidStateTransitionError(
                 from_state=current_state,
                 to_state=target_state,

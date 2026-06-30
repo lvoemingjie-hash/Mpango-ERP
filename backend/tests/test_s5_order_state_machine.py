@@ -89,6 +89,14 @@ def test_terminal_states():
     assert not is_terminal_state(OrderState.FULFILLED)
 
 
+def test_partially_paid_self_transition_is_not_globally_valid():
+    """partially_paid -> partially_paid is not a generic state transition."""
+    assert not is_valid_transition(
+        OrderState.PARTIALLY_PAID,
+        OrderState.PARTIALLY_PAID,
+    )
+
+
 # ============================================================================
 # Integration Tests: OrderService State Transitions
 # ============================================================================
@@ -191,6 +199,36 @@ async def test_illegal_transition_draft_to_fulfilled(async_session, sample_order
     # Verify order state unchanged
     await async_session.refresh(order)
     assert order.status == OrderStatus.DRAFT
+
+
+@pytest.mark.asyncio
+async def test_partially_paid_self_transition_allowed_only_for_payment_context(async_session, sample_order):
+    """Additional partial payments may keep the order partially_paid.
+
+    The state matrix remains globally strict; OrderService only accepts this
+    same-state transition when the caller supplies structured payment context.
+    """
+    service = OrderService(async_session)
+    order = sample_order
+
+    order = await service.transition(order.id, OrderState.CONFIRMED)
+    order = await service.transition(order.id, OrderState.PARTIALLY_PAID)
+    assert order.status == OrderStatus.PARTIALLY_PAID
+
+    with pytest.raises(InvalidStateTransitionError):
+        await service.transition(
+            order_id=order.id,
+            target_state=OrderState.PARTIALLY_PAID,
+            reason="Non-payment no-op transition",
+        )
+
+    order = await service.transition(
+        order_id=order.id,
+        target_state=OrderState.PARTIALLY_PAID,
+        reason="Payment recorded: cash 20.00",
+        payment_method="cash",
+    )
+    assert order.status == OrderStatus.PARTIALLY_PAID
 
 
 @pytest.mark.asyncio

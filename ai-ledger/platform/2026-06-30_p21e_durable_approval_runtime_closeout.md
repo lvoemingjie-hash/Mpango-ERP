@@ -9,10 +9,11 @@ the P21-D-D runtime storage cutover gate.
 **Base:** `origin/platform-dev` at `a6f5ef8` (merge: P21-D-D runtime storage cutover gate).
 `origin/platform-dev` is NOT merged and NOT advanced by this slice; only the isolated
 feature branch is pushed.
-**Commit chain:** base `a6f5ef8` -> `c0c21a1` (P21-E closeout proof tests) -> this ledger
-commit. The branch tip SHA is recorded in the final report rather than pinned here (an
-amend would change it; short SHAs are used throughout to keep the ledger secret-scan
-clean).
+**Commit chain:** base `a6f5ef8` -> `c0c21a1` (P21-E closeout proof tests) ->
+`5b969b0` (closeout ledger) -> R1 isolation-fix commit (3 durable integration fixtures +
+this ledger update). The branch tip SHA is recorded in the final report rather than pinned
+here (an amend would change it; short SHAs are used throughout to keep the ledger
+secret-scan clean).
 
 ## Objective
 
@@ -28,18 +29,55 @@ Approval is not execution, and durability is not execution. No controlled action
 executed, no tenant state is mutated, and `execution_allowed` / `executed` /
 `execution_gate` keep their safe values on every record.
 
+## R1 - Test isolation / reproducibility fix (CTO review)
+
+CTO review blocked the merge on a test-order contamination bug (the functionality proof
+itself was accepted).
+
+**Finding (CTO):** the P21 durable integration fixtures set `os.environ["DATABASE_URL"]`
+(and `setdefault` `REPORTING_USER_PASSWORD`) to the throwaway Docker Postgres URL during
+module setup and never restored them. After the container was removed, later suites in the
+same pytest process read the dead `DATABASE_URL` and errored: the full 8-suite sequence
+showed **37 errors** (6 migration + 31 schema). P21-E could not claim "no test-order
+dependency" while this leak remained.
+
+**Fix (R1, tests-only, no runtime change):** the three durable integration fixtures now
+snapshot `DATABASE_URL` and `REPORTING_USER_PASSWORD` before mutating them and restore them
+in the `finally` block (after the container is torn down), via a small module-local
+`_restore_env(snapshot)` helper:
+
+- `backend/tests/test_platform_p21e_durable_approval_runtime_closeout.py`
+- `backend/tests/test_platform_p21dd_runtime_storage_cutover_gate.py`
+- `backend/tests/test_platform_p21_durable_approval_adapter_implementation.py`
+
+A `None` snapshot value (key was absent) pops the key; otherwise the prior value is
+restored. This is symmetric with how each fixture already tears down its own container.
+
+**Validation (R1):** the full 8-suite sequence now reports **196 passed, 37 skipped,
+0 errors** (previously 196 passed, 37 errors). The migration/schema suites skip cleanly
+(`DATABASE_URL` is restored to its pre-fixture state, which is unset in the test
+environment) instead of erroring on a dead throwaway URL -- exactly the directive's
+expected outcome.
+
 ## Modified files (scope)
 
 All changes are within the allowed platform scope
-(`backend/tests/test_platform_p2*`). This slice is a single NEW test file plus this
-ledger (2 files). No file under `backend/api/v1/platform/p20/**` or
+(`backend/tests/test_platform_p2*`). The original P21-E slice was one NEW test file plus
+this ledger; R1 adds a tests-only env-restore fix to two sibling durable integration
+fixtures. No file under `backend/api/v1/platform/p20/**` or
 `backend/api/v1/platform/p21/**` is modified -- those are read-only here and are only
-re-verified.
+re-verified. No runtime code is changed by P21-E or R1.
 
 - `backend/tests/test_platform_p21e_durable_approval_runtime_closeout.py` (NEW) - 8
-  self-contained integration tests (closeout proof packet). See the Proof matrix below.
-- `ai-ledger/platform/2026-06-30_p21e_durable_approval_runtime_closeout.md` (NEW) - this
-  ledger.
+  self-contained integration tests (closeout proof packet); R1 adds the env-restore
+  helper + snapshot/restore to its `durable_urls` fixture. See the Proof matrix below.
+- `backend/tests/test_platform_p21dd_runtime_storage_cutover_gate.py` (R1 edit) - the
+  `durable_urls` fixture now snapshots/restores `DATABASE_URL` and
+  `REPORTING_USER_PASSWORD` around its throwaway container. Test logic unchanged.
+- `backend/tests/test_platform_p21_durable_approval_adapter_implementation.py` (R1 edit) -
+  the same snapshot/restore applied to its `durable_db_url` fixture. Test logic unchanged.
+- `ai-ledger/platform/2026-06-30_p21e_durable_approval_runtime_closeout.md` (NEW, R1
+  update) - this ledger.
 
 ## Runtime behavior summary (re-verified, unchanged from P21-D-D)
 
@@ -160,12 +198,34 @@ Per-file collected counts:
 | `test_platform_p21e_durable_approval_runtime_closeout.py` (NEW) | 8 | passed |
 | `test_platform_p21_durable_approval_models.py` | 26 | passed |
 | `test_platform_p21_durable_approval_adapter_skeleton.py` | 32 | passed |
-| `test_platform_p21_durable_approval_migration.py` | 6 | skip in isolation (see Known limitations) |
-| `test_platform_p21_durable_approval_schema.py` | 31 | skip in isolation (see Known limitations) |
+| `test_platform_p21_durable_approval_migration.py` | 6 | skip (no live durable DB URL in the test env) |
+| `test_platform_p21_durable_approval_schema.py` | 31 | skip (no live durable DB URL in the test env) |
 
 The full migration chain `001..020` (including `020_durable_approval_store`) is applied
 end-to-end by every integration fixture's `alembic upgrade head`, so migration 020 is
 re-proven applied-and-working on every integration run.
+
+Full 8-suite sequence (R1 isolation gate; the directive's required ordering -- governance,
+cutover gate, adapter, P21-E, models, skeleton, then migration, then schema):
+
+```
+python -m pytest \
+  tests/test_platform_p20_durable_approval_governance.py \
+  tests/test_platform_p21dd_runtime_storage_cutover_gate.py \
+  tests/test_platform_p21_durable_approval_adapter_implementation.py \
+  tests/test_platform_p21e_durable_approval_runtime_closeout.py \
+  tests/test_platform_p21_durable_approval_models.py \
+  tests/test_platform_p21_durable_approval_adapter_skeleton.py \
+  tests/test_platform_p21_durable_approval_migration.py \
+  tests/test_platform_p21_durable_approval_schema.py \
+  -q
+-> 196 passed, 37 skipped, 0 errors
+```
+
+Before R1 this same sequence produced 196 passed + **37 errors** (the migration/schema
+suites connected to the dead throwaway `DATABASE_URL` leaked by the integration fixtures).
+R1 restores the env in each fixture's `finally`, so the migration/schema suites skip
+cleanly (`DATABASE_URL` unset in the test env) and the sequence is error-free.
 
 ## Validation gates
 
@@ -174,11 +234,15 @@ re-proven applied-and-working on every integration run.
 - P20 durable approval governance tests -> 71 passed.
 - P21 adapter / models / skeleton tests -> 23 + 26 + 32 passed.
 - P21-E closeout tests -> 8 passed.
-- Non-ASCII scan on the changed file -> ASCII-clean (0 non-ASCII bytes).
+- Non-ASCII scan on the 3 changed test files -> ASCII-clean (0 non-ASCII bytes each).
 - Secret scan against the configured baseline -> 0 new findings (raw scan also 0; the 10
   inline test fixtures are marked allowlist and suppressed).
-- Forbidden-path audit -> CLEAN. The only changed paths are
-  `backend/tests/test_platform_p21e_durable_approval_runtime_closeout.py` and this ledger.
+- Full 8-suite sequence (governance -> cutover gate -> adapter -> P21-E -> models ->
+  skeleton -> migration -> schema) -> **196 passed, 37 skipped, 0 errors** (R1 isolation
+  gate; previously 196 passed + 37 errors).
+- Forbidden-path audit -> CLEAN. The changed paths are the 3 durable integration test
+  files (`test_platform_p21e_...`, `test_platform_p21dd_...`,
+  `test_platform_p21_durable_approval_adapter_implementation.py`) and this ledger.
   No path under product/tenant/payment/auth/frontend/alembic/env.py/lockfile/baseline/CI
   or any P22 path is touched.
 - `npx gitnexus analyze` -> indexed successfully (8,081 nodes | 24,760 edges | 528
@@ -221,7 +285,11 @@ proof. Findings: none blocking.
 - No manual SQL: prerequisites mirror `database/init.sql` programmatically and migration
   020 is applied via `alembic upgrade head`.
 - No test-order dependency: autouse per-test fixtures reset the storage mode, clear the
-  in-memory store, and truncate the durable tables; each test is independent.
+  in-memory store, and truncate the durable tables; each test is independent. **R1 closes
+  the cross-suite dependency the original Round 2 missed:** the durable integration
+  fixtures now restore `DATABASE_URL` / `REPORTING_USER_PASSWORD` in their `finally`, so
+  they no longer leak a dead throwaway URL to later suites (full 8-suite sequence is
+  error-free: 196 passed, 37 skipped, 0 errors).
 - Multi-request route lifecycle uses `NullPool` (documented in the helper) so sequential
   TestClient requests never reuse a stale pooled connection.
 - No skipped test is counted as P21-E proof: all 8 P21-E tests RUN and PASS in the
@@ -229,26 +297,26 @@ proof. Findings: none blocking.
 
 ## Risk classification
 
-- **Change class:** test-only, additive (one new self-contained integration test file).
+- **Change class:** test-only. Original P21-E: additive (one new integration test file).
+  R1: a tests-only env-restore fix applied to the new file and two sibling durable
+  integration fixtures (no test-logic change).
 - **Runtime risk:** NONE. No runtime, schema, migration, auth/RBAC, or frontend file is
   modified; the durable approval runtime is unchanged from P21-D-D and only re-verified.
 - **Blast radius (GitNexus `detect_changes`):** 0 affected processes; risk_level low; all
-  changed symbols are within the new test file.
-- **Reversibility:** fully reversible (delete the test file; the branch is not merged).
+  changed symbols are within the durable test files.
+- **Reversibility:** fully reversible (revert the R1 fixture edits / delete the new test
+  file; the branch is not merged).
 
 ## Known limitations
 
-1. **`test_platform_p21_durable_approval_migration.py` (6) and
-   `test_platform_p21_durable_approval_schema.py` (31) skip in isolation and ERROR only
-   when run AFTER the integration suites.** This is a PRE-EXISTING test-ordering
-   interaction, NOT a P21-E regression: those suites decide skip-vs-run from
-   `DATABASE_URL`, and the integration fixtures set `DATABASE_URL` to their throwaway
-   container during module setup; by the time these suites run, the container is torn down
-   and they attempt to connect to a dead URL. Confirmed pre-existing by reproducing the
-   same errors with the prior P21-D-D + adapter files alone (no P21-E file present). Both
-   skip cleanly when run in isolation. Migration 020 itself is re-proven applied-and-working
-   by every integration fixture's `alembic upgrade head`. Fixing the ordering interaction
-   is out of P21-E scope (it is test-harness behavior, not P21 runtime logic).
+1. **(Resolved in R1)** The migration/schema suites previously errored (37 errors) when run
+   AFTER the integration suites, because the durable integration fixtures leaked a dead
+   throwaway `DATABASE_URL`. R1 restores `DATABASE_URL` / `REPORTING_USER_PASSWORD` in each
+   fixture's `finally`; the full 8-suite sequence is now error-free (196 passed, 37
+   skipped, 0 errors). The migration/schema suites skip (they need a live migrated DB,
+   which the test environment does not provision for them) but no longer error. Migration
+   020 itself is re-proven applied-and-working by every integration fixture's
+   `alembic upgrade head`.
 2. P21-E adds no new functional capability by design (closeout / proof / hardening only).
 3. Retention / export operations (`expire_due_requests`, `purge_eligible_records`,
    `export_record`) remain deferred to the separately CTO-gated P21-D-future slice; this is

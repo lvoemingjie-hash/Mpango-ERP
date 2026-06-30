@@ -172,9 +172,31 @@ def _create_database(admin_sync_url: str, new_db: str) -> None:
         conn.close()
 
 
+def _restore_env(snapshot: dict) -> None:
+    """Restore os.environ keys captured before a fixture mutated them.
+
+    Test isolation: the durable integration fixtures point DATABASE_URL (and
+    setdefault REPORTING_USER_PASSWORD) at a throwaway container, then tear the
+    container down. Without restoring, later suites in the same pytest process
+    read a dead DATABASE_URL and error. A None snapshot value means the key was
+    absent and is popped; otherwise the prior value is restored.
+    """
+    for key, value in snapshot.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
 @pytest.fixture(scope="module")
 def durable_urls():
     """One throwaway container hosting two databases (mig ready / bare not ready)."""
+    # Snapshot the env BEFORE this fixture mutates it, so the finally can restore
+    # it (test isolation -- no leaked dead DATABASE_URL to later suites).
+    _env = {
+        "DATABASE_URL": os.environ.get("DATABASE_URL"),
+        "REPORTING_USER_PASSWORD": os.environ.get("REPORTING_USER_PASSWORD"),
+    }
     if not _docker_available():
         pytest.skip("docker not available; cannot start an ephemeral postgres container")
     container = f"p21e-ephemeral-{uuid4().hex[:10]}"
@@ -228,6 +250,7 @@ def durable_urls():
         }
     finally:
         subprocess.run(["docker", "rm", "-f", container], capture_output=True)
+        _restore_env(_env)  # test isolation: do not leak the throwaway DATABASE_URL
 
 
 @pytest.fixture(scope="module")

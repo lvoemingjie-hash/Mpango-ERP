@@ -81,9 +81,13 @@ def _enum(name: str) -> ENUM:
     """Reference an already-created public durable approval enum type.
 
     Mirrors migration 020's ``_enum`` helper: the type is referenced by name with
-    ``create_type=False`` so importing this module never emits DDL.
+    ``create_type=False`` so importing this module never emits DDL. The closed
+    value symbols (``_ENUM_VALUE_MAP``) are supplied so SQLAlchemy can decode rows
+    on read (a postgresql.ENUM created with create_type=False and no symbols
+    otherwise raises LookupError at row-load time). This is a Python-side decode
+    detail only; it emits no DDL and does not alter any column / type / migration.
     """
-    return ENUM(name=name, create_type=False)
+    return ENUM(*_ENUM_VALUE_MAP.get(name, ()), name=name, create_type=False)
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +152,28 @@ JOB_TYPE_VALUES = frozenset(
     ("retention_purge", "retention_export", "revalidation_sweep")
 )
 JOB_STATUS_VALUES = frozenset(("pending", "running", "completed", "failed", "skipped"))
+
+
+# Map each public durable enum TYPE NAME to its closed symbol tuple, so the ORM
+# ``_enum`` helper can supply the symbols for Python-side row decode. This only
+# affects decode; create_type=False is preserved and no DDL is ever emitted.
+_ENUM_VALUE_MAP: dict[str, tuple[str, ...]] = {
+    "durable_approval_state": tuple(STATE_VALUES),
+    "durable_approval_action_class": tuple(ACTION_CLASS_VALUES),
+    "durable_approval_execution_gate": tuple(EXECUTION_GATE_VALUES),
+    "durable_approval_source_status": tuple(SOURCE_STATUS_VALUES),
+    "durable_approval_validation_status": tuple(VALIDATION_STATUS_VALUES),
+    "durable_approval_retention_class": tuple(RETENTION_CLASS_VALUES),
+    "durable_approval_decision": tuple(DECISION_VALUES),
+    "durable_approval_actor_role": tuple(ACTOR_ROLE_VALUES),
+    "durable_approval_identity_context": tuple(IDENTITY_CONTEXT_VALUES),
+    "durable_approval_event_type": tuple(EVENT_TYPE_VALUES),
+    "durable_approval_audit_result": tuple(AUDIT_RESULT_VALUES),
+    "durable_approval_storage_class": tuple(STORAGE_CLASS_VALUES),
+    "durable_approval_scope_key": tuple(SCOPE_KEY_VALUES),
+    "durable_approval_job_type": tuple(JOB_TYPE_VALUES),
+    "durable_approval_job_status": tuple(JOB_STATUS_VALUES),
+}
 
 
 # ---------------------------------------------------------------------------

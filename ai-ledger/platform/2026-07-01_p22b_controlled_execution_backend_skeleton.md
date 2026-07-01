@@ -34,11 +34,13 @@ migration, no alembic change, and no new table.
 - **Base SHA:** `b788a55` (`origin/platform-dev`)
 - **Worktree:** `MPANGO ERP/_p22b_skeleton` (created from `origin/platform-dev`;
   upstream unset so `platform-dev` cannot be pushed by a bare `git push`)
-- **Commit chain (base..HEAD):**
+- **Commit chain (base..documented tip):**
   - `b788a55` -- base (origin/platform-dev)
   - `2ddffe7` -- `platform(p22b): controlled execution v0 non-executing backend skeleton` (code + tests + app.py route include)
   - `ae09698` -- `platform(p22b): controlled execution backend skeleton ledger` (initial ledger)
-  - `3d67220` -- `platform(p22b-r1): precondition binding fix` (CTO R1: target binding + required reason/execution_mode; +8 tests)
+  - `3d67220` -- `platform(p22b-r1): precondition binding fix` (CTO R1: target binding + required reason/execution_mode; +8 tests; **R1 code/security gate commit**)
+  - `e00534e` -- `platform(p22b-r2): ledger accuracy fix` (CTO R2: ledger-only; main table 48->56, 6->7 files, real gitnexus evidence)
+  - `0583077` -- `platform(p22b-r3): ledger commit-pointer accuracy fix` (CTO R3: ledger-only; distinguish R1 code commit from branch tip; **documented branch tip**)
 
 `platform-dev` was NOT merged and NOT pushed. Only the isolated branch carries
 these changes.
@@ -171,8 +173,9 @@ payment / billing, tenant business records, and arbitrary shell / SQL / script.
 ## 10. Validation Gates
 
 Code/security gate state at `3d67220` (the R1 code + security fix; unchanged by
-R2/R3, which are ledger-only). The branch tip after the R2 ledger-only fix is
-`e00534e`. The R1 re-run delta is in section 16.4.
+the ledger-only R2/R3/R4 fixes). Ledger accuracy fixes: `e00534e` (R2),
+`0583077` (R3). Documented branch tip: `0583077`. The R1 re-run delta is in
+section 16.4.
 
 | Gate | Result |
 |---|---|
@@ -182,7 +185,7 @@ R2/R3, which are ledger-only). The branch tip after the R2 ledger-only fix is
 | Non-ASCII scan on changed files | clean (all 7 files ASCII-only) |
 | detect-secrets (configured baseline) | clean (exit 0; deliberate redaction-test fixtures marked `pragma: allowlist secret`) |
 | Forbidden path audit | clean (app.py diff is route-include only; no subprocess/shell/harness/tenant/payment/product/alembic in p22 source) |
-| `npx gitnexus analyze` | indexed/current commit `e00534e`, status up-to-date; ~8.3k nodes / 25,521 edges / ~525 clusters / 300 flows (node & cluster counts fluctuate slightly across re-indexes; the 300-flow count is stable) |
+| `npx gitnexus analyze` | indexed/current commit `0583077`, status up-to-date; ~8.3k nodes / 25,521 edges / ~530 clusters / 300 flows (node & cluster counts fluctuate slightly across re-indexes; the 300-flow count is stable) |
 | `gitnexus detect_changes` (compare vs `origin/platform-dev`) | 7 changed files, 99 changed symbols (all in `app.py` + `p22/*` + this ledger), 4 affected, **risk: medium** |
 | Worktree clean (post-commit) | tracked tree clean (only gitignored `__pycache__` / `.gitnexus` / `CLAUDE.md` / `AGENTS.md` artifacts present, none committed) |
 
@@ -358,5 +361,6 @@ invariants and the 56-test + 361-regression-test coverage.
   to `schemas.py` / `services.py` at `3d67220`).
 - Tests: `backend/tests/test_platform_p22_controlled_execution.py` -- 56 tests
   (48 at `2ddffe7` + 8 R1 at `3d67220`).
-- Ledger: this file -- initial at `ae09698`; R1 update at `3d67220`; this R2
-  accuracy fix at the branch tip (commit chain in section 2).
+- Ledger: this file -- initial `ae09698`; R1 update `3d67220`; R2 `e00534e`;
+  R3 `0583077` (documented branch tip); R4 this commit-pointer alignment at the
+  branch tip (full chain in section 2).

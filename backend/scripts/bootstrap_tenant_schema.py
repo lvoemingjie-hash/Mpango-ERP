@@ -465,6 +465,92 @@ async def _reconcile_import_runs(db, ts: str) -> None:
     print(f"[reconcile] {ts}.import_runs: ensured indexes")
 
 
+async def _reconcile_intake_tables(db, ts: str) -> None:
+    """Idempotent reconciliation of U4-C intake skeleton indexes."""
+    intake_indexes = [
+        (
+            "ix_intake_workspaces_tenant_id",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_workspaces_tenant_id '
+            f'ON "{ts}".intake_workspaces (tenant_id)',
+            ("intake_workspaces", "(tenant_id)"),
+        ),
+        (
+            "ix_intake_workspaces_status",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_workspaces_status '
+            f'ON "{ts}".intake_workspaces (status)',
+            ("intake_workspaces", "(status)"),
+        ),
+        (
+            "ix_intake_workspaces_created_at",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_workspaces_created_at '
+            f'ON "{ts}".intake_workspaces (created_at)',
+            ("intake_workspaces", "(created_at)"),
+        ),
+        (
+            "ix_intake_uploads_workspace_id",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_uploads_workspace_id '
+            f'ON "{ts}".intake_uploads (workspace_id)',
+            ("intake_uploads", "(workspace_id)"),
+        ),
+        (
+            "ix_intake_uploads_tenant_id",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_uploads_tenant_id '
+            f'ON "{ts}".intake_uploads (tenant_id)',
+            ("intake_uploads", "(tenant_id)"),
+        ),
+        (
+            "ix_intake_product_rows_workspace_id",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_product_rows_workspace_id '
+            f'ON "{ts}".intake_product_rows (workspace_id)',
+            ("intake_product_rows", "(workspace_id)"),
+        ),
+        (
+            "ix_intake_product_rows_upload_order",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_product_rows_upload_order '
+            f'ON "{ts}".intake_product_rows (upload_id, row_index)',
+            ("intake_product_rows", "(upload_id, row_index)"),
+        ),
+        (
+            "ix_intake_product_rows_review_status",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_product_rows_review_status '
+            f'ON "{ts}".intake_product_rows (review_status)',
+            ("intake_product_rows", "(review_status)"),
+        ),
+        (
+            "ix_intake_validation_issues_workspace_id",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_validation_issues_workspace_id '
+            f'ON "{ts}".intake_validation_issues (workspace_id)',
+            ("intake_validation_issues", "(workspace_id)"),
+        ),
+        (
+            "ix_intake_validation_issues_row_id",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_validation_issues_row_id '
+            f'ON "{ts}".intake_validation_issues (row_id)',
+            ("intake_validation_issues", "(row_id)"),
+        ),
+        (
+            "ix_intake_validation_issues_severity",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_validation_issues_severity '
+            f'ON "{ts}".intake_validation_issues (severity)',
+            ("intake_validation_issues", "(severity)"),
+        ),
+    ]
+
+    for table_name in (
+        "intake_workspaces",
+        "intake_uploads",
+        "intake_product_rows",
+        "intake_validation_issues",
+    ):
+        if not await _table_exists(db, ts, table_name):
+            return
+
+    for index_name, create_sql, fragments in intake_indexes:
+        await _ensure_index(db, ts, index_name, create_sql, fragments)
+
+    print(f"[reconcile] {ts}: ensured U4-C intake table indexes")
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -667,6 +753,93 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
             "is_deleted BOOLEAN NOT NULL DEFAULT false,"
             "deleted_at TIMESTAMPTZ)",
+
+            # intake_workspaces - U4-C tenant-scoped intake skeleton
+            f'CREATE TABLE IF NOT EXISTS "{ts}".intake_workspaces ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "tenant_id UUID NOT NULL,"
+            "name VARCHAR(160) NOT NULL,"
+            "description TEXT,"
+            "source_type VARCHAR(32) NOT NULL,"
+            "status VARCHAR(32) NOT NULL DEFAULT 'OPEN',"
+            "approved_by UUID,"
+            "approved_at TIMESTAMPTZ,"
+            "metadata JSONB NOT NULL DEFAULT '{}'::jsonb,"
+            "created_by UUID, updated_by UUID,"
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "is_deleted BOOLEAN NOT NULL DEFAULT false,"
+            "deleted_at TIMESTAMPTZ)",
+
+            # intake_uploads - source metadata only; no file handling in U4-C
+            f'CREATE TABLE IF NOT EXISTS "{ts}".intake_uploads ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "tenant_id UUID NOT NULL,"
+            f'workspace_id UUID NOT NULL REFERENCES "{ts}".intake_workspaces(id) ON DELETE CASCADE,'
+            "filename VARCHAR(255) NOT NULL,"
+            "content_type VARCHAR(128),"
+            "file_ext VARCHAR(16) NOT NULL,"
+            "file_size_bytes INTEGER NOT NULL,"
+            "sha256 CHAR(64) NOT NULL,"
+            "storage_key VARCHAR(512),"
+            "status VARCHAR(32) NOT NULL DEFAULT 'RECEIVED',"
+            "row_count INTEGER NOT NULL DEFAULT 0,"
+            "column_count INTEGER NOT NULL DEFAULT 0,"
+            "headers_raw JSONB NOT NULL DEFAULT '[]'::jsonb,"
+            "headers_normalized JSONB NOT NULL DEFAULT '{}'::jsonb,"
+            "parse_summary JSONB,"
+            "created_by UUID, updated_by UUID,"
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "is_deleted BOOLEAN NOT NULL DEFAULT false,"
+            "deleted_at TIMESTAMPTZ)",
+
+            # intake_product_rows - staged rows only; no direct SKU writes
+            f'CREATE TABLE IF NOT EXISTS "{ts}".intake_product_rows ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "tenant_id UUID NOT NULL,"
+            f'workspace_id UUID NOT NULL REFERENCES "{ts}".intake_workspaces(id) ON DELETE CASCADE,'
+            f'upload_id UUID NOT NULL REFERENCES "{ts}".intake_uploads(id) ON DELETE CASCADE,'
+            "source_row_number INTEGER NOT NULL,"
+            "row_index INTEGER NOT NULL,"
+            "raw_values JSONB NOT NULL DEFAULT '{}'::jsonb,"
+            "normalized_values JSONB NOT NULL DEFAULT '{}'::jsonb,"
+            "mapping_version INTEGER NOT NULL DEFAULT 1,"
+            "sku_code VARCHAR(64),"
+            "name VARCHAR(255),"
+            "unit VARCHAR(32),"
+            "category VARCHAR(64),"
+            "unit_price NUMERIC(12,2),"
+            "barcode VARCHAR(128),"
+            "image_asset_id UUID,"
+            "review_status VARCHAR(32) NOT NULL DEFAULT 'UNREVIEWED',"
+            "dedupe_key VARCHAR(160),"
+            "created_by UUID, updated_by UUID,"
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "is_deleted BOOLEAN NOT NULL DEFAULT false,"
+            "deleted_at TIMESTAMPTZ)",
+
+            # intake_validation_issues - staged validation findings
+            f'CREATE TABLE IF NOT EXISTS "{ts}".intake_validation_issues ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "tenant_id UUID NOT NULL,"
+            f'workspace_id UUID NOT NULL REFERENCES "{ts}".intake_workspaces(id) ON DELETE CASCADE,'
+            f'upload_id UUID REFERENCES "{ts}".intake_uploads(id) ON DELETE CASCADE,'
+            f'row_id UUID REFERENCES "{ts}".intake_product_rows(id) ON DELETE CASCADE,'
+            "source_row_number INTEGER,"
+            "severity VARCHAR(16) NOT NULL,"
+            "code VARCHAR(64) NOT NULL,"
+            "field VARCHAR(128),"
+            "source_header VARCHAR(255),"
+            "message TEXT NOT NULL,"
+            "is_blocking BOOLEAN NOT NULL DEFAULT false,"
+            "resolved_at TIMESTAMPTZ,"
+            "resolved_by UUID,"
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "is_deleted BOOLEAN NOT NULL DEFAULT false,"
+            "deleted_at TIMESTAMPTZ)",
         ]
         for ddl in tables:
             await db.execute(text(ddl))
@@ -725,6 +898,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- import_runs: reconcile indexes (mirrors 022) ---
         await _reconcile_import_runs(db, ts)
+
+        # --- U4-C intake skeleton: reconcile indexes (mirrors 024) ---
+        await _reconcile_intake_tables(db, ts)
 
         await db.commit()
 

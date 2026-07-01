@@ -21,6 +21,7 @@ from models.platform_tenant import PlatformTenant
 from models.platform_audit_log import PlatformAuditLog
 from models.job import Job
 from models.import_run import ImportRun
+from models.intake import IntakeProductRow, IntakeUpload, IntakeValidationIssue, IntakeWorkspace
 
 __all__ = [
     # Base classes
@@ -74,4 +75,10 @@ __all__ = [
 
     # U3-B1: Import run tracker (tenant schema)
     "ImportRun",
+
+    # U4-C: Data intake staging skeleton (tenant schema)
+    "IntakeWorkspace",
+    "IntakeUpload",
+    "IntakeProductRow",
+    "IntakeValidationIssue",
 ]

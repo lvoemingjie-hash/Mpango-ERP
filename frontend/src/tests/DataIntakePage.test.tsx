@@ -10,6 +10,14 @@ const mockValidate = vi.fn();
 const mockListRows = vi.fn();
 const mockListIssues = vi.fn();
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}
+
 vi.mock('@/services/intakeService', async () => {
   const actual = await vi.importActual<typeof import('@/services/intakeService')>('@/services/intakeService');
   return {
@@ -222,6 +230,36 @@ describe('DataIntakePage', () => {
     expect(screen.getByText('NEEDS_REVIEW')).toBeInTheDocument();
     expect(screen.getByText('SKU-1')).toBeInTheDocument();
     expect(screen.getByText('Widget')).toBeInTheDocument();
+  });
+
+  it('waits for validate to resolve before fetching rows and issues', async () => {
+    const validateDeferred = deferred<typeof validationResponse>();
+    mockCreateWorkspace.mockResolvedValue(workspaceResponse);
+    mockUpload.mockResolvedValue(uploadResponse);
+    mockUpdateMapping.mockResolvedValue(mappingResponse);
+    mockValidate.mockReturnValue(validateDeferred.promise);
+    mockListRows.mockResolvedValue(rowsResponse);
+    mockListIssues.mockResolvedValue(issuesResponse);
+
+    render(<DataIntakePage />);
+
+    await createWorkspace();
+    await uploadFile();
+    await userEvent.selectOptions(screen.getByLabelText('Map Price'), 'unit_price');
+    await userEvent.click(screen.getByRole('button', { name: /save mapping/i }));
+    await screen.findByText(/mapped 2 staged row/i);
+    await userEvent.click(screen.getByRole('button', { name: /validate staging rows/i }));
+
+    expect(mockValidate).toHaveBeenCalledWith('workspace-1');
+    expect(mockListRows).not.toHaveBeenCalled();
+    expect(mockListIssues).not.toHaveBeenCalled();
+
+    validateDeferred.resolve(validationResponse);
+
+    await waitFor(() => {
+      expect(mockListRows).toHaveBeenCalledWith('workspace-1');
+      expect(mockListIssues).toHaveBeenCalledWith('workspace-1');
+    });
   });
 
   it('shows a friendly permission message for 403 responses', async () => {

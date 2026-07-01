@@ -174,8 +174,8 @@ export function DataIntakePage() {
     setLoading(true);
     setError(null);
     try {
-      const [validationResponse, rowsResponse, issuesResponse] = await Promise.all([
-        intakeService.validate(workspace.workspace_id),
+      const validationResponse = await intakeService.validate(workspace.workspace_id);
+      const [rowsResponse, issuesResponse] = await Promise.all([
         intakeService.listRows(workspace.workspace_id),
         intakeService.listIssues(workspace.workspace_id),
       ]);

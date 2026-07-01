@@ -106,3 +106,45 @@ No browser screenshot was captured in this session. The feature was verified thr
 - The UI is a minimal staging preview and does not include workspace listing/reopen behavior.
 - The page intentionally does not expose any SKU apply action; export/import-to-ERP remains future scope.
 - Large existing bundle warning remains unrelated to U4-E and was not addressed in this slice.
+
+## R1 Validate Sequencing Fix
+
+Finding:
+
+- `DataIntakePage.handleValidate()` previously called `validate`, `listRows`, and `listIssues` in one `Promise.all`.
+- That allowed rows/issues to be fetched before backend validation had finished writing fresh issue rows.
+
+Fix:
+
+- `handleValidate()` now awaits `intakeService.validate(workspace_id)` first.
+- After validate resolves successfully, rows and issues are fetched concurrently with `Promise.all([listRows, listIssues])`.
+- `setValidation` uses the validate response, and rows/issues are populated only from post-validation reads.
+
+R1 test evidence:
+
+```text
+pnpm exec vitest run src/tests/DataIntakePage.test.tsx
+6 passed
+
+pnpm exec vitest run SKUListPage
+8 passed
+```
+
+R1 additional checks:
+
+```text
+pnpm build
+PASS with existing Browserslist and chunk-size warnings
+
+git diff --check
+PASS
+
+Changed-file mojibake/non-ASCII scan
+PASS
+
+Changed-file credential scan
+PASS
+
+npx gitnexus analyze
+Repository indexed successfully
+```

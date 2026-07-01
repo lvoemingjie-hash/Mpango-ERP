@@ -49,7 +49,7 @@ is ever rendered from a response.
   - `79d3c97` -- `platform(p22c): controlled execution console types + API client (C1)`
   - `6da310a` -- `platform(p22c): controlled execution console page + route + nav (C2)`
   - `183b6fe` -- `platform(p22c): controlled execution console tests (C3)`
-  - `<C4>` -- `platform(p22c): controlled execution console ledger + read-order note (C4)` (this ledger + docs/ai/README.md P22-C note)
+  - `b95da4c` -- `platform(p22c): controlled execution console ledger + read-order note (C4)` (this ledger + docs/ai/README.md P22-C note; documented branch tip is the accuracy fix below)
 
 `platform-dev` was NOT merged after branch creation and NOT pushed. Only the
 isolated P22-C branch carries these changes.

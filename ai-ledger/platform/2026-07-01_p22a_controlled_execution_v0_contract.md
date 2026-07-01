@@ -249,3 +249,51 @@ restore, no arbitrary shell / SQL / script, no payment / billing touch, no auth 
 rewrite, no frontend, no backend, no AI agent execution, no notification implementation,
 no new durable approval execution state, and no change to the configured secret baseline.
 P22-B is not started. Approval is not execution, and durability is not execution.
+
+## 10. R1 contract wording consistency fix (2026-07-01)
+
+CTO review found one blocking wording conflict: section 1.3 was headed "Non-goals
+(explicit, for ALL of P22, not only P22-A)" yet included "no runtime code, no backend
+handlers, no ... test code" bullets. Read literally across all of P22, that would forbid
+the non-executing execution skeleton that section 16 explicitly permits P22-B to
+implement. R1 resolves the conflict without changing any contract semantics and without
+touching runtime code.
+
+Changes (docs-only):
+- Section 1.3 is split into two buckets:
+  - 1.3.1 P22-A-only non-goals -- no runtime code, no backend handlers, no frontend UI, no
+    tests, no dependency changes, no migrations / alembic changes in P22-A, no real
+    execution in P22-A, no execution scheduler / queue drain / automation runner in P22-A,
+    and no notification implementation in P22-A. These are forbidden in P22-A but are the
+    surface a future P22-B may implement as a non-executing skeleton under its gate.
+  - 1.3.2 All-P22 non-goals -- no uncontrolled execution, no tenant business mutation, no
+    destructive lifecycle execution, no real restore, no schema migration / data deletion
+    as executable v0 actions, no arbitrary shell / SQL / script, no payment / billing, no
+    product path, no auth / RBAC rewrite, no AI agent execution, no new durable approval
+    execution state, and no merge / push of platform-dev. These bind every P22 phase unless
+    a new contract revision is accepted.
+- Section 16 (P22-B entry gate) gains an explicit cross-reference: the 1.3.1 P22-A-only
+  non-goals are exactly the non-executing skeleton P22-B may begin to implement, the 1.3.2
+  all-P22 non-goals bind P22-B equally, and any P22-B migration requires separate explicit
+  approval. Section 16's substance (P22-B may implement only a non-executing skeleton) is
+  unchanged.
+
+No runtime code, backend, frontend, migration, alembic change, test code, or dependency
+change was touched. Scope is still docs / ledger only. The v0 allowlist, exclusion list,
+preconditions, dry-run model, request / result models, audit contract, idempotency, safety
+rules, separation policy, API shapes, test plan, acceptance criteria, and counterexamples
+are unchanged.
+
+R1 re-validation on the same isolated branch (all PASS):
+- git diff --check origin/platform-dev..HEAD : clean.
+- Non-ASCII scan of the changed docs / ledger files : 0 hits.
+- detect-secrets against the configured secret baseline : PASS (exit 0); baseline untouched.
+- Forbidden path audit : 0 hits (only docs/ai and ai-ledger/platform markdown changed).
+- npx gitnexus analyze : graph intact.
+- GitNexus detect_changes compare origin/platform-dev..HEAD : LOW risk, docs-only, 0
+  affected processes (re-verified after R1; exact summary counts in the R1 session report).
+- platform-dev untouched; R1 is a new commit on top of the pushed P22-A commit on the same
+  isolated branch.
+
+P22-A_CONTRACT_READY (docs-only, isolated branch, R1 wording fix applied, not merged to
+platform-dev). P22-B is not started.

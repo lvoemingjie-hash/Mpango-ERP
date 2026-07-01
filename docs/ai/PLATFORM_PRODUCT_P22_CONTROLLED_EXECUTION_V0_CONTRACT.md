@@ -122,39 +122,65 @@ The single most important invariant of P22, repeated throughout this document:
 - Define the future AI Operator Copilot boundary against this execution substrate
   (section 17).
 
-### 1.3 Non-goals (explicit, for ALL of P22, not only P22-A)
+### 1.3 Non-goals
 
-- No runtime code, no backend handlers, no frontend UI, no migrations, no alembic
-  changes, no test code, and no dependency changes.
+The non-goals split into two groups so the contract does not accidentally forbid the
+P22-B work it explicitly permits (section 16):
+
+- **P22-A-only non-goals** (1.3.1) are forbidden in P22-A, but a future P22-B may
+  implement the corresponding **non-executing** skeleton under its own entry gate.
+- **All-P22 non-goals** (1.3.2) are forbidden across **every** P22 phase unless a new
+  contract revision is accepted by the CTO.
+
+#### 1.3.1 P22-A-only non-goals (P22-B may implement these under its gate)
+
+- No runtime code, no backend handlers, no frontend UI, no test code, and no dependency
+  changes in P22-A.
+- No migrations, no alembic changes, and no new tables or columns in P22-A. (A future
+  P22-B migration, if any, requires separate explicit approval in the P22-B contract
+  review; see section 16.)
 - **No real execution in P22-A.** P22-A defines the contract only. No v0 action is
-  executed, dispatched, queued, scheduled, or run in P22-A.
+  executed, dispatched, queued, scheduled, or run in P22-A. (P22-B may add a
+  non-executing execution skeleton; real execution of any v0 action is separately
+  approved.)
+- **No execution scheduler, no queue drain, and no automation runner in P22-A.** (P22-B
+  may add a non-executing skeleton; a dispatching worker / queue drain is reserved for a
+  separately approved phase.)
+- **No notification / escalation implementation in P22-A.** P22-A may name notification as
+  a future contract; it implements no outbound channels, templates, or recipients.
+
+#### 1.3.2 All-P22 non-goals (every P22 phase, unless a new contract revision is accepted)
+
+- **No uncontrolled execution.** No v0 action executes outside this contract's
+  precondition / dry-run / allowlist / audit envelope, and no excluded action (section 3.2)
+  is ever executable in any P22 phase.
 - **No tenant business mutation, ever.** No v0 action reads, writes, creates, updates, or
   deletes tenant business records (orders, payments, invoices, customers, inventory,
   ledgers). The v0 allowlist is restricted to platform operational flags (reversible),
   read-only status refreshes, and a non-destructive restore *test* request.
-- **No destructive tenant lifecycle action.** `tenant.pause`, `tenant.resume`, and
+- **No destructive tenant lifecycle execution.** `tenant.pause`, `tenant.resume`, and
   `lifecycle.transition` are excluded from v0 and remain at `approved_execution_blocked`
-  with no execution.
+  with no execution; lifting any exclusion is a new contract revision and a new phase.
 - **No real restore.** `backup.restore_test_request` is request-only and targets an
   isolated test environment; it never restores real tenant data and never mutates tenant
   business data.
-- **No schema migration, no data deletion.** Neither is an executable v0 action; both are
-  excluded from the allowlist forever in v0.
-- **No payment / billing, no product code path, no arbitrary shell / SQL / script
-  execution.** These are excluded from v0 and have no execution surface in P22.
-- **No execution scheduler, no queue drain, no automation runner, no AI agent execution
-  in P22-A.** P22-A names a future AI Operator Copilot boundary (section 17); it grants no
-  AI execution power and adds no AI runtime code.
-- **No new durable approval state and no migration in P22-A.** P22-A does not add an
-  `executed`, `ready_to_execute`, or `execution_ready` state to the durable approval state
-  machine. The execution lifecycle lives on a separate execution record. Introducing an
-  explicit approval-level execution state is a separate future contract change, not P22-A.
-- **No auth / RBAC / session / tenancy / payment rewrite.** P22-A reuses the P10
-  identity-only guard conceptually; it defines no new auth transport.
-- **No notification / escalation implementation.** P22-A may name notification as a future
-  contract; it implements no outbound channels, templates, or recipients.
-- No product business code, no touch of product-dev-recovered, no push to any product
-  branch, and no merge or push of platform-dev.
+- **No schema migration and no data deletion as executable v0 actions.** Both are excluded
+  from the allowlist forever in v0. (This is distinct from committing migration files,
+  which is a P22-A-only non-goal in 1.3.1 and a P22-B gate question in section 16.)
+- **No arbitrary shell / SQL / script execution.** No general code-execution surface
+  exists or is introduced in any P22 phase.
+- **No payment / billing and no product code path.** No v0 action touches any payment,
+  billing, invoice, or financial record, or invokes product business code /
+  product-dev-recovered.
+- **No auth / RBAC / session / tenancy rewrite.** P22 reuses the P10 identity-only guard
+  conceptually; no new auth transport is defined or implemented.
+- **No AI agent execution.** P22 names a future AI Operator Copilot boundary (section 17);
+  it grants no AI execution power and adds no AI-specific runtime code in any P22 phase.
+- **No new durable approval execution state.** P22 adds no `executed`, `ready_to_execute`,
+  or `execution_ready` state to the durable approval state machine; the execution lifecycle
+  lives on the separate execution record. Introducing an approval-level execution state is
+  a separate future contract change.
+- No merge or push of platform-dev and no push to any product branch from any P22 phase.
 
 ## 2. Relationship to Prior Phases (P10 through P21)
 
@@ -896,6 +922,12 @@ catalog read, the dry-run validator (no mutation), execution-request recording (
 execution), and execution-result read -- wired to the P21 durable approval store, the P18
 request layer, and the P10 identity-only guard, able to receive, dry-run, validate, deny,
 deduplicate, and audit an execution request, but **not to execute any action**.
+
+This gate is the counterpart to the P22-A-only non-goals (1.3.1): the runtime code,
+backend handlers, dry-run validator, execution-request recording, and result read that are
+forbidden in P22-A are exactly the non-executing skeleton P22-B may begin to implement.
+The all-P22 non-goals (1.3.2) bind P22-B equally; nothing in this section relaxes them, and
+any P22-B migration requires separate explicit approval in the P22-B contract review.
 
 P22-B (and all of P22 before a separately approved execution phase) **must not**:
 

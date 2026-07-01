@@ -171,6 +171,14 @@ class TestOnboardTenantPermissionCompleteness:
             "roles:update",          # bootstrap-only
             "roles:delete",          # bootstrap-only
             "skus:import",           # future-use import contract
+            # U4-A: Data Intake permissions seeded for admin role.
+            # No routes/tables exist yet -- these are foundation-only.
+            "intake:read",
+            "intake:create",
+            "intake:update",
+            "intake:approve",
+            "intake:export",
+            "intake:import_to_erp",
         }
         unexpected = extra - known_valid_extras
         assert not unexpected, (

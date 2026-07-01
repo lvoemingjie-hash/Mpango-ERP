@@ -7,6 +7,8 @@ import { PlusIcon, CubeIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SKUFormModal } from './SKUFormModal';
 import { SKUImportModal } from './SKUImportModal';
+import { can } from '@/utils/permissions';
+import { SKU_PERMISSIONS } from '@/utils/permissions';
 
 export function SKUListPage() {
   const [skus, setSkus] = useState<SKU[]>([]);
@@ -19,8 +21,13 @@ export function SKUListPage() {
   const [selectedSku, setSelectedSku] = useState<SKU | null>(null);
 
   const user = useAuthStore((s) => s.user);
-  const canWrite = user?.permissions.includes('inventory:write') || user?.roles.includes('admin');
-  const canImport = user?.permissions.includes('skus:import') || user?.roles.includes('admin');
+
+  // U4-A: Fixed product gates -- previously checked 'inventory:write' (wrong
+  // domain). Products require 'skus:create' (Add) and 'skus:update' (Edit).
+  // Import requires 'skus:import'. Admin role bypasses all checks via can().
+  const canCreate = can(user, SKU_PERMISSIONS.CREATE);
+  const canUpdate = can(user, SKU_PERMISSIONS.UPDATE);
+  const canImport = can(user, SKU_PERMISSIONS.IMPORT);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,12 +62,14 @@ export function SKUListPage() {
         title="Products (SKUs)"
         description="Manage your product catalog and SKU codes."
         action={
-          canWrite && (
+          (canCreate || canImport) && (
             <div className="flex items-center gap-2">
-              <button onClick={handleCreate} className="btn-primary flex items-center gap-2">
-                <PlusIcon className="h-5 w-5" />
-                Add Product
-              </button>
+              {canCreate && (
+                <button onClick={handleCreate} className="btn-primary flex items-center gap-2">
+                  <PlusIcon className="h-5 w-5" />
+                  Add Product
+                </button>
+              )}
               {canImport && (
                 <button
                   onClick={() => setIsImportOpen(true)}
@@ -98,7 +107,7 @@ export function SKUListPage() {
           description="Your product catalog is empty. Add your first product to start selling, or import products from a spreadsheet."
           action={
             <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row">
-              {canWrite && (
+              {canCreate && (
                 <button onClick={handleCreate} className="btn-primary">
                   Add Product
                 </button>
@@ -137,7 +146,7 @@ export function SKUListPage() {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Status
                 </th>
-                {canWrite && (
+                {canUpdate && (
                   <th scope="col" className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                     Actions
                   </th>
@@ -166,7 +175,7 @@ export function SKUListPage() {
                       {sku.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  {canWrite && (
+                  {canUpdate && (
                     <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                       <button
                         onClick={() => handleEdit(sku)}

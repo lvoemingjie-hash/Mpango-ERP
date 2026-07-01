@@ -38,7 +38,7 @@ migration, no alembic change, and no new table.
   - `b788a55` -- base (origin/platform-dev)
   - `2ddffe7` -- `platform(p22b): controlled execution v0 non-executing backend skeleton` (code + tests + app.py route include)
   - `ae09698` -- `platform(p22b): controlled execution backend skeleton ledger` (initial ledger)
-  - `<R1 commit>` -- `platform(p22b-r1): precondition binding fix` (CTO R1: target binding + required reason/execution_mode; +8 tests)
+  - `3d67220` -- `platform(p22b-r1): precondition binding fix` (CTO R1: target binding + required reason/execution_mode; +8 tests)
 
 `platform-dev` was NOT merged and NOT pushed. Only the isolated branch carries
 these changes.
@@ -170,23 +170,25 @@ payment / billing, tenant business records, and arbitrary shell / SQL / script.
 
 ## 10. Validation Gates
 
+Final state at HEAD `3d67220` (post-R1; the R1 re-run delta is in section 16.4).
+
 | Gate | Result |
 |---|---|
 | `git diff --check origin/platform-dev..HEAD` | clean (exit 0; no whitespace errors) |
-| Backend P22 tests | 48 passed |
+| Backend P22 tests | 56 passed (48 base + 8 R1) |
 | P10 / P18 / P20 / P21 regression | 361 passed |
-| Non-ASCII scan on changed files | clean (all 6 files ASCII-only) |
+| Non-ASCII scan on changed files | clean (all 7 files ASCII-only) |
 | detect-secrets (configured baseline) | clean (exit 0; deliberate redaction-test fixtures marked `pragma: allowlist secret`) |
 | Forbidden path audit | clean (app.py diff is route-include only; no subprocess/shell/harness/tenant/payment/product/alembic in p22 source) |
-| `npx gitnexus analyze` | indexed: 8,299 nodes / 25,453 edges / 531 clusters / 300 flows (exit 0) |
-| `gitnexus detect_changes` (compare vs `origin/platform-dev`) | 6 changed files, 79 changed symbols (all in `app.py` + `p22/*`), 4 affected, **risk: medium** |
+| `npx gitnexus analyze` | indexed at commit `3d67220`, status up-to-date; ~8.3k nodes / 25,521 edges / ~530 clusters / 300 flows (node & cluster counts fluctuate slightly across re-indexes; the 300-flow count is stable) |
+| `gitnexus detect_changes` (compare vs `origin/platform-dev`) | 7 changed files, 99 changed symbols (all in `app.py` + `p22/*` + this ledger), 4 affected, **risk: medium** |
 | Worktree clean (post-commit) | tracked tree clean (only gitignored `__pycache__` / `.gitnexus` / `CLAUDE.md` / `AGENTS.md` artifacts present, none committed) |
 
 The `detect_changes` "medium" risk is expected and acceptable: the only
 non-additive touch is `app.py:configure_app` (the central router-registration
 function), and the change is a single additive `include_router` call plus a log
 line. Every other changed symbol is brand-new inside `p22/`. No symbol outside
-`app.py` + `p22/` changed.
+`app.py` + `p22/` (plus this ledger's markdown headings) changed.
 
 ## 11. Self-Review (two rounds)
 
@@ -340,16 +342,19 @@ R1; the non-executing, shaped-response, total-redaction invariants are preserved
 
 **Medium, runtime-skeleton mitigated.** R1 only TIGHTENS the execution gate (two
 new precondition checks + a target binding); it adds no execution surface, no
-new route, no migration, and no dependency change. The `detect_changes` scope is
-unchanged from section 10 (the same 6 files; `app.py` is not re-touched in R1).
-Risk remains MEDIUM for the same additive reason (the `configure_app` router
-include), fully mitigated by the non-executing invariants and the 56-test +
-361-regression-test coverage.
+new route, no migration, and no dependency change. The code scope is unchanged
+(`app.py` + `p22/*` + the test); `app.py` is not re-touched in R1. Relative to
+`origin/platform-dev`, `detect_changes` reports 7 changed files (the 6 code/test
+files + this ledger) and risk MEDIUM. Risk remains MEDIUM for the same additive
+reason (the `configure_app` router include), fully mitigated by the non-executing
+invariants and the 56-test + 361-regression-test coverage.
 
 ## 17. Deliverables
 
 - Code: `backend/api/v1/platform/p22/{__init__,schemas,services,routes}.py` +
-  `backend/api/app.py` route include (commit `2ddffe7`).
-- Tests: `backend/tests/test_platform_p22_controlled_execution.py` (48 tests,
-  commit `2ddffe7`).
-- Ledger: this file (commit `<this commit>`).
+  `backend/api/app.py` route include (initial `2ddffe7`; the R1 precondition fix
+  to `schemas.py` / `services.py` at `3d67220`).
+- Tests: `backend/tests/test_platform_p22_controlled_execution.py` -- 56 tests
+  (48 at `2ddffe7` + 8 R1 at `3d67220`).
+- Ledger: this file -- initial at `ae09698`; R1 update at `3d67220`; this R2
+  accuracy fix at the branch tip (commit chain in section 2).

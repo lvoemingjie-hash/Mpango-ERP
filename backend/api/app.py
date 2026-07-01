@@ -202,6 +202,11 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(platform_p20_router)
     logger.info("Platform P20 router registered (durable approval governance backend skeleton)")
 
+    # Platform Track P22 -- Controlled Execution v0 (non-executing backend skeleton, P22-B)
+    from api.v1.platform.p22.routes import router as platform_p22_router
+    app.include_router(platform_p22_router)
+    logger.info("Platform P22 router registered (controlled execution v0 non-executing skeleton)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

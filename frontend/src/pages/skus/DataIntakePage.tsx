@@ -1,0 +1,416 @@
+import { FormEvent, useMemo, useState } from 'react';
+import { ArrowLeftIcon, ArrowUpTrayIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { normalizeApiError } from '@/utils/errorHandling';
+import {
+  INTAKE_TARGET_FIELDS,
+  intakeService,
+  type IntakeMappingResult,
+  type IntakeProductRow,
+  type IntakeSourceType,
+  type IntakeTargetField,
+  type IntakeUploadResult,
+  type IntakeValidationIssue,
+  type IntakeValidationResult,
+  type IntakeWorkspace,
+} from '@/services/intakeService';
+
+const FIELD_LABELS: Record<IntakeTargetField, string> = {
+  sku_code: 'SKU code',
+  name: 'Product name',
+  unit: 'Unit',
+  category: 'Category',
+  unit_price: 'Unit price',
+  barcode: 'Barcode',
+};
+
+const ISSUE_COPY: Record<string, string> = {
+  INVALID_UNIT_PRICE: 'Unit price must be a valid decimal number.',
+  MISSING_SKU_CODE: 'SKU code is required for this staged row.',
+  MISSING_NAME: 'Product name is required for this staged row.',
+  DUPLICATE_STAGED_SKU_CODE: 'This SKU code appears more than once in the staged workspace.',
+  UNMAPPED_EXTRA_COLUMN: 'This source column is not mapped and will remain in staging only.',
+  FIELD_TOO_LONG: 'A mapped field is longer than the allowed limit.',
+  UNIT_DEFAULT_AVAILABLE: 'Unit is missing. U4-E does not write a default during staging preview.',
+};
+
+const AUTO_MAP_ALIASES: Record<IntakeTargetField, string[]> = {
+  sku_code: ['sku_code', 'sku code', 'sku', 'code', 'product_code', 'item_code'],
+  name: ['name', 'product name', 'product_name', 'item_name', 'title'],
+  unit: ['unit', 'uom', 'unit_of_measure'],
+  category: ['category', 'cat', 'product_category'],
+  unit_price: ['unit_price', 'unit price', 'price', 'selling_price'],
+  barcode: ['barcode', 'bar_code', 'ean', 'upc'],
+};
+
+function friendlyError(error: unknown): string {
+  const axErr = error as { response?: { status?: number; data?: { detail?: { code?: string; message?: string } } } };
+  if (axErr.response?.status === 403) {
+    return 'You do not have permission to manage intake workspaces. Ask an admin for intake access.';
+  }
+
+  const code = axErr.response?.data?.detail?.code;
+  if (code === 'ROW_LIMIT_EXCEEDED') return 'Upload rejected: the file has more than 5,000 staged rows.';
+  if (code === 'COLUMN_LIMIT_EXCEEDED') return 'Upload rejected: the file has more than 100 columns.';
+  if (code === 'CELL_TOO_LARGE') return 'Upload rejected: one cell is longer than 2,000 characters.';
+  if (code === 'HEADER_TOO_LARGE') return 'Upload rejected: one header is longer than 255 characters.';
+  if (code === 'XLSX_PARSE_ERROR') return 'Upload rejected: the XLSX file is unreadable or protected.';
+
+  return normalizeApiError(error);
+}
+
+function headerLabel(header: string, normalized?: string) {
+  return normalized && normalized !== header ? `${header} (${normalized})` : header;
+}
+
+function autoMap(headers: string[], normalized: Record<string, string>): Record<string, string> {
+  const usedTargets = new Set<string>();
+  const mapping: Record<string, string> = {};
+
+  for (const header of headers) {
+    const candidates = [header, normalized[header]].filter(Boolean).map((value) => value.toLowerCase().trim());
+    for (const field of INTAKE_TARGET_FIELDS) {
+      if (usedTargets.has(field)) continue;
+      if (candidates.some((candidate) => AUTO_MAP_ALIASES[field].includes(candidate))) {
+        mapping[header] = field;
+        usedTargets.add(field);
+        break;
+      }
+    }
+  }
+
+  return mapping;
+}
+
+function issueText(issue: IntakeValidationIssue) {
+  return ISSUE_COPY[issue.code] ?? issue.message;
+}
+
+function valueText(value: unknown) {
+  if (value === null || value === undefined || value === '') return '--';
+  return String(value);
+}
+
+export function DataIntakePage() {
+  const [workspaceName, setWorkspaceName] = useState('Product intake workspace');
+  const [sourceType, setSourceType] = useState<IntakeSourceType>('CUSTOMER_ONBOARDING');
+  const [workspace, setWorkspace] = useState<IntakeWorkspace | null>(null);
+  const [upload, setUpload] = useState<IntakeUploadResult | null>(null);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [mappingResult, setMappingResult] = useState<IntakeMappingResult | null>(null);
+  const [validation, setValidation] = useState<IntakeValidationResult | null>(null);
+  const [rows, setRows] = useState<IntakeProductRow[]>([]);
+  const [issues, setIssues] = useState<IntakeValidationIssue[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const headerKeys = useMemo(() => {
+    if (!upload) return [];
+    const normalizedKeys = Object.keys(upload.headers_normalized || {});
+    return normalizedKeys.length > 0 ? normalizedKeys : upload.headers_raw;
+  }, [upload]);
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await intakeService.createWorkspace({
+        name: workspaceName.trim(),
+        source_type: sourceType,
+        description: 'Frontend MVP staging preview workspace',
+      });
+      setWorkspace(response.data.data);
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUpload(file: File | undefined) {
+    if (!workspace || !file) return;
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.csv') && !lowerName.endsWith('.xlsx')) {
+      setError('Upload a .csv or .xlsx file for staging preview.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await intakeService.upload(workspace.workspace_id, file);
+      const uploadResult = response.data.data;
+      const headers = Object.keys(uploadResult.headers_normalized || {});
+      setUpload(uploadResult);
+      setMapping(autoMap(headers.length > 0 ? headers : uploadResult.headers_raw, uploadResult.headers_normalized || {}));
+      setMappingResult(null);
+      setValidation(null);
+      setRows([]);
+      setIssues([]);
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveMapping() {
+    if (!workspace) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await intakeService.updateMapping(workspace.workspace_id, mapping);
+      setMappingResult(response.data.data);
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleValidate() {
+    if (!workspace) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [validationResponse, rowsResponse, issuesResponse] = await Promise.all([
+        intakeService.validate(workspace.workspace_id),
+        intakeService.listRows(workspace.workspace_id),
+        intakeService.listIssues(workspace.workspace_id),
+      ]);
+      setValidation(validationResponse.data.data);
+      setRows(rowsResponse.data.data.items);
+      setIssues(issuesResponse.data.data.items);
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Data Intake Workspace"
+        description="Stage customer or catalog files, map fields, validate rows, and review issues before any SKU work is considered."
+        action={
+          <a href="/skus" className="btn-secondary flex items-center gap-2">
+            <ArrowLeftIcon className="h-4 w-4" />
+            Back to Products
+          </a>
+        }
+      />
+
+      <div className="mb-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
+        <strong>MVP staging preview:</strong> this page writes only intake staging data. It does not create official SKUs and has no apply button.
+      </div>
+
+      {error && (
+        <div className="mb-6 rounded-md bg-red-50 p-4 text-sm text-red-800" role="alert">
+          {error}
+        </div>
+      )}
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-gray-900">1. Create workspace</h2>
+        <form onSubmit={handleCreate} className="mt-4 grid gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
+          <label className="block text-sm font-medium text-gray-700">
+            Workspace name
+            <input
+              value={workspaceName}
+              onChange={(event) => setWorkspaceName(event.target.value)}
+              className="input-field mt-1"
+              required
+            />
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Source type
+            <select
+              value={sourceType}
+              onChange={(event) => setSourceType(event.target.value as IntakeSourceType)}
+              className="input-field mt-1"
+            >
+              <option value="CUSTOMER_ONBOARDING">Customer onboarding</option>
+              <option value="CATALOG_REFRESH">Catalog refresh</option>
+              <option value="STOCK_INTAKE">Stock intake</option>
+            </select>
+          </label>
+          <button type="submit" className="btn-primary" disabled={loading || workspaceName.trim().length === 0}>
+            Create workspace
+          </button>
+        </form>
+        {workspace && (
+          <p className="mt-3 text-sm text-green-700">
+            Workspace created: <span className="font-medium">{workspace.name}</span> ({workspace.status})
+          </p>
+        )}
+      </section>
+
+      <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-gray-900">2. Upload CSV/XLSX</h2>
+        <div className="mt-4 rounded-lg border-2 border-dashed border-gray-300 p-6 text-center">
+          <ArrowUpTrayIcon className="mx-auto h-9 w-9 text-gray-400" />
+          <p className="mt-2 text-sm text-gray-600">Choose a .csv or .xlsx file for parser preview.</p>
+          <input
+            type="file"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            aria-label="Upload CSV or XLSX file"
+            disabled={!workspace || loading}
+            onChange={(event) => handleUpload(event.target.files?.[0])}
+            className="mx-auto mt-4 block text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-primary-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100"
+          />
+        </div>
+
+        {upload && (
+          <div className="mt-4 rounded-md bg-blue-50 p-4 text-sm text-blue-900">
+            <div className="font-medium">Parser result</div>
+            <dl className="mt-2 grid gap-2 sm:grid-cols-3">
+              <div><dt className="text-blue-700">Filename</dt><dd>{upload.filename}</dd></div>
+              <div><dt className="text-blue-700">Rows</dt><dd>{upload.row_count}</dd></div>
+              <div><dt className="text-blue-700">Columns</dt><dd>{upload.column_count}</dd></div>
+            </dl>
+            <div className="mt-3">
+              <span className="text-blue-700">Headers:</span> {headerKeys.join(', ')}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {upload && (
+        <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">3. Map fields</h2>
+          <div className="mt-4 overflow-hidden rounded-md border border-gray-200">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium text-gray-500">Source header</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-500">Intake field</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 bg-white">
+                {headerKeys.map((header) => (
+                  <tr key={header}>
+                    <td className="px-4 py-2 font-medium text-gray-900">
+                      {headerLabel(header, upload.headers_normalized[header])}
+                    </td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={mapping[header] || ''}
+                        onChange={(event) => setMapping((current) => ({ ...current, [header]: event.target.value }))}
+                        className="input-field py-1 text-sm"
+                        aria-label={`Map ${header}`}
+                      >
+                        <option value="">Skip</option>
+                        {INTAKE_TARGET_FIELDS.map((field) => (
+                          <option key={field} value={field}>{FIELD_LABELS[field]}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button type="button" className="btn-primary" onClick={handleSaveMapping} disabled={loading}>
+              Save mapping
+            </button>
+            {mappingResult && (
+              <span className="text-sm text-green-700">
+                Mapped {mappingResult.mapped_rows} staged row(s). {mappingResult.unit_default_note}
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
+      {mappingResult && (
+        <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">4. Validate staging preview</h2>
+          <button type="button" className="btn-primary mt-4" onClick={handleValidate} disabled={loading}>
+            Validate staging rows
+          </button>
+
+          {validation && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <SummaryCard label="Rows" value={validation.row_count} />
+              <SummaryCard label="Errors" value={validation.error_count} tone={validation.error_count ? 'error' : 'neutral'} />
+              <SummaryCard label="Warnings" value={validation.warning_count} tone={validation.warning_count ? 'warning' : 'neutral'} />
+              <SummaryCard label="Status" value={validation.status} />
+            </div>
+          )}
+        </section>
+      )}
+
+      {validation && (
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">Rows preview</h2>
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">Source row</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">SKU</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">Name</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">Unit price</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">Raw values</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {rows.map((row) => (
+                    <tr key={row.row_id}>
+                      <td className="px-3 py-2">{row.source_row_number}</td>
+                      <td className="px-3 py-2">{valueText(row.normalized_values.sku_code ?? row.sku_code)}</td>
+                      <td className="px-3 py-2">{valueText(row.normalized_values.name ?? row.name)}</td>
+                      <td className="px-3 py-2">{valueText(row.normalized_values.unit_price ?? row.unit_price)}</td>
+                      <td className="px-3 py-2 text-gray-500">{Object.keys(row.raw_values).join(', ') || '--'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">Issues</h2>
+            {issues.length === 0 ? (
+              <p className="mt-4 text-sm text-green-700">No validation issues returned.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {issues.map((issue) => (
+                  <li key={issue.issue_id} className="rounded-md border border-gray-200 p-3">
+                    <div className="flex items-start gap-2">
+                      <ExclamationTriangleIcon className={issue.severity === 'ERROR' ? 'mt-0.5 h-5 w-5 text-red-500' : 'mt-0.5 h-5 w-5 text-amber-500'} />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {issue.severity}: {issueText(issue)}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {issue.source_row_number ? `Source row ${issue.source_row_number}` : 'File-level issue'}
+                          {issue.field ? ` - ${issue.field}` : ''}
+                          {issue.source_header ? ` - ${issue.source_header}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, tone = 'neutral' }: { label: string; value: number | string; tone?: 'neutral' | 'error' | 'warning' }) {
+  const toneClass = tone === 'error' ? 'text-red-700' : tone === 'warning' ? 'text-amber-700' : 'text-gray-900';
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 p-4">
+      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</div>
+      <div className={`mt-1 text-lg font-semibold ${toneClass}`}>{value}</div>
+    </div>
+  );
+}

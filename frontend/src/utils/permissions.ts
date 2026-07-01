@@ -75,8 +75,8 @@ export const SKU_PERMISSIONS = {
  * tests can reference them by name. The backend seeds include these codes so
  * admin users automatically have them once a tenant is bootstrapped.
  *
- * NOTE: No routes, tables, or upload handlers exist yet for these permissions.
- * This is documentation/foundation only -- U4 will wire the actual features.
+ * U4-E wires the first frontend staging-preview entry point for these permissions.
+ * Public-link, export, and import-to-ERP flows remain out of scope.
  */
 export const INTAKE_PERMISSIONS = {
   READ: 'intake:read',

@@ -10,6 +10,7 @@ import { CreateOrderPage as WholesalerCreateOrderPage } from '@/pages/orders/Cre
 import { InventoryPage } from '@/pages/inventory/InventoryPage';
 import { InventoryLogPage } from '@/pages/inventory/InventoryLogPage';
 import { SKUListPage } from '@/pages/skus/SKUListPage';
+import { DataIntakePage } from '@/pages/skus/DataIntakePage';
 import { TenantListPage } from '@/pages/tenants/TenantListPage';
 import { RetailerListPage } from '@/pages/retailers/RetailerListPage';
 import { RetailerPricingPage } from '@/pages/pricing/RetailerPricingPage';
@@ -32,17 +33,17 @@ const router = createBrowserRouter([
       { path: '/login', element: <LoginPage /> },
     ],
   },
-  // Client login — separate from wholesaler login
+  // Client login - separate from wholesaler login
   {
     path: '/client/login',
     element: <ClientLoginPage />,
   },
-  // Workspace selector — after login, but before app
+  // Workspace selector - after login, but before app
   {
     path: '/select-workspace',
     element: <WorkspaceSelectorPage />,
   },
-  // Invite page — public, no auth required
+  // Invite page - public, no auth required
   {
     path: '/invite/:code',
     element: <InvitePage />,
@@ -60,6 +61,7 @@ const router = createBrowserRouter([
           { path: '/inventory', element: <InventoryPage /> },
           { path: '/inventory/logs', element: <InventoryLogPage /> },
           { path: '/skus', element: <SKUListPage /> },
+          { path: '/skus/intake', element: <DataIntakePage /> },
           { path: '/retailers', element: <RetailerListPage /> },
           { path: '/pricing', element: <RetailerPricingPage /> },
           { path: '/tenants', element: <TenantListPage /> },

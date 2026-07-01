@@ -3,11 +3,11 @@ import { skuService, type SKU } from '@/services/skuService';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { useAuthStore } from '@/stores/authStore';
-import { PlusIcon, CubeIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, CubeIcon, ArrowUpTrayIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SKUFormModal } from './SKUFormModal';
 import { SKUImportModal } from './SKUImportModal';
-import { can } from '@/utils/permissions';
+import { can, canAny, INTAKE_PERMISSIONS } from '@/utils/permissions';
 import { SKU_PERMISSIONS } from '@/utils/permissions';
 
 export function SKUListPage() {
@@ -28,6 +28,7 @@ export function SKUListPage() {
   const canCreate = can(user, SKU_PERMISSIONS.CREATE);
   const canUpdate = can(user, SKU_PERMISSIONS.UPDATE);
   const canImport = can(user, SKU_PERMISSIONS.IMPORT);
+  const canUseIntake = canAny(user, [INTAKE_PERMISSIONS.CREATE, INTAKE_PERMISSIONS.UPDATE]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,7 +63,7 @@ export function SKUListPage() {
         title="Products (SKUs)"
         description="Manage your product catalog and SKU codes."
         action={
-          (canCreate || canImport) && (
+          (canCreate || canImport || canUseIntake) && (
             <div className="flex items-center gap-2">
               {canCreate && (
                 <button onClick={handleCreate} className="btn-primary flex items-center gap-2">
@@ -78,6 +79,12 @@ export function SKUListPage() {
                   <ArrowUpTrayIcon className="h-5 w-5" />
                   Import Products
                 </button>
+              )}
+              {canUseIntake && (
+                <a href="/skus/intake" className="btn-secondary flex items-center gap-2">
+                  <ClipboardDocumentListIcon className="h-5 w-5" />
+                  Data Intake
+                </a>
               )}
             </div>
           )
@@ -120,6 +127,12 @@ export function SKUListPage() {
                   <ArrowUpTrayIcon className="h-4 w-4" />
                   Import Products
                 </button>
+              )}
+              {canUseIntake && (
+                <a href="/skus/intake" className="btn-secondary flex items-center gap-2">
+                  <ClipboardDocumentListIcon className="h-4 w-4" />
+                  Data Intake
+                </a>
               )}
             </div>
           }

@@ -141,7 +141,16 @@ async def test_024_migration_tables_include_tenant_and_audit_columns(async_sessi
     await _run_024_upgrade(async_session, TEST_TENANT_SCHEMA)
 
     for table in INTAKE_TABLES:
-        for column in ("id", "tenant_id", "created_at", "updated_at", "is_deleted", "deleted_at"):
+        for column in (
+            "id",
+            "tenant_id",
+            "created_by",
+            "updated_by",
+            "created_at",
+            "updated_at",
+            "is_deleted",
+            "deleted_at",
+        ):
             assert await _column_exists(async_session, TEST_TENANT_SCHEMA, table, column), (
                 f"{table}.{column} missing"
             )

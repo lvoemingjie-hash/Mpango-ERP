@@ -89,6 +89,7 @@ python-json-logger = "2.0.7"
 
 # Metrics
 prometheus-client = "0.21.1"
+openpyxl = "3.1.5"
 
 [tool.poetry.group.dev.dependencies]
 # S2.5 Batch C: Dev dependencies pinned to exact versions

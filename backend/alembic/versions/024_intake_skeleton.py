@@ -122,6 +122,8 @@ def upgrade() -> None:
             sa.Column("is_blocking", sa.Boolean(), nullable=False, server_default=sa.text("false")),
             sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("resolved_by", postgresql.UUID(as_uuid=True), nullable=True),
+            sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+            sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
             sa.Column("is_deleted", sa.Boolean(), nullable=False, server_default=sa.text("false")),

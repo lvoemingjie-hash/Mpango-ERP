@@ -94,6 +94,7 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
         profiling_test,  # S3-A Part 4
         jobs_test,  # S4-A
         sku_imports,  # U3-B2: SKU import preview/validate
+        intake,  # U4-C: intake workspace skeleton
     )
 
     app.include_router(health.router, prefix="/health", tags=["health"])
@@ -120,6 +121,8 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(skus.router, prefix="/api/v1/skus", tags=["skus"])
     # U3-B2: SKU import preview + validate (write to import_runs only)
     app.include_router(sku_imports.router, prefix="/api/v1/skus/import", tags=["sku-imports"])
+    # U4-C: internal-login-only intake workspace skeleton
+    app.include_router(intake.router, prefix="/api/v1/intake", tags=["intake"])
     app.include_router(inventory.router, prefix="/api/v1/inventory", tags=["inventory"])
     app.include_router(wholesalers.router, prefix="/api/v1/wholesalers", tags=["wholesalers"])
     app.include_router(invitations.router, prefix="/api/v1", tags=["invitations"])

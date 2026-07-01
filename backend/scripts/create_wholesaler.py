@@ -189,7 +189,7 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
         ("skus:create", "Create SKUs"),
         ("skus:update", "Update SKUs"),
         ("skus:import", "Import SKUs via preview/validate/apply contract"),
-        # -- Data Intake (U4-A foundation: permissions only, no routes yet) --
+        # -- Data Intake (U4 foundation: U4-C exposes workspace routes) --
         ("intake:read", "Read data intake batches"),
         ("intake:create", "Create data intake batches"),
         ("intake:update", "Update data intake batches"),

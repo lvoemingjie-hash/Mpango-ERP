@@ -172,7 +172,8 @@ class TestOnboardTenantPermissionCompleteness:
             "roles:delete",          # bootstrap-only
             "skus:import",           # future-use import contract
             # U4-A: Data Intake permissions seeded for admin role.
-            # No routes/tables exist yet -- these are foundation-only.
+            # U4-C uses read/create for workspace routes; the rest remain seeded
+            # ahead of later U4 slices.
             "intake:read",
             "intake:create",
             "intake:update",

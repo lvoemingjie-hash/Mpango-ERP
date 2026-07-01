@@ -6,7 +6,7 @@
 **Base:** `b788a55` (`origin/platform-dev` -- "merge: P22-A controlled execution v0 contract")
 **Contract:** `docs/ai/PLATFORM_PRODUCT_P22_CONTROLLED_EXECUTION_V0_CONTRACT.md` (P22-A)
 **Author:** Codex (Claude worker)
-**Status:** Ready for CTO review
+**Status:** R1 applied (precondition binding fix); ready for CTO re-review
 
 ---
 
@@ -37,7 +37,8 @@ migration, no alembic change, and no new table.
 - **Commit chain (base..HEAD):**
   - `b788a55` -- base (origin/platform-dev)
   - `2ddffe7` -- `platform(p22b): controlled execution v0 non-executing backend skeleton` (code + tests + app.py route include)
-  - `<this commit>` -- `platform(p22b): controlled execution backend skeleton ledger` (this file)
+  - `ae09698` -- `platform(p22b): controlled execution backend skeleton ledger` (initial ledger)
+  - `<R1 commit>` -- `platform(p22b-r1): precondition binding fix` (CTO R1: target binding + required reason/execution_mode; +8 tests)
 
 `platform-dev` was NOT merged and NOT pushed. Only the isolated branch carries
 these changes.
@@ -144,7 +145,7 @@ payment / billing, tenant business records, and arbitrary shell / SQL / script.
 
 ## 9. Tests and Counts
 
-- **P22 suite: 48 passed, 0 failed, 0 skipped**
+- **P22 suite: 56 passed, 0 failed, 0 skipped** (48 base + 8 R1; see section 17)
   (`backend/tests/test_platform_p22_controlled_execution.py`).
   Coverage: catalog exactness (7 allowlist + named exclusions + storage/auth),
   dry-run passed variants (write/read/audit-shape/reversible),
@@ -259,7 +260,93 @@ None.
 - `platform-dev` not merged and not pushed (only the isolated branch is pushed).
 - P22-C (real execution) not started.
 
-## 16. Deliverables
+## 16. P22-B-R1 Precondition Binding Fix (CTO review rework)
+
+CTO review of the initial skeleton approved the scope and the non-execution main
+line but blocked merge on two execution-gate precondition gaps. Both are fixed in
+R1; the non-executing, shaped-response, total-redaction invariants are preserved.
+
+### 16.1 CTO findings
+
+1. **[P1] Approval target was not bound to the request target.**
+   `_check_approval_preconditions()` validated approval state / quorum / action /
+   source / maker-checker separation but NOT `approval.tenant_id ==
+   request.tenant_id`. Reproduction: approval scoped to tenant-A, dry-run
+   targeting tenant-B still returned `executable=true, block_reasons=[]`. This
+   violates the P22-A "same approval / action / target / executor" binding: a
+   recorded request would carry a wrong target that a future real-execution phase
+   would inherit.
+
+2. **[P1] Required confirmation fields could be missing/invalid and still pass.**
+   `reason` and `execution_mode` are declared required in the schemas, but the
+   service only enforced the idempotency key; an invalid `execution_mode` was
+   silently coerced to `None` instead of blocking. Reproduction: empty `reason`
+   + missing/invalid `execution_mode` still returned `passed=true`. An execution-
+   gate skeleton must not return `passed` when a required confirmation field is
+   absent.
+
+### 16.2 R1 fix
+
+- **Target binding.** `_check_approval_preconditions()` now takes `tenant_id` and
+  appends `target_mismatch_approval` when `approval.tenant_id != request.tenant_id`
+  (both null means platform-wide and matches; values are normalized so empty is
+  never silently treated as a match). Both the dry-run and the request-creation
+  paths pass `request.tenant_id`. This is layered on top of the existing dry-run
+  binding check (which already compares the bound dry-run's tenant to the
+  request's tenant), so a target change is caught at dry-run, at request binding,
+  and at approval re-validation.
+- **Required fields.** Added two closed-vocabulary block codes --
+  `reason_required` and `execution_mode_required` -- and the dry-run and request-
+  creation paths now block when `reason` is empty or when `execution_mode` is not
+  exactly `sync | queued`. The response field stays request-lenient (Optional) so
+  the failure is a SHAPED blocked response (`result_state=blocked`,
+  `executable=false`), never a 422/500, and never an execution. The internal
+  `safe_mode` coercion to `None` is retained ONLY to keep the bad value off the
+  strict response Literal (defense against a 500); the block code records the
+  failure.
+
+### 16.3 R1 regression tests (8 new; 56 total)
+
+- `test_dry_run_target_mismatch_tenant_blocked` -- approval tenant-A + request
+  tenant-B -> `target_mismatch_approval`, non-executing.
+- `test_dry_run_matching_tenant_passes` -- same tenant -> no target mismatch
+  (regression guard for the happy path).
+- `test_dry_run_missing_reason_blocked` -- empty reason -> `reason_required`.
+- `test_dry_run_invalid_execution_mode_blocked` -- `execution_mode="realtime"` ->
+  `execution_mode_required`.
+- `test_dry_run_missing_execution_mode_blocked` -- `execution_mode=None` -> shaped
+  blocked response (HTTP 200, not 422/500), `execution_mode_required`.
+- `test_request_missing_reason_blocked` -- request empty reason -> blocked, not
+  recorded.
+- `test_request_invalid_execution_mode_blocked` -- request `execution_mode="async"`
+  -> blocked, not recorded.
+- `test_blocked_responses_non_executing_and_audit_redacted` -- a blocked request
+  stays `executed=false / execution_allowed=false / execution_started=false` and
+  the denial audit carries no raw reason value.
+
+### 16.4 R1 validation gates (re-run)
+
+| Gate | Result |
+|---|---|
+| P22 suite | 56 passed (48 base + 8 R1), 0 failed, 0 skipped |
+| P10 / P18 / P20 / P21 regression | 361 passed |
+| `git diff --check` | clean |
+| non-ASCII scan (changed files) | clean |
+| detect-secrets (configured baseline) | clean |
+| forbidden-symbol re-audit (services.py re-touched) | clean |
+| `npx gitnexus analyze` | up to date / exit 0 |
+
+### 16.5 Risk classification (unchanged)
+
+**Medium, runtime-skeleton mitigated.** R1 only TIGHTENS the execution gate (two
+new precondition checks + a target binding); it adds no execution surface, no
+new route, no migration, and no dependency change. The `detect_changes` scope is
+unchanged from section 10 (the same 6 files; `app.py` is not re-touched in R1).
+Risk remains MEDIUM for the same additive reason (the `configure_app` router
+include), fully mitigated by the non-executing invariants and the 56-test +
+361-regression-test coverage.
+
+## 17. Deliverables
 
 - Code: `backend/api/v1/platform/p22/{__init__,schemas,services,routes}.py` +
   `backend/api/app.py` route include (commit `2ddffe7`).

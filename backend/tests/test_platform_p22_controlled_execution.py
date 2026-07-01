@@ -969,6 +969,110 @@ def test_default_resolver_reads_p20_in_memory_store():
 
 
 # ============================================================================
+# P22-B-R1: precondition target binding + required confirmation fields
+# ============================================================================
+
+
+def test_dry_run_target_mismatch_tenant_blocked():
+    # Approval is scoped to tenant-A; the dry-run targets tenant-B -> blocked.
+    # Reproduces CTO finding #1 (target binding was missing).
+    with _client() as c:
+        _seed("ap-1", tenant_id="tenant-A")
+        payload = _dry_run_payload("ap-1")
+        payload["tenant_id"] = "tenant-B"
+        body = c.post(f"{P22}/dry-run", json=payload, headers=AUTH_HEADERS).json()
+    assert body["executable"] is False
+    assert body["verdict"] == "blocked"
+    assert "target_mismatch_approval" in body["block_reasons"]
+    assert body["executed"] is False
+    assert body["execution_allowed"] is False
+    assert body["execution_started"] is False
+
+
+def test_dry_run_matching_tenant_passes():
+    # Same tenant on approval and request -> no target_mismatch (regression guard).
+    with _client() as c:
+        _seed("ap-1", tenant_id="tenant-A")
+        payload = _dry_run_payload("ap-1")
+        payload["tenant_id"] = "tenant-A"
+        body = c.post(f"{P22}/dry-run", json=payload, headers=AUTH_HEADERS).json()
+    assert body["executable"] is True
+    assert "target_mismatch_approval" not in body["block_reasons"]
+
+
+def test_dry_run_missing_reason_blocked():
+    with _client() as c:
+        _seed("ap-1")
+        payload = _dry_run_payload("ap-1")
+        payload["reason"] = ""
+        body = c.post(f"{P22}/dry-run", json=payload, headers=AUTH_HEADERS).json()
+    assert body["executable"] is False
+    assert "reason_required" in body["block_reasons"]
+
+
+def test_dry_run_invalid_execution_mode_blocked():
+    with _client() as c:
+        _seed("ap-1")
+        payload = _dry_run_payload("ap-1")
+        payload["execution_mode"] = "realtime"  # invalid
+        body = c.post(f"{P22}/dry-run", json=payload, headers=AUTH_HEADERS).json()
+    assert body["executable"] is False
+    assert "execution_mode_required" in body["block_reasons"]
+
+
+def test_dry_run_missing_execution_mode_blocked():
+    with _client() as c:
+        _seed("ap-1")
+        payload = _dry_run_payload("ap-1")
+        payload["execution_mode"] = None  # missing
+        r = c.post(f"{P22}/dry-run", json=payload, headers=AUTH_HEADERS)
+    assert r.status_code == 200  # shaped blocked response, not a 422/500
+    assert "execution_mode_required" in r.json()["block_reasons"]
+
+
+def test_request_missing_reason_blocked():
+    with _client() as c:
+        dry = _passed_dry_run(c)
+        payload = _request_payload("ap-1", "support_mode.on", dry["dry_run_id"])
+        payload["reason"] = ""
+        body = c.post(f"{P22}/requests", json=payload, headers=AUTH_HEADERS).json()
+    assert body["result_state"] == "blocked"
+    assert "reason_required" in body["block_reasons"]
+    assert body["execution_request_id"] is None  # not recorded
+
+
+def test_request_invalid_execution_mode_blocked():
+    with _client() as c:
+        dry = _passed_dry_run(c)
+        payload = _request_payload("ap-1", "support_mode.on", dry["dry_run_id"])
+        payload["execution_mode"] = "async"  # invalid
+        body = c.post(f"{P22}/requests", json=payload, headers=AUTH_HEADERS).json()
+    assert body["result_state"] == "blocked"
+    assert "execution_mode_required" in body["block_reasons"]
+    assert body["execution_request_id"] is None
+
+
+def test_blocked_responses_non_executing_and_audit_redacted():
+    # CTO R1 bullet 6: a blocked request stays non-executing and the denial audit
+    # is redacted (no raw reason leaks via the denial path).
+    with _client() as c:
+        dry = _passed_dry_run(c)
+        # Sensitive reason (redacts to [redacted], still non-empty) but missing
+        # execution_ack -> blocked; the denial audit must not carry the raw value.
+        payload = _request_payload("ap-1", "support_mode.on", dry["dry_run_id"],
+                                   reason="token=abc123 deny",  # pragma: allowlist secret
+                                   execution_ack=False)
+        body = c.post(f"{P22}/requests", json=payload, headers=AUTH_HEADERS).json()
+        audit_dump = json.dumps([e.model_dump() for e in _audit_log_raw()], default=str)
+    assert body["result_state"] == "blocked"
+    assert body["executed"] is False
+    assert body["execution_allowed"] is False
+    assert body["execution_started"] is False
+    assert "abc123" not in audit_dump
+    assert "execution_ack_required" in body["block_reasons"]
+
+
+# ============================================================================
 # Helpers for audit inspection
 # ============================================================================
 

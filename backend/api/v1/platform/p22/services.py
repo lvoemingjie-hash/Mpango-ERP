@@ -488,11 +488,17 @@ def _check_approval_preconditions(
     approval: Optional[ApprovalSnapshot],
     action_type: Optional[str],
     executor: Optional[str],
+    tenant_id: Optional[str] = None,
 ) -> tuple[list[BlockReasonCode], Optional[ExecutionSourceStatus], bool]:
     """Evaluate the approval-dependent preconditions (P22-A 4.2-4.6 / 4.10-4.12).
 
     Returns (block_reasons, source_status, reversible). source_status is the P22
     vocabulary value to surface; reversible is whether a paired reversal exists.
+
+    The approval must bind to the SAME target as the request: the approval's
+    tenant_id must equal the request's tenant_id (P22-A "same approval / action /
+    target / executor"). Both null means platform-wide and matches; a mismatch
+    (tenant A vs tenant B) blocks as target_mismatch_approval.
     """
     reasons: list[BlockReasonCode] = []
     if approval is None:
@@ -506,6 +512,14 @@ def _check_approval_preconditions(
     # The approval must be for the SAME action the executor is trying to run.
     if approval.action_type and action_type and approval.action_type != action_type:
         reasons.append("action_mismatch_approval")
+    # The approval must target the SAME tenant (null == platform-wide). Normalize
+    # empty/None so a missing value is never silently treated as a match for a
+    # scoped target, and vice versa (P22-B-R1 target binding).
+    def _norm(v: Optional[str]) -> Optional[str]:
+        return v.strip() if isinstance(v, str) and v.strip() else None
+
+    if _norm(approval.tenant_id) != _norm(tenant_id):
+        reasons.append("target_mismatch_approval")
 
     # Source status: writes / write-requests require a known source; reads may
     # proceed against a degraded source (P22-A 4.5 / 10.10).
@@ -604,10 +618,11 @@ def evaluate_dry_run(
     execution request via dry_run_ref). Returns executable / verdict /
     block_reasons / expected_audit_shape / source_status / reversible.
 
-    Order of checks: executor identity -> idempotency key present -> action
-    allowlisted -> approval resolves -> approval preconditions (state / quorum /
-    source / action match / operator separation). Every failed precondition is
-    collected into block_reasons; a single failure blocks the dry-run.
+    Order of checks: executor identity -> idempotency key present -> reason
+    present -> execution_mode valid -> action allowlisted -> approval resolves ->
+    approval preconditions (state / quorum / source / action match / TARGET match
+    / operator separation). Every failed precondition is collected into
+    block_reasons; a single failure blocks the dry-run.
     """
     now = _now()
     raw_reason = (request.reason or "").strip()
@@ -617,9 +632,12 @@ def evaluate_dry_run(
     _ = _p18.redact_metadata(request.metadata)  # redact (defense in depth); not echoed on dry-run
     key_digest = _digest(raw_key)
     safe_action_type = _p18._sanitize_text(request.action_type) or request.action_type
-    # execution_mode is request-lenient (plain str); coerce to the strict vocab so a
-    # bad value can never reach the strict response field (never a 500).
-    safe_mode: Optional[str] = request.execution_mode if request.execution_mode in ("sync", "queued") else None
+    # execution_mode is request-lenient (plain str). A MISSING or INVALID mode is a
+    # required-field failure (P22-B-R1): it blocks the dry-run. The coerced
+    # safe_mode (None when invalid) is used only so a bad value can never reach the
+    # strict response field (never a 500); the block_reason records the failure.
+    mode_valid = request.execution_mode in ("sync", "queued")
+    safe_mode: Optional[str] = request.execution_mode if mode_valid else None
 
     block_reasons: list[BlockReasonCode] = []
 
@@ -630,15 +648,21 @@ def evaluate_dry_run(
     # 2) idempotency key present (digest-only)
     if not raw_key:
         block_reasons.append("idempotency_key_required")
-    # 3) action is in the closed v0 allowlist
+    # 3) reason present (required confirmation field; P22-B-R1)
+    if not raw_reason:
+        block_reasons.append("reason_required")
+    # 4) execution_mode present AND valid (required field; P22-B-R1)
+    if not mode_valid:
+        block_reasons.append("execution_mode_required")
+    # 5) action is in the closed v0 allowlist
     allowlisted, excluded_reason = _classify_action(request.action_type)
     if not allowlisted:
         block_reasons.append(excluded_reason or "action_not_allowlisted")  # type: ignore[arg-type]
 
-    # 4) approval resolves + 5) approval preconditions
+    # 6) approval resolves + 7) approval preconditions (incl. target binding)
     approval = _resolve_approval(request.durable_approval_id)
     approval_reasons, source_status, reversible = _check_approval_preconditions(
-        approval, request.action_type, actor
+        approval, request.action_type, actor, request.tenant_id
     )
     block_reasons.extend(approval_reasons)
 
@@ -801,8 +825,11 @@ def record_execution_request(
     redacted_md = _p18.redact_metadata(request.metadata)
     key_digest = _digest(raw_key)
     safe_action_type = _p18._sanitize_text(request.action_type) or request.action_type
-    # execution_mode is request-lenient (plain str); coerce to the strict vocab.
-    safe_mode: Optional[str] = request.execution_mode if request.execution_mode in ("sync", "queued") else None
+    # execution_mode is request-lenient (plain str). A MISSING or INVALID mode is a
+    # required-field failure (P22-B-R1): it blocks the request. safe_mode (None when
+    # invalid) is used only so a bad value never reaches the strict response field.
+    mode_valid = request.execution_mode in ("sync", "queued")
+    safe_mode: Optional[str] = request.execution_mode if mode_valid else None
     payload_digest = _payload_digest(
         request.durable_approval_id,
         request.action_type,
@@ -821,14 +848,20 @@ def record_execution_request(
     # 2) idempotency key present
     if not raw_key:
         block_reasons.append("idempotency_key_required")
-    # 3) execution acknowledgement present
+    # 3) reason present (required confirmation field; P22-B-R1)
+    if not raw_reason:
+        block_reasons.append("reason_required")
+    # 4) execution_mode present AND valid (required field; P22-B-R1)
+    if not mode_valid:
+        block_reasons.append("execution_mode_required")
+    # 5) execution acknowledgement present
     if not request.execution_ack:
         block_reasons.append("execution_ack_required")
-    # 4) action is in the closed v0 allowlist
+    # 6) action is in the closed v0 allowlist
     allowlisted, excluded_reason = _classify_action(request.action_type)
     if not allowlisted:
         block_reasons.append(excluded_reason or "action_not_allowlisted")  # type: ignore[arg-type]
-    # 5) a passed dry-run is bound (dry_run_ref) and matches approval/action/target/executor
+    # 7) a passed dry-run is bound (dry_run_ref) and matches approval/action/target/executor
     dry_run = _DRY_RUNS.get(request.dry_run_ref or "")
     if not request.dry_run_ref:
         block_reasons.append("dry_run_required")
@@ -845,10 +878,11 @@ def record_execution_request(
     ):
         block_reasons.append("dry_run_invalid")
 
-    # 6) re-validate the approval preconditions at request time (P22-A 4 / 10.5)
+    # 8) re-validate the approval preconditions at request time (P22-A 4 / 10.5),
+    #    including target (tenant_id) binding (P22-B-R1).
     approval = _resolve_approval(request.durable_approval_id)
     approval_reasons, source_status, _reversible = _check_approval_preconditions(
-        approval, request.action_type, actor
+        approval, request.action_type, actor, request.tenant_id
     )
     block_reasons.extend(approval_reasons)
 

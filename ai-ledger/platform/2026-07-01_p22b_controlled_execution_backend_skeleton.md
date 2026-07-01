@@ -170,7 +170,9 @@ payment / billing, tenant business records, and arbitrary shell / SQL / script.
 
 ## 10. Validation Gates
 
-Final state at HEAD `3d67220` (post-R1; the R1 re-run delta is in section 16.4).
+Code/security gate state at `3d67220` (the R1 code + security fix; unchanged by
+R2/R3, which are ledger-only). The branch tip after the R2 ledger-only fix is
+`e00534e`. The R1 re-run delta is in section 16.4.
 
 | Gate | Result |
 |---|---|
@@ -180,7 +182,7 @@ Final state at HEAD `3d67220` (post-R1; the R1 re-run delta is in section 16.4).
 | Non-ASCII scan on changed files | clean (all 7 files ASCII-only) |
 | detect-secrets (configured baseline) | clean (exit 0; deliberate redaction-test fixtures marked `pragma: allowlist secret`) |
 | Forbidden path audit | clean (app.py diff is route-include only; no subprocess/shell/harness/tenant/payment/product/alembic in p22 source) |
-| `npx gitnexus analyze` | indexed at commit `3d67220`, status up-to-date; ~8.3k nodes / 25,521 edges / ~530 clusters / 300 flows (node & cluster counts fluctuate slightly across re-indexes; the 300-flow count is stable) |
+| `npx gitnexus analyze` | indexed/current commit `e00534e`, status up-to-date; ~8.3k nodes / 25,521 edges / ~525 clusters / 300 flows (node & cluster counts fluctuate slightly across re-indexes; the 300-flow count is stable) |
 | `gitnexus detect_changes` (compare vs `origin/platform-dev`) | 7 changed files, 99 changed symbols (all in `app.py` + `p22/*` + this ledger), 4 affected, **risk: medium** |
 | Worktree clean (post-commit) | tracked tree clean (only gitignored `__pycache__` / `.gitnexus` / `CLAUDE.md` / `AGENTS.md` artifacts present, none committed) |
 

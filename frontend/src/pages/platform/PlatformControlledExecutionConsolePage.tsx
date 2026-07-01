@@ -170,7 +170,15 @@ export function PlatformControlledExecutionConsolePage() {
   const recordEnabled = dryRunPassed && executionAck && dryRunFormValid && !recordBusy;
 
   // -- mutations of bound inputs invalidate a prior passed dry-run ----------
-  /** Clear a passed dry-run (and any recorded result) when a bound input changes. */
+  /**
+   * Clear a passed dry-run (and any recorded result) when ANY payload field
+   * changes. Every input that feeds buildPayload() wires this on change
+   * (durable_approval_id, action_type, tenant_id, requested_state, reason,
+   * idempotency_key, execution_mode, correlation_id, metadata): after a passed
+   * dry-run, editing any of them clears dryRunResult / recordResult / the ack,
+   * so the record section disappears and a fresh dry-run is required before a
+   * request can be recorded against a new dry_run_ref.
+   */
   function invalidateDryRun() {
     setDryRunResult(null);
     setRecordResult(null);
@@ -421,7 +429,10 @@ export function PlatformControlledExecutionConsolePage() {
                   className="mt-1 block w-full rounded border border-gray-300 p-2"
                   rows={2}
                   value={reason}
-                  onChange={(e) => setReason(e.target.value)}
+                  onChange={(e) => {
+                    setReason(e.target.value);
+                    invalidateDryRun();
+                  }}
                   data-testid="p22-reason-input"
                 />
               </label>
@@ -431,7 +442,10 @@ export function PlatformControlledExecutionConsolePage() {
                   <input
                     className="mt-1 block w-full rounded border border-gray-300 p-2 font-mono"
                     value={idempotencyKey}
-                    onChange={(e) => setIdempotencyKey(e.target.value)}
+                    onChange={(e) => {
+                      setIdempotencyKey(e.target.value);
+                      invalidateDryRun();
+                    }}
                     data-testid="p22-idempotency-input"
                   />
                 </label>
@@ -456,7 +470,10 @@ export function PlatformControlledExecutionConsolePage() {
                 <input
                   className="mt-1 block w-full rounded border border-gray-300 p-2"
                   value={correlationId}
-                  onChange={(e) => setCorrelationId(e.target.value)}
+                  onChange={(e) => {
+                    setCorrelationId(e.target.value);
+                    invalidateDryRun();
+                  }}
                   data-testid="p22-correlation-input"
                 />
               </label>
@@ -466,7 +483,10 @@ export function PlatformControlledExecutionConsolePage() {
                   className="mt-1 block w-full rounded border border-gray-300 p-2 font-mono text-xs"
                   rows={2}
                   value={metadataText}
-                  onChange={(e) => setMetadataText(e.target.value)}
+                  onChange={(e) => {
+                    setMetadataText(e.target.value);
+                    invalidateDryRun();
+                  }}
                   data-testid="p22-metadata-input"
                 />
               </label>

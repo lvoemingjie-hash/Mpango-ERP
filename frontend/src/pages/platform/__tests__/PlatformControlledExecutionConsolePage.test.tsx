@@ -146,6 +146,25 @@ async function passDryRun() {
   expect(await screen.findByTestId('p22-record-section')).toBeInTheDocument();
 }
 
+/** Pass a dry-run, then check the acknowledgement so the record button is enabled. */
+async function passDryRunAndAck() {
+  await passDryRun();
+  fireEvent.click(screen.getByTestId('p22-ack-input'));
+  expect(screen.getByTestId('p22-record-btn')).not.toBeDisabled();
+}
+
+/**
+ * Assert the record section has disappeared after a payload edit: the record
+ * section is gone, the disabled placeholder is shown (a fresh dry-run is
+ * required), and the acknowledgement was cleared with it.
+ */
+function expectRecordUnavailableAfterEdit() {
+  expect(screen.queryByTestId('p22-record-section')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('p22-record-btn')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('p22-ack-input')).not.toBeInTheDocument();
+  expect(screen.getByTestId('p22-record-disabled')).toBeInTheDocument();
+}
+
 describe('PlatformControlledExecutionConsolePage', () => {
   beforeEach(() => {
     vi.mocked(api.get).mockResolvedValue({ data: CATALOG });
@@ -337,5 +356,43 @@ describe('PlatformControlledExecutionConsolePage', () => {
     // The form input labels do not promise product/payment mutation.
     const formText = screen.getByTestId('p22-dry-run-form').textContent ?? '';
     expect(productWords.test(formText)).toBe(false);
+  });
+
+  // -- R1: editing ANY payload field after a passed dry-run invalidates it ----
+
+  it('P22-P13: editing reason after a passed dry-run forces a fresh dry-run', async () => {
+    renderPage();
+    await passDryRunAndAck();
+    fireEvent.change(screen.getByTestId('p22-reason-input'), {
+      target: { value: 'changed reason for re-dry-run' },
+    });
+    expectRecordUnavailableAfterEdit();
+  });
+
+  it('P22-P14: editing the idempotency key after a passed dry-run forces a fresh dry-run', async () => {
+    renderPage();
+    await passDryRunAndAck();
+    fireEvent.change(screen.getByTestId('p22-idempotency-input'), {
+      target: { value: 'DIFFERENT-RAW-KEY-456' },
+    });
+    expectRecordUnavailableAfterEdit();
+  });
+
+  it('P22-P15: editing metadata after a passed dry-run forces a fresh dry-run', async () => {
+    renderPage();
+    await passDryRunAndAck();
+    fireEvent.change(screen.getByTestId('p22-metadata-input'), {
+      target: { value: '{"note":"changed metadata"}' },
+    });
+    expectRecordUnavailableAfterEdit();
+  });
+
+  it('P22-P16: editing correlation id after a passed dry-run forces a fresh dry-run', async () => {
+    renderPage();
+    await passDryRunAndAck();
+    fireEvent.change(screen.getByTestId('p22-correlation-input'), {
+      target: { value: 'corr-changed-789' },
+    });
+    expectRecordUnavailableAfterEdit();
   });
 });

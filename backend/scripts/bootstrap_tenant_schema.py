@@ -836,6 +836,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "is_blocking BOOLEAN NOT NULL DEFAULT false,"
             "resolved_at TIMESTAMPTZ,"
             "resolved_by UUID,"
+            "created_by UUID, updated_by UUID,"
             "created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
             "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
             "is_deleted BOOLEAN NOT NULL DEFAULT false,"

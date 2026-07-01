@@ -148,13 +148,20 @@ def test_intake_workspace_routes_are_registered():
 
     assert "/api/v1/intake/workspaces" in route_paths
     assert "/api/v1/intake/workspaces/{workspace_id}" in route_paths
+    assert "/api/v1/intake/workspaces/{workspace_id}/uploads" in route_paths
+    assert "/api/v1/intake/workspaces/{workspace_id}/mapping" in route_paths
+    assert "/api/v1/intake/workspaces/{workspace_id}/validate" in route_paths
+    assert "/api/v1/intake/workspaces/{workspace_id}/rows" in route_paths
+    assert "/api/v1/intake/workspaces/{workspace_id}/issues" in route_paths
 
 
 def test_intake_routes_use_required_permissions():
     source = INTAKE_API.read_text(encoding="utf-8")
 
     assert source.count('RequirePermission("intake:create")') == 1
-    assert source.count('RequirePermission("intake:read")') == 2
+    assert source.count('RequirePermission("intake:update")') == 2
+    assert source.count('RequirePermission("intake:read")') == 4
+    assert 'RequireAnyIntakePermission("intake:create", "intake:update")' in source
 
 
 def test_intake_routes_require_tenant_db_session():
@@ -164,13 +171,11 @@ def test_intake_routes_require_tenant_db_session():
     assert "get_db_session" not in source
 
 
-def test_intake_u4c_has_no_public_or_upload_or_sku_import_surface():
+def test_intake_u4_has_no_public_or_sku_import_surface():
     source = INTAKE_API.read_text(encoding="utf-8")
 
     forbidden = [
         "intake_public",
-        "UploadFile",
-        "File(",
         "ImportService",
         "sku_import",
         "skus/import",

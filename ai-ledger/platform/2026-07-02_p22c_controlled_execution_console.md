@@ -6,7 +6,7 @@
 **Base:** `ca5b2c4` (`origin/platform-dev` -- "merge: P22-B controlled execution backend skeleton")
 **Contract:** `docs/ai/PLATFORM_PRODUCT_P22_CONTROLLED_EXECUTION_V0_CONTRACT.md` (P22-A)
 **Author:** Codex (Claude worker)
-**Status:** C0-C4 complete; ready for CTO review
+**Status:** C0-C4 complete; CTO R1 applied (payload-binding invalidation + README ASCII + tests); ready for CTO re-review
 
 ---
 
@@ -49,7 +49,10 @@ is ever rendered from a response.
   - `79d3c97` -- `platform(p22c): controlled execution console types + API client (C1)`
   - `6da310a` -- `platform(p22c): controlled execution console page + route + nav (C2)`
   - `183b6fe` -- `platform(p22c): controlled execution console tests (C3)`
-  - `b95da4c` -- `platform(p22c): controlled execution console ledger + read-order note (C4)` (this ledger + docs/ai/README.md P22-C note; documented branch tip is the accuracy fix below)
+  - `b95da4c` -- `platform(p22c): controlled execution console ledger + read-order note (C4)`
+  - `292947d` -- `platform(p22c-r1): ledger commit-pointer accuracy fix` (records the real C4 SHA)
+  - `9ac3a75` -- `platform(p22c-r1): payload-binding invalidation + README ASCII + tests` (**CTO R1 code/test/docs fix**)
+  - this ledger update (CTO R1 ledger; documented branch tip -- its own SHA is intentionally not self-referenced)
 
 `platform-dev` was NOT merged after branch creation and NOT pushed. Only the
 isolated P22-C branch carries these changes.
@@ -63,14 +66,14 @@ the 9 code/test files; plus this ledger and one docs sentence).
 |---|---|---|
 | `frontend/src/types/platformControlledExecution.ts` | New | P22 types field-for-field aligned to the P22-B backend schemas; closed 7-action allowlist tuple; vocabularies; response shapes never model a raw idempotency key (only the digest) |
 | `frontend/src/services/platformApi.ts` | Modified (additive) | 5 new methods on `platformService`: `getExecutionCatalog`, `dryRunExecution`, `recordExecutionRequest`, `listExecutionRequests`, `getExecutionRequest` (+ a `P22_BASE` const). No existing method changed |
-| `frontend/src/pages/platform/PlatformControlledExecutionConsolePage.tsx` | New | The non-executing console: catalog cards, separated excluded-actions area, dry-run form + result, record section gated on passed dry-run + ack, record result, queue list, read-by-id; empty/loading/error/blocked/success states |
+| `frontend/src/pages/platform/PlatformControlledExecutionConsolePage.tsx` | New | The non-executing console: catalog cards, separated excluded-actions area, dry-run form + result, record section gated on passed dry-run + ack, record result, queue list, read-by-id; empty/loading/error/blocked/success states. R1: every `buildPayload()` input now invalidates a prior passed dry-run on change |
 | `frontend/src/router/AppRouter.tsx` | Modified (additive) | Route `/platform/controlled-execution` under the existing identity-only `PlatformRoute` guard |
 | `frontend/src/components/layout/Sidebar.tsx` | Modified (additive) | "Controlled Execution" nav entry inside the existing `showPlatformNav` (identity-only) block |
 | `frontend/src/services/__tests__/platformControlledExecutionApi.test.ts` | New | 8 API client tests |
 | `frontend/src/types/__tests__/platformControlledExecution.test.ts` | New | 5 type contract tests |
-| `frontend/src/pages/platform/__tests__/PlatformControlledExecutionConsolePage.test.tsx` | New | 12 page behavior tests (the 14-case spec, cases 1-12) |
+| `frontend/src/pages/platform/__tests__/PlatformControlledExecutionConsolePage.test.tsx` | New | 16 page behavior tests (12 original spec cases + 4 R1 payload-invalidation cases) |
 | `frontend/src/pages/platform/__tests__/PlatformControlledExecutionNav.test.tsx` | New | 5 nav + guard tests (the 14-case spec, cases 13-14) |
-| `docs/ai/README.md` | Modified (additive) | One cumulative-state sentence appended to the P22 read-order paragraph |
+| `docs/ai/README.md` | Modified (additive) | One cumulative-state sentence appended to the P22 read-order paragraph (ASCII-only as of R1; the U+2014 em dash was replaced with `--`) |
 | `ai-ledger/platform/2026-07-02_p22c_controlled_execution_console.md` | New | This ledger |
 
 No other paths were touched.
@@ -122,15 +125,15 @@ non-executing.
 
 ## 6. Tests and Exact Counts
 
-- **P22-C targeted tests: 30 pass**
+- **P22-C targeted tests: 34 pass** (30 original + 4 R1 invalidation cases)
   - API client: 8 (`platformControlledExecutionApi.test.ts`)
   - Type contract: 5 (`platformControlledExecution.test.ts`)
-  - Page behavior: 12 (`PlatformControlledExecutionConsolePage.test.tsx`)
+  - Page behavior: 16 (`PlatformControlledExecutionConsolePage.test.tsx` -- 12 original + 4 R1)
   - Nav + guard: 5 (`PlatformControlledExecutionNav.test.tsx`)
-- **Full frontend suite: 33 files / 298 tests pass** (no regressions; vitest 1.6.1)
+- **Full frontend suite: 33 files / 302 tests pass** (was 298 before R1; no regressions; vitest 1.6.1)
 - **Backend P22 regression: 56 pass** (`tests/test_platform_p22_controlled_execution.py`, run with the shared `.venv` Python 3.14 + a 32+ char SECRET_KEY + PYTHONPATH=backend; the P22-B contract is intact and unchanged)
 
-The 14-case C3 spec is covered:
+The 14-case C3 spec is covered, plus 4 R1 payload-invalidation cases:
 1. catalog shows exactly seven allowlisted actions (P22-P01)
 2. excluded actions visible and not selectable (P22-P02)
 3. passed dry-run enables recording (P22-P03)
@@ -146,11 +149,18 @@ The 14-case C3 spec is covered:
     mutation=none (P22-P12)
 13. sidebar nav entry exists for identity-only operators (P22-N01..N03)
 14. permission/guard matches the existing PlatformRoute pattern (P22-N04..N05)
+15. editing reason after a passed dry-run forces a fresh dry-run (P22-P13, R1)
+16. editing the idempotency key after a passed dry-run forces a fresh dry-run (P22-P14, R1)
+17. editing metadata after a passed dry-run forces a fresh dry-run (P22-P15, R1)
+18. editing correlation id after a passed dry-run forces a fresh dry-run (P22-P16, R1)
 
 ## 7. GitNexus
 
-- `npx gitnexus analyze .` (HEAD): repository indexed successfully -- 8,326 nodes
-  / 25,546 edges / 528 clusters / 300 flows.
+- `npx gitnexus analyze .` (HEAD, re-run after R1): repository indexed
+  successfully -- 8,340 nodes / 25,560 edges / 528 clusters / 300 flows
+  (was 8,326 nodes / 25,546 edges before R1; the +14/+14 reflect the added
+  test cases and page wiring). `gitnexus status` reports the index fresh at
+  the R1 tip.
 - `gitnexus detect_changes` (MCP-only tool; driven over stdio JSON-RPC against
   `npx gitnexus mcp`): returned `risk_level: none`, `changed_count: 0`,
   `affected_count: 0`, no changed symbols, no affected processes -- no
@@ -179,6 +189,32 @@ prefix:
   files.
 - No real execution / worker / harness / shell / SQL / script.
 
+## 8a. CTO R1 Findings and Fixes
+
+CTO R1 raised two findings; both are fixed in commit `9ac3a75` (frontend-only;
+no backend / migration / product / auth / package / lockfile change):
+
+- **P1 -- payload-binding gap.** Only five of the nine `buildPayload()` inputs
+  invalidated a prior passed dry-run on change. `reason`, `idempotency_key`,
+  `correlation_id`, and `metadata` did not, so an operator could pass a dry-run,
+  then edit one of those fields while the record section stayed bound to a stale
+  `dry_run_ref`. **Fix:** all nine payload inputs (`durable_approval_id`,
+  `action_type`, `tenant_id`, `requested_state`, `reason`, `idempotency_key`,
+  `execution_mode`, `correlation_id`, `metadata`) now call `invalidateDryRun()`
+  on change, which clears `dryRunResult`, `recordResult`, and the
+  acknowledgement -- so the record section disappears and a fresh dry-run is
+  required before a request can be recorded against a new `dry_run_ref`.
+  Verified by P22-P13..P22-P16.
+- **P2 -- non-ASCII in docs/ai/README.md.** The P22-C read-order sentence
+  contained a U+2014 em dash (3 non-ASCII bytes). The earlier Git Bash
+  `LC_ALL=C grep -nlP` scan missed it on Windows; a Python byte scan caught it.
+  **Fix:** replaced the em dash with ASCII `--`. The full changed-set
+  non-ASCII scan is now 0 bytes (Python byte scan, the reliable method here).
+
+R1 added 4 tests (page total 12 -> 16; targeted 30 -> 34; full suite
+298 -> 302). Per the R1 instruction, the ledger's own commit SHA is
+intentionally not self-referenced in the chain above.
+
 ## 9. Self-Review
 
 Two rounds were performed.
@@ -193,11 +229,13 @@ excluded-action text that mirrors the backend). No button or label commands
 product/payment path is changed.
 
 **Round 2 -- reproducibility / evidence.** `git diff --check origin/platform-dev..HEAD`
-reports no whitespace errors. A non-ASCII scan of all changed files is clean.
-`detect-secrets-hook` against the configured secrets baseline on all changed
-files exits 0 (no new secrets); the pre-commit hook also passed on every commit.
-The forbidden-path audit is clean (section 8). Fresh test command outputs and
-exact counts are in section 6.
+reports no whitespace errors. A non-ASCII scan of all changed files is clean
+(**0 non-ASCII bytes**, verified with a Python byte scan -- the reliable method
+on Windows; the earlier Git Bash `grep` scan missed the README em dash that R1
+fixed). `detect-secrets-hook` against the configured secrets baseline on all
+changed files exits 0 (no new secrets); the pre-commit hook also passed on every
+commit. The forbidden-path audit is clean (section 8). Fresh test command
+outputs and exact counts are in section 6.
 
 ## 10. Risk
 

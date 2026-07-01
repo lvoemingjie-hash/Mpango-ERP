@@ -3,8 +3,40 @@
 **Date**: 2026-07-01
 **Branch**: `opencode/u4b-data-intake-contract-architecture-2026-07-01`
 **Executor**: OpenCode GPT-5.5
-**Verdict**: `PASS_FOR_CTO_U4B_REVIEW`
+**Verdict**: `PASS_FOR_CTO_U4B_REVIEW_AFTER_R1`
 **Change Type**: `DESIGN_ONLY_NO_RUNTIME_CHANGE`
+
+## 0. R1 CTO Corrections
+
+R1 resolves the public token resolver ambiguity and records CTO implementation-slice decisions before U4-C.
+
+Public token decision:
+
+```text
+U4-C and U4-D MVP are internal-login-only.
+Public token workspace access is deferred to U4-G/U4-H.
+No U4-C/U4-D endpoint may scan tenant schemas to resolve a public token.
+```
+
+Reason:
+
+- U4 intake tables are tenant-schema tables.
+- A request like `/api/v1/intake/public/{token}` does not know which tenant schema to query first.
+- Scanning all tenant schemas is not acceptable for security, performance, or tenant isolation.
+
+Future public-token requirement:
+
+- If public token access is reintroduced in U4-G/U4-H, it must add a `public.intake_public_tokens` registry contract first.
+- That registry must resolve `token_hash -> tenant_id, tenant_schema, workspace_id, capabilities` in public schema before opening a tenant-scoped session.
+- The raw token must never be stored.
+
+CTO slicing decisions:
+
+- U4-C must implement only `intake_workspaces`, `intake_uploads`, `intake_product_rows`, and `intake_validation_issues`.
+- `intake_assets` is deferred to the mobile/photo slice.
+- `intake_exports` remains a bridge design for U4-D/U4-E and should not be created in U4-C unless export generation is implemented.
+- XLSX MVP uses the first non-empty sheet; no multi-sheet selection in MVP.
+- `catalog_manager` may receive `intake:*` by default, but `skus:import` still requires explicit grant or admin approval.
 
 ## 1. Executive Summary
 
@@ -80,6 +112,8 @@ Responsibilities:
 - Frontend implementation.
 - Direct SKU creation from intake rows.
 - Applying U3 imports from U4 without a second explicit action.
+- Public token upload/read access in U4-C or U4-D.
+- Tenant-schema scanning to resolve public tokens.
 - Background job execution.
 - Object storage integration.
 - Offline sync.
@@ -101,7 +135,7 @@ Shared conventions:
 - `created_at`, `updated_at`: timestamptz, required.
 - `is_deleted`, `deleted_at`: soft-delete fields, default false/null.
 - Tenant isolation: every query must filter by tenant schema through the existing tenant DB session and by `workspace_id` where applicable.
-- Public token access never bypasses tenant/workspace filters; token resolves to exactly one workspace and scoped capabilities.
+- U4-C/U4-D access is internal-login-only through the existing tenant context. Public token access is deferred and must not scan tenant schemas.
 
 ### 4.1 `intake_workspaces`
 
@@ -117,9 +151,6 @@ Fields:
 | `description` | text | no | Internal notes. |
 | `source_type` | varchar(32) | yes | `CUSTOMER_ONBOARDING`, `CATALOG_REFRESH`, `STOCK_INTAKE`, `MOBILE_SCAN`. |
 | `status` | varchar(32) | yes | See lifecycle below. |
-| `public_token_hash` | varchar(128) | no | Hash only; never store raw token. |
-| `public_token_expires_at` | timestamptz | no | Required if public token is enabled. |
-| `public_access_enabled` | boolean | yes | Default false. |
 | `created_by` | uuid | no | Internal user. |
 | `updated_by` | uuid | no | Internal user. |
 | `approved_by` | uuid | no | Internal approver. |
@@ -175,7 +206,7 @@ Fields:
 | `headers_raw` | jsonb | yes | Source header strings in original order. |
 | `headers_normalized` | jsonb | yes | Normalized header map. |
 | `parse_summary` | jsonb | no | Counts and parser decisions. |
-| `created_by` | uuid | no | Internal user or null for public token. |
+| `created_by` | uuid | no | Internal user. |
 
 Status enum:
 
@@ -220,8 +251,8 @@ Fields:
 | `image_asset_id` | uuid | no | Optional FK to minimal asset. |
 | `review_status` | varchar(32) | yes | Row review lifecycle. |
 | `dedupe_key` | varchar(160) | no | Suggested stable key, not globally unique. |
-| `created_by` | uuid | no | Internal or public actor. |
-| `updated_by` | uuid | no | Internal or public actor. |
+| `created_by` | uuid | no | Internal user in U4-C/U4-D; future public actor only after public registry exists. |
+| `updated_by` | uuid | no | Internal user in U4-C/U4-D; future public actor only after public registry exists. |
 
 Review status enum:
 
@@ -299,11 +330,11 @@ Fields:
 | `sha256` | char(64) | yes | Integrity and duplicate signal. |
 | `storage_key` | varchar(512) | yes | Object store key or local dev storage key. |
 | `status` | varchar(32) | yes | `UPLOADED`, `LINKED`, `REJECTED`, `DELETED`. |
-| `created_by` | uuid | no | Internal or public actor. |
+| `created_by` | uuid | no | Internal user in U4-C/U4-D; future public actor only after public registry exists. |
 
-MVP rule:
+Deferral rule:
 
-- U4-B only defines the asset contract. U4-C/U4-D may stub asset upload metadata but must not promise production image storage until storage policy is approved.
+- U4-B only defines the asset contract for later use. U4-C/U4-D must not create `intake_assets`. U4-G may add it only if the mobile/photo slice proceeds and storage policy is approved.
 
 ### 4.6 `intake_exports`
 
@@ -337,6 +368,7 @@ SUPERSEDED
 
 Rules:
 
+- U4-C must not create `intake_exports` unless export generation is also implemented.
 - Export generation never applies SKU rows.
 - `u3_import_id` is set only after explicit `push-to-sku-import-preview` call.
 - Generated CSV must match U3 expected headers and values.
@@ -377,8 +409,6 @@ Request:
   "name": "Acme onboarding catalog",
   "description": "Initial customer product list",
   "source_type": "CUSTOMER_ONBOARDING",
-  "public_access_enabled": false,
-  "public_token_expires_at": null,
   "metadata": {"customer_code": "ACME"}
 }
 ```
@@ -407,21 +437,52 @@ Permission: intake:read
 
 List response must be paginated. Detail response includes upload counts, row counts, issue counts, latest export, and current status.
 
-### 5.3 Public Token Summary
+### 5.3 Public Token Summary - Deferred
 
 ```text
 GET /api/v1/intake/public/{token}/summary
-Permission: public token only, no bearer token required
+Status: DEFERRED_OUT_OF_U4_C_AND_U4_D
 ```
 
-Rules:
+R1 decision:
+
+- U4-C/U4-D MVP must not implement public token endpoints.
+- U4-C/U4-D workspace APIs require internal login and tenant context.
+- The backend must not scan tenant schemas to resolve an unknown token.
+
+Future U4-G/U4-H registry requirement:
+
+```text
+public.intake_public_tokens
+```
+
+Required fields for a future registry:
+
+| Field | Type | Required | Notes |
+|---|---:|---:|---|
+| `id` | uuid | yes | Registry row ID. |
+| `token_hash` | varchar(128) | yes | Unique hash of raw token. Raw token is never stored. |
+| `tenant_id` | uuid | yes | Owning tenant. |
+| `tenant_schema` | varchar(128) | yes | Tenant schema to open after registry lookup. |
+| `workspace_id` | uuid | yes | Workspace allowed by this token. |
+| `capabilities` | jsonb | yes | Example: `{"read_summary": true, "upload": true}`. |
+| `expires_at` | timestamptz | yes | Hard expiry. |
+| `revoked_at` | timestamptz | no | Revocation timestamp. |
+| `created_at` | timestamptz | yes | Audit timestamp. |
+| `created_by` | uuid | no | Internal user who issued token. |
+
+Future resolver rules:
 
 - Token must be opaque, random, time-limited, and stored only as a hash.
-- Token resolves to exactly one tenant/workspace.
+- `token_hash` must be unique in public schema.
+- Resolver must query `public.intake_public_tokens` first.
+- Resolver must reject expired or revoked tokens before opening tenant context.
+- Resolver must switch to exactly the resolved `tenant_schema` and `workspace_id`.
+- Resolver must rate-limit token attempts and emit audit events for success/failure.
 - Summary response must not expose internal user IDs, tenant internals, SKU import IDs, or other workspaces.
-- Public token can read summary and submit uploads only if workspace status permits it.
+- Public token can read summary and submit uploads only if future capabilities and workspace status permit it.
 
-Response data:
+Future response data:
 
 ```json
 {
@@ -440,9 +501,11 @@ Response data:
 
 ```text
 POST /api/v1/intake/workspaces/{workspace_id}/uploads
-Permission: intake:create or valid public token with upload capability
+Permission: intake:create
 Content-Type: multipart/form-data
 ```
+
+U4-C/U4-D rule: upload requires internal login. Public token upload is deferred to U4-G/U4-H and requires the public registry described above.
 
 Form fields:
 
@@ -629,7 +692,7 @@ MVP requirements:
 - XLSX: required.
 - XLS: out of scope unless explicitly approved.
 - Password-protected XLSX: reject with `UNSUPPORTED_PROTECTED_FILE`.
-- Multi-sheet XLSX: MVP reads first non-empty sheet by default and reports sheet name; explicit sheet selection can be U4-D if feasible.
+- Multi-sheet XLSX: MVP reads the first non-empty sheet and reports sheet name; explicit sheet selection is out of scope for U4-C/U4-D.
 
 ### 6.2 Limits
 
@@ -720,7 +783,7 @@ Capabilities:
 - Manual barcode input fallback is mandatory.
 - Product photo capture/upload stub uses `intake_assets` metadata contract.
 - Scan creates or updates staged `intake_product_rows`, not SKUs.
-- Public token access can be supported later but must remain workspace-scoped.
+- Public token access can be supported later only after `public.intake_public_tokens` exists and must remain workspace-scoped.
 
 Out of scope for U4-B/U4-G initial slice:
 
@@ -756,7 +819,7 @@ Role template proposal:
 | Role Template | Intake Permissions | Existing ERP Permissions |
 |---|---|---|
 | `admin` | all intake permissions | includes `skus:import` |
-| `catalog_manager` | read/create/update/approve/export/import_to_erp | should include `skus:import` |
+| `catalog_manager` | all `intake:*` by default | `skus:import` requires explicit grant or admin approval |
 | `sales_rep` | read/create/update for assigned workspace only later | no `skus:import` by default |
 | `warehouse_operator` | read/create/update for stock/mobile rows later | no `skus:import` by default |
 | `finance_operator` | read only | no `skus:import` by default |
@@ -795,8 +858,8 @@ U5 first string domains impacted by U4:
 | License/reference risk | High | ODK/DHIS2/ChT/InvenTree/Odoo/ERPNext are useful references but code must not be copied. | Clean-room design; use product needs and existing Mpango contracts only. |
 | Customer data quality | High | Customer spreadsheets will have missing SKU codes, inconsistent units, duplicates, and free-text noise. | Staging-first review, blocking vs warning issues, row-level edits. |
 | Image storage | Medium | Product photos introduce storage cost, access control, retention, malware scanning. | U4-B defines metadata only; U4-G can stub; production storage requires separate approval. |
-| Tenant isolation | Critical | Intake rows can contain customer catalog and pricing-sensitive data. | Tenant-scoped tables, workspace ID filters, public token resolves to one workspace only. |
-| Public token workspace access | High | Leaked token could allow unauthorized upload/read. | Hash tokens, expiry, least-capability token, rate limit, no cross-workspace data, audit events. |
+| Tenant isolation | Critical | Intake rows can contain customer catalog and pricing-sensitive data. | Tenant-scoped tables, workspace ID filters, internal-login-only U4-C/U4-D. Future public token requires public registry before tenant session. |
+| Public token workspace access | High | Tenant schema is unknown from token alone, and leaked tokens could allow unauthorized upload/read. | Deferred out of U4-C/U4-D. Future U4-G/H requires `public.intake_public_tokens`, unique hash, expiry, revocation, rate limit, audit, and exact workspace scope. |
 | Large spreadsheet performance | Medium | XLSX parsing can consume memory/CPU. | Conservative size/row limits, later background parsing if needed. |
 | Import duplication | High | Duplicate staged rows or ERP SKU codes can cause catalog corruption. | Dedupe issues, explicit conflict policy, U3 preview/validate before apply. |
 | Silent ERP import | Critical | Customer staging could accidentally write SKUs without review. | Contract forbids direct SKU writes from U4; push only to U3 preview. |
@@ -809,10 +872,11 @@ U4-B does not add runtime tests. U4-C/U4-D should add static and contract tests 
 
 Proposed U4-C tests:
 
-- Static migration/model contract for all proposed tables and indexes.
+- Static migration/model contract for `intake_workspaces`, `intake_uploads`, `intake_product_rows`, and `intake_validation_issues` only.
 - Permission seed completeness for `intake:*` permissions.
 - No intake router endpoint uses only `skus:import` except push-to-U3 path.
-- Public token columns store hash only, not raw token.
+- No U4-C/U4-D public token endpoint exists.
+- No U4-C/U4-D table contains public token columns.
 
 Proposed U4-D parser tests:
 
@@ -832,9 +896,12 @@ Proposed U4-E frontend contract tests:
 
 ### U4-C Backend Schema Skeleton
 
-- Add migration and ORM models for intake tables after CTO approval.
+- Add migration and ORM models for `intake_workspaces`, `intake_uploads`, `intake_product_rows`, and `intake_validation_issues` after CTO approval.
 - Add permission seeds for `intake:*`.
 - Add read/create workspace endpoints and static contract tests.
+- Keep U4-C internal-login-only.
+- Do not add `intake_assets`.
+- Do not add `intake_exports` unless export generation is also implemented.
 - No parser yet.
 
 ### U4-D Parser/Preview
@@ -842,6 +909,8 @@ Proposed U4-E frontend contract tests:
 - Implement CSV/XLSX parser boundary.
 - Add upload endpoint, row staging, mapping save, validation issue generation.
 - Keep exports disabled until validation and review contracts are stable.
+- Use first non-empty XLSX sheet only.
+- Keep public token access disabled.
 
 ### U4-E Frontend Workspace Shell
 
@@ -861,6 +930,8 @@ Proposed U4-E frontend contract tests:
 - Mobile route shell.
 - Barcode scan with manual fallback.
 - Photo capture/upload metadata stub.
+- Add `intake_assets` only if photo capture proceeds.
+- Add public token registry only if external/public workspace access is in this slice.
 - No offline sync.
 
 ### U4-H Runtime Customer Proof
@@ -872,13 +943,15 @@ Proposed U4-E frontend contract tests:
 - Push to U3 preview.
 - Do not apply into ERP unless separately approved for the proof.
 
-## 13. CTO Review Questions
+## 13. CTO Decisions Captured In R1
 
-1. Should U4-C implement all six proposed tables at once, or split assets/exports into later migrations?
-2. Should public token uploads be in MVP, or internal-only workspaces first?
-3. Should XLSX multi-sheet selection be MVP or first-sheet-only?
-4. Should generated U3 CSV include only `sku_code`, `name`, `unit`, or also `category`/`unit_price` when present?
-5. Should `catalog_manager` receive `skus:import` by default, or require admin assignment?
+1. U4-C implements four tables only: `intake_workspaces`, `intake_uploads`, `intake_product_rows`, `intake_validation_issues`.
+2. `intake_assets` is deferred to the mobile/photo slice.
+3. `intake_exports` remains a U4-D/U4-E bridge design and is not required in U4-C unless export generation is implemented.
+4. U4-C/U4-D are internal-login-only; public token access is deferred to U4-G/U4-H and requires `public.intake_public_tokens`.
+5. XLSX MVP uses first non-empty sheet only.
+6. `catalog_manager` can receive `intake:*` by default, but `skus:import` requires explicit grant or admin approval.
+7. Generated U3 CSV field set remains open for U4-D implementation review: minimum `sku_code`, `name`, `unit`; optionally `category` and `unit_price` if U3 accepts them safely.
 
 ## 14. Final Statement
 

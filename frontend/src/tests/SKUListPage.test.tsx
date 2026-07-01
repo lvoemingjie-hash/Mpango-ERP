@@ -1,11 +1,18 @@
 /**
- * U3-D Permission gate tests for SKUListPage Import entry point.
+ * U3-D / U4-A Permission gate tests for SKUListPage.
  *
  * Verifies:
+ *   Import gate:
  *   1. Import button visible when user has skus:import permission
  *   2. Import button visible when user has admin role (no skus:import perm)
- *   3. Import button hidden when user has neither skus:import nor admin
+ *   3. Import button hidden when user lacks skus:import and is not admin
  *   4. Import button hidden for unauthenticated (no user)
+ *
+ *   U4-A Product create/update gate (fixed: was inventory:write):
+ *   5. Add Product visible when user has skus:create
+ *   6. Add Product hidden when user has inventory:write but NOT skus:create
+ *   7. Add Product visible for admin (bypass)
+ *   8. Edit button hidden without skus:update
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -81,7 +88,7 @@ describe('SKUListPage Import button permission gate', () => {
   });
 
   it('shows Import button when user has skus:import permission', async () => {
-    setUser(['inventory:write', 'skus:import'], ['viewer']);
+    setUser(['skus:create', 'skus:import'], ['viewer']);
 
     render(<SKUListPage />);
 
@@ -91,7 +98,7 @@ describe('SKUListPage Import button permission gate', () => {
   });
 
   it('shows Import button when user has admin role without skus:import', async () => {
-    setUser(['inventory:write'], ['admin']);
+    setUser([], ['admin']);
 
     render(<SKUListPage />);
 
@@ -101,7 +108,7 @@ describe('SKUListPage Import button permission gate', () => {
   });
 
   it('hides Import button when user lacks skus:import and is not admin', async () => {
-    setUser(['inventory:write'], ['viewer']);
+    setUser(['skus:create'], ['viewer']);
 
     render(<SKUListPage />);
 
@@ -117,6 +124,58 @@ describe('SKUListPage Import button permission gate', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('Import Products')).not.toBeInTheDocument();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U4-A: Product create/update gate tests (fixed: inventory:write -> skus:*)
+// ---------------------------------------------------------------------------
+
+describe('SKUListPage Add Product gate (U4-A)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows Add Product when user has skus:create', async () => {
+    setUser(['skus:create'], ['viewer']);
+
+    render(<SKUListPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Product')).toBeInTheDocument();
+    });
+  });
+
+  it('hides Add Product when user has inventory:write but NOT skus:create (proves fix)', async () => {
+    // U4-A: Previously this user could see Add Product because the gate
+    // checked 'inventory:write'. Now it checks 'skus:create' correctly.
+    setUser(['inventory:write'], ['viewer']);
+
+    render(<SKUListPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Add Product')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows Add Product for admin (bypass)', async () => {
+    setUser([], ['admin']);
+
+    render(<SKUListPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Product')).toBeInTheDocument();
+    });
+  });
+
+  it('hides Add Product for unauthenticated user', async () => {
+    setNoUser();
+
+    render(<SKUListPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Add Product')).not.toBeInTheDocument();
     });
   });
 });

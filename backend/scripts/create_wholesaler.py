@@ -189,6 +189,13 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
         ("skus:create", "Create SKUs"),
         ("skus:update", "Update SKUs"),
         ("skus:import", "Import SKUs via preview/validate/apply contract"),
+        # -- Data Intake (U4-A foundation: permissions only, no routes yet) --
+        ("intake:read", "Read data intake batches"),
+        ("intake:create", "Create data intake batches"),
+        ("intake:update", "Update data intake batches"),
+        ("intake:approve", "Approve data intake batches for ERP import"),
+        ("intake:export", "Export data intake batches"),
+        ("intake:import_to_erp", "Import approved data intake into ERP"),
         # ── Inventory management ──
         ("inventory:read", "Read inventory"),
         ("inventory:write", "Write inventory (legacy alias)"),

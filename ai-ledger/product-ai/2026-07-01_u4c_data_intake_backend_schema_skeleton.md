@@ -4,7 +4,7 @@
 **Branch**: `opencode/u4c-data-intake-backend-schema-skeleton-2026-07-01`
 **Base**: `origin/product-dev-recovered` at `3d39d4b`
 **Executor**: OpenCode GPT-5.5
-**Verdict**: `PASS_LOCAL_TARGETED_VALIDATION`
+**Verdict**: `PASS_FOR_CTO_U4C_REVIEW`
 
 ## Scope
 
@@ -105,3 +105,50 @@ Secret scan:
 - Seed scripts already contained `intake:*` permissions from U4-A, so no permission set expansion was required.
 - Only stale comments were updated to reflect that U4-C now exposes workspace routes.
 - `get_tenant_db_session` is required on every U4-C route, so routes cannot operate without tenant context.
+
+## R1 Runtime Contract Proof
+
+R1 added runtime-level tests beyond source-string checks.
+
+API runtime coverage added:
+
+- Unauthenticated request to `/api/v1/intake/workspaces` returns `401` with `UNAUTHENTICATED`.
+- Authenticated contextual tenant user without `intake:create` cannot `POST /api/v1/intake/workspaces`.
+- Authenticated contextual tenant user without `intake:read` cannot list or detail workspaces.
+- Contextual tenant user with `intake:create` can create a workspace through the real router.
+- Contextual tenant user with `intake:read` can list and detail a created workspace through the real router.
+- Detail endpoint returns `404 WORKSPACE_NOT_FOUND` for another tenant's workspace ID.
+
+Bootstrap runtime coverage added:
+
+- Creates a temporary existing tenant schema missing the four intake tables.
+- Runs `bootstrap_tenant_schema.bootstrap(schema, database_url)` directly.
+- Verifies exactly these intake tables exist in that schema:
+  `intake_workspaces`, `intake_uploads`, `intake_product_rows`, `intake_validation_issues`.
+- Verifies forbidden tables do not exist:
+  `intake_assets`, `intake_exports`, `public.intake_public_tokens`.
+- Verifies core U4-C intake indexes exist.
+
+R1 validation command:
+
+```text
+pytest tests/test_u4c_intake_backend_schema.py tests/test_u4c_intake_api_contract.py tests/test_u1_bootstrap_permission_completeness.py -q
+22 passed, 5 warnings
+```
+
+R1 additional checks:
+
+```text
+git diff --check
+PASS
+
+npx gitnexus analyze; npx gitnexus status
+Already up to date; status up-to-date at b6c8973
+```
+
+R1 secret/scope scan:
+
+- Secret-pattern scan matched only false positives in test-only placeholders, `TokenPayload`, and forbidden-token assertions.
+- Forbidden-scope scan matched only negative assertions in tests; no implementation references to `intake_assets`, `intake_exports`, public token routes/tables, upload handling, U3 import, or SKU writes.
+
+R1 verdict: `PASS_FOR_CTO_U4C_REVIEW`.

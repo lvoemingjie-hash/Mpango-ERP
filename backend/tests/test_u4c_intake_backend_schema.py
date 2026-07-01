@@ -7,6 +7,8 @@ intake_validation_issues.
 from __future__ import annotations
 
 import importlib.util
+import os
+import uuid
 from pathlib import Path
 
 import pytest
@@ -27,6 +29,19 @@ INTAKE_TABLES = {
 }
 
 FORBIDDEN_U4C_TABLES = {"intake_assets", "intake_exports", "intake_public_tokens"}
+INTAKE_INDEXES = {
+    "ix_intake_workspaces_tenant_id",
+    "ix_intake_workspaces_status",
+    "ix_intake_workspaces_created_at",
+    "ix_intake_uploads_workspace_id",
+    "ix_intake_uploads_tenant_id",
+    "ix_intake_product_rows_workspace_id",
+    "ix_intake_product_rows_upload_order",
+    "ix_intake_product_rows_review_status",
+    "ix_intake_validation_issues_workspace_id",
+    "ix_intake_validation_issues_row_id",
+    "ix_intake_validation_issues_severity",
+}
 
 
 async def _drop_intake_tables(session: AsyncSession, schema: str) -> None:
@@ -89,6 +104,25 @@ async def _column_exists(session: AsyncSession, schema: str, table: str, column:
     return result.first() is not None
 
 
+async def _intake_tables(session: AsyncSession, schema: str) -> set[str]:
+    result = await session.execute(
+        text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = :schema AND table_name LIKE 'intake_%'"
+        ),
+        {"schema": schema},
+    )
+    return set(result.scalars().all())
+
+
+async def _index_exists(session: AsyncSession, schema: str, index_name: str) -> bool:
+    result = await session.execute(
+        text("SELECT 1 FROM pg_indexes WHERE schemaname = :schema AND indexname = :index_name"),
+        {"schema": schema, "index_name": index_name},
+    )
+    return result.first() is not None
+
+
 @pytest.mark.asyncio
 async def test_024_migration_creates_exact_four_intake_tables(async_session):
     await _drop_intake_tables(async_session, TEST_TENANT_SCHEMA)
@@ -139,3 +173,34 @@ def test_bootstrap_mentions_only_u4c_intake_tables():
         assert table in source
     for table in FORBIDDEN_U4C_TABLES:
         assert table not in source
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_reconciles_missing_intake_tables_and_indexes(async_session):
+    from scripts.bootstrap_tenant_schema import bootstrap
+
+    schema = f"t_u4c_r1_{uuid.uuid4().hex[:8]}"
+    database_url = os.environ["DATABASE_URL"]
+
+    await async_session.execute(text(f'CREATE SCHEMA "{schema}"'))
+    for table in sorted(INTAKE_TABLES | FORBIDDEN_U4C_TABLES):
+        await async_session.execute(text(f'DROP TABLE IF EXISTS "{schema}".{table} CASCADE'))
+    await async_session.execute(text('DROP TABLE IF EXISTS public.intake_public_tokens CASCADE'))
+    await async_session.commit()
+
+    try:
+        assert await _intake_tables(async_session, schema) == set()
+
+        await bootstrap(schema, database_url)
+
+        assert await _intake_tables(async_session, schema) == INTAKE_TABLES
+        for table in INTAKE_TABLES:
+            assert await _table_exists(async_session, schema, table), f"Missing bootstrapped table {table}"
+        for table in FORBIDDEN_U4C_TABLES:
+            assert not await _table_exists(async_session, schema, table), f"Forbidden table exists: {table}"
+        assert not await _table_exists(async_session, "public", "intake_public_tokens")
+        for index_name in INTAKE_INDEXES:
+            assert await _index_exists(async_session, schema, index_name), f"Missing bootstrapped index {index_name}"
+    finally:
+        await async_session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await async_session.commit()

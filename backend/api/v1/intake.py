@@ -19,6 +19,7 @@ from schemas.common import DataResponse, Pagination
 from schemas.intake import (
     IntakeMappingRead,
     IntakeMappingRequest,
+    IntakeApplyRead,
     IntakeProductRowRead,
     IntakeUploadRead,
     IntakeValidationIssueRead,
@@ -27,11 +28,13 @@ from schemas.intake import (
     IntakeWorkspaceRead,
     IntakeWorkspaceStatus,
 )
+from services.intake_apply_service import IntakeApplyService
 from services.intake_service import IntakeService
 
 
 router = APIRouter()
 intake_service = IntakeService()
+intake_apply_service = IntakeApplyService()
 
 
 class RequireAnyIntakePermission:
@@ -71,6 +74,48 @@ class RequireAnyIntakePermission:
                 detail={
                     "code": "PERMISSION_DENIED",
                     "message": f"One of {sorted(self.permissions)} required",
+                },
+            )
+        return token
+
+
+class RequireAllPermissions:
+    """Require every supplied tenant permission."""
+
+    def __init__(self, *permissions: str):
+        self.permissions = set(permissions)
+
+    async def __call__(self, request: Request) -> TokenPayload:
+        auth_ctx = get_auth_context(request)
+        token = auth_ctx.token
+        if token.is_identity_only and token.is_super_admin:
+            return token
+
+        try:
+            tenant_ctx = get_tenant_context(request)
+        except HTTPException:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "TENANT_CONTEXT_REQUIRED",
+                    "message": "Please select a tenant first (POST /auth/select-tenant)",
+                },
+            )
+
+        if token.is_super_admin:
+            return token
+
+        user_permissions = {
+            permission.code
+            for role in tenant_ctx.user.roles
+            for permission in role.permissions
+        }
+        if not self.permissions.issubset(user_permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "PERMISSION_DENIED",
+                    "message": f"All of {sorted(self.permissions)} required",
                 },
             )
         return token
@@ -423,6 +468,38 @@ async def validate_intake_workspace(
             error_count=int(summary["error_count"]),
             warning_count=int(summary["warning_count"]),
         ),
+        timestamp=datetime.utcnow(),
+    )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/apply",
+    response_model=DataResponse[IntakeApplyRead],
+    status_code=status.HTTP_200_OK,
+)
+async def apply_intake_workspace(
+    workspace_id: uuid.UUID,
+    principal: TokenPayload = Depends(RequireAllPermissions("intake:update", "skus:import")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    """Apply validated staged intake rows to official SKUs."""
+    tenant_id = _uuid_or_403(
+        principal.tenant_id,
+        "TENANT_CONTEXT_REQUIRED",
+        "Tenant context is required for intake apply operations",
+    )
+    user_id = _optional_uuid(principal.user_id)
+
+    result = await intake_apply_service.apply_workspace(
+        db,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        user_id=user_id,
+    )
+
+    return DataResponse(
+        success=True,
+        data=IntakeApplyRead(**result),
         timestamp=datetime.utcnow(),
     )
 

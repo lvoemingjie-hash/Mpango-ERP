@@ -100,6 +100,16 @@ class IntakeValidationRead(BaseModel):
     warning_count: int
 
 
+class IntakeApplyRead(BaseModel):
+    """Response payload for applying staged intake rows to official SKUs."""
+
+    workspace_id: str
+    apply_status: str
+    created_count: int
+    row_count: int
+    created_sku_ids: list[str] = Field(default_factory=list)
+
+
 class IntakeProductRowRead(BaseModel):
     """Staged product row response payload."""
 

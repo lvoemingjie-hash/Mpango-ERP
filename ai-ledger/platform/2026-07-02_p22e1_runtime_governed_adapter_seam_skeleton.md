@@ -49,9 +49,11 @@ healthy read.
   created from `317c407` via `git worktree add --no-track -b <branch> <path> 317c407`. Upstream is
   unset, so a bare `git push` cannot fast-forward `platform-dev`; the branch is published with the
   explicit refspec `git push -u origin <branch>:<branch>` (the worktree-push gotcha).
-- **Commit chain (base..tip):** the base `317c407`, then the P22-E1 commit on top (code + tests +
-  this ledger). The exact tip SHA is reported in the chat report, not self-referenced here (this
-  ledger is part of the commit); the chain is `317c407` -> P22-E1 tip.
+- **Commit chain (base..tip):** the base `317c407`, then the P22-E1 R0 commit (the two seam modules
+  + the test file + this ledger), then the P22-E1-R1 evidence-fix commit (this ledger only --
+  corrects the GitNexus numbers to the branch tip and records the actual detect_changes result).
+  The exact tip SHA is reported in the chat report, not self-referenced here (this ledger is part
+  of the R1 commit); the chain is `317c407` -> R0 -> R1 tip.
 
 `platform-dev` is NOT merged and is NOT the push target. Only the isolated P22-E1 branch carries
 these changes and is published to its own remote ref.
@@ -148,31 +150,33 @@ pytest, PYTHONPATH=backend, PYTHONUTF8=1). Coverage:
 | Forbidden path audit | clean (section 9) |
 | P22-B regression (`test_platform_p22_controlled_execution.py`) | 56 passed (the non-executing baseline is unbroken) |
 | P22-E1 targeted tests | 29 passed |
-| `npx gitnexus analyze .` | indexed successfully (~17.5s); see section 8 |
+| `npx gitnexus analyze .` | indexed successfully (~16s); see section 8 |
 | `npx gitnexus status` | up-to-date at the branch tip (re-indexed after commit; indexed commit == current commit == tip) |
+| detect_changes (compare vs origin/platform-dev) | changed_count 75, changed_files 4, affected_count 0, risk_level low, affected_processes []; see section 8 |
 | Worktree clean (post-commit) | tracked tree clean |
 
 ## 8. GitNexus
 
-- `npx gitnexus analyze .` at the branch tip: repository indexed successfully in ~17.5s --
-  **~8,438 nodes | 25,831 edges | ~533 clusters | 300 flows**. Edges (25,831) and flows (300) are
-  stable; node and cluster counts vary +/-2-3 between fresh builds of the same tip (the E0 docs-only
-  base at `317c407` reported ~8,373 nodes / 25,588 edges / ~533 clusters / 300 flows; the E1 code
-  skeleton adds the new seam / adapter / test nodes). Documented as a band, not a point, to avoid
-  amend loops.
+- `npx gitnexus analyze .` at the branch tip: repository indexed successfully in ~16s --
+  **~8,456 nodes | 25,846 edges | ~536 clusters | 300 flows**. Edges (25,846) and flows (300) are
+  stable; node and cluster counts vary slightly between fresh builds of the same tip (a pre-commit
+  working-tree scan reported ~8,438 nodes / 25,831 edges / ~533 clusters / 300 flows; the post-
+  commit tip adds this ledger's markdown heading nodes and the test module nodes). Documented as a
+  band, not a point, to avoid amend loops.
 - `npx gitnexus status`: re-indexed at the branch tip after commit -- indexed commit == current
   commit == the branch tip, status up-to-date. The exact tip SHA is reported in the chat report,
   not self-referenced here.
-- detect_changes (compare vs `origin/platform-dev`): run at the branch tip via the GitNexus MCP
-  detect_changes tool (scope=compare, base_ref=origin/platform-dev). For a backend-only additive
-  skeleton that is import-tested and not wired into any route, the affected symbols are the new
-  seam / adapter / test nodes and their edges into the existing `api.v1.platform.p22` package;
-  every affected process is internal to platform P22. The product-token grep over
-  affected_processes and changed_symbols file paths (order, payment, invoice, customer, inventor,
-  ledger, billing, finance, product) returns 0 product business tokens. The risk level may read
-  MEDIUM / HIGH (a backend runtime skeleton adds symbols by definition); the stop-condition gate is
-  NOT the risk level but "0 product business flow", which holds. The live detect_changes output is
-  reported in the chat report.
+- detect_changes (compare vs `origin/platform-dev`), run at the branch tip via the GitNexus MCP
+  detect_changes tool (scope=compare, base_ref=origin/platform-dev): **changed_count 75,
+  affected_count 0, changed_files 4, risk_level low, affected_processes []**. Because the seam is
+  import-tested and not wired into any route or service flow, NO process is affected -- not a
+  platform process and not a product business process. The 75 changed symbols are the new adapter /
+  seam / test symbols plus this ledger's markdown heading nodes (gitnexus parses markdown headings
+  as graph nodes). The product-token grep over affected_processes and changed_symbols file paths
+  (order, payment, invoice, customer, inventor, ledger, billing, finance, product) returns 0
+  product business tokens; every changed symbol file path is under backend/api/v1/platform/p22/,
+  backend/tests/, or ai-ledger/platform/. The stop-condition gate ("affected flows must all be
+  platform P22 internal; 0 product business flow") holds decisively: affected_count is 0.
 
 ## 9. Forbidden Path Audit
 
@@ -212,11 +216,12 @@ None matches any forbidden prefix or fragment:
 
 ## 11. Risk
 
-**Medium.** P22-E1 is backend-only and additive (four new files; no existing file modified). It
+**Low.** P22-E1 is backend-only and additive (four new files; no existing file modified). It
 touches no migration, no schema, no auth / RBAC / session / tenancy, no P16 code, no frontend, no
-dependency, and no product / payment / tenant business path. It adds a non-executing runtime seam
-skeleton (new platform symbols) -- the only reason it is not Low. It grants no execution power: the
-seam runs no adapter, writes no success audit, and a passed preflight is not execution.
+dependency, and no product / payment / tenant business path. GitNexus detect_changes at the branch
+tip reports risk_level low with affected_count 0 (the seam is import-tested and not wired into any
+route or service flow, so no process -- platform or product -- is affected). The seam is
+non-executing: it runs no adapter, writes no success audit, and a passed preflight is not execution.
 
 ## 12. Blockers
 

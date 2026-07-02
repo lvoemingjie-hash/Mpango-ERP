@@ -216,8 +216,7 @@ async def create_workspace(
         updated_by=user_id,
     )
     db.add(workspace)
-    await db.commit()
-    await db.refresh(workspace)
+    await db.flush()
 
     return DataResponse(
         success=True,
@@ -343,8 +342,6 @@ async def upload_intake_file(
         parsed=parsed,
         user_id=user_id,
     )
-    await db.commit()
-    await db.refresh(upload)
 
     return DataResponse(success=True, data=_upload_to_read(upload), timestamp=datetime.utcnow())
 
@@ -376,8 +373,6 @@ async def update_intake_mapping(
         mapping=body.mapping,
         user_id=user_id,
     )
-    await db.commit()
-    await db.refresh(workspace)
     metadata = workspace.metadata_json or {}
 
     return DataResponse(
@@ -418,8 +413,6 @@ async def validate_intake_workspace(
         workspace=workspace,
         user_id=user_id,
     )
-    await db.commit()
-    await db.refresh(workspace)
 
     return DataResponse(
         success=True,

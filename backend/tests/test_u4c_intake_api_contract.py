@@ -168,6 +168,7 @@ def test_intake_workspace_routes_are_registered():
     assert "/api/v1/intake/workspaces/{workspace_id}/uploads" in route_paths
     assert "/api/v1/intake/workspaces/{workspace_id}/mapping" in route_paths
     assert "/api/v1/intake/workspaces/{workspace_id}/validate" in route_paths
+    assert "/api/v1/intake/workspaces/{workspace_id}/apply" in route_paths
     assert "/api/v1/intake/workspaces/{workspace_id}/rows" in route_paths
     assert "/api/v1/intake/workspaces/{workspace_id}/issues" in route_paths
 
@@ -179,6 +180,7 @@ def test_intake_routes_use_required_permissions():
     assert source.count('RequirePermission("intake:update")') == 2
     assert source.count('RequirePermission("intake:read")') == 4
     assert 'RequireAnyIntakePermission("intake:create", "intake:update")' in source
+    assert 'RequireAllPermissions("intake:update", "skus:import")' in source
 
 
 def test_intake_routes_require_tenant_db_session():

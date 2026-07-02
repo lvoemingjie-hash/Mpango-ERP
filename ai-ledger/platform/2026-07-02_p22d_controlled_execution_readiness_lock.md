@@ -148,10 +148,11 @@ is docs-only.
 
 ## 8. GitNexus
 
-- `npx gitnexus analyze .` (HEAD `114a184`): repository indexed successfully -- **8,361 nodes /
-  25,572 edges / 537 clusters / 300 flows** (19.7s). Docs-only changes add no code-graph nodes;
-  the counts reflect the platform-dev base after recent merges (e.g. u4e), not P22-D.
-- `npx gitnexus status`: **up-to-date** -- indexed commit `114a184` == current commit `114a184`.
+- `npx gitnexus analyze .` (branch tip `a31d379`): repository indexed successfully -- **8,371
+  nodes / 25,587 edges / 532 clusters / 300 flows**. Docs-only changes add no meaningful
+  code-graph nodes; the counts reflect the platform-dev base after recent merges (e.g. u4e) plus
+  minor analyzer variance in clustering, not P22-D execution surface.
+- `npx gitnexus status`: **up-to-date** -- indexed commit `a31d379` == current commit `a31d379`.
 
 ## 9. Forbidden Path Audit
 

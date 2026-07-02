@@ -33,6 +33,7 @@ import { PlatformRegistryPage } from '@/pages/platform/PlatformRegistryPage';
 import { PlatformControlledActionsPage } from '@/pages/platform/PlatformControlledActionsPage';
 import { PlatformApprovalsPage } from '@/pages/platform/PlatformApprovalsPage';
 import { PlatformDurableApprovalsPage } from '@/pages/platform/PlatformDurableApprovalsPage';
+import { PlatformControlledExecutionConsolePage } from '@/pages/platform/PlatformControlledExecutionConsolePage';
 // P13 Operations Cockpit pages
 import { OpsHealthPage } from '@/pages/platform/ops/OpsHealthPage';
 import { OpsErrorsPage } from '@/pages/platform/ops/OpsErrorsPage';
@@ -114,6 +115,12 @@ const router = createBrowserRouter([
               // P20 Durable Approval Governance route (durable approval console,
               // identity-only super_admin; maker-checker + quorum; not executed)
               { path: '/platform/durable-approvals', element: <PlatformDurableApprovalsPage /> },
+              // P22 Controlled Execution route (non-executing operator console,
+              // identity-only super_admin; dry-run + record request; never executes)
+              {
+                path: '/platform/controlled-execution',
+                element: <PlatformControlledExecutionConsolePage />,
+              },
               // P13 Operations Cockpit routes
               { path: '/platform/ops/health', element: <OpsHealthPage /> },
               { path: '/platform/ops/errors', element: <OpsErrorsPage /> },

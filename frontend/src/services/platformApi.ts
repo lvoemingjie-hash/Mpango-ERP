@@ -49,6 +49,14 @@ import type {
   DurableApprovalQueue,
   DurableApprovalRecord,
 } from '@/types/platformDurableApprovals';
+import type {
+  ExecutionCatalogResponse,
+  ExecutionDryRunRequest,
+  ExecutionDryRunResponse,
+  ExecutionRequestCreate,
+  ExecutionRequestQueue,
+  ExecutionRequestResponse,
+} from '@/types/platformControlledExecution';
 
 const P10_BASE = '/platform/p10';
 const P13_BASE = '/platform/p13';
@@ -57,6 +65,7 @@ const P17_BASE = '/platform/p17';
 const P18_BASE = '/platform/p18';
 const P19_BASE = '/platform/p19';
 const P20_BASE = '/platform/p20';
+const P22_BASE = '/platform/p22';
 
 export const platformService = {
   /** List tenants with optional pagination */
@@ -227,5 +236,49 @@ export const platformService = {
     api.post<DurableApprovalRecord>(
       `${P20_BASE}/durable-approvals/${approvalId}/decisions`,
       payload,
+    ),
+
+  // -- P22 Controlled Execution (non-executing operator console; never executed) --
+  //
+  // Approval is not execution and durability is not execution. A passed dry-run
+  // is a PRECONDITION, not an execution; a recorded request is RECORDED only.
+  // Every response carries execution_allowed === false, executed === false, and
+  // execution_started === false, and a result_state that is only ever
+  // dry_run_passed | blocked. No worker is dispatched, no queue is drained, no
+  // P16 harness is invoked, and no tenant / payment / product state is changed.
+  // The raw idempotency_key is hashed at the boundary; only its one-way digest
+  // is ever returned. No X-Platform-Operator secret is sent; these reuse the
+  // standard Axios Bearer token transport, identical to the P10..P20 calls.
+
+  /** P22: Get the v0 execution catalog (allowlist + exclusions; read-only) */
+  getExecutionCatalog: () =>
+    api.get<ExecutionCatalogResponse>(`${P22_BASE}/execution/catalog`),
+
+  /** P22: Dry-run validate an execution (no mutation; never executes) */
+  dryRunExecution: (payload: ExecutionDryRunRequest) =>
+    api.post<ExecutionDryRunResponse>(`${P22_BASE}/execution/dry-run`, payload),
+
+  /** P22: Record an execution request after a passed dry-run + ack (never executes) */
+  recordExecutionRequest: (payload: ExecutionRequestCreate) =>
+    api.post<ExecutionRequestResponse>(`${P22_BASE}/execution/requests`, payload),
+
+  /** P22: List recorded execution requests with optional filters (read-only) */
+  listExecutionRequests: (
+    limit = 50,
+    offset = 0,
+    filters?: {
+      result_state?: string;
+      action_type?: string;
+      durable_approval_id?: string;
+    },
+  ) =>
+    api.get<ExecutionRequestQueue>(`${P22_BASE}/execution/requests`, {
+      params: { limit, offset, ...filters },
+    }),
+
+  /** P22: Read one recorded execution request by id (read-only; never executes) */
+  getExecutionRequest: (executionRequestId: string) =>
+    api.get<ExecutionRequestResponse>(
+      `${P22_BASE}/execution/requests/${executionRequestId}`,
     ),
 };

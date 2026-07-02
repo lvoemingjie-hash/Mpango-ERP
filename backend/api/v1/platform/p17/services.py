@@ -27,22 +27,29 @@ P17-B is read-only. It adds no new data sources and no new infrastructure.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1.platform.p10.services import list_tenant_summaries
 from models.platform_tenant import PlatformTenant
 
+from .models import PlatformBackupOutcome, PlatformBackupPolicy
 from .schemas import (
+    BACKUP_FAILURE_REASONS,
     PlatformTenantRegistry,
     PlatformTenantRegistryList,
     RegistrySourceStatus,
+    TenantBackupStatus,
     TenantLifecycleState,
     TenantOperationalFlags,
     TenantProvisioningStatus,
+    enforce_backup_freshness,
+    redact_failure_reason,
 )
 
 
@@ -212,17 +219,289 @@ def _build_provisioning_status(
     )
 
 
-# -- Backup status --
+# -- Backup status (P17-D-C: durable source read path) --
+#
+# The backup sub-contract is now sourced from the durable public-schema tables
+# created by migration 021 (platform_backup_outcome append-only outcomes +
+# platform_backup_policy config). The read path is READ-ONLY: it SELECTs the
+# latest COMPLETED outcome rows and never mutates them (mutations are
+# writer-only). The mapping, freshness, redaction, and visibility rules are the
+# P17-D-A contract / P17-D-B plan (sections 4-9); a summary of the binding
+# invariants:
+#   - unknown is never healthy, null is never zero, success is never stale.
+#   - success requires a fresh timestamp (within BACKUP_FRESHNESS_WINDOW, 24h)
+#     AND backup_source_status == 'available'.
+#   - restore-test verdicts go stale past the restore-test cadence.
+#   - failure_reason_redacted is the closed BACKUP_FAILURE_REASONS vocabulary
+#     only (never raw); collapsed by redact_failure_reason.
+#   - a source read failure degrades to backup_status=None + reason, never a
+#     500 and never a fabricated success.
+#   - read-only, no P22: backup.check stays source_unknown / not_implemented.
 
 _BACKUP_UNAVAILABLE_REASON = (
-    "Backup system source is not yet wired; backup status is unavailable."
+    "Backup source read failed; backup status is unavailable."
+)
+_BACKUP_UNKNOWN_REASON = (
+    "No backup outcome has been recorded; backup status is unknown."
 )
 
-# Freshness enforcement (stale != success, counterexample C4) is implemented in
-# schemas.enforce_backup_freshness and applied by the schema backstop; a live
-# backup source will route through it when wired. No backup source exists in
-# P17-B, so the backup sub-contract is null at the registry level with the
-# reason surfaced on the registry record.
+# Restore-test cadence window (P17-D-B section 6 pins this value). A
+# passed/failed restore-test older than this reads 'stale' (never a fresh
+# verdict). Overridable per-policy via platform_backup_policy.restore_test_cadence_hours.
+RESTORE_TEST_CADENCE_WINDOW = timedelta(hours=168)  # 7 days
+
+
+@dataclass
+class _BackupSourceRead:
+    """One tenant's resolved backup / status source read (best-effort).
+
+    ``source_status`` is the honest hinge: 'available' only when the source was
+    readable AND an outcome applicable to this tenant exists (tenant-specific or
+    platform-wide fallback); 'unknown' when readable but no applicable outcome;
+    'unavailable' is never set here (a read failure returns ``None`` from the
+    loader for the whole map).
+    """
+
+    source_status: RegistrySourceStatus
+    backup_row: Optional[PlatformBackupOutcome] = None
+    restore_row: Optional[PlatformBackupOutcome] = None
+    policy_row: Optional[PlatformBackupPolicy] = None
+    reason: Optional[str] = None
+
+
+def _to_uuid(value: Optional[str]) -> Optional[UUID]:
+    """Best-effort UUID parse; None on a missing/malformed id (never raises)."""
+    if value is None:
+        return None
+    try:
+        return UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def _restore_test_cadence(policy_row: Optional[PlatformBackupPolicy]) -> timedelta:
+    """Per-policy restore-test cadence override, else the platform default."""
+    if (
+        policy_row is not None
+        and policy_row.restore_test_cadence_hours is not None
+    ):
+        return timedelta(hours=policy_row.restore_test_cadence_hours)
+    return RESTORE_TEST_CADENCE_WINDOW
+
+
+def _enforce_restore_test_freshness(
+    base_status: Optional[str],
+    at: Optional[datetime],
+    policy_row: Optional[PlatformBackupPolicy],
+    now: datetime,
+) -> Optional[str]:
+    """Downgrade a stale restore-test verdict to 'stale'; never a fresh verdict.
+
+    A 'passed'/'failed' restore test older than the (policy-or-default) cadence
+    reads 'stale'. A verdict without a confirmable timestamp reads 'unknown'.
+    Other values pass through unchanged.
+    """
+    if base_status not in ("passed", "failed"):
+        return base_status
+    if at is None:
+        return "unknown"
+    if now - at > _restore_test_cadence(policy_row):
+        return "stale"
+    return base_status
+
+
+async def _load_backup_status_map(
+    db: AsyncSession, tenant_ids: list[str], now: datetime
+) -> Optional[dict[str, _BackupSourceRead]]:
+    """Load the latest completed backup / restore-test outcomes + policy per tenant.
+
+    Returns a ``{tenant_id_str: _BackupSourceRead}`` map. For each tenant, prefers
+    a tenant-specific outcome (``tenant_id = X``) and falls back to the
+    platform-wide outcome (``tenant_id IS NULL``), applied independently per
+    ``job_kind`` (backup_job vs restore_test_job) -- today's only writer is a
+    whole-database pg_dump whose freshness applies to every tenant. Policy is
+    resolved the same way (tenant row, else platform default).
+
+    On ANY error returns ``None`` so the adapter degrades to
+    ``backup_status=None`` + the unavailable reason for every tenant (never
+    raises, never fabricates) -- mirroring ``_load_provisioning_map``'s
+    degrade-on-failure discipline but distinguishing a read failure (``None``)
+    from a successful empty read (a dict of 'unknown' reads). Returns ``{}`` for
+    an empty tenant-id list (nothing to resolve).
+    """
+    if not tenant_ids:
+        return {}
+
+    tenant_uuids = [u for u in (_to_uuid(t) for t in tenant_ids) if u is not None]
+
+    try:
+        outcomes_result = await db.execute(
+            select(PlatformBackupOutcome).where(
+                or_(
+                    PlatformBackupOutcome.tenant_id.in_(tenant_uuids),
+                    PlatformBackupOutcome.tenant_id.is_(None),
+                ),
+                PlatformBackupOutcome.completed_at.is_not(None),
+            )
+        )
+        outcomes = outcomes_result.scalars().all()
+
+        policies_result = await db.execute(
+            select(PlatformBackupPolicy).where(
+                or_(
+                    PlatformBackupPolicy.tenant_id.in_(tenant_uuids),
+                    PlatformBackupPolicy.tenant_id.is_(None),
+                )
+            )
+        )
+        policies = policies_result.scalars().all()
+    except Exception:
+        # Read failure -> unavailable for every tenant (caller surfaces reason).
+        return None
+
+    def _latest(rows: list[PlatformBackupOutcome]) -> Optional[PlatformBackupOutcome]:
+        return max(rows, key=lambda r: r.completed_at) if rows else None
+
+    plat_backup = _latest(
+        [o for o in outcomes if o.tenant_id is None and o.job_kind == "backup_job"]
+    )
+    plat_restore = _latest(
+        [o for o in outcomes if o.tenant_id is None and o.job_kind == "restore_test_job"]
+    )
+    plat_policy = next((p for p in policies if p.tenant_id is None), None)
+
+    resolved: dict[str, _BackupSourceRead] = {}
+    for tid in tenant_ids:
+        tid_uuid = _to_uuid(tid)
+        tenant_backup = _latest(
+            [
+                o
+                for o in outcomes
+                if o.tenant_id == tid_uuid and o.job_kind == "backup_job"
+            ]
+        )
+        tenant_restore = _latest(
+            [
+                o
+                for o in outcomes
+                if o.tenant_id == tid_uuid and o.job_kind == "restore_test_job"
+            ]
+        )
+        backup_row = tenant_backup or plat_backup
+        restore_row = tenant_restore or plat_restore
+
+        tenant_policy = (
+            next((p for p in policies if p.tenant_id == tid_uuid), None)
+            if tid_uuid is not None
+            else None
+        )
+        policy_row = tenant_policy or plat_policy
+
+        if backup_row is not None or restore_row is not None:
+            resolved[tid] = _BackupSourceRead(
+                source_status="available",
+                backup_row=backup_row,
+                restore_row=restore_row,
+                policy_row=policy_row,
+                reason=None,
+            )
+        else:
+            resolved[tid] = _BackupSourceRead(
+                source_status="unknown",
+                reason=_BACKUP_UNKNOWN_REASON,
+            )
+    return resolved
+
+
+def _build_backup_status(
+    read: Optional[_BackupSourceRead], now: datetime
+) -> Optional[TenantBackupStatus]:
+    """Build a TenantBackupStatus from the durable source read.
+
+    Returns ``None`` when the source is not 'available' (read failed -> None from
+    the loader, or 'unknown' read with no applicable outcome) so the registry
+    keeps ``backup_status`` nullable and surfaces the reason -- the existing
+    degrade path. When the source is 'available', routes every populated status
+    through ``enforce_backup_freshness`` (24h window) and the restore-test
+    cadence, applies ``redact_failure_reason``, and asserts
+    ``backup_source_status='available'`` so the schema backstop
+    (``success_requires_fresh_timestamp``) holds. Never raises.
+    """
+    if read is None or read.source_status != "available":
+        return None
+
+    backup_row = read.backup_row
+    restore_row = read.restore_row
+    policy_row = read.policy_row
+
+    # last_backup_at / last_backup_status (freshness-routed; success is never stale).
+    last_backup_at = backup_row.completed_at if backup_row is not None else None
+    raw_backup_status = backup_row.status if backup_row is not None else None
+    last_backup_status = (
+        enforce_backup_freshness(raw_backup_status, last_backup_at, now=now)
+        if raw_backup_status is not None
+        else None
+    )
+
+    # failure_reason_redacted: allowlisted code of the latest failed/partial backup.
+    failure_reason: Optional[str] = None
+    if backup_row is not None and backup_row.status in ("failed", "partial"):
+        failure_reason = redact_failure_reason(
+            backup_row.failure_reason_code, BACKUP_FAILURE_REASONS
+        )
+
+    # restore_test_status: success -> passed; failed -> failed; else unknown; then cadence.
+    last_restore_test_at = restore_row.completed_at if restore_row is not None else None
+    if restore_row is not None:
+        if restore_row.status == "success":
+            rt_base = "passed"
+        elif restore_row.status == "failed":
+            rt_base = "failed"
+        else:
+            # partial / unexpected: indeterminate, never a pass.
+            rt_base = "unknown"
+        restore_test_status = _enforce_restore_test_freshness(
+            rt_base, last_restore_test_at, policy_row, now
+        )
+    else:
+        restore_test_status = None  # no restore-test outcome recorded -> null
+
+    # export_available: a restorable non-empty dump exists and latest backup is
+    # not failed -> True; else False. The durable outcome carries no per-dump
+    # retention timestamp, so 'within retention' is approximated by 'the latest
+    # backup succeeded with bytes_written > 0' (the CHECK constraint guarantees a
+    # success row carries bytes_written > 0).
+    if (
+        backup_row is not None
+        and backup_row.status == "success"
+        and (backup_row.bytes_written or 0) > 0
+    ):
+        export_available = True
+    else:
+        export_available = False
+
+    retention_policy = policy_row.retention_policy if policy_row is not None else None
+
+    return TenantBackupStatus(
+        last_backup_at=last_backup_at,
+        last_backup_status=last_backup_status,  # type: ignore[arg-type]
+        last_restore_test_at=last_restore_test_at,
+        restore_test_status=restore_test_status,  # type: ignore[arg-type]
+        export_available=export_available,
+        retention_policy=retention_policy,
+        failure_reason_redacted=failure_reason,
+        backup_source_status="available",
+        last_status_check_at=now,
+    )
+
+
+def _backup_unavailable_reason(read: Optional[_BackupSourceRead]) -> str:
+    """The honest registry-level reason when backup_status is null."""
+    if read is None or read.source_status == "unavailable":
+        return _BACKUP_UNAVAILABLE_REASON
+    if read.source_status == "unknown":
+        return _BACKUP_UNKNOWN_REASON
+    return _BACKUP_UNKNOWN_REASON  # defensive: a null build is treated as unknown
 
 
 # -- Registry assembly --
@@ -238,20 +517,28 @@ def _build_registry(
     p10_status: Optional[str],
     provisioning: Optional[PlatformTenant],
     now: datetime,
+    backup_read: Optional[_BackupSourceRead] = None,
 ) -> PlatformTenantRegistry:
     """Assemble one PlatformTenantRegistry from existing sources.
 
     Never raises: every sub-source degrades to its documented fallback with a
-    reason. ``unknown`` is never 'active' and ``null`` is never '0'.
+    reason. ``unknown`` is never 'active' and ``null`` is never '0'. The backup
+    sub-source is built from the durable read (P17-D-C): when the source reads
+    'available' a real TenantBackupStatus is attached and no backup reason is
+    surfaced; otherwise ``backup_status`` stays null with the honest reason.
     """
     lifecycle = _derive_lifecycle_state(p10_status, provisioning)
     flags = _build_operational_flags(support_mode_active)
     provisioning_status = _build_provisioning_status(provisioning)
+    backup_status = _build_backup_status(backup_read, now)
 
     reasons: list[str] = [_FLAGS_UNAVAILABLE_REASON]
     if provisioning_status is None:
         reasons.append(_PROVISIONING_UNAVAILABLE_REASON)
-    reasons.append(_BACKUP_UNAVAILABLE_REASON)
+    if backup_status is None:
+        # Source not available (read failed -> unavailable, or no outcome ->
+        # unknown). Never a fabricated success; the reason is surfaced.
+        reasons.append(_backup_unavailable_reason(backup_read))
 
     # The core record (identity + lifecycle + flags) availability drives the
     # registry-level status; degraded sub-sources are enumerated in the reason.
@@ -268,7 +555,7 @@ def _build_registry(
         lifecycle_state=lifecycle,
         operational_flags=flags,
         provisioning_status=provisioning_status,
-        backup_status=None,  # no backup source -> null + reason (never success)
+        backup_status=backup_status,
         last_registry_update_at=None,  # no registry-update timestamp source yet
         registry_source_status=registry_source_status,
         unavailable_reason=" ".join(reasons),
@@ -308,11 +595,18 @@ async def list_tenant_registries(
         # as a degraded sub-source (provisioning reads null + reason per-tenant).
         reasons.append(_PROVISIONING_UNAVAILABLE_REASON)
 
+    backup_map = await _load_backup_status_map(db, wholesaler_ids, now)
+    if backup_map is None and wholesaler_ids:
+        # A None map means the backup source read FAILED (unavailable for all);
+        # each tenant's backup_status is null with the unavailable reason.
+        reasons.append(_BACKUP_UNAVAILABLE_REASON)
+
     items: list[PlatformTenantRegistry] = []
     any_unknown = False
     for s in summaries.items:
         tenant_id = s.tenant_id or "00000000-0000-4000-8000-000000000000"
         provisioning = provisioning_map.get(tenant_id) if tenant_id else None
+        backup_read = backup_map.get(tenant_id) if backup_map else None
         try:
             reg = _build_registry(
                 tenant_id=tenant_id,
@@ -324,6 +618,7 @@ async def list_tenant_registries(
                 p10_status=s.status,
                 provisioning=provisioning,
                 now=now,
+                backup_read=backup_read,
             )
         except Exception:
             # A single tenant build failure must not break the list; emit an
@@ -390,6 +685,9 @@ async def get_tenant_registry(
     provisioning_map = await _load_provisioning_map(db, [summary.tenant_id])
     provisioning = provisioning_map.get(summary.tenant_id)
 
+    backup_map = await _load_backup_status_map(db, [summary.tenant_id], now)
+    backup_read = backup_map.get(summary.tenant_id) if backup_map else None
+
     return _build_registry(
         tenant_id=summary.tenant_id,
         tenant_name=summary.tenant_name,
@@ -400,4 +698,5 @@ async def get_tenant_registry(
         p10_status=summary.status,
         provisioning=provisioning,
         now=now,
+        backup_read=backup_read,
     )

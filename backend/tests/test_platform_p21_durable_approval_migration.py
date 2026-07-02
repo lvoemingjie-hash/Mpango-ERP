@@ -27,6 +27,12 @@ pytestmark = pytest.mark.integration
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 BASE_REV = "019_platform_audit_logs"
+# Pinned upper bound: this test exercises 019 <-> 020 ONLY. It must not follow a
+# bare 'head', because a later additive migration (e.g. 021_platform_backup_status_source)
+# would change 'head' and make the "additions are exactly the durable tables"
+# assertion see that later migration's tables too. Each migration test pins to
+# the revision it actually tests.
+HEAD_REV = "020_durable_approval_store"
 PUBLIC = "public"
 
 DURABLE_TABLES = {
@@ -205,13 +211,13 @@ def _base_only(snap):
 
 
 def test_additions_only_from_base_to_head(alembic_cfg, conn):
-    """Upgrade base(019) -> head(020) adds ONLY durable tables / indexes / constraints / enums."""
+    """Upgrade base(019) -> 020 adds ONLY durable tables / indexes / constraints / enums."""
     from alembic import command
-    command.upgrade(alembic_cfg, "head")          # ensure at least at 020
+    command.upgrade(alembic_cfg, HEAD_REV)        # ensure at least at 020
     command.downgrade(alembic_cfg, BASE_REV)      # -> 019
     cur = conn.cursor()
     before = _snapshot(cur)
-    command.upgrade(alembic_cfg, "head")          # -> 020
+    command.upgrade(alembic_cfg, HEAD_REV)        # -> 020
     after = _snapshot(cur)
 
     # 1. No schema created by the upgrade (public-mode only).
@@ -248,7 +254,7 @@ def test_additions_only_from_base_to_head(alembic_cfg, conn):
 def test_downgrade_drops_only_p21_objects(alembic_cfg, conn):
     """downgrade -1 from head removes only the five tables + enums + their indexes/constraints."""
     from alembic import command
-    command.upgrade(alembic_cfg, "head")          # -> 020
+    command.upgrade(alembic_cfg, HEAD_REV)          # -> 020
     cur = conn.cursor()
     at_head = _snapshot(cur)
     command.downgrade(alembic_cfg, BASE_REV)      # -> 019
@@ -273,7 +279,7 @@ def test_reupgrade_recreates_tables(alembic_cfg, conn):
     """After downgrade, re-running upgrade recreates all five tables cleanly."""
     from alembic import command
     command.downgrade(alembic_cfg, BASE_REV)      # -> 019
-    command.upgrade(alembic_cfg, "head")          # -> 020 again
+    command.upgrade(alembic_cfg, HEAD_REV)          # -> 020 again
     cur = conn.cursor()
     cur.execute("""
         SELECT table_name FROM information_schema.tables
@@ -286,7 +292,7 @@ def test_reupgrade_recreates_tables(alembic_cfg, conn):
 def test_no_durable_objects_in_tenant_schemas(alembic_cfg, conn):
     """Catalog proof: no durable_approval_* table/type exists outside the public schema."""
     from alembic import command
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("""
         SELECT table_schema, table_name FROM information_schema.tables
@@ -309,7 +315,7 @@ def test_upgrade_does_not_create_tenant_schema(alembic_cfg, conn):
     command.downgrade(alembic_cfg, BASE_REV)      # -> 019
     cur = conn.cursor()
     before = _snapshot(cur)["schemas"]
-    command.upgrade(alembic_cfg, "head")          # -> 020
+    command.upgrade(alembic_cfg, HEAD_REV)          # -> 020
     after = _snapshot(cur)["schemas"]
     assert before == after, (
         f"public-mode upgrade changed the schema set: before={before} after={after}"

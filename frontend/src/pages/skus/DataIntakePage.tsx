@@ -1,10 +1,13 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowUpTrayIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { useAuthStore } from '@/stores/authStore';
+import { can, INTAKE_PERMISSIONS, SKU_PERMISSIONS } from '@/utils/permissions';
 import { normalizeApiError } from '@/utils/errorHandling';
 import {
   INTAKE_TARGET_FIELDS,
   intakeService,
+  type IntakeApplyResult,
   type IntakeMappingResult,
   type IntakeProductRow,
   type IntakeSourceType,
@@ -44,12 +47,18 @@ const AUTO_MAP_ALIASES: Record<IntakeTargetField, string[]> = {
 };
 
 function friendlyError(error: unknown): string {
-  const axErr = error as { response?: { status?: number; data?: { detail?: { code?: string; message?: string } } } };
+  const axErr = error as { response?: { status?: number; data?: { code?: string; message?: string; sku_codes?: string[]; detail?: { code?: string; message?: string; sku_codes?: string[] } } } };
   if (axErr.response?.status === 403) {
     return 'You do not have permission to manage intake workspaces. Ask an admin for intake access.';
   }
 
-  const code = axErr.response?.data?.detail?.code;
+  const detail = axErr.response?.data?.detail ?? axErr.response?.data;
+  const code = detail?.code;
+  const skuCodes = detail?.sku_codes || [];
+  if (code === 'ALREADY_APPLIED') return 'This intake workspace has already been applied';
+  if (code === 'DUPLICATE_STAGED_SKU_CODE') return `Duplicate staged SKU codes: ${skuCodes.join(', ') || 'review staged rows'}`;
+  if (code === 'SKU_CODE_EXISTS') return `Existing SKU codes already in Products: ${skuCodes.join(', ') || 'review staged rows'}`;
+  if (code === 'BLOCKING_ISSUES') return 'Revalidate and fix blocking issues before applying this workspace.';
   if (code === 'ROW_LIMIT_EXCEEDED') return 'Upload rejected: the file has more than 5,000 staged rows.';
   if (code === 'COLUMN_LIMIT_EXCEEDED') return 'Upload rejected: the file has more than 100 columns.';
   if (code === 'CELL_TOO_LARGE') return 'Upload rejected: one cell is longer than 2,000 characters.';
@@ -57,6 +66,15 @@ function friendlyError(error: unknown): string {
   if (code === 'XLSX_PARSE_ERROR') return 'Upload rejected: the XLSX file is unreadable or protected.';
 
   return normalizeApiError(error);
+}
+
+function applyFriendlyError(error: unknown): string {
+  const axErr = error as { response?: { status?: number } };
+  if (axErr.response?.status === 403) {
+    return 'You need both intake:update and skus:import to apply staged rows to Products.';
+  }
+
+  return friendlyError(error);
 }
 
 function headerLabel(header: string, normalized?: string) {
@@ -92,6 +110,7 @@ function valueText(value: unknown) {
 }
 
 export function DataIntakePage() {
+  const user = useAuthStore((state) => state.user);
   const [workspaceName, setWorkspaceName] = useState('Product intake workspace');
   const [sourceType, setSourceType] = useState<IntakeSourceType>('CUSTOMER_ONBOARDING');
   const [workspace, setWorkspace] = useState<IntakeWorkspace | null>(null);
@@ -101,6 +120,10 @@ export function DataIntakePage() {
   const [validation, setValidation] = useState<IntakeValidationResult | null>(null);
   const [rows, setRows] = useState<IntakeProductRow[]>([]);
   const [issues, setIssues] = useState<IntakeValidationIssue[]>([]);
+  const [applyResult, setApplyResult] = useState<IntakeApplyResult | null>(null);
+  const [showApplyConfirm, setShowApplyConfirm] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const applyingRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,6 +132,20 @@ export function DataIntakePage() {
     const normalizedKeys = Object.keys(upload.headers_normalized || {});
     return normalizedKeys.length > 0 ? normalizedKeys : upload.headers_raw;
   }, [upload]);
+
+  const hasApplyPermission = can(user, INTAKE_PERMISSIONS.UPDATE) && can(user, SKU_PERMISSIONS.IMPORT);
+  const blockingIssues = issues.filter((issue) => issue.is_blocking);
+  const isReadyForApply = validation?.status === 'READY_FOR_EXPORT' && validation.error_count === 0 && blockingIssues.length === 0;
+  const isApplied = applyResult?.apply_status === 'applied';
+
+  const applyUnavailableReason = useMemo(() => {
+    if (isApplied) return 'Already applied. This workspace cannot be applied again.';
+    if (!hasApplyPermission) return 'Missing permission: intake:update and skus:import are required.';
+    if (!validation) return 'Validate first before applying staged rows to Products.';
+    if (blockingIssues.length > 0 || validation.error_count > 0) return 'Fix blocking issues and revalidate before applying.';
+    if (validation.status !== 'READY_FOR_EXPORT') return 'Validate first until the workspace is READY_FOR_EXPORT.';
+    return null;
+  }, [blockingIssues.length, hasApplyPermission, isApplied, validation]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -146,6 +183,7 @@ export function DataIntakePage() {
       setMapping(autoMap(headers.length > 0 ? headers : uploadResult.headers_raw, uploadResult.headers_normalized || {}));
       setMappingResult(null);
       setValidation(null);
+      setApplyResult(null);
       setRows([]);
       setIssues([]);
     } catch (err) {
@@ -180,12 +218,30 @@ export function DataIntakePage() {
         intakeService.listIssues(workspace.workspace_id),
       ]);
       setValidation(validationResponse.data.data);
+      setApplyResult(null);
       setRows(rowsResponse.data.data.items);
       setIssues(issuesResponse.data.data.items);
     } catch (err) {
       setError(friendlyError(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleConfirmApply() {
+    if (!workspace || applyingRef.current || !isReadyForApply || !hasApplyPermission || isApplied) return;
+    applyingRef.current = true;
+    setApplying(true);
+    setError(null);
+    try {
+      const response = await intakeService.apply(workspace.workspace_id);
+      setApplyResult(response.data.data);
+      setShowApplyConfirm(false);
+    } catch (err) {
+      setError(applyFriendlyError(err));
+    } finally {
+      applyingRef.current = false;
+      setApplying(false);
     }
   }
 
@@ -203,7 +259,7 @@ export function DataIntakePage() {
       />
 
       <div className="mb-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
-        <strong>MVP staging preview:</strong> this page writes only intake staging data. It does not create official SKUs and has no apply button.
+        <strong>Controlled intake flow:</strong> validate staged rows first. Promotion is available only after confirmation and duplicate checks.
       </div>
 
       {error && (
@@ -399,6 +455,65 @@ export function DataIntakePage() {
               </ul>
             )}
           </section>
+        </div>
+      )}
+
+      {mappingResult && (
+        <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">5. Apply to Products</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Apply only after validation says READY_FOR_EXPORT. Existing SKU codes are blocked; this flow does not overwrite, upsert, or merge Products.
+          </p>
+
+          {applyUnavailableReason ? (
+            <div className={isApplied ? 'mt-4 rounded-md bg-green-50 p-4 text-sm text-green-800' : 'mt-4 rounded-md bg-gray-50 p-4 text-sm text-gray-700'} role="status">
+              {applyUnavailableReason}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary mt-4"
+              onClick={() => setShowApplyConfirm(true)}
+              disabled={loading || applying}
+            >
+              Apply to Products
+            </button>
+          )}
+
+          {applyResult && (
+            <div className="mt-4 rounded-md bg-green-50 p-4 text-sm text-green-800" role="status">
+              <div className="font-medium">Created {applyResult.created_count} official Product/SKU record(s).</div>
+              {applyResult.created_sku_ids.length > 0 && (
+                <div className="mt-1">Created SKU IDs: {applyResult.created_sku_ids.join(', ')}</div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {showApplyConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="apply-confirm-title"
+            className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl"
+          >
+            <h2 id="apply-confirm-title" className="text-lg font-semibold text-gray-900">Apply staged rows to Products</h2>
+            <div className="mt-3 space-y-2 text-sm text-gray-700">
+              <p>This writes to official Products/SKUs.</p>
+              <p>Duplicate existing SKU codes will be blocked.</p>
+              <p>There is no silent overwrite, upsert, or merge.</p>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" className="btn-secondary" onClick={() => setShowApplyConfirm(false)} disabled={applying}>
+                Cancel
+              </button>
+              <button type="button" className="btn-primary" onClick={handleConfirmApply} disabled={applying}>
+                {applying ? 'Applying...' : 'Confirm apply'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

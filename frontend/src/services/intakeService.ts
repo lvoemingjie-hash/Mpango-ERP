@@ -58,6 +58,14 @@ export interface IntakeValidationResult {
   warning_count: number;
 }
 
+export interface IntakeApplyResult {
+  workspace_id: string;
+  apply_status: 'applied' | 'not_applied' | 'applying' | 'failed';
+  created_count: number;
+  row_count: number;
+  created_sku_ids: string[];
+}
+
 export interface IntakeProductRow {
   row_id: string;
   upload_id: string;
@@ -124,6 +132,9 @@ export const intakeService = {
 
   validate: (workspaceId: string) =>
     api.post<ApiResponse<IntakeValidationResult>>(`/intake/workspaces/${workspaceId}/validate`),
+
+  apply: (workspaceId: string) =>
+    api.post<ApiResponse<IntakeApplyResult>>(`/intake/workspaces/${workspaceId}/apply`),
 
   listRows: (workspaceId: string) =>
     api.get<ApiResponse<PaginatedData<IntakeProductRow>>>(`/intake/workspaces/${workspaceId}/rows`),

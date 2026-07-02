@@ -38,9 +38,11 @@ migration / schema / P16 / frontend / dependency / product path, and starts NO P
   from `e87323f` via `git worktree add --no-track -b <branch> <path> e87323f`. Upstream is unset, so
   a bare `git push` cannot fast-forward `platform-dev`; the branch is published with the explicit
   refspec `git push -u origin <branch>:<branch>` (the worktree-push gotcha).
-- **Commit chain (base..tip):** the base `e87323f`, then the P22-E2 commit on top (the discovery note
-  + this ledger). The exact tip SHA is reported in the chat report, not self-referenced here (this
-  ledger is part of the commit); the chain is `e87323f` -> P22-E2 tip.
+- **Commit chain (base..tip):** the base `e87323f`, then the P22-E2 R0 commit (the discovery note +
+  this ledger), then the P22-E2-R1 evidence commit (this ledger only -- records the concrete
+  GitNexus analyze numbers and the detect_changes timeout / fallback). The exact tip SHA is reported
+  in the chat report, not self-referenced here (this ledger is part of the R1 commit); the chain is
+  `e87323f` -> R0 -> R1 tip.
 
 `platform-dev` is NOT merged and is NOT the push target. Only the isolated P22-E2 branch carries
 these docs and is published to its own remote ref.
@@ -123,16 +125,22 @@ eng-full visibility split. This shape is unwired (section 4).
 
 ## 8. GitNexus
 
-- `npx gitnexus analyze .` at the branch tip: indexed successfully -- node / edge / cluster / flow
-  counts are essentially unchanged from the `e87323f` base (docs-only adds only this note's + the
-  ledger's markdown heading nodes). Documented as a band, not a point (node / cluster counts wobble
-  +/-a few across fresh builds; edges / flows are stable).
+- `npx gitnexus analyze .` at the branch tip: indexed successfully in ~20s -- **~8,473 nodes |
+  25,862 edges | ~537 clusters | 300 flows**. Edges and flows are stable vs the `e87323f` base; the
+  node-count rise is only this note's + the ledger's markdown heading nodes (gitnexus parses markdown
+  headings as graph nodes). Documented as a band, not a point (node / cluster counts wobble +/-a few
+  across fresh builds).
 - `npx gitnexus status`: re-indexed at the branch tip after commit -- indexed commit == current
   commit == the branch tip, status up-to-date. The exact tip SHA is reported in the chat report, not
   self-referenced here.
-- detect_changes (compare vs `origin/platform-dev`): docs-only -> expected risk_level low with
-  affected_count 0 (no code graph change; only markdown heading nodes added). The stop-condition gate
-  (0 product business flow) holds trivially for a docs-only phase.
+- detect_changes (compare vs `origin/platform-dev`): the GitNexus MCP detect_changes stdio call timed
+  out across attempts on this fresh worktree (the server boots, answers initialize, but the tools/call
+  did not return -- the intermittent racy behavior of the MCP driver). The authoritative docs-only
+  proof is the sanctioned fallback: `git diff --name-only origin/platform-dev..HEAD` returns exactly
+  two markdown files (this note + the ledger) and ZERO source files (no .py / .ts / .tsx / .js / .sql;
+  no migrations / alembic) -> docs-only -> risk_level low with 0 product business flow by construction.
+  The stop-condition gate ("affected flows must all be platform P22 internal; 0 product business
+  flow") holds trivially for a docs-only phase.
 
 ## 9. Forbidden Path Audit
 

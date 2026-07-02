@@ -70,6 +70,18 @@ async def _index_definition(db, schema: str, index_name: str) -> str | None:
     return result.scalar()
 
 
+async def _constraint_exists(db, schema: str, table: str, constraint_name: str) -> bool:
+    from sqlalchemy import text
+    result = await db.execute(text(
+        "SELECT 1 FROM pg_constraint c "
+        "JOIN pg_class t ON t.oid = c.conrelid "
+        "JOIN pg_namespace n ON n.oid = c.connamespace "
+        "WHERE n.nspname = :schema AND t.relname = :table "
+        "AND c.conname = :constraint_name AND c.contype = 'c'"
+    ), {"schema": schema, "table": table, "constraint_name": constraint_name})
+    return result.first() is not None
+
+
 def _normalize_sql(sql: str) -> str:
     return " ".join(sql.lower().split())
 
@@ -466,7 +478,9 @@ async def _reconcile_import_runs(db, ts: str) -> None:
 
 
 async def _reconcile_intake_tables(db, ts: str) -> None:
-    """Idempotent reconciliation of U4-C intake skeleton indexes."""
+    """Idempotent reconciliation of U4 intake tables and indexes."""
+    from sqlalchemy import text
+
     intake_indexes = [
         (
             "ix_intake_workspaces_tenant_id",
@@ -485,6 +499,12 @@ async def _reconcile_intake_tables(db, ts: str) -> None:
             f'CREATE INDEX IF NOT EXISTS ix_intake_workspaces_created_at '
             f'ON "{ts}".intake_workspaces (created_at)',
             ("intake_workspaces", "(created_at)"),
+        ),
+        (
+            "ix_intake_workspaces_apply_status",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_workspaces_apply_status '
+            f'ON "{ts}".intake_workspaces (apply_status)',
+            ("intake_workspaces", "(apply_status)"),
         ),
         (
             "ix_intake_uploads_workspace_id",
@@ -517,6 +537,12 @@ async def _reconcile_intake_tables(db, ts: str) -> None:
             ("intake_product_rows", "(review_status)"),
         ),
         (
+            "ix_intake_product_rows_target_sku_id",
+            f'CREATE INDEX IF NOT EXISTS ix_intake_product_rows_target_sku_id '
+            f'ON "{ts}".intake_product_rows (target_sku_id)',
+            ("intake_product_rows", "(target_sku_id)"),
+        ),
+        (
             "ix_intake_validation_issues_workspace_id",
             f'CREATE INDEX IF NOT EXISTS ix_intake_validation_issues_workspace_id '
             f'ON "{ts}".intake_validation_issues (workspace_id)',
@@ -545,10 +571,44 @@ async def _reconcile_intake_tables(db, ts: str) -> None:
         if not await _table_exists(db, ts, table_name):
             return
 
+    workspace_columns = [
+        ("apply_status", "VARCHAR(32) NOT NULL DEFAULT 'not_applied'"),
+        ("applied_at", "TIMESTAMPTZ"),
+        ("applied_by", "UUID"),
+        ("apply_result", "JSONB NOT NULL DEFAULT '{}'::jsonb"),
+    ]
+    for column_name, ddl in workspace_columns:
+        if not await _column_exists(db, ts, "intake_workspaces", column_name):
+            await db.execute(text(f'ALTER TABLE "{ts}".intake_workspaces ADD COLUMN {column_name} {ddl}'))
+
+    row_columns = [
+        ("target_sku_id", "UUID"),
+        ("apply_status", "VARCHAR(32) NOT NULL DEFAULT 'not_applied'"),
+        ("apply_error_code", "VARCHAR(64)"),
+        ("apply_error_message", "TEXT"),
+    ]
+    for column_name, ddl in row_columns:
+        if not await _column_exists(db, ts, "intake_product_rows", column_name):
+            await db.execute(text(f'ALTER TABLE "{ts}".intake_product_rows ADD COLUMN {column_name} {ddl}'))
+
+    if not await _constraint_exists(db, ts, "intake_workspaces", "ck_intake_workspaces_apply_status"):
+        await db.execute(text(
+            f'ALTER TABLE "{ts}".intake_workspaces '
+            "ADD CONSTRAINT ck_intake_workspaces_apply_status "
+            "CHECK (apply_status IN ('not_applied', 'applying', 'applied', 'failed'))"
+        ))
+
+    if not await _constraint_exists(db, ts, "intake_product_rows", "ck_intake_product_rows_apply_status"):
+        await db.execute(text(
+            f'ALTER TABLE "{ts}".intake_product_rows '
+            "ADD CONSTRAINT ck_intake_product_rows_apply_status "
+            "CHECK (apply_status IN ('not_applied', 'applied', 'failed', 'skipped'))"
+        ))
+
     for index_name, create_sql, fragments in intake_indexes:
         await _ensure_index(db, ts, index_name, create_sql, fragments)
 
-    print(f"[reconcile] {ts}: ensured U4-C intake table indexes")
+    print(f"[reconcile] {ts}: ensured U4 intake apply audit contract")
 
 
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
@@ -762,6 +822,10 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "description TEXT,"
             "source_type VARCHAR(32) NOT NULL,"
             "status VARCHAR(32) NOT NULL DEFAULT 'OPEN',"
+            "apply_status VARCHAR(32) NOT NULL DEFAULT 'not_applied',"
+            "applied_at TIMESTAMPTZ,"
+            "applied_by UUID,"
+            "apply_result JSONB NOT NULL DEFAULT '{}'::jsonb,"
             "approved_by UUID,"
             "approved_at TIMESTAMPTZ,"
             "metadata JSONB NOT NULL DEFAULT '{}'::jsonb,"
@@ -769,7 +833,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
             "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
             "is_deleted BOOLEAN NOT NULL DEFAULT false,"
-            "deleted_at TIMESTAMPTZ)",
+            "deleted_at TIMESTAMPTZ,"
+            "CONSTRAINT ck_intake_workspaces_apply_status "
+            "CHECK (apply_status IN ('not_applied', 'applying', 'applied', 'failed')))",
 
             # intake_uploads - source metadata only; no file handling in U4-C
             f'CREATE TABLE IF NOT EXISTS "{ts}".intake_uploads ('
@@ -812,13 +878,19 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "unit_price NUMERIC(12,2),"
             "barcode VARCHAR(128),"
             "image_asset_id UUID,"
+            "target_sku_id UUID,"
             "review_status VARCHAR(32) NOT NULL DEFAULT 'UNREVIEWED',"
+            "apply_status VARCHAR(32) NOT NULL DEFAULT 'not_applied',"
+            "apply_error_code VARCHAR(64),"
+            "apply_error_message TEXT,"
             "dedupe_key VARCHAR(160),"
             "created_by UUID, updated_by UUID,"
             "created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
             "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
             "is_deleted BOOLEAN NOT NULL DEFAULT false,"
-            "deleted_at TIMESTAMPTZ)",
+            "deleted_at TIMESTAMPTZ,"
+            "CONSTRAINT ck_intake_product_rows_apply_status "
+            "CHECK (apply_status IN ('not_applied', 'applied', 'failed', 'skipped')))",
 
             # intake_validation_issues - staged validation findings
             f'CREATE TABLE IF NOT EXISTS "{ts}".intake_validation_issues ('

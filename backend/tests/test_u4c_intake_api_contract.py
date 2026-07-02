@@ -9,12 +9,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
 
-import httpx
-import pytest
 from alembic import op
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from fastapi import FastAPI, Request
+import httpx
+import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -100,30 +100,47 @@ async def _run_024_upgrade(session: AsyncSession, schema: str) -> None:
     await session.execute(text(f'SET search_path TO "{schema}", public'))
     await session.commit()
 
-    migration_file = BACKEND_DIR / "alembic" / "versions" / "024_intake_skeleton.py"
-    spec = importlib.util.spec_from_file_location("migration_024_api", migration_file)
-    migration_mod = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(migration_mod)
+    for revision in ("024_intake_skeleton", "025_intake_apply_audit"):
+        migration_file = BACKEND_DIR / "alembic" / "versions" / f"{revision}.py"
+        spec = importlib.util.spec_from_file_location(f"migration_{revision}_api", migration_file)
+        migration_mod = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(migration_mod)
 
-    def _run_upgrade_sync(sync_conn):
-        migration_context = MigrationContext.configure(sync_conn)
-        operations = Operations(migration_context)
-        saved = {name: getattr(op, name, None) for name in ("create_table", "create_index", "drop_table", "get_bind")}
-        op.get_bind = lambda: sync_conn
-        op.create_table = operations.create_table
-        op.create_index = operations.create_index
-        op.drop_table = operations.drop_table
-        try:
-            migration_mod.upgrade()
-        finally:
-            for name, original in saved.items():
-                if original is not None:
-                    setattr(op, name, original)
+        def _run_upgrade_sync(sync_conn, migration_mod=migration_mod):
+            migration_context = MigrationContext.configure(sync_conn)
+            operations = Operations(migration_context)
+            patched_names = (
+                "add_column",
+                "create_check_constraint",
+                "create_index",
+                "create_table",
+                "drop_column",
+                "drop_constraint",
+                "drop_index",
+                "drop_table",
+                "get_bind",
+            )
+            saved = {name: getattr(op, name, None) for name in patched_names}
+            op.get_bind = lambda: sync_conn
+            op.add_column = operations.add_column
+            op.create_check_constraint = operations.create_check_constraint
+            op.create_index = operations.create_index
+            op.create_table = operations.create_table
+            op.drop_column = operations.drop_column
+            op.drop_constraint = operations.drop_constraint
+            op.drop_index = operations.drop_index
+            op.drop_table = operations.drop_table
+            try:
+                migration_mod.upgrade()
+            finally:
+                for name, original in saved.items():
+                    if original is not None:
+                        setattr(op, name, original)
 
-    async_conn = await session.connection()
-    await async_conn.run_sync(_run_upgrade_sync)
-    await session.commit()
+        async_conn = await session.connection()
+        await async_conn.run_sync(_run_upgrade_sync)
+        await session.commit()
 
 
 def _client_for(*, permissions: Optional[list[str]], tenant_id: str = TEST_TENANT_ID):

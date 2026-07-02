@@ -131,12 +131,13 @@ directly.
 
 ## 8. GitNexus
 
-- `npx gitnexus analyze .` (re-index at the branch tip): repository indexed successfully in 17.2s --
-  **~8,463 nodes | 25,855 edges | ~534 clusters | 300 flows**. Edges (25,855) and flows (300) are
-  stable; node and cluster counts vary +/-2-3 between fresh builds of the same tip (documented as a
-  band, not a point, to avoid amend loops). Docs-only changes add no code-graph nodes; the counts
-  reflect the `platform-dev` base at `e87323f` (the P22-E1 merge), which is one merge ahead of the
-  P22-E0 base `f48e9fe` and so carries marginally more nodes than the P22-E0 rebuild.
+- `npx gitnexus analyze .` (re-index at the branch tip): repository indexed successfully in ~17-18s
+  -- **~8,463-8,481 nodes | 25,855-25,870 edges | ~534-537 clusters | 300 flows**. Flows (300) are
+  stable; node / edge / cluster counts wobble slightly across fresh builds and across the pre-commit
+  vs post-commit pass (a pre-commit pass at the working tree reported 8,463 / 25,855 / 534 / 300; a
+  post-commit pass at the tip reported 8,481 / 25,870 / 537 / 300) -- documented as a band, not a
+  point, to avoid amend loops. P17-D-A is docs-only; the code graph is unchanged from the base, but
+  the three new tracked docs are indexed as documentation nodes at the tip.
 - `npx gitnexus status`: index is **up-to-date** -- indexed commit == current commit == the branch
   tip, NOT the base `e87323f`. P17-D-A is docs-only, so the code graph is unchanged from the base,
   but the index tracks the branch tip. The tip SHA is reported in the chat report, not

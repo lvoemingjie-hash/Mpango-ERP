@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DataIntakePage } from '@/pages/skus/DataIntakePage';
+import { useAuthStore } from '@/stores/authStore';
 
 const mockCreateWorkspace = vi.fn();
 const mockUpload = vi.fn();
@@ -9,6 +10,7 @@ const mockUpdateMapping = vi.fn();
 const mockValidate = vi.fn();
 const mockListRows = vi.fn();
 const mockListIssues = vi.fn();
+const mockApply = vi.fn();
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -29,6 +31,7 @@ vi.mock('@/services/intakeService', async () => {
       validate: (...args: unknown[]) => mockValidate(...args),
       listRows: (...args: unknown[]) => mockListRows(...args),
       listIssues: (...args: unknown[]) => mockListIssues(...args),
+      apply: (...args: unknown[]) => mockApply(...args),
     },
   };
 });
@@ -103,6 +106,20 @@ const validationResponse = {
   },
 };
 
+const readyValidationResponse = {
+  data: {
+    success: true,
+    data: {
+      workspace_id: 'workspace-1',
+      status: 'READY_FOR_EXPORT',
+      row_count: 2,
+      error_count: 0,
+      warning_count: 0,
+    },
+    timestamp: '2026-07-01T00:00:00Z',
+  },
+};
+
 const rowsResponse = {
   data: {
     success: true,
@@ -171,6 +188,31 @@ const issuesResponse = {
   },
 };
 
+const noIssuesResponse = {
+  data: {
+    success: true,
+    data: {
+      items: [],
+      pagination: { page: 1, size: 100, total: 0, pages: 0 },
+    },
+    timestamp: '2026-07-01T00:00:00Z',
+  },
+};
+
+const applyResponse = {
+  data: {
+    success: true,
+    data: {
+      workspace_id: 'workspace-1',
+      apply_status: 'applied',
+      created_count: 2,
+      row_count: 2,
+      created_sku_ids: ['sku-1', 'sku-2'],
+    },
+    timestamp: '2026-07-01T00:00:00Z',
+  },
+};
+
 function mockHappyPath() {
   mockCreateWorkspace.mockResolvedValue(workspaceResponse);
   mockUpload.mockResolvedValue(uploadResponse);
@@ -178,6 +220,47 @@ function mockHappyPath() {
   mockValidate.mockResolvedValue(validationResponse);
   mockListRows.mockResolvedValue(rowsResponse);
   mockListIssues.mockResolvedValue(issuesResponse);
+  mockApply.mockResolvedValue(applyResponse);
+}
+
+function setUser(permissions: string[]) {
+  useAuthStore.setState({
+    accessToken: 'test-token',
+    refreshToken: 'test-refresh',
+    tenantCode: 'tenant-one',
+    user: {
+      id: 'user-1',
+      email: 'user@example.com',
+      full_name: 'Test User',
+      tenant_id: 'tenant-1',
+      tenant_schema: 't_test',
+      roles: ['operator'],
+      permissions,
+    },
+  });
+}
+
+async function reachValidatedPreview() {
+  await createWorkspace();
+  await uploadFile();
+  await userEvent.selectOptions(screen.getByLabelText('Map Price'), 'unit_price');
+  await userEvent.click(screen.getByRole('button', { name: /save mapping/i }));
+  await screen.findByText(/mapped 2 staged row/i);
+  await userEvent.click(screen.getByRole('button', { name: /validate staging rows/i }));
+}
+
+async function reachReadyForExport() {
+  mockCreateWorkspace.mockResolvedValue(workspaceResponse);
+  mockUpload.mockResolvedValue(uploadResponse);
+  mockUpdateMapping.mockResolvedValue(mappingResponse);
+  mockValidate.mockResolvedValue(readyValidationResponse);
+  mockListRows.mockResolvedValue(rowsResponse);
+  mockListIssues.mockResolvedValue(noIssuesResponse);
+  mockApply.mockResolvedValue(applyResponse);
+
+  render(<DataIntakePage />);
+  await reachValidatedPreview();
+  await screen.findByText('READY_FOR_EXPORT');
 }
 
 async function createWorkspace() {
@@ -194,6 +277,7 @@ async function uploadFile() {
 describe('DataIntakePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setUser(['intake:create', 'intake:update', 'intake:read', 'skus:import']);
   });
 
   it('runs the mock API happy path from create through validation preview', async () => {
@@ -300,14 +384,119 @@ describe('DataIntakePage', () => {
     expect(screen.getByText(/source column is not mapped/i)).toBeInTheDocument();
   });
 
-  it('does not render an apply or import-to-SKU button', async () => {
+  it('does not render an apply button before READY_FOR_EXPORT', async () => {
     mockHappyPath();
     render(<DataIntakePage />);
 
     await createWorkspace();
     await uploadFile();
 
-    expect(screen.queryByRole('button', { name: /apply/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply to products/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /import.*sku/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps apply unavailable with blocking issues after validation', async () => {
+    mockHappyPath();
+    render(<DataIntakePage />);
+
+    await reachValidatedPreview();
+
+    expect(await screen.findByText('NEEDS_REVIEW')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply to products/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/fix blocking issues/i)).toBeInTheDocument();
+  });
+
+  it('requires both intake:update and skus:import to apply', async () => {
+    setUser(['intake:create', 'intake:update', 'intake:read']);
+
+    await reachReadyForExport();
+
+    expect(screen.queryByRole('button', { name: /apply to products/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/missing permission/i)).toBeInTheDocument();
+  });
+
+  it('opens a confirmation modal before calling apply', async () => {
+    await reachReadyForExport();
+
+    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+
+    expect(mockApply).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /apply staged rows to products/i })).toBeInTheDocument();
+    expect(screen.getByText(/writes to official products\/skus/i)).toBeInTheDocument();
+    expect(screen.getByText(/duplicate existing sku codes will be blocked/i)).toBeInTheDocument();
+    expect(screen.getByText(/no silent overwrite/i)).toBeInTheDocument();
+  });
+
+  it('confirms apply exactly once and prevents duplicate submits', async () => {
+    const applyDeferred = deferred<typeof applyResponse>();
+    await reachReadyForExport();
+    mockApply.mockReturnValue(applyDeferred.promise);
+
+    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    const confirmButton = screen.getByRole('button', { name: /confirm apply/i });
+    await userEvent.dblClick(confirmButton);
+
+    expect(mockApply).toHaveBeenCalledTimes(1);
+    expect(mockApply).toHaveBeenCalledWith('workspace-1');
+    expect(confirmButton).toBeDisabled();
+
+    applyDeferred.resolve(applyResponse);
+    expect(await screen.findByText(/created 2 official product/i)).toBeInTheDocument();
+  });
+
+  it('shows success created count and disables apply after success', async () => {
+    await reachReadyForExport();
+
+    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirm apply/i }));
+
+    expect(await screen.findByText(/created 2 official product/i)).toBeInTheDocument();
+    expect(screen.getByText(/sku-1, sku-2/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply to products/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/already applied/i)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['ALREADY_APPLIED', 'This intake workspace has already been applied'],
+    ['DUPLICATE_STAGED_SKU_CODE', 'Duplicate staged SKU codes: SKU-1, SKU-2'],
+    ['SKU_CODE_EXISTS', 'Existing SKU codes already in Products: SKU-1, SKU-2'],
+  ])('shows friendly apply error for %s', async (code, message) => {
+    await reachReadyForExport();
+    mockApply.mockRejectedValue({
+      response: {
+        status: code === 'ALREADY_APPLIED' ? 409 : 400,
+        data: { detail: { code, sku_codes: ['SKU-1', 'SKU-2'] } },
+      },
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirm apply/i }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+  });
+
+  it('shows friendly apply error for BLOCKING_ISSUES', async () => {
+    await reachReadyForExport();
+    mockApply.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { detail: { code: 'BLOCKING_ISSUES' } },
+      },
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirm apply/i }));
+
+    expect(await screen.findByText('Revalidate and fix blocking issues before applying this workspace.')).toBeInTheDocument();
+  });
+
+  it('shows apply-specific permission guidance for 403 apply failures', async () => {
+    await reachReadyForExport();
+    mockApply.mockRejectedValue({ response: { status: 403 } });
+
+    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirm apply/i }));
+
+    expect(await screen.findByText('You need both intake:update and skus:import to apply staged rows to Products.')).toBeInTheDocument();
   });
 });

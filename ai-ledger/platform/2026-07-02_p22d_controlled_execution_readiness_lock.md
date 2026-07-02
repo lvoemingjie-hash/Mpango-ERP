@@ -54,11 +54,16 @@ P22-E entry gate (which must start from a READ-FIRST action -- `backup.check` or
   - `f764ff4` -- base (origin/platform-dev, P22-C merge)
   - `114a184` -- `platform(p22d): controlled execution readiness lock doc + README line` (the
     closeout + lock doc and the README cumulative-state line)
-  - this ledger commit (its own SHA is intentionally not self-referenced, per the P22-C
-    convention)
+  - `a31d379` -- `platform(p22d): controlled execution readiness lock ledger` (the original
+    ledger)
+  - `559b4e8` -- `platform(p22d): ledger GitNexus numbers synced to final tip`
+  - this R1 evidence-fix commit (its own SHA is intentionally not self-referenced, per the P22-C
+    convention; the R1 tip SHA is reported in the chat report, not here)
 
-`platform-dev` was NOT merged after branch creation and NOT pushed. Only the isolated P22-D
-branch carries these changes.
+`platform-dev` was NOT merged after branch creation and is NOT the push target. The isolated
+P22-D branch carries these changes and is published to its own remote ref with
+`git push -u origin <branch>:<branch>` (a bare `git push` is avoided because this worktree's
+branch tracks `origin/platform-dev` and would fast-forward it -- the worktree-push gotcha).
 
 ## 3. Modified / Added Files
 
@@ -148,11 +153,17 @@ is docs-only.
 
 ## 8. GitNexus
 
-- `npx gitnexus analyze .` (branch tip `a31d379`): repository indexed successfully -- **8,371
-  nodes / 25,587 edges / 532 clusters / 300 flows**. Docs-only changes add no meaningful
-  code-graph nodes; the counts reflect the platform-dev base after recent merges (e.g. u4e) plus
-  minor analyzer variance in clustering, not P22-D execution surface.
-- `npx gitnexus status`: **up-to-date** -- indexed commit `a31d379` == current commit `a31d379`.
+- `npx gitnexus analyze .` (HEAD, re-run after the R1 commit): repository indexed successfully
+  (fresh full rebuild, ~19s) -- **~8,368-8,371 nodes / 25,587 edges / ~529-532 clusters / 300
+  flows**. Edges (25,587) and flows (300) are stable across rebuilds; node and cluster counts
+  vary +/-2-3 between fresh builds of this same tip (observed 8,369/530 and 8,371/532) -- known
+  analyzer variance, not P22-D execution surface. Docs-only changes add no code-graph nodes; the
+  counts reflect the platform-dev base after recent merges (`.gitnexus/meta.json` and the
+  `CLAUDE.md` header carry the latest rebuild's point values).
+- `npx gitnexus status`: index is **fresh at the R1 tip** -- indexed commit == current commit
+  == the R1 HEAD (the R1 SHA is reported in the chat report, not self-referenced here). This
+  corrects the prior ledger draft, which recorded the stale `a31d379` tip as if it were current;
+  the index now tracks the actual R1 HEAD.
 
 ## 9. Forbidden Path Audit
 

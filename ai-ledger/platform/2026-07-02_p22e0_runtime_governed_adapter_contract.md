@@ -46,11 +46,16 @@ execution power and starts no P22-E1 work.
   origin/platform-dev`. Upstream is unset, so a bare `git push` cannot fast-forward `platform-dev`;
   the branch is published with the explicit refspec `git push -u origin <branch>:<branch>` (the
   worktree-push gotcha).
-- **Commit chain (base..tip):** a single commit on top of `f48e9fe`:
+- **Commit chain (base..tip):** two commits on top of `f48e9fe`:
   - `f48e9fe` -- base (origin/platform-dev, P22-D merge)
-  - one commit -- `platform(p22e0): runtime governed action adapter seam contract (G5 revision)`
-    (the contract doc + the README cumulative-state line + this ledger). Its tip SHA is reported in
-    the chat report, not self-referenced here (the ledger is part of that same commit).
+  - `ab36017` -- `platform(p22e0): runtime governed action adapter seam contract (G5 revision)`
+    (the contract doc + the README cumulative-state line + this ledger)
+  - the R1 evidence-fix commit -- `platform(p22e0-r1): ledger GitNexus tip evidence + README G5
+    conflict fix` (docs-only; corrects the ledger GitNexus status to read indexed/current == branch
+    tip instead of base, and rewrites the README P22 paragraph's two old `P16 governed harness`
+    clauses so the paragraph states unambiguously that P22-E0 supersedes P22-D G5). The R1 tip SHA is
+    reported in the chat report, not self-referenced here (this ledger is part of the R1 commit); only
+    `docs/ai/README.md` and this ledger changed in R1 -- no runtime code.
 
 `platform-dev` was NOT merged and is NOT the push target. Only the isolated P22-E0 branch carries
 these changes and is published to its own remote ref.
@@ -141,25 +146,27 @@ source and changes no P17 code.
 |---|---|
 | `git diff --check origin/platform-dev..HEAD` | clean (exit 0; no whitespace errors) |
 | Changed files | exactly the three allowed paths (section 3) |
-| Non-ASCII scan on changed files | 0 non-ASCII bytes (contract 39,423 B; README 17,696 B; ledger ASCII by construction) |
-| detect-secrets (configured baseline) | clean (pre-commit hook passed on commit) |
+| Non-ASCII scan on changed files | 0 non-ASCII bytes across all P22-E0 deliverables (contract 39,423 B; README + ledger re-scanned ASCII-clean in R1) |
+| detect-secrets (configured baseline) | clean (pre-commit passed on the R0 commit; R1 re-verified with detect-secrets-hook against the configured baseline on the two changed files) |
 | Forbidden path audit | clean (section 10) |
-| `npx gitnexus analyze .` | indexed successfully (18.7s); see section 9 |
-| `npx gitnexus status` | up-to-date; indexed commit == current commit == base (docs-only adds no code-graph nodes) |
+| `npx gitnexus analyze .` | indexed successfully (~18s); see section 9 |
+| `npx gitnexus status` | up-to-date; indexed commit == current commit == branch tip, not base (docs-only adds no code-graph nodes) |
 | Worktree clean (post-commit) | tracked tree clean (only gitignored `__pycache__` / `.gitnexus` artifacts, none committed) |
 
 ## 9. GitNexus
 
-- `npx gitnexus analyze .` (current state, re-index): repository indexed successfully in 18.7s --
-  **8,351 nodes | 25,572 edges | 527 clusters | 300 flows**. Edges (25,572) and flows (300) are
-  stable; node and cluster counts vary +/-2-3 between fresh builds of the same tip (the P22-D
-  rebuild at this same base reported ~8,368-8,371 nodes / 25,587 edges / ~529-532 clusters / 300
-  flows). Docs-only changes add no code-graph nodes; the counts reflect the `platform-dev` base after
-  the P22-D merge. Documented as a band, not a point, to avoid amend loops.
-- `npx gitnexus status`: index is **up-to-date** -- indexed commit `f48e9fe` == current commit
-  `f48e9fe`. P22-E0 is docs-only, so the code graph is unchanged from the base; after the commit the
-  index still tracks the branch tip (the tip SHA is reported in the chat report, not self-referenced
-  here).
+- `npx gitnexus analyze .` (re-index at the branch tip): repository indexed successfully in ~18s --
+  **~8,373 nodes | 25,588 edges | ~533 clusters | 300 flows**. Edges (25,588) and flows (300) are
+  stable; node and cluster counts vary +/-2-3 between fresh builds of the same tip (the P22-D rebuild
+  at this base reported ~8,368-8,371 nodes / 25,587 edges / ~529-532 clusters / 300 flows; the R0 and
+  R1 docs-only rebuilds reported 8,373 nodes / 25,588 edges / 533 clusters / 300 flows). Docs-only
+  changes add no code-graph nodes; the counts reflect the `platform-dev` base after the P22-D merge.
+  Documented as a band, not a point, to avoid amend loops.
+- `npx gitnexus status`: index is **up-to-date** -- indexed commit == current commit == the branch
+  tip, NOT the base `f48e9fe`. P22-E0 is docs-only, so the code graph is unchanged from the base, but
+  the index tracks the branch tip (after both the R0 and R1 commits the index was re-built at the tip
+  and reported up-to-date). The R1 tip SHA is reported in the chat report, not self-referenced here
+  (this ledger is part of the R1 commit); the prior R0 tip was `ab36017`.
 
 ## 10. Forbidden Path Audit
 

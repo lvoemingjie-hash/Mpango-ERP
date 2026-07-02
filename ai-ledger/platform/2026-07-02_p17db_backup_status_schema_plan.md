@@ -137,10 +137,11 @@ reads ops artifacts directly (Option B is rejected as the runtime source).
 ## 7. GitNexus
 
 - `npx gitnexus analyze .` (re-index at the branch tip): repository indexed successfully -- **~8,463-8,492
-  nodes | 25,855-25,870 edges | ~534-548 clusters | 300 flows**. Flows (300) are stable; node / edge /
-  cluster counts wobble slightly across fresh builds (the count-variance convention) -- documented as a
-  band, not a point, to avoid amend loops. P17-D-B is docs-only; the code graph is unchanged from the
-  base, but the three new tracked docs are indexed as documentation nodes at the tip.
+  nodes | 25,855-25,885 edges | ~534-548 clusters | 300 flows** (post-commit pass at the tip observed
+  8,489 nodes | 25,878 edges | 537 clusters | 300 flows). Flows (300) are stable; node / edge / cluster
+  counts wobble slightly across fresh builds (the count-variance convention) -- documented as a band, not
+  a point, to avoid amend loops. P17-D-B is docs-only; the code graph is unchanged from the base, but the
+  three new tracked docs are indexed as documentation nodes at the tip.
 - `npx gitnexus status`: index is **up-to-date** -- indexed commit == current commit == the branch tip,
   NOT the base `eb5268c`. P17-D-B is docs-only, so the code graph is unchanged from the base, but the
   index tracks the branch tip. The tip SHA is reported in the chat report, not self-referenced here (this

@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 from openpyxl import Workbook
+from sqlalchemy import text
 
 from services.intake_service import IntakeService
-from tests.test_u4c_intake_api_contract import _client_for, _ensure_intake_schema
+from tests.test_u4c_intake_api_contract import TEST_TENANT_SCHEMA, _client_for, _ensure_intake_schema
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -146,6 +147,9 @@ def test_parser_rejects_csv_and_xlsx_cell_length(filename: str, file_bytes: byte
 @pytest.mark.asyncio
 async def test_upload_mapping_validation_rows_and_issues_are_staging_only(async_session):
     await _ensure_intake_schema(async_session)
+    before_sku_count = (
+        await async_session.execute(text(f'SELECT COUNT(*) FROM "{TEST_TENANT_SCHEMA}".skus'))
+    ).scalar_one()
 
     async with _client_for(permissions=["intake:create"]) as create_client:
         create_response = await create_client.post(
@@ -210,6 +214,10 @@ async def test_upload_mapping_validation_rows_and_issues_are_staging_only(async_
         "UNIT_DEFAULT_AVAILABLE",
         "UNMAPPED_EXTRA_COLUMN",
     }.issubset(issue_codes)
+    after_sku_count = (
+        await async_session.execute(text(f'SELECT COUNT(*) FROM "{TEST_TENANT_SCHEMA}".skus'))
+    ).scalar_one()
+    assert after_sku_count == before_sku_count
 
 
 @pytest.mark.asyncio

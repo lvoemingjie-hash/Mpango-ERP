@@ -171,6 +171,13 @@ def test_intake_routes_require_tenant_db_session():
     assert "get_db_session" not in source
 
 
+def test_intake_write_routes_leave_transaction_lifecycle_to_middleware():
+    source = INTAKE_API.read_text(encoding="utf-8")
+
+    assert "await db.commit()" not in source
+    assert "await db.refresh(" not in source
+
+
 def test_intake_u4_has_no_public_or_sku_import_surface():
     source = INTAKE_API.read_text(encoding="utf-8")
 
@@ -278,6 +285,36 @@ async def test_contextual_tenant_user_with_intake_read_can_list_and_detail_creat
     assert [item["workspace_id"] for item in items] == [workspace_id]
     assert detail_response.status_code == 200
     assert detail_response.json()["data"]["workspace_id"] == workspace_id
+
+
+@pytest.mark.asyncio
+async def test_failed_create_after_flush_rolls_back_without_partial_workspace(async_session, monkeypatch):
+    await _ensure_intake_schema(async_session)
+
+    from api.v1 import intake
+
+    def _raise_after_flush(_workspace):
+        raise RuntimeError("forced response construction failure")
+
+    monkeypatch.setattr(intake, "_workspace_to_read", _raise_after_flush)
+
+    async with _client_for(permissions=["intake:create"]) as client:
+        response = await client.post(
+            "/api/v1/intake/workspaces",
+            json={"name": "Rollback proof", "source_type": "CUSTOMER_ONBOARDING"},
+        )
+
+    assert response.status_code == 500
+
+    count = (
+        await async_session.execute(
+            text(
+                f'SELECT COUNT(*) FROM "{TEST_TENANT_SCHEMA}".intake_workspaces '
+                "WHERE name = 'Rollback proof'"
+            )
+        )
+    ).scalar_one()
+    assert count == 0
 
 
 @pytest.mark.asyncio

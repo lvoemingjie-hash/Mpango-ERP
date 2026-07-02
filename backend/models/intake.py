@@ -30,6 +30,14 @@ class IntakeWorkspace(BaseModel):
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="OPEN", server_default=text("'OPEN'")
     )
+    apply_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="not_applied", server_default=text("'not_applied'")
+    )
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    applied_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    apply_result: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_json: Mapped[dict] = mapped_column(
@@ -103,9 +111,15 @@ class IntakeProductRow(BaseModel):
     unit_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     barcode: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     image_asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    target_sku_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     review_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="UNREVIEWED", server_default=text("'UNREVIEWED'")
     )
+    apply_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="not_applied", server_default=text("'not_applied'")
+    )
+    apply_error_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    apply_error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     dedupe_key: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
 
 

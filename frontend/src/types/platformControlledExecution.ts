@@ -316,3 +316,76 @@ export interface ExecutionRequestQueue {
   /** Always false -- listing never executes. */
   executed: boolean;
 }
+
+// -- backup.check read-only source probe (P22-E3/E4) -------------------------
+
+/**
+ * The honest one-line backup verdict the P22-E3 source probe derives from the
+ * P17-D-C source (P22-E4 surfaces this in the console). `unavailable` is the
+ * fail-closed case for a source read failure; `unknown` is the no-outcome case.
+ */
+export type BackupCheckSummary =
+  | 'fresh_success'
+  | 'stale'
+  | 'failed'
+  | 'partial'
+  | 'in_progress'
+  | 'unknown'
+  | 'unavailable';
+
+/**
+ * The READ-ONLY, NON-EXECUTING result of binding backup.check to the proven
+ * P17-D-C backup / status source (P22-E3). Every execution flag is ALWAYS false
+ * and result_state is ALWAYS 'blocked': this is a read, not an execution.
+ *
+ * Field-for-field aligned to backend/api/v1/platform/p22/source_probe.py
+ * `BackupCheckSourceRead`. Only allowlisted, echo-safe fields are modelled --
+ * never raw logs, DSNs, host/port/path, command lines, secrets, or raw failure
+ * text; `failure_reason_redacted` is the closed allowlisted reason code only.
+ */
+export interface BackupCheckSourceRead {
+  action_type: 'backup.check';
+  action_class: 'read';
+  /** Always 'read_only_source_probe'. */
+  binding: 'read_only_source_probe';
+  /** Always 'not_implemented' -- the adapter (execution) is not realized. */
+  adapter_result: 'not_implemented';
+  /** known | unknown | degraded. Unknown is never healthy. */
+  source_status: ExecutionSourceStatus;
+  /** The honest one-line P17-derived verdict (incl. 'unavailable'). */
+  source_summary: BackupCheckSummary;
+  /** Freshness-routed verdict: success | partial | failed | in_progress | stale. */
+  last_backup_status: string | null;
+  /** UTC ISO-8601, or null. */
+  last_backup_at: string | null;
+  /** passed | failed | stale | unknown, or null. */
+  restore_test_status: string | null;
+  /** UTC ISO-8601, or null. */
+  last_restore_test_at: string | null;
+  /** Allowlisted BACKUP_FAILURE_REASONS code only; never the raw reason. */
+  failure_reason_redacted: string | null;
+  /** A restorable dump exists, or null. */
+  export_available: boolean | null;
+  /** Policy label, or null. */
+  retention_policy: string | null;
+  /** The P17 vocabulary mirror: available | unavailable | unknown. */
+  p17_backup_source_status: string | null;
+  /** Always false -- a read is not execution. */
+  realizes_execution: boolean;
+  /** Always false. */
+  executed: boolean;
+  /** Always false. */
+  execution_started: boolean;
+  /** Always false. */
+  execution_allowed: boolean;
+  /** Always 'blocked' (never executed). */
+  result_state: 'blocked';
+  /** Always true. */
+  read_only: boolean;
+  /** Always true. */
+  redaction_applied: boolean;
+  /** The honest reason when source_status is unknown / unavailable. */
+  reason: string | null;
+  /** UTC ISO-8601. */
+  checked_at: string;
+}

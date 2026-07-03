@@ -172,8 +172,9 @@ identity-only super_admin; P22-N05 redirects tenant-contextual away) -- unchange
 
 ## 8. Forbidden Path Audit
 
-The change set is five paths, all under `frontend/src/` (pages/platform, services, types).
-None matches any forbidden prefix or fragment:
+The implementation change set is five frontend paths; the full branch diff is seven
+paths including the two platform ledger files. None matches any forbidden prefix or
+fragment:
 
 - No `backend/` change (frontend-only); no `migrations/`; no `alembic/env.py`.
 - No `scripts/` / P16; no `product-dev-recovered/` or product / payment / billing / order /

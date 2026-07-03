@@ -34,12 +34,17 @@ export function MobileScanPreview({ onScan }: MobileScanPreviewProps) {
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const detectorRef = useRef<unknown>(null);
+  // R2: scanningRef mirrors the scanning state for use inside the async
+  // detect loop without relying on stale React state closure.
+  const scanningRef = useRef(false);
 
   useEffect(() => {
     setSupported(isBarcodeDetectorSupported());
   }, []);
 
   const stopCamera = useCallback(() => {
+    // R2: Set ref false first so any in-flight detectLoop stops scheduling.
+    scanningRef.current = false;
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -86,10 +91,13 @@ export function MobileScanPreview({ onScan }: MobileScanPreviewProps) {
       // detect() can throw transiently; retry on next frame
     }
 
-    if (scanning) {
+    // R2: Use scanningRef instead of stale scanning state so the loop
+    // continues while the camera is actually active, and stops immediately
+    // when stopCamera sets the ref to false.
+    if (scanningRef.current) {
       rafRef.current = requestAnimationFrame(detectLoop);
     }
-  }, [onScan, scanning, stopCamera]);
+  }, [onScan, stopCamera]);
 
   const startCamera = useCallback(async () => {
     setError(null);
@@ -112,6 +120,8 @@ export function MobileScanPreview({ onScan }: MobileScanPreviewProps) {
         formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'qr_code'],
       });
 
+      // R2: Set ref true before scheduling so detectLoop can continue.
+      scanningRef.current = true;
       setScanning(true);
       rafRef.current = requestAnimationFrame(detectLoop);
     } catch (err) {

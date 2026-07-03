@@ -256,7 +256,7 @@ describe('SKUImportModal', () => {
   // Test 5: Apply success refreshes SKU list
   // -------------------------------------------------------------------------
 
-  it('calls onSuccess and shows results after successful apply', async () => {
+  it('calls onSuccess and shows catalog-only results after successful apply', async () => {
     const onSuccess = vi.fn();
     mockPreview.mockResolvedValueOnce(PREVIEW_RESPONSE);
     mockValidate.mockResolvedValueOnce(VALIDATE_SUCCESS_RESPONSE);
@@ -288,10 +288,11 @@ describe('SKUImportModal', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Import Complete')).toBeInTheDocument();
+      expect(screen.getByText('Catalog SKU Import Complete')).toBeInTheDocument();
     });
 
     expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/applied staged rows to the product catalog only/i)).toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
@@ -334,6 +335,13 @@ describe('SKUImportModal', () => {
     // Unsupported columns should show "Not supported" label
     const unsupportedLabels = screen.getAllByText(/not supported in this import/i);
     expect(unsupportedLabels.length).toBeGreaterThanOrEqual(2); // price + stock
+  });
+
+  it('shows catalog-only scope warning on upload step', () => {
+    render(<SKUImportModal {...defaultProps} />);
+
+    expect(screen.getByText(/apply creates catalog sku records only/i)).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes('write inventory, pricing, barcode lookup, images, custom attributes, or sellable readiness.'))).toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------

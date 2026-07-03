@@ -24,13 +24,13 @@
 | **U4-I** Apply Audit/Service/Runtime Proof | `PASS_RUNTIME_INTAKE_APPLY_API_PROOF` | Code + Docs | U4-I-B1: apply audit schema contract (apply_status, applied_at, applied_by, apply_result on intake_workspaces). U4-I-B2: POST /apply service with idempotency (409), fail-closed for invalid status, blocking issues, duplicate/existing SKU codes. U4-I-C: runtime proof -- 3 SKUs created, idempotency blocking, duplicate/existing SKU code blocking. |
 | **U4-J** Frontend Apply Button | `PASS_FOR_CTO_U4J_REVIEW` | Code | Apply-to-Products UI with permission gate (`intake:update` + `skus:import`), confirmation dialog, success feedback, friendly error messages for all fail-closed states. |
 | **U4-H** Mobile Scan Preview | Merged into `f3a7261` | Code | `/skus/scan` route with BarcodeDetector API (Chrome/Edge/Android WebView) + manual barcode/SKU text input fallback. Preview-only -- no write path. 0 SKU delta verified in runtime. Entry gated on `intake:create OR intake:update` (canUseIntake). No `skus:import` requirement. |
-| **U4-K** Runtime Closeout | `PASS_U4_RUNTIME_CLOSEOUT_WITH_DEPLOYMENT_PROVENANCE_CAVEAT` | Ops | 5/5 containers healthy. Full flow verified on prod: create -> upload CSV -> map -> validate -> preview -> Apply creates SKUs. Idempotency (409), scan preview (0 delta), duplicate codes blocked, existing SKU codes blocked. SKU count trace: 10 -> 21. |
+| **U4-K** Runtime Closeout | `PASS_U4_RUNTIME_CLOSEOUT_WITH_DEPLOYMENT_PROVENANCE_CAVEAT` | Ops | 5/5 containers healthy. Full flow verified on prod: create -> upload CSV -> map -> validate -> preview -> Apply creates catalog SKU records only. Idempotency (409), scan preview (0 delta), duplicate codes blocked, existing SKU codes blocked. SKU count trace: 10 -> 21. |
 
 ---
 
 ## 2. Current User-Facing Capability
 
-The deployed VPS (1.14.247.12) exposes a complete Data Intake user journey for internal admin users:
+The deployed VPS (1.14.247.12) exposes a complete MVP-scoped catalog-SKU Data Intake journey for internal admin users:
 
 ### Upload & Parse
 
@@ -38,7 +38,7 @@ CSV (UTF-8, UTF-8-sig) and XLSX (first non-empty sheet, openpyxl) files uploaded
 
 ### Field Mapping
 
-User maps uploaded columns to canonical product fields (sku_code, product_name, price, stock, etc.). Mapping is persisted and can be updated before validation.
+User maps uploaded columns to canonical product fields. The staging flow can preview unsupported columns, but apply currently promotes only catalog SKU fields such as `sku_code`, `name`, `description`, `unit`, `category`, and `is_active`.
 
 ### Validate
 
@@ -52,7 +52,8 @@ Rows endpoint returns staged rows with mapped field values. Issues endpoint retu
 
 - Permission-gated: user must have both `intake:update` and `skus:import`.
 - Confirmation dialog before execution.
-- Creates official SKU records from staged intake rows.
+- Creates official catalog SKU records from staged intake rows only.
+- Does not write stock, retailer pricing, barcode lookup assets, image assets, custom attributes, or sellable readiness.
 - Returns 200 with `created_count` and `created_sku_codes`.
 - Idempotent: repeat apply returns 409 `ALREADY_APPLIED`.
 - Fail-closed: `WORKSPACE_NOT_READY` (if validate not passed), `BLOCKING_ISSUES`, `DUPLICATE_STAGED_SKU_CODE`, `SKU_CODE_EXISTS`.
@@ -187,7 +188,7 @@ Extend Mobile Scan from preview-only to scan-to-staging:
 
 **U4 can be marked FUNCTIONALLY_CLOSED_FOR_MVP_DATA_INTAKE.**
 
-The Data Intake feature is complete, tested, and runtime-proven for internal admin users. All MVP-scoped capability (CSV/XLSX upload -> map -> validate -> Apply to Products) works end-to-end. The Mobile Scan preview is present and verified read-only.
+The Data Intake feature is complete, tested, and runtime-proven for its current MVP scope for internal admin users. All current capability (CSV/XLSX upload -> map -> validate -> Apply to Products for catalog SKU creation only) works end-to-end. The Mobile Scan preview is present and verified read-only.
 
 **U4 is NOT PRODUCTION_RELEASE_CLOSED** until OPS-D1 (exact deployment provenance fix) is resolved. The manual SFTP deploy process is acceptable for dev/UAT but is a release blocker for production:
 

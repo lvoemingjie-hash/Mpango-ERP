@@ -216,11 +216,12 @@ describe('SKU Import E2E hardening', () => {
     await userEvent.click(applyBtn);
 
     await waitFor(() => {
-      expect(screen.getByText('Import Complete')).toBeInTheDocument();
+      expect(screen.getByText('Catalog SKU Import Complete')).toBeInTheDocument();
     });
 
     // Verify success summary counters
-    expect(screen.getByText('Import Complete')).toBeInTheDocument();
+    expect(screen.getByText('Catalog SKU Import Complete')).toBeInTheDocument();
+    expect(screen.getByText(/applied staged rows to the product catalog only/i)).toBeInTheDocument();
   });
 
   // -----------------------------------------------------------------------
@@ -283,7 +284,7 @@ describe('SKU Import E2E hardening', () => {
     expect(onSuccess).not.toHaveBeenCalled();
 
     // Success summary must NOT be shown
-    expect(screen.queryByText('Import Complete')).not.toBeInTheDocument();
+    expect(screen.queryByText('Catalog SKU Import Complete')).not.toBeInTheDocument();
   });
 
   // -----------------------------------------------------------------------
@@ -342,7 +343,7 @@ describe('SKU Import E2E hardening', () => {
     await userEvent.click(screen.getByRole('button', { name: /apply import/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Import Complete')).toBeInTheDocument();
+      expect(screen.getByText('Catalog SKU Import Complete')).toBeInTheDocument();
     });
 
     // Verify the apply was called (success summary is displayed)

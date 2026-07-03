@@ -30,9 +30,11 @@ migration `021_platform_backup_status_source`, the read ORM models, and the
 durable registry read path. E3 is therefore unblocked and binds `backup.check`
 to that proven source -- but ONLY as a read-only probe.
 
-The binding is **additive**: one new module
-(`backend/api/v1/platform/p22/source_probe.py`) plus its test file. No existing
-file is modified, so:
+P22-E3 is **additive in scope**: R0 adds one new module
+(`backend/api/v1/platform/p22/source_probe.py`) plus its test file, and R1
+additively extends `routes.py` with one read-only route handler (no existing
+route's behavior changes). `seam.py`, `adapters.py`, and all P17 code are
+unchanged, so:
 
 - the static `backup.check` adapter descriptor in `adapters.py` stays
   `not_implemented` / `source_unknown` (the P17-D-C G15 invariant,

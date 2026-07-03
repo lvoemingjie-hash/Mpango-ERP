@@ -109,7 +109,8 @@ changed-file ASCII scan: PASS
 changed-file mojibake scan: PASS
 changed-file sensitive-keyword scan: PASS, matched only ledger references to REPORTING_USER_PASSWORD and no-secrets notes
 pre-commit on changed files: PASS
-GitNexus analyze: PASS, already up to date for indexed commit 61a6a53
+GitNexus analyze before commit: PASS, already up to date for indexed base 61a6a53
+GitNexus analyze after commit: PASS, indexed commit cf868f6
 GitNexus status: up-to-date
 ```
 

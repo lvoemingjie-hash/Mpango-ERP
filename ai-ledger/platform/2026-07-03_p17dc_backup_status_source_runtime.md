@@ -3,11 +3,13 @@
 **Phase:** P17-D-C Backup / Status Source Runtime (minimal runtime foundation)
 **Date:** 2026-07-03
 **Branch:** `codex/platform-p17dc-backup-status-source-runtime-2026-07-03`
-**Base:** `eb5268c` (`origin/platform-dev` -- the P17-D-A source-contract + P22-E2 discovery
-merge). Worktree `_p17dc_2026-07-03`.
+**Base:** `505f4d2` (`origin/platform-dev` after the P17-D-B.1 merge; was `eb5268c` at R0/R1 --
+the P17-D-A source-contract + P22-E2 discovery merge). Worktree `_p17dc_2026-07-03`.
 **Author:** Codex (Claude worker)
-**Status:** Complete; code + tests pass; ready for CTO review. Still no P22 wiring; `backup.check`
-stays `source_unknown` / `not_implemented`. P22-E3 not started.
+**Status:** R2 -- merge-ordering gate resolved: P17-D-B.1 (docs-only plan) is merged to
+`platform-dev` (`505f4d2`), and P17-D-C is re-based onto it. Code + tests pass; ready for CTO
+review. Still no P22 wiring; `backup.check` stays `source_unknown` / `not_implemented`. P22-E3
+not started.
 
 ---
 
@@ -31,32 +33,38 @@ lifting that gate is P22-E3, separately CTO-gated behind the PROVEN, MERGED, TES
 > never fabricated healthy. Approval is not execution and a table is not an execution.** P17-D-C
 > builds the source the registry reads; it runs no backup, no restore, and no `backup.check`.
 
-## 2. Base state of P17-D-B (important)
+## 2. P17-D-B plan: R1 review finding vs R2 fixed state
 
-The P17-D-B schema + model + test PLAN is a docs-only branch (`codex/platform-p17db-...`, tip
-`e47c48f`, two commits: the 713-line plan + its ledger) that is **pushed but NOT merged** into
-`origin/platform-dev`. The task explicitly instructs P17-D-C to branch from `origin/platform-dev`
-(`eb5268c`) and lists the P17-D-B plan under "read first", so P17-D-C is a **code-only**
-implementation branch from `eb5268c`: the plan doc was read from its sibling branch as the
-authoritative reference and is NOT copied into this branch (it ships via its own branch). The
-C0 gate's literal "P17-D-B merged to base" is therefore not satisfied; this ledger records that
-state explicitly. If the CTO prefers the plan doc in-tree before/alongside the code, that is a
-merge of the P17-D-B doc branch, separate from this code branch.
+- **R2 fixed state (current):** the P17-D-B docs-only plan is now MERGED to `platform-dev` as
+  **P17-D-B.1** (`--no-ff` merge commit `505f4d2`, source branch `codex/platform-p17db-...` tip
+  `e47c48f`; exactly three docs -- the schema plan + `docs/ai/README.md` + the p17db ledger;
+  GitNexus `detect_changes` vs the pre-merge `eb5268c` = risk LOW, 0 affected processes).
+  P17-D-C is re-based onto `505f4d2` (the R2 merge `9c26f00`), so the plan it implements is now
+  in-tree on its base. The C0 gate "P17-D-B merged to base" is satisfied as of R2.
+- **R1 review finding (historical, superseded):** at R0/R1 the P17-D-B plan was a docs-only
+  branch pushed but NOT merged to `platform-dev`; P17-D-C was then a code-only branch from
+  `eb5268c` that read the plan from its sibling branch as the reference. The CTO review flagged
+  that merge-ordering gap; R2 closes it (Part A merged the plan to `platform-dev`; Part B
+  re-based P17-D-C onto it).
 
 ## 3. Base / Branch / Commit Chain
 
-- **Base SHA:** `eb5268c` (`origin/platform-dev`, the P17-D-A + P22-E2 merge).
+- **Base SHA (R2):** `505f4d2` (`origin/platform-dev` after P17-D-B.1). R0/R1 were based on
+  `eb5268c` (the P17-D-A + P22-E2 merge); R2 merges `505f4d2` in.
 - **Worktree:** `MPANGO ERP/_p17dc_2026-07-03`, created from `origin/platform-dev`. Upstream was
   auto-set to `origin/platform-dev` by `git branch <name> <startpoint>` and was **unset**
   (`git branch --unset-upstream`) so a bare `git push` cannot fast-forward `platform-dev`; the
   branch is published with the explicit refspec `git push -u origin <branch>:<branch>` (the
   worktree-push gotcha).
-- **Commit chain (base..tip):** `eb5268c` -> `a548f6f` (R0: migration + ORM + registry read wiring
-  + tests, 8 files) -> R1 (this ledger only). The R1 tip SHA is reported in the chat report, not
-  self-referenced here (this ledger is part of the R1 commit).
+- **Commit chain (R2):** `eb5268c` -> `a548f6f` (R0 code, 8 files) -> `92837d9` (R1 ledger) ->
+  `9c26f00` (R2 merge of `505f4d2` / P17-D-B.1 into P17-D-C; conflict-free, no runtime change) ->
+  the R2 ledger-evidence refresh (this section). The R2 tip SHA is reported in the chat report,
+  not self-referenced here (this ledger is part of the R2 commit). The merge brings the three
+  P17-D-B docs into the branch base, so `git diff origin/platform-dev..HEAD` shows ONLY the
+  P17-D-C code/test files + this ledger (the P17-D-B docs are in both base and HEAD).
 
-`platform-dev` is NOT merged and is NOT the push target. Only the isolated P17-D-C branch carries
-these changes and is published to its own remote ref.
+`platform-dev` is NOT a push target of P17-D-C; P17-D-C publishes to its own remote ref. (Part A
+separately advanced `platform-dev` `eb5268c` -> `505f4d2`, the P17-D-B.1 merge.)
 
 ## 4. Files (exactly the allowed set + two necessary regression-prevention edits)
 
@@ -72,9 +80,9 @@ these changes and is published to its own remote ref.
 | `backend/tests/test_platform_p21_durable_approval_adapter_skeleton.py` | Modified | **Regression-prevention.** `test_no_new_alembic_migration_chained_on_020` was a P21-D development gate asserting 020 had no descendants. Converted to an allowlist (`ALLOWED_DESCENDANTS = {021}`) so it still catches UNAUTHORIZED chaining while accepting the approved 021 follow-on. |
 | `ai-ledger/platform/2026-07-03_p17dc_backup_status_source_runtime.md` | New | This ledger. |
 
-No other file is touched. `docs/ai/README.md` is intentionally NOT changed (the D-family
-cumulative-state sentence ships with the P17-D-B doc branch; P17-D-C is code-only and keeps the
-diff minimal).
+No other file is touched by P17-D-C. (`docs/ai/README.md`'s D-family cumulative-state sentence
+ships with the P17-D-B doc, now on `platform-dev` via P17-D-B.1; it is in P17-D-C's base, not
+authored here.)
 
 ## 5. Migration / model / mapping fidelity to P17-D-B
 
@@ -207,10 +215,9 @@ registry / source-status only.
 
 - **Risk:** MEDIUM (GitNexus). Platform P17/P18 only; fail-safe under an empty source. No product
   impact.
-- **Blockers:** none for this branch. Upstream sequencing note: P17-D-B (plan doc) is pushed but
-  not merged to `platform-dev`; this code branch implements that plan from `eb5268c` per the task
-  instruction (section 2). The two P21 test edits are necessary regression-prevention, documented
-  in section 4.
+- **Blockers:** none. The R1 sequencing note (P17-D-B not merged) is RESOLVED by R2: P17-D-B.1 is
+  merged to `platform-dev` (`505f4d2`) and P17-D-C is re-based onto it (section 2). The two P21
+  test edits are necessary regression-prevention, documented in section 4.
 - **Follow-ons (NOT in this branch):** (a) a writer/recorder that records `backup_job` outcome
   rows after `backup_postgres.sh` runs (operational task); (b) a restore-test runner that records
   `restore_test_job` rows; (c) P22-E3 read-only `backup.check` summary probe, behind the seam,

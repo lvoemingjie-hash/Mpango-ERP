@@ -68,12 +68,18 @@ export function TenantFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={isEdit ? 'Edit Tenant' : 'Create Tenant'}
+      title={isEdit ? 'Edit registry record' : 'Create customer registry record'}
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         {serverError && (
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
             {serverError}
+          </div>
+        )}
+
+        {!isEdit && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+            This creates a registry record only. It does not provision login, tenant schema, admin user, RBAC, inventory, orders, or finance workspace.
           </div>
         )}
 
@@ -166,7 +172,7 @@ export function TenantFormModal({
             Plan Type
           </label>
           <select id="plan_type" className="input-field" {...register('plan_type')}>
-            <option value="">— Select —</option>
+            <option value="">-- Select --</option>
             <option value="free">Free</option>
             <option value="basic">Basic</option>
             <option value="pro">Pro</option>
@@ -190,11 +196,11 @@ export function TenantFormModal({
           >
             {isSubmitting
               ? isEdit
-                ? 'Saving…'
-                : 'Creating…'
+                ? 'Saving...'
+                : 'Creating...'
               : isEdit
                 ? 'Save Changes'
-                : 'Create Tenant'}
+                : 'Create registry record'}
           </button>
         </div>
       </form>

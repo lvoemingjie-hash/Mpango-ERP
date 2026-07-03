@@ -391,7 +391,7 @@ describe('DataIntakePage', () => {
     await createWorkspace();
     await uploadFile();
 
-    expect(screen.queryByRole('button', { name: /apply to products/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply to catalog/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /import.*sku/i })).not.toBeInTheDocument();
   });
 
@@ -402,7 +402,7 @@ describe('DataIntakePage', () => {
     await reachValidatedPreview();
 
     expect(await screen.findByText('NEEDS_REVIEW')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /apply to products/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply to catalog/i })).not.toBeInTheDocument();
     expect(screen.getByText(/fix blocking issues/i)).toBeInTheDocument();
   });
 
@@ -411,18 +411,23 @@ describe('DataIntakePage', () => {
 
     await reachReadyForExport();
 
-    expect(screen.queryByRole('button', { name: /apply to products/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply to catalog/i })).not.toBeInTheDocument();
     expect(screen.getByText(/missing permission/i)).toBeInTheDocument();
   });
 
-  it('opens a confirmation modal before calling apply', async () => {
+  it('shows catalog-only warnings in the apply section and confirmation modal before calling apply', async () => {
     await reachReadyForExport();
 
-    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    expect(screen.getByRole('heading', { name: '5. Create Catalog SKUs' })).toBeInTheDocument();
+    expect(screen.getByText(/this flow creates catalog sku records only/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /apply to catalog/i }));
 
     expect(mockApply).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog', { name: /apply staged rows to products/i })).toBeInTheDocument();
-    expect(screen.getByText(/writes to official products\/skus/i)).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /apply staged rows to catalog/i })).toBeInTheDocument();
+    expect(screen.getByText('This creates catalog SKUs only.')).toBeInTheDocument();
+    expect(screen.getByText('It does not create stock, retailer prices, barcode lookup, images, custom attributes, or sellable order readiness.')).toBeInTheDocument();
+    expect(screen.getByText('Configure stock and retailer pricing before creating orders.')).toBeInTheDocument();
     expect(screen.getByText(/duplicate existing sku codes will be blocked/i)).toBeInTheDocument();
     expect(screen.getByText(/no silent overwrite/i)).toBeInTheDocument();
   });
@@ -432,7 +437,7 @@ describe('DataIntakePage', () => {
     await reachReadyForExport();
     mockApply.mockReturnValue(applyDeferred.promise);
 
-    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    await userEvent.click(screen.getByRole('button', { name: /apply to catalog/i }));
     const confirmButton = screen.getByRole('button', { name: /confirm apply/i });
     await userEvent.dblClick(confirmButton);
 
@@ -441,19 +446,21 @@ describe('DataIntakePage', () => {
     expect(confirmButton).toBeDisabled();
 
     applyDeferred.resolve(applyResponse);
-    expect(await screen.findByText(/created 2 official product/i)).toBeInTheDocument();
+    expect(await screen.findByText(/created 2 catalog sku record\(s\) only/i)).toBeInTheDocument();
   });
 
-  it('shows success created count and disables apply after success', async () => {
+  it('shows success created count, next steps, and disables apply after success', async () => {
     await reachReadyForExport();
 
-    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    await userEvent.click(screen.getByRole('button', { name: /apply to catalog/i }));
     await userEvent.click(screen.getByRole('button', { name: /confirm apply/i }));
 
-    expect(await screen.findByText(/created 2 official product/i)).toBeInTheDocument();
+    expect(await screen.findByText(/created 2 catalog sku record\(s\) only/i)).toBeInTheDocument();
+    expect(screen.getByText(/next steps: adjust stock, set retailer prices, then create orders/i)).toBeInTheDocument();
     expect(screen.getByText(/sku-1, sku-2/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /apply to products/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply to catalog/i })).not.toBeInTheDocument();
     expect(screen.getByText(/already applied/i)).toBeInTheDocument();
+    expect(screen.queryByText(/official product\/sku record/i)).not.toBeInTheDocument();
   });
 
   it.each([
@@ -469,7 +476,7 @@ describe('DataIntakePage', () => {
       },
     });
 
-    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    await userEvent.click(screen.getByRole('button', { name: /apply to catalog/i }));
     await userEvent.click(screen.getByRole('button', { name: /confirm apply/i }));
 
     expect(await screen.findByText(message)).toBeInTheDocument();
@@ -484,7 +491,7 @@ describe('DataIntakePage', () => {
       },
     });
 
-    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    await userEvent.click(screen.getByRole('button', { name: /apply to catalog/i }));
     await userEvent.click(screen.getByRole('button', { name: /confirm apply/i }));
 
     expect(await screen.findByText('Revalidate and fix blocking issues before applying this workspace.')).toBeInTheDocument();
@@ -494,9 +501,9 @@ describe('DataIntakePage', () => {
     await reachReadyForExport();
     mockApply.mockRejectedValue({ response: { status: 403 } });
 
-    await userEvent.click(screen.getByRole('button', { name: /apply to products/i }));
+    await userEvent.click(screen.getByRole('button', { name: /apply to catalog/i }));
     await userEvent.click(screen.getByRole('button', { name: /confirm apply/i }));
 
-    expect(await screen.findByText('You need both intake:update and skus:import to apply staged rows to Products.')).toBeInTheDocument();
+    expect(await screen.findByText('You need both intake:update and skus:import to create catalog SKUs from staged rows.')).toBeInTheDocument();
   });
 });

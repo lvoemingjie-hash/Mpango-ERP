@@ -56,11 +56,6 @@ Standalone mobile scan preview with:
 | 9 | Retries detect() when first call returns empty array | Loop retries transient failures |
 | 10 | Stops after barcode detected, calls onScan exactly once | Single-scan invariant; ref stops loop |
 
-### Test infrastructure (vitest.config.ts + setup.ts)
-
-The branch lacked vitest config. Added jsdom environment + jest-dom matchers +
-ResizeObserver polyfill (test-only, not product code).
-
 ---
 
 ## 2. Why Preview-Only
@@ -163,7 +158,7 @@ vite build: built in ~5s
 |------|--------|
 | `frontend/src/pages/skus/MobileScanPreview.tsx` | NEW (R1) + FIX (R2): scan component + scanningRef |
 | `frontend/src/pages/skus/SKUListPage.tsx` | MODIFIED: add mobile scan link |
-| `frontend/src/router/AppRouter.tsx` | MODIFIED: add /mobile-scan route |
+| `frontend/src/router/AppRouter.tsx` | MODIFIED: add /skus/scan route |
 | `frontend/src/tests/MobileScanPreview.test.tsx` | NEW: 8 tests (R1) + 2 camera-loop tests (R2) |
 
 ---

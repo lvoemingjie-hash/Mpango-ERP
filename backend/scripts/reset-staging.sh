@@ -6,7 +6,7 @@
 # via the seed script, and populates demo data.
 #
 # Usage:
-#   # From repo root — targets the Docker Compose stack:
+#   # From repo root - targets the Docker Compose stack:
 #   bash scripts/reset-staging.sh
 #
 #   # Or inside the backend container:
@@ -57,9 +57,40 @@ run_psql() {
     fi
 }
 
+psql_scalar() {
+    run_psql "$1" 2>/dev/null | sed -n '3p' | tr -d ' '
+}
+
+assert_tenant_table() {
+    local table_name="$1"
+    local exists
+    exists=$(psql_scalar "SELECT 1 FROM information_schema.tables WHERE table_schema = '$TENANT_SCHEMA' AND table_name = '$table_name';")
+    if [[ "$exists" == "1" ]]; then
+        echo "  table:$table_name OK"
+        return
+    fi
+
+    echo "  table:$table_name MISSING"
+    exit 1
+}
+
+assert_tenant_column() {
+    local table_name="$1"
+    local column_name="$2"
+    local exists
+    exists=$(psql_scalar "SELECT 1 FROM information_schema.columns WHERE table_schema = '$TENANT_SCHEMA' AND table_name = '$table_name' AND column_name = '$column_name';")
+    if [[ "$exists" == "1" ]]; then
+        echo "  column:$table_name.$column_name OK"
+        return
+    fi
+
+    echo "  column:$table_name.$column_name MISSING"
+    exit 1
+}
+
 echo ""
 echo "============================================="
-echo "  Mpango ERP — Reset Staging Environment"
+echo "  Mpango ERP - Reset Staging Environment"
 echo "============================================="
 echo ""
 
@@ -95,18 +126,18 @@ run_psql "DROP TABLE IF EXISTS public.wholesalers CASCADE;" >/dev/null 2>&1 || t
 echo "  Done."
 
 # ---------------------------------------------------------------------------
-# Step 2: Run public schema migrations (001-006)
+# Step 2: Run public schema migrations to current head
 # ---------------------------------------------------------------------------
 echo ""
 echo "[2/4] Running Alembic migrations (public schema)..."
 
 if $INSIDE_CONTAINER; then
     cd /app
-    MPANGO_ENV=staging REPORTING_USER_PASSWORD="${REPORTING_USER_PASSWORD:-ReportingPass_staging_2026}" \
-        python -m alembic upgrade 006_phase_b6_payments_idempotency_key
+    : "${REPORTING_USER_PASSWORD:?REPORTING_USER_PASSWORD environment variable must be set}"
+    MPANGO_ENV=staging python -m alembic upgrade head
 else
     $COMPOSE_CMD exec -T "$BACKEND_SERVICE" bash -c \
-        'MPANGO_ENV=staging REPORTING_USER_PASSWORD="${REPORTING_USER_PASSWORD:-ReportingPass_staging_2026}" python -m alembic upgrade 006_phase_b6_payments_idempotency_key'
+        ': "${REPORTING_USER_PASSWORD:?REPORTING_USER_PASSWORD environment variable must be set}"; MPANGO_ENV=staging python -m alembic upgrade head'
 fi
 
 echo "  Public migrations complete."
@@ -140,13 +171,60 @@ RETAILER_COUNT=$(run_psql "SELECT count(*) FROM public.retailers;" 2>/dev/null |
 echo "  Retailers:   $RETAILER_COUNT"
 
 # Get the demo tenant schema name
-TENANT_SCHEMA=$(run_psql "SELECT 't_' || replace(id::text, '-', '') FROM public.wholesalers WHERE code = 'DEMO001';" 2>/dev/null | sed -n '3p' | tr -d ' ')
+TENANT_SCHEMA=$(psql_scalar "SELECT 't_' || replace(id::text, '-', '') FROM public.wholesalers WHERE code = 'DEMO001';")
+
+if [[ -z "$TENANT_SCHEMA" ]]; then
+    echo "  tenant_schema MISSING"
+    exit 1
+fi
+
+echo "  tenant_schema:$TENANT_SCHEMA OK"
+
+echo "  Reconciling demo tenant schema to current MVP contract..."
+if $INSIDE_CONTAINER; then
+    cd /app
+    MPANGO_ENV=staging python /app/scripts/bootstrap_tenant_schema.py "$TENANT_SCHEMA"
+else
+    $COMPOSE_CMD cp "$REPO_ROOT/scripts/bootstrap_tenant_schema.py" "$BACKEND_SERVICE:/tmp/bootstrap_tenant_schema.py"
+    $COMPOSE_CMD exec -T "$BACKEND_SERVICE" bash -c \
+        "MPANGO_ENV=staging python /tmp/bootstrap_tenant_schema.py \"$TENANT_SCHEMA\""
+fi
+
+echo "  Verifying current MVP tenant schema contract..."
+for table_name in \
+    import_runs \
+    inventory_reservations \
+    intake_workspaces \
+    intake_uploads \
+    intake_product_rows \
+    intake_validation_issues
+do
+    assert_tenant_table "$table_name"
+done
+
+for column_name in \
+    apply_status \
+    applied_at \
+    applied_by \
+    apply_result
+do
+    assert_tenant_column intake_workspaces "$column_name"
+done
+
+for column_name in \
+    apply_status \
+    target_sku_id \
+    apply_error_code \
+    apply_error_message
+do
+    assert_tenant_column intake_product_rows "$column_name"
+done
 
 if [[ -n "$TENANT_SCHEMA" ]]; then
-    ORDER_COUNT=$(run_psql "SELECT count(*) FROM \"$TENANT_SCHEMA\".orders;" 2>/dev/null | sed -n '3p' | tr -d ' ')
-    SKU_COUNT=$(run_psql "SELECT count(*) FROM \"$TENANT_SCHEMA\".skus;" 2>/dev/null | sed -n '3p' | tr -d ' ')
-    LEDGER_COUNT=$(run_psql "SELECT count(*) FROM \"$TENANT_SCHEMA\".ledger_entries;" 2>/dev/null | sed -n '3p' | tr -d ' ')
-    USER_COUNT=$(run_psql "SELECT count(*) FROM \"$TENANT_SCHEMA\".users;" 2>/dev/null | sed -n '3p' | tr -d ' ')
+    ORDER_COUNT=$(psql_scalar "SELECT count(*) FROM \"$TENANT_SCHEMA\".orders;")
+    SKU_COUNT=$(psql_scalar "SELECT count(*) FROM \"$TENANT_SCHEMA\".skus;")
+    LEDGER_COUNT=$(psql_scalar "SELECT count(*) FROM \"$TENANT_SCHEMA\".ledger_entries;")
+    USER_COUNT=$(psql_scalar "SELECT count(*) FROM \"$TENANT_SCHEMA\".users;")
     echo "  Users:       $USER_COUNT"
     echo "  SKUs:        $SKU_COUNT"
     echo "  Orders:      $ORDER_COUNT"
@@ -156,6 +234,6 @@ fi
 echo ""
 echo "============================================="
 echo "  Staging Reset Complete!"
-echo "  Login: admin@mpango.demo / DemoAdmin2026!"
+echo "  Login: admin@mpango.demo"
 echo "============================================="
 echo ""

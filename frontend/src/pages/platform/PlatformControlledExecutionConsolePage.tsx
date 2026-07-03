@@ -27,6 +27,7 @@ import { useEffect, useState } from 'react';
 import { platformService } from '@/services/platformApi';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type {
+  BackupCheckSourceRead,
   ExecutionCatalogResponse,
   ExecutionDryRunResponse,
   ExecutionRequestQueue,
@@ -92,6 +93,33 @@ const NON_EXECUTING_BANNER =
   'drains a queue, never invokes the governed harness, and never changes tenant, payment, ' +
   'billing, or product state.';
 
+/**
+ * Render one allowlisted backup.check source field as label + value. Null / empty
+ * renders an em-dash placeholder. Only echo-safe, allowlisted fields are ever
+ * passed here -- never raw logs, DSNs, host/port/path, command lines, secrets, or
+ * raw failure text (failure_reason_redacted is the closed allowlisted code only).
+ */
+function BackupSourceField({
+  label,
+  value,
+  testId,
+}: {
+  label: string;
+  value: string | boolean | null | undefined;
+  testId: string;
+}) {
+  const display =
+    value === null || value === undefined || value === '' ? '-' : String(value);
+  return (
+    <div>
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="font-mono text-sm text-gray-900" data-testid={testId}>
+        {display}
+      </div>
+    </div>
+  );
+}
+
 export function PlatformControlledExecutionConsolePage() {
   // -- catalog (read-only) --
   const [catalog, setCatalog] = useState<ExecutionCatalogResponse | null>(null);
@@ -123,6 +151,12 @@ export function PlatformControlledExecutionConsolePage() {
   const [readId, setReadId] = useState('');
   const [readResult, setReadResult] = useState<ExecutionRequestResponse | null>(null);
   const [readBusy, setReadBusy] = useState(false);
+
+  // -- backup.check source (P22-E3 read-only probe; never executes) --
+  const [backupSource, setBackupSource] = useState<BackupCheckSourceRead | null>(null);
+  const [backupTenantId, setBackupTenantId] = useState('');
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
 
   // Load the catalog on mount.
   useEffect(() => {
@@ -258,6 +292,27 @@ export function PlatformControlledExecutionConsolePage() {
       .finally(() => setReadBusy(false));
   }
 
+  // -- backup.check source status (P22-E3 read-only probe; never executes) --
+  /**
+   * Refresh the read-only backup.check source status from the proven P17-D-C
+   * source. This is a READ only: it does not execute, queue, dispatch, or mutate.
+   * A read failure degrades to an honest unavailable / unknown body (HTTP 200);
+   * the UI surfaces that as unknown, never healthy.
+   */
+  function refreshBackupCheckSource() {
+    setBackupBusy(true);
+    setBackupError(null);
+    const tid = backupTenantId.trim();
+    platformService
+      .getBackupCheckSource(tid ? tid : undefined)
+      .then((res) => setBackupSource(unwrap<BackupCheckSourceRead>(res)))
+      .catch((err: unknown) => {
+        setBackupSource(null);
+        setBackupError(errMessage(err, 'Backup source read failed; status is unavailable.'));
+      })
+      .finally(() => setBackupBusy(false));
+  }
+
   // -- render ---------------------------------------------------------------
 
   return (
@@ -352,6 +407,151 @@ export function PlatformControlledExecutionConsolePage() {
                 </li>
               ))}
             </ul>
+          </section>
+
+          {/* backup.check source status (P22-E3 read-only probe; never executes) */}
+          <section
+            className="rounded-lg border border-gray-200 bg-white p-4"
+            data-testid="p22-backup-check-source"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-lg font-semibold text-gray-900">
+                backup.check source status (read-only)
+              </h2>
+              <p className="text-xs text-gray-500" data-testid="p22-backup-check-binding">
+                binding=read_only_source_probe; adapter_result=not_implemented
+              </p>
+            </div>
+            <p className="mb-3 mt-1 text-xs text-gray-500">
+              Reads the proven P17-D-C backup / status source. This is a read-only status probe: it
+              does not execute, queue, dispatch, or mutate. Unknown / unavailable is never healthy.
+            </p>
+
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="block text-sm text-gray-700">
+                tenant_id (optional; blank = platform-wide)
+                <input
+                  className="mt-1 block w-full rounded border border-gray-300 p-2"
+                  value={backupTenantId}
+                  onChange={(e) => setBackupTenantId(e.target.value)}
+                  data-testid="p22-backup-check-tenant-id"
+                />
+              </label>
+              <button
+                type="button"
+                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 disabled:opacity-50"
+                onClick={refreshBackupCheckSource}
+                disabled={backupBusy}
+                data-testid="p22-backup-check-refresh"
+              >
+                {backupBusy ? 'Reading...' : 'Refresh source status'}
+              </button>
+            </div>
+
+            {backupError ? (
+              <p
+                className="mt-3 text-sm text-red-700"
+                data-testid="p22-backup-check-error"
+              >
+                {backupError}
+              </p>
+            ) : null}
+
+            {backupSource ? (
+              <div className="mt-4 space-y-3" data-testid="p22-backup-check-result">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span
+                    className={`rounded px-2 py-0.5 text-xs font-semibold ${
+                      SOURCE_TONE[backupSource.source_status] ?? SOURCE_TONE.unknown
+                    }`}
+                    data-testid="p22-backup-check-status"
+                  >
+                    {backupSource.source_status}
+                  </span>
+                  <span
+                    className="text-sm text-gray-700"
+                    data-testid="p22-backup-check-summary"
+                  >
+                    {backupSource.source_summary}
+                  </span>
+                </div>
+
+                <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                  <BackupSourceField
+                    label="last_backup_status"
+                    value={backupSource.last_backup_status}
+                    testId="p22-backup-check-last-status"
+                  />
+                  <BackupSourceField
+                    label="last_backup_at"
+                    value={backupSource.last_backup_at}
+                    testId="p22-backup-check-last-at"
+                  />
+                  <BackupSourceField
+                    label="restore_test_status"
+                    value={backupSource.restore_test_status}
+                    testId="p22-backup-check-restore-status"
+                  />
+                  <BackupSourceField
+                    label="last_restore_test_at"
+                    value={backupSource.last_restore_test_at}
+                    testId="p22-backup-check-restore-at"
+                  />
+                  <BackupSourceField
+                    label="failure_reason_redacted"
+                    value={backupSource.failure_reason_redacted}
+                    testId="p22-backup-check-failure-reason"
+                  />
+                  <BackupSourceField
+                    label="export_available"
+                    value={backupSource.export_available}
+                    testId="p22-backup-check-export"
+                  />
+                  <BackupSourceField
+                    label="retention_policy"
+                    value={backupSource.retention_policy}
+                    testId="p22-backup-check-retention"
+                  />
+                  <BackupSourceField
+                    label="p17_backup_source_status"
+                    value={backupSource.p17_backup_source_status}
+                    testId="p22-backup-check-p17"
+                  />
+                  <BackupSourceField
+                    label="reason"
+                    value={backupSource.reason}
+                    testId="p22-backup-check-reason"
+                  />
+                  <BackupSourceField
+                    label="checked_at"
+                    value={backupSource.checked_at}
+                    testId="p22-backup-check-checked-at"
+                  />
+                </dl>
+
+                <p className="text-xs text-gray-500" data-testid="p22-backup-check-nonexec">
+                  realizes_execution={String(backupSource.realizes_execution)}; executed=
+                  {String(backupSource.executed)}; execution_started=
+                  {String(backupSource.execution_started)}; execution_allowed=
+                  {String(backupSource.execution_allowed)}; result_state=
+                  {backupSource.result_state}; read_only={String(backupSource.read_only)};
+                  redaction_applied={String(backupSource.redaction_applied)}
+                </p>
+
+                {backupSource.realizes_execution ||
+                backupSource.executed ||
+                backupSource.execution_started ||
+                backupSource.execution_allowed ? (
+                  <p
+                    className="text-sm text-red-700"
+                    data-testid="p22-backup-check-exec-violation"
+                  >
+                    Unexpected execution flag set on a read-only source read -- refusing to treat as
+                    a read. This should never happen.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           {/* Dry-run form (no mutation) */}

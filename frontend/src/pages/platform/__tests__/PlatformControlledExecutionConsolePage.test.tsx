@@ -396,3 +396,173 @@ describe('PlatformControlledExecutionConsolePage', () => {
     expectRecordUnavailableAfterEdit();
   });
 });
+
+// ---------------------------------------------------------------------------
+// P22-E4: backup.check source status (read-only probe surfaced in the console).
+// ---------------------------------------------------------------------------
+
+/** Build a BackupCheckSourceRead-shaped axios response body. */
+function backupSourceResponse(over: Record<string, unknown> = {}) {
+  return {
+    data: {
+      action_type: 'backup.check',
+      action_class: 'read',
+      binding: 'read_only_source_probe',
+      adapter_result: 'not_implemented',
+      source_status: 'known',
+      source_summary: 'fresh_success',
+      last_backup_status: 'success',
+      last_backup_at: '2026-07-04T00:00:00Z',
+      restore_test_status: 'passed',
+      last_restore_test_at: '2026-07-03T00:00:00Z',
+      failure_reason_redacted: null,
+      export_available: true,
+      retention_policy: '7 daily',
+      p17_backup_source_status: 'available',
+      realizes_execution: false,
+      executed: false,
+      execution_started: false,
+      execution_allowed: false,
+      result_state: 'blocked',
+      read_only: true,
+      redaction_applied: true,
+      reason: null,
+      checked_at: '2026-07-04T00:00:00Z',
+      ...over,
+    },
+  };
+}
+
+describe('PlatformControlledExecutionConsolePage -- backup.check source (P22-E4)', () => {
+  beforeEach(() => {
+    vi.mocked(api.get).mockResolvedValue({ data: CATALOG });
+    vi.mocked(api.post).mockResolvedValue({ data: {} });
+  });
+
+  /** Render, wait for mount, queue a source response, and click refresh. */
+  async function refreshSource(sourceOver: Record<string, unknown> = {}) {
+    renderPage();
+    await screen.findAllByTestId('p22-catalog-item');
+    vi.mocked(api.get).mockResolvedValueOnce(backupSourceResponse(sourceOver));
+    fireEvent.click(screen.getByTestId('p22-backup-check-refresh'));
+    await screen.findByTestId('p22-backup-check-result');
+  }
+
+  it('P22-E4-P01: a fresh-success source is visible as known and stays non-executing', async () => {
+    await refreshSource({ source_status: 'known', source_summary: 'fresh_success' });
+    const section = screen.getByTestId('p22-backup-check-source');
+    expect(within(section).getByTestId('p22-backup-check-status').textContent).toBe('known');
+    expect(within(section).getByTestId('p22-backup-check-summary').textContent).toBe(
+      'fresh_success',
+    );
+    expect(within(section).getByTestId('p22-backup-check-last-status').textContent).toBe(
+      'success',
+    );
+    // Non-executing flags are surfaced and all false.
+    const nonexec = within(section).getByTestId('p22-backup-check-nonexec').textContent ?? '';
+    expect(nonexec).toContain('realizes_execution=false');
+    expect(nonexec).toContain('executed=false');
+    expect(nonexec).toContain('execution_allowed=false');
+    expect(nonexec).toContain('result_state=blocked');
+    // No execution-violation warning.
+    expect(within(section).queryByTestId('p22-backup-check-exec-violation')).not.toBeInTheDocument();
+  });
+
+  it('P22-E4-P02: a stale source is degraded and never shown as success', async () => {
+    await refreshSource({
+      source_status: 'degraded',
+      source_summary: 'stale',
+      last_backup_status: 'stale',
+    });
+    const section = screen.getByTestId('p22-backup-check-source');
+    expect(within(section).getByTestId('p22-backup-check-status').textContent).toBe('degraded');
+    expect(within(section).getByTestId('p22-backup-check-summary').textContent).toBe('stale');
+    expect(within(section).getByTestId('p22-backup-check-last-status').textContent).toBe('stale');
+    // Never implied healthy.
+    expect(within(section).getByTestId('p22-backup-check-status').textContent).not.toBe('known');
+  });
+
+  it('P22-E4-P03: a no-outcome source is unknown and never healthy', async () => {
+    await refreshSource({
+      source_status: 'unknown',
+      source_summary: 'unknown',
+      last_backup_status: null,
+      last_backup_at: null,
+      export_available: null,
+      reason: 'No backup outcome has been recorded; status is unknown.',
+    });
+    const section = screen.getByTestId('p22-backup-check-source');
+    expect(within(section).getByTestId('p22-backup-check-status').textContent).toBe('unknown');
+    expect(within(section).getByTestId('p22-backup-check-summary').textContent).toBe('unknown');
+    // A null last_backup_status renders the placeholder, never 'success'.
+    expect(within(section).getByTestId('p22-backup-check-last-status').textContent).toBe('-');
+    expect(within(section).getByTestId('p22-backup-check-status').textContent).not.toBe('known');
+  });
+
+  it('P22-E4-P04: an unavailable (fail-closed) source is shown as unknown, never healthy, no crash', async () => {
+    await refreshSource({
+      source_status: 'unknown',
+      source_summary: 'unavailable',
+      last_backup_status: null,
+      last_backup_at: null,
+      export_available: null,
+      p17_backup_source_status: 'unavailable',
+      reason: 'Backup source read failed; status is unavailable.',
+    });
+    const section = screen.getByTestId('p22-backup-check-source');
+    expect(within(section).getByTestId('p22-backup-check-status').textContent).toBe('unknown');
+    expect(within(section).getByTestId('p22-backup-check-summary').textContent).toBe(
+      'unavailable',
+    );
+    // Unavailable must never look healthy.
+    expect(within(section).getByTestId('p22-backup-check-status').textContent).not.toBe('known');
+  });
+
+  it('P22-E4-P05: a transport failure surfaces an operator error and no result (no crash)', async () => {
+    renderPage();
+    await screen.findAllByTestId('p22-catalog-item');
+    vi.mocked(api.get).mockRejectedValueOnce(new Error('network down'));
+    fireEvent.click(screen.getByTestId('p22-backup-check-refresh'));
+    expect(await screen.findByTestId('p22-backup-check-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('p22-backup-check-result')).not.toBeInTheDocument();
+  });
+
+  it('P22-E4-P06: the section exposes NO execute / run / dispatch control and no raw failure text', async () => {
+    // A failed backup carries only the allowlisted reason code; the raw text
+    // ('Traceback...') must never be displayed.
+    await refreshSource({
+      source_status: 'degraded',
+      source_summary: 'failed',
+      last_backup_status: 'failed',
+      failure_reason_redacted: 'backup_incomplete',
+    });
+    const section = screen.getByTestId('p22-backup-check-source');
+    // The only button in the section is the read-only refresh; it offers no
+    // execution / dispatch / restore / dump affordance.
+    const buttons = within(section).getAllByRole('button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].textContent).toMatch(/refresh source status/i);
+    expect(buttons[0].textContent).not.toMatch(/execute|run|dispatch|restore|dump/i);
+    // No link or extra control invites execution either.
+    expect(within(section).queryByRole('link')).not.toBeInTheDocument();
+    // The allowlisted reason is shown; a raw stack trace is never present.
+    expect(within(section).getByTestId('p22-backup-check-failure-reason').textContent).toBe(
+      'backup_incomplete',
+    );
+    expect(section.textContent ?? '').not.toContain('Traceback');
+  });
+
+  it('P22-E4-P07: forwarding a tenant_id reaches the query param', async () => {
+    renderPage();
+    await screen.findAllByTestId('p22-catalog-item');
+    vi.mocked(api.get).mockResolvedValueOnce(backupSourceResponse({ source_status: 'known' }));
+    fireEvent.change(screen.getByTestId('p22-backup-check-tenant-id'), {
+      target: { value: 'tenant-xyz' },
+    });
+    fireEvent.click(screen.getByTestId('p22-backup-check-refresh'));
+    await screen.findByTestId('p22-backup-check-result');
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith('/platform/p22/backup-check/source', {
+      params: { tenant_id: 'tenant-xyz' },
+    });
+  });
+});

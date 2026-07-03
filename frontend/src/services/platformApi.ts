@@ -50,6 +50,7 @@ import type {
   DurableApprovalRecord,
 } from '@/types/platformDurableApprovals';
 import type {
+  BackupCheckSourceRead,
   ExecutionCatalogResponse,
   ExecutionDryRunRequest,
   ExecutionDryRunResponse,
@@ -281,4 +282,13 @@ export const platformService = {
     api.get<ExecutionRequestResponse>(
       `${P22_BASE}/execution/requests/${executionRequestId}`,
     ),
+
+  /** P22-E3/E4: read-only backup.check source status probe (never executes).
+   *  Surfaces the proven P17-D-C backup / status source. tenantId omitted =
+   *  platform-wide. A read failure degrades to an honest unavailable / unknown
+   *  body (HTTP 200, fail-closed), never an execution. */
+  getBackupCheckSource: (tenantId?: string) =>
+    api.get<BackupCheckSourceRead>(`${P22_BASE}/backup-check/source`, {
+      params: tenantId && tenantId.trim() ? { tenant_id: tenantId.trim() } : undefined,
+    }),
 };

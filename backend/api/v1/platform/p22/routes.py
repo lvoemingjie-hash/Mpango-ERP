@@ -48,6 +48,7 @@ from .schemas import (
     ExecutionRequestQueue,
     ExecutionRequestResponse,
 )
+from .source_probe import BackupCheckSourceRead, read_backup_check_source
 
 router = APIRouter(prefix="/api/v1/platform/p22", tags=["platform-p22"])
 
@@ -336,3 +337,43 @@ async def read_execution_request_route(
         executed=False,
     )
     return response
+
+
+@router.get("/backup-check/source", response_model=BackupCheckSourceRead)
+async def backup_check_source_route(
+    request: Request,
+    tenant_id: Optional[str] = Query(
+        None,
+        description="Scoped tenant id; omit for the platform-wide backup outcome.",
+    ),
+    db: AsyncSession = Depends(get_db),
+    _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
+) -> BackupCheckSourceRead:
+    """Read-only ``backup.check`` source status probe (P22-E3). READ-ONLY.
+
+    Surfaces the PROVEN P17-D-C backup / status source for ``backup.check``
+    through a governed P22 read path so platform operators can observe backup
+    status without executing anything. Returns an honest
+    ``known | unknown | degraded`` read; every execution flag is ``False`` and
+    ``result_state`` is ``blocked``. This is NOT an execution entry point: it
+    performs no backup / restore / dump / shell / SQL / script, dispatches no
+    worker, drains no queue, and mutates no tenant business data. Approval is not
+    execution; a read is not execution.
+
+    The static ``backup.check`` execution adapter stays ``not_implemented`` /
+    ``source_unknown``; this route only reads the source. A source read failure
+    degrades to an honest ``unavailable`` / ``unknown`` (fail-closed) result,
+    never a 500.
+    """
+    source = await read_backup_check_source(db, tenant_id=tenant_id)
+    await _write_outcome_audit(
+        db,
+        request,
+        "backup_check_source",
+        action_type="backup.check",
+        source_status=source.source_status,
+        source_summary=source.source_summary,
+        executed=False,
+        execution_allowed=False,
+    )
+    return source

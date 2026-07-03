@@ -36,6 +36,9 @@ os.environ.setdefault("MPANGO_ENV", "test")
 os.environ.setdefault("PLATFORM_TEST_OVERRIDE_SECRET", "test-platform-override-secret")
 os.environ.setdefault("PLATFORM_OPERATOR_SECRET", "test-operator-secret")
 
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
 from api.v1.platform.p22 import source_probe  # noqa: E402
 from api.v1.platform.p22.source_probe import (  # noqa: E402
     PROBE_REALIZES_EXECUTION,
@@ -562,3 +565,135 @@ def _ast_dotted(node):
     if isinstance(cur, ast.Name):
         parts.append(cur.id)
     return ".".join(reversed(parts))
+
+
+# ===========================================================================
+# R1: the probe is surfaced through a real P22 runtime read path
+# (GET /api/v1/platform/p22/backup-check/source). Proves a NON-TEST runtime
+# caller of read_backup_check_source and that fresh / unknown / unavailable
+# reads are visible to operators through the guarded P22 API without executing
+# anything.
+# ===========================================================================
+
+
+AUTH_HEADERS = {"X-Platform-Test-Override": "test-platform-override-secret"}
+SOURCE_PATH = "/api/v1/platform/p22/backup-check/source"
+
+
+def _app_with_outcomes(monkeypatch, outcomes, policies):
+    """A TestClient app whose session reads the given outcome/policy rows.
+
+    The best-effort outcome audit is patched to a no-op so the mock session is
+    only exercised by the (read-only) P17 source loader the probe reuses.
+    """
+    from api.dependencies import get_db
+    from api.v1.platform.p22 import routes as p22_routes
+
+    monkeypatch.setattr(p22_routes, "_write_outcome_audit", AsyncMock(return_value=None))
+    app = FastAPI()
+
+    async def override():
+        yield _mock_db_with(outcomes, policies)
+
+    app.dependency_overrides[get_db] = override
+    app.include_router(p22_routes.router)
+    return app
+
+
+def _app_with_failing_read(monkeypatch):
+    """A TestClient app whose session read raises (source read failure)."""
+    from api.dependencies import get_db
+    from api.v1.platform.p22 import routes as p22_routes
+
+    monkeypatch.setattr(p22_routes, "_write_outcome_audit", AsyncMock(return_value=None))
+    app = FastAPI()
+
+    async def override():
+        db = MagicMock()
+        db.execute = AsyncMock(side_effect=RuntimeError("backup table unreachable"))
+        yield db
+
+    app.dependency_overrides[get_db] = override
+    app.include_router(p22_routes.router)
+    return app
+
+
+class TestRouteSurfacesProbe:
+    """R1: a real P22 runtime entry point calls and surfaces read_backup_check_source."""
+
+    def test_route_is_a_runtime_caller_of_the_probe(self, monkeypatch):
+        # Direct proof: spy on read_backup_check_source at the routes module
+        # (the name the route awaits) and assert the route called it.
+        from api.dependencies import get_db
+        from api.v1.platform.p22 import routes as p22_routes
+
+        captured: dict = {}
+
+        async def _spy(db, tenant_id=None, now=None):
+            captured["called"] = True
+            captured["tenant_id"] = tenant_id
+            return BackupCheckSourceRead(
+                source_status="known", source_summary="fresh_success", checked_at=NOW
+            )
+
+        monkeypatch.setattr(p22_routes, "read_backup_check_source", _spy)
+        monkeypatch.setattr(p22_routes, "_write_outcome_audit", AsyncMock(return_value=None))
+        app = FastAPI()
+
+        async def override():
+            yield _mock_db_with([], [])
+
+        app.dependency_overrides[get_db] = override
+        app.include_router(p22_routes.router)
+
+        with TestClient(app) as c:
+            r = c.get(SOURCE_PATH + "?tenant_id=" + TENANT_ID, headers=AUTH_HEADERS)
+
+        assert r.status_code == 200
+        assert captured.get("called") is True
+        assert captured.get("tenant_id") == TENANT_ID
+        body = r.json()
+        assert body["source_status"] == "known"
+        assert body["source_summary"] == "fresh_success"
+
+    def test_fresh_success_visible_as_known(self, monkeypatch):
+        row = _outcome(
+            tenant_id=TID_UUID,
+            status="success",
+            completed_at=NOW - timedelta(hours=2),
+            bytes_written=2048,
+        )
+        with TestClient(_app_with_outcomes(monkeypatch, [row], [])) as c:
+            body = c.get(SOURCE_PATH + "?tenant_id=" + TENANT_ID, headers=AUTH_HEADERS).json()
+        assert body["source_status"] == "known"
+        assert body["source_summary"] == "fresh_success"
+        assert body["last_backup_status"] == "success"
+        # Surfaced through the route, still fully non-executing.
+        assert body["executed"] is False
+        assert body["execution_allowed"] is False
+        assert body["execution_started"] is False
+        assert body["realizes_execution"] is False
+        assert body["result_state"] == "blocked"
+        assert body["adapter_result"] == "not_implemented"
+
+    def test_no_outcome_visible_as_unknown_never_healthy(self, monkeypatch):
+        with TestClient(_app_with_outcomes(monkeypatch, [], [])) as c:
+            body = c.get(SOURCE_PATH + "?tenant_id=" + TENANT_ID, headers=AUTH_HEADERS).json()
+        assert body["source_status"] == "unknown"
+        assert body["source_summary"] == "unknown"
+        assert body["source_status"] != "known"
+
+    def test_read_failure_is_fail_closed_unavailable_no_500(self, monkeypatch):
+        with TestClient(_app_with_failing_read(monkeypatch)) as c:
+            r = c.get(SOURCE_PATH + "?tenant_id=" + TENANT_ID, headers=AUTH_HEADERS)
+        assert r.status_code == 200  # fail-closed, never a 500
+        body = r.json()
+        assert body["source_summary"] == "unavailable"
+        assert body["source_status"] == "unknown"
+
+    def test_route_requires_platform_operator(self, monkeypatch):
+        # No auth header -> the P10 guard denies (401/403); the route is guarded
+        # by the same surface as the rest of P22.
+        with TestClient(_app_with_outcomes(monkeypatch, [], [])) as c:
+            r = c.get(SOURCE_PATH + "?tenant_id=" + TENANT_ID)  # no auth header
+        assert r.status_code in (401, 403)

@@ -189,7 +189,8 @@ changed-file ASCII scan: PASS
 changed-file mojibake scan: PASS
 changed-file sensitive-keyword scan: matched only environment variable names and ledger/test statements that no secrets are printed
 pre-commit run --files .gitattributes backend/scripts/reset-staging.sh backend/tests/test_s6c_reset_staging_current_head_gate.py ai-ledger/product-ai/2026-07-03_s6c_staging_reset_current_head_gate.md: PASS
-npx gitnexus analyze; npx gitnexus status: PASS, indexed baseline/current commit 61a6a53 before commit
+npx gitnexus analyze; npx gitnexus status before commit: PASS, indexed baseline/current commit 61a6a53
+npx gitnexus analyze; npx gitnexus status after commit: PASS, indexed commit 809d537
 ```
 
 GitNexus CLI help did not expose a `detect_changes` command in this environment.

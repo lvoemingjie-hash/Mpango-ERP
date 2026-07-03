@@ -1,9 +1,11 @@
 # U4-H-A -- Mobile Scan/PWA Feasibility + Thin Slice Contract
 
 **Date**: 2026-07-03
-**Branch**: `opencode/u4h-mobile-scan-pwa-thin-slice-2026-07-03`
+**Branch**: `opencode/u4h-a-r1-mobile-scan-clean-rebase-2026-07-03`
 **Lineage**: `origin/product-dev-recovered`
 **Verdict**: `PASS_FOR_CTO_U4H_REVIEW`
+
+**Round**: R1 (thin slice) + R2 (detect-loop fix)
 
 ---
 
@@ -32,7 +34,9 @@ Standalone mobile scan preview with:
 - Zero backend calls (onScan callback lets parent decide).
 - No image persistence (in-memory only).
 
-### MobileScanPreview.test.tsx (8 tests, all PASS)
+### MobileScanPreview.test.tsx (10 tests, all PASS)
+
+**R1 tests (8):**
 
 | # | Test | Proves |
 |---|------|--------|
@@ -44,6 +48,13 @@ Standalone mobile scan preview with:
 | 6 | No backend API called on scan | Preview-only (fetch spy) |
 | 7 | Shows disclaimer on result | Preview-only invariant |
 | 8 | No public/anonymous entry point | Internal-login-only |
+
+**R2 tests (2):**
+
+| # | Test | Proves |
+|---|------|--------|
+| 9 | Retries detect() when first call returns empty array | Loop retries transient failures |
+| 10 | Stops after barcode detected, calls onScan exactly once | Single-scan invariant; ref stops loop |
 
 ### Test infrastructure (vitest.config.ts + setup.ts)
 
@@ -76,7 +87,36 @@ Drop-in card, no coupling to DataIntakePage internals.
 
 ---
 
-## 4. Boundaries Honored
+## 4. R2 — Detect Loop Fix (scanningRef)
+
+### Problem
+The `detectLoop` callback was closing over the React `scanning` state. When `stopCamera()` was called, the stale closure saw `scanning=true` and continued scheduling `requestAnimationFrame` — causing the loop to never stop and the `onScan` callback to potentially fire multiple times.
+
+### Fix
+- Added `scanningRef` (`useRef(false)`) that mirrors the `scanning` state.
+- `startCamera`: sets `scanningRef.current = true` **before** scheduling the loop.
+- `stopCamera`: sets `scanningRef.current = false` **first**, then cancels the RAF.
+- `detectLoop`: reads `scanningRef.current` instead of `scanning` state, and `scanning` is removed from the `useCallback` dependency array.
+
+### R2 Commit
+```
+6937c44 fix(U4-H-A): R2 -- scanningRef replaces stale scanning state in detect loop; +2 camera-loop tests
+2 files changed, 116 insertions(+), 2 deletions(-)
+```
+
+### R2 Test Results
+```
+vitest run src/tests/MobileScanPreview.test.tsx
+Test Files  1 passed (1)
+     Tests  10 passed (10)
+
+tsc --noEmit: 0 errors
+vite build: built in ~5s
+```
+
+---
+
+## 5. Boundaries Honored
 
 | Constraint | Status |
 |-----------|--------|
@@ -90,20 +130,20 @@ Drop-in card, no coupling to DataIntakePage internals.
 
 ---
 
-## 5. Test Results
+## 6. Test Results (R1+R2 Combined)
 
 ```
 vitest run src/tests/MobileScanPreview.test.tsx
 Test Files  1 passed (1)
-     Tests  8 passed (8)
+     Tests  10 passed (10)
 
 tsc --noEmit: 0 errors
-vite build: built in 5.00s
+vite build: built in ~5s
 ```
 
 ---
 
-## 6. Quality Gates
+## 7. Quality Gates
 
 | Check | Status |
 |-------|--------|
@@ -117,18 +157,18 @@ vite build: built in 5.00s
 
 ---
 
-## 7. Files Changed
+## 8. Files Changed (R1+R2)
 
 | File | Change |
 |------|--------|
-| `frontend/src/pages/skus/MobileScanPreview.tsx` | NEW: scan component |
-| `frontend/src/tests/MobileScanPreview.test.tsx` | NEW: 8 tests |
-| `frontend/vitest.config.ts` | NEW: vitest config (jsdom) |
-| `frontend/src/tests/setup.ts` | NEW: test setup |
+| `frontend/src/pages/skus/MobileScanPreview.tsx` | NEW (R1) + FIX (R2): scan component + scanningRef |
+| `frontend/src/pages/skus/SKUListPage.tsx` | MODIFIED: add mobile scan link |
+| `frontend/src/router/AppRouter.tsx` | MODIFIED: add /mobile-scan route |
+| `frontend/src/tests/MobileScanPreview.test.tsx` | NEW: 8 tests (R1) + 2 camera-loop tests (R2) |
 
 ---
 
-## 8. Verdict
+## 9. Verdict
 
 ```
 PASS_FOR_CTO_U4H_REVIEW

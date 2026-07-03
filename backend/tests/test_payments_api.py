@@ -26,13 +26,18 @@ class _FakeBegin:
 
 
 @pytest.mark.asyncio
-async def test_transfer_requires_idempotency_key():
+async def test_create_payment_route_is_disabled_before_service_call(monkeypatch):
     req = PaymentCreateRequest(
         order_id=str(uuid.uuid4()),
         amount=Decimal("10.00"),
         method=PaymentMethod.transfer,
         transaction_id="QWE12345",
     )
+
+    async def _forbidden_service_call(*args, **kwargs):
+        raise AssertionError("POST /payments must not call PaymentService.create_payment")
+
+    monkeypatch.setattr(PaymentService, "create_payment", _forbidden_service_call)
 
     class _Token:
         user_id = str(uuid.uuid4())
@@ -46,33 +51,11 @@ async def test_transfer_requires_idempotency_key():
             x_idempotency_key=None,
         )
 
-    assert exc.value.status_code == 400
-    assert exc.value.detail["code"] == "MISSING_IDEMPOTENCY_KEY"
-
-
-@pytest.mark.asyncio
-async def test_transfer_rejects_legacy_idempotency_key_header():
-    req = PaymentCreateRequest(
-        order_id=str(uuid.uuid4()),
-        amount=Decimal("10.00"),
-        method=PaymentMethod.transfer,
-        transaction_id="QWE12345",
-    )
-
-    class _Token:
-        user_id = str(uuid.uuid4())
-
-    with pytest.raises(HTTPException) as exc:
-        await create_payment(
-            request_body=req,
-            token=_Token(),
-            tenant_db=None,
-            idempotency_key="legacy",
-            x_idempotency_key=None,
-        )
-
-    assert exc.value.status_code == 400
-    assert exc.value.detail["code"] == "MISSING_IDEMPOTENCY_KEY"
+    assert exc.value.status_code == 409
+    assert exc.value.detail == {
+        "code": "PAYMENT_WRITE_PATH_DISABLED",
+        "message": "Use POST /api/v1/orders/{order_id}/pay so order status and ledger stay consistent.",
+    }
 
 
 @pytest.mark.asyncio

@@ -124,6 +124,8 @@ Index evidence:
 - `npx gitnexus analyze` pre-edit: PASS, `6,156 nodes | 17,876 edges | 408 clusters | 227 flows`.
 - `npx gitnexus analyze` post-edit: PASS, `Already up to date`.
 - `npx gitnexus status` post-edit: PASS, indexed commit and current commit both `d531f28`, status `up-to-date`.
+- `npx gitnexus analyze` post-commit: PASS, `6,183 nodes | 17,925 edges | 409 clusters | 227 flows`.
+- `npx gitnexus status` post-commit: PASS, indexed commit and current commit both `8bf07d7`, status `up-to-date`.
 - `npx gitnexus --help`: `detect_changes` command is not available in this CLI; no detect_changes evidence captured.
 
 ## Validation
@@ -147,6 +149,12 @@ Remaining risk:
 
 - DB-backed U4C intake contract assertions still need an environment with resolvable PostgreSQL test configuration to run past fixture setup.
 - `poetry run python` cannot import FastAPI in this local environment, while `poetry run pytest` can run the project tests successfully; this was not changed because the established validation path is pytest.
+
+## Push Confirmation
+
+- Commit: `8bf07d7 test(S6-E): gate RBAC permission registry drift`
+- Branch pushed: `origin/opencode/s6e-rbac-permission-registry-drift-gate-2026-07-04`
+- PR URL offered by remote: `https://github.com/lvoemingjie-hash/Mpango-ERP/pull/new/opencode/s6e-rbac-permission-registry-drift-gate-2026-07-04`
 
 ## Out Of Scope
 

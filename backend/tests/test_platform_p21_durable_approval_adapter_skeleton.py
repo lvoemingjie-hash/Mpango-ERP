@@ -299,7 +299,16 @@ def test_p21_package_has_no_router():
 
 
 def test_no_new_alembic_migration_chained_on_020():
-    """020_durable_approval_store is still the head -- nothing descends from it."""
+    """Only allowlisted, separately-approved phase migrations descend from 020.
+
+    Originally (P21-D) this asserted 020 was the head with no descendants. Once a
+    later, separately-approved phase legitimately chains an ADDITIVE migration onto
+    020, that migration file is added to ALLOWED_DESCENDANTS. Any migration that
+    descends from 020 and is NOT in the allowlist fails this gate -- it catches
+    unauthorized chaining while accepting the approved follow-on revisions.
+    """
+    # P17-D-C: 021_platform_backup_status_source (additive, public-schema-only).
+    ALLOWED_DESCENDANTS = {"021_platform_backup_status_source.py"}
     versions = BACKEND / "alembic" / "versions"
     assert (versions / "020_durable_approval_store.py").is_file()
     descendants = []
@@ -317,7 +326,8 @@ def test_no_new_alembic_migration_chained_on_020():
         name for name in descendants
         if not name.startswith("020_")
     ]
-    assert new_migrations == [], f"unexpected new migration(s) chained on 020: {new_migrations}"
+    unexpected = [name for name in new_migrations if name not in ALLOWED_DESCENDANTS]
+    assert unexpected == [], f"unexpected new migration(s) chained on 020: {unexpected}"
 
 
 def test_alembic_env_does_not_reference_p21():

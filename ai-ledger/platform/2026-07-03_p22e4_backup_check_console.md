@@ -5,7 +5,7 @@
 **Branch:** `codex/platform-p22e4-backup-check-console-2026-07-03`
 **Base:** `bfbd780` (`origin/platform-dev` -- includes the merged P22-E3 read-only route)
 **Author:** Codex (Claude worker)
-**Status:** Complete. Frontend-only, read-only console addition. E4 gates pass; P22-F closeout completed (sibling ledger). Never executes; ready for CTO review.
+**Status:** Complete. Frontend-only, read-only console addition. E4 gates pass; P22-F closeout completed (sibling ledger). R1 = ledger-evidence-accuracy fix only (changed-files wording = 5 frontend impl/test files + 2 ledgers = 7; detect_changes `changed_count=47/affected_count=0/changed_files=7/risk low`; frontend targeted 34 / full 312 / backend 113; act-warning characterization corrected). No runtime/test/code change in R1. Never executes; ready for CTO review.
 
 ---
 
@@ -42,15 +42,18 @@ if a source read ever carried an execution flag (it never should).
   via `git worktree add --no-track -b <branch> <path> origin/platform-dev`. Upstream unset;
   published with the explicit refspec `git push -u origin <branch>:<branch>`.
 - **Commit chain (base..tip):** `bfbd780` (base) -> `7ea894d` (R0: frontend type + API
-  client + console section + tests) -> R0 ledger (this report) + P22-F closeout. The final
-  tip SHA is reported in the chat report.
+  client + console section + tests) -> `131ea4e` (R0 ledger + P22-F closeout) -> R1
+  (this evidence-accuracy fix to the R0 ledger). The final tip SHA is reported in the chat
+  report.
 
 `platform-dev` is NOT merged and NOT the push target. Only the isolated E4 branch is
 published.
 
 ---
 
-## 3. Changed Files (exactly five; all frontend; backend untouched)
+## 3. Changed Files (5 frontend implementation/test files + 2 ledgers = 7 total; backend untouched)
+
+The five files below are the E4 frontend implementation/test files:
 
 | File | Status | Scope |
 |---|---|---|
@@ -60,7 +63,10 @@ published.
 | `frontend/src/services/__tests__/platformControlledExecutionApi.test.ts` | Modified | +3 API tests (URL, tenant_id forwarding, non-executing model). |
 | `frontend/src/pages/platform/__tests__/PlatformControlledExecutionConsolePage.test.tsx` | Modified | +7 page tests (known / degraded / unknown / unavailable / transport-failure / no-execute-control-no-raw-text / tenant_id forwarding). |
 
-`git diff --name-only origin/platform-dev..HEAD` returns exactly these five paths. No
+The full branch diff (`git diff --name-only origin/platform-dev..HEAD`) is **7 paths**:
+the 5 frontend implementation/test files above plus the 2 ledger files
+(`ai-ledger/platform/2026-07-03_p22e4_backup_check_console.md` and
+`ai-ledger/platform/2026-07-03_p22f_controlled_execution_closeout.md`). No
 `backend/` change (E4 is frontend-only), no `migrations/`, no `alembic/env.py`, no
 `scripts/` / P16, no `product-dev-recovered/` or product / payment / billing / order /
 invoice / customer / inventory path, no auth / RBAC / session rewrite, no `package.json`
@@ -121,40 +127,46 @@ identity-only super_admin; P22-N05 redirects tenant-contextual away) -- unchange
 | Gate | Result |
 |---|---|
 | `git diff --check origin/platform-dev..HEAD` | clean (exit 0) |
-| Changed files | exactly five frontend paths (section 3) |
-| Non-ASCII byte scan on changed files | 0 non-ASCII bytes across all five (Python byte scan) |
-| detect-secrets (configured baseline) | clean (exit 0); baseline unmodified; pre-commit detect-secrets passed at commit |
+| Changed files | 7 paths total: 5 frontend implementation/test files + 2 ledgers (section 3) |
+| Non-ASCII byte scan on changed files | 0 non-ASCII bytes across all 7 files (Python byte scan) |
+| detect-secrets (configured baseline) | clean (exit 0); baseline unmodified; pre-commit detect-secrets passed at every commit |
 | Forbidden path audit | clean (section 8) |
-| Frontend E4 tests | 10 new pass (3 API + 7 page) |
-| Existing P22-C console tests | pass (16 + 5 nav + 8 API + 5 type = 34 prior; all green) |
-| Full frontend suite | **312 passed** across 33 files (no new failures; one PRE-EXISTING act warning in `OpsSlowRoutesPage.tsx`, unrelated to E4) |
-| Backend P22-E3 / P22 / P22-E1 regression | **139 passed** (backend untouched) |
-| `npx gitnexus analyze .` | 8,674 nodes / 26,496 edges / 549 clusters / 300 flows at `7ea894d` |
-| `npx gitnexus status` | up-to-date at `7ea894d` (indexed == current == tip) |
-| GitNexus `detect_changes` vs `origin/platform-dev` | `changed_count=24, affected_count=0, changed_files=5, risk_level=low`; **0 affected flows, 0 product-business hit** (correct for a frontend-only read-only UI addition) |
+| Frontend E4 new tests | 10 new pass (3 API + 7 page) |
+| Frontend targeted suite (P22-E4 console + API) | **34 passed** |
+| Full frontend suite | **312 passed** across 33 files (pre-existing React Router future-flag warnings and multiple pre-existing act warnings in `src/pages/platform/ops/` pages, e.g. `OpsSlowRoutesPage`, `OpsResourcesPage`, and siblings; no P22-E4 targeted test produces an act warning and no new blocking failure is observed) |
+| Backend P22-E3 / P22 / P22-E1 regression | **113 passed** (backend untouched) |
+| `npx gitnexus analyze .` | 8,690 nodes / 26,519 edges / 542 clusters / 300 flows at `131ea4e` |
+| `npx gitnexus status` | up-to-date at `131ea4e` (indexed == current == tip) |
+| GitNexus `detect_changes` vs `origin/platform-dev` | `changed_count=47, affected_count=0, changed_files=7, risk_level=low`; **0 affected flows, 0 product-business hit** (correct for a frontend-only read-only UI addition) |
 
 ### Tooling notes (pre-existing, not introduced by E4)
 - `tsc --noEmit` reports ~20 errors, ALL in other pre-existing files (e.g.
   `OpsSlowRoutesPage`, `PlatformApprovalsPage`, `PlatformAuditEventsPage`); the five E4
-  files are type-clean (zero errors).
+  frontend files are type-clean (zero errors).
 - ESLint cannot load its config in this worktree (`@typescript-eslint/recommended` not
   resolvable via the junction'd node_modules) -- a pre-existing tooling issue, not a code
-  issue, and not fixable without a dependency change (forbidden). No act warnings are
-  introduced by E4 (the single act-warning trace is pre-existing in `OpsSlowRoutesPage`).
+  issue, and not fixable without a dependency change (forbidden).
+- Act warnings: the full frontend suite passes with pre-existing React Router future-flag
+  warnings and **multiple pre-existing act warnings in `src/pages/platform/ops/` pages**
+  (e.g. `OpsSlowRoutesPage`, `OpsResourcesPage`, and sibling ops pages -- these pre-date
+  E4 and are untouched by it; the warnings are timing-related and non-deterministic across
+  runs). No P22-E4 targeted test produces an act warning, and no new blocking failure is
+  observed.
 
 ---
 
 ## 7. GitNexus
 
-- `analyze`: 8,674 nodes / 26,496 edges / 549 clusters / 300 flows at `7ea894d`.
-- `status`: up-to-date (indexed commit == current commit == `7ea894d`).
+- `analyze`: 8,690 nodes / 26,519 edges / 542 clusters / 300 flows at the final tip
+  (`131ea4e`).
+- `status`: up-to-date (indexed commit == current commit == `131ea4e`).
 - `detect_changes` (MCP `scope=compare`, `base_ref=origin/platform-dev`,
-  `repo=codex/platform-p22e4-...`): **`changed_count=24, affected_count=0, risk_level=low`**,
-  5 changed files (the five frontend paths). Affected-process count is **0** and
-  product-business hit count is **0** -- the expected result for a frontend-only read-only
-  console addition (gitnexus affected_processes are backend execution flows; a read-only UI
-  panel touches none). The stop condition "GitNexus shows product-business affected flow"
-  does not fire.
+  `repo=codex/platform-p22e4-...`): **`changed_count=47, affected_count=0,
+  changed_files=7, risk_level=low`**. The 7 changed files are the 5 frontend paths + the 2
+  ledger files. Affected-process count is **0** and product-business hit count is **0** --
+  the expected result for a frontend-only read-only console addition (gitnexus
+  affected_processes are backend execution flows; a read-only UI panel touches none). The
+  stop condition "GitNexus shows product-business affected flow" does not fire.
 
 ---
 
@@ -184,7 +196,7 @@ None matches any forbidden prefix or fragment:
 - Did it imply healthy on unavailable/unknown? No -- `unavailable`/`unknown` render as
   `unknown` (red), never `known` (asserted).
 - Did it touch the backend, a migration, P17/P21/P16, auth, or a product path? No --
-  frontend-only; backend regression 139 passed unchanged.
+  frontend-only; backend P22-E3/P22/P22-E1 regression 113 passed unchanged.
 - Is it ASCII-clean and secrets-clean? Yes -- 0 non-ASCII bytes; detect-secrets (configured
   baseline) clean; only short SHAs are used.
 

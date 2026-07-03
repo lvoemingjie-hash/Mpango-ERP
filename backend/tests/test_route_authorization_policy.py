@@ -93,6 +93,8 @@ AUTH_DEPENDENCY_NAMES: Set[str] = {
     "RequirePermission",       # api.middleware.rbac.RequirePermission
     "RequirePlatformAdmin",    # api.middleware.rbac.RequirePlatformAdmin (S2-R1)
     "RequireBIPermission",     # api.middleware.bi_access.RequireBIPermission
+    "RequireAnyIntakePermission",  # api.v1.intake.RequireAnyIntakePermission
+    "RequireAllPermissions",   # api.v1.intake.RequireAllPermissions
     "get_current_user_context",  # api.dependencies (validates JWT)
     "resolve_client_identity",   # api.v1.client.dependencies (JWT + retailer binding)
     "get_policy_subject",        # api.middleware.bi_access (JWT + tenant context)
@@ -214,11 +216,15 @@ def _dependency_name(dep: Any) -> str:
 
 
 def _extract_permission_code(dep: Any) -> Optional[str]:
-    """Extract the permission code from a RequirePermission/RequireBIPermission instance."""
+    """Extract a representative permission code from RBAC dependency instances."""
     # RequirePermission stores the code on .permission
     permission = getattr(dep, "permission", None)
     if permission:
         return str(permission)
+    # RequireAnyIntakePermission/RequireAllPermissions store a set on .permissions.
+    permissions = getattr(dep, "permissions", None)
+    if permissions:
+        return sorted(str(value) for value in permissions)[0]
     # RequireBIPermission stores action + asset_urn (no simple code)
     action = getattr(dep, "action", None)
     asset_urn = getattr(dep, "asset_urn", None)
@@ -236,7 +242,7 @@ def classify_route(route: APIRoute) -> RouteClassification:
       1. PUBLIC_ALLOWLIST        -> public
       2. INTERNAL_PATH_PREFIXES  -> internal_only (permission checked separately)
       3. RequirePermission with platform/system code -> platform_permission
-      4. RequirePermission/RequireBIPermission       -> tenant_permission
+      4. RBAC permission dependency                 -> tenant_permission
       5. get_current_user_context / resolve_client_identity / get_policy_subject
                                                    -> authenticated
       6. No auth dependency detected -> non_compliant
@@ -255,7 +261,13 @@ def classify_route(route: APIRoute) -> RouteClassification:
         name = _dependency_name(dep)
         if name in AUTH_DEPENDENCY_NAMES:
             auth_deps.append(name)
-            if name in ("RequirePermission", "RequirePlatformAdmin", "RequireBIPermission"):
+            if name in (
+                "RequirePermission",
+                "RequirePlatformAdmin",
+                "RequireBIPermission",
+                "RequireAnyIntakePermission",
+                "RequireAllPermissions",
+            ):
                 found_require_permission = True
                 code = _extract_permission_code(dep)
                 if code and permission_code is None:

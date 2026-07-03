@@ -71,7 +71,7 @@ function friendlyError(error: unknown): string {
 function applyFriendlyError(error: unknown): string {
   const axErr = error as { response?: { status?: number } };
   if (axErr.response?.status === 403) {
-    return 'You need both intake:update and skus:import to apply staged rows to Products.';
+    return 'You need both intake:update and skus:import to create catalog SKUs from staged rows.';
   }
 
   return friendlyError(error);
@@ -141,7 +141,7 @@ export function DataIntakePage() {
   const applyUnavailableReason = useMemo(() => {
     if (isApplied) return 'Already applied. This workspace cannot be applied again.';
     if (!hasApplyPermission) return 'Missing permission: intake:update and skus:import are required.';
-    if (!validation) return 'Validate first before applying staged rows to Products.';
+    if (!validation) return 'Validate first before creating catalog SKUs from staged rows.';
     if (blockingIssues.length > 0 || validation.error_count > 0) return 'Fix blocking issues and revalidate before applying.';
     if (validation.status !== 'READY_FOR_EXPORT') return 'Validate first until the workspace is READY_FOR_EXPORT.';
     return null;
@@ -249,7 +249,7 @@ export function DataIntakePage() {
     <div>
       <PageHeader
         title="Data Intake Workspace"
-        description="Stage customer or catalog files, map fields, validate rows, and review issues before any SKU work is considered."
+        description="Stage catalog files, map fields, validate rows, and review issues before any catalog SKU apply is considered."
         action={
           <a href="/skus" className="btn-secondary flex items-center gap-2">
             <ArrowLeftIcon className="h-4 w-4" />
@@ -259,7 +259,7 @@ export function DataIntakePage() {
       />
 
       <div className="mb-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
-        <strong>Controlled intake flow:</strong> validate staged rows first. Promotion is available only after confirmation and duplicate checks.
+        <strong>Controlled intake flow:</strong> validate staged rows first. Create Catalog SKUs is available only after confirmation and duplicate checks, and it creates catalog SKU records only.
       </div>
 
       {error && (
@@ -460,9 +460,9 @@ export function DataIntakePage() {
 
       {mappingResult && (
         <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">5. Apply to Products</h2>
+          <h2 className="text-lg font-semibold text-gray-900">5. Create Catalog SKUs</h2>
           <p className="mt-2 text-sm text-gray-600">
-            Apply only after validation says READY_FOR_EXPORT. Existing SKU codes are blocked; this flow does not overwrite, upsert, or merge Products.
+            Apply only after validation says READY_FOR_EXPORT. Existing SKU codes are blocked; this flow creates catalog SKU records only. It does not overwrite, upsert, or merge Products, and it does not write stock, retailer prices, barcode lookup, images, custom attributes, or sellable order readiness.
           </p>
 
           {applyUnavailableReason ? (
@@ -476,13 +476,14 @@ export function DataIntakePage() {
               onClick={() => setShowApplyConfirm(true)}
               disabled={loading || applying}
             >
-              Apply to Products
+              Apply to Catalog
             </button>
           )}
 
           {applyResult && (
             <div className="mt-4 rounded-md bg-green-50 p-4 text-sm text-green-800" role="status">
-              <div className="font-medium">Created {applyResult.created_count} official Product/SKU record(s).</div>
+              <div className="font-medium">Created {applyResult.created_count} catalog SKU record(s) only.</div>
+              <div className="mt-1">Next steps: adjust stock, set retailer prices, then create orders.</div>
               {applyResult.created_sku_ids.length > 0 && (
                 <div className="mt-1">Created SKU IDs: {applyResult.created_sku_ids.join(', ')}</div>
               )}
@@ -499,9 +500,11 @@ export function DataIntakePage() {
             aria-labelledby="apply-confirm-title"
             className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl"
           >
-            <h2 id="apply-confirm-title" className="text-lg font-semibold text-gray-900">Apply staged rows to Products</h2>
+            <h2 id="apply-confirm-title" className="text-lg font-semibold text-gray-900">Apply staged rows to Catalog</h2>
             <div className="mt-3 space-y-2 text-sm text-gray-700">
-              <p>This writes to official Products/SKUs.</p>
+              <p>This creates catalog SKUs only.</p>
+              <p>It does not create stock, retailer prices, barcode lookup, images, custom attributes, or sellable order readiness.</p>
+              <p>Configure stock and retailer pricing before creating orders.</p>
               <p>Duplicate existing SKU codes will be blocked.</p>
               <p>There is no silent overwrite, upsert, or merge.</p>
             </div>

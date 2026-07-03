@@ -193,8 +193,8 @@ export function SKUImportModal({ isOpen, onClose, onSuccess }: SKUImportModalPro
       if (res.data.data.status === 'completed') {
         useToastStore.getState().addToast({
           type: 'success',
-          title: 'Import Complete',
-          message: `Created ${res.data.data.created} product(s), skipped ${res.data.data.skipped}.`,
+          title: 'Catalog SKU Import Complete',
+          message: `Created ${res.data.data.created} catalog SKU record(s), skipped ${res.data.data.skipped}. Inventory, pricing, barcodes, images, and sellable readiness were not applied.`,
         });
         onSuccess();
       }
@@ -227,7 +227,7 @@ export function SKUImportModal({ isOpen, onClose, onSuccess }: SKUImportModalPro
   const renderUploadStep = () => (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
-        Upload a CSV file with your product data. Supported fields:{' '}
+        Upload a CSV file with your catalog SKU data. Supported fields:{' '}
         <span className="font-medium text-gray-700">
           {ALL_MAPPABLE_FIELDS.join(', ')}
         </span>.
@@ -250,8 +250,9 @@ export function SKUImportModal({ isOpen, onClose, onSuccess }: SKUImportModalPro
       {/* Unsupported fields notice */}
       <div className="rounded-md bg-amber-50 p-3">
         <p className="text-xs text-amber-800">
-          <strong>Note:</strong> This import only creates basic SKU records. It does{' '}
-          <u>not</u> import inventory, pricing, images, barcodes, or custom attributes.
+          <strong>Note:</strong> Apply creates catalog SKU records only. It does <u>not</u>{' '}
+          write inventory, pricing, barcode lookup, images, custom attributes, or sellable
+          readiness.
         </p>
       </div>
     </div>
@@ -479,8 +480,12 @@ export function SKUImportModal({ isOpen, onClose, onSuccess }: SKUImportModalPro
         {isCompleted ? (
           <>
             <div className="rounded-md bg-green-50 p-4 text-center">
-              <p className="text-lg font-bold text-green-700">Import Complete</p>
+              <p className="text-lg font-bold text-green-700">Catalog SKU Import Complete</p>
             </div>
+            <p className="text-sm text-center text-gray-600">
+              Applied staged rows to the product catalog only. Inventory, pricing, barcode
+              lookup, images, and sellable readiness remain unchanged.
+            </p>
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-lg bg-green-50 p-3 text-center">
                 <p className="text-2xl font-bold text-green-700">{applyResult.created}</p>

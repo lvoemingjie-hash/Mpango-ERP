@@ -119,6 +119,22 @@ This document explicitly states known limitations of the MVP release to set corr
 
 ---
 
+## 8. Data Intake: Catalog SKU Creation Only
+
+**Limitation:** Data Intake Apply creates **catalog SKU records only** in the current MVP scope.
+
+**Impact:**
+- Apply creates catalog SKU records only.
+- It does not initialize inventory.
+- It does not create retailer-specific prices.
+- It does not create image assets, barcode lookup automation, custom attributes, or sellable readiness.
+- Orders require an active SKU, stock, and retailer price.
+
+**Planned Resolution:**
+- **Future phase:** Extend post-intake workflows so stock, retailer pricing, barcode workflows, and sellable readiness can be configured through explicit follow-up steps or dedicated intake slices.
+
+---
+
 ## Summary Table
 
 | Area | v0.2.0 Status | Target Phase |
@@ -130,3 +146,4 @@ This document explicitly states known limitations of the MVP release to set corr
 | Invoices | JSON (no PDF) | Phase 2 |
 | Offline Mode | Not supported | Phase 3 |
 | Localization | KES / English only | Phase 2-3 |
+| Data Intake | Catalog SKU creation only | Future phase |

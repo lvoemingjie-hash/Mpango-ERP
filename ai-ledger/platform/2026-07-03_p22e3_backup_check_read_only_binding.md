@@ -8,7 +8,10 @@ backup/status source runtime merge)
 **Author:** Codex (Claude worker)
 **Status:** Complete. R0 = additive read-only source probe. R1 = CTO fix: wired the
 probe into a guarded read-only P22 route so it is operator-visible (R0 had no
-runtime caller; GitNexus `affected_count` 0 -> 4). Never executes; ready for CTO review.
+runtime caller; GitNexus `affected_count` 0 -> 4). R2 = CTO text-consistency fix:
+corrected two stale docstrings that still claimed "no HTTP route / wiring out of
+scope" after R1 (docstring-only; no runtime logic change). Never executes; ready
+for CTO review.
 
 ---
 
@@ -89,6 +92,37 @@ async session (`Depends(get_db)`) and sits under the existing guarded P22 surfac
 
 ---
 
+## 1B. R2 -- CTO text-consistency fix (docstring-only, no runtime change)
+
+**CTO finding on R1:** after R1 wired the read-only route, two top-level
+docstrings still carried the stale pre-R1 narrative -- "no HTTP route / wiring
+out of scope" -- which was now factually wrong. R2 is a documentation-only fix.
+
+**R2 fix (no runtime logic change; the diff is entirely inside triple-quoted
+docstrings):**
+
+- `backend/api/v1/platform/p22/source_probe.py` -- the "What this probe is NOT"
+  bullet previously said the probe "is NOT a wired HTTP route ... Wiring such a
+  route is out of P22-E3 scope." Reworded to: this module is a library-level
+  read-only source reader (defines no route itself); P22-E3-R1 EXPOSES it through
+  the guarded READ-ONLY `GET /backup-check/source` route; neither the probe nor
+  the route is a public EXECUTION entry point; a future real governed EXECUTION
+  would still route through the P22-E1 seam.
+- `backend/tests/test_platform_p22e3_backup_check_source_probe.py` -- the closing
+  docstring line "it adds no HTTP route and no public execution entry point" was
+  stale; rewrote it and added an R1 route-coverage bullet to the "Required
+  coverage" list.
+
+**Facts held accurate (unchanged by R2):** P22-E3 has a guarded read-only route;
+that route is NOT an execution entry point; the static `backup.check` adapter
+stays `not_implemented` / `source_unknown` (G15); no execution, no migration, no
+P17 logic change. R2 touched NO runtime code -- `routes.py`, the probe function
+bodies, the schemas, and the tests' executable code are byte-for-byte unchanged
+(`git diff` is docstring-only; 20 insertions / 9 deletions, all inside
+docstrings).
+
+---
+
 ## 2. Base / Branch / Commit Chain
 
 - **Base SHA:** `0955495` (`origin/platform-dev`; the P17-D-C merge).
@@ -100,9 +134,9 @@ async session (`Depends(get_db)`) and sits under the existing guarded P22 surfac
   worktree-push gotcha).
 - **Commit chain (base..tip):** `0955495` (base) -> `8668493` (R0: the source
   probe + tests) -> `dc305ba` (R0 ledger) -> `18338dd` (R1: route wiring + route
-  tests, the CTO fix) -> R1 ledger (this update). The final tip SHA is reported
-  in the chat report, not self-referenced here (this update is part of the R1
-  ledger commit).
+  tests, the CTO fix) -> `235576b` (R1 ledger) -> R2 docstring fix -> R2 ledger
+  (this update). The final tip SHA is reported in the chat report, not
+  self-referenced here (this update is part of the R2 ledger commit).
 
 `platform-dev` is NOT merged and is NOT the push target. Only the isolated P22-E3
 branch carries this work and is published to its own remote ref.

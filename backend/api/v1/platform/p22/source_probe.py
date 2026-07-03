@@ -41,11 +41,16 @@ What this probe IS:
     execution; a source binding is not execution.
 
 What this probe is NOT:
-  - It is NOT a wired HTTP route and adds NO public execution entry point. It is a
-    library-level source-binding skeleton that a future, separately CTO-approved
-    real-read phase would route through the runtime governed action adapter seam
-    (P22-E1) behind the full preflight / audit / idempotency gate. Wiring such a
-    route is out of P22-E3 scope (and would still be a read, never an execution).
+  - This module is a library-level read-only source reader; it defines no HTTP
+    route itself. P22-E3-R1 exposes the probe through a guarded READ-ONLY route
+    (``GET /api/v1/platform/p22/backup-check/source`` in ``routes.py``, behind the
+    existing ``require_platform_operator_with_p22_audit`` guard) so operators can
+    observe backup status. Neither the probe nor that route is a public EXECUTION
+    entry point: both read status and return; neither executes, dispatches,
+    drains, or mutates. A future real governed EXECUTION (e.g. a read-and-record
+    action) would still have to route through the runtime governed action adapter
+    seam (P22-E1) behind the full preflight / audit / idempotency gate, and even
+    then it would be a read, never an execution.
   - It does NOT modify the static ``backup.check`` adapter descriptor in
     ``adapters.py``. That descriptor stays ``not_implemented`` / ``source_unknown``
     -- the G15 invariant recorded by P17-D-C

@@ -19,10 +19,16 @@ Required coverage (task spec):
   - no shell / child-process / dump / execution primitives (AST scan).
   - the static backup.check adapter descriptor is UNCHANGED (G15 invariant).
   - read-only: the probe issues no mutation on the session.
+  - R1: the guarded read-only route (GET /backup-check/source) is a real runtime
+    caller of the probe; fresh success is visible as known, no outcome as unknown,
+    read failure as unavailable (no 500); the route is guarded and never executes.
 
-The probe is import-tested and driven through a mocked async session (the same
-discipline the P17-D-C read test uses); it adds no HTTP route and no public
-execution entry point. Approval is not execution; a read is not execution.
+The probe is driven both directly (pure mapper) and end-to-end through a mocked
+async session (the same discipline the P17-D-C read test uses). P22-E3-R1 exposes
+the probe through a guarded READ-ONLY route (``GET /backup-check/source`` in
+``routes.py``); the route tests prove a real runtime caller surfaces the probe and
+keep the read non-executing. That route is NOT an execution entry point. Approval
+is not execution; a read is not execution.
 """
 import ast
 import os

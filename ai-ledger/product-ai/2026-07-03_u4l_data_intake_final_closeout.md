@@ -91,27 +91,30 @@ All checks pass on the deployed VPS environment:
 | SKU count: 10 (baseline) -> 21 (final) | PASS |
 | No secrets printed in any report | PASS |
 
-### Provenance Caveat (Critical)
+### Provenance Correction (Post-U4 Closeout)
 
-The deployed VPS git HEAD is `d7ad647`, not the target `f3a7261`. VPS cannot fetch from GitHub (SSH permission denied, GnuTLS recv error -110). Mitigation:
+The U4-K runtime packet correctly captured the deployment-state caveat that existed at that time. That caveat is no longer current for `product-dev-recovered`.
 
-- U4-E, U4-J, U4-H-A frontend files transferred from `f3a7261` via local->SFTP pipe.
-- Backend files from U4-I-C deployed at earlier sprint.
-- Frontend rebuilt: image `1219e5e5905b`.
-- Running artifact is **functionally equivalent** to `f3a7261` but provenance is **manually attested**, not git-verified.
+OPS-D1 was resolved later on `product-dev-recovered` by merge commit `61a6a53`. See:
 
-This means:
-- Every deploy requires manual SFTP + rebuild + attestation.
-- No `git revert` safety -- if `d7ad647` and `f3a7261` diverge further, the SFTP patch set must be recomputed manually.
-- Any future U-series gate will inherit this provenance debt.
+- `ai-ledger/ops/2026-07-03_ops_d1_exact_deployment_provenance_fix.md`
+
+Current deployment discipline is:
+
+- exact `git fetch origin` + `git checkout -B product-dev-recovered origin/product-dev-recovered`
+- rebuild from repository checkout
+- clean git worktree before and after deploy
+- no manual SFTP drift or out-of-band file transfer
+
+This means U4 functional closeout remains valid, and the earlier deployment provenance debt is no longer an open blocker on the branch state represented by `product-dev-recovered` after `61a6a53`.
 
 ---
 
 ## 4. Explicit Remaining Gaps
 
-### 4.1 Exact Git Deploy on VPS -- NOT FIXED
+### 4.1 Exact Git Deploy on VPS -- FIXED AFTER U4 CLOSEOUT
 
-VPS still cannot `git fetch` or `git checkout` from GitHub. All deployments require manual SFTP transfer and drift attestation. This is the single highest-risk item before any production release.
+This item was resolved after the original U4 closeout packet. Exact git deployment provenance is now documented in `ai-ledger/ops/2026-07-03_ops_d1_exact_deployment_provenance_fix.md` and merged onto `product-dev-recovered` via `61a6a53`.
 
 ### 4.2 Mobile Scan -- Preview Only, Not Scan-to-Staging
 
@@ -133,18 +136,17 @@ The entire Data Intake UI is in English only. No i18n framework or language swit
 
 ## 5. Recommended Next Phase
 
-### OPS-D1: Exact Deployment Provenance Fix (BEFORE final MVP release)
+### OPS-D1: Exact Deployment Provenance Fix
 
-**Priority: CRITICAL**
+**Status: RESOLVED on `product-dev-recovered`**
 
-Restore git fetch/checkout capability on the VPS, OR implement a controlled artifact release pipeline. Options:
+OPS-D1 is no longer a forward-looking blocker. The resolved deployment discipline is:
 
-1. Restore SSH key-based GitHub access (generate new deploy key with read-only access).
-2. Or switch to HTTPS + personal access token for `git fetch`.
-3. Or implement `docker save` / `docker load` artifact workflow: build images locally, transfer tarball, load on VPS.
-4. Or implement CI build server that pushes signed artifacts to VPS via rsync/SFTP with SHA-256 manifest verification.
-
-Without this, every future deploy is manual, error-prone, and non-reproducible.
+1. `git fetch origin`
+2. `git checkout -B product-dev-recovered origin/product-dev-recovered`
+3. rebuild from exact repository checkout
+4. keep the worktree clean
+5. do not use manual SFTP drift patches
 
 ### U5-A: Multilingual MVP Path (AFTER U4 closeout)
 
@@ -181,7 +183,7 @@ Extend Mobile Scan from preview-only to scan-to-staging:
 | Idempotency verified | PASS |
 | 0 SKU delta from scan preview | PASS |
 | No secrets leaked | PASS |
-| Deployment provenance automated | **FAIL** |
+| Deployment provenance automated | PASS (resolved later by OPS-D1 / `61a6a53`) |
 | Public internet exposure safe | N/A (no public auth required yet) |
 
 ### Recommendation
@@ -190,12 +192,7 @@ Extend Mobile Scan from preview-only to scan-to-staging:
 
 The Data Intake feature is complete, tested, and runtime-proven for its current MVP scope for internal admin users. All current capability (CSV/XLSX upload -> map -> validate -> Apply to Products for catalog SKU creation only) works end-to-end. The Mobile Scan preview is present and verified read-only.
 
-**U4 is NOT PRODUCTION_RELEASE_CLOSED** until OPS-D1 (exact deployment provenance fix) is resolved. The manual SFTP deploy process is acceptable for dev/UAT but is a release blocker for production:
-
-1. Cannot `git revert` to roll back.
-2. Drift between VPS git state and deployed state is manually attested, not verified.
-3. Every hotfix or patch requires the same manual SFTP + rebuild procedure.
-4. No audit trail of "which git commit is currently running" -- only "which git commit the frontend image was built from."
+**Historical note:** at the moment of U4 closeout, production-release closure was still gated by OPS-D1. That gate was subsequently resolved on `product-dev-recovered` by merge commit `61a6a53`, with exact deployment provenance recorded in `ai-ledger/ops/2026-07-03_ops_d1_exact_deployment_provenance_fix.md`.
 
 ---
 
@@ -205,10 +202,10 @@ The Data Intake feature is complete, tested, and runtime-proven for its current 
 
 - Complete U4 phase inventory: 11 phases, all accounted for.
 - User-facing capability documented: upload, map, validate, preview, apply, scan preview.
-- Runtime truth captured: full flow passes, provenance caveat clearly explained.
-- Remaining gaps documented: 5 items with OPS-D1 as critical.
-- Next phases recommended: OPS-D1 > U5-A > U4-H-B.
-- Merge readiness: FUNCTIONALLY_CLOSED_FOR_MVP_DATA_INTAKE, not PRODUCTION_RELEASE_CLOSED.
+- Runtime truth captured: full flow passes; original provenance caveat retained as historical context and corrected with the later OPS-D1 resolution.
+- Remaining gaps documented: Mobile Scan scan-to-staging, image intake, public intake link/token, multilingual UI.
+- Next phases recommended: U5-A > U4-H-B.
+- Merge readiness: FUNCTIONALLY_CLOSED_FOR_MVP_DATA_INTAKE. Exact deployment provenance was later resolved on `product-dev-recovered` by `61a6a53`.
 
 ---
 

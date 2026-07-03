@@ -33,9 +33,35 @@ Align the Data Intake user-facing truth with the actual MVP behavior:
 - Added `DataIntakePage` test coverage for the catalog-only warning gate.
 - Added MVP limitation documentation for the current Data Intake boundary.
 
+## Validation
+
+- `pnpm exec vitest run src/tests/DataIntakePage.test.tsx src/tests/SKUImportModal.test.tsx src/tests/SKUImportE2E.test.tsx` -> PASS (`36 passed`)
+- `pnpm build` -> PASS
+- `git diff --check` -> PASS
+- `rg --line-number "[^\x00-\x7F]" <changed files>` -> REPORT_ONLY; hit pre-existing Unicode punctuation in `docs/MVP_LIMITATIONS.md`, no mojibake introduced
+- `rg --line-number --ignore-case "(api[_-]?key|secret|token|password|passwd|jwt|private[_-]?key)" <changed files>` -> REPORT_ONLY; only test fixtures `test-token` and `test-refresh` in `frontend/src/tests/DataIntakePage.test.tsx`
+- pre-commit hook on commit -> PASS (`trim trailing whitespace`, `fix end of files`, `check for added large files`, `Detect secrets`)
+
+## GitNexus
+
+- `npx gitnexus analyze` before commit -> PASS (`Already up to date`)
+- `npx gitnexus status` before commit -> PASS (`up-to-date`)
+- `npx gitnexus analyze` after commit -> PASS (`Repository indexed successfully`)
+- `npx gitnexus status` after commit -> REPORT_ONLY; still reported stale with `Indexed commit: 50f7925`, `Current commit: 4c14dc8` despite successful analyze
+
+## Push Confirmation
+
+- Branch pushed: `origin/kilo/s6-d-data-intake-catalog-only-wording-gate-2026-07-03`
+- Push command result: PASS
+- PR URL offered by remote: `https://github.com/lvoemingjie-hash/Mpango-ERP/pull/new/kilo/s6-d-data-intake-catalog-only-wording-gate-2026-07-03`
+
 ## Risk
 
 Low. No backend, migration, order, payment, inventory, or RBAC logic changed.
+
+Remaining risk:
+
+- untouched screens or docs elsewhere may still need a later wording audit for catalog-only truth alignment
 
 ## Out Of Scope
 

@@ -3,7 +3,7 @@ import { skuService, type SKU } from '@/services/skuService';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { useAuthStore } from '@/stores/authStore';
-import { PlusIcon, CubeIcon, ArrowUpTrayIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, CubeIcon, ArrowUpTrayIcon, ClipboardDocumentListIcon, CameraIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SKUFormModal } from './SKUFormModal';
 import { SKUImportModal } from './SKUImportModal';
@@ -84,6 +84,12 @@ export function SKUListPage() {
                 <a href="/skus/intake" className="btn-secondary flex items-center gap-2">
                   <ClipboardDocumentListIcon className="h-5 w-5" />
                   Data Intake
+                </a>
+              )}
+              {canUseIntake && (
+                <a href="/skus/scan" className="btn-secondary flex items-center gap-2">
+                  <CameraIcon className="h-5 w-5" />
+                  Mobile Scan
                 </a>
               )}
             </div>

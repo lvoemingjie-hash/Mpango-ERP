@@ -6,7 +6,9 @@
 **Base:** `0955495` (`origin/platform-dev` -- includes P17-D-B.1 and the P17-D-C
 backup/status source runtime merge)
 **Author:** Codex (Claude worker)
-**Status:** Complete; additive read-only source binding; never executes; ready for CTO review
+**Status:** Complete. R0 = additive read-only source probe. R1 = CTO fix: wired the
+probe into a guarded read-only P22 route so it is operator-visible (R0 had no
+runtime caller; GitNexus `affected_count` 0 -> 4). Never executes; ready for CTO review.
 
 ---
 
@@ -40,11 +42,50 @@ child process / SQL script, no queue drain, no harness job, and no tenant
 mutation. `realizes_execution` / `executed` / `execution_started` /
 `execution_allowed` are ALWAYS `False` and `result_state` is ALWAYS `blocked`.
 Approval is not execution; a read is not execution; a source binding is not
-execution. It adds no HTTP route and no public execution entry point.
+execution. R1 (CTO fix) exposes the probe through a READ-ONLY P22 route -- that
+route is NOT an execution entry point (it reads status and returns; it does not
+execute, dispatch, drain, or mutate).
 
 > **Unknown is never healthy. Null is never zero. Success is never stale.** A
 > `backup.check` read-only probe never fabricates a healthy read and never claims
 > execution.
+
+---
+
+## 1A. R1 -- CTO fix: wire the probe into a real P22 runtime read path
+
+**CTO finding on R0:** R0 added `source_probe.py` + tests only;
+`read_backup_check_source()` had NO runtime caller (no P22 service / route /
+adapter / catalog path invoked it), so GitNexus `detect_changes` returned
+`affected_count = 0` and `backup.check` remained user-invisible and still fully
+`source_unknown` / `not_implemented`. This was a P1 completion gap.
+
+**R1 fix (option (b) of the task's allowed approaches -- a read-only P22 route):**
+added `GET /api/v1/platform/p22/backup-check/source` to the existing guarded P22
+router (`backend/api/v1/platform/p22/routes.py`). The route:
+
+- is behind the SAME guard as every other P22 endpoint
+  (`require_platform_operator_with_p22_audit` -- the P10 identity-only guard with
+  a best-effort access-denied audit);
+- `await read_backup_check_source(db, tenant_id=tenant_id)` -- the probe is now
+  reached from a real runtime entry point (rg proof:
+  `backend/api/v1/platform/p22/routes.py:368`);
+- returns `BackupCheckSourceRead` (the honest known | unknown | degraded read);
+- records a best-effort outcome audit with `executed=False` /
+  `execution_allowed=False` (mirrors the other P22 read routes);
+- performs NO execution: no backup / restore / dump / shell / SQL / script, no
+  worker, no queue, no tenant mutation.
+
+The static `backup.check` execution adapter stays `not_implemented` /
+`source_unknown` (G15 preserved); `seam.py`, `adapters.py`, and all P17 code are
+unchanged. R1 modifies only `routes.py` (one new import + one new route handler)
+and adds 5 route tests; it changes no existing route's behavior.
+
+**Why a route (not a catalog/dry-run field):** the probe is `async` and needs a
+DB session; the catalog (`build_catalog`) and dry-run (`evaluate_dry_run`) are
+sync and session-less. Threading a session into them would change their
+signatures and break the existing P22-B tests. The route naturally carries the
+async session (`Depends(get_db)`) and sits under the existing guarded P22 surface.
 
 ---
 
@@ -58,30 +99,35 @@ execution. It adds no HTTP route and no public execution entry point.
   published with the explicit refspec `git push -u origin <branch>:<branch>` (the
   worktree-push gotcha).
 - **Commit chain (base..tip):** `0955495` (base) -> `8668493` (R0: the source
-  probe + tests) -> R1 (this ledger). The R1 tip SHA is reported in the chat
-  report, not self-referenced here (this ledger is part of the R1 commit).
+  probe + tests) -> `dc305ba` (R0 ledger) -> `18338dd` (R1: route wiring + route
+  tests, the CTO fix) -> R1 ledger (this update). The final tip SHA is reported
+  in the chat report, not self-referenced here (this update is part of the R1
+  ledger commit).
 
 `platform-dev` is NOT merged and is NOT the push target. Only the isolated P22-E3
 branch carries this work and is published to its own remote ref.
 
 ---
 
-## 3. Added Files (exactly the three allowed)
+## 3. Changed Files
 
 | File | Status | Scope |
 |---|---|---|
-| `backend/api/v1/platform/p22/source_probe.py` | New | The read-only `backup.check` source probe: `read_backup_check_source(db, tenant_id, now)` reuses the P17-D-C durable read path verbatim and maps it to an honest P22 result; the `BackupCheckSourceRead` model; the P17->P22 mapping. Non-executing. |
-| `backend/tests/test_platform_p22e3_backup_check_source_probe.py` | New | 23 unit tests covering every required case (no-outcome, fresh, stale, failed/partial redacted, read-failure fail-closed, dry-run/request never execute, no-execution AST scan, G15 descriptor-unchanged, read-only no mutations). |
-| `ai-ledger/platform/2026-07-03_p22e3_backup_check_read_only_binding.md` | New | This ledger. |
+| `backend/api/v1/platform/p22/source_probe.py` | New (R0) | The read-only `backup.check` source probe: `read_backup_check_source(db, tenant_id, now)` reuses the P17-D-C durable read path verbatim and maps it to an honest P22 result; the `BackupCheckSourceRead` model; the P17->P22 mapping. Non-executing. |
+| `backend/api/v1/platform/p22/routes.py` | Modified (R1) | Added one import + one read-only route handler `backup_check_source_route` (`GET /backup-check/source`) that awaits the probe and returns `BackupCheckSourceRead` behind the existing P22 guard. No existing route changed. |
+| `backend/tests/test_platform_p22e3_backup_check_source_probe.py` | New (R0) + extended (R1) | 28 unit tests: the 23 R0 cases (no-outcome, fresh, stale, failed/partial redacted, read-failure fail-closed, dry-run/request never execute, no-execution AST scan, G15 descriptor-unchanged, read-only no mutations) + 5 R1 route tests (runtime-caller spy, fresh visible as known, no-outcome unknown, read-failure unavailable no-500, guard requires auth). |
+| `ai-ledger/platform/2026-07-03_p22e3_backup_check_read_only_binding.md` | New (R0) + updated (R1) | This ledger. |
 
-`git diff --name-only origin/platform-dev..HEAD` returns exactly the two source
-paths above (R0) plus this ledger (R1). No other path is touched. No existing
+`git diff --name-only origin/platform-dev..HEAD` returns exactly the four paths
+above. The only existing file modified is `routes.py` (one new import + one new
+read-only route handler; no existing route's behavior changes). No other
 `backend/` file is modified (in particular no `seam.py` / `adapters.py` /
-`services.py` / `routes.py` / `schemas.py` edit), no `frontend/`, no `migrations/`,
+`services.py` / `schemas.py` edit), no `frontend/`, no `migrations/`,
 no `alembic/env.py`, no `scripts/platform_worktree_executor.py` or any P16 asset,
 no `product-dev-recovered/`, no product / payment / billing / order / invoice /
 customer / inventory path, no `package.json` / lockfile, no CI / `.github` /
-`.claude` file, no configured secrets baseline file.
+`.claude` file (the gitnexus-managed `CLAUDE.md` is gitignored / local-only), no
+configured secrets baseline file.
 
 ---
 
@@ -170,27 +216,35 @@ and a platform-wide read via the loader's own fallback.
 | Gate | Result |
 |---|---|
 | `git diff --check origin/platform-dev..HEAD` | clean (exit 0; no whitespace errors) |
-| Changed files | exactly the two source paths (R0) + this ledger (R1) |
-| Non-ASCII byte scan on changed source files | 0 non-ASCII bytes across both files (Python byte scan) |
-| detect-secrets (configured baseline) | clean (exit 0); baseline unmodified; pre-commit detect-secrets also passed at R0 commit |
+| Changed files | exactly four paths: `source_probe.py` (new), `routes.py` (modified, R1), the test file (new + R1), this ledger |
+| Non-ASCII byte scan on changed source files | 0 non-ASCII bytes across all three source files (Python byte scan) |
+| detect-secrets (configured baseline) | clean (exit 0); baseline unmodified; pre-commit detect-secrets passed at every commit |
 | Forbidden path audit | clean (section 9) |
-| `npx gitnexus analyze .` | indexed successfully in ~21s -- ~8,649 nodes / 26,440 edges / ~541 clusters / 300 flows (band, not a point) |
-| `npx gitnexus status` | up-to-date at tip `8668493` (indexed commit == current commit == R0 tip) |
-| GitNexus `detect_changes` vs `origin/platform-dev` | the MCP stdio call hung on this fresh worktree (the racy behavior E2 also hit). Authoritative fallback: `git diff --name-only origin/platform-dev..HEAD` returns exactly two platform-internal files (a `p22/` module + a `tests/` file) and ZERO product files -> 0 product business flow by construction. |
-| P22-E3 tests | 23 passed |
-| Platform suite (P0-P22) | 895 passed, 37 skipped (DB-dependent integration), 0 failed |
+| Runtime-caller proof (rg) | `backend/api/v1/platform/p22/routes.py:368` -- `source = await read_backup_check_source(db, tenant_id=tenant_id)` (non-test caller) |
+| `npx gitnexus analyze .` | indexed successfully -- ~8,683 nodes / 26,506 edges / ~545 clusters / 300 flows at the R1 tip (band, not a point) |
+| `npx gitnexus status` | up-to-date at tip `18338dd` (indexed commit == current commit == R1 code tip) |
+| GitNexus `detect_changes` vs `origin/platform-dev` (MCP, `scope=compare`, `base_ref=origin/platform-dev`, `repo=<worktree>`) | **`changed_count=73, affected_count=4, changed_files=4, risk_level=medium`** (R0 was `affected_count=0`). All 4 affected processes are platform-P22-internal (rooted at `Require_platform_operator_with_p22_audit` -> PlatformAuditLog / _http_exc / Get / _is_test_env); 0 product business flow. |
+| P22-E3 tests | 28 passed (23 R0 + 5 R1 route) |
+| Platform suite (P0-P22) | 900 passed, 37 skipped (DB-dependent integration), 0 failed |
 
 ---
 
 ## 7. Test Execution
 
-- P22-E3 new suite: **23 passed**.
+- P22-E3 suite: **28 passed** (23 R0 + 5 R1 route tests). The R1 route tests prove
+  a real P22 runtime entry point calls `read_backup_check_source` (a spy test
+  asserts the route awaits it with the tenant_id), surface a fresh success as
+  `known`, keep a no-outcome read `unknown` (never healthy), degrade a read
+  failure to `unavailable` with HTTP 200 (fail-closed, no 500), keep every
+  execution flag `False`, and require the platform-operator guard (401/403
+  without the auth header).
 - Wider platform regression (all `test_platform_*.py` unit files, excluding the
-  ephemeral-postgres migration-integration test): **895 passed, 37 skipped
-  (DB-dependent integration), 0 failed** in ~54s. Includes the full P22 controlled
-  execution suite, the P22-E1 seam (whose no-execution AST scans now also scan
-  `source_probe.py`), and all P17-D-C read / model tests (including the G15
-  invariant).
+  ephemeral-postgres migration-integration test): **900 passed, 37 skipped
+  (DB-dependent integration), 0 failed** in ~49s. Includes the full P22 controlled
+  execution suite (which exercises every P22 route -- confirming the `routes.py`
+  edit broke no existing endpoint), the P22-E1 seam (whose no-execution AST scans
+  now also scan `source_probe.py` AND the modified `routes.py`), and all P17-D-C
+  read / model tests (including the G15 invariant).
 - The migration-integration test (`test_platform_p17dc_backup_migration.py`) is
   not re-run here (it needs an ephemeral postgres:15 container); P22-E3 touches no
   migration and no P17 ORM model, so it is structurally out of the blast radius.
@@ -203,42 +257,53 @@ discipline).
 
 ## 8. GitNexus
 
-- `npx gitnexus analyze .` at the R0 tip: indexed successfully in ~21s -- **~8,649
-  nodes / 26,440 edges / ~541 clusters / 300 flows**. Edges and flows are stable
-  vs the `0955495` base; the node-count change is only the new module's + the new
-  test's graph nodes. Documented as a band, not a point (node / cluster counts
-  wobble +/- a few across fresh builds).
-- `npx gitnexus status`: re-indexed at the tip after commit -- indexed commit ==
-  current commit == `8668493`, status up-to-date.
-- `detect_changes` (MCP compare vs `origin/platform-dev`): the GitNexus MCP
-  `tools/call` did not return across attempts on this fresh worktree (initialize
-  answers, then the call hangs -- the intermittent racy behavior of the MCP
-  driver, identical to the P22-E2 experience). The authoritative proof is the
-  sanctioned fallback: `git diff --name-only origin/platform-dev..HEAD` returns
-  exactly two platform-internal files (`backend/api/v1/platform/p22/source_probe.py`
-  + `backend/tests/test_platform_p22e3_backup_check_source_probe.py`) and ZERO
-  product files (no product / order / payment / invoice / customer / inventory
-  path) -> platform-only blast radius -> 0 product business flow by construction.
-  The stop-condition gate ("GitNexus shows product business affected processes")
-  does not fire: no product business flow is touched.
+- `npx gitnexus analyze .` at the R1 code tip (`18338dd`): indexed successfully in
+  ~20s -- **~8,683 nodes / 26,506 edges / ~545 clusters / 300 flows**. Edges rose
+  from 26,440 (R0) to 26,506 -- the new `backup_check_source_route` ->
+  `read_backup_check_source` -> P17 `_load_backup_status_map` / `_build_backup_status`
+  call edges are now in the graph. Documented as a band, not a point (node /
+  cluster counts wobble +/- a few across fresh builds).
+- `npx gitnexus status`: re-indexed at the R1 code tip -- indexed commit ==
+  current commit == `18338dd`, status up-to-date.
+- `detect_changes` (MCP, `scope=compare`, `base_ref=origin/platform-dev`,
+  `repo=codex-platform-p22e3-...`): **returned successfully** with
+  `changed_count=73, affected_count=4, changed_files=4, risk_level=medium`. The
+  4 changed files are exactly the P22-E3 set (`source_probe.py`, `routes.py`, the
+  test file, this ledger). The 4 affected processes are all platform-P22-internal,
+  rooted at `Require_platform_operator_with_p22_audit` (the guard the new route
+  shares) -> `PlatformAuditLog` / `_http_exc` / `Get` / `_is_test_env`; **ZERO
+  product / order / payment / invoice / customer / inventory business flow.** This
+  inverts the R0 result (`affected_count=0`, the CTO finding) -- the probe is now
+  reachable through the guarded P22 route surface. The stop-condition gate
+  ("GitNexus shows product business affected processes") does not fire.
+- Note on the MCP driver: the first `detect_changes` attempts used wrong parameter
+  names (`compare_against` / `base`) and silently degraded to a working-tree-vs-index
+  comparison (0 changes); and an earlier session saw the stdio call hang on a fresh
+  worktree (the E2 racy behavior). The correct invocation requires `scope=compare`
+  + `base_ref` + the `repo` name (the worktree dir name, NOT the path) when
+  multiple repos are indexed -- see [[gitnexus-platform-validation-workflow]].
 
 ---
 
 ## 9. Forbidden Path Audit
 
-The change set is three paths, all under `backend/api/v1/platform/p22/`,
+The change set is four paths, all under `backend/api/v1/platform/p22/`,
 `backend/tests/`, and `ai-ledger/platform/`. None matches any forbidden prefix or
 fragment:
 
-- No existing `backend/` file modified (no `seam.py` / `adapters.py` /
-  `services.py` / `routes.py` / `schemas.py` edit) -- additive only.
+- The only existing file modified is `backend/api/v1/platform/p22/routes.py`, and
+  only additively (one new import + one new read-only route handler; no existing
+  route's behavior changes). No `seam.py` / `adapters.py` / `services.py` /
+  `schemas.py` edit.
 - No `frontend/`; no `migrations/`; no `alembic/env.py`.
 - No `scripts/` change -- in particular no `scripts/platform_worktree_executor.py`
   or any P16 asset.
 - No `product-dev-recovered/` or any product / business path.
-- No auth / RBAC / session / tenancy rewrite.
+- No auth / RBAC / session / tenancy rewrite (the route reuses the existing P10
+  identity-only guard via `Depends`).
 - No `package.json`, no lockfiles, no dependency changes.
-- No `.github/`, no `.claude/`, no configured secrets baseline file, no CI / deploy files.
+- No `.github/`, no `.claude/` (the gitnexus-managed `CLAUDE.md` is gitignored),
+  no configured secrets baseline file, no CI / deploy files.
 - No real execution / worker / harness invocation / source wiring / shell / SQL /
   script / dump / restore / queue drain.
 
@@ -252,14 +317,18 @@ forbidden-import scan, which now scans `source_probe.py`, passes).
 
 ## 10. Self-Review
 
-- Did P22-E3 add execution power? No -- a read-only source probe; every execution
-  flag is False; `result_state` is always `blocked`.
-- Did it wire a route or a public execution entry point? No -- it is a
-  library-level source-binding skeleton, import-tested only.
-- Did it change the seam, the adapters, or any P17 code? No -- purely additive;
-  the static `backup.check` descriptor stays `not_implemented` / `source_unknown`
-  (G15); the seam is unchanged; P17-D-C semantics are untouched (the probe reuses
-  the P17 read path verbatim).
+- Did P22-E3 add execution power? No -- a read-only source probe behind a
+  read-only route; every execution flag is False; `result_state` is always
+  `blocked`.
+- Did it wire a route? Yes (R1) -- a READ-ONLY status route
+  (`GET /backup-check/source`) behind the existing P22 guard. Did it add a public
+  EXECUTION entry point? No -- the route reads status and returns; it does not
+  execute, dispatch, drain, or mutate.
+- Did it change the seam, the adapters, or any P17 code? No -- the static
+  `backup.check` descriptor stays `not_implemented` / `source_unknown` (G15); the
+  seam is unchanged; P17-D-C semantics are untouched (the probe reuses the P17
+  read path verbatim). The only existing file edited is `routes.py` (additive:
+  one import + one read-only handler).
 - Did it fabricate a healthy source? No -- only a fresh success reads `known`;
   stale / failed / partial / in_progress read `degraded`; no outcome and read
   failure read `unknown` (fail-closed).
@@ -274,25 +343,28 @@ forbidden-import scan, which now scans `source_probe.py`, passes).
 
 ## 11. Risk
 
-**Low.** P22-E3 is additive (one new module + one new test file + this ledger; no
-existing file modified). It touches no runtime path that existed before (the probe
-is import-tested only and wired into no route), no migration, no schema, no seam /
-adapter mutation, no P17 code, no P16 code, no frontend, no dependency, and no
-product / payment / tenant business path. It grants no execution power: every
-execution flag is pinned False and `result_state` is always `blocked`. The blast
-radius is platform-only (`backend/api/v1/platform/p22/`).
+**Low.** P22-E3 adds one new module + one new test file + this ledger, and
+additively extends `routes.py` (one import + one read-only handler; no existing
+route changed). It adds a READ-ONLY status route but grants no execution power:
+every execution flag is pinned False and `result_state` is always `blocked`. It
+touches no migration, no schema, no seam / adapter mutation, no P17 code, no P16
+code, no frontend, no dependency, and no product / payment / tenant business path.
+The blast radius is platform-only (`backend/api/v1/platform/p22/`); GitNexus
+`detect_changes` confirms 4 affected processes, all platform-P22-internal, 0
+product.
 
 ---
 
 ## 12. Blockers / Forward Gates
 
-- **P22-E3 is not execution.** The probe binds the source read-only; it does not
-  realize the adapter and does not execute. The `backup.check` ADAPTER (execution
-  realization) stays `not_implemented` behind a separately CTO-approved
-  real-execution phase.
-- **No route is wired.** A future phase that exposes this read through an HTTP
-  route MUST route it through the runtime governed action adapter seam (P22-E1)
-  behind the full preflight / audit / idempotency gate, and even then it is a read,
+- **P22-E3 is not execution.** The probe + its read-only route bind the source
+  read-only; they do not realize the adapter and do not execute. The `backup.check`
+  ADAPTER (execution realization) stays `not_implemented` behind a separately
+  CTO-approved real-execution phase.
+- **The route is read-only.** A future phase that turns this into a governed
+  EXECUTION (e.g. a refresh-and-record action) MUST route it through the runtime
+  governed action adapter seam (P22-E1) behind the full preflight / audit /
+  idempotency gate, and even then the read-only status probe itself is a read,
   never an execution.
 - **Real backup execution / restore** remains excluded from v0 forever
   (`backup.restore_test_request` is the only write-request in the allowlist, and
@@ -307,11 +379,10 @@ radius is platform-only (`backend/api/v1/platform/p22/`).
   process, performs no backup / restore / dump, and claims no execution success.
 - **Read-only.** The probe reuses the P17-D-C durable read path verbatim; it issues
   no mutation on the session and reads no tenant business record.
-- **Additive only.** No existing file is modified; the static `backup.check`
-  descriptor stays `not_implemented` / `source_unknown` (G15); the seam is
-  unchanged; no P17-D-C semantics change.
-- **No adapter wiring / no route.** The adapter (execution realization) stays
-  `not_implemented`; no HTTP route or public execution entry point is added.
+- **No execution-adapter wiring.** The adapter (execution realization) stays
+  `not_implemented` / `source_unknown` (G15); the seam is unchanged; no P17-D-C
+  semantics change. A READ-ONLY HTTP route is added (R1), but it is NOT a public
+  execution entry point -- it reads status and returns.
 - **No P16 change.** No `scripts/platform_worktree_executor.py` or any P16 code /
   contract / asset is touched.
 - **No migration / schema / storage change.** None (P22-E3 adds no migration and

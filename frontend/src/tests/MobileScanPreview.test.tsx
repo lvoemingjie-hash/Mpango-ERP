@@ -233,7 +233,7 @@ describe('MobileScanPreview -- R2 camera detect loop', () => {
   });
 
   it('stops after a barcode is detected and calls onScan exactly once', async () => {
-    const { mockDetect } = setupCameraMock(async () => {
+    setupCameraMock(async () => {
       return [{ rawValue: '4006381333931' }];
     });
 

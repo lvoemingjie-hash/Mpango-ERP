@@ -77,7 +77,7 @@ export function SKUListPage() {
                   className="btn-secondary flex items-center gap-2"
                 >
                   <ArrowUpTrayIcon className="h-5 w-5" />
-                  Import Products
+                  Import Catalog SKUs
                 </button>
               )}
               {canUseIntake && (
@@ -117,7 +117,7 @@ export function SKUListPage() {
         <EmptyState
           icon={CubeIcon}
           title="No products yet"
-          description="Your product catalog is empty. Add your first product to start selling, or import products from a spreadsheet."
+          description="Your catalog is empty. Add a catalog SKU manually, or import catalog SKU records from a spreadsheet. Configure stock and retailer pricing before selling."
           action={
             <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row">
               {canCreate && (
@@ -131,7 +131,7 @@ export function SKUListPage() {
                   className="btn-secondary flex items-center gap-2"
                 >
                   <ArrowUpTrayIcon className="h-4 w-4" />
-                  Import Products
+                  Import Catalog SKUs
                 </button>
               )}
               {canUseIntake && (

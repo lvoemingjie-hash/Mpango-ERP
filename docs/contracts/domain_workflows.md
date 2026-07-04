@@ -134,12 +134,14 @@ For endpoints that require Idempotency-Key:
 
 ### 5.2 Actions (sync, backend-service)
 
-#### Create Payment (payments:create)
+#### Record Order Payment (payments:create)
 - If method == transfer:
   - Idempotency-Key: REQUIRED.
   - transaction_id SHOULD be provided.
 - Preconditions: order exists, amount > 0
-- Writes: payments row
+- Canonical write path: `POST /api/v1/orders/{order_id}/pay`
+- Writes: payment row through the order payment route, updates order payment state, and preserves ledger/payment invariants
+- Legacy `POST /api/v1/payments` is disabled with `PAYMENT_WRITE_PATH_DISABLED`
 
 ---
 

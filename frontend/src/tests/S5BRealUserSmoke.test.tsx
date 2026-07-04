@@ -217,15 +217,15 @@ describe('S5-B frontend real user smoke gate', () => {
     await user.click(screen.getByRole('link', { name: 'Products' }));
     await screen.findByRole('heading', { name: 'Products (SKUs)' });
     expect(screen.getAllByRole('button', { name: /add product/i })[0]).toBeInTheDocument();
-    const importEntry = screen.getAllByRole('button', { name: /import products/i })[0];
+    const importEntry = screen.getAllByRole('button', { name: /import catalog skus/i })[0];
     expect(importEntry).toBeVisible();
     await user.click(importEntry);
-    expect(await screen.findByRole('dialog', { name: 'Import Products' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Import Catalog SKUs' })).toBeInTheDocument();
     expect(screen.getByLabelText('Click to select a CSV file')).toBeInTheDocument();
-    expect(screen.getByText(/Upload a CSV file with your product data/i)).toBeInTheDocument();
+    expect(screen.getByText(/Upload a CSV file with your catalog SKU data/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: 'Import Products' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: 'Import Catalog SKUs' })).not.toBeInTheDocument();
     });
     await assertNoGuardrailToasts();
 

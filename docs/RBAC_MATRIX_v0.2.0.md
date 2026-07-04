@@ -78,7 +78,9 @@ All permission codes follow the `{resource}:{action}` naming convention.
 
 | Permission Code | Description | Enforced At | Default Roles |
 |---|---|---|---|
-| `payments:create` | Record payments | `POST /api/v1/payments` | admin, finance |
+| `payments:create` | Record payments through the canonical order payment path | `POST /api/v1/orders/{order_id}/pay` | admin, finance |
+
+Legacy `POST /api/v1/payments` is intentionally disabled with `PAYMENT_WRITE_PATH_DISABLED`; payment writes must go through the order payment route so order status, payment status, and ledger invariants stay synchronized.
 
 ### Finance (Phase P-A)
 

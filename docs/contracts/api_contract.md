@@ -143,7 +143,8 @@
 - POST /api/v1/purchase-orders/{id}/receive (200, purchase_orders:receive, Idempotency-Key REQUIRED)
 
 ### 5.3 Finance
-- POST /api/v1/payments (201, payments:create)
+- POST /api/v1/orders/{order_id}/pay (200, payments:create)
+- POST /api/v1/payments is legacy-disabled and returns 409 `PAYMENT_WRITE_PATH_DISABLED`.
 
 ---
 

@@ -62,6 +62,12 @@ Out-of-scope note:
 - `pre-commit run --files frontend/src/pages/skus/SKUImportModal.tsx frontend/src/tests/SKUImportModal.test.tsx` -> PASS.
 - `npx gitnexus analyze` -> PASS (`6,175 nodes | 17,914 edges | 412 clusters | 227 flows`).
 - `npx gitnexus status` -> PASS, indexed commit and current commit both `0538e9e`, status `up-to-date`.
+- `npx gitnexus analyze` post-commit -> PASS (`6,184 nodes | 17,922 edges | 413 clusters | 227 flows`).
+- `npx gitnexus status` post-commit -> PASS, indexed commit and current commit both `018813d`, status `up-to-date`.
+
+## Commit Evidence
+
+- Commit: `018813d fix(S6-F): tighten SKU import catalog wording`
 
 ## Risk
 

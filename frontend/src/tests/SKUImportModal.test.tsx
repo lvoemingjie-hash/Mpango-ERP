@@ -64,6 +64,14 @@ const defaultProps = {
   onSuccess: vi.fn(),
 };
 
+const STALE_SKU_IMPORT_PHRASES = [
+  'Import Products',
+  'products are still created',
+  'No products are created',
+  'No products were created',
+  'official Product/SKU',
+];
+
 function createFile(content: string, name = 'products.csv') {
   return new File([content], name, { type: 'text/csv' });
 }
@@ -134,6 +142,22 @@ const APPLY_SUCCESS_RESPONSE = {
   },
 };
 
+const APPLY_FAILED_RESPONSE = {
+  data: {
+    success: true,
+    data: {
+      import_id: 'imp-001',
+      status: 'failed',
+      created: 0,
+      skipped: 0,
+      updated: 0,
+      errors: [],
+      audit_run_id: 'audit-001',
+    },
+    timestamp: new Date().toISOString(),
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -148,14 +172,17 @@ describe('SKUImportModal', () => {
   // -------------------------------------------------------------------------
 
   it('renders the upload step with file input when open', () => {
-    render(<SKUImportModal {...defaultProps} />);
-    expect(screen.getByText('Import Products')).toBeInTheDocument();
+    const { container } = render(<SKUImportModal {...defaultProps} />);
+    expect(screen.getByText('Import Catalog SKUs')).toBeInTheDocument();
     expect(screen.getByText(/CSV only/i)).toBeInTheDocument();
+    for (const phrase of STALE_SKU_IMPORT_PHRASES) {
+      expect(container).not.toHaveTextContent(phrase);
+    }
   });
 
   it('does not render when closed', () => {
     render(<SKUImportModal {...defaultProps} isOpen={false} />);
-    expect(screen.queryByText('Import Products')).not.toBeInTheDocument();
+    expect(screen.queryByText('Import Catalog SKUs')).not.toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
@@ -295,6 +322,38 @@ describe('SKUImportModal', () => {
     expect(screen.getByText(/applied staged rows to the product catalog only/i)).toBeInTheDocument();
   });
 
+  it('uses catalog SKU record wording when apply returns a failed result', async () => {
+    mockPreview.mockResolvedValueOnce(PREVIEW_RESPONSE);
+    mockValidate.mockResolvedValueOnce(VALIDATE_SUCCESS_RESPONSE);
+    mockApply.mockResolvedValueOnce(APPLY_FAILED_RESPONSE);
+
+    const { container } = render(<SKUImportModal {...defaultProps} />);
+
+    const fileInput = screen.getByLabelText(/click to select a csv file/i) as HTMLInputElement;
+    await userEvent.upload(fileInput, createFile('sku_code,name\nSKU-001,Widget'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Map Columns')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /validate/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Validation Results')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /apply import/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Import Failed')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('No catalog SKU records were created. Please fix your data and try again.')).toBeInTheDocument();
+    for (const phrase of STALE_SKU_IMPORT_PHRASES) {
+      expect(container).not.toHaveTextContent(phrase);
+    }
+  });
+
   // -------------------------------------------------------------------------
   // Test 6: 403 permission message
   // -------------------------------------------------------------------------
@@ -342,6 +401,32 @@ describe('SKUImportModal', () => {
 
     expect(screen.getByText(/apply creates catalog sku records only/i)).toBeInTheDocument();
     expect(screen.getByText((content) => content.includes('write inventory, pricing, barcode lookup, images, custom attributes, or sellable readiness.'))).toBeInTheDocument();
+  });
+
+  it('uses catalog SKU record wording for duplicate conflict strategies', async () => {
+    mockPreview.mockResolvedValueOnce(PREVIEW_RESPONSE);
+    mockValidate.mockResolvedValueOnce(VALIDATE_SUCCESS_RESPONSE);
+
+    const { container } = render(<SKUImportModal {...defaultProps} />);
+
+    const fileInput = screen.getByLabelText(/click to select a csv file/i) as HTMLInputElement;
+    await userEvent.upload(fileInput, createFile('sku_code,name\nSKU-001,Widget'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Map Columns')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /validate/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Validation Results')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/New catalog SKU records are still created/i)).toBeInTheDocument();
+    expect(screen.getByText(/No catalog SKU records are created/i)).toBeInTheDocument();
+    for (const phrase of STALE_SKU_IMPORT_PHRASES) {
+      expect(container).not.toHaveTextContent(phrase);
+    }
   });
 
   // -------------------------------------------------------------------------

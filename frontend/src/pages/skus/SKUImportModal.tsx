@@ -445,7 +445,7 @@ export function SKUImportModal({ isOpen, onClose, onSuccess }: SKUImportModalPro
                 <div>
                   <span className="text-sm font-medium text-gray-900">Skip duplicates</span>
                   <p className="text-xs text-gray-500">
-                    Skip rows with existing SKU codes. New products are still created.
+                    Skip rows with existing SKU codes. New catalog SKU records are still created.
                   </p>
                 </div>
               </label>
@@ -461,7 +461,7 @@ export function SKUImportModal({ isOpen, onClose, onSuccess }: SKUImportModalPro
                 <div>
                   <span className="text-sm font-medium text-gray-900">Fail on duplicate</span>
                   <p className="text-xs text-gray-500">
-                    Abort the entire import if any SKU code already exists. No products are created.
+                    Abort the entire import if any SKU code already exists. No catalog SKU records are created.
                   </p>
                 </div>
               </label>
@@ -510,7 +510,7 @@ export function SKUImportModal({ isOpen, onClose, onSuccess }: SKUImportModalPro
           <div className="rounded-md bg-red-50 p-4 text-center">
             <p className="text-lg font-bold text-red-700">Import Failed</p>
             <p className="text-sm text-red-600 mt-1">
-              No products were created. Please fix your data and try again.
+              No catalog SKU records were created. Please fix your data and try again.
             </p>
             {applyResult.errors.length > 0 && (
               <ul className="mt-3 space-y-1 text-left">
@@ -532,7 +532,7 @@ export function SKUImportModal({ isOpen, onClose, onSuccess }: SKUImportModalPro
   // ---------------------------------------------------------------------------
 
   const stepTitles: Record<Step, string> = {
-    upload: 'Import Products',
+    upload: 'Import Catalog SKUs',
     mapping: 'Map Columns',
     validate: 'Validation Results',
     apply: 'Import Results',

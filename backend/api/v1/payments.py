@@ -88,31 +88,10 @@ async def create_payment(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
 ):
-    effective_idempotency_key = None
-    if request_body.method.value == "transfer":
-        if not x_idempotency_key:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"code": "MISSING_IDEMPOTENCY_KEY", "message": "X-Idempotency-Key required for transfer"},
-            )
-
-        effective_idempotency_key = x_idempotency_key
-
-    service = PaymentService()
-
-    payment = await service.create_payment(
-        tenant_db=tenant_db,
-        order_id=request_body.order_id,
-        amount=request_body.amount,
-        method=request_body.method.value,
-        transaction_id=request_body.transaction_id,
-        idempotency_key=effective_idempotency_key,
-        created_by=token.user_id,
-    )
-
-    return PaymentResponse(
-        success=True,
-        data=_payment_row_to_data(payment),
-        message="Payment created",
-        timestamp=datetime.utcnow(),
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "PAYMENT_WRITE_PATH_DISABLED",
+            "message": "Use POST /api/v1/orders/{order_id}/pay so order status and ledger stay consistent.",
+        },
     )

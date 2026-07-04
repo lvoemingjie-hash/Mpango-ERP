@@ -61,7 +61,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .schemas import BlockReasonCode, ExecutionSourceStatus
 from .seam import SeamAdapterRequest, evaluate_preflight_gate
-from .services import _emit_audit, _now
+from .services import _emit_audit, _now, read_execution_request
 from .source_probe import BackupCheckSourceRead, read_backup_check_source
 
 
@@ -102,6 +102,10 @@ class GovernedBackupCheckRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action_type: Literal["backup.check"] = GOVERNED_ACTION_TYPE
+    execution_request_id: Optional[str] = Field(
+        None,
+        description="Required: must resolve to a recorded P22 execution request that matches.",
+    )
     durable_approval_id: Optional[str] = None
     tenant_id: Optional[str] = Field(None, description="Scoped id only; null for platform-wide.")
     requested_state: Optional[str] = None
@@ -132,6 +136,7 @@ class GovernedBackupCheckResult(BaseModel):
     action_type: Literal["backup.check"] = GOVERNED_ACTION_TYPE
     governed_phase: Literal["P22-G-first-safe-backup-check-action"] = GOVERNED_PHASE
 
+    execution_request_id: Optional[str] = None
     durable_approval_id: Optional[str] = None
     dry_run_ref: Optional[str] = None
     tenant_id: Optional[str] = None
@@ -227,6 +232,99 @@ def _audit_state(governed_state: GovernedResultState) -> str:
     return "executed"
 
 
+# -- Recorded-request binding (P22-G-R1) --------------------------------------
+
+
+def _norm(value: Optional[str]) -> Optional[str]:
+    """Normalize an optional string: None for missing/empty, else the stripped value."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _request_mismatch(request: "GovernedBackupCheckRequest", stored: Any) -> Optional[str]:
+    """Return a mismatch reason if the governed request does not bind to the stored
+    recorded execution request, else None.
+
+    The recorded request is the source of truth (validated at recording time). The
+    governed request must bind to the SAME approval / action / tenant / dry-run /
+    actor / identity / idempotency digest / payload digest, and the stored record
+    must be at result_state dry_run_passed.
+    """
+    checks: list[tuple[bool, str]] = [
+        (stored.result_state == "dry_run_passed", "result_state is not dry_run_passed"),
+        (stored.action_type == GOVERNED_ACTION_TYPE, "action_type is not backup.check"),
+        (_norm(stored.durable_approval_id) == _norm(request.durable_approval_id),
+         "durable_approval_id mismatch"),
+        (_norm(stored.tenant_id) == _norm(request.tenant_id), "tenant_id mismatch"),
+        (_norm(stored.dry_run_ref) == _norm(request.dry_run_ref), "dry_run_ref mismatch"),
+        (_norm(stored.actor_id) == _norm(request.actor_id), "actor_id mismatch"),
+        ((stored.identity_context or "identity_only")
+         == (request.identity_context or "identity_only"),
+         "identity_context mismatch"),
+        (_norm(stored.idempotency_key_digest) == _norm(request.idempotency_key_digest),
+         "idempotency_key_digest mismatch"),
+        (_norm(stored.payload_digest) == _norm(request.payload_digest),
+         "payload_digest mismatch"),
+    ]
+    for ok, reason in checks:
+        if not ok:
+            return f"execution_request {request.execution_request_id} {reason}."
+    return None
+
+
+def _finish_blocked(
+    request: "GovernedBackupCheckRequest",
+    source_status: ExecutionSourceStatus,
+    block_reasons: list[BlockReasonCode],
+    reason: str,
+    started_at: datetime,
+) -> GovernedBackupCheckResult:
+    """Record an execution_denied audit and return a fail-closed blocked result."""
+    _emit_audit(
+        event_type="execution_denied",
+        actor_id=request.actor_id,
+        actor_role=request.actor_role,
+        identity_context=request.identity_context,
+        execution_request_id=request.execution_request_id,
+        durable_approval_id=request.durable_approval_id,
+        action_type=request.action_type,
+        tenant_id=request.tenant_id,
+        result_state="blocked",
+        previous_state=None,
+        reason=f"{reason}; no tenant mutation occurred.",
+        payload_digest=request.payload_digest,
+        idempotency_key_digest=request.idempotency_key_digest,
+        source_status=source_status,
+        dry_run_ref=request.dry_run_ref,
+        correlation_id=request.correlation_id,
+        block_reasons=list(block_reasons),
+        sequence_no=1,
+        now=started_at,
+    )
+    return GovernedBackupCheckResult(
+        execution_request_id=request.execution_request_id,
+        durable_approval_id=request.durable_approval_id,
+        dry_run_ref=request.dry_run_ref,
+        tenant_id=request.tenant_id,
+        actor_id=request.actor_id,
+        actor_role=request.actor_role,
+        identity_context=request.identity_context,
+        verdict="blocked",
+        block_reasons=list(block_reasons),
+        source_status=source_status,
+        result_state="blocked",
+        executed=False,
+        correlation_id=request.correlation_id,
+        idempotency_key_digest=request.idempotency_key_digest,
+        payload_digest=request.payload_digest,
+        audit_recorded=True,
+        execution_started_at=started_at,
+        execution_finished_at=started_at,
+    )
+
+
 # -- The governed completion --------------------------------------------------
 
 
@@ -234,18 +332,43 @@ async def complete_governed_backup_check(
     request: GovernedBackupCheckRequest,
     db: Any,
 ) -> GovernedBackupCheckResult:
-    """Complete the governed backup.check action: preflight -> read -> record.
+    """Complete the governed backup.check action: bind -> preflight -> read -> record.
 
-    The ONLY action content is a read of the P17-D-C source via the P22-E3 probe.
-    Never mutates, never runs shell / child process / SQL script, never performs a
-    backup / restore / dump, never drains a queue. The seam preflight is the gate;
-    only a passed preflight reaches the read. Fail-closed throughout.
+    Requires a recorded P22 execution request (``execution_request_id``) that
+    matches the governed request on approval / action / tenant / dry-run / actor /
+    identity / idempotency digest / payload digest and is at result_state
+    ``dry_run_passed``. Missing / unknown / mismatched -> blocked, fail-closed,
+    ``executed=False``. The ONLY action content is a read of the P17-D-C source via
+    the P22-E3 probe. Never mutates, never runs shell / child process / SQL script,
+    never performs a backup / restore / dump, never drains a queue. Fail-closed
+    throughout.
     """
     started_at = _now()
 
-    # 1) Build the seam preflight request and revalidate EVERY precondition
-    #    (executor identity, approval state/quorum, dry-run binding, ack,
-    #    allowlist, idempotency, source status). Reused UNCHANGED from P22-E1.
+    # 1) Bind to a recorded P22 execution request (P22-G-R1). The recorded request
+    #    is the source of truth; the governed request must match it exactly.
+    if not _norm(request.execution_request_id):
+        return _finish_blocked(
+            request, "unknown", ["execution_request_required"],
+            "Governed backup.check requires a recorded execution_request_id; none provided.",
+            started_at,
+        )
+    stored = read_execution_request(request.execution_request_id)
+    if stored is None:
+        return _finish_blocked(
+            request, "unknown", ["execution_request_not_found"],
+            f"Governed backup.check execution_request {request.execution_request_id} not found.",
+            started_at,
+        )
+    mismatch = _request_mismatch(request, stored)
+    if mismatch is not None:
+        return _finish_blocked(
+            request, "unknown", ["execution_request_mismatch"], mismatch, started_at
+        )
+
+    # 2) Seam preflight: revalidate EVERY precondition at completion time (executor
+    #    identity, approval state/quorum, dry-run binding, ack, allowlist,
+    #    idempotency, source status). Reused UNCHANGED from P22-E1.
     seam_request = SeamAdapterRequest(
         durable_approval_id=request.durable_approval_id,
         action_type=request.action_type,
@@ -261,51 +384,15 @@ async def complete_governed_backup_check(
         correlation_id=request.correlation_id,
     )
     verdict = evaluate_preflight_gate(seam_request)
-
     if verdict.verdict != "passed":
         # Fail closed: a blocked preflight never reaches the read.
-        _emit_audit(
-            event_type="execution_denied",
-            actor_id=request.actor_id,
-            actor_role=request.actor_role,
-            identity_context=request.identity_context,
-            execution_request_id=None,
-            durable_approval_id=request.durable_approval_id,
-            action_type=request.action_type,
-            tenant_id=request.tenant_id,
-            result_state="blocked",
-            previous_state=None,
-            reason="Governed backup.check preflight blocked; action not completed; no tenant mutation.",
-            payload_digest=request.payload_digest,
-            idempotency_key_digest=request.idempotency_key_digest,
-            source_status=verdict.source_status,
-            dry_run_ref=request.dry_run_ref,
-            correlation_id=request.correlation_id,
-            block_reasons=verdict.block_reasons,
-            sequence_no=1,
-            now=started_at,
-        )
-        return GovernedBackupCheckResult(
-            durable_approval_id=request.durable_approval_id,
-            dry_run_ref=request.dry_run_ref,
-            tenant_id=request.tenant_id,
-            actor_id=request.actor_id,
-            actor_role=request.actor_role,
-            identity_context=request.identity_context,
-            verdict="blocked",
-            block_reasons=verdict.block_reasons,
-            source_status=verdict.source_status,
-            result_state="blocked",
-            executed=False,
-            correlation_id=request.correlation_id,
-            idempotency_key_digest=request.idempotency_key_digest,
-            payload_digest=request.payload_digest,
-            audit_recorded=True,
-            execution_started_at=started_at,
-            execution_finished_at=started_at,
+        return _finish_blocked(
+            request, verdict.source_status, verdict.block_reasons,
+            "Governed backup.check preflight blocked; action not completed.",
+            started_at,
         )
 
-    # 2) Preflight passed: complete the governed READ of the P17-D-C source.
+    # 3) Preflight passed: complete the governed READ of the P17-D-C source.
     read = await read_backup_check_source(db, tenant_id=request.tenant_id)
     finished_at = _now()
     (
@@ -322,7 +409,7 @@ async def complete_governed_backup_check(
         actor_id=request.actor_id,
         actor_role=request.actor_role,
         identity_context=request.identity_context,
-        execution_request_id=None,
+        execution_request_id=request.execution_request_id,
         durable_approval_id=request.durable_approval_id,
         action_type=request.action_type,
         tenant_id=request.tenant_id,
@@ -339,6 +426,7 @@ async def complete_governed_backup_check(
         now=finished_at,
     )
     return GovernedBackupCheckResult(
+        execution_request_id=request.execution_request_id,
         durable_approval_id=request.durable_approval_id,
         dry_run_ref=request.dry_run_ref,
         tenant_id=request.tenant_id,

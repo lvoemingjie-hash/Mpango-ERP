@@ -49,6 +49,11 @@ from .schemas import (
     ExecutionRequestResponse,
 )
 from .source_probe import BackupCheckSourceRead, read_backup_check_source
+from .governed_execution import (
+    GovernedBackupCheckRequest,
+    GovernedBackupCheckResult,
+    complete_governed_backup_check,
+)
 
 router = APIRouter(prefix="/api/v1/platform/p22", tags=["platform-p22"])
 
@@ -377,3 +382,55 @@ async def backup_check_source_route(
         execution_allowed=False,
     )
     return source
+
+
+@router.post(
+    "/governed-execution/backup-check",
+    response_model=GovernedBackupCheckResult,
+)
+async def governed_backup_check_route(
+    payload: GovernedBackupCheckRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
+) -> GovernedBackupCheckResult:
+    """Complete the governed ``backup.check`` action (P22-G). READ-ONLY action content.
+
+    The first REALIZED, SAFE governed action: after the seam preflight passes
+    (identity-only super_admin; durable approval at approved_execution_blocked with
+    quorum; a bound passed dry-run; the typed acknowledgement; allowlist; digest
+    idempotency), this completes a governed READ of the proven P17-D-C source and
+    records a redacted execution audit. The action CONTENT is a read: no backup,
+    no restore, no dump, no shell / child process / SQL script, no queue drain, no
+    tenant mutation. ``executed`` is True only when the read completed; approval is
+    not execution. A blocked preflight or a failed read is fail-closed.
+    """
+    actor, identity_context, actor_role = _actor_context_and_role(request)
+    result = await complete_governed_backup_check(
+        GovernedBackupCheckRequest(
+            action_type="backup.check",
+            durable_approval_id=payload.durable_approval_id,
+            tenant_id=payload.tenant_id,
+            requested_state=payload.requested_state,
+            dry_run_ref=payload.dry_run_ref,
+            execution_ack=payload.execution_ack,
+            idempotency_key_digest=payload.idempotency_key_digest,
+            payload_digest=payload.payload_digest,
+            actor_id=actor,
+            actor_role=actor_role,
+            identity_context=identity_context,
+            correlation_id=payload.correlation_id,
+        ),
+        db,
+    )
+    await _write_outcome_audit(
+        db,
+        request,
+        "governed_backup_check",
+        action_type="backup.check",
+        source_status=result.source_status,
+        result_state=result.result_state,
+        executed=result.executed,
+        execution_allowed=False,
+    )
+    return result

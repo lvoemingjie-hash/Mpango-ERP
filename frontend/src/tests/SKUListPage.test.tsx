@@ -93,7 +93,7 @@ describe('SKUListPage Import button permission gate', () => {
     render(<SKUListPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('Import Products')).toBeInTheDocument();
+      expect(screen.getByText('Import Catalog SKUs')).toBeInTheDocument();
     });
   });
 
@@ -103,7 +103,7 @@ describe('SKUListPage Import button permission gate', () => {
     render(<SKUListPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('Import Products')).toBeInTheDocument();
+      expect(screen.getByText('Import Catalog SKUs')).toBeInTheDocument();
     });
   });
 
@@ -113,7 +113,7 @@ describe('SKUListPage Import button permission gate', () => {
     render(<SKUListPage />);
 
     await waitFor(() => {
-      expect(screen.queryByText('Import Products')).not.toBeInTheDocument();
+      expect(screen.queryByText('Import Catalog SKUs')).not.toBeInTheDocument();
     });
   });
 
@@ -123,7 +123,7 @@ describe('SKUListPage Import button permission gate', () => {
     render(<SKUListPage />);
 
     await waitFor(() => {
-      expect(screen.queryByText('Import Products')).not.toBeInTheDocument();
+      expect(screen.queryByText('Import Catalog SKUs')).not.toBeInTheDocument();
     });
   });
 });

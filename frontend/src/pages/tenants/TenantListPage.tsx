@@ -21,6 +21,7 @@ export function TenantListPage() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [registryNotice, setRegistryNotice] = useState<string | null>(null);
 
   // Permission-aware UI
   const user = useAuthStore((s) => s.user);
@@ -47,16 +48,18 @@ export function TenantListPage() {
     fetchTenants(page);
   }, [page, fetchTenants]);
 
-  // ── Create / Edit ──────────────────────────────────────────────────
+  // Create / Edit
   const openCreate = () => {
     setEditingTenant(null);
     setServerError(null);
+    setRegistryNotice(null);
     setModalOpen(true);
   };
 
   const openEdit = (tenant: Tenant) => {
     setEditingTenant(tenant);
     setServerError(null);
+    setRegistryNotice(null);
     setModalOpen(true);
   };
 
@@ -73,13 +76,14 @@ export function TenantListPage() {
           plan_type: data.plan_type || null,
         });
       } else {
-        await tenantService.create({
+        const response = await tenantService.create({
           code: data.code,
           name: data.name,
           address: data.address || null,
           contact: data.contact || null,
           plan_type: data.plan_type || null,
         });
+        setRegistryNotice(response.data.message || 'Customer registry record created. Tenant provisioning is still required before login or use.');
       }
       setModalOpen(false);
       fetchTenants(page);
@@ -88,7 +92,7 @@ export function TenantListPage() {
     }
   };
 
-  // ── Delete ─────────────────────────────────────────────────────────
+  // Delete
   const handleDelete = async (tenant: Tenant) => {
     if (!window.confirm(`Delete tenant "${tenant.name}" (${tenant.code})? This cannot be undone.`)) {
       return;
@@ -104,24 +108,34 @@ export function TenantListPage() {
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────
+  // Render
   return (
     <div>
       <PageHeader
-        title={user?.roles.includes('super_admin') ? 'System Tenants' : 'Customers'}
-        description="Manage wholesaler tenants and their configurations."
+        title={user?.roles.includes('super_admin') ? 'System Tenant Registry' : 'Customer Registry'}
+        description="Manage wholesaler registry records. This page does not provision usable tenant workspaces."
         action={
           <button
             onClick={openCreate}
             disabled={!canWrite}
             className="btn-primary inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={canWrite ? 'Create a new customer' : 'You need wholesalers:write permission'}
+            title={canWrite ? 'Create a customer registry record only' : 'You need wholesalers:write permission'}
           >
             <PlusIcon className="h-4 w-4" />
-            Create Customer
+            Create registry record
           </button>
         }
       />
+
+      <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
+        <strong>Registry-only action:</strong> This creates a registry record only. It does not provision login, tenant schema, admin user, RBAC, inventory, orders, or finance workspace.
+      </div>
+
+      {registryNotice && (
+        <div className="mt-4 rounded-md bg-green-50 p-4 text-sm text-green-800" role="status">
+          {registryNotice}
+        </div>
+      )}
 
       {/* Error Banner */}
       {loadError && (
@@ -159,7 +173,7 @@ export function TenantListPage() {
             {isLoading ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
-                  Loading…
+                  Loading...
                 </td>
               </tr>
             ) : tenants.length === 0 ? (
@@ -176,7 +190,7 @@ export function TenantListPage() {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">{t.name}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">
-                    {t.contact || '—'}
+                    {t.contact || '-'}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {t.plan_type ? (
@@ -184,7 +198,7 @@ export function TenantListPage() {
                         {t.plan_type}
                       </Badge>
                     ) : (
-                      <span className="text-gray-400">—</span>
+                      <span className="text-gray-400">-</span>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
@@ -237,7 +251,7 @@ export function TenantListPage() {
   );
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────
+// Helpers
 
 function planBadgeVariant(plan: string): string {
   switch (plan) {

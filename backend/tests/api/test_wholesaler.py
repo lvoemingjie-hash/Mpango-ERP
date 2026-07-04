@@ -172,6 +172,10 @@ async def create_wholesaler_impl(
     return WholesalerResponse(
         success=True,
         data=wholesaler_to_read(created),
+        message=(
+            "Registry record created only; tenant schema, login, admin user, "
+            "RBAC, inventory, orders, and finance workspace were not provisioned."
+        ),
         timestamp=datetime.now(timezone.utc),
     )
 
@@ -236,7 +240,37 @@ async def test_create_wholesaler():
 
     assert response.success is True
     assert response.data.code == "ACME01"
+    assert response.message == (
+        "Registry record created only; tenant schema, login, admin user, "
+        "RBAC, inventory, orders, and finance workspace were not provisioned."
+    )
     assert len(storage) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_wholesaler_contract_is_registry_only():
+    storage: List[MockWholesaler] = []
+    token = create_token()
+    user = create_user_with_permissions(["wholesalers:write"])
+    auth_check = await make_auth_check("wholesalers:write", user)
+    db = AsyncMock()
+
+    response = await create_wholesaler_impl(
+        WholesalerCreate(code="REG01", name="Registry Only"),
+        token,
+        db,
+        auth_check,
+        storage,
+    )
+
+    assert response.success is True
+    assert len(storage) == 1
+    assert response.data.schema_name.startswith("t_")
+    assert response.message is not None
+    assert "Registry record created only" in response.message
+    assert "tenant schema" in response.message
+    assert "admin user" in response.message
+    assert "were not provisioned" in response.message
 
 
 @pytest.mark.asyncio

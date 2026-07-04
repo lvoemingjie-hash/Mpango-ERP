@@ -90,7 +90,11 @@ async def create_wholesaler(
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Create a new wholesaler.
+    Create a public-schema wholesaler registry record only.
+
+    This does not provision tenant schema, login, admin user, RBAC, inventory,
+    orders, or finance workspace. Full tenant onboarding remains a separate
+    operator-controlled bootstrap flow.
     """
     existing = await db.execute(
         Wholesaler.__table__.select().where(
@@ -111,6 +115,10 @@ async def create_wholesaler(
     return WholesalerResponse(
         success=True,
         data=wholesaler_to_read(created),
+        message=(
+            "Registry record created only; tenant schema, login, admin user, "
+            "RBAC, inventory, orders, and finance workspace were not provisioned."
+        ),
         timestamp=datetime.utcnow(),
     )
 

@@ -6,9 +6,12 @@ import type {
   UpdateTenantRequest,
 } from '@/types/tenant';
 
+type TenantRegistryResponse = ApiResponse<Tenant> & { message?: string };
+
 /**
  * Tenant (Wholesaler) CRUD service.
- * Backend entity is "wholesalers" — frontend uses "tenants" terminology.
+ * Backend entity is "wholesalers"; frontend uses "tenants" terminology.
+ * Create is registry-only; it does not provision schema, login, admin user, or RBAC.
  */
 export const tenantService = {
   getAll: (page = 1, size = 20) =>
@@ -20,7 +23,7 @@ export const tenantService = {
     api.get<ApiResponse<Tenant>>(`/wholesalers/${id}`),
 
   create: (data: CreateTenantRequest) =>
-    api.post<ApiResponse<Tenant>>('/wholesalers', data),
+    api.post<TenantRegistryResponse>('/wholesalers', data),
 
   update: (id: string, data: UpdateTenantRequest) =>
     api.put<ApiResponse<Tenant>>(`/wholesalers/${id}`, data),

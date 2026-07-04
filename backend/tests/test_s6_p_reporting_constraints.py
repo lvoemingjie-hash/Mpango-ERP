@@ -31,7 +31,7 @@ from database.reporting_session import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
-def reporting_engine():
+def reporting_engine(ensure_reporting_user_password):
     """Create a reporting engine for tests."""
     url = _build_reporting_url()
     engine = create_async_engine(url, pool_pre_ping=True)

@@ -250,7 +250,17 @@ def _build_smoke_app() -> FastAPI:
 @pytest.fixture(scope="module")
 def smoke_client():
     """TestClient backed by the real-router smoke app."""
-    return TestClient(_build_smoke_app())
+    import api.v1.dashboards as _dashboards_mod
+    import database.session as _db_session_mod
+
+    original_reporting_session_local = _dashboards_mod.ReportingSessionLocal
+    original_async_session_local = _db_session_mod.AsyncSessionLocal
+    try:
+        with TestClient(_build_smoke_app()) as client:
+            yield client
+    finally:
+        _dashboards_mod.ReportingSessionLocal = original_reporting_session_local
+        _db_session_mod.AsyncSessionLocal = original_async_session_local
 
 
 # ===========================================================================

@@ -126,8 +126,9 @@ ExecutionVerdict = Literal["passed", "blocked"]
 #: The execution-record state machine (P22-A 7.1). The full nine-state enum is
 #: defined here for contract fidelity; P22-B realizes ONLY the two non-executing
 #: entry states (dry_run_passed | blocked). The executing / executed / failed /
-#: compensation / cancelled states are NEVER assigned in P22-B -- they belong to
-#: a separately approved execution phase behind the P16 harness.
+#: compensation / cancelled states are NEVER assigned by P22-B request recording
+#: -- they belong to a separately approved real-execution phase behind the runtime
+#: governed action adapter seam (P22-E0/E1), NOT the P16 harness.
 ExecutionResultState = Literal[
     "dry_run_passed",
     "blocked",
@@ -208,6 +209,9 @@ BlockReasonCode = Literal[
     "dry_run_invalid",
     "execution_ack_required",
     "idempotency_conflict",
+    "execution_request_required",
+    "execution_request_not_found",
+    "execution_request_mismatch",
 ]
 
 

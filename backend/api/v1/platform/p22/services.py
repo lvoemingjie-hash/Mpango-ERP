@@ -27,8 +27,9 @@ What this service is NOT:
   - It adds NO migration, NO alembic change, NO table, NO auth / RBAC / session /
     tenancy rewrite, and NO frontend.
   - result_state is ONLY ever dry_run_passed | blocked. The executing / executed /
-    failed / compensation / cancelled states are never assigned (they belong to a
-    separately approved execution phase behind the P16 harness).
+    failed / compensation / cancelled states are never assigned by P22-B request
+    recording (they belong to a separately approved real-execution phase behind the
+    runtime governed action adapter seam (P22-E0/E1), NOT the P16 harness).
 
 Approval is not execution and durability is not execution. A durable, quorum-met
 approval at approved_execution_blocked is a PRECONDITION for a passed dry-run and

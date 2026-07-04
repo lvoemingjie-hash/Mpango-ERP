@@ -1,14 +1,21 @@
-"""FastAPI routes for P22 Controlled Execution v0 (P22-B non-executing skeleton).
+"""FastAPI routes for P22 Controlled Execution v0 (P22-B + P22-G).
 
 These endpoints expose the v0 execution catalog, the no-mutation dry-run
-validator, execution-request recording, and execution-result read. NO action is
-ever executed; every response carries execution_allowed == False, executed ==
-False, execution_started == False, and a result_state that is only ever
-dry_run_passed | blocked. The routes never dispatch a worker, never drain a
-queue, never invoke the P16 governed harness, and never mutate the P17 registry,
-tenant lifecycle, operational flags, provisioning, backup, or any tenant business
-/ payment / billing / product data. Approval is not execution and durability is
-not execution.
+validator, execution-request recording, and execution-result read (all
+non-executing: execution_allowed == False, executed == False, result_state only
+dry_run_passed | blocked). They also expose the P22-G governed backup.check
+completion -- the first SAFE governed action, whose action content is a READ of
+the P17-D-C source: it may return executed == True for a COMPLETED READ (never a
+tenant mutation; no_tenant_mutated is always True), only after the seam preflight
+passes AND a matching recorded execution request is bound. Approval is still not
+execution. No route dispatches a worker, drains a queue, invokes the P16 governed
+harness, runs shell / SQL / script, or mutates the P17 registry, tenant lifecycle,
+operational flags, provisioning, backup, or any tenant business / payment /
+billing / product data.
+
+P22-B request records remain NON-EXECUTING (a recorded request is recorded only,
+executed == False). The P22-G governed result is the first REALIZED read action
+(executed == True only when the governed read completed).
 
 The executor identity (actor_id / actor_role / identity_context) is derived from
 the authenticated token via the reused P10 identity-only guard -- it is NEVER
@@ -20,6 +27,7 @@ Endpoints (all behind the identity-only P10 platform guard):
   POST /api/v1/platform/p22/execution/requests                      record request (no execution)
   GET  /api/v1/platform/p22/execution/requests                      list (filters)
   GET  /api/v1/platform/p22/execution/requests/{execution_request_id}  read
+  POST /api/v1/platform/p22/governed-execution/backup-check          governed backup.check (P22-G; read-only action)
 
 Responses align to docs/ai/PLATFORM_PRODUCT_P22_CONTROLLED_EXECUTION_V0_CONTRACT.md
 (P22-A). Role granularity deferral mirrors P18 / P19 / P20: the reused P10 guard
@@ -49,6 +57,11 @@ from .schemas import (
     ExecutionRequestResponse,
 )
 from .source_probe import BackupCheckSourceRead, read_backup_check_source
+from .governed_execution import (
+    GovernedBackupCheckRequest,
+    GovernedBackupCheckResult,
+    complete_governed_backup_check,
+)
 
 router = APIRouter(prefix="/api/v1/platform/p22", tags=["platform-p22"])
 
@@ -377,3 +390,57 @@ async def backup_check_source_route(
         execution_allowed=False,
     )
     return source
+
+
+@router.post(
+    "/governed-execution/backup-check",
+    response_model=GovernedBackupCheckResult,
+)
+async def governed_backup_check_route(
+    payload: GovernedBackupCheckRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
+) -> GovernedBackupCheckResult:
+    """Complete the governed ``backup.check`` action (P22-G). READ-ONLY action content.
+
+    The first REALIZED, SAFE governed action: after the seam preflight passes
+    (identity-only super_admin; durable approval at approved_execution_blocked with
+    quorum; a bound passed dry-run; the typed acknowledgement; allowlist; digest
+    idempotency), this completes a governed READ of the proven P17-D-C source and
+    records a redacted execution audit. The action CONTENT is a read: no backup,
+    no restore, no dump, no shell / child process / SQL script, no queue drain, no
+    tenant mutation. ``executed`` is True only when the read completed; approval is
+    not execution. A blocked preflight or a failed read is fail-closed.
+    """
+    actor, identity_context, actor_role = _actor_context_and_role(request)
+    result = await complete_governed_backup_check(
+        GovernedBackupCheckRequest(
+            action_type="backup.check",
+            execution_request_id=payload.execution_request_id,
+            durable_approval_id=payload.durable_approval_id,
+            tenant_id=payload.tenant_id,
+            requested_state=payload.requested_state,
+            dry_run_ref=payload.dry_run_ref,
+            execution_ack=payload.execution_ack,
+            idempotency_key_digest=payload.idempotency_key_digest,
+            payload_digest=payload.payload_digest,
+            # The authenticated actor wins; the payload actor is ignored (no spoof).
+            actor_id=actor,
+            actor_role=actor_role,
+            identity_context=identity_context,
+            correlation_id=payload.correlation_id,
+        ),
+        db,
+    )
+    await _write_outcome_audit(
+        db,
+        request,
+        "governed_backup_check",
+        action_type="backup.check",
+        source_status=result.source_status,
+        result_state=result.result_state,
+        executed=result.executed,
+        execution_allowed=False,
+    )
+    return result

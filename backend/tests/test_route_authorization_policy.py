@@ -805,6 +805,23 @@ class TestExportRoutePolicy:
             assert c.permission_code == "exports:create"
 
 
+class TestOrderPaymentRoutePolicy:
+    """Order payment writes must use the payment permission contract."""
+
+    def test_order_pay_route_requires_payments_create(self):
+        """POST /api/v1/orders/{order_id}/pay is the canonical payment write path."""
+        pay_routes = [
+            c for c in ALL_CLASSIFICATIONS
+            if "POST" in c.method and c.path == "/api/v1/orders/{order_id}/pay"
+        ]
+        assert len(pay_routes) == 1
+
+        route = pay_routes[0]
+        assert route.policy == "tenant_permission"
+        assert route.permission_code == "payments:create"
+        assert route.permission_code != "orders:update"
+
+
 class TestInternalRoutePolicy:
     """Internal/test endpoints (/api/v1/test/**) must be gated by system:admin."""
 

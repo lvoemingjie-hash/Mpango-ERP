@@ -86,26 +86,34 @@ source and records honest results; no forbidden item is needed).
 
 ---
 
-## 4. Changed Files (3 implementation + this ledger; backend-only; P17 untouched)
+## 4. Changed Files (final R1: 5 backend + this ledger; backend-only; P17 untouched)
+
+The final branch diff is six paths -- five backend files plus this ledger:
 
 | File | Status | Scope |
 |---|---|---|
-| `backend/api/v1/platform/p22/governed_execution.py` | New | The realized adapter body for backup.check ONLY: `complete_governed_backup_check(request, db)` reuses the seam preflight (`evaluate_preflight_gate`) + the P22-E3 probe (`read_backup_check_source`) + the P22-B audit (`_emit_audit`); honest source->result mapping; new `GovernedBackupCheckRequest` / `GovernedBackupCheckResult` schemas. Read-only action content. |
-| `backend/api/v1/platform/p22/routes.py` | Modified (additive) | Added one import + one route handler `POST /governed-execution/backup-check` behind the existing `require_platform_operator_with_p22_audit` guard. No existing route changed. |
-| `backend/tests/test_platform_p22g_governed_backup_check.py` | New | 22 unit tests (section 6). |
-| `ai-ledger/platform/2026-07-04_p22g_first_safe_backup_check_action.md` | New | This ledger. |
+| `backend/api/v1/platform/p22/governed_execution.py` | New (R0) + extended (R1) | The realized adapter body for backup.check ONLY: `complete_governed_backup_check(request, db)` reuses the seam preflight (`evaluate_preflight_gate`) + the P22-E3 probe (`read_backup_check_source`) + the P22-B audit (`_emit_audit`); honest source->result mapping; new `GovernedBackupCheckRequest` / `GovernedBackupCheckResult` schemas. R1 added the recorded-request binding (`execution_request_id`) before the preflight. Read-only action content. |
+| `backend/api/v1/platform/p22/routes.py` | Modified (R0 + R1) | Added one import + one route handler `POST /governed-execution/backup-check` behind the existing `require_platform_operator_with_p22_audit` guard (R0); R1 passes `execution_request_id` and overrides the actor with the authenticated token (payload actor ignored). Module docstring updated (no longer claims no route returns executed=True). No existing route changed. |
+| `backend/api/v1/platform/p22/schemas.py` | Modified (R1) | `execution_request_id` added to the governed request/result (in `governed_execution.py`); three new `BlockReasonCode` values (`execution_request_required` / `_not_found` / `_mismatch`); the "behind the P16 harness" stale wording corrected to "behind the runtime governed seam". |
+| `backend/api/v1/platform/p22/services.py` | Modified (R1, docstring only) | The "behind the P16 harness" stale wording corrected to "behind the runtime governed seam (P22-E0/E1), NOT the P16 harness". No runtime change. |
+| `backend/tests/test_platform_p22g_governed_backup_check.py` | New (R0) + rewritten (R1) | 26 tests (21 unit incl. 4 binding tests + 5 route-level). |
+| `ai-ledger/platform/2026-07-04_p22g_first_safe_backup_check_action.md` | New (R0) + updated (R1/R2) | This ledger. |
 
-`git diff --name-only origin/platform-dev..HEAD` returns the three implementation/test paths
-above (+ this ledger). No `p17/` change, no other `backend/` file modified (in particular no
-`seam.py` / `adapters.py` / `services.py` / `schemas.py` / `source_probe.py` edit), no
-`migrations/`, no `alembic/env.py`, no `scripts/` / P16, no `frontend/`, no
-`product-dev-recovered/` or product / payment / billing / order / invoice / customer /
-inventory path, no auth / RBAC / session rewrite, no `package.json` / lockfile, no CI /
-`.github` / `.claude` / configured-secrets-baseline file.
+`git diff --name-only origin/platform-dev..HEAD` returns exactly these six paths. No `p17/`
+change, no other `backend/` file modified (in particular no `seam.py` / `adapters.py` /
+`source_probe.py` edit), no `migrations/`, no `alembic/env.py`, no `scripts/` / P16, no
+`frontend/`, no `product-dev-recovered/` or product / payment / billing / order / invoice /
+customer / inventory path, no auth / RBAC / session rewrite, no `package.json` / lockfile, no
+CI / `.github` / `.claude` / configured-secrets-baseline file.
 
 ---
 
 ## 5. Exact Behavior Delivered
+
+> **R1 update:** the flow is now **bind -> preflight -> read -> map -> audit**. R1 added the
+> first step (bind to a recorded P22 execution request via `execution_request_id`, with full
+> field-match + fail-closed); see section 14.2. The mapping table and audit below are unchanged
+> by R1 except that every audit event now carries the real `execution_request_id`.
 
 `complete_governed_backup_check(request, db)`:
 
@@ -146,54 +154,48 @@ governed-execution layer is the separately-gated REALIZED adapter body (P22-E0 9
 
 ---
 
-## 6. Tests (22 new; all pass)
+## 6. Tests (final R1: 26 passed -- 21 unit + 5 route-level)
 
-`test_platform_p22g_governed_backup_check.py`:
+`test_platform_p22g_governed_backup_check.py` -- 26 tests, all green:
 
-| Case | Test |
-|---|---|
-| dry-run does not execute (regression) | `TestNonExecutingInvariants.test_dry_run_does_not_execute` |
-| module realizes ONLY backup.check (non-allowlisted rejected) | `test_module_realizes_only_backup_check` |
-| unapproved request -> blocked, read never reached | `TestPreflightBlocking.test_unapproved_request_is_blocked_not_executed` |
-| missing dry-run ref -> blocked | `test_missing_dry_run_ref_is_blocked` |
-| missing ack -> blocked | `test_missing_ack_is_blocked` |
-| fresh success -> succeeded / executed=True | `TestSourceMapping.test_fresh_success_succeeds` |
-| stale -> completed_with_warning | `test_stale_completes_with_warning` |
-| partial -> completed_with_warning + redacted reason | `test_partial_completes_with_redacted_reason` |
-| failed backup -> completed_with_warning + redacted reason | `test_failed_backup_completes_with_warning` |
-| in_progress -> completed_with_warning | `test_in_progress_completes_with_warning` |
-| no source -> unknown, never healthy | `test_no_source_unknown_never_healthy` |
-| read failure -> failed, fail-closed, no fake healthy | `test_read_failure_fail_closed_no_fake_healthy` |
-| tenant_id propagation + binding | `TestTenantScope.test_tenant_id_propagates_and_binds` |
-| tenant mismatch -> blocked | `test_tenant_mismatch_blocks` |
-| audit records completion fields + no-tenant-mutation | `TestAudit.test_audit_records_completion_fields` |
-| audit records denial for blocked preflight | `test_audit_records_denial_for_blocked_preflight` |
-| audit records failure for read error | `test_audit_records_failure_for_read_error` |
-| G15 static descriptor unchanged | `TestInvariantsPreserved.test_g15_static_descriptor_unchanged` |
-| E3 source read still honest (unavailable on read error) | `test_e3_source_read_still_honest` |
-| no subprocess/shell/execution call tokens (AST) | `TestNoExecutionPrimitives.*` |
-| no forbidden imports (AST) | `TestNoExecutionPrimitives.*` |
-| no invocation token in text (pg_dump/SELECT/etc.) | `TestNoExecutionPrimitives.*` |
+- **Non-execution invariants (2):** dry-run never executes; the module realizes ONLY
+  `backup.check` (non-allowlisted actions are rejected by the schema).
+- **Recorded-request binding (4):** missing / unknown / mismatched-field / mismatched-actor
+  `execution_request_id` each block fail-closed with the right `BlockReasonCode`.
+- **Source mapping (6):** fresh success -> `succeeded`; stale / partial / failed / in_progress
+  -> `completed_with_warning`; no outcome -> unknown (never healthy); read failure -> `failed`
+  fail-closed.
+- **Tenant scope (1):** tenant_id propagates to the read.
+- **Audit (3):** the audit carries the real `execution_request_id`; denial audit on a missing
+  binding; failure audit on a read error.
+- **Invariants preserved (2):** G15 static descriptor unchanged; the P22-E3 source read stays
+  honest.
+- **No execution primitives (3):** AST call / import / text scans (no subprocess / shell /
+  pg_dump / restore / raw SQL).
+- **Route-level (5):** `POST /governed-execution/backup-check` via TestClient -- successful
+  approved + recorded + dry-run + read; missing auth denied; payload actor spoof ignored
+  (authenticated actor wins); missing `execution_request_id` blocked; mismatched
+  `execution_request_id` blocked; audit contains `execution_request_id`. (See section 14.4.)
 
 ---
 
 ## 7. Validation Gates
 
-| Gate | Result |
+| Gate | Result (final R1) |
 |---|---|
 | `git diff --check origin/platform-dev..HEAD` | clean |
-| Changed files | 3 backend paths (2 new + 1 modified) + this ledger |
-| Non-ASCII byte scan | 0 non-ASCII bytes across all 3 implementation/test files |
-| detect-secrets (configured baseline) | clean (exit 0); baseline unmodified; pre-commit detect-secrets passed at commit |
+| Changed files | 5 backend paths + this ledger (section 4) |
+| Non-ASCII byte scan | 0 non-ASCII bytes across all 5 backend files |
+| detect-secrets (configured baseline) | clean (exit 0); baseline unmodified; pre-commit detect-secrets passed at every commit |
 | Forbidden path audit | clean (section 8) |
-| AST/text scan for subprocess / shell / pg_dump / restore / raw SQL | clean (`TestNoExecutionPrimitives` + the P22-E1 scans now also walk `governed_execution.py` and the modified `routes.py`) |
-| P22-G targeted tests | 22 passed |
-| P22-E3 / P22-E1 / P22 controlled execution regression | pass (part of the 921) |
-| P17-D-C read tests | 25 passed, 1 deselected -- see section 9 (pre-existing date-roll flake) |
-| Platform regression subset (P0..P22) | **921 passed, 37 skipped, 1 deselected, 0 failed** |
-| `npx gitnexus analyze .` | 8,764 nodes / 26,819 edges / 560 clusters / 300 flows at `57b42c3` |
-| `npx gitnexus status` | up-to-date at `57b42c3` |
-| GitNexus `detect_changes` vs `origin/platform-dev` | `changed_count=58, affected_count=9, changed_files=3, risk_level=high` -- ALL 9 affected processes are platform-P22-internal; **0 product-business hit** (section 10) |
+| AST/text scan for subprocess / shell / pg_dump / restore / raw SQL | clean (`TestNoExecutionPrimitives` + the P22-E1 scans now walk `governed_execution.py`, `routes.py`, `schemas.py`, `services.py`) |
+| P22-G targeted tests | **26 passed** (21 unit + 5 route-level) |
+| P22-E3 / P22-E1 / P22 controlled execution regression | pass (part of the 923; 1 E3 route test deselected -- pre-existing date-roll flake) |
+| P17-D-C read tests | 24 passed, 2 deselected -- pre-existing date-roll flakes (section 9) |
+| Platform regression subset (P0..P22, excl. migration) | **923 passed, 37 skipped, 3 deselected, 0 failed** |
+| `npx gitnexus analyze .` | 8,795 nodes / 26,881 edges / 552 clusters / 300 flows at `c02ce02` |
+| `npx gitnexus status` | up-to-date at `c02ce02` |
+| GitNexus `detect_changes` vs `origin/platform-dev` | `changed_count=113, affected_count=6, changed_files=6, risk_level=high` -- ALL 6 affected processes are platform-P22-internal; **0 product-business hit** (section 10) |
 
 ---
 
@@ -217,45 +219,49 @@ forbidden-import scans now walk `governed_execution.py` and the modified `routes
 
 ---
 
-## 9. Pre-existing P17-D-C date-roll flake (NOT a P22-G regression)
+## 9. Pre-existing date-roll flakes (NOT a P22-G regression)
 
-One P17-D-C test fails: `test_platform_p17dc_backup_registry_read.py::TestRegistryAssembly::test_tenant_specific_wins_over_platform_at_registry`
-(expected `last_backup_status == "success"`, got `"stale"`). This is a PRE-EXISTING date-roll
-flake, not a P22-G regression:
+Three ROUTE-level backup-status tests fail on date roll (fixed test `NOW = 2026-07-03` vs the
+routes' real `_utcnow()`; once the real clock passes the seeded row + 24h the row reads
+`stale`/`degraded`, not `success`/`known`):
 
-- P22-G touches NO `p17/` file and NO P17-D-C test (`git diff` confirms; the 3 changed files
-  are all under `p22/` + `tests/test_platform_p22*`).
-- The test seeds a tenant backup row at a FIXED past time (test `NOW = 2026-07-03 12:00` minus
-  10h = `2026-07-03 02:00`) and expects `success` (fresh). The P17 registry route computes
-  freshness against the REAL `_utcnow()` (now `2026-07-04`), so the row is > 24h old -> `stale`.
-- **Reproduced on a clean `origin/platform-dev` tree** (P22-G changes stashed): the test still
-  fails. It passed in earlier sessions only because those ran on 2026-07-03 (real now ~= test
-  NOW). It is inherently date-fragile and breaks from 2026-07-04 02:00 onward.
-- The other 25 P17-D-C read tests pass (the 2h-old-row variant stays within the 24h window).
+- `test_platform_p17dc_backup_registry_read.py::TestRegistryAssembly::test_tenant_specific_wins_over_platform_at_registry`
+  (10h-old row; fails once real now > 2026-07-04 02:00).
+- `test_platform_p17dc_backup_registry_read.py::TestRegistryAssembly::test_fresh_success_attached_to_registry`
+  (2h-old row; fails once real now > 2026-07-04 10:00).
+- `test_platform_p22e3_backup_check_source_probe.py::TestRouteSurfacesProbe::test_fresh_success_visible_as_known`
+  (2h-old row; the P22-E3 source-probe route also uses real `_utcnow()`).
 
-P22-G does NOT fix this (it is out of scope -- a P17-D-C test-hygiene issue, and P22-G must
-not touch P17). Recommended: a separate P17-D-C hygiene task to inject a fixed `now` into the
-registry route under test (or seed rows relative to real now).
+These are PRE-EXISTING, not P22-G regressions:
+
+- P22-G touches NO `p17/` file, NO `source_probe.py`, NO E3 route, and none of these tests
+  (`git diff` confirms; the changed files are all under `p22/` governance + the P22-G test).
+- **All three reproduce on a clean `origin/platform-dev` tree** (P22-G changes stashed). They
+  passed in earlier sessions only because those ran on 2026-07-03 (real now ~= test NOW). The
+  unit-test variants that pass `now=NOW` explicitly are NOT fragile; only the route-level
+  tests are.
+
+P22-G does NOT fix these (out of scope -- a shared P17-D-C / P22-E3 test-hygiene issue; P22-G
+must not touch P17 or the E3 source route). Recommended: inject a fixed `now` into the routes
+under test (see `[[p17-test-fixed-now-date-flake]]`).
 
 ---
 
-## 10. GitNexus
+## 10. GitNexus (final R1, at branch tip `c02ce02`)
 
-- `analyze`: 8,764 nodes / 26,819 edges / 560 clusters / 300 flows at `57b42c3` (edges rose
-  from ~26,519 at base -- the new `governed_backup_check_route` -> `complete_governed_backup_check`
-  -> `evaluate_preflight_gate` / `read_backup_check_source` / `_emit_audit` call edges).
-- `status`: up-to-date (indexed commit == current commit == `57b42c3`).
+- `analyze`: 8,795 nodes / 26,881 edges / 552 clusters / 300 flows (edges rose from ~26,519 at
+  base -- the `governed_backup_check_route` -> `complete_governed_backup_check` ->
+  `evaluate_preflight_gate` / `read_backup_check_source` / `_emit_audit` / `read_execution_request`
+  call edges).
+- `status`: up-to-date (indexed commit == current commit == `c02ce02`).
 - `detect_changes` (MCP `scope=compare`, `base_ref=origin/platform-dev`):
-  `changed_count=58, affected_count=9, changed_files=3, risk_level=high`. The 9 affected
-  processes are ALL platform-P22-internal -- rooted at `Require_platform_operator_with_p22_audit`
-  (the P22 guard) or `Governed_backup_check_route` (the new route), reaching only P22 internals
-  (`PlatformAuditLog`, `_http_exc`, `Get`, `_is_test_env`, `_executor_block_reason`,
-  `Resolve_adapter_descriptor`, `_classify_action`, `_dry_run_binding_block`). **Zero
+  `changed_count=113, affected_count=6, changed_files=6, risk_level=high`. The 6 affected
+  processes are ALL platform-P22-internal -- rooted at `Governed_backup_check_route` (the new
+  route -> `GovernedBackupCheckResult` / `_http_exc`) or `Require_platform_operator_with_p22_audit`
+  (the P22 guard -> `PlatformAuditLog` / `_http_exc` / `Get` / `_is_test_env`). **Zero
   product / payment / order / invoice / customer / inventory business flow.** The HIGH risk
-  level is gitnexus's count-based heuristic (9 affected processes, because the new route
-  reaches into the P22 seam/preflight machinery); qualitatively the blast radius is
-  platform-P22-only. The stop condition ("GitNexus shows product business affected flow") does
-  NOT fire.
+  level is gitnexus's count-based heuristic; qualitatively the blast radius is platform-P22-only.
+  The stop condition ("GitNexus shows product business affected flow") does NOT fire.
 
 ---
 
@@ -267,15 +273,17 @@ content is a READ: it is bounded to backup.check, runs only behind the full seam
 existing P22 guard, performs no backup / restore / dump / shell / SQL script / queue / worker,
 mutates no tenant / payment / product state, and is fully redacted-audited. Blast radius is
 platform-P22-only (`backend/api/v1/platform/p22/`); GitNexus confirms 0 product-business flow.
-G15 / seam / P22-B shapes are preserved (additive).
+G15 / seam / P22-B shapes are preserved (additive). **R1 strengthens the gate** -- the
+completion now also requires a matching recorded execution request + binds the authenticated
+actor (see section 14.6 for the final R1 risk).
 
 ---
 
 ## 12. Blockers
 
 - None for P22-G.
-- One pre-existing P17-D-C date-roll flake (section 9) is NOT a P22-G blocker -- it reproduces
-  on `origin/platform-dev` and is a P17-D-C test-hygiene item.
+- Three pre-existing date-roll flakes (section 9; two P17-D-C + one P22-E3 route test) are NOT
+  P22-G blockers -- they reproduce on `origin/platform-dev` and are a shared test-hygiene item.
 
 ---
 
@@ -324,7 +332,7 @@ G15 / seam / P22-B shapes are preserved (additive).
   `execution_request_id` (not None). `GovernedBackupCheckRequest` / `GovernedBackupCheckResult`
   carry `execution_request_id`. The route payload includes it; the route overrides the actor
   with the authenticated token (payload actor ignored -- anti-spoof).
-- **Route-level tests (finding 2).** Added `TestRoute` (6 tests) hitting
+- **Route-level tests (finding 2).** Added `TestRoute` (5 tests) hitting
   `POST /api/v1/platform/p22/governed-execution/backup-check` via TestClient: successful
   approved + recorded + dry-run + read; missing auth denied (no token + no headers -> 401/403);
   payload actor spoof ignored (authenticated actor wins); missing execution_request_id blocked;
@@ -350,7 +358,7 @@ record.execution_request_id`, and `TestAudit.test_audit_carries_execution_reques
 audit event carries it.
 
 ### 14.4 Route-level test proof
-`TestRoute` (6 tests, all green): `test_successful_governed_completion` (200, succeeded,
+`TestRoute` (5 tests, all green): `test_successful_governed_completion` (200, succeeded,
 executed=True, real actor not the spoof, execution_request_id echoed);
 `test_missing_auth_denied` (401/403 with no token + no headers); `test_missing_execution_request_id_blocked`
 (blocked + execution_request_required); `test_mismatched_execution_request_id_blocked`
@@ -368,7 +376,7 @@ executed=True, real actor not the spoof, execution_request_id echoed);
 - AST/text scan for subprocess / shell / pg_dump / restore / raw SQL: clean
   (`TestNoExecutionPrimitives` + the P22-E1 scans now walk `governed_execution.py`,
   `routes.py`, `schemas.py`, `services.py`).
-- P22-G targeted tests: **26 passed** (22 unit + 6 route-level; was 22 in R0).
+- P22-G targeted tests: **26 passed** (21 unit + 5 route-level; was 22 in R0).
 - P22-E1 / P22-E3 / P22 controlled-execution regression: pass (part of the 923).
 - P17-D-C read tests: 25 passed, 1 deselected (pre-existing date-roll flake).
 - Platform regression subset (P0..P22, excl. migration): **923 passed, 37 skipped, 3 deselected,

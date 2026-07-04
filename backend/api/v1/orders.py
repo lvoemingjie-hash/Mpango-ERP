@@ -387,7 +387,7 @@ async def confirm_order(
 @router.post("/{order_id}/pay", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def pay_order(
     order_id: str,
-    token: TokenPayload = Depends(RequirePermission("orders:update")),
+    token: TokenPayload = Depends(RequirePermission("payments:create")),
     db: AsyncSession = Depends(get_tenant_db_session),
     payment_input: Optional[PayOrderRequest] = None,
 ):

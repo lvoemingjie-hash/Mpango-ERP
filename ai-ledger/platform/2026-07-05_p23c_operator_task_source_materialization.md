@@ -138,8 +138,9 @@ shared `.venv`.
   the earlier run on the same code (9,101 / 27,859 / 571 / 300): nodes +10,
   edges +12, clusters -2, flows 0 - the documented node/cluster wobble; same
   order of magnitude, NOT the base index passed off as the tip index.
-- `gitnexus status`: indexed at branch tip `9391bfbe` (= current commit),
-  up-to-date. NOT the base `58f4888`.
+- `gitnexus status`: re-run after the R1 ledger-only revision and up-to-date at
+  the final branch tip (R1 SHA reported in chat, not embedded here). The indexed
+  code graph includes the P23-C code tip `9391bfbe`; it is NOT the base `58f4888`.
 - `gitnexus impact` CLI (`--repo _p23c_2026-07-05`):
   - `materialize_route`: impactedCount 0, risk LOW, 0 processes, 0 modules.
   - `materialize_all`: impactedCount 0, risk LOW, 0 processes, 0 modules.
@@ -179,11 +180,12 @@ None.
 ## Revision history
 
 - R0 (`9391bfbe`): initial P23-C ledger (code commit `e646b671`).
-- R1 (ledger-only, this revision): corrected the GitNexus `status` to the branch
-  code tip `9391bfbe` (= current commit, up-to-date) - it had wrongly read
-  "indexed at base commit 58f4888"; refreshed `gitnexus analyze --force` counts
-  at the tip (9,111 / 27,871 / 569 / 300, with the documented node/cluster
-  wobble); and aligned the file counts to the actual
+- R1 (ledger-only, this revision): corrected the GitNexus `status` evidence away
+  from the base `58f4888`; the final R1 branch tip was re-indexed and is
+  up-to-date, while the indexed code graph includes the P23-C code tip
+  `9391bfbe`. Refreshed `gitnexus analyze --force` counts at the tip
+  (9,111 / 27,871 / 569 / 300, with the documented node/cluster wobble); and
+  aligned the file counts to the actual
   `origin/platform-dev..HEAD` diff (4 code/test files + this ledger = 5 files).
   No runtime / test / migration change; the index code graph is unchanged, so
   the impact evidence (LOW / 0 product for `materialize_route`,

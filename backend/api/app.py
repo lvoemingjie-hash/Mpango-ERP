@@ -207,6 +207,14 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(platform_p22_router)
     logger.info("Platform P22 router registered (controlled execution v0 non-executing skeleton)")
 
+    # Platform Track P23 -- Operator Task / Notification Queue (non-executing, non-sending
+    # in-memory backend skeleton, P23-B). A task is a view, not an executor; a
+    # notification is a record, not a delivery. No P22 action execution, no real
+    # notification delivery, no migration, no frontend, no auth/RBAC rewrite.
+    from api.v1.platform.p23.routes import router as platform_p23_router
+    app.include_router(platform_p23_router)
+    logger.info("Platform P23 router registered (operator task / notification queue skeleton)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

@@ -66,6 +66,15 @@ import type {
   OperatorTaskTransitionRequest,
   OperatorTaskTransitionResponse,
 } from '@/types/platformOperatorTasks';
+import type {
+  CloseoutTransitionRequest,
+  IncidentCloseoutDetail,
+  IncidentCloseoutIntakeResponse,
+  IncidentCloseoutList,
+  IncidentCloseoutListFilters,
+  RunbookView,
+  StepTransitionRequest,
+} from '@/types/platformIncidentCloseout';
 
 const P10_BASE = '/platform/p10';
 const P13_BASE = '/platform/p13';
@@ -76,6 +85,7 @@ const P19_BASE = '/platform/p19';
 const P20_BASE = '/platform/p20';
 const P22_BASE = '/platform/p22';
 const P23_BASE = '/platform/p23';
+const P24_BASE = '/platform/p24';
 
 export const platformService = {
   /** List tenants with optional pagination */
@@ -392,6 +402,83 @@ export const platformService = {
   ) =>
     api.post<OperatorTaskTransitionResponse>(
       `${P23_BASE}/operator-tasks/${taskId}/dismiss`,
+      payload,
+    ),
+
+  // -- P24 Incident + Runbook Closeout (view, not executor; pointer, not
+  //    execution; record, not repair) --
+  //
+  // A closeout is a view, not an executor; a runbook step is a pointer, not an
+  // execution; a follow-up task is a record, not a repair. Every call below is
+  // read / triage / record only. None runs a P22 action, decides a P19/P20/P21
+  // approval, sets or clears the P17 incident_active flag, mutates a registry
+  // field, delivers a notification, dispatches a worker, drains a queue, runs
+  // shell / SQL / script, or reads / writes any tenant business / payment /
+  // billing / product record. The actor for every transition is the
+  // authenticated identity-only super_admin token (read in the route); it is
+  // never sent from the request body (no identity spoof), mirroring P20-B-R1 /
+  // P22 / P23. The flag is mirrored, never owned. Owner is presentation only and
+  // grants no new privilege. Intake is system-only and is NOT exposed here (the
+  // operator console never pushes intake). No X-Platform-Operator secret is
+  // sent; these reuse the standard Axios Bearer token transport, identical to
+  // the P10..P23 platform calls above.
+
+  /** P24: list incident closeouts with optional filters (read-only). */
+  listIncidentCloseouts: (
+    limit = 50,
+    offset = 0,
+    filters?: IncidentCloseoutListFilters,
+  ) =>
+    api.get<IncidentCloseoutList>(`${P24_BASE}/incident-closeouts`, {
+      params: { limit, offset, ...filters },
+    }),
+
+  /** P24: read one closeout's redacted record, full audit history, and runbook
+   *  steps (read-only; 404 when not found). withdrawn / expired retain history. */
+  getIncidentCloseout: (closeoutId: string) =>
+    api.get<IncidentCloseoutDetail>(
+      `${P24_BASE}/incident-closeouts/${closeoutId}`,
+    ),
+
+  /** P24: read the ordered runbook steps for one closeout (read-only). */
+  getRunbook: (closeoutId: string) =>
+    api.get<RunbookView>(`${P24_BASE}/incident-closeouts/${closeoutId}/runbook`),
+
+  /** P24: set the closeout owner to the authenticated operator (presentation
+   *  only; grants no new privilege; does not change state). */
+  selfAssignCloseout: (closeoutId: string) =>
+    api.post<IncidentCloseoutIntakeResponse>(
+      `${P24_BASE}/incident-closeouts/${closeoutId}/self-assign`,
+    ),
+
+  /** P24: record an operator closeout judgment (advance to awaiting_closeout /
+   *  closed / withdrawn / ...). Rejects with 409 when the honest close gate is
+   *  still open (flag still set, owed tasks non-terminal, source still unknown,
+   *  or linked execution at backup_check_warning). Executes nothing; flips no
+   *  flag. The backend verdict (accepted / denial_code) is authoritative; the
+   *  page never fabricates closed locally. */
+  transitionCloseout: (
+    closeoutId: string,
+    payload: CloseoutTransitionRequest,
+  ) =>
+    api.post<IncidentCloseoutIntakeResponse>(
+      `${P24_BASE}/incident-closeouts/${closeoutId}/transition`,
+      payload,
+    ),
+
+  /** P24: record a runbook step state change with a redacted evidence /
+   *  observation note. Rejects with 409 (STEP_DONE_DENIED_GATE_OPEN /
+   *  STEP_DONE_DENIED_NO_EVIDENCE) on a `done` whose per-kind gate is still open
+   *  (action_pointer execution not observed terminal / approval_pointer approval
+   *  not observed resolved / observation step without an evidence note). A step
+   *  is a pointer, not an execution; marking it done executes nothing. */
+  transitionRunbookStep: (
+    closeoutId: string,
+    stepId: string,
+    payload: StepTransitionRequest,
+  ) =>
+    api.post<IncidentCloseoutIntakeResponse>(
+      `${P24_BASE}/incident-closeouts/${closeoutId}/runbook/${stepId}/transition`,
       payload,
     ),
 };

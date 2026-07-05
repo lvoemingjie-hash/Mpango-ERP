@@ -35,6 +35,7 @@ import { PlatformApprovalsPage } from '@/pages/platform/PlatformApprovalsPage';
 import { PlatformDurableApprovalsPage } from '@/pages/platform/PlatformDurableApprovalsPage';
 import { PlatformControlledExecutionConsolePage } from '@/pages/platform/PlatformControlledExecutionConsolePage';
 import { PlatformOperatorTasksPage } from '@/pages/platform/PlatformOperatorTasksPage';
+import { PlatformIncidentCloseoutsPage } from '@/pages/platform/PlatformIncidentCloseoutsPage';
 // P13 Operations Cockpit pages
 import { OpsHealthPage } from '@/pages/platform/ops/OpsHealthPage';
 import { OpsErrorsPage } from '@/pages/platform/ops/OpsErrorsPage';
@@ -128,6 +129,14 @@ const router = createBrowserRouter([
               {
                 path: '/platform/operator-tasks',
                 element: <PlatformOperatorTasksPage />,
+              },
+              // P24 Incident + Runbook Closeout route (view, not executor; pointer,
+              // not execution; record, not repair; identity-only super_admin;
+              // closeout + step triage console; never executes / decides / clears
+              // flag / delivers)
+              {
+                path: '/platform/incident-closeouts',
+                element: <PlatformIncidentCloseoutsPage />,
               },
               // P13 Operations Cockpit routes
               { path: '/platform/ops/health', element: <OpsHealthPage /> },

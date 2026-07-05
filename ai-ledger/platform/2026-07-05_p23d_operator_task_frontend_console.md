@@ -108,10 +108,11 @@ MODIFIED (3, purely additive):
 - `frontend/src/components/layout/Sidebar.tsx` (+15, 0): 1 icon import
   (`ClipboardDocumentCheckIcon`) + 1 nav link. No existing link touched.
 
-Diff scope: every changed path is under `frontend/src/` (verified by the
-forbidden-path audit below). Zero `backend/`, migration, `alembic/env`,
-`app.py`, product, package, lockfile, auth, guard, or docs changes. The new
-branch only ADDS frontend files and appends to 3 shared frontend modules.
+Diff scope: every implementation/test path is under `frontend/src/`; the only
+non-frontend path is this ledger under `ai-ledger/platform/`. Zero `backend/`,
+migration, `alembic/env`, `app.py`, product, package, lockfile, auth, guard, or
+docs changes. The new branch only ADDS frontend files and appends to 3 shared
+frontend modules.
 
 ## Tests
 
@@ -160,7 +161,8 @@ Recipe: vitest via a junction-shared `node_modules`
 - detect-secrets: 0 findings on all 8 frontend files; the configured baseline is
   UNTOUCHED. The pre-commit `Detect secrets` hook Passed on the code commit
   (scanned all 8 staged files).
-- Forbidden path/keyword audit: every changed path is under `frontend/src/`
+- Forbidden path/keyword audit: every changed implementation/test path is under
+  `frontend/src/`, and the only non-frontend path is this ledger
   (confirmed by `git diff --name-only origin/platform-dev` +
   `git ls-files --others --exclude-standard`, then filtered). No path contains
   any forbidden segment: `backend/`, `migration`, `alembic`, `package.json`,
@@ -176,9 +178,10 @@ Recipe: vitest via a junction-shared `node_modules`
   the same-worktree run at the base `3ca1343` (9,135 / 27,917 / 572 / 300):
   nodes -1, clusters -1, edges 0, flows 0 - the documented node/cluster wobble;
   same order of magnitude, NOT a stale index passed off as the tip index.
-- `gitnexus status`: re-run after the code commit; up-to-date at the branch tip
-  `cb52d46`. The indexed code graph INCLUDES the P23-D code (the new symbols
-  resolve); it is NOT the base `3ca1343`.
+- `gitnexus status`: re-run after the ledger commit; up-to-date at the final
+  branch tip (ledger SHA reported in chat, not embedded here). The indexed code
+  graph INCLUDES the P23-D code tip `cb52d468` (the new symbols resolve); it is
+  NOT the base `3ca1343`.
 - `gitnexus impact` CLI (`--repo _p23d_2026-07-05`):
   - `PlatformOperatorTasksPage`: impactedCount 0, risk LOW, 0 affected processes,
     0 affected modules. ZERO product-business flows.
@@ -196,9 +199,9 @@ Recipe: vitest via a junction-shared `node_modules`
 - `detect_changes` (MCP): not pursued; with 213 indexed repositories the stdio
   MCP requires disambiguation and is the documented flaky path for large repos.
   The impact CLI is the reliable corroborator (per the repo validation
-  playbook); together with the git diff scope (every path under
-  `frontend/src/`), it establishes platform-only risk with ZERO product-business
-  flows.
+  playbook); together with the git diff scope (implementation/test paths under
+  `frontend/src/`, ledger under `ai-ledger/platform/`), it establishes
+  platform-only risk with ZERO product-business flows.
 
 ## Risk
 

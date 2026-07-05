@@ -5,7 +5,7 @@
 - Branch: `codex/platform-p23c-operator-task-source-materialization-2026-07-05`
 - Base: `origin/platform-dev` @ `58f48884` (merge: P23-B operator task notification queue backend skeleton). P23-B IS merged at this base.
 - Worktree: `_p23c_2026-07-05`.
-- Commits: `e646b671` (code) + this ledger commit.
+- Commits: `e646b671` (code), `9391bfbe` (ledger R0), + an R1 ledger-only revision (see Revision history).
 
 ## Objective
 
@@ -59,24 +59,31 @@ AST guard requires that).
   P23 intake PUSH endpoint. Omitting them here is the honest, safe choice; it is
   not a fabrication and never claims success from unknown data.
 
-## Files (4)
+## Files
 
-- `backend/api/v1/platform/p23/sources.py` (NEW): materialization module -
-  readers, pure source->event mappers (the honesty rules), and `materialize_all`
-  orchestration. Imports only `p19.services` and `p22.source_probe` (both
-  AST-allowed) plus `p23.schemas` / `p23.services`; NO `p22.services` /
-  `p22.adapters` / `p22.governed_execution`, NO sqlalchemy / alembic / psycopg.
+`origin/platform-dev..HEAD` = 5 files = 4 code/test files + this ledger:
+
+- `backend/api/v1/platform/p23/sources.py` (NEW, 360 lines): materialization
+  module - readers, pure source->event mappers (the honesty rules), and
+  `materialize_all` orchestration. Imports only `p19.services` and
+  `p22.source_probe` (both AST-allowed) plus `p23.schemas` / `p23.services`;
+  NO `p22.services` / `p22.adapters` / `p22.governed_execution`, NO
+  sqlalchemy / alembic / psycopg.
 - `backend/api/v1/platform/p23/routes.py` (+36 lines): `Any` + `get_db` +
   `sources` imports, the docstring endpoint line, and the async
   `materialize_route` behind the reused P10 guard.
-- `backend/tests/test_platform_p23_source_materialization.py` (NEW): 42 tests.
+- `backend/tests/test_platform_p23_source_materialization.py` (NEW, 776 lines):
+  42 tests.
 - `backend/tests/test_platform_p23_operator_task_queue.py` (+3 lines): added
   `sources.py` to `_p23_source_files()` so the merged P23-B AST guards cover it.
+- `ai-ledger/platform/2026-07-05_p23c_operator_task_source_materialization.md`
+  (this ledger).
 
-Diff scope: ALL changes are within `backend/api/v1/platform/p23/*` and
-`backend/tests/test_platform_p23_*.py`. Zero `app.py`, migration, `alembic/env`,
-product, frontend, package, or docs changes. The P23 router was already included
-by P23-B; this branch only ADDS a route and a module.
+Diff scope: the 4 code/test files are within `backend/api/v1/platform/p23/*` and
+`backend/tests/test_platform_p23_*.py`; the 5th file is this ledger. Zero
+`app.py`, migration, `alembic/env`, product, frontend, package, or docs changes.
+The P23 router was already included by P23-B; this branch only ADDS a route and
+a module.
 
 ## Tests
 
@@ -107,10 +114,12 @@ shared `.venv`.
 - pytest P23 (new + existing): 84 green.
 - pytest platform regression: 934 green (3 documented pre-existing flakes above).
 - `git diff --check`: clean (only LF -> CRLF Windows-normalization warnings).
-- Added-line ASCII scan on the 4 files: clean (0 non-ASCII lines).
-- detect-secrets: 0 new findings on the 4 files; the configured baseline is
-  UNTOUCHED. The pre-commit `Detect secrets` hook Passed on commit. (One
-  initial Basic-Auth-Credentials false-positive on a redaction-test fixture was
+- Added-line ASCII scan on the 4 code/test files: clean (0 non-ASCII lines).
+  This ledger is also ASCII-clean.
+- detect-secrets: 0 new findings on the 4 code/test files and on this ledger;
+  the configured baseline is UNTOUCHED. The pre-commit `Detect secrets` hook
+  Passed on every commit (it scans all 5 staged files). (One initial
+  Basic-Auth-Credentials false-positive on a redaction-test fixture was
   eliminated by assembling the hostile string at runtime from fragments - the
   documented repo workaround for fake-secret fixtures.)
 - Forbidden path/keyword audit: my path segments (`backend/api/v1/platform/p23/`
@@ -124,10 +133,13 @@ shared `.venv`.
 
 ## GitNexus
 
-- `gitnexus analyze` (worktree, with P23-C changes on disk): 9,101 nodes /
-  27,859 edges / 571 clusters / 300 flows (consistent with the prior platform
-  index band; counts carry the known +/-2-3 wobble).
-- `gitnexus status`: indexed at base commit `58f4888`, up-to-date.
+- `gitnexus analyze --force` (re-run at the branch code tip `9391bfbe`):
+  9,111 nodes / 27,871 edges / 569 clusters / 300 flows. Analyzer variance vs.
+  the earlier run on the same code (9,101 / 27,859 / 571 / 300): nodes +10,
+  edges +12, clusters -2, flows 0 - the documented node/cluster wobble; same
+  order of magnitude, NOT the base index passed off as the tip index.
+- `gitnexus status`: indexed at branch tip `9391bfbe` (= current commit),
+  up-to-date. NOT the base `58f4888`.
 - `gitnexus impact` CLI (`--repo _p23c_2026-07-05`):
   - `materialize_route`: impactedCount 0, risk LOW, 0 processes, 0 modules.
   - `materialize_all`: impactedCount 0, risk LOW, 0 processes, 0 modules.
@@ -163,3 +175,16 @@ None.
 - No product/tenant mutation: the bridge reads only P19 in-memory approvals and
   the read-only `backup.check` probe; it mutates no product / payment / billing
   / inventory / invoice / customer / ledger / tenant-business record.
+
+## Revision history
+
+- R0 (`9391bfbe`): initial P23-C ledger (code commit `e646b671`).
+- R1 (ledger-only, this revision): corrected the GitNexus `status` to the branch
+  code tip `9391bfbe` (= current commit, up-to-date) - it had wrongly read
+  "indexed at base commit 58f4888"; refreshed `gitnexus analyze --force` counts
+  at the tip (9,111 / 27,871 / 569 / 300, with the documented node/cluster
+  wobble); and aligned the file counts to the actual
+  `origin/platform-dev..HEAD` diff (4 code/test files + this ledger = 5 files).
+  No runtime / test / migration change; the index code graph is unchanged, so
+  the impact evidence (LOW / 0 product for `materialize_route`,
+  `materialize_all`, `upsert_task_from_event`) stands.

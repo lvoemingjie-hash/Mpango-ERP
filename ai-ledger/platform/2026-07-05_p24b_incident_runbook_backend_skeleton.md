@@ -41,10 +41,10 @@ merged; P24_CONTRACT_ACCEPTED)
 Commit chain: `8f5164a3` (P24-A merge) -> `5a86bd85` (P24-B implementation skeleton)
 -> `57273b8a` (P24-B docs-only ledger / report commit). The implementation commit
 `5a86bd85` is therefore not the branch tip; the docs-only ledger commit `57273b8a`
-sits on top of it. This ledger text was subsequently revised by a further docs-only
-correction commit on the same branch; per the local non-self-reference convention,
-that correction commit's SHA is reported in chat only and is not embedded in this
-body.
+sits on top of it. This ledger text was subsequently revised by further docs-only
+correction commits on the same branch; per the local non-self-reference convention,
+those correction commits' SHAs are reported in chat only and are not embedded in
+this body.
 
 ## 2. Modified files (exactly the P24-B allowed scope)
 
@@ -190,11 +190,15 @@ P23 regression (seam intact): `test_platform_p23_operator_task_queue.py` (42) +
   session / rbac / product path touched. The 4 AST guard tests in the suite
   enforce the no-execution / no-prior-phase-import / no-persistence invariants
   at test time.
-- **GitNexus** (working-tree analyze at base `8f5164a3`, which includes the P24
-  symbols): `9,393 nodes | 28,767 edges | 588 clusters | 300 flows` -- execution
-  flows STABLE at 300 (P24-B adds in-memory skeleton symbols but executes
-  nothing, so no new product execution flow appears; documented as a band, not a
-  point, per the analyze-count-variance gotcha). status up-to-date at the index.
+- **GitNexus** (working-tree analyze at the current branch tip -- the
+  P24-B-inclusive feature tip, i.e. after P24-B + the ledger corrections, and NOT
+  the pre-P24-B base `8f5164a3`): `9,402 nodes | 28,788 edges | 587 clusters | 300
+  flows` -- execution flows STABLE at 300 (P24-B adds in-memory skeleton symbols
+  but executes nothing, so no new product execution flow appears; documented as a
+  band, not a point, per the analyze-count-variance gotcha). `status` reports
+  indexed commit == current commit == the branch tip; the index is up-to-date at
+  that P24-B-inclusive tip (tip SHA reported in chat only, not embedded here, per
+  the non-self-reference convention).
   `impact` (the reliable CLI corroborator; `detect-changes` is MCP-only and
   unresponsive in this env, as in P24-A / P23-E):
   - `ingest_event` LOW, impactedCount 0, 0 processes / 0 modules.

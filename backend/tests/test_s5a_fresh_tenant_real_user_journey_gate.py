@@ -20,7 +20,7 @@ from api.v1.orders import confirm_order, create_order, fulfill_order, pay_order,
 from api.v1.pricing import SetPriceRequest, set_retailer_price
 from core.config import get_settings
 from core.security import TokenPayload, decode_token, hash_password
-from database.session import AsyncSessionLocal
+from database.session import AsyncSessionLocal, async_engine
 from schemas.auth import LoginRequest, SelectTenantRequest
 from schemas.order import PayOrderRequest, WholesalerOrderCreateRequest
 from scripts.bootstrap_tenant_schema import bootstrap
@@ -353,6 +353,7 @@ async def test_existing_tenant_bootstrap_reconciles_missing_returned_order_statu
 @pytest.mark.asyncio
 async def test_s5a_fresh_tenant_real_user_journey_gate():
     """Fresh tenant supports the MVP user journey against real PostgreSQL."""
+    await async_engine.dispose()
     tenant_id = uuid.uuid4()
     tenant_schema = _tenant_schema(tenant_id)
     tenant_code = f"S5A{tenant_id.hex[:12].upper()}"

@@ -10,24 +10,29 @@ structured error response.
 """
 import pytest
 from hypothesis import given, settings, strategies as st
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
+
+
+async def _post_json(path: str, json: dict):
+    from main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.post(path, json=json)
 
 
 class TestRequestValidation:
     """Property tests for request validation."""
 
-    def test_login_rejects_missing_email(self):
+    @pytest.mark.asyncio
+    async def test_login_rejects_missing_email(self):
         """
         Property 7.1: Login request without email is rejected.
 
         H-Fix-01: tenant_code removed; email + password are required.
         """
-        from main import app
-
-        client = TestClient(app)
-
         # Missing email
-        response = client.post("/api/v1/auth/login", json={
+        response = await _post_json("/api/v1/auth/login", json={
             "password": "password123"
         })
 
@@ -35,17 +40,14 @@ class TestRequestValidation:
         assert response.status_code == 422, \
             f"Missing required field should return 422, got {response.status_code}"
 
-    def test_login_rejects_invalid_email(self):
+    @pytest.mark.asyncio
+    async def test_login_rejects_invalid_email(self):
         """
         Property 7.2: Login request with invalid email is rejected.
 
         Email format validation must be enforced.
         """
-        from main import app
-
-        client = TestClient(app)
-
-        response = client.post("/api/v1/auth/login", json={
+        response = await _post_json("/api/v1/auth/login", json={
             "email": "not-an-email",
             "password": "password123"
         })
@@ -57,17 +59,14 @@ class TestRequestValidation:
         password=st.text(max_size=7)  # Less than min_length=8
     )
     @settings(max_examples=50, deadline=None)
-    def test_login_rejects_short_password(self, password: str):
+    @pytest.mark.asyncio
+    async def test_login_rejects_short_password(self, password: str):
         """
         Property 7.3: Login request with password < 8 chars is rejected.
 
         For any password shorter than 8 characters, validation should fail.
         """
-        from main import app
-
-        client = TestClient(app)
-
-        response = client.post("/api/v1/auth/login", json={
+        response = await _post_json("/api/v1/auth/login", json={
             "email": "test@example.com",
             "password": password
         })

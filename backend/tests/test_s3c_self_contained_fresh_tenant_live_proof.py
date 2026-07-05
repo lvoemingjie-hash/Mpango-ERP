@@ -3,7 +3,7 @@ S3-C: Self-Contained Fresh Tenant Live Runtime Proof.
 
 Creates a UNIQUE tenant schema per run, bootstraps ALL tables via the
 production ``bootstrap_tenant_schema.bootstrap()``, seeds admin user +
-admin role + 37 permissions (matching onboard_tenant.py), issues a
+admin role + permissions from ``onboard_tenant.py``, issues a
 near-real contextual JWT via ``create_contextual_token()``, and verifies
 all 11 core business endpoints return no 401/403/500 against the LIVE
 PostgreSQL database.
@@ -83,7 +83,7 @@ def _fresh_schema_name() -> str:
 
 
 # =========================================================================
-# 37 permissions (exact match with onboard_tenant.py setup_admin)
+# Permissions (exact match with onboard_tenant.py setup_admin)
 # =========================================================================
 
 PERMISSIONS: List[tuple] = [
@@ -112,10 +112,17 @@ PERMISSIONS: List[tuple] = [
     ("skus:read",         "Read SKUs"),
     ("skus:create",       "Create SKUs"),
     ("skus:update",       "Update SKUs"),
-    ("skus:import",       "Import SKUs"),
+    ("skus:import",       "Import SKUs via preview/validate/apply contract"),
+    # --- Data Intake ---
+    ("intake:read", "Read data intake batches"),
+    ("intake:create", "Create data intake batches"),
+    ("intake:update", "Update data intake batches"),
+    ("intake:approve", "Approve data intake batches for ERP import"),
+    ("intake:export", "Export data intake batches"),
+    ("intake:import_to_erp", "Import approved data intake into ERP"),
     # --- Inventory management ---
     ("inventory:read",    "Read inventory"),
-    ("inventory:write",   "Write inventory (legacy)"),
+    ("inventory:write",   "Write inventory (legacy alias)"),
     ("inventory:update",  "Update inventory (adjustments)"),
     # --- Payment management ---
     ("payments:read",     "Read payments"),
@@ -128,15 +135,15 @@ PERMISSIONS: List[tuple] = [
     ("pricing:read",      "Read pricing"),
     ("pricing:write",     "Write pricing"),
     # --- Finance ---
-    ("finance:read",      "View financial summary"),
+    ("finance:read",      "View invoices, receivables, financial summary"),
     # --- Dashboards & Reports ---
-    ("dashboards:read",   "View dashboard KPIs"),
+    ("dashboards:read",   "View dashboard KPIs and charts"),
     ("reports:read",      "Read reports"),
     ("reports:analyze",   "Analyze reports"),
     # --- Exports ---
     ("exports:create",    "Request data exports"),
     # --- System ---
-    ("system:admin",      "Full system administration"),
+    ("system:admin",      "Full system administration (job queues, debug endpoints)"),
     ("metrics:admin",     "Reset application metrics"),
 ]
 
@@ -219,7 +226,7 @@ class TestPermissionConsistencyWithOnboard:
         )
 
     def test_s3c_seed_permission_count(self):
-        """Count check as a fast sanity gate (37 perms expected)."""
+        """Count check as a fast sanity gate against onboard_tenant.py."""
         onboard_codes = _extract_onboard_admin_permission_codes()
         s3c_codes = {code for code, _desc in PERMISSIONS}
         assert len(s3c_codes) == len(onboard_codes), (

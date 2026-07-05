@@ -13,11 +13,13 @@ from urllib.parse import quote_plus
 import pytest
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MIGRATION_017 = BACKEND_DIR / "alembic" / "versions" / "017_retailer_prices.py"
+ALEMBIC_DIR = BACKEND_DIR / "alembic"
 
 
 def _database_url(database: str) -> str:
@@ -106,6 +108,10 @@ def _run_alembic_upgrade_head(database: str) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+def _current_alembic_head() -> str:
+    return ScriptDirectory(str(ALEMBIC_DIR)).get_current_head()
 
 
 def _version_table_state(database: str) -> tuple[int, set[str]]:
@@ -200,7 +206,7 @@ def test_alembic_upgrade_head_creates_wide_version_table_on_fresh_database():
         version_length, versions = _version_table_state(database)
 
         assert version_length >= 128
-        assert "023_inventory_reservations" in versions
+        assert _current_alembic_head() in versions
     finally:
         _drop_database(database)
 
@@ -224,7 +230,7 @@ def test_alembic_upgrade_head_widens_existing_varchar32_version_table():
         version_length, versions = _version_table_state(database)
 
         assert version_length >= 128
-        assert "023_inventory_reservations" in versions
+        assert _current_alembic_head() in versions
     finally:
         _drop_database(database)
 

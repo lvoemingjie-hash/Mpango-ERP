@@ -15,13 +15,15 @@ Test Cases:
 7. reporting_currency_code constant is defined
 """
 import pytest
+import pytest_asyncio
 import uuid
+import os
 from decimal import Decimal
+from urllib.parse import quote_plus
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from database.reporting_session import (
-    _build_reporting_url,
     REPORTING_CURRENCY_CODE,
 )
 
@@ -30,12 +32,29 @@ from database.reporting_session import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
-def reporting_engine(ensure_reporting_user_password):
+
+def _build_test_reporting_url() -> str:
+    password = os.environ.get("REPORTING_USER_PASSWORD")
+    if not password:
+        raise RuntimeError("REPORTING_USER_PASSWORD environment variable must be set")
+    host = os.environ.get("POSTGRES_HOST", "127.0.0.1")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    database = os.environ.get("POSTGRES_DB", "mpango_erp")
+    return (
+        "postgresql+asyncpg://reporting_user:"
+        f"{quote_plus(password)}@{host}:{port}/{database}"
+    )
+
+
+@pytest_asyncio.fixture(scope="module")
+async def reporting_engine(ensure_reporting_user_password):
     """Create a reporting engine for tests."""
-    url = _build_reporting_url()
+    url = _build_test_reporting_url()
     engine = create_async_engine(url, pool_pre_ping=True)
-    yield engine
+    try:
+        yield engine
+    finally:
+        await engine.dispose()
 
 
 @pytest.fixture

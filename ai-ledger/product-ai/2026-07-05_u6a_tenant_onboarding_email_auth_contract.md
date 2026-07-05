@@ -257,6 +257,22 @@ Required states:
 - `cancelled`: customer or support cancelled before activation.
 - `expired`: email was not verified before `expires_at`.
 
+Password hash retention by state:
+
+- `pending_email_verification`: may retain `password_hash` only until `expires_at` plus a short cleanup grace window needed for delayed jobs. It must not be used for login before activation.
+- `email_verified` and `provisioning`: may retain `password_hash` only because provisioning still needs to create the first tenant user. Access remains blocked until `active`.
+- `active`: provisioning must copy the hash into the tenant user row, then clear or replace `tenant_registrations.password_hash` with a non-reversible tombstone marker. The registration table must not remain a second long-term password-hash store.
+- `expired`: cleanup must clear or anonymize `password_hash` immediately when the registration is marked expired, or by a scheduled cleanup job no later than 24 hours after expiry.
+- `cancelled`: cleanup must clear or anonymize `password_hash` in the same transaction that marks the registration cancelled.
+- `failed`: may retain `password_hash` only while retry is allowed. If retry is disabled, manually abandoned, or past the retry TTL, cleanup must clear or anonymize the hash before the row becomes terminal.
+
+Cleanup/anonymization contract:
+
+- Preferred cleanup is setting `password_hash = NULL` if U6-B makes the column nullable after signup.
+- If the column remains non-nullable, replace it with a fixed sentinel such as `CLEARED_AFTER_REGISTRATION_TERMINAL_STATE`, not a reusable password hash.
+- Cleanup must preserve auditability through status, timestamps, and non-sensitive registration metadata, not through retained credential material.
+- Tests must prove pending, expired, cancelled, active, and terminal failed registrations cannot be used as alternate password-hash stores.
+
 Allowed transitions:
 
 - `pending_email_verification` to `email_verified`
@@ -877,7 +893,7 @@ Error codes:
 - `PASSWORD_POLICY_VIOLATION` with 422.
 - `PASSWORD_RESET_RATE_LIMITED` with 429.
 
-### `GET /api/v1/onboarding/status`
+### `POST /api/v1/onboarding/status`
 
 Purpose: report onboarding/provisioning status for a pending registration or active contextual tenant.
 
@@ -889,15 +905,28 @@ Auth options for U6-C decision:
 
 MVP recommendation:
 
-- Accept `registrationId` plus short-lived status token for pre-login states.
+- Accept `registrationId` in the JSON body plus short-lived status token in either the JSON body or an `X-Onboarding-Status-Token` header for pre-login states.
+- Do not accept the pre-login status token in the query string. Query strings are commonly captured in browser history, reverse-proxy logs, analytics, and referrer headers.
 - Accept contextual JWT for active tenant setup checklist states.
 
-Query fields:
+Headers:
+
+| Header | Required | Contract |
+| --- | --- | --- |
+| `X-Onboarding-Status-Token` | pre-login alternative | Short-lived opaque status token. Prefer this header when frontend can set it safely. |
+
+Request fields:
 
 | Field | Type | Required | Contract |
 | --- | --- | --- | --- |
 | `registrationId` | UUID | pre-login only | Registration to check. |
-| `statusToken` | string | pre-login only | Short-lived status token. |
+| `statusToken` | string | pre-login alternative | Short-lived status token when not sent through `X-Onboarding-Status-Token`. |
+
+Forbidden transport:
+
+- `GET /api/v1/onboarding/status?statusToken=...` is explicitly rejected.
+- `POST /api/v1/onboarding/status?statusToken=...` is explicitly rejected.
+- Any implementation that logs or reflects the status token fails the contract.
 
 Success response: `200 OK`.
 
@@ -980,8 +1009,19 @@ Error codes:
 - `POST /api/v1/auth/resend-verification` neutral success and rate limit.
 - `POST /api/v1/auth/forgot-password` neutral success and rate limit.
 - `POST /api/v1/auth/reset-password` success and token failure cases.
-- `GET /api/v1/onboarding/status` pre-login and active-user states.
+- `POST /api/v1/onboarding/status` pre-login and active-user states.
+- Onboarding status token accepted only from JSON body or `X-Onboarding-Status-Token` header.
+- Onboarding status token rejected when sent in query string.
 - Existing `login` and `select-tenant` still pass after activation.
+
+### Credential Cleanup Tests
+
+- Pending registrations retain `password_hash` only until verification or expiry cleanup window.
+- Expired registrations clear or anonymize `password_hash` within the required cleanup window.
+- Cancelled registrations clear or anonymize `password_hash` in the cancellation transaction.
+- Active registrations clear or anonymize registration-level `password_hash` after the tenant user row is created.
+- Terminal failed registrations clear or anonymize `password_hash` after retry is abandoned or retry TTL expires.
+- Cleared/anonymized registration password fields cannot be used for login, reset, provisioning, or hash verification.
 
 ### Browser Smoke
 
@@ -1077,6 +1117,23 @@ Completed validation for this docs-only change:
 - Pre-commit on changed file: passed.
 - `npx gitnexus analyze`: repository indexed successfully.
 - `npx gitnexus status`: up to date at `eac7642`.
+
+## U6-A-R1 Docs-Only Security Correction
+
+R1 correction scope:
+
+- Changed the pre-login onboarding status contract from `GET /api/v1/onboarding/status` with query parameters to `POST /api/v1/onboarding/status` with pre-login status token passed only through JSON body or `X-Onboarding-Status-Token` header.
+- Explicitly rejected status tokens in query strings to avoid browser history, reverse-proxy log, analytics, and referrer leakage.
+- Added `password_hash` cleanup/anonymization rules for pending, active, expired, cancelled, and terminal failed registrations.
+- Added API and credential-cleanup test plan entries for status-token transport and registration-level password-hash cleanup.
+
+R1 validation:
+
+- `git diff --check`: passed with CRLF working-copy warning only.
+- ASCII scan on changed file: passed.
+- Mojibake scan on changed file: passed.
+- Added-line secret-pattern scan: matched only documented field names and security terms; no secret literals.
+- Pre-commit on changed file: passed.
 
 ## U6-A Result
 

@@ -346,7 +346,7 @@ async def test_query_builder_cross_view_metric_raises(async_session: AsyncSessio
 
 
 @pytest.mark.asyncio
-async def test_query_builder_reporting_user_access():
+async def test_query_builder_reporting_user_access(ensure_reporting_user_password):
     """
     Verify the reporting_user can execute queries through the builder.
     """

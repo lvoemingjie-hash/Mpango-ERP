@@ -235,7 +235,7 @@ async def test_receivables_summary_is_realtime(async_session: AsyncSession):
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_mv_sales_daily_accessible_by_reporting_user():
+async def test_mv_sales_daily_accessible_by_reporting_user(ensure_reporting_user_password):
     """
     S6-2: Verify reporting_user can SELECT from mv_sales_daily.
     """

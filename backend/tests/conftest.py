@@ -7,7 +7,7 @@ S5-OPS: Session-scoped event loop and robust async_session fixture to prevent
 """
 import os
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import pytest
 import pytest_asyncio
@@ -55,6 +55,7 @@ def _resolve_test_database_url() -> str:
 # S8-SEC: Load local test env defaults, then resolve the final DB URL.
 _load_test_env_defaults()
 os.environ["DATABASE_URL"] = _resolve_test_database_url()
+os.environ.setdefault("REPORTING_USER_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "postgres"))
 # S5/E1: deterministic tenant context used by tenant-guarded order/ledger tests
 os.environ.setdefault("TEST_TENANT_SCHEMA", "t_test")
 # Generate a deterministic but non-real test SECRET_KEY (passes 32-char + no-weak-substring validation)
@@ -75,6 +76,63 @@ from database.session import AsyncSessionLocal
 
 TEST_TENANT_SCHEMA = os.environ.get("TEST_TENANT_SCHEMA", "t_test")
 TEST_TENANT_ID = os.environ.get("TEST_TENANT_ID", "11111111-1111-1111-1111-111111111111")
+_REPORTING_ROLE_REPAIR_REFUSED = "TEST_REPORTING_ROLE_REPAIR_REFUSED_NON_TEST_DB"
+_REPORTING_ROLE_REPAIR_ALLOWED_HOSTS = {
+    "127.0.0.1",
+    "localhost",
+    "postgres",
+    "mpango_postgres",  # documented local/CI test Postgres service name
+}
+
+
+def _assert_reporting_role_repair_test_db_guard() -> None:
+    if os.environ.get("MPANGO_ENV") != "test":
+        raise RuntimeError(_REPORTING_ROLE_REPAIR_REFUSED)
+
+    database_url = os.environ.get("DATABASE_URL", "")
+    database_url_host = urlparse(database_url).hostname
+    postgres_host = os.environ.get("POSTGRES_HOST")
+    hosts = [database_url_host]
+    if postgres_host:
+        hosts.append(postgres_host)
+
+    if not hosts or any(host not in _REPORTING_ROLE_REPAIR_ALLOWED_HOSTS for host in hosts):
+        raise RuntimeError(_REPORTING_ROLE_REPAIR_REFUSED)
+
+
+@pytest_asyncio.fixture(scope="session")
+async def ensure_reporting_user_password() -> None:
+    """Align local test reporting_user password with REPORTING_USER_PASSWORD."""
+    reporting_password = os.environ.get("REPORTING_USER_PASSWORD")
+    if not reporting_password:
+        return
+    _assert_reporting_role_repair_test_db_guard()
+
+    async with AsyncSessionLocal() as session:
+        try:
+            await session.execute(
+                text("SELECT set_config('mpango.reporting_user_password', :password, false)"),
+                {"password": reporting_password},
+            )
+            await session.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reporting_user') THEN
+                            EXECUTE format(
+                                'ALTER ROLE reporting_user WITH PASSWORD %L',
+                                current_setting('mpango.reporting_user_password')
+                            );
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: str) -> None:

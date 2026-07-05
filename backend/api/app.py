@@ -215,6 +215,16 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(platform_p23_router)
     logger.info("Platform P23 router registered (operator task / notification queue skeleton)")
 
+    # Platform Track P24 -- Incident + Runbook Closeout (non-executing, non-sending
+    # in-memory backend skeleton, P24-B). An incident closeout is a view, not an
+    # executor; a runbook step is a pointer, not an execution; a follow-up task is
+    # a record, not a repair. No P22 action execution, no approval decision, no
+    # incident_active flag mutation, no registry mutation, no notification delivery,
+    # no migration, no frontend, no auth/RBAC rewrite.
+    from api.v1.platform.p24.routes import router as platform_p24_router
+    app.include_router(platform_p24_router)
+    logger.info("Platform P24 router registered (incident + runbook closeout skeleton)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

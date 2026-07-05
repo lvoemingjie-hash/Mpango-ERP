@@ -8,7 +8,8 @@ backend skeleton)
 contract merged; P23 operator task / notification queue A through E merged;
 P22 controlled-execution closeout + first safe governed backup.check action
 merged; P24_CONTRACT_ACCEPTED)
-**Tip commit:** `5a86bd85` -- `feat(P24-B): incident + runbook closeout backend skeleton`
+**Implementation commit:** `5a86bd85` -- `feat(P24-B): incident + runbook closeout backend skeleton`
+**Ledger / report commit:** `57273b8a` -- `docs(P24-B): incident + runbook closeout backend skeleton ledger`
 **Author:** Codex (Claude worker)
 
 > **An incident closeout is a view, not an executor. A runbook step is a pointer,
@@ -30,13 +31,20 @@ merged; P24_CONTRACT_ACCEPTED)
   P24-A merge). Per the worktree-upstream-push gotcha, the branch tracks
   platform-dev locally; the feature push uses `git push -u origin <br>:<br>` (no
   bare `git push`).
-- Single implementation commit on top of base:
+- Single implementation commit on top of base (all runtime + test code):
   - `5a86bd85 feat(P24-B): incident + runbook closeout backend skeleton`
+- Docs-only ledger / report commit on top of the implementation commit:
+  - `57273b8a docs(P24-B): incident + runbook closeout backend skeleton ledger`
 - `origin/platform-dev` is untouched (not merged, not pushed).
   `product-dev-recovered` is untouched. P24-C is not started.
 
-Commit chain: `8f5164a3` (P24-A merge) -> `5a86bd85` (P24-B skeleton). This ledger
-ships in a follow-up commit on the same branch.
+Commit chain: `8f5164a3` (P24-A merge) -> `5a86bd85` (P24-B implementation skeleton)
+-> `57273b8a` (P24-B docs-only ledger / report commit). The implementation commit
+`5a86bd85` is therefore not the branch tip; the docs-only ledger commit `57273b8a`
+sits on top of it. This ledger text was subsequently revised by a further docs-only
+correction commit on the same branch; per the local non-self-reference convention,
+that correction commit's SHA is reported in chat only and is not embedded in this
+body.
 
 ## 2. Modified files (exactly the P24-B allowed scope)
 

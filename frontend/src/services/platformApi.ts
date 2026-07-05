@@ -58,6 +58,14 @@ import type {
   ExecutionRequestQueue,
   ExecutionRequestResponse,
 } from '@/types/platformControlledExecution';
+import type {
+  OperatorMaterializeSummary,
+  OperatorTaskDetail,
+  OperatorTaskListFilters,
+  OperatorTaskQueue,
+  OperatorTaskTransitionRequest,
+  OperatorTaskTransitionResponse,
+} from '@/types/platformOperatorTasks';
 
 const P10_BASE = '/platform/p10';
 const P13_BASE = '/platform/p13';
@@ -67,6 +75,7 @@ const P18_BASE = '/platform/p18';
 const P19_BASE = '/platform/p19';
 const P20_BASE = '/platform/p20';
 const P22_BASE = '/platform/p22';
+const P23_BASE = '/platform/p23';
 
 export const platformService = {
   /** List tenants with optional pagination */
@@ -291,4 +300,98 @@ export const platformService = {
     api.get<BackupCheckSourceRead>(`${P22_BASE}/backup-check/source`, {
       params: tenantId && tenantId.trim() ? { tenant_id: tenantId.trim() } : undefined,
     }),
+
+  // -- P23 Operator Task / Notification Queue (view, not executor; record, not
+  //    delivery) --
+  //
+  // A task is a view, not an executor; a notification is a record, not a
+  // delivery. Every call below is read / triage / record only. None runs a P22
+  // action, decides a P19/P20/P21 approval, mutates a P17 registry field,
+  // delivers a notification on any channel, dispatches a worker, drains a queue,
+  // runs shell / SQL / script, or reads / writes any tenant business / payment /
+  // billing / product record. The actor for every transition is the
+  // authenticated identity-only super_admin token (read in the route); it is
+  // never sent from the request body (no identity spoof), mirroring P20-B-R1 /
+  // P22. Owner is presentation only and grants no new privilege. Materialize is
+  // a manual read/materialize operation; it is NOT a scheduler and NOT a worker.
+  // No X-Platform-Operator secret is sent; these reuse the standard Axios Bearer
+  // token transport, identical to the P10..P22 platform calls above.
+
+  /** P23: list the operator task queue with optional filters (read-only). */
+  listOperatorTasks: (
+    limit = 50,
+    offset = 0,
+    filters?: OperatorTaskListFilters,
+  ) =>
+    api.get<OperatorTaskQueue>(`${P23_BASE}/operator-tasks`, {
+      params: { limit, offset, ...filters },
+    }),
+
+  /** P23: read one task's redacted record, audit history, and notification
+   *  events (read-only; 404 when not found). */
+  getOperatorTask: (taskId: string) =>
+    api.get<OperatorTaskDetail>(`${P23_BASE}/operator-tasks/${taskId}`),
+
+  /** P23-C: manually read the safe source surfaces and materialize tasks through
+   *  the service layer (read-only; NOT a scheduler / worker; executes nothing). */
+  materializeOperatorTasks: () =>
+    api.post<OperatorMaterializeSummary>(
+      `${P23_BASE}/operator-tasks/internal/materialize`,
+    ),
+
+  /** P23: open|waiting_on_* -> acknowledged (state management only). */
+  acknowledgeOperatorTask: (
+    taskId: string,
+    payload: OperatorTaskTransitionRequest = {},
+  ) =>
+    api.post<OperatorTaskTransitionResponse>(
+      `${P23_BASE}/operator-tasks/${taskId}/acknowledge`,
+      payload,
+    ),
+
+  /** P23: set the owner to the authenticated operator (presentation only; grants
+   *  no new privilege; does not change state). */
+  selfAssignOperatorTask: (
+    taskId: string,
+    payload: OperatorTaskTransitionRequest = {},
+  ) =>
+    api.post<OperatorTaskTransitionResponse>(
+      `${P23_BASE}/operator-tasks/${taskId}/self-assign`,
+      payload,
+    ),
+
+  /** P23: -> in_progress (records operator attention only; the action still runs
+   *  through P22). */
+  markOperatorTaskInProgress: (
+    taskId: string,
+    payload: OperatorTaskTransitionRequest = {},
+  ) =>
+    api.post<OperatorTaskTransitionResponse>(
+      `${P23_BASE}/operator-tasks/${taskId}/in-progress`,
+      payload,
+    ),
+
+  /** P23: -> completed. Requires a redacted evidence note OR a linked completed
+   *  id (evidence_ref) AND a closed linked gate; the backend rejects with 409
+   *  (COMPLETE_DENIED_NO_EVIDENCE / COMPLETE_DENIED_GATE_OPEN) otherwise.
+   *  Completing a task records attention only; it executes nothing and does not
+   *  make the completer the P22 executor. */
+  completeOperatorTask: (
+    taskId: string,
+    payload: OperatorTaskTransitionRequest,
+  ) =>
+    api.post<OperatorTaskTransitionResponse>(
+      `${P23_BASE}/operator-tasks/${taskId}/complete`,
+      payload,
+    ),
+
+  /** P23: -> dismissed (removes from the active queue; audit history retained). */
+  dismissOperatorTask: (
+    taskId: string,
+    payload: OperatorTaskTransitionRequest = {},
+  ) =>
+    api.post<OperatorTaskTransitionResponse>(
+      `${P23_BASE}/operator-tasks/${taskId}/dismiss`,
+      payload,
+    ),
 };

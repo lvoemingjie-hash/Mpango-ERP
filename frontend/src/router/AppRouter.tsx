@@ -34,6 +34,7 @@ import { PlatformControlledActionsPage } from '@/pages/platform/PlatformControll
 import { PlatformApprovalsPage } from '@/pages/platform/PlatformApprovalsPage';
 import { PlatformDurableApprovalsPage } from '@/pages/platform/PlatformDurableApprovalsPage';
 import { PlatformControlledExecutionConsolePage } from '@/pages/platform/PlatformControlledExecutionConsolePage';
+import { PlatformOperatorTasksPage } from '@/pages/platform/PlatformOperatorTasksPage';
 // P13 Operations Cockpit pages
 import { OpsHealthPage } from '@/pages/platform/ops/OpsHealthPage';
 import { OpsErrorsPage } from '@/pages/platform/ops/OpsErrorsPage';
@@ -120,6 +121,13 @@ const router = createBrowserRouter([
               {
                 path: '/platform/controlled-execution',
                 element: <PlatformControlledExecutionConsolePage />,
+              },
+              // P23 Operator Task / Notification Queue route (view, not executor;
+              // record, not delivery; identity-only super_admin; triage console;
+              // never executes / decides / delivers)
+              {
+                path: '/platform/operator-tasks',
+                element: <PlatformOperatorTasksPage />,
               },
               // P13 Operations Cockpit routes
               { path: '/platform/ops/health', element: <OpsHealthPage /> },

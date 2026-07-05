@@ -811,7 +811,9 @@ def test_p23_router_has_exactly_the_contract_endpoints():
 def _p23_source_files():
     import api.v1.platform.p23 as pkg
     base = os.path.dirname(pkg.__file__)
-    for name in ("__init__.py", "schemas.py", "services.py", "routes.py"):
+    # P23-C added sources.py to the scanned set so this contract guard covers the
+    # source-materialization bridge too (it lives in the same in-bounds tree).
+    for name in ("__init__.py", "schemas.py", "services.py", "routes.py", "sources.py"):
         path = os.path.join(base, name)
         with open(path, "r", encoding="utf-8") as fh:
             yield path, fh.read()

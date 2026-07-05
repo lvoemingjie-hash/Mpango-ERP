@@ -21,19 +21,21 @@ Endpoints (all behind require_platform_operator):
   POST /api/v1/platform/p23/operator-tasks/{task_id}/complete           ->completed (+ev)
   POST /api/v1/platform/p23/operator-tasks/{task_id}/dismiss            ->dismissed
   POST /api/v1/platform/p23/operator-tasks/internal/intake              typed intake only
+  POST /api/v1/platform/p23/operator-tasks/internal/materialize         P23-C read/materialize
 
 Responses align to docs/ai/PLATFORM_PRODUCT_P23_OPERATOR_TASK_NOTIFICATION_QUEUE_CONTRACT.md
 (P23-A, section 7).
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
+from api.dependencies import get_db
 from api.v1.platform.p10.guard import require_platform_operator
 
-from . import services
+from . import services, sources
 from .schemas import (
     OperatorTaskDetail,
     OperatorTaskIntakeEvent,
@@ -331,3 +333,33 @@ def intake_route(
         # Idempotent replay against an existing active task: not a new resource.
         response.status_code = status.HTTP_200_OK
     return result
+
+
+# -- P23-C source materialization (manual read/materialize; NOT a scheduler) ---
+
+
+@router.post(
+    "/internal/materialize",
+    response_model=sources.MaterializeSummary,
+)
+async def materialize_route(
+    request: Request,
+    db: Any = Depends(get_db),
+    _platform_auth: None = Depends(require_platform_operator),
+) -> sources.MaterializeSummary:
+    """P23-C: manually read the safe platform source surfaces and materialize
+    operator tasks through the P23 service layer. READ-ONLY.
+
+    Reads P19 in-memory approvals and the P22-E3 read-only backup.check source
+    probe, maps them to typed, redacted intake events, and feeds them -- and only
+    them -- through ``upsert_task_from_event``. The response summarizes per-source
+    read / created / deduped / skipped / unavailable counts and the task ids
+    touched. This is a manual read/materialize operation: it is NOT a scheduler,
+    NOT a worker, executes nothing, approves nothing, delivers nothing, and
+    mutates no product / tenant business data.
+
+    ``db`` is the async session the backup.check probe reads through; it is typed
+    ``Any`` so the P23 source tree stays free of a direct sqlalchemy import (a
+    static AST guard requires that).
+    """
+    return await sources.materialize_all(db)

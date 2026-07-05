@@ -46,7 +46,7 @@ EXPECTED_MVP_TABLES = {
     "import_runs",
 }
 
-# Complete 36-permission set (mirrors seed_test_tenant.py)
+# Complete permission set (mirrors seed_test_tenant.py)
 U1R1_PERMISSION_CODES: list[tuple[str, str]] = [
     # ── User management ──
     ("users:read", "Read users"),
@@ -73,6 +73,14 @@ U1R1_PERMISSION_CODES: list[tuple[str, str]] = [
     ("skus:read", "Read SKUs"),
     ("skus:create", "Create SKUs"),
     ("skus:update", "Update SKUs"),
+    ("skus:import", "Import SKUs via preview/validate/apply contract"),
+    # -- Data Intake (U4 foundation: U4-C exposes workspace routes) --
+    ("intake:read", "Read data intake batches"),
+    ("intake:create", "Create data intake batches"),
+    ("intake:update", "Update data intake batches"),
+    ("intake:approve", "Approve data intake batches for ERP import"),
+    ("intake:export", "Export data intake batches"),
+    ("intake:import_to_erp", "Import approved data intake into ERP"),
     # ── Inventory management ──
     ("inventory:read", "Read inventory"),
     ("inventory:write", "Write inventory (legacy alias)"),
@@ -585,6 +593,7 @@ class TestBootstrapIdempotency:
 # Endpoints that work reliably with the test-session monkeypatch approach.
 _SIDEBAR_ENDPOINTS_MERGE_GRADE = [
     ("GET", "/api/v1/retailers", "Customers"),
+    ("GET", "/api/v1/dashboards/kpi/summary", "Dashboard"),
 ]
 
 # Endpoints that fail due to pre-existing platform limitations:
@@ -597,7 +606,6 @@ _SIDEBAR_ENDPOINTS_PLATFORM_DIAGNOSTIC = [
     ("GET", "/api/v1/orders", "Orders"),
     ("GET", "/api/v1/skus", "Products/SKUs"),
     ("GET", "/api/v1/inventory/stocks", "Stock"),
-    ("GET", "/api/v1/dashboards/kpi/summary", "Dashboard"),
     ("GET", "/api/v1/payments", "Payments"),
     ("GET", "/api/v1/pricing/prices", "Pricing"),
 ]
@@ -671,7 +679,7 @@ class _U1R1NonSuperAdminToken:
 
 
 def _build_admin_role_with_permissions() -> _MockRole:
-    """Build a mock role containing all 36 bootstrap permissions."""
+    """Build a mock role containing all bootstrap permissions."""
     perm_objects = [
         _MockPermission(code=code) for code, _desc in U1R1_PERMISSION_CODES
     ]
@@ -679,7 +687,7 @@ def _build_admin_role_with_permissions() -> _MockRole:
 
 
 class _U1R1AdminMockUser:
-    """Mock user whose admin role holds all 36 seed permissions.
+    """Mock user whose admin role holds all seed permissions.
 
     Used with is_super_admin=False to prove the admin role can pass
     RequirePermission checks without super-admin bypass.
@@ -727,9 +735,9 @@ class TestSidebarApiSmoke:
     ):
         """Each sidebar endpoint must return HTTP 200 on an empty tenant.
         Must NOT return 403 (permission denied) or 500 (server error)."""
-        pytest.importorskip("httpx", reason="httpx required for TestClient")
+        pytest.importorskip("httpx", reason="httpx required for ASGITransport")
 
-        from fastapi.testclient import TestClient
+        from httpx import ASGITransport, AsyncClient
         from main import app
         from api.middleware import rbac as rbac_module
         from api.dependencies import get_tenant_db_session, get_current_user_context
@@ -775,15 +783,15 @@ class TestSidebarApiSmoke:
         app.dependency_overrides[get_tenant_db_session] = _session_override
         app.dependency_overrides[get_current_user_context] = _token_override
 
-        client = TestClient(app, raise_server_exceptions=False)
-
         try:
-            if method == "GET":
-                response = client.get(path)
-            elif method == "POST":
-                response = client.post(path, json={})
-            else:
-                response = client.request(method, path)
+            transport = ASGITransport(app=app, raise_app_exceptions=False)
+            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+                if method == "GET":
+                    response = await client.get(path)
+                elif method == "POST":
+                    response = await client.post(path, json={})
+                else:
+                    response = await client.request(method, path)
 
             assert response.status_code == 200, (
                 f"{label} ({method} {path}) returned {response.status_code}, "
@@ -841,9 +849,9 @@ class TestSidebarApiSmokePlatformDiagnostic:
         """Same as test_sidebar_endpoint_returns_200 but for endpoints with
         known platform issues. Marked xfail(strict=True) so regressions
         in the platform layer will be caught."""
-        pytest.importorskip("httpx", reason="httpx required for TestClient")
+        pytest.importorskip("httpx", reason="httpx required for ASGITransport")
 
-        from fastapi.testclient import TestClient
+        from httpx import ASGITransport, AsyncClient
         from main import app
         from api.middleware import rbac as rbac_module
         from api.dependencies import get_tenant_db_session, get_current_user_context
@@ -874,15 +882,15 @@ class TestSidebarApiSmokePlatformDiagnostic:
         app.dependency_overrides[get_tenant_db_session] = lambda r: session
         app.dependency_overrides[get_current_user_context] = lambda r: _U1R1FakeToken()
 
-        client = TestClient(app, raise_server_exceptions=False)
-
         try:
-            if method == "GET":
-                response = client.get(path)
-            elif method == "POST":
-                response = client.post(path, json={})
-            else:
-                response = client.request(method, path)
+            transport = ASGITransport(app=app, raise_app_exceptions=False)
+            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+                if method == "GET":
+                    response = await client.get(path)
+                elif method == "POST":
+                    response = await client.post(path, json={})
+                else:
+                    response = await client.request(method, path)
 
             assert response.status_code == 200, (
                 f"{label} ({method} {path}) returned {response.status_code}, "
@@ -917,7 +925,7 @@ class TestSidebarApiSmokeNonSuperAdmin:
 
     2. **Direct RBAC-path proof** (test_admin_with_perms_passes_requirement):
        Instantiates RequirePermission("retailers:read") directly, provides
-       a non-super-admin token + mock user whose admin role holds all 36
+       a non-super-admin token + mock user whose admin role holds all
        seed permissions, and calls __call__().  The call returns the token
        (no HTTPException).  This proves the full permission-check path
        (lines 55-75 of rbac.py) works WITHOUT the super-admin bypass on
@@ -979,12 +987,12 @@ class TestSidebarApiSmokeNonSuperAdmin:
             rbac_module.get_tenant_context = orig_tenant
 
     # ------------------------------------------------------------------
-    # Proof B — Direct RBAC path: admin with 36 perms → passes
+    # Proof B — Direct RBAC path: admin with seeded perms → passes
     # ------------------------------------------------------------------
 
     @pytest.mark.asyncio
     async def test_admin_with_perms_passes_requirement(self):
-        """Admin user with all 36 permissions passes RequirePermission.
+        """Admin user with all seeded permissions passes RequirePermission.
 
         Direct RBAC-path proof — no TestClient, no event-loop issues.
         Exercises lines 55-75 of api/middleware/rbac.py:

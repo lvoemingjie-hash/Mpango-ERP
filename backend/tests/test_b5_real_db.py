@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 import unittest
+import uuid
 
 # Ensure backend root is in path for imports (same pattern as existing tests)
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -103,13 +104,8 @@ class TestB5RealDB(unittest.TestCase):
         ], capture_output=True)
 
     def test_cash_payment(self):
-        """TEST A: Cash payment should reduce outstanding balance."""
+        """TEST A: Legacy payment endpoint is disabled for cash writes."""
         print("\n=== TEST A: Cash Payment ===")
-
-        balance_before = get_binding_balance()
-        count_before = get_payments_count()
-        print(f"Balance before: {balance_before}")
-        print(f"Payments count before: {count_before}")
 
         resp = self.client.post(
             "/api/v1/payments",
@@ -123,103 +119,21 @@ class TestB5RealDB(unittest.TestCase):
         print(f"Status: {resp.status_code}")
         print(f"Response: {resp.json()}")
 
-        self.assertEqual(resp.status_code, 201)
-
-        balance_after = get_binding_balance()
-        count_after = get_payments_count()
-        print(f"Balance after: {balance_after}")
-        print(f"Payments count after: {count_after}")
-
-        self.assertEqual(balance_after, balance_before - 40)
-        self.assertEqual(count_after, count_before + 1)
-        print("✅ Cash payment PASSED")
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn("PAYMENT_WRITE_PATH_DISABLED", str(resp.json()))
 
     def test_transfer_payment_first(self):
-        """TEST B: Transfer payment (first) should reduce balance."""
+        """TEST B: Legacy payment endpoint is disabled for transfer writes."""
         print("\n=== TEST B: Transfer Payment (First) ===")
 
-        balance_before = get_binding_balance()
-        count_before = get_payments_count()
-        print(f"Balance before: {balance_before}")
-        print(f"Payments count before: {count_before}")
-
         resp = self.client.post(
             "/api/v1/payments",
-            headers={"X-Idempotency-Key": "tx-001"},
+            headers={"X-Idempotency-Key": f"legacy-disabled-{uuid.uuid4()}"},
             json={
                 "order_id": ORDER_ID,
                 "amount": 30,
                 "method": "transfer",
-                "transaction_id": "TX001"
-            }
-        )
-
-        print(f"Status: {resp.status_code}")
-        print(f"Response: {resp.json()}")
-
-        self.assertEqual(resp.status_code, 201)
-
-        balance_after = get_binding_balance()
-        count_after = get_payments_count()
-        print(f"Balance after: {balance_after}")
-        print(f"Payments count after: {count_after}")
-
-        self.assertEqual(balance_after, balance_before - 30)
-        self.assertEqual(count_after, count_before + 1)
-        print("✅ Transfer payment (first) PASSED")
-
-    def test_idempotent_replay(self):
-        """TEST C: Idempotent replay should not create new payment."""
-        print("\n=== TEST C: Idempotent Replay ===")
-
-        balance_before = get_binding_balance()
-        count_before = get_payments_count()
-        print(f"Balance before: {balance_before}")
-        print(f"Payments count before: {count_before}")
-
-        resp = self.client.post(
-            "/api/v1/payments",
-            headers={"X-Idempotency-Key": "tx-001"},
-            json={
-                "order_id": ORDER_ID,
-                "amount": 30,
-                "method": "transfer",
-                "transaction_id": "TX001"
-            }
-        )
-
-        print(f"Status: {resp.status_code}")
-        print(f"Response: {resp.json()}")
-
-        self.assertEqual(resp.status_code, 201)
-
-        balance_after = get_binding_balance()
-        count_after = get_payments_count()
-        print(f"Balance after: {balance_after}")
-        print(f"Payments count after: {count_after}")
-
-        # Balance and count should NOT change on replay
-        self.assertEqual(balance_after, balance_before)
-        self.assertEqual(count_after, count_before)
-        print("✅ Idempotent replay PASSED")
-
-    def test_idempotency_violation(self):
-        """TEST D: Same tx_id, different amount should return 409."""
-        print("\n=== TEST D: Idempotency Violation ===")
-
-        balance_before = get_binding_balance()
-        count_before = get_payments_count()
-        print(f"Balance before: {balance_before}")
-        print(f"Payments count before: {count_before}")
-
-        resp = self.client.post(
-            "/api/v1/payments",
-            headers={"X-Idempotency-Key": "tx-001"},
-            json={
-                "order_id": ORDER_ID,
-                "amount": 35,  # Different amount!
-                "method": "transfer",
-                "transaction_id": "TX001"
+                "transaction_id": f"TX-{uuid.uuid4()}"
             }
         )
 
@@ -227,16 +141,48 @@ class TestB5RealDB(unittest.TestCase):
         print(f"Response: {resp.json()}")
 
         self.assertEqual(resp.status_code, 409)
+        self.assertIn("PAYMENT_WRITE_PATH_DISABLED", str(resp.json()))
 
-        balance_after = get_binding_balance()
-        count_after = get_payments_count()
-        print(f"Balance after: {balance_after}")
-        print(f"Payments count after: {count_after}")
+    def test_idempotent_replay(self):
+        """TEST C: Disabled legacy path returns before legacy write behavior."""
+        print("\n=== TEST C: Idempotent Replay ===")
 
-        # Balance and count should NOT change
-        self.assertEqual(balance_after, balance_before)
-        self.assertEqual(count_after, count_before)
-        print("✅ Idempotency violation PASSED")
+        resp = self.client.post(
+            "/api/v1/payments",
+            json={
+                "order_id": ORDER_ID,
+                "amount": 30,
+                "method": "transfer",
+                "transaction_id": f"TX-{uuid.uuid4()}"
+            }
+        )
+
+        print(f"Status: {resp.status_code}")
+        print(f"Response: {resp.json()}")
+
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn("PAYMENT_WRITE_PATH_DISABLED", str(resp.json()))
+
+    def test_idempotency_violation(self):
+        """TEST D: Legacy path remains disabled for conflicting writes too."""
+        print("\n=== TEST D: Idempotency Violation ===")
+
+        resp = self.client.post(
+            "/api/v1/payments",
+            headers={"X-Idempotency-Key": f"legacy-disabled-{uuid.uuid4()}"},
+            json={
+                "order_id": ORDER_ID,
+                "amount": 35,  # Different amount!
+                "method": "transfer",
+                "transaction_id": f"TX-{uuid.uuid4()}"
+            }
+        )
+
+        print(f"Status: {resp.status_code}")
+        print(f"Response: {resp.json()}")
+
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn("PAYMENT_WRITE_PATH_DISABLED", str(resp.json()))
 
 
 if __name__ == "__main__":

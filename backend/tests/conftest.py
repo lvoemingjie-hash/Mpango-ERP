@@ -71,7 +71,7 @@ from typing import AsyncGenerator
 from sqlalchemy import text, event
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.session import AsyncSessionLocal
+from database.session import AsyncSessionLocal, async_engine
 
 
 TEST_TENANT_SCHEMA = os.environ.get("TEST_TENANT_SCHEMA", "t_test")
@@ -133,6 +133,13 @@ async def ensure_reporting_user_password() -> None:
         except Exception:
             await session.rollback()
             raise
+    await async_engine.dispose()
+    try:
+        from database.reporting_session import reporting_engine
+
+        await reporting_engine.dispose()
+    except ImportError:
+        pass
 
 
 async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: str) -> None:
@@ -478,19 +485,18 @@ async def async_session() -> AsyncGenerator[AsyncSession, None]:
     - Session is always rolled back + closed, even on unhandled exceptions
     - Event loop stays alive across the full test suite (session-scoped loop)
     """
-    async with AsyncSessionLocal() as session:
-        tenant_schema = TEST_TENANT_SCHEMA
-        tenant_id = TEST_TENANT_ID
+    tenant_schema = TEST_TENANT_SCHEMA
+    tenant_id = TEST_TENANT_ID
 
-        # Store tenant info on the session for middleware / helpers
-        session.info["tenant_schema"] = tenant_schema
-        session.info["tenant_id"] = tenant_id
+    async with AsyncSessionLocal() as setup_session:
+        setup_session.info["tenant_schema"] = tenant_schema
+        setup_session.info["tenant_id"] = tenant_id
 
         # Ensure schema + S5 tables/types/triggers exist (idempotent)
-        await _bootstrap_tenant_test_schema(session, tenant_schema)
+        await _bootstrap_tenant_test_schema(setup_session, tenant_schema)
 
         # Hard test isolation: remove S5 state machine / ledger rows per test
-        await session.execute(
+        await setup_session.execute(
             text(
                 f'TRUNCATE TABLE "{tenant_schema}".order_items, '
                 f'"{tenant_schema}".payments, '
@@ -499,7 +505,16 @@ async def async_session() -> AsyncGenerator[AsyncSession, None]:
                 "RESTART IDENTITY CASCADE"
             )
         )
-        await session.commit()
+        await setup_session.commit()
+
+    # DDL/truncation can invalidate asyncpg prepared statements. Yield a fresh
+    # test session so cached setup plans cannot leak into assertions.
+    await async_engine.dispose()
+
+    async with AsyncSessionLocal() as session:
+        # Store tenant info on the session for middleware / helpers
+        session.info["tenant_schema"] = tenant_schema
+        session.info["tenant_id"] = tenant_id
 
         # --- search_path helper -------------------------------------------
         async def _set_search_path(sess: AsyncSession) -> None:

@@ -3,7 +3,7 @@
 Date: 2026-07-06
 Branch: `opencode/u6c-signup-email-verification-skeleton-2026-07-06`
 Base: `origin/product-dev-recovered` at `4b0f8d74 merge: U6-B tenant onboarding schema contract`
-Verdict: `PASS_FOR_CTO_U6C_REVIEW_PENDING_POST_COMMIT_GITNEXUS`
+Verdict: `PASS_FOR_CTO_U6C_REVIEW`
 
 ## Scope
 
@@ -84,10 +84,11 @@ Environment note:
 - Windows shell test runs loaded local Docker Postgres credentials into process env without printing them.
 - Test env used `POSTGRES_HOST=127.0.0.1`, `POSTGRES_DB=mpango_erp`, `MPANGO_ENV=test`, and `REDIS_URL=redis://127.0.0.1:6379/0`.
 
-Pending:
+Post-commit checks:
 
-- Commit.
-- GitNexus analyze/status after commit.
+- Commit: `253fc418 feat(U6-C): add signup email verification skeleton`.
+- GitNexus analyze: passed, repository indexed successfully with 6,457 nodes, 18,385 edges, 422 clusters, and 225 flows.
+- GitNexus status: up to date at commit `253fc41`.
 
 ## Result
 

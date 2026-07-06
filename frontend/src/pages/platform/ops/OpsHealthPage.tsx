@@ -6,6 +6,13 @@
  * Unknown != healthy; no mutation paths.
  */
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  ExclamationTriangleIcon,
+  ClockIcon,
+  CpuChipIcon,
+  SignalIcon,
+} from '@heroicons/react/24/outline';
 import { usePlatformStore } from '@/stores/platformStore';
 import { platformService } from '@/services/platformApi';
 import { PlatformStatusBadge } from '@/components/platform/PlatformStatusBadge';
@@ -13,6 +20,18 @@ import { PlatformMetricCard } from '@/components/platform/PlatformMetricCard';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { displayCount } from '@/types/platform';
+
+/**
+ * Read-only operations drill-downs not surfaced in the Sidebar. The Ops
+ * Cockpit is the operator hub for these views; each link targets an existing
+ * as-built ops route (no new capability). Navigation only -- no mutation path.
+ */
+const OPS_VIEW_LINKS = [
+  { to: '/platform/ops/errors', label: 'Ops Errors', icon: ExclamationTriangleIcon, description: 'Recent error classes and counts' },
+  { to: '/platform/ops/slow-routes', label: 'Slow Routes', icon: ClockIcon, description: 'Routes exceeding the latency threshold' },
+  { to: '/platform/ops/resources', label: 'Resources', icon: CpuChipIcon, description: 'Database, queue, and runtime resources' },
+  { to: '/platform/ops/noisy-neighbors', label: 'Noisy Neighbors', icon: SignalIcon, description: 'Tenants disproportionately using capacity' },
+] as const;
 
 export function OpsHealthPage() {
   const {
@@ -139,6 +158,26 @@ export function OpsHealthPage() {
           </div>
         </>
       ) : null}
+
+      {/* Operations views -- hub links to read-only ops routes not in the Sidebar */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">Operations Views</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {OPS_VIEW_LINKS.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="group flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:bg-gray-50"
+            >
+              <item.icon className="h-6 w-6 shrink-0 text-gray-400 group-hover:text-gray-500" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-medium text-gray-900 group-hover:text-gray-700">{item.label}</p>
+                <p className="mt-0.5 text-xs text-gray-500">{item.description}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

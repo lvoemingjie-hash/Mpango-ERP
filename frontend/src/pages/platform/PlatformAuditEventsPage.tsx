@@ -6,6 +6,7 @@
  * No write actions.
  */
 import { useEffect, useState } from 'react';
+import { ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 import { usePlatformStore } from '@/stores/platformStore';
 import { platformService } from '@/services/platformApi';
 import { PlatformAuditEventRow } from '@/components/platform/PlatformAuditEventRow';
@@ -68,6 +69,7 @@ export function PlatformAuditEventsPage() {
         </div>
       ) : auditEvents.length === 0 ? (
         <EmptyState
+          icon={ClipboardDocumentListIcon}
           title="No audit events"
           description="No platform audit events have been recorded yet."
         />

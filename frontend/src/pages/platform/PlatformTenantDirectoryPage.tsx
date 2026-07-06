@@ -6,6 +6,7 @@
  * No write actions. No business data display.
  */
 import { useEffect } from 'react';
+import { BuildingOfficeIcon } from '@heroicons/react/24/outline';
 import { usePlatformStore } from '@/stores/platformStore';
 import { platformService } from '@/services/platformApi';
 import { PlatformTenantCard } from '@/components/platform/PlatformTenantCard';
@@ -64,6 +65,7 @@ export function PlatformTenantDirectoryPage() {
         </div>
       ) : tenants.length === 0 ? (
         <EmptyState
+          icon={BuildingOfficeIcon}
           title="No tenants found"
           description="No tenants are registered in the platform yet."
         />

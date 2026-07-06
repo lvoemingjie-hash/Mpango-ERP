@@ -11,6 +11,8 @@
  * results (pass / skip-with-reason / fail) and records defects for a later,
  * separately approved fix slice; it never fixes a defect inline.
  */
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { type ReactNode } from 'react';
 import { render } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -85,37 +87,78 @@ export const PLATFORM_ROUTES: PlatformRouteEntry[] = [
 export const SIDEBAR_ROUTES = PLATFORM_ROUTES.filter((r) => r.sidebarPath !== null);
 
 /**
- * Routes whose empty-state render currently CRASHES (recorded defect D2:
- * PlatformAuditEventsPage and PlatformTenantDirectoryPage call <EmptyState>
- * without the REQUIRED `icon` prop, so the page throws on any render that
- * reaches the empty branch -- including the initial mount before data lands).
+ * Routes used by the state / copy / forbidden sweeps.
  *
- * P25-B RECORDS this defect; it does not fix it (a harness, not a fix slice).
- * These routes are excluded from the state/copy/forbidden sweeps (which assert
- * a non-crashing render) and covered by explicit defect-assertion tests in
- * P25_RecordedDefects.test.tsx that turn red once the defect is fixed.
+ * P25-C resolved defect D2 (EmptyState now carries its required `icon` prop on
+ * PlatformAuditEventsPage and PlatformTenantDirectoryPage), so the empty-state
+ * render no longer crashes and EVERY route is swept (19/19).
  */
-const DEFECT_D2_PATHS = new Set(['/platform/audit', '/platform/tenants']);
-export const DEFECT_EMPTY_CRASH_ROUTES = PLATFORM_ROUTES.filter((r) =>
-  DEFECT_D2_PATHS.has(r.path),
-);
-/** Routes used by the state / copy / forbidden sweeps (19 minus the D2 defect routes). */
-export const SWEEP_ROUTES = PLATFORM_ROUTES.filter((r) => !DEFECT_D2_PATHS.has(r.path));
+export const SWEEP_ROUTES = PLATFORM_ROUTES;
+
+// -- Reachability scan (D1) ------------------------------------------------
+//
+// A route is REACHABLE when it has a Sidebar link OR an in-app <Link> from a
+// platform page/component. This reads the same closed source set the as-built
+// surface ships (pages + components, no tests), so the URL_ONLY_ROUTES list is
+// EMPTY once every route is genuinely navigable and turns non-empty the moment
+// a reachability link is removed -- the D1 test in P25_RecordedDefects goes
+// RED if reachability regresses.
+
+const PLATFORM_SRC_ROOT = resolve(process.cwd(), 'src/pages/platform');
+const PLATFORM_COMPONENT_ROOT = resolve(process.cwd(), 'src/components/platform');
+
+/** Concatenate every shipped platform page + component source (.tsx, no tests). */
+function readAllPlatformSource(): string {
+  const dirs = [PLATFORM_SRC_ROOT, resolve(PLATFORM_SRC_ROOT, 'ops'), PLATFORM_COMPONENT_ROOT];
+  let acc = '';
+  for (const d of dirs) {
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(d);
+    } catch {
+      continue;
+    }
+    for (const f of entries) {
+      if (f.endsWith('.tsx') && !f.includes('.test.')) {
+        try {
+          acc += readFileSync(resolve(d, f), 'utf-8');
+        } catch {
+          /* ignore an unreadable entry */
+        }
+      }
+    }
+  }
+  return acc;
+}
+
+const PLATFORM_SOURCE = readAllPlatformSource();
 
 /**
- * Routes with NO sidebar link and NO in-app <Link> from any platform page (7).
- * These are reachable only by direct URL today. (Of the 9 non-sidebar routes,
- * tenant-health is linked from the tenant-directory card and /platform/tenants
- * has a back-link from tenant-health; functionally 9 of 19 routes are not
- * sidebar-reachable.) Recorded as defect D1 (navigation reachability gap) for
- * a later, separately approved fix slice -- not fixed inline by P25-B.
+ * Reachable = Sidebar link (sidebarPath !== null) OR an in-app <Link>. A static
+ * path appears as a link target in either idiom -- the JSX attribute
+ * `to="<path>"` or an object-key `to: '<path>'` fed into `<Link to={item.to}>`
+ * -- but NOT as an AppRouter `path:` declaration. The parameterized
+ * tenant-health route appears as a template literal in PlatformTenantCard.
  */
-export const URL_ONLY_ROUTES = PLATFORM_ROUTES.filter(
-  (r) =>
-    r.sidebarPath === null &&
-    r.path !== '/platform/tenants/:tenantId/health' &&
-    r.path !== '/platform/tenants',
-);
+function linkTargetRe(path: string): RegExp {
+  const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`to[:=]\\s*['"]${escaped}['"]`);
+}
+
+export function routeIsReachable(r: PlatformRouteEntry): boolean {
+  if (r.sidebarPath !== null) return true;
+  if (r.path.includes(':')) {
+    return PLATFORM_SOURCE.includes('`/platform/tenants/${');
+  }
+  return linkTargetRe(r.path).test(PLATFORM_SOURCE);
+}
+
+/**
+ * Routes with NO Sidebar link and NO in-app <Link> -- reachable only by direct
+ * URL. EMPTY once P25-C hub links make every route navigable; non-empty the
+ * moment a reachability link is removed.
+ */
+export const URL_ONLY_ROUTES = PLATFORM_ROUTES.filter((r) => !routeIsReachable(r));
 
 // -- Identity fixtures -----------------------------------------------------
 

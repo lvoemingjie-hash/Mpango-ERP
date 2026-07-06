@@ -1,13 +1,15 @@
-# P25-B Platform Frontend Customer-Readiness Validation Harness
+# P25 Platform Frontend Customer-Readiness Validation Harness
 
-**Phase:** P25-B Platform Frontend Customer-Readiness Validation Harness
+**Phase:** P25-B (harness) + P25-C (defect fix slice)
 **Date:** 2026-07-06
-**Base:** `48ddda4` (origin/platform-dev -- P25-A contract merged)
-**Branch:** `codex/platform-p25b-platform-frontend-readiness-validation-2026-07-06`
-**Scope:** non-shipping, non-merging frontend validation/smoke harness over the as-built
-P10-P24 platform surface. It adds NO capability, NO route, NO backend, NO migration. It
-records results and records defects for a later, separately approved fix slice; it never
-fixes a defect inline (contract section 6.8 / section 9).
+**Base:** `5687e7d4` (origin/platform-dev -- P25-B harness merged)
+**Branch:** `codex/platform-p25c-customer-readiness-defect-fix-2026-07-06`
+**Scope:** non-shipping frontend validation/smoke harness over the as-built P10-P24 platform
+surface, plus the P25-C fix slice for the two defects P25-B recorded. The fix slice is
+frontend-only navigation + render-safety: it adds NO capability, NO route, NO backend, NO
+migration. P25-B recorded D1/D2 and turned a blind eye; P25-C is the separately approved fix
+slice that resolves them and tightens the harness to GUARD the fix (green while it holds, red
+the moment a defect regresses).
 
 This harness is the P25-A section 9 P25-B gate: a Playwright-equivalent harness that, where
 no runnable browser stack exists, exercises the `PlatformRoute` guard and the page components
@@ -20,23 +22,28 @@ captures the section 4 matrix per route, and writes the section 6 evidence set.
 
 ```bash
 # from the frontend/ directory (node_modules junction'd from a sibling checkout)
-node_modules/.bin/vitest run src/tests/p25            # the P25-B harness only (158 tests)
-node_modules/.bin/vitest run                          # full frontend suite (580 tests)
+node_modules/.bin/vitest run src/pages/platform/__tests__/p25   # the P25 harness only (173 tests)
+node_modules/.bin/vitest run                                    # full frontend suite (595 tests)
 ```
 
-The harness is 8 files under `frontend/src/tests/p25/`:
+The harness is 8 test files + a shared helper under `frontend/src/pages/platform/__tests__/p25/`:
 
 | file | dimension (section 4) | tests |
 | --- | --- | --- |
-| `__helpers__/readiness.tsx` | shared route table, fixtures, leak scanner, render harness | -- |
+| `__helpers__/readiness.tsx` | shared route table, fixtures, leak scanner, render harness, reachability scan | -- |
 | `P25_RouteInventory.test.tsx` | dim 1 smoke / closed-set grounding (C11/C12) | 6 |
 | `P25_GuardMatrix.test.tsx` | dim 2 login / admit + deny (section 3.6; C13) | 5 |
 | `P25_SidebarNav.test.tsx` | dims 3 + 8 navigation + active highlight (AC 9) | 14 |
-| `P25_StateMatrix.test.tsx` | dims 4/5/6 empty / loading / error (AC 5/6/7; C9/C10) | 51 |
-| `P25_CopySafety.test.tsx` | dim 9 copy / never-leaked (AC 11; C20) | 51 |
+| `P25_StateMatrix.test.tsx` | dims 4/5/6 empty / loading / error (AC 5/6/7; C9/C10) | 57 |
+| `P25_CopySafety.test.tsx` | dim 9 copy / never-leaked (AC 11; C20) | 57 |
 | `P25_ConsoleConsistency.test.tsx` | dim 11 tone consistency (AC 13/14/15; C14/C15/C17) | 10 |
-| `P25_ForbiddenControls.test.tsx` | dim 12 no forbidden control (AC 17; C19) | 18 |
-| `P25_RecordedDefects.test.tsx` | recorded defects D1/D2 (section 6.8) | 3 |
+| `P25_ForbiddenControls.test.tsx` | dim 12 no forbidden control (AC 17; C19) | 20 |
+| `P25_RecordedDefects.test.tsx` | resolved-defect GUARDS D1/D2 (section 6.8; P25-C) | 4 |
+
+The P25-C deltas versus P25-B: D2 routes (/platform/audit, /platform/tenants) rejoin the
+state/copy/forbidden sweeps now that their `EmptyState` renders (+6 state, +6 copy, +2
+forbidden), and the recorded-defect file was reshaped from 3 "expect-throw" assertions into 4
+resolution guards (+1). 158 -> 173.
 
 ---
 
@@ -65,8 +72,7 @@ stack; component-level tests substitute (P25-A section 9).`
 
 Dimensions: 1 smoke | 2 login(deny) | 3 sidebar-nav | 4 empty | 5 loading | 6 error |
 7 denied | 8 nav-path | 9 copy-leak | 10 no-clip* | 11 console-tone | 12 forbidden-control.
-`PASS` = covered by a harness assertion; `SKIP` = honest skip-with-reason; `DEFECT` = a
-recorded defect blocks the cell.
+`PASS` = covered by a harness assertion; `SKIP` = honest skip-with-reason.
 
 \* dim 10 (no clipped/overlapping text) is a visual dimension that needs a real browser
 viewport; it is `SKIP` here for the same reason as screenshots (no Playwright). Copy/tone/
@@ -75,17 +81,17 @@ forbidden/invariant dimensions ARE asserted in-DOM where feasible.
 | # | route | group | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | verdict |
 | --- | --- | --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | --- |
 | 1 | /platform | overview | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
-| 2 | /platform/system/health | health | PASS | PASS | D1 | PASS | PASS | PASS | PASS | D1 | PASS | SKIP | PASS | PASS | READY* |
-| 3 | /platform/tenants | registry | DEFECT-D2 | PASS | D1 | DEFECT-D2 | DEFECT-D2 | DEFECT-D2 | PASS | D1 | DEFECT-D2 | SKIP | n/a | DEFECT-D2 | BLOCKED-D2 |
-| 4 | /platform/tenants/:id/health | health | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY* |
-| 5 | /platform/audit | overview | DEFECT-D2 | PASS | D1 | DEFECT-D2 | DEFECT-D2 | DEFECT-D2 | PASS | D1 | DEFECT-D2 | SKIP | n/a | DEFECT-D2 | BLOCKED-D2 |
-| 6 | /platform/registry | registry | PASS | PASS | D1 | PASS | PASS | PASS | PASS | D1 | PASS | SKIP | PASS | PASS | READY* |
+| 2 | /platform/system/health | health | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
+| 3 | /platform/tenants | registry | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
+| 4 | /platform/tenants/:id/health | health | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
+| 5 | /platform/audit | overview | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
+| 6 | /platform/registry | registry | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
 | 7 | /platform/support | support | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
 | 8 | /platform/ops/health | ops | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
-| 9 | /platform/ops/errors | ops | PASS | PASS | D1 | PASS | PASS | PASS | PASS | D1 | PASS | SKIP | PASS | PASS | READY* |
-| 10 | /platform/ops/slow-routes | ops | PASS | PASS | D1 | PASS | PASS | PASS | PASS | D1 | PASS | SKIP | PASS | PASS | READY* |
-| 11 | /platform/ops/resources | ops | PASS | PASS | D1 | PASS | PASS | PASS | PASS | D1 | PASS | SKIP | PASS | PASS | READY* |
-| 12 | /platform/ops/noisy-neighbors | ops | PASS | PASS | D1 | PASS | PASS | PASS | PASS | D1 | PASS | SKIP | PASS | PASS | READY* |
+| 9 | /platform/ops/errors | ops | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
+| 10 | /platform/ops/slow-routes | ops | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
+| 11 | /platform/ops/resources | ops | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
+| 12 | /platform/ops/noisy-neighbors | ops | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
 | 13 | /platform/ops/incidents/triage | ops | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
 | 14 | /platform/controlled-actions | actions | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
 | 15 | /platform/approvals | approvals | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
@@ -94,37 +100,40 @@ forbidden/invariant dimensions ARE asserted in-DOM where feasible.
 | 18 | /platform/operator-tasks | tasks | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
 | 19 | /platform/incident-closeouts | closeouts | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | SKIP | PASS | PASS | READY |
 
-`READY*` = the route itself renders cleanly across all exercised dimensions; the `D1` in
-dims 3/8 is a NAVIGATION-reachability gap (no sidebar/hub link to it), not a render defect.
+All 19 routes READY. Dims 3/8 (sidebar-nav / nav-path) are now PASS for every route: the 10
+Sidebar-linked routes are reached directly, and P25-C added restrained hub links for the rest
+(System Health / Tenant Directory / Audit Events / Registry from the Platform Overview "Platform
+Pages" section; Ops Errors / Slow Routes / Resources / Noisy Neighbors from the Ops Cockpit
+"Operations Views" section; tenant-health from the tenant-directory card).
 
 ---
 
-## 4. Recorded defects (for a separately approved fix slice; NOT fixed inline)
+## 4. Resolved defects (P25-C fix slice)
 
-### D1 -- navigation reachability gap (AC 9; section 3.6)
+P25-B recorded two defects and turned a blind eye. P25-C resolves both. The recorded-defect
+file is now a regression GUARD (`P25_RecordedDefects.test.tsx`): GREEN while the fix holds, RED
+the moment a defect regresses.
 
-Of the 19 routes, 10 are reachable from the Sidebar platform section. Of the other 9:
-- `/platform/tenants/:tenantId/health` is linked from the tenant-directory card
-  (`PlatformTenantCard`); `/platform/tenants` has a back-link from tenant-health.
-- The remaining **7 routes have no sidebar link and no in-app `<Link>`** from any platform
-  page -- they are reachable only by direct URL today: `/platform/system/health`,
-  `/platform/audit`, `/platform/registry`, `/platform/ops/errors`, `/platform/ops/slow-routes`,
-  `/platform/ops/resources`, `/platform/ops/noisy-neighbors`.
+### D1 -- navigation reachability gap (AC 9; section 3.6) -- RESOLVED
 
-(Functionally 9 of 19 routes are not sidebar-reachable: the tenant-health/directory pair is
-only reachable once the operator already has a URL into that cluster.) A later, separately
-approved fix slice should add sidebar or hub links for these routes. Asserted in
-`P25_RecordedDefects.test.tsx` (D1).
+P25-B: 7 routes had no Sidebar link and no in-app `<Link>` (URL-only). P25-C adds restrained,
+operator-focused hub links (no Sidebar bloat, no new capability, no marketing copy):
+- Platform Overview "Platform Pages" -> System Health, Tenant Directory, Audit Events, Registry.
+- Ops Cockpit "Operations Views" -> Ops Errors, Slow Routes, Resources, Noisy Neighbors.
 
-### D2 -- empty-state render crash on Audit Events + Tenant Directory (AC 5)
+Every platform route is now reachable by a Sidebar link or an in-app `<Link>`. The helper scans
+the shipped platform source (`to[:=] '<path>'` link-target literal, excluding AppRouter `path:`
+declarations) to compute `URL_ONLY_ROUTES`, which is EMPTY; `P25_RecordedDefects` D1-a/D1-b
+assert that and turn RED if a hub link is removed.
 
-`PlatformAuditEventsPage` and `PlatformTenantDirectoryPage` render `<EmptyState title=...
-description=.../>` WITHOUT the REQUIRED `icon` prop (`EmptyState.icon` is non-optional). The
-page therefore throws "Element type is invalid" on any render that reaches the empty branch --
-including the initial mount, before any data lands (the list is empty by default). This blocks
-dims 1/4/5/6/9/12 for those two routes. A separately approved fix slice should pass an icon
-(or make `EmptyState.icon` optional). Asserted in `P25_RecordedDefects.test.tsx` (D2-a/D2-b):
-the defect tests are GREEN while the crash exists and turn RED once fixed.
+### D2 -- empty-state render crash on Audit Events + Tenant Directory (AC 5) -- RESOLVED
+
+P25-B: the two pages rendered `<EmptyState title=... description=.../>` WITHOUT the REQUIRED
+`icon` prop (`EmptyState.icon` is non-optional), so the page threw "Element type is invalid" on
+any render reaching the empty branch (including the initial mount). P25-C passes an icon
+(`ClipboardDocumentListIcon` on Audit Events, `BuildingOfficeIcon` on Tenant Directory). The two
+routes rejoin the state/copy/forbidden sweeps, and `P25_RecordedDefects` D2-a/D2-b assert the
+empty copy renders (no throw); they turn RED if the icon prop regresses.
 
 ---
 
@@ -144,16 +153,19 @@ login; every step below is also covered by a component-level test where no stack
    state, then open one detail/record/transition form (e.g. Acknowledge an operator task;
    advance an incident-closeout step; dry-run a controlled execution request). (P25-LO/EM/ER,
    P25-F.)
-4. Force a backing-read failure (e.g. stop the API) and confirm each route renders a redacted
+4. From the Platform Overview "Platform Pages" hub, open System Health, Tenant Directory, Audit
+   Events, and Registry. From the Ops Cockpit "Operations Views" hub, open Ops Errors, Slow
+   Routes, Resources, and Noisy Neighbors. Every platform page is reachable without typing a
+   URL. (D1 resolved.)
+5. On the Tenant Directory and Audit Events pages, confirm the empty state renders cleanly
+   (icon + "No tenants found" / "No audit events"); no crash on mount. (D2 resolved; P25-EM.)
+6. Force a backing-read failure (e.g. stop the API) and confirm each route renders a redacted
    error (red box + Retry), never a raw payload, stack, secret, or DSN. (P25-ER, P25-C2.)
-5. On the Operator Tasks and Incident Closeouts consoles, confirm a `source_unknown` /
+7. On the Operator Tasks and Incident Closeouts consoles, confirm a `source_unknown` /
    degraded / warning record is NEVER shown green (gray/yellow/blue only), and a completed
    record is blue, not green. (P25-T01..T10.)
-6. Confirm no console surfaces a bare Execute / Deliver notification / Clear flag / Send
+8. Confirm no console surfaces a bare Execute / Deliver notification / Clear flag / Send
    control; only Record-* / state transitions are present. (P25-F.)
-7. Known gaps to call out in the demo: Audit Events and Tenant Directory crash until D2 is
-   fixed (open them last / from a fixed build); the 7 URL-only routes (D1) must be reached by
-   typing the URL.
 
 ---
 
@@ -170,8 +182,6 @@ login; every step below is also covered by a component-level test where no stack
 - **Error affordance (dim 6):** the Support Console handles a sessions-read failure by
   continuing to render its usable form (no red box); the dim-6 check accepts "explicit error
   affordance OR sane primary content" (no crash, no leak) for that route.
-- **D2 crash logs:** the harness intentionally renders the two D2-defect routes to assert the
-  crash; React logs "Element type is invalid" for those two cases. Expected, not a failure.
 
 ---
 
@@ -181,4 +191,5 @@ login; every step below is also covered by a component-level test where no stack
   migration, auth/RBAC change, execution expansion, or notification delivery.
 - It does not merge into `platform-dev` or `product-dev-recovered`. The branch is pushed with
   an explicit `X:X` refspec; `origin/platform-dev` is left unchanged.
-- It does not fix D1 or D2. Both are recorded for a separately approved fix slice.
+- P25-C resolves D1/D2 (the P25-B harness recorded them; it did not fix them). The harness
+  GUARDS the fix; it still adds no platform capability.

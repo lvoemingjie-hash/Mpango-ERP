@@ -138,14 +138,14 @@ Verified on this branch versus origin/platform-dev = e5c28ec:
   runtime symbols, no execution-flow impact, no approval-flow impact, no flag-mutation
   impact, no notification-delivery impact, no frontend-flow impact.
 - The change adds documentation only; no backend, frontend, migration, package, auth,
-  payment, tenant, product, execution, approval, or notification path is touched. The node
-  / edge / cluster counts reported by `npx gitnexus analyze` at the branch HEAD (indexed
-  commit == current commit == e5c28ec, status up-to-date) are 9,466 nodes | 28,846 edges |
-  598 clusters | 300 flows; this is documented as a band (the code graph is unchanged from
-  base e5c28ec because markdown is not a code symbol; the node / cluster counts sit within
-  the known small analyze-count wobble -- ~9,393-9,466 nodes / ~28,767-28,846 edges /
-  ~584-598 clusters across the P24-P25 rebuilds), not a point, to avoid amend loops. Flows
-  are stable at 300 (unchanged from the P24-D base).
+  payment, tenant, product, execution, approval, or notification path is touched.
+  GitNexus was re-run after the feature docs were committed; `status` is up-to-date at
+  the current P25-A branch tip (the exact repair / validation tip SHA is reported in
+  chat only, not embedded here, to keep this ledger non-self-referential). The observed
+  analyze counts remain within the documented P24-P25 band -- roughly 9,393-9,466 nodes /
+  28,767-28,846 edges / 584-598 clusters / 300 flows. The code graph is unchanged from
+  base e5c28ec because markdown is not a code symbol. Flows are stable at 300 (unchanged
+  from the P24-D base), and the affected runtime-flow set is empty.
 
 ## 6. Forbidden audit summary
 

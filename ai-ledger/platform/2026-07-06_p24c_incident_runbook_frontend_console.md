@@ -1,6 +1,6 @@
 # P24-C - Incident + Runbook Closeout Frontend Console
 
-- Status: LANDED on branch, NOT merged (push-ready on request).
+- Status: LANDED on branch and PUSHED to origin; NOT merged into platform-dev.
 - Date: 2026-07-06.
 - Branch: `codex/platform-p24c-incident-runbook-frontend-console-2026-07-06`
 - Base: `origin/platform-dev` @ `d29d7491` (merge: P24-B incident runbook backend
@@ -9,7 +9,7 @@
   intake dispatcher, none of which this slice extends). P24-A (contract) is also
   merged.
 - Worktree: `_p24c_2026-07-06`.
-- Commits: `93c14944` (code), + this ledger (R0).
+- Commits: `93c14944` (code), + this ledger (R0; R1 ledger-only evidence update).
 
 ## Objective
 
@@ -199,11 +199,39 @@ None.
 
 ## Verdict
 
-READY_FOR_CTO_REVIEW.
+READY_FOR_CTO_REVIEW (feature branch pushed to origin; awaiting platform-dev
+merge).
 
-P24-D is NOT started. `origin/platform-dev` is NOT merged and NOT pushed (the
-branch `codex/platform-p24c-incident-runbook-frontend-console-2026-07-06` is
-push-ready on request with `git push -u origin <branch>:<branch>`; the worktree
-was created with `git worktree add -b ... origin/platform-dev`, which sets the
-upstream to `platform-dev`, so a bare `git push` would fast-forward `platform-dev`
--- the explicit refspec avoids that).
+P24-D is NOT started. The feature branch
+`codex/platform-p24c-incident-runbook-frontend-console-2026-07-06` IS pushed to
+origin (local == remote; pushed with the explicit refspec `<branch>:<branch>` to
+avoid the worktree-upstream footgun, since the worktree was created with `git
+worktree add -b ... origin/platform-dev` and a bare `git push` would otherwise
+fast-forward `platform-dev`). `origin/platform-dev` is NOT merged and NOT pushed:
+it still sits at the P24-B base `d29d7491` -- no P24-C merge into platform-dev
+and no fast-forward of the platform-dev ref.
+
+## R1 Evidence (CTO review fix -- ledger-only)
+
+R1 is a ledger-only correction (this one file). No frontend source / test,
+backend, package, lockfile, migration, auth, product path, or the `platform-dev`
+ref is touched. R1 corrects the stale push/merge prose after the feature branch
+was pushed and records the CTO re-validation evidence below; it changes no code,
+so there is no symbol-level impact and no GitNexus flow delta.
+
+- Push (CTO): the feature branch
+  `codex/platform-p24c-incident-runbook-frontend-console-2026-07-06` was pushed
+  to origin with the explicit refspec `<branch>:<branch>`. Local == remote at
+  the R0 tip; the `platform-dev` ref was NOT fast-forwarded and remains at
+  `d29d7491`.
+- Targeted test rerun (CTO, post-push): the P24-C targeted `vitest` command was
+  re-run with `CI=true` (pnpm no-TTY behavior). Result: 4 files / 69 tests PASS
+  (25 type/vocab + 13 API + 26 page + 5 nav -- the same 69 as R0). Only React
+  Router future-flag warnings; unchanged and non-blocking.
+- Static checks (CTO, pre-push): `git diff --check` CLEAN; added-line ASCII scan
+  CLEAN; `detect-secrets` CLEAN (baseline unchanged); forbidden-path audit CLEAN
+  (the R1 diff is this ledger only).
+- GitNexus: index is UP-TO-DATE at the current tip (R1 adds no code, so re-
+  analyze yields no symbol/flow delta); flows remain STABLE at 300.
+- Scope: `git diff --check origin/platform-dev..HEAD` CLEAN; the file set is
+  exactly the 9 frontend paths + this ledger.

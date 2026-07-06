@@ -5,8 +5,10 @@
 **Base:** `48ddda4` (origin/platform-dev -- P25-A contract merged)
 **Branch:** `codex/platform-p25b-platform-frontend-readiness-validation-2026-07-06`
 **Worktree:** `_p25b_2026-07-06`
-**Tip:** `74bf9c2e` (code) -> this ledger (R0)
-**Ahead / behind base:** 1 / 0 (then +1 for this ledger)
+**Tip:** this R1 ledger-correction commit (branch HEAD). Prior commits: `74bf9c2e` (code) and
+`0ed79cbd` (R0 ledger body). The R1 tip SHA is reported in chat only, not embedded here, to
+keep this ledger non-self-referential (mirrors P25-A correction `a06bcb4f`).
+**Ahead / behind base:** 3 / 0 (`74bf9c2e` code + `0ed79cbd` R0 ledger + this R1 correction)
 **Verdict:** **READY_FOR_CTO_REVIEW** (harness sound; 2 recorded defects for a separately
 approved fix slice; not merged; not pushed to platform-dev; P25-C not started)
 
@@ -16,8 +18,10 @@ P25-B is the P25-A section 9 gate: a non-shipping, non-merging frontend validati
 harness over the as-built P10-P24 platform surface. It adds no capability, route, backend,
 migration, package/lockfile, auth/RBAC, execution-expansion, or notification-delivery change.
 
-11 files, all under `frontend/src/pages/platform/__tests__/p25/` (0 backend / 0 migration /
-0 package / 0 lockfile / 0 auth / 0 product):
+11 harness files, all under `frontend/src/pages/platform/__tests__/p25/` (0 backend / 0
+migration / 0 package / 0 lockfile / 0 auth / 0 product). The full branch diff versus
+origin/platform-dev is **12 files**: these 11 harness files plus this ledger markdown (the
+12th). Scans below target the 11 harness files unless stated otherwise.
 
 - `__helpers__/readiness.tsx` -- closed route table (19), identity fixtures, never-leaked
   scanner, `renderPlatformAt` (full PlatformRoute subtree), `EMPTY_BODY`, `SWEEP_ROUTES`,
@@ -96,11 +100,15 @@ python -m detect_secrets.pre_commit_hook --baseline .secrets.baseline <p25 files
   `node-shims.d.ts` ambient declarations for `node:fs` / `process`; typed `RegExpExecArray`).
 - **git diff --check:** clean (the LF->CRLF warnings are core.autocrlf=true, benign, prior-
   phase convention; git stores LF).
-- **ASCII:** all 11 new files pure ASCII (Python-ordinal clean).
-- **detect-secrets 1.5.0 (configured baseline):** exit 0, 0 findings on the 11 new files;
-  `.secrets.baseline` UNCHANGED (`git diff origin/platform-dev -- .secrets.baseline` empty).
-- **Forbidden-path audit:** all 11 files under `frontend/src/pages/platform/__tests__/p25/`;
-  0 backend / migration / alembic / package.json / lockfile / auth / product / .sql paths.
+- **ASCII:** all 11 harness files pure ASCII (Python-ordinal check); the 12th file (this
+  ledger markdown) is also pure ASCII.
+- **detect-secrets 1.5.0 (configured baseline):** exit 0, 0 findings on the 11 harness
+  files; `.secrets.baseline` UNCHANGED (`git diff origin/platform-dev -- .secrets.baseline`
+  empty).
+- **Forbidden-path audit:** all 12 changed files are under
+  `frontend/src/pages/platform/__tests__/p25/` (11 harness files) or `ai-ledger/platform/`
+  (this ledger); 0 backend / migration / alembic / package.json / lockfile / auth / product
+  / .sql paths.
 
 Known warnings (honest, not hidden):
 
@@ -120,19 +128,34 @@ Known warnings (honest, not hidden):
 
 ## 5. GitNexus summary
 
-```
-npx gitnexus analyze  ->  9,437 nodes | 28,825 edges | 590 clusters | 300 flows
-npx gitnexus status   ->  indexed commit 74bf9c2 == current commit 74bf9c2; up-to-date
-```
+GitNexus was re-run after the R1 ledger correction was committed; `npx gitnexus status` is
+up-to-date at the current P25-B branch tip (indexed commit == current commit == branch
+tip). The exact R1 tip SHA is reported in chat only, not embedded here, to keep this ledger
+non-self-referential (mirrors P25-A correction `a06bcb4f`). Counts are recorded as a band,
+not a point, to avoid amend loops.
 
-Band: ~9,393-9,466 nodes / ~28,767-28,846 edges / 584-598 clusters across P24-P25; flows
-STABLE 300. The new files are markdown + `.tsx`/`.ts` tests + a `.d.ts` shim; they add test
-symbols but touch 0 backend / product code, so the 300 runtime flows are unchanged.
+- R0 state corrected here: the R0 body recorded `npx gitnexus status -> indexed commit
+  74bf9c2 == current commit 74bf9c2; up-to-date` and `analyze -> 9,437 nodes | 28,825 edges
+  | 590 clusters | 300 flows`. That index was taken at the *code* commit `74bf9c2`; at the
+  R0 ledger tip `0ed79cbd` it had gone stale (`indexed 74bf9c2` / `current 0ed79cb`), so the
+  R0 "up-to-date" evidence described the code commit, not the branch tip. CTO review flagged
+  this as merge-blocking.
+- R1 fix: re-run `npx gitnexus analyze` at the branch tip (after this ledger correction is
+  committed) so `status` is genuinely up-to-date at the tip, and record it
+  non-self-referentially here.
+
+Observed analyze counts at the tip sit within the documented P24-P25 band: ~9,393-9,466
+nodes / ~28,767-28,846 edges / 584-598 clusters / 300 flows. (Re-analyzing at the ledger
+tip adds the ledger/test doc symbols versus the pre-ledger code-commit index, but lands
+inside the same band.) The new files are markdown + `.tsx`/`.ts` tests + a `.d.ts` shim;
+they add test/doc symbols but touch 0 backend / product code, so the 300 runtime flows are
+unchanged (frontend-only fallback, contract 4).
 
 `detect_changes` (MCP) is flaky in this environment (per prior phases); the reliable
-corroborator is the change scope itself: `git diff origin/platform-dev` is 11 files, ALL
-`frontend/src/pages/platform/__tests__/p25/*`. 0 backend / migration / product symbols ->
-0 affected runtime flows -> stop gate NOT triggered (frontend-only fallback, contract 4).
+corroborator is the change scope itself: `git diff origin/platform-dev` is **12 files** --
+the 11 harness files under `frontend/src/pages/platform/__tests__/p25/*` plus this ledger
+markdown. 0 backend / migration / product symbols -> 0 affected runtime flows -> stop gate
+NOT triggered.
 
 ## 6. Recorded defects (for a separately approved fix slice; NOT fixed inline)
 

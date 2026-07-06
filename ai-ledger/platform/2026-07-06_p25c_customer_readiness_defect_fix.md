@@ -5,10 +5,13 @@
 **Base:** `5687e7d4` (origin/platform-dev -- P25-B validation harness merged)
 **Branch:** `codex/platform-p25c-customer-readiness-defect-fix-2026-07-06`
 **Worktree:** `_p25c_2026-07-06`
-**Tip:** reported in chat only (this ledger stays non-self-referential, mirroring P25-A/B/C/D
-ledger convention). Code commit + ledger commit are reported in chat.
+**Tip:** this R1 ledger-correction commit (branch HEAD). Prior commits: `5f4918b5` (code) and
+`cd49f865` (R0 ledger body). The R1 tip SHA is reported in chat only, not embedded here, to
+keep this ledger non-self-referential (mirrors P25-B correction `a7fce2ee`).
+**Ahead / behind base:** 3 / 0 (`5f4918b5` code + `cd49f865` R0 ledger + this R1 correction)
 **Verdict:** **READY_FOR_CTO_REVIEW** (frontend-only fix slice; both recorded defects
-resolved; not merged; not pushed to platform-dev; P25-D / customer signoff not started)
+resolved; R1 is a ledger accuracy correction only -- no runtime/frontend/test code changed;
+not merged; not pushed to platform-dev; P25-D / customer signoff not started)
 
 ## 1. Phase inventory
 
@@ -18,7 +21,8 @@ no backend, no migration, no package/lockfile, no auth/RBAC/session rewrite, no
 product-dev-recovered, no product business path. It adds NO platform capability -- only
 render-safety (an icon prop) and navigation (restrained in-app hub links).
 
-7 changed files, all under `frontend/src/`:
+7 source files under `frontend/src/` (the runtime/frontend change) plus this ledger markdown =
+8 files changed vs `origin/platform-dev`. The 7 source files:
 
 - `pages/platform/PlatformAuditEventsPage.tsx` -- import `ClipboardDocumentListIcon`; pass the
   required `icon` prop to `<EmptyState>` (D2).
@@ -103,11 +107,12 @@ python -m detect_secrets.pre_commit_hook --baseline .secrets.baseline <7 files> 
   (PlatformAuditEventsPage / PlatformTenantDirectoryPage / PlatformOverviewPage) retain
   pre-existing em-dashes in their *untouched* JSDoc headers; their non-ASCII byte counts are
   identical branch-vs-base (12=12, 3=3, 5=5), so P25-C adds **0 new non-ASCII bytes**.
-- **detect-secrets 1.5.0 (configured baseline):** exit 0, 0 findings on the 7 changed files;
+- **detect-secrets 1.5.0 (configured baseline):** exit 0, 0 findings on the 7 frontend source
+  files;
   `.secrets.baseline` UNCHANGED (`git diff origin/platform-dev -- .secrets.baseline` empty).
-- **Forbidden-path audit:** all 7 changed files are under `frontend/src/` (4 page/source +
-  helper + test + README); 0 backend / migration / alembic / package.json / lockfile / auth /
-  product / .sql paths.
+- **Forbidden-path audit:** all 8 changed files are allow-listed -- 7 under `frontend/src/`
+  (4 page/source + helper + test + README) + this ledger markdown; 0 backend / migration /
+  alembic / package.json / lockfile / auth / product / .sql paths.
 
 Known warnings (honest, not hidden):
 
@@ -120,25 +125,36 @@ Known warnings (honest, not hidden):
 
 ## 5. GitNexus summary
 
-`npx gitnexus analyze` + `npx gitnexus status` run at the code commit (`5f4918b`):
+GitNexus was re-run after the R1 ledger correction was committed; `npx gitnexus status` is
+up-to-date at the current P25-C branch tip (indexed commit == current commit == branch tip).
+The exact R1 tip SHA is reported in chat only, not embedded here, to keep this ledger
+non-self-referential (mirrors P25-B correction `a7fce2ee`). Counts are recorded as a band,
+not a point, to avoid amend loops.
 
-```
-9,453 nodes | 28,839 edges | 592 clusters | 300 flows
-Indexed commit: 5f4918b   Current commit: 5f4918b   Status: up-to-date
-```
+- R0 state corrected here: the R0 body recorded `npx gitnexus analyze` + `npx gitnexus status`
+  as "run at the code commit (`5f4918b`)" with `Indexed commit: 5f4918b Current commit:
+  5f4918b Status: up-to-date` and counts `9,453 nodes | 28,839 edges | 592 clusters | 300
+  flows`. But the actual branch tip is `cd49f865` (the R0 ledger commit), and `npx gitnexus
+  status` is up-to-date at `cd49f865` -- so the R0 "up-to-date at 5f4918b" evidence described
+  the code commit, not the branch tip. The authoritative `.gitnexus/meta.json` at the tip
+  reads 9,456 nodes | 28,835 edges | 595 clusters | 300 flows (the 9,453/28,839/592 read sits
+  inside the same band). CTO review flagged the tip mismatch.
+- R1 fix: re-run `npx gitnexus analyze` at the branch tip (after this ledger correction is
+  committed) so `status` is genuinely up-to-date at the tip, and record it
+  non-self-referentially here. R1 is markdown-only (this ledger), so it adds 0 symbols and the
+  code graph at the R1 tip == the graph at `cd49f865` == the graph at `5f4918b5`.
 
-(A pre-commit analyze of the working tree read 9,441 / 28,826 / 593; the small wobble is the
-test/doc-symbol contribution between reads. Both land in the band and flows are unchanged.)
-Counts sit within the documented P24-P25 band (~9,393-9,466 nodes / ~28,767-28,846 edges /
-584-598 clusters). **Flows STABLE at 300** -- the change is frontend-only (markup, an icon
-prop, navigation `<Link>`s, and test/doc files), so it adds test/doc/nav symbols but touches 0
-backend / product code; the 300 runtime flows are unchanged. The ledger commit is docs-only
-(markdown, not a symbol), so the code graph at the final tip == the graph at `5f4918b`.
+Observed analyze counts at the tip sit within the documented P24-P25 band: ~9,393-9,466 nodes
+/ ~28,767-28,846 edges / 584-598 clusters / 300 flows (current `meta.json`: 9,456 nodes /
+28,835 edges / 595 clusters / 300 flows). **Flows STABLE at 300** -- the change is
+frontend-only (markup, an icon prop, navigation `<Link>`s, and test/doc files), so it adds
+test/doc/nav symbols but touches 0 backend / product code; the 300 runtime flows are unchanged.
 
 `detect_changes` (MCP) is flaky in this environment (per prior phases); the reliable
-corroborator is the change scope itself: `git diff origin/platform-dev` is **7 files**, all
-under `frontend/src/`. 0 backend / migration / product symbols -> 0 affected runtime flows ->
-stop gate NOT triggered.
+corroborator is the change scope itself: `git diff origin/platform-dev` is **8 files** -- the
+7 frontend files under `frontend/src/pages/platform/` (4 page/source + helper + test + README)
+plus this ledger markdown. 0 backend / migration / product symbols -> 0 affected runtime flows
+-> stop gate NOT triggered.
 
 ## 6. Defect resolution (the P25-B recorded defects, now fixed)
 

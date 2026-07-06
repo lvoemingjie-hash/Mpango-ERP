@@ -97,7 +97,7 @@ U6-C remains backend-only and implements only the public signup plus email verif
 ## U6-C-R1 Signup Neutrality And Production Delivery Fail-Closed
 
 Date: 2026-07-06
-Verdict: `PASS_FOR_CTO_U6C_R1_REVIEW_PENDING_POST_COMMIT_GITNEXUS`
+Verdict: `PASS_FOR_CTO_U6C_R1_REVIEW`
 
 Findings fixed:
 
@@ -124,7 +124,8 @@ R1 validation:
 - Broad secret-pattern scan: matched only expected security/token/password field names and allowlisted synthetic test literals; no real secret values were present.
 - Pre-commit on changed files: passed.
 
-R1 pending:
+R1 post-commit checks:
 
-- Commit.
-- GitNexus analyze/status after commit.
+- Commit: `333e9fe2 fix(U6-C): neutralize signup responses and fail closed delivery`.
+- GitNexus analyze: passed, repository indexed successfully with 6,469 nodes, 18,414 edges, 426 clusters, and 225 flows.
+- GitNexus status: up to date at commit `333e9fe`.

@@ -66,7 +66,8 @@ class TenantRegistration(PublicBaseModel):
             name="ck_tenant_registrations_terminal_password_hash_cleared",
         ),
         CheckConstraint(
-            "status <> 'failed' OR retry_allowed_until IS NOT NULL OR password_hash IS NULL",
+            "status <> 'failed' OR retry_allowed_until IS NOT NULL OR "
+            "(password_hash IS NULL AND password_hash_cleared_at IS NOT NULL)",
             name="ck_tenant_registrations_failed_password_hash_retry_bound",
         ),
         Index(

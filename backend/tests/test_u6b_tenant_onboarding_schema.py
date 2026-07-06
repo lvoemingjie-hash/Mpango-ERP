@@ -6,12 +6,19 @@ from sqlalchemy.dialects import postgresql
 
 from models.tenant_onboarding import (
     EMAIL_VERIFICATION_TOKEN_PURPOSE,
+    LIVE_REGISTRATION_STATUSES,
     PASSWORD_RESET_TOKEN_PURPOSE,
     TERMINAL_PASSWORD_CLEANUP_STATES,
     TENANT_REGISTRATION_STATUSES,
     EmailVerificationToken,
     PasswordResetToken,
     TenantRegistration,
+)
+
+
+FAILED_RETRY_CLEANUP_CONSTRAINT = (
+    "status <> 'failed' OR retry_allowed_until IS NOT NULL OR "
+    "(password_hash IS NULL AND password_hash_cleared_at IS NOT NULL)"
 )
 
 
@@ -25,6 +32,33 @@ def _index_names(model) -> set[str]:
 
 def _constraint_names(model) -> set[str]:
     return {constraint.name for constraint in model.__table__.constraints if constraint.name}
+
+
+def _constraint_sql(model, constraint_name: str) -> str:
+    constraint = next(
+        constraint
+        for constraint in model.__table__.constraints
+        if constraint.name == constraint_name
+    )
+    return str(
+        constraint.sqltext.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+
+
+def _failed_retry_cleanup_check_allows(
+    *,
+    status: str,
+    retry_allowed_until: object | None,
+    password_hash: str | None,
+    password_hash_cleared_at: object | None,
+) -> bool:
+    return (
+        status != "failed"
+        or retry_allowed_until is not None
+        or (password_hash is None and password_hash_cleared_at is not None)
+    )
 
 
 def _postgres_where(index) -> str:
@@ -117,6 +151,82 @@ def test_registration_indexes_prevent_live_duplicate_email_and_support_replay_lo
     assert "failed" in where
     assert "cancelled" not in where
     assert "expired" not in where
+
+
+def test_failed_status_remains_live_and_reserves_owner_email():
+    assert "failed" in LIVE_REGISTRATION_STATUSES
+
+    live_email_index = next(
+        index
+        for index in TenantRegistration.__table__.indexes
+        if index.name == "ux_tenant_registrations_owner_email_live"
+    )
+    where = _postgres_where(live_email_index)
+
+    assert "failed" in where
+
+
+def test_cancelled_and_expired_are_excluded_from_live_owner_email_uniqueness():
+    assert "cancelled" not in LIVE_REGISTRATION_STATUSES
+    assert "expired" not in LIVE_REGISTRATION_STATUSES
+
+    live_email_index = next(
+        index
+        for index in TenantRegistration.__table__.indexes
+        if index.name == "ux_tenant_registrations_owner_email_live"
+    )
+    where = _postgres_where(live_email_index)
+
+    assert "cancelled" not in where
+    assert "expired" not in where
+
+
+def test_failed_with_retry_allowed_until_may_retain_password_hash():
+    assert _constraint_sql(
+        TenantRegistration, "ck_tenant_registrations_failed_password_hash_retry_bound"
+    ) == FAILED_RETRY_CLEANUP_CONSTRAINT
+    assert _failed_retry_cleanup_check_allows(
+        status="failed",
+        retry_allowed_until=object(),
+        password_hash="stored_hash_placeholder",  # pragma: allowlist secret
+        password_hash_cleared_at=None,
+    )
+
+
+def test_failed_without_retry_and_with_password_hash_is_invalid():
+    assert _constraint_sql(
+        TenantRegistration, "ck_tenant_registrations_failed_password_hash_retry_bound"
+    ) == FAILED_RETRY_CLEANUP_CONSTRAINT
+    assert not _failed_retry_cleanup_check_allows(
+        status="failed",
+        retry_allowed_until=None,
+        password_hash="stored_hash_placeholder",  # pragma: allowlist secret
+        password_hash_cleared_at=None,
+    )
+
+
+def test_failed_without_retry_and_without_cleanup_timestamp_is_invalid():
+    assert _constraint_sql(
+        TenantRegistration, "ck_tenant_registrations_failed_password_hash_retry_bound"
+    ) == FAILED_RETRY_CLEANUP_CONSTRAINT
+    assert not _failed_retry_cleanup_check_allows(
+        status="failed",
+        retry_allowed_until=None,
+        password_hash=None,
+        password_hash_cleared_at=None,
+    )
+
+
+def test_failed_without_retry_and_with_cleared_password_hash_is_valid():
+    assert _constraint_sql(
+        TenantRegistration, "ck_tenant_registrations_failed_password_hash_retry_bound"
+    ) == FAILED_RETRY_CLEANUP_CONSTRAINT
+    assert _failed_retry_cleanup_check_allows(
+        status="failed",
+        retry_allowed_until=None,
+        password_hash=None,
+        password_hash_cleared_at=object(),
+    )
 
 
 def test_token_tables_store_only_hashes_and_single_use_lifecycle_fields():

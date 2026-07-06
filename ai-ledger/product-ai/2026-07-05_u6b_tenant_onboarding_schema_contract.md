@@ -43,7 +43,10 @@ GitNexus impact checks were attempted before shared schema/model edits.
 - `password_hash` is nullable to support the U6-A-R1 preferred cleanup path.
 - `password_hash_cleared_at` and `password_hash_cleanup_reason` preserve cleanup auditability without retaining credential material.
 - Terminal states `active`, `cancelled`, and `expired` require `password_hash IS NULL` and `password_hash_cleared_at IS NOT NULL`.
-- `failed` may retain `password_hash` only if `retry_allowed_until` is set; otherwise the hash must be cleared.
+- Design B minimal is followed: `failed` means retryable/live failed state and continues to reserve `owner_email`.
+- `failed` may retain `password_hash` only if `retry_allowed_until` is set.
+- `failed` with `retry_allowed_until IS NULL` is valid only when `password_hash IS NULL` and `password_hash_cleared_at IS NOT NULL`.
+- Abandoned failures must transition to `cancelled` or `expired` before `owner_email` can be reused.
 - Live duplicate owner emails are prevented for `pending_email_verification`, `email_verified`, `provisioning`, `active`, and `failed`, while `cancelled` and `expired` can be restarted.
 - Partial unique indexes reserve tenant code, tenant schema, wholesaler link, and idempotency key only when present.
 
@@ -101,6 +104,31 @@ Final hygiene:
 - Pre-commit on changed files: passed.
 - GitNexus analyze/status after commit: pending until commit exists.
 
+## U6-B-R1 Tenant Onboarding Schema Contract Correction
+
+CTO decision: Design B minimal.
+
+Changes:
+
+- Kept `failed` inside `LIVE_REGISTRATION_STATUSES`.
+- Added no status and no terminal-failed flag.
+- Tightened `ck_tenant_registrations_failed_password_hash_retry_bound` to require: `status <> 'failed' OR retry_allowed_until IS NOT NULL OR (password_hash IS NULL AND password_hash_cleared_at IS NOT NULL)`.
+- Added schema tests proving retryable failed rows may retain the registration-level password hash, failed rows without retry cannot retain it, failed rows without retry must record cleanup time, failed remains in live owner-email uniqueness, and `cancelled`/`expired` remain excluded from live uniqueness.
+
+R1 targeted validation:
+
+- RED check: `poetry run pytest tests/test_u6b_tenant_onboarding_schema.py -q` failed before the constraint change with 4 failed tests against the old failed-state constraint.
+- GREEN check: `poetry run pytest tests/test_u6b_tenant_onboarding_schema.py -q`: `11 passed`.
+
+R1 final hygiene:
+
+- `git diff --check`: passed with CRLF working-copy warnings only.
+- ASCII scan on R1 changed files: passed.
+- Mojibake scan on R1 changed files: passed.
+- Secret-pattern scan: matched only documented environment-variable names in this ledger and allowlisted schema/test literals for `password_reset` and `password_hash`. No secret values were present.
+- Pre-commit on R1 changed files: passed.
+- GitNexus analyze/status after R1 commit: pending until commit exists.
+
 ## Result
 
-U6-B is schema-only and ready for CTO review after commit, push, and GitNexus refresh gates complete.
+U6-B is schema-only and follows Design B minimal for failed registration cleanup semantics.

@@ -50,6 +50,7 @@ from services.onboarding_service import (
 )
 
 router = APIRouter()
+PUBLIC_SIGNUP_STATUS = "pending_email_verification"
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +90,7 @@ async def signup(
     return SignupResponse(
         data=SignupResponseData(
             registration_id=None,
-            status=result.status,
+            status=PUBLIC_SIGNUP_STATUS,
             email_verification_required=result.email_verification_required,
             resend_available_at=result.resend_available_at,
         ),

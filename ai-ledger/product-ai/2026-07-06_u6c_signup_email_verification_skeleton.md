@@ -129,3 +129,37 @@ R1 post-commit checks:
 - Commit: `333e9fe2 fix(U6-C): neutralize signup responses and fail closed delivery`.
 - GitNexus analyze: passed, repository indexed successfully with 6,469 nodes, 18,414 edges, 426 clusters, and 225 flows.
 - GitNexus status: up to date at commit `333e9fe`.
+
+## U6-C-R2 Public Signup Status Neutrality
+
+Date: 2026-07-06
+Verdict: `PASS_FOR_CTO_U6C_R2_REVIEW_PENDING_POST_COMMIT_GITNEXUS`
+
+Finding fixed:
+
+- Public `POST /api/v1/auth/signup` no longer returns `SignupResult.status` from the service.
+- The route always returns fixed public status `pending_email_verification`, so idempotent retries cannot expose a changed internal registration status such as `email_verified`.
+
+R2 implementation notes:
+
+- `SignupResult.status` remains available internally for service tests and future orchestration.
+- No schema, verify-email, provisioning, frontend, deployment, or provider dependency changes were made.
+- Only `backend/api/v1/auth.py`, `backend/tests/test_u6c_signup_email_verification_skeleton.py`, and this ledger were changed.
+
+R2 validation:
+
+- RED regression: `test_idempotent_retry_does_not_expose_changed_internal_status` failed before the route fix because the retry returned internal status `email_verified`.
+- GREEN regression: the same test passed after route status neutralization.
+- Validation used a temporary throwaway Postgres container on `127.0.0.1:55432` with an explicit non-secret test user/password, then removed the container after tests.
+- `poetry run pytest tests/test_u6c_signup_email_verification_skeleton.py -q`: `10 passed`.
+- `poetry run pytest tests/test_auth_regressions.py tests/test_route_authorization_policy.py tests/test_u6b_tenant_onboarding_schema.py -q`: `47 passed`.
+- `git diff --check`: passed with CRLF working-copy warnings only.
+- ASCII scan on changed files: passed.
+- Mojibake scan on changed files: passed.
+- Broad secret-pattern scan: matched only expected security/token/password field names and allowlisted synthetic test literals; no real secret values were present.
+- Pre-commit on changed files: passed.
+
+R2 pending:
+
+- Commit.
+- GitNexus analyze/status after commit.

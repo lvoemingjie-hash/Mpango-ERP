@@ -263,6 +263,38 @@ async def test_same_idempotency_key_and_fingerprint_is_safe():
     assert len(get_dev_email_deliveries(email)) == 1
 
 
+async def test_idempotent_retry_does_not_expose_changed_internal_status():
+    email = f"u6c_{uuid.uuid4().hex}@example.com"
+    payload = _signup_payload(email)
+    headers = {"Idempotency-Key": f"u6c-{uuid.uuid4().hex}"}
+
+    async with await _client() as client:
+        first = await client.post("/api/v1/auth/signup", json=payload, headers=headers)
+
+    rows = await _registration_rows(email)
+    assert len(rows) == 1
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        await session.execute(
+            text(
+                "UPDATE public.tenant_registrations "
+                "SET status = 'email_verified', email_verified_at = now() "
+                "WHERE owner_email = :email"
+            ),
+            {"email": email},
+        )
+        await session.commit()
+
+    async with await _client() as client:
+        retry = await client.post("/api/v1/auth/signup", json=payload, headers=headers)
+
+    assert first.status_code == 202, first.text
+    assert retry.status_code == 202, retry.text
+    assert first.json()["data"] == retry.json()["data"]
+    assert retry.json()["data"]["status"] == "pending_email_verification"
+
+
 async def test_production_signup_fails_closed_without_email_provider_and_writes_no_rows():
     email = f"u6c_{uuid.uuid4().hex}@example.com"
     production_settings = SimpleNamespace(

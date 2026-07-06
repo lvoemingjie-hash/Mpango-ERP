@@ -25,7 +25,11 @@ from models.tenant_onboarding import (
     TenantRegistration,
 )
 from schemas.auth_signup import SignupRequest
-from services.email_delivery import record_verification_email
+from services.email_delivery import (
+    EmailDeliveryNotConfiguredError,
+    is_verification_email_delivery_configured,
+    record_verification_email,
+)
 
 
 NEUTRAL_SIGNUP_MESSAGE = "If this email can be used, verification instructions will be sent."
@@ -67,6 +71,8 @@ async def create_signup_registration(
     """Create a pending tenant registration and email verification token."""
     settings = settings or get_settings()
     _assert_token_hash_key(settings)
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
 
     owner_email = normalize_email(str(request.email))
     validate_signup_password(request.password)

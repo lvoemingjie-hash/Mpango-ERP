@@ -93,3 +93,38 @@ Post-commit checks:
 ## Result
 
 U6-C remains backend-only and implements only the public signup plus email verification token skeleton required before U6-D verify-email behavior.
+
+## U6-C-R1 Signup Neutrality And Production Delivery Fail-Closed
+
+Date: 2026-07-06
+Verdict: `PASS_FOR_CTO_U6C_R1_REVIEW_PENDING_POST_COMMIT_GITNEXUS`
+
+Findings fixed:
+
+- Public signup response neutrality: new signups, duplicate live-email signups, and idempotent retries now all return `registrationId: null` in the public `SignupResponse`.
+- Production delivery fail-closed: when no real verification email provider exists in production, signup raises `EMAIL_DELIVERY_NOT_CONFIGURED` before registration/token DB writes and the API maps it to HTTP 503.
+
+R1 implementation notes:
+
+- The onboarding service still returns internal `registration_id` for server-side tests and future internal orchestration, but the public route deliberately suppresses it.
+- The non-production dev/test sink remains available for tests and dev inspection.
+- `services.email_delivery.record_verification_email` also raises if called when delivery is unavailable, so production cannot silently no-op even if a future caller bypasses the pre-write guard.
+- U6-C still adds no real email provider dependency, verify-email endpoint, provisioning, frontend, or deployment changes.
+
+R1 validation:
+
+- Initial RED attempt with non-secret local DB defaults could not reach assertions because the existing local Postgres rejected the default test password. No `.env` or existing container secret was read.
+- Validation used a temporary throwaway Postgres container on `127.0.0.1:55432` with an explicit non-secret test user/password, then removed the container after tests.
+- `poetry run pytest tests/test_u6c_signup_email_verification_skeleton.py -q`: `9 passed`.
+- `poetry run pytest tests/test_auth_regressions.py tests/test_route_authorization_policy.py tests/test_u6b_tenant_onboarding_schema.py -q`: `47 passed`.
+- `poetry run python -m py_compile api/v1/auth.py services/onboarding_service.py services/email_delivery.py tests/test_u6c_signup_email_verification_skeleton.py`: passed.
+- `git diff --check`: passed with CRLF working-copy warnings only.
+- ASCII scan on changed files: passed.
+- Mojibake scan on changed files: passed.
+- Broad secret-pattern scan: matched only expected security/token/password field names and allowlisted synthetic test literals; no real secret values were present.
+- Pre-commit on changed files: passed.
+
+R1 pending:
+
+- Commit.
+- GitNexus analyze/status after commit.

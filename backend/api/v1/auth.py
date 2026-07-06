@@ -42,6 +42,7 @@ from schemas.auth import (
     CurrentUserData
 )
 from schemas.common import MessageResponse
+from services.email_delivery import EmailDeliveryNotConfiguredError
 from services.onboarding_service import (
     IdempotencyConflictError,
     NEUTRAL_SIGNUP_MESSAGE,
@@ -76,10 +77,18 @@ async def signup(
                 "message": "Idempotency key was reused with a different signup payload",
             },
         )
+    except EmailDeliveryNotConfiguredError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "EMAIL_DELIVERY_NOT_CONFIGURED",
+                "message": "Signup verification email delivery is not configured",
+            },
+        )
 
     return SignupResponse(
         data=SignupResponseData(
-            registration_id=result.registration_id,
+            registration_id=None,
             status=result.status,
             email_verification_required=result.email_verification_required,
             resend_available_at=result.resend_available_at,

@@ -23,6 +23,15 @@ class VerificationEmailDelivery:
 _DEV_EMAIL_DELIVERIES: list[VerificationEmailDelivery] = []
 
 
+class EmailDeliveryNotConfiguredError(RuntimeError):
+    """Raised when signup email delivery cannot run safely."""
+
+
+def is_verification_email_delivery_configured(*, settings: Settings) -> bool:
+    """Return whether verification delivery can be performed in this runtime."""
+    return settings.MPANGO_ENV != "production"
+
+
 def record_verification_email(
     *,
     settings: Settings,
@@ -32,8 +41,8 @@ def record_verification_email(
     verification_link: str,
 ) -> None:
     """Capture verification email only in test/staging-safe runtime modes."""
-    if settings.MPANGO_ENV == "production":
-        return
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
 
     _DEV_EMAIL_DELIVERIES.append(
         VerificationEmailDelivery(

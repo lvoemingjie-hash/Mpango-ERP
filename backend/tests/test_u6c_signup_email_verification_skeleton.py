@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -10,10 +11,17 @@ from sqlalchemy import text
 
 from api.app import app
 from api.dependencies import get_db_session
+from api.v1 import auth as auth_router
 from database.session import AsyncSessionLocal, async_engine
 from models.tenant_onboarding import EmailVerificationToken, TenantRegistration
 from models.wholesaler import Wholesaler
-from services.email_delivery import clear_dev_email_deliveries, get_dev_email_deliveries
+from schemas.auth_signup import SignupRequest
+from services.email_delivery import (
+    EmailDeliveryNotConfiguredError,
+    clear_dev_email_deliveries,
+    get_dev_email_deliveries,
+)
+from services.onboarding_service import create_signup_registration
 
 
 pytestmark = pytest.mark.asyncio
@@ -125,6 +133,20 @@ async def _active_verification_tokens(registration_id: uuid.UUID):
         return rows
 
 
+async def _verification_token_rows_for_email(email: str):
+    async with AsyncSessionLocal() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT * FROM public.email_verification_tokens "
+                    "WHERE sent_to_email = :email"
+                ),
+                {"email": email},
+            )
+        ).mappings().all()
+        return rows
+
+
 async def _tenant_schema_names() -> set[str]:
     async with AsyncSessionLocal() as session:
         return set(
@@ -159,6 +181,7 @@ async def test_signup_creates_pending_registration_and_one_active_verification_t
     assert response.status_code == 202, response.text
     body = response.json()
     assert body["success"] is True
+    assert body["data"]["registrationId"] is None
     assert body["data"]["status"] == "pending_email_verification"
     assert body["data"]["emailVerificationRequired"] is True
     assert "token" not in str(body).lower()
@@ -208,6 +231,8 @@ async def test_duplicate_same_normalized_email_returns_neutral_success_without_d
     assert first.status_code == 202, first.text
     assert duplicate.status_code == 202, duplicate.text
     assert duplicate.json()["success"] is True
+    assert first.json()["data"] == duplicate.json()["data"]
+    assert first.json()["data"]["registrationId"] is None
     assert duplicate.json()["data"]["registrationId"] is None
 
     rows = await _registration_rows(first_email)
@@ -227,7 +252,8 @@ async def test_same_idempotency_key_and_fingerprint_is_safe():
 
     assert first.status_code == 202, first.text
     assert second.status_code == 202, second.text
-    assert second.json()["data"]["registrationId"] == first.json()["data"]["registrationId"]
+    assert first.json()["data"]["registrationId"] is None
+    assert second.json()["data"] == first.json()["data"]
 
     rows = await _registration_rows(email)
     assert len(rows) == 1
@@ -235,6 +261,46 @@ async def test_same_idempotency_key_and_fingerprint_is_safe():
     assert rows[0]["request_fingerprint_hash"] is not None
     assert len(await _active_verification_tokens(rows[0]["id"])) == 1
     assert len(get_dev_email_deliveries(email)) == 1
+
+
+async def test_production_signup_fails_closed_without_email_provider_and_writes_no_rows():
+    email = f"u6c_{uuid.uuid4().hex}@example.com"
+    production_settings = SimpleNamespace(
+        MPANGO_ENV="production",
+        SECRET_KEY="Z9vLk8mN4pQ7rS2tU5wX8yB3cD6fG0hJ",  # pragma: allowlist secret
+    )
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        with pytest.raises(EmailDeliveryNotConfiguredError, match="EMAIL_DELIVERY_NOT_CONFIGURED"):
+            await create_signup_registration(
+                db=session,
+                request=SignupRequest(**_signup_payload(email)),
+                settings=production_settings,
+            )
+        await session.rollback()
+
+    assert await _registration_rows(email) == []
+    assert await _verification_token_rows_for_email(email) == []
+    assert get_dev_email_deliveries(email) == []
+
+
+async def test_signup_endpoint_returns_503_when_email_delivery_is_unavailable(monkeypatch):
+    email = f"u6c_{uuid.uuid4().hex}@example.com"
+
+    async def _raise_delivery_unavailable(**_kwargs):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+
+    monkeypatch.setattr(auth_router, "create_signup_registration", _raise_delivery_unavailable)
+
+    async with await _client() as client:
+        response = await client.post("/api/v1/auth/signup", json=_signup_payload(email))
+
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"]["code"] == "EMAIL_DELIVERY_NOT_CONFIGURED"
+    assert await _registration_rows(email) == []
+    assert await _verification_token_rows_for_email(email) == []
+    assert get_dev_email_deliveries(email) == []
 
 
 async def test_invalid_email_or_password_returns_validation_error_without_db_writes():

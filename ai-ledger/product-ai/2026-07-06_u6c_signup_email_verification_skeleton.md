@@ -133,7 +133,7 @@ R1 post-commit checks:
 ## U6-C-R2 Public Signup Status Neutrality
 
 Date: 2026-07-06
-Verdict: `PASS_FOR_CTO_U6C_R2_REVIEW_PENDING_POST_COMMIT_GITNEXUS`
+Verdict: `PASS_FOR_CTO_U6C_R2_REVIEW`
 
 Finding fixed:
 
@@ -159,7 +159,8 @@ R2 validation:
 - Broad secret-pattern scan: matched only expected security/token/password field names and allowlisted synthetic test literals; no real secret values were present.
 - Pre-commit on changed files: passed.
 
-R2 pending:
+R2 post-commit checks:
 
-- Commit.
-- GitNexus analyze/status after commit.
+- Commit: `fb3e2607 fix(U6-C): neutralize public signup status`.
+- GitNexus analyze: passed, repository indexed successfully with 6,469 nodes, 18,419 edges, 424 clusters, and 225 flows.
+- GitNexus status: up to date at commit `fb3e260`.

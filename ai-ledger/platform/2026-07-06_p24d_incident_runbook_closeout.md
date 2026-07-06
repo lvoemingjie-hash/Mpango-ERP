@@ -1,6 +1,6 @@
 # P24-D - Incident + Runbook Closeout Closeout
 
-- Status: LANDED on branch, NOT merged (push-ready on request).
+- Status: LANDED on branch and PUSHED to origin, NOT merged into platform-dev.
 - Date: 2026-07-06.
 - Phase: P24-D (docs / ledger-only closeout of the P24 incident + runbook closeout
   layer: P24-A/B/C now form a usable, in-memory, non-executing, non-sending
@@ -320,7 +320,7 @@ auth / RBAC rewrite, no `source_unknown` displayed or closed healthy, and no
 ## 7. P25 entry gate
 
 P25 must be Platform Frontend Customer Readiness: a customer / operator
-readiness VALIDIDATION phase over the as-built platform surface (P10 through
+readiness VALIDATION phase over the as-built platform surface (P10 through
 P24), NOT a new platform capability. It must include route smoke across the
 operator console surface, screenshots / Playwright captures where feasible, a
 real login smoke if a live credential is available, empty / error / denied
@@ -371,7 +371,8 @@ Verified on this branch versus `origin/platform-dev` = `a1cdc44c`:
   execution, no approval, no flag mutation, no notification delivery, no tenant
   mutation, no product business task.
 - `origin/platform-dev` and `product-dev-recovered` are untouched by P24-D
-  (P24-D is NOT merged; pushed only on request with an explicit refspec
-  `<branch>:<branch>` to avoid fast-forwarding `platform-dev`, since the
-  worktree was created with `git worktree add -b ... origin/platform-dev`).
+  (P24-D is NOT merged into platform-dev; the feature branch is pushed to
+  origin and local == remote using the explicit refspec `<branch>:<branch>` to
+  avoid fast-forwarding `platform-dev`, since the worktree was created with
+  `git worktree add -b ... origin/platform-dev`).
 - P25 has NOT started.

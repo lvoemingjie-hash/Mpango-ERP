@@ -6,12 +6,31 @@
  * Unknown states are displayed distinctly from healthy.
  */
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  ServerStackIcon,
+  BuildingOfficeIcon,
+  ClipboardDocumentListIcon,
+  BookOpenIcon,
+} from '@heroicons/react/24/outline';
 import { usePlatformStore } from '@/stores/platformStore';
 import { platformService } from '@/services/platformApi';
 import { PlatformMetricCard } from '@/components/platform/PlatformMetricCard';
 import { PlatformStatusBadge } from '@/components/platform/PlatformStatusBadge';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
+
+/**
+ * Read-only platform views not surfaced in the Sidebar. The Overview is the
+ * operator hub for these drill-downs; each link targets an existing as-built
+ * route (no new capability). Navigation only -- no write/destructive control.
+ */
+const PLATFORM_PAGE_LINKS = [
+  { to: '/platform/system/health', label: 'System Health', icon: ServerStackIcon, description: 'Overall system and component status' },
+  { to: '/platform/tenants', label: 'Tenant Directory', icon: BuildingOfficeIcon, description: 'All tenants with health badges' },
+  { to: '/platform/audit', label: 'Audit Events', icon: ClipboardDocumentListIcon, description: 'Read-only platform audit trail' },
+  { to: '/platform/registry', label: 'Registry', icon: BookOpenIcon, description: 'Platform registry catalog' },
+] as const;
 
 export function PlatformOverviewPage() {
   const {
@@ -144,6 +163,26 @@ export function PlatformOverviewPage() {
             )}
           </div>
         ) : null}
+      </section>
+
+      {/* Platform pages -- hub links to read-only views not in the Sidebar */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">Platform Pages</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {PLATFORM_PAGE_LINKS.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="group flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:bg-gray-50"
+            >
+              <item.icon className="h-6 w-6 shrink-0 text-gray-400 group-hover:text-gray-500" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-medium text-gray-900 group-hover:text-gray-700">{item.label}</p>
+                <p className="mt-0.5 text-xs text-gray-500">{item.description}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
       </section>
     </div>
   );

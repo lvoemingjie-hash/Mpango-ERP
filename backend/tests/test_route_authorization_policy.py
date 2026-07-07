@@ -21,14 +21,14 @@ Approach:
     policy violation. The harness never silently relaxes checks; findings are
     recorded as xfail tests so they are visible and tracked, not hidden.
 
-Task S1: test/contract-only harness — scans routes and classifies them.
-Task S2: production fix — all 12 findings resolved (8 platform + 2 export + 2 profiling).
+Task S1: test/contract-only harness - scans routes and classifies them.
+Task S2: production fix - all 12 findings resolved (8 platform + 2 export + 2 profiling).
          xfail markers for fixed routes removed; master gate now passes green.
-Task S2-R1: platform super-admin boundary fix — replaced RequirePermission("system:admin")
+Task S2-R1: platform super-admin boundary fix - replaced RequirePermission("system:admin")
          on all 8 platform routes with RequirePlatformAdmin() which requires an
          identity-only super admin token, closing the gap where contextual tenant
          admins with system:admin could access cross-tenant platform data.
-Task S2-R2: strict identity context fix — RequirePlatformAdmin now uses explicit
+Task S2-R2: strict identity context fix - RequirePlatformAdmin now uses explicit
          AND checks (tenant_id is None AND tenant_schema is None) instead of
          TokenPayload.is_identity_only (OR semantics), rejecting partial-context
          tokens that could bypass the platform gate.
@@ -124,6 +124,7 @@ PLATFORM_PERMISSION_PREFIXES: Tuple[str, ...] = (
 # Adding to this list requires CTO sign-off -- it is the ONLY escape hatch.
 #
 # - /api/v1/auth/login          : credentials exchanged for tokens (pre-auth)
+# - /api/v1/auth/signup         : public tenant registration front-door skeleton
 # - /api/v1/auth/refresh        : refresh token in body (pre-auth, validates internally)
 # - /api/v1/invitations/{code}  : pre-auth invitation code validation (retailer signup flow)
 # - /api/v1/retailers/register  : pre-auth retailer self-registration via invitation code
@@ -131,6 +132,7 @@ PLATFORM_PERMISSION_PREFIXES: Tuple[str, ...] = (
 # NOTE: NO platform, export, or business data routes are on this list.
 PUBLIC_ALLOWLIST: Set[str] = {
     "/api/v1/auth/login",
+    "/api/v1/auth/signup",
     "/api/v1/auth/refresh",
     "/api/v1/invitations/{code}",
     "/api/v1/retailers/register",
@@ -501,7 +503,7 @@ class TestPlatformRoutePolicy:
           - GET  /api/v1/platform/stats/
 
         S2-R1: Routes upgraded from RequirePermission("system:admin") to
-        RequirePlatformAdmin() — only identity-only super admin tokens are
+        RequirePlatformAdmin() - only identity-only super admin tokens are
         accepted, preventing contextual tenant admins with system:admin
         from accessing cross-tenant platform data.
 
@@ -541,7 +543,7 @@ class TestPlatformAdminBoundary:
     - It requires ``token.is_identity_only == True`` (no tenant context)
     - It requires ``token.is_super_admin == True`` (carries super_admin role)
     - A contextual token (tenant selected) is ALWAYS rejected, even if the
-      user is a super_admin — platform data must only be accessed from the
+      user is a super_admin - platform data must only be accessed from the
       platform scope.
     - A tenant admin whose tenant role grants ``system:admin`` is rejected
       because their token is contextual (has tenant_id/tenant_schema).
@@ -566,7 +568,7 @@ class TestPlatformAdminBoundary:
 
     @pytest.mark.asyncio
     async def test_identity_only_super_admin_allowed(self):
-        """Identity-only super admin token → access granted."""
+        """Identity-only super admin token -> access granted."""
         token = TokenPayload(user_id="sa-1", roles=["super_admin"])
         # is_identity_only=True (no tenant_id/tenant_schema), is_super_admin=True
         request = self._authed_request(token)
@@ -579,7 +581,7 @@ class TestPlatformAdminBoundary:
     @pytest.mark.asyncio
     async def test_contextual_tenant_admin_rejected(self):
         """
-        Contextual tenant admin with system:admin in their tenant role → 403.
+        Contextual tenant admin with system:admin in their tenant role -> 403.
 
         This is the core S2-R1 fix: RequirePermission("system:admin") would
         have allowed this token (it checks tenant role permissions), but
@@ -602,7 +604,7 @@ class TestPlatformAdminBoundary:
     @pytest.mark.asyncio
     async def test_contextual_super_admin_rejected(self):
         """
-        Contextual super admin (selected a tenant) → 403.
+        Contextual super admin (selected a tenant) -> 403.
 
         Even though the user IS a super_admin, their token carries tenant
         context. Platform endpoints must be accessed from identity-only scope.
@@ -626,7 +628,7 @@ class TestPlatformAdminBoundary:
     @pytest.mark.asyncio
     async def test_partial_context_tenant_id_set_schema_none_rejected(self):
         """
-        Token with tenant_id set but tenant_schema None + super_admin → 403.
+        Token with tenant_id set but tenant_schema None + super_admin -> 403.
 
         S2-R2 finding: TokenPayload.is_identity_only uses OR semantics:
             tenant_id is None OR tenant_schema is None
@@ -659,7 +661,7 @@ class TestPlatformAdminBoundary:
     @pytest.mark.asyncio
     async def test_partial_context_tenant_id_none_schema_set_rejected(self):
         """
-        Token with tenant_id None but tenant_schema set + super_admin → 403.
+        Token with tenant_id None but tenant_schema set + super_admin -> 403.
 
         S2-R2 finding: Same OR-vs-AND gap as the previous test, but in the
         opposite direction. This token has tenant_id=None, so
@@ -687,7 +689,7 @@ class TestPlatformAdminBoundary:
 
     @pytest.mark.asyncio
     async def test_regular_user_rejected(self):
-        """Regular tenant user → 403."""
+        """Regular tenant user -> 403."""
         token = TokenPayload(
             user_id="user-1",
             tenant_id="00000000-0000-0000-0000-000000000001",
@@ -703,7 +705,7 @@ class TestPlatformAdminBoundary:
 
     @pytest.mark.asyncio
     async def test_unauthenticated_rejected(self):
-        """No auth context → 401."""
+        """No auth context -> 401."""
         request = self._bare_request()
 
         rp = RequirePlatformAdmin()
@@ -722,7 +724,7 @@ class TestPlatformAdminBoundary:
 
     def test_platform_routes_reject_non_platform_admin_http(self):
         """
-        HTTP GET /api/v1/platform/** with mock (non-super-admin) auth → 403.
+        HTTP GET /api/v1/platform/** with mock (non-super-admin) auth -> 403.
 
         In the test environment, MockAuthStrategy authenticates all requests
         with a contextual non-super-admin token (tenant_id=t_dev, roles=[]).
@@ -848,6 +850,7 @@ class TestPublicAllowlistIntegrity:
         """The PUBLIC_ALLOWLIST must only contain pre-auth auth/registration routes."""
         assert PUBLIC_ALLOWLIST == {
             "/api/v1/auth/login",
+            "/api/v1/auth/signup",
             "/api/v1/auth/refresh",
             "/api/v1/invitations/{code}",
             "/api/v1/retailers/register",
@@ -936,7 +939,7 @@ class TestSmokeAuthGate:
 
     @pytest.mark.asyncio
     async def test_require_permission_system_admin_rejects_no_auth(self):
-        """RequirePermission('system:admin') → 401 without auth context."""
+        """RequirePermission('system:admin') -> 401 without auth context."""
         rp = RequirePermission("system:admin")
         request = self._bare_request()
         with pytest.raises(HTTPException) as exc:
@@ -945,7 +948,7 @@ class TestSmokeAuthGate:
 
     @pytest.mark.asyncio
     async def test_require_permission_exports_create_rejects_no_auth(self):
-        """RequirePermission('exports:create') → 401 without auth context."""
+        """RequirePermission('exports:create') -> 401 without auth context."""
         rp = RequirePermission("exports:create")
         request = self._bare_request()
         with pytest.raises(HTTPException) as exc:
@@ -953,7 +956,7 @@ class TestSmokeAuthGate:
         assert exc.value.status_code == 401
 
     def test_get_current_user_context_rejects_no_auth(self):
-        """get_current_user_context → 401 without auth context."""
+        """get_current_user_context -> 401 without auth context."""
         request = self._bare_request()
         with pytest.raises(HTTPException) as exc:
             get_current_user_context(request)
@@ -970,7 +973,7 @@ class TestSmokeAuthGate:
 
         NOTE: In the test environment, MockAuthStrategy (auth/strategies/mock.py)
         authenticates ALL requests regardless of Authorization header. This means
-        the "unauthenticated → 401" path cannot be exercised via TestClient here.
+        the "unauthenticated -> 401" path cannot be exercised via TestClient here.
         The dependency-level test (test_get_current_user_context_rejects_no_auth)
         proves that get_current_user_context raises 401 without auth context.
 
@@ -992,6 +995,6 @@ class TestSmokeAuthGate:
             # Any other status proves the route requires auth/resources.
             if resp.status_code == 200:
                 failures.append(
-                    f"{path} → 200 (route is wide-open!)"
+                    f"{path} -> 200 (route is wide-open!)"
                 )
         assert failures == [], "Export routes are unexpectedly accessible:\n" + "\n".join(failures)

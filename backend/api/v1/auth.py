@@ -2,9 +2,9 @@
 Authentication API endpoints.
 
 H-Fix-01: Decoupled Identity from Tenant Context.
-- POST /auth/login  → email + password only → Identity JWT + available_tenants
-- POST /auth/select-tenant → tenant_id → Contextual JWT
-- POST /auth/refresh → works for both Identity and Contextual refresh tokens
+- POST /auth/login  -> email + password only -> Identity JWT + available_tenants
+- POST /auth/select-tenant -> tenant_id -> Contextual JWT
+- POST /auth/refresh -> works for both Identity and Contextual refresh tokens
 """
 from datetime import datetime
 from uuid import UUID
@@ -28,6 +28,7 @@ from crud.wholesaler import get_wholesaler_by_id
 from crud.user import find_user_across_tenants, get_user_with_permissions
 from database.session import get_tenant_db
 from models.user import User, Role
+from schemas.auth_signup import SignupRequest, SignupResponse, SignupResponseData
 from schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -41,8 +42,61 @@ from schemas.auth import (
     CurrentUserData
 )
 from schemas.common import MessageResponse
+from services.email_delivery import EmailDeliveryNotConfiguredError
+from services.onboarding_service import (
+    IdempotencyConflictError,
+    NEUTRAL_SIGNUP_MESSAGE,
+    create_signup_registration,
+)
 
 router = APIRouter()
+PUBLIC_SIGNUP_STATUS = "pending_email_verification"
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/signup  (U6-C tenant registration skeleton)
+# ---------------------------------------------------------------------------
+
+@router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_202_ACCEPTED)
+async def signup(
+    signup_request: SignupRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Create a pending tenant registration and verification token hash."""
+    try:
+        result = await create_signup_registration(
+            db=db,
+            request=signup_request,
+            idempotency_key=request.headers.get("Idempotency-Key"),
+        )
+    except IdempotencyConflictError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "IDEMPOTENCY_CONFLICT",
+                "message": "Idempotency key was reused with a different signup payload",
+            },
+        )
+    except EmailDeliveryNotConfiguredError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "EMAIL_DELIVERY_NOT_CONFIGURED",
+                "message": "Signup verification email delivery is not configured",
+            },
+        )
+
+    return SignupResponse(
+        data=SignupResponseData(
+            registration_id=None,
+            status=PUBLIC_SIGNUP_STATUS,
+            email_verification_required=result.email_verification_required,
+            resend_available_at=result.resend_available_at,
+        ),
+        message=NEUTRAL_SIGNUP_MESSAGE,
+        timestamp=datetime.utcnow(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -226,8 +280,8 @@ async def refresh_token(request: RefreshTokenRequest):
     Refresh access token endpoint.
 
     Works for both Identity and Contextual refresh tokens.
-    - Identity refresh → new Identity tokens
-    - Contextual refresh → new Contextual tokens (preserves tenant claims)
+    - Identity refresh -> new Identity tokens
+    - Contextual refresh -> new Contextual tokens (preserves tenant claims)
 
     Returns:
         LoginResponse with new access_token and refresh_token.
@@ -245,7 +299,7 @@ async def refresh_token(request: RefreshTokenRequest):
             )
 
         if payload.is_identity_only:
-            # Identity refresh — re-issue identity tokens
+            # Identity refresh - re-issue identity tokens
             access_token = create_identity_token(
                 user_id=payload.user_id,
                 roles=payload.roles,
@@ -257,7 +311,7 @@ async def refresh_token(request: RefreshTokenRequest):
                 token_type="refresh",
             )
             # For identity-only refresh we still return LoginResponse
-            # but with placeholder tenant fields — the frontend should
+            # but with placeholder tenant fields - the frontend should
             # call select-tenant to get a full contextual token.
             # We return the identity tokens wrapped in the contextual schema
             # by using sentinel values.
@@ -274,7 +328,7 @@ async def refresh_token(request: RefreshTokenRequest):
                 timestamp=datetime.utcnow(),
             )
         else:
-            # Contextual refresh — preserve tenant claims
+            # Contextual refresh - preserve tenant claims
             access_token = create_contextual_token(
                 user_id=payload.user_id,
                 roles=payload.roles,

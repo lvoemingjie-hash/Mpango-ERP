@@ -234,7 +234,8 @@ class ApprovalSnapshot:
 
     P22 holds no durable approval state of its own; it resolves a
     durable_approval_id to one of these through the P20/P21 read path (default:
-    the P20 in-memory store) or an injected test resolver. source_status is in
+    the active P20/P21 durable runtime read path, which fails closed with no
+    in-memory fallback) or an injected test resolver. source_status is in
     the P22 vocabulary (known | unknown | degraded).
     """
 
@@ -271,7 +272,8 @@ _P20_TO_P22_SOURCE: dict[str, str] = {
 
 
 #: Test / dev override seam for the durable approval resolver. None resolves
-#: through the default P20 in-memory read path.
+#: through the default active P20/P21 durable runtime read path (no in-memory
+#: fallback).
 _RESOLVER_OVERRIDE: Optional[Callable[[str], Optional[ApprovalSnapshot]]] = None
 
 
@@ -282,14 +284,16 @@ def set_approval_resolver(
 
     The resolver maps a durable_approval_id to an :class:`ApprovalSnapshot` (or
     None when not found). Passing None restores the default resolver, which reads
-    the P20 in-memory durable approval store (the feasible, DB-free read path).
+    through the active P20/P21 durable runtime read path
+    (storage-readiness-gated read_durable_approval) and fails closed with no
+    in-memory fallback.
     """
     global _RESOLVER_OVERRIDE
     _RESOLVER_OVERRIDE = resolver
 
 
 def reset_approval_resolver() -> None:
-    """Restore the default durable-approval resolver (P20 in-memory read path)."""
+    """Restore the default durable-approval resolver (active P20/P21 durable runtime read path)."""
     set_approval_resolver(None)
 
 

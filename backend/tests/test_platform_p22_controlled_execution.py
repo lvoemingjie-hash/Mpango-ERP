@@ -38,7 +38,8 @@ Coverage:
 The durable approval is resolved through an injected test resolver (the P22
 resolver seam) that returns crafted ApprovalSnapshot objects, so the suite is
 fully deterministic and free of any DB / async-engine / Docker dependency. The
-default resolver (P20 in-memory read path) is exercised separately.
+default resolver (active P20/P21 durable runtime read path, no in-memory
+fallback) is exercised separately.
 
 Aligned to docs/ai/PLATFORM_PRODUCT_P22_CONTROLLED_EXECUTION_V0_CONTRACT.md
 (P22-A).

@@ -9,7 +9,7 @@ H-Fix-01: Decoupled Identity from Tenant Context.
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -28,7 +28,13 @@ from crud.wholesaler import get_wholesaler_by_id
 from crud.user import find_user_across_tenants, get_user_with_permissions
 from database.session import get_tenant_db
 from models.user import User, Role
-from schemas.auth_signup import SignupRequest, SignupResponse, SignupResponseData
+from schemas.auth_signup import (
+    SignupRequest,
+    SignupResponse,
+    SignupResponseData,
+    VerifyEmailRequest,
+    VerifyEmailResponse,
+)
 from schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -45,8 +51,12 @@ from schemas.common import MessageResponse
 from services.email_delivery import EmailDeliveryNotConfiguredError
 from services.onboarding_service import (
     IdempotencyConflictError,
+    INVALID_OR_EXPIRED_VERIFICATION_TOKEN,
     NEUTRAL_SIGNUP_MESSAGE,
+    NEUTRAL_VERIFY_EMAIL_MESSAGE,
+    VerificationTokenInvalidError,
     create_signup_registration,
+    verify_email_token,
 )
 
 router = APIRouter()
@@ -95,6 +105,33 @@ async def signup(
             resend_available_at=result.resend_available_at,
         ),
         message=NEUTRAL_SIGNUP_MESSAGE,
+        timestamp=datetime.utcnow(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/verify-email  (U6-D email verification skeleton)
+# ---------------------------------------------------------------------------
+
+@router.post("/verify-email", response_model=VerifyEmailResponse, status_code=status.HTTP_200_OK)
+async def verify_email(
+    verify_request: VerifyEmailRequest = Body(default_factory=VerifyEmailRequest),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Verify a signup email token without provisioning a tenant."""
+    try:
+        await verify_email_token(db=db, token=verify_request.token)
+    except VerificationTokenInvalidError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": INVALID_OR_EXPIRED_VERIFICATION_TOKEN,
+                "message": "Verification link is invalid or expired",
+            },
+        )
+
+    return VerifyEmailResponse(
+        message=NEUTRAL_VERIFY_EMAIL_MESSAGE,
         timestamp=datetime.utcnow(),
     )
 

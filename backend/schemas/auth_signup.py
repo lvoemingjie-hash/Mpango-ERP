@@ -64,3 +64,28 @@ class SignupResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class VerifyEmailRequest(BaseModel):
+    """Public email verification request."""
+
+    token: str | None = Field(None, min_length=1, max_length=512)
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+
+class VerifyEmailResponseData(BaseModel):
+    """Neutral email verification response data."""
+
+    accepted: bool = True
+
+
+class VerifyEmailResponse(BaseModel):
+    """Neutral public email verification response."""
+
+    success: bool = True
+    data: VerifyEmailResponseData = Field(default_factory=VerifyEmailResponseData)
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = ConfigDict(populate_by_name=True)

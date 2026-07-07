@@ -9,7 +9,7 @@ H-Fix-01: Decoupled Identity from Tenant Context.
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,6 +29,9 @@ from crud.user import find_user_across_tenants, get_user_with_permissions
 from database.session import get_tenant_db
 from models.user import User, Role
 from schemas.auth_signup import (
+    OnboardingStatusRequest,
+    OnboardingStatusResponse,
+    OnboardingStatusResponseData,
     SignupRequest,
     SignupResponse,
     SignupResponseData,
@@ -51,11 +54,15 @@ from schemas.common import MessageResponse
 from services.email_delivery import EmailDeliveryNotConfiguredError
 from services.onboarding_service import (
     IdempotencyConflictError,
+    INVALID_OR_EXPIRED_ONBOARDING_STATUS_TOKEN,
     INVALID_OR_EXPIRED_VERIFICATION_TOKEN,
+    NEUTRAL_ONBOARDING_STATUS_MESSAGE,
     NEUTRAL_SIGNUP_MESSAGE,
     NEUTRAL_VERIFY_EMAIL_MESSAGE,
+    OnboardingStatusTokenInvalidError,
     VerificationTokenInvalidError,
     create_signup_registration,
+    get_onboarding_status,
     verify_email_token,
 )
 
@@ -133,6 +140,48 @@ async def verify_email(
     return VerifyEmailResponse(
         message=NEUTRAL_VERIFY_EMAIL_MESSAGE,
         timestamp=datetime.utcnow(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/onboarding/status  (U6-E onboarding status endpoint)
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/onboarding/status",
+    response_model=OnboardingStatusResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def onboarding_status(
+    status_request: OnboardingStatusRequest = Body(default_factory=OnboardingStatusRequest),
+    status_token_header: str | None = Header(None, alias="X-Onboarding-Status-Token"),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Return coarse onboarding status for a valid opaque status token."""
+    body_token = status_request.status_token
+    header_token = status_token_header.strip() if status_token_header else None
+    if body_token and header_token and body_token != header_token:
+        raise _invalid_onboarding_status_token()
+
+    try:
+        result = await get_onboarding_status(db=db, token=body_token or header_token)
+    except OnboardingStatusTokenInvalidError:
+        raise _invalid_onboarding_status_token()
+
+    return OnboardingStatusResponse(
+        data=OnboardingStatusResponseData(status=result.status),
+        message=NEUTRAL_ONBOARDING_STATUS_MESSAGE,
+        timestamp=datetime.utcnow(),
+    )
+
+
+def _invalid_onboarding_status_token() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "code": INVALID_OR_EXPIRED_ONBOARDING_STATUS_TOKEN,
+            "message": "Onboarding status token is invalid or expired",
+        },
     )
 
 

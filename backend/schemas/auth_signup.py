@@ -89,3 +89,28 @@ class VerifyEmailResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class OnboardingStatusRequest(BaseModel):
+    """Public onboarding status request."""
+
+    status_token: str | None = Field(None, alias="statusToken", min_length=1, max_length=512)
+
+    model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True)
+
+
+class OnboardingStatusResponseData(BaseModel):
+    """Coarse public onboarding status data."""
+
+    status: str
+
+
+class OnboardingStatusResponse(BaseModel):
+    """Neutral public onboarding status response."""
+
+    success: bool = True
+    data: OnboardingStatusResponseData
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = ConfigDict(populate_by_name=True)

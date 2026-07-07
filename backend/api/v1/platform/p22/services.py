@@ -38,16 +38,20 @@ a recorded request; it is not execution itself. ``execution_allowed`` /
 
 Durable approval resolution: the service resolves a ``durable_approval_id``
 through the P20/P21 durable approval READ path via an injectable resolver seam
-(:func:`set_approval_resolver`). The default resolver reads the P20 in-memory
-durable approval store (the feasible, DB-free read path); tests inject crafted
-snapshots for determinism. P22 holds NO durable approval state of its own and
-performs NO durable approval mutation.
+(:func:`set_approval_resolver`). The default resolver uses the ACTIVE P20/P21
+durable runtime read path (``read_durable_approval`` + ``_check_durable_readiness``)
+and fails closed if durable storage is not ready -- NO fallback to the old
+P20 in-memory store. Tests inject crafted sync snapshots for determinism via
+the override seam. P22 holds NO durable approval state of its own and performs
+NO durable approval mutation.
 """
 from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1.platform.p18 import services as _p18
 
@@ -230,7 +234,8 @@ class ApprovalSnapshot:
 
     P22 holds no durable approval state of its own; it resolves a
     durable_approval_id to one of these through the P20/P21 read path (default:
-    the P20 in-memory store) or an injected test resolver. source_status is in
+    the active P20/P21 durable runtime read path, which fails closed with no
+    in-memory fallback) or an injected test resolver. source_status is in
     the P22 vocabulary (known | unknown | degraded).
     """
 
@@ -267,7 +272,8 @@ _P20_TO_P22_SOURCE: dict[str, str] = {
 
 
 #: Test / dev override seam for the durable approval resolver. None resolves
-#: through the default P20 in-memory read path.
+#: through the default active P20/P21 durable runtime read path (no in-memory
+#: fallback).
 _RESOLVER_OVERRIDE: Optional[Callable[[str], Optional[ApprovalSnapshot]]] = None
 
 
@@ -278,14 +284,16 @@ def set_approval_resolver(
 
     The resolver maps a durable_approval_id to an :class:`ApprovalSnapshot` (or
     None when not found). Passing None restores the default resolver, which reads
-    the P20 in-memory durable approval store (the feasible, DB-free read path).
+    through the active P20/P21 durable runtime read path
+    (storage-readiness-gated read_durable_approval) and fails closed with no
+    in-memory fallback.
     """
     global _RESOLVER_OVERRIDE
     _RESOLVER_OVERRIDE = resolver
 
 
 def reset_approval_resolver() -> None:
-    """Restore the default durable-approval resolver (P20 in-memory read path)."""
+    """Restore the default durable-approval resolver (active P20/P21 durable runtime read path)."""
     set_approval_resolver(None)
 
 
@@ -314,25 +322,30 @@ def _snapshot_from_p20_record(rec: Any) -> ApprovalSnapshot:
     )
 
 
-def _default_resolve_approval(approval_id: Optional[str]) -> Optional[ApprovalSnapshot]:
-    """Default resolver: read the P20 in-memory durable approval store.
+async def _default_resolve_approval(
+    approval_id: Optional[str], *, db: Optional[AsyncSession]
+) -> Optional[ApprovalSnapshot]:
+    """Default resolver: read through the active P20/P21 durable approval runtime.
 
-    This is the feasible, DB-free P20/P21 read path. It reads the process-local
-    in-memory durable approval store directly (no DB session, no async engine).
-    If the approval is absent the resolver returns None (treated as not-found ->
-    blocked). It never mutates durable approval state.
+    Uses the SAME durable runtime read path P20 uses after the durable cutover
+    (P20/P21): storage-readiness-gated ``read_durable_approval``. Fails closed:
+    if durable storage is not ready or the read fails, returns None
+    (not-found -> blocked). Never falls back to the old P20 in-memory store.
     """
-    if not approval_id:
+    if not approval_id or db is None:
         return None
     try:
-        # Lazy import avoids any import-time coupling to the P20 service module
-        # (which wires the P21 durable adapter). The in-memory read is sync and
-        # touches only the process-local _STORE.
-        from api.v1.platform.p20.services import _memory_read_durable_approval
+        from api.v1.platform.p20.services import _check_durable_readiness, read_durable_approval
     except Exception:
         return None
     try:
-        rec = _memory_read_durable_approval(approval_id)
+        ready, _code = await _check_durable_readiness(db)
+    except Exception:
+        return None
+    if not ready:
+        return None  # fail closed -- no memory fallback
+    try:
+        rec = await read_durable_approval(approval_id, db=db)
     except Exception:
         return None
     if rec is None:
@@ -340,14 +353,21 @@ def _default_resolve_approval(approval_id: Optional[str]) -> Optional[ApprovalSn
     return _snapshot_from_p20_record(rec)
 
 
-def _resolve_approval(approval_id: Optional[str]) -> Optional[ApprovalSnapshot]:
-    """Resolve a durable_approval_id through the active resolver (override > default)."""
-    resolver = _RESOLVER_OVERRIDE or _default_resolve_approval
-    try:
-        return resolver(approval_id)
-    except Exception:
-        # Conservative: any resolver error yields no snapshot (unknown -> blocked).
-        return None
+async def _resolve_approval(
+    approval_id: Optional[str], *, db: Optional[AsyncSession] = None
+) -> Optional[ApprovalSnapshot]:
+    """Resolve a durable_approval_id through the active resolver (override > default).
+
+    When a test/dev override is injected via :func:`set_approval_resolver`, the
+    sync override is called directly (backward-compatible with existing test
+    harness). Otherwise the async durable runtime resolver is used.
+    """
+    if _RESOLVER_OVERRIDE is not None:
+        try:
+            return _RESOLVER_OVERRIDE(approval_id)
+        except Exception:
+            return None
+    return await _default_resolve_approval(approval_id, db=db)
 
 
 # -- Audit (in-memory, append-only, redacted) --------------------------------
@@ -605,12 +625,13 @@ def build_catalog() -> ExecutionCatalogResponse:
 # -- Dry-run ------------------------------------------------------------------
 
 
-def evaluate_dry_run(
+async def evaluate_dry_run(
     request: ExecutionDryRunRequest,
     *,
     actor: Optional[str],
     actor_role: str,
     identity_context: str,
+    db: Optional[AsyncSession] = None,
 ) -> ExecutionDryRunResponse:
     """Validate an execution against the preconditions; return a no-mutation verdict.
 
@@ -661,7 +682,7 @@ def evaluate_dry_run(
         block_reasons.append(excluded_reason or "action_not_allowlisted")  # type: ignore[arg-type]
 
     # 6) approval resolves + 7) approval preconditions (incl. target binding)
-    approval = _resolve_approval(request.durable_approval_id)
+    approval = await _resolve_approval(request.durable_approval_id, db=db)
     approval_reasons, source_status, reversible = _check_approval_preconditions(
         approval, request.action_type, actor, request.tenant_id
     )
@@ -796,12 +817,13 @@ def _response_from(
     )
 
 
-def record_execution_request(
+async def record_execution_request(
     request: ExecutionRequestCreate,
     *,
     actor: Optional[str],
     actor_role: str,
     identity_context: str,
+    db: Optional[AsyncSession] = None,
 ) -> ExecutionRequestResponse:
     """Record an execution request after a passed dry-run and acknowledgement.
 
@@ -881,7 +903,7 @@ def record_execution_request(
 
     # 8) re-validate the approval preconditions at request time (P22-A 4 / 10.5),
     #    including target (tenant_id) binding (P22-B-R1).
-    approval = _resolve_approval(request.durable_approval_id)
+    approval = await _resolve_approval(request.durable_approval_id, db=db)
     approval_reasons, source_status, _reversible = _check_approval_preconditions(
         approval, request.action_type, actor, request.tenant_id
     )

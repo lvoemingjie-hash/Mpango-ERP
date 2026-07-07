@@ -38,7 +38,8 @@ Coverage:
 The durable approval is resolved through an injected test resolver (the P22
 resolver seam) that returns crafted ApprovalSnapshot objects, so the suite is
 fully deterministic and free of any DB / async-engine / Docker dependency. The
-default resolver (P20 in-memory read path) is exercised separately.
+default resolver (active P20/P21 durable runtime read path, no in-memory
+fallback) is exercised separately.
 
 Aligned to docs/ai/PLATFORM_PRODUCT_P22_CONTROLLED_EXECUTION_V0_CONTRACT.md
 (P22-A).
@@ -493,10 +494,16 @@ def test_dry_run_write_against_degraded_source_blocked():
 
 
 def test_dry_run_support_operator_denied_as_executor():
+    # The operator secret passes the transport guard in ANY env (it is the
+    # production-valid machine credential); the executor precondition then reads
+    # the authenticated support_operator identity and blocks it. This keeps the
+    # test deterministic regardless of MPANGO_ENV (the test-override header only
+    # satisfies the guard in test|testing env).
     with _client() as c:  # _client() already _as("super-exec"); override below.
         _as_support("sup-1")
         _seed("ap-1")
-        r = c.post(f"{P22}/dry-run", json=_dry_run_payload("ap-1"), headers=AUTH_HEADERS)
+        r = c.post(f"{P22}/dry-run", json=_dry_run_payload("ap-1"), headers=OPERATOR_HEADERS)
+    assert r.status_code == 200  # guard passed via operator secret
     assert "executor_not_identity_super_admin" in r.json()["block_reasons"]
 
 
@@ -504,7 +511,8 @@ def test_dry_run_engineering_operator_denied_as_executor():
     with _client() as c:
         _as_engineering("eng-1")
         _seed("ap-1")
-        r = c.post(f"{P22}/dry-run", json=_dry_run_payload("ap-1"), headers=AUTH_HEADERS)
+        r = c.post(f"{P22}/dry-run", json=_dry_run_payload("ap-1"), headers=OPERATOR_HEADERS)
+    assert r.status_code == 200
     assert "executor_not_identity_super_admin" in r.json()["block_reasons"]
 
 
@@ -512,7 +520,8 @@ def test_dry_run_tenant_contextual_super_admin_denied():
     with _client() as c:
         _as_tenant_contextual("super-ctx")
         _seed("ap-1")
-        r = c.post(f"{P22}/dry-run", json=_dry_run_payload("ap-1"), headers=AUTH_HEADERS)
+        r = c.post(f"{P22}/dry-run", json=_dry_run_payload("ap-1"), headers=OPERATOR_HEADERS)
+    assert r.status_code == 200
     assert "executor_not_identity_super_admin" in r.json()["block_reasons"]
 
 
@@ -520,8 +529,9 @@ def test_dry_run_tenant_admin_denied():
     with _client() as c:
         _as_tenant_admin("tadmin-1")
         _seed("ap-1")
-        r = c.post(f"{P22}/dry-run", json=_dry_run_payload("ap-1"), headers=AUTH_HEADERS)
+        r = c.post(f"{P22}/dry-run", json=_dry_run_payload("ap-1"), headers=OPERATOR_HEADERS)
     body = r.json()
+    assert r.status_code == 200
     assert body["executable"] is False
     assert "executor_not_identity_super_admin" in body["block_reasons"]
 
@@ -911,27 +921,61 @@ def test_no_executing_result_state_ever_assigned():
     assert blocked["result_state"] not in EXECUTING_STATES
 
 
-def test_default_resolver_reads_p20_in_memory_store():
-    """The default P22 resolver reads the P20 in-memory durable approval store.
+def test_default_resolver_returns_none_without_db_session():
+    """The default resolver performs NO durable read when there is no db session.
 
-    Seeds a real P20 durable approval (memory mode) and confirms the default
-    resolver resolves it to an approved snapshot (no injected override).
+    A None db short-circuits to None before touching the durable runtime. This
+    is the fail-closed contract: P22 never invents an approval without the
+    durable read path available.
     """
+    from api.v1.platform.p22 import services as p22
+
+    import asyncio
+
+    async def _go():
+        return await p22._default_resolve_approval("ap-1", db=None)
+
+    assert asyncio.run(_go()) is None
+
+
+def test_default_resolver_returns_none_without_approval_id():
+    """An empty / None approval_id short-circuits to None (no durable read)."""
+    from api.v1.platform.p22 import services as p22
+
+    import asyncio
+
+    async def _go():
+        return await p22._default_resolve_approval(None, db=_mock_db())
+
+    assert asyncio.run(_go()) is None
+
+
+def test_default_resolver_fails_closed_when_storage_not_ready_no_memory_fallback():
+    """The default resolver fails CLOSED when durable storage is not ready.
+
+    This is the P25-EB core proof: even when the OLD P20 in-memory store holds
+    the approval, the default resolver returns None (blocked) as long as the
+    durable runtime readiness check fails. There is NO fallback to the in-memory
+    store -- the durable read path is the only resolution route.
+    """
+    from api.v1.platform.p22 import services as p22
+
+    # Seed the OLD P20 in-memory store so a fallback WOULD resolve it if one
+    # existed. The assertion below proves no such fallback exists.
     from api.v1.platform.p18 import services as p18
     from api.v1.platform.p20 import services as p20
-    from api.v1.platform.p22 import services as p22
 
     p20.reset_store()
     p18.reset_store()
     p20.set_storage_mode("memory")
     try:
-        # P18 source available so the P20 approval can resolve.
-        with patch("api.v1.platform.p18.services._resolve_action_source_status",
-                   AsyncMock(return_value="available")):
-            import asyncio
+        import asyncio
 
-            async def _mk():
-                # maker opens; two distinct checkers approve -> quorum -> approved_execution_blocked.
+        async def _seed_memory():
+            with patch(
+                "api.v1.platform.p18.services._resolve_action_source_status",
+                AsyncMock(return_value="available"),
+            ):
                 rec = await p20.create_durable_approval(
                     action_id=None, tenant_id=None, action_type="support_mode.on",
                     maker="maker-1", reason="ok", idempotency_key="open-1",
@@ -954,18 +998,122 @@ def test_default_resolver_reads_p20_in_memory_store():
                 )
                 return rec.approval_id
 
-            approval_id = asyncio.run(_mk())
-        # Default resolver (no override) resolves it.
-        snap = p22._default_resolve_approval(approval_id)
-        assert snap is not None
-        assert snap.state == "approved_execution_blocked"
-        assert snap.quorum_met is True
-        assert snap.action_type == "support_mode.on"
-        assert snap.source_status == "known"
+        approval_id = asyncio.run(_seed_memory())
+
+        # Durable readiness returns NOT ready -> resolver must return None even
+        # though the in-memory store holds the approval (NO memory fallback).
+        db = _mock_db()
+        with patch(
+            "api.v1.platform.p20.services._check_durable_readiness",
+            AsyncMock(return_value=(False, "storage_not_ready")),
+        ):
+            with patch(
+                "api.v1.platform.p20.services.read_durable_approval",
+                AsyncMock(return_value=None),
+            ) as _read_mock:
+
+                async def _go():
+                    return await p22._default_resolve_approval(approval_id, db=db)
+
+                snap = asyncio.run(_go())
+            # read_durable_approval was NEVER called (readiness gate stopped it).
+            assert _read_mock.await_count == 0
+        assert snap is None  # blocked -- no memory fallback
     finally:
         p20.set_storage_mode(None)
         p20.reset_store()
         p18.reset_store()
+
+
+def test_default_resolver_reads_durable_path_when_ready():
+    """When durable storage IS ready, the resolver reads via read_durable_approval
+    and maps the P20 record into an ApprovalSnapshot (state / quorum / source /
+    action fields). This proves the durable read path is the resolution route."""
+    from api.v1.platform.p22 import services as p22
+
+    db = _mock_db()
+    fake_rec = MagicMock()
+    fake_rec.approval_id = "ap-durable-1"
+    fake_rec.state = "approved_execution_blocked"
+    fake_rec.quorum_required = 2
+    fake_rec.quorum_met = True
+    fake_rec.maker = "maker-1"
+    fake_rec.checkers = [MagicMock(checker_id="chk-1"), MagicMock(checker_id="chk-2")]
+    fake_rec.source_status = "available"  # P20 vocabulary -> P22 'known'
+    fake_rec.action_type = "support_mode.on"
+    fake_rec.action_class = "write"
+    fake_rec.tenant_id = None
+    fake_rec.validation_status = "valid"
+    fake_rec.expires_at = FUTURE
+
+    import asyncio
+
+    with patch(
+        "api.v1.platform.p20.services._check_durable_readiness",
+        AsyncMock(return_value=(True, "ready")),
+    ):
+        with patch(
+            "api.v1.platform.p20.services.read_durable_approval",
+            AsyncMock(return_value=fake_rec),
+        ):
+
+            async def _go():
+                return await p22._default_resolve_approval("ap-durable-1", db=db)
+
+            snap = asyncio.run(_go())
+    assert snap is not None
+    assert snap.approval_id == "ap-durable-1"
+    assert snap.state == "approved_execution_blocked"
+    assert snap.quorum_met is True
+    assert snap.quorum_required == 2
+    assert snap.maker == "maker-1"
+    assert snap.checker_ids == ["chk-1", "chk-2"]
+    assert snap.source_status == "known"  # 'available' -> 'known'
+    assert snap.action_type == "support_mode.on"
+
+
+def test_default_resolver_returns_none_when_durable_read_missing():
+    """Durable storage ready but read returns None (approval absent) -> None."""
+    from api.v1.platform.p22 import services as p22
+
+    db = _mock_db()
+    import asyncio
+
+    with patch(
+        "api.v1.platform.p20.services._check_durable_readiness",
+        AsyncMock(return_value=(True, "ready")),
+    ):
+        with patch(
+            "api.v1.platform.p20.services.read_durable_approval",
+            AsyncMock(return_value=None),
+        ):
+
+            async def _go():
+                return await p22._default_resolve_approval("ghost", db=db)
+
+            assert asyncio.run(_go()) is None
+
+
+def test_default_resolver_returns_none_when_durable_read_raises():
+    """Durable storage ready but read raises -> fail closed (None), never propagates."""
+    from api.v1.platform.p22 import services as p22
+
+    db = _mock_db()
+    import asyncio
+
+    with patch(
+        "api.v1.platform.p20.services._check_durable_readiness",
+        AsyncMock(return_value=(True, "ready")),
+    ):
+        with patch(
+            "api.v1.platform.p20.services.read_durable_approval",
+            AsyncMock(side_effect=RuntimeError("transient db error")),
+        ):
+
+            async def _go():
+                return await p22._default_resolve_approval("ap-1", db=db)
+
+            assert asyncio.run(_go()) is None
 
 
 # ============================================================================

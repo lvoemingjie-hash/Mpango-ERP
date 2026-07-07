@@ -248,7 +248,9 @@ def _dry_run_binding_block(request: SeamAdapterRequest, now: datetime) -> Option
     return None
 
 
-def evaluate_preflight_gate(request: SeamAdapterRequest) -> PreflightVerdict:
+async def evaluate_preflight_gate(
+    request: SeamAdapterRequest, *, db=None
+) -> PreflightVerdict:
     """Re-validate the full precondition set at execution time (P22-E0 4.2.4).
 
     NON-EXECUTING. Reuses the P22-B precondition evaluator and returns a verdict
@@ -287,7 +289,7 @@ def evaluate_preflight_gate(request: SeamAdapterRequest) -> PreflightVerdict:
         block_reasons.append(dry_block)
     # 6) durable approval preconditions: state / quorum / source / action match /
     #    target (tenant) binding / operator separation (P22-B evaluator).
-    approval = _p22b._resolve_approval(request.durable_approval_id)
+    approval = await _p22b._resolve_approval(request.durable_approval_id, db=db)
     approval_reasons, _approval_source, _reversible = _p22b._check_approval_preconditions(
         approval, request.action_type, request.actor_id, request.tenant_id
     )

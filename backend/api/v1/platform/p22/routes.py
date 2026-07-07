@@ -246,8 +246,8 @@ async def execution_dry_run_route(
     PRECONDITION, not an execution: execution_allowed is always false.
     """
     actor, identity_context, actor_role = _actor_context_and_role(request)
-    response = services.evaluate_dry_run(
-        payload, actor=actor, actor_role=actor_role, identity_context=identity_context
+    response = await services.evaluate_dry_run(
+        payload, actor=actor, actor_role=actor_role, identity_context=identity_context, db=db
     )
     await _write_outcome_audit(
         db,
@@ -277,8 +277,8 @@ async def create_execution_request_route(
     dispatched, no queue is drained, no P16 harness is invoked.
     """
     actor, identity_context, actor_role = _actor_context_and_role(request)
-    response = services.record_execution_request(
-        payload, actor=actor, actor_role=actor_role, identity_context=identity_context
+    response = await services.record_execution_request(
+        payload, actor=actor, actor_role=actor_role, identity_context=identity_context, db=db
     )
     await _write_outcome_audit(
         db,

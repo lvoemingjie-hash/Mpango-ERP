@@ -21,7 +21,9 @@ from core.security import hash_password
 from models.tenant_onboarding import (
     EMAIL_VERIFICATION_TOKEN_PURPOSE,
     LIVE_REGISTRATION_STATUSES,
+    ONBOARDING_STATUS_TOKEN_PURPOSE,
     EmailVerificationToken,
+    OnboardingStatusToken,
     TenantRegistration,
 )
 from schemas.auth_signup import SignupRequest
@@ -34,8 +36,18 @@ from services.email_delivery import (
 
 NEUTRAL_SIGNUP_MESSAGE = "If this email can be used, verification instructions will be sent."
 NEUTRAL_VERIFY_EMAIL_MESSAGE = "If this verification link is valid, the email will be verified."
+NEUTRAL_ONBOARDING_STATUS_MESSAGE = "Onboarding status is available."
 INVALID_OR_EXPIRED_VERIFICATION_TOKEN = "INVALID_OR_EXPIRED_VERIFICATION_TOKEN"
+INVALID_OR_EXPIRED_ONBOARDING_STATUS_TOKEN = "INVALID_OR_EXPIRED_ONBOARDING_STATUS_TOKEN"
 SIGNUP_VERIFICATION_TTL = timedelta(hours=24)
+PUBLIC_ONBOARDING_STATUSES = {
+    "pending_email_verification",
+    "email_verified",
+    "expired",
+    "cancelled",
+    "failed",
+    "active",
+}
 
 
 class IdempotencyConflictError(Exception):
@@ -44,6 +56,10 @@ class IdempotencyConflictError(Exception):
 
 class VerificationTokenInvalidError(Exception):
     """Raised for invalid, expired, used, or non-actionable verification tokens."""
+
+
+class OnboardingStatusTokenInvalidError(Exception):
+    """Raised for invalid, expired, revoked, or non-actionable status tokens."""
 
 
 @dataclass(frozen=True)
@@ -59,6 +75,13 @@ class SignupResult:
 @dataclass(frozen=True)
 class VerifyEmailResult:
     """Internal email verification result."""
+
+    status: str
+
+
+@dataclass(frozen=True)
+class OnboardingStatusResult:
+    """Internal onboarding status result."""
 
     status: str
 
@@ -115,6 +138,43 @@ async def verify_email_token(
     await db.flush()
 
     return VerifyEmailResult(status=registration.status)
+
+
+async def get_onboarding_status(
+    *,
+    db: AsyncSession,
+    token: str | None,
+    settings: Settings | None = None,
+) -> OnboardingStatusResult:
+    """Return a coarse public onboarding status for a valid opaque status token."""
+    settings = settings or get_settings()
+    _assert_token_hash_key(settings)
+
+    if token is None or not token.strip():
+        raise OnboardingStatusTokenInvalidError(INVALID_OR_EXPIRED_ONBOARDING_STATUS_TOKEN)
+
+    token_hash = hash_token(token.strip(), settings)
+    now = datetime.now(timezone.utc)
+
+    result = await db.execute(
+        select(OnboardingStatusToken, TenantRegistration)
+        .join(TenantRegistration, OnboardingStatusToken.registration_id == TenantRegistration.id)
+        .where(OnboardingStatusToken.token_hash == token_hash)
+        .execution_options(ignore_tenant=True)
+    )
+    row = result.one_or_none()
+    if row is None:
+        raise OnboardingStatusTokenInvalidError(INVALID_OR_EXPIRED_ONBOARDING_STATUS_TOKEN)
+
+    status_token, registration = row
+    if (
+        status_token.revoked_at is not None
+        or status_token.is_deleted is True
+        or status_token.expires_at <= now
+    ):
+        raise OnboardingStatusTokenInvalidError(INVALID_OR_EXPIRED_ONBOARDING_STATUS_TOKEN)
+
+    return OnboardingStatusResult(status=_public_onboarding_status(registration.status))
 
 
 async def create_signup_registration(
@@ -184,6 +244,14 @@ async def create_signup_registration(
                 request_fingerprint_hash=fingerprint_hash,
             )
         )
+        db.add(
+            OnboardingStatusToken(
+                registration_id=registration.id,
+                token_hash=token_hash,
+                purpose=ONBOARDING_STATUS_TOKEN_PURPOSE,
+                expires_at=expires_at,
+            )
+        )
         await db.flush()
     except IntegrityError:
         await db.rollback()
@@ -215,6 +283,14 @@ def hash_token(token: str, settings: Settings | None = None) -> str:
 def build_verification_link(token: str) -> str:
     """Build the frontend verification link stored by the dev/test sink."""
     return f"/verify-email?token={quote(token, safe='')}"
+
+
+def _public_onboarding_status(status: str) -> str:
+    if status == "provisioning":
+        return "email_verified"
+    if status in PUBLIC_ONBOARDING_STATUSES:
+        return status
+    raise OnboardingStatusTokenInvalidError(INVALID_OR_EXPIRED_ONBOARDING_STATUS_TOKEN)
 
 
 async def _live_registration_for_email(

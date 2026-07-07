@@ -13,7 +13,7 @@ from api.app import app
 from api.dependencies import get_db_session
 from api.v1 import auth as auth_router
 from database.session import AsyncSessionLocal, async_engine
-from models.tenant_onboarding import EmailVerificationToken, TenantRegistration
+from models.tenant_onboarding import EmailVerificationToken, OnboardingStatusToken, TenantRegistration
 from models.wholesaler import Wholesaler
 from schemas.auth_signup import SignupRequest
 from services.email_delivery import (
@@ -55,11 +55,20 @@ async def _ensure_onboarding_tables() -> None:
         await connection.run_sync(Wholesaler.__table__.create, checkfirst=True)
         await connection.run_sync(TenantRegistration.__table__.create, checkfirst=True)
         await connection.run_sync(EmailVerificationToken.__table__.create, checkfirst=True)
+        await connection.run_sync(OnboardingStatusToken.__table__.create, checkfirst=True)
 
 
 async def _clear_u6c_rows() -> None:
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
+        await session.execute(
+            text(
+                "DELETE FROM public.onboarding_status_tokens "
+                "WHERE registration_id IN ("
+                "SELECT id FROM public.tenant_registrations "
+                "WHERE owner_email LIKE 'u6c_%@example.com')"
+            )
+        )
         await session.execute(
             text(
                 "DELETE FROM public.email_verification_tokens "

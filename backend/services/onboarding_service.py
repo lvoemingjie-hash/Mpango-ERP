@@ -33,11 +33,17 @@ from services.email_delivery import (
 
 
 NEUTRAL_SIGNUP_MESSAGE = "If this email can be used, verification instructions will be sent."
+NEUTRAL_VERIFY_EMAIL_MESSAGE = "If this verification link is valid, the email will be verified."
+INVALID_OR_EXPIRED_VERIFICATION_TOKEN = "INVALID_OR_EXPIRED_VERIFICATION_TOKEN"
 SIGNUP_VERIFICATION_TTL = timedelta(hours=24)
 
 
 class IdempotencyConflictError(Exception):
     """Raised when an idempotency key is reused with a different payload."""
+
+
+class VerificationTokenInvalidError(Exception):
+    """Raised for invalid, expired, used, or non-actionable verification tokens."""
 
 
 @dataclass(frozen=True)
@@ -50,6 +56,13 @@ class SignupResult:
     resend_available_at: datetime | None = None
 
 
+@dataclass(frozen=True)
+class VerifyEmailResult:
+    """Internal email verification result."""
+
+    status: str
+
+
 def normalize_email(email: str) -> str:
     """Normalize email at the public signup boundary."""
     return email.strip().lower()
@@ -59,6 +72,49 @@ def validate_signup_password(password: str) -> None:
     """Validate the U6-C password policy before bcrypt hashing."""
     if len(password) < 8:
         raise ValueError("Password must be at least 8 characters")
+
+
+async def verify_email_token(
+    *,
+    db: AsyncSession,
+    token: str | None,
+    settings: Settings | None = None,
+) -> VerifyEmailResult:
+    """Mark a pending registration verified when the raw verification token is valid."""
+    settings = settings or get_settings()
+    _assert_token_hash_key(settings)
+
+    if token is None or not token.strip():
+        raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
+
+    token_hash = hash_token(token.strip(), settings)
+    now = datetime.now(timezone.utc)
+
+    result = await db.execute(
+        select(EmailVerificationToken, TenantRegistration)
+        .join(TenantRegistration, EmailVerificationToken.registration_id == TenantRegistration.id)
+        .where(EmailVerificationToken.token_hash == token_hash)
+        .execution_options(ignore_tenant=True)
+    )
+    row = result.one_or_none()
+    if row is None:
+        raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
+
+    verification_token, registration = row
+    if (
+        verification_token.used_at is not None
+        or verification_token.revoked_at is not None
+        or verification_token.expires_at <= now
+        or registration.status != "pending_email_verification"
+    ):
+        raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
+
+    registration.status = "email_verified"
+    registration.email_verified_at = now
+    verification_token.used_at = now
+    await db.flush()
+
+    return VerifyEmailResult(status=registration.status)
 
 
 async def create_signup_registration(

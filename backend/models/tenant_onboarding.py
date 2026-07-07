@@ -41,6 +41,7 @@ LIVE_REGISTRATION_STATUSES = (
 TERMINAL_PASSWORD_CLEANUP_STATES = ("active", "cancelled", "expired")
 EMAIL_VERIFICATION_TOKEN_PURPOSE = "signup_email_verification"
 PASSWORD_RESET_TOKEN_PURPOSE = "password_reset"  # pragma: allowlist secret
+ONBOARDING_STATUS_TOKEN_PURPOSE = "onboarding_status"
 
 
 def _quoted(values: tuple[str, ...]) -> str:
@@ -260,3 +261,42 @@ class PasswordResetToken(PublicBaseModel):
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     request_fingerprint_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+
+class OnboardingStatusToken(PublicBaseModel):
+    """Opaque onboarding status lookup token metadata without raw token storage."""
+
+    __tablename__ = "onboarding_status_tokens"
+    __table_args__ = (
+        CheckConstraint(
+            f"purpose = '{ONBOARDING_STATUS_TOKEN_PURPOSE}'",
+            name="ck_onboarding_status_tokens_purpose",
+        ),
+        CheckConstraint(
+            "expires_at > created_at",
+            name="ck_onboarding_status_tokens_expires_after_created",
+        ),
+        Index("ux_onboarding_status_tokens_token_hash", "token_hash", unique=True),
+        Index("ix_onboarding_status_tokens_registration_id", "registration_id"),
+        Index(
+            "ix_onboarding_status_tokens_registration_active",
+            "registration_id",
+            postgresql_where=text("revoked_at IS NULL AND is_deleted = false"),
+        ),
+        {"schema": "public"},
+    )
+
+    registration_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("public.tenant_registrations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    purpose: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=ONBOARDING_STATUS_TOKEN_PURPOSE,
+        server_default=text(f"'{ONBOARDING_STATUS_TOKEN_PURPOSE}'"),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -22,7 +22,12 @@ from models.platform_audit_log import PlatformAuditLog
 from models.job import Job
 from models.import_run import ImportRun
 from models.intake import IntakeProductRow, IntakeUpload, IntakeValidationIssue, IntakeWorkspace
-from models.tenant_onboarding import EmailVerificationToken, PasswordResetToken, TenantRegistration
+from models.tenant_onboarding import (
+    EmailVerificationToken,
+    OnboardingStatusToken,
+    PasswordResetToken,
+    TenantRegistration,
+)
 
 __all__ = [
     # Base classes
@@ -40,6 +45,7 @@ __all__ = [
     "TenantRegistration",
     "EmailVerificationToken",
     "PasswordResetToken",
+    "OnboardingStatusToken",
 
     # Tenant schema models
     "User",

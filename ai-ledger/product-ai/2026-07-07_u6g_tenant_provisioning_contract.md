@@ -3,7 +3,8 @@
 Date: 2026-07-07
 Branch: `opencode/u6g-tenant-provisioning-contract-2026-07-07`
 Base: `origin/product-dev-recovered` at `7b2e0b7f merge: U6-F onboarding auth chain closeout`
-Verdict: `PASS_FOR_CTO_U6G_REVIEW_PENDING_COMMIT_AND_GITNEXUS`
+Verdict: `PASS_FOR_CTO_U6G_REVIEW`
+Implementation commit: `f7802118 docs(U6-G): define tenant provisioning contract`
 
 ## Scope
 
@@ -44,11 +45,9 @@ Completed:
 - Mojibake scan on changed files: passed.
 - Secret-pattern scan on changed files: expected text-only matches for contract/test references to password hashes, tokens, JWTs, and leak-prevention requirements; no actual secrets printed.
 - `pre-commit run --files <changed-files>`: passed.
-
-Pending:
-
-- Commit.
-- GitNexus analyze/status after commit.
+- Commit: `f7802118 docs(U6-G): define tenant provisioning contract`.
+- `npx gitnexus analyze`: repository indexed successfully, `6,658 nodes | 18,924 edges | 442 clusters | 229 flows`.
+- `npx gitnexus status`: indexed commit `f780211`, current commit `f780211`, status up-to-date.
 
 ## Result
 

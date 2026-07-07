@@ -619,7 +619,6 @@ function DetailRow({ label, value }: { label: string; value: string | null }) {
 }
 
 function ResultSection({
-  heading,
   record,
   testId,
 }: {

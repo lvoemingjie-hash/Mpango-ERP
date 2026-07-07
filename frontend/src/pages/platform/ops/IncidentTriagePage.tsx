@@ -7,7 +7,7 @@
  * No mutation controls; no tenant business fields; no credentials/DSN/host/port.
  */
 import { useEffect, useState } from 'react';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
 import { PlatformStatusBadge } from '@/components/platform/PlatformStatusBadge';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -24,7 +24,7 @@ export function IncidentTriagePage() {
     setError(null);
     platformService
       .getIncidentTriageSnapshot()
-      .then((res) => setData(res.data?.data ?? res.data))
+      .then((res) => setData(unwrapApiResponse<IncidentTriageSnapshot>(res)))
       .catch((err) => setError(err.message ?? 'Failed to load incident triage snapshot'))
       .finally(() => setLoading(false));
   };

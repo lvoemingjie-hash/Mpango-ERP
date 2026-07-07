@@ -7,7 +7,7 @@
  * No mutation paths; no sensitive data.
  */
 import { useEffect, useState } from 'react';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
 import { PlatformStatusBadge } from '@/components/platform/PlatformStatusBadge';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -24,7 +24,7 @@ export function OpsResourcesPage() {
     setError(null);
     platformService
       .getOpsResources()
-      .then((res) => setData(res.data?.data ?? res.data))
+      .then((res) => setData(unwrapApiResponse<ResourceHealthSummary>(res)))
       .catch((err) => setError(err.message ?? 'Failed to load resource data'))
       .finally(() => setLoading(false));
   };

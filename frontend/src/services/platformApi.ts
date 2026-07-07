@@ -11,6 +11,7 @@
  *
  * No X-Platform-Operator secret is ever sent to or stored in the browser.
  */
+import type { AxiosResponse } from 'axios';
 import { api } from './api';
 import type {
   PlatformTenantSummaryList,
@@ -87,9 +88,26 @@ const P22_BASE = '/platform/p22';
 const P23_BASE = '/platform/p23';
 const P24_BASE = '/platform/p24';
 
+/**
+ * Unwrap a dual-layer API response:
+ *   AxiosResponse<T> -> T
+ * or
+ *   AxiosResponse<{ data: T }> -> T
+ *
+ * Backend returns either bare data or a { data: T } envelope.
+ * This utility handles both cases in one place.
+ */
+export function unwrapApiResponse<T>(res: { data: unknown }): T {
+  const body = res.data as Record<string, unknown> | undefined;
+  if (body && typeof body === 'object' && 'data' in body) {
+    return body.data as T;
+  }
+  return (body as unknown) as T;
+}
+
 export const platformService = {
   /** List tenants with optional pagination */
-  listTenants: (limit = 50, offset = 0) =>
+  listTenants: (limit = 50, offset = 0): Promise<AxiosResponse<PlatformTenantSummaryList>> =>
     api.get<PlatformTenantSummaryList>(`${P10_BASE}/tenants`, {
       params: { limit, offset },
     }),
@@ -99,15 +117,15 @@ export const platformService = {
     api.get<PlatformTenantSummary>(`${P10_BASE}/tenants/${tenantId}`),
 
   /** Get tenant health detail */
-  getTenantHealth: (tenantId: string) =>
+  getTenantHealth: (tenantId: string): Promise<AxiosResponse<PlatformTenantHealth>> =>
     api.get<PlatformTenantHealth>(`${P10_BASE}/tenants/${tenantId}/health`),
 
   /** Get system health */
-  getSystemHealth: () =>
+  getSystemHealth: (): Promise<AxiosResponse<PlatformSystemHealth>> =>
     api.get<PlatformSystemHealth>(`${P10_BASE}/system/health`),
 
   /** List audit events with optional pagination */
-  listAuditEvents: (limit = 50, offset = 0) =>
+  listAuditEvents: (limit = 50, offset = 0): Promise<AxiosResponse<PlatformAuditEventList>> =>
     api.get<PlatformAuditEventList>(`${P10_BASE}/audit/events`, {
       params: { limit, offset },
     }),
@@ -119,27 +137,27 @@ export const platformService = {
   // -- P13 Operations Cockpit (read-only) --
 
   /** P13: Get ops system health */
-  getOpsHealth: () =>
+  getOpsHealth: (): Promise<AxiosResponse<PlatformSystemHealth>> =>
     api.get<PlatformSystemHealth>(`${P13_BASE}/ops/health`),
 
   /** P13: Get error rate analysis */
-  getOpsErrors: (window = 15) =>
+  getOpsErrors: (window = 15): Promise<AxiosResponse<ErrorRateSummary>> =>
     api.get<ErrorRateSummary>(`${P13_BASE}/ops/errors`, {
       params: { window },
     }),
 
   /** P13: Get slow route analysis */
-  getOpsSlowRoutes: (window = 15, threshold = 1000) =>
+  getOpsSlowRoutes: (window = 15, threshold = 1000): Promise<AxiosResponse<SlowRouteSummary>> =>
     api.get<SlowRouteSummary>(`${P13_BASE}/ops/slow-routes`, {
       params: { window, threshold },
     }),
 
   /** P13: Get resource health summary */
-  getOpsResources: () =>
+  getOpsResources: (): Promise<AxiosResponse<ResourceHealthSummary>> =>
     api.get<ResourceHealthSummary>(`${P13_BASE}/ops/resources`),
 
   /** P13: Get noisy-neighbor analysis */
-  getOpsNoisyNeighbors: (window = 15) =>
+  getOpsNoisyNeighbors: (window = 15): Promise<AxiosResponse<NoisyNeighborSummary>> =>
     api.get<NoisyNeighborSummary>(`${P13_BASE}/ops/noisy-neighbors`, {
       params: { window },
     }),
@@ -147,13 +165,13 @@ export const platformService = {
   // -- P15 Incident Triage (read-only snapshot) --
 
   /** P15: Get incident triage snapshot (read-only) */
-  getIncidentTriageSnapshot: () =>
+  getIncidentTriageSnapshot: (): Promise<AxiosResponse<IncidentTriageSnapshot>> =>
     api.get<IncidentTriageSnapshot>(`${P15_BASE}/incidents/triage/snapshot`),
 
   // -- P17 Platform Registry (read-only tenant registry) --
 
   /** P17: List tenant registry (read-only) */
-  listTenantRegistry: (limit = 50, offset = 0) =>
+  listTenantRegistry: (limit = 50, offset = 0): Promise<AxiosResponse<PlatformTenantRegistryList>> =>
     api.get<PlatformTenantRegistryList>(`${P17_BASE}/registry`, {
       params: { limit, offset },
     }),

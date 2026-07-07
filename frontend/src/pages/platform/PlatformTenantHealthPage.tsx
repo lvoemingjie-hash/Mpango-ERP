@@ -9,12 +9,12 @@
 import { useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { usePlatformStore } from '@/stores/platformStore';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
 import { PlatformStatusBadge } from '@/components/platform/PlatformStatusBadge';
 import { PlatformMetricCard } from '@/components/platform/PlatformMetricCard';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { PlatformUnknownState } from '@/components/platform/PlatformUnknownState';
-import { displayCount, displayTimestamp } from '@/types/platform';
+import { displayTimestamp, type PlatformTenantHealth } from '@/types/platform';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 export function PlatformTenantHealthPage() {
@@ -35,7 +35,7 @@ export function PlatformTenantHealthPage() {
     platformService
       .getTenantHealth(tenantId)
       .then((res) => {
-        const data = res.data?.data ?? res.data;
+        const data = unwrapApiResponse<PlatformTenantHealth>(res);
         setTenantHealth(data);
       })
       .catch((err) => setTenantHealthError(err.message ?? 'Failed to load tenant health'));

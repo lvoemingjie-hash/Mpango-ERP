@@ -90,9 +90,9 @@ const P24_BASE = '/platform/p24';
 
 /**
  * Unwrap a dual-layer API response:
- *   AxiosResponse<T> → T
+ *   AxiosResponse<T> -> T
  * or
- *   AxiosResponse<{ data: T }> → T
+ *   AxiosResponse<{ data: T }> -> T
  *
  * Backend returns either bare data or a { data: T } envelope.
  * This utility handles both cases in one place.

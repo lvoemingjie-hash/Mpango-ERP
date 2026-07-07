@@ -8,11 +8,12 @@
 import { useEffect } from 'react';
 import { BuildingOfficeIcon } from '@heroicons/react/24/outline';
 import { usePlatformStore } from '@/stores/platformStore';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
 import { PlatformTenantCard } from '@/components/platform/PlatformTenantCard';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
+import type { PlatformTenantSummaryList } from '@/types/platform';
 
 export function PlatformTenantDirectoryPage() {
   const {
@@ -31,7 +32,7 @@ export function PlatformTenantDirectoryPage() {
     platformService
       .listTenants(200, 0)
       .then((res) => {
-        const data = res.data?.data ?? res.data;
+        const data = unwrapApiResponse<PlatformTenantSummaryList>(res);
         setTenants(data.items ?? [], data.total ?? 0);
       })
       .catch((err) => setTenantsError(err.message ?? 'Failed to load tenants'));

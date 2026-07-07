@@ -6,7 +6,7 @@
  * null != 0; no mutation paths; no sensitive data.
  */
 import { useEffect, useState } from 'react';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { SlowRouteSummary } from '@/types/platformOps';
@@ -22,7 +22,7 @@ export function OpsSlowRoutesPage() {
     setError(null);
     platformService
       .getOpsSlowRoutes()
-      .then((res) => setData(res.data?.data ?? res.data))
+      .then((res) => setData(unwrapApiResponse<SlowRouteSummary>(res)))
       .catch((err) => setError(err.message ?? 'Failed to load slow route data'))
       .finally(() => setLoading(false));
   };

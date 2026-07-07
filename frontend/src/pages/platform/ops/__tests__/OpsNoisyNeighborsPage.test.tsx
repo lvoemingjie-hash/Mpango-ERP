@@ -15,10 +15,15 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 // Mock platform service to prevent real network calls.
+function unwrapMock<T>(res: { data: unknown }): T {
+  const body = res.data as Record<string, unknown> | undefined;
+  return (body && typeof body === 'object' && 'data' in body ? body.data : body) as unknown as T;
+}
 vi.mock('@/services/platformApi', () => ({
   platformService: {
     getOpsNoisyNeighbors: vi.fn().mockResolvedValue({ data: {} }),
   },
+  unwrapApiResponse: unwrapMock,
 }));
 
 import { platformService } from '@/services/platformApi';

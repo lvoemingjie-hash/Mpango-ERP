@@ -14,11 +14,12 @@ import {
   BookOpenIcon,
 } from '@heroicons/react/24/outline';
 import { usePlatformStore } from '@/stores/platformStore';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
 import { PlatformMetricCard } from '@/components/platform/PlatformMetricCard';
 import { PlatformStatusBadge } from '@/components/platform/PlatformStatusBadge';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
+import type { PlatformSystemHealth, PlatformTenantSummaryList } from '@/types/platform';
 
 /**
  * Read-only platform views not surfaced in the Sidebar. The Overview is the
@@ -55,7 +56,7 @@ export function PlatformOverviewPage() {
     platformService
       .listTenants(10, 0)
       .then((res) => {
-        const data = res.data?.data ?? res.data;
+        const data = unwrapApiResponse<PlatformTenantSummaryList>(res);
         setTenants(data.items ?? [], data.total ?? 0);
       })
       .catch((err) => setTenantsError(err.message ?? 'Failed to load tenants'));
@@ -67,7 +68,7 @@ export function PlatformOverviewPage() {
     platformService
       .getSystemHealth()
       .then((res) => {
-        const data = res.data?.data ?? res.data;
+        const data = unwrapApiResponse<PlatformSystemHealth>(res);
         setSystemHealth(data);
       })
       .catch((err) => setSystemHealthError(err.message ?? 'Failed to load system health'));

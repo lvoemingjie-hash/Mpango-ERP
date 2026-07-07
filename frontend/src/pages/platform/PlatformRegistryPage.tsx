@@ -12,7 +12,7 @@
  *   - No tenant business fields; no credentials/DSN/host/port.
  */
 import { useEffect, useState } from 'react';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type {
   LifecycleState,
@@ -84,7 +84,7 @@ export function PlatformRegistryPage() {
     setError(null);
     platformService
       .listTenantRegistry()
-      .then((res) => setData(res.data?.data ?? res.data))
+      .then((res) => setData(unwrapApiResponse<PlatformTenantRegistryList>(res)))
       .catch((err) => setError(err.message ?? 'Failed to load platform registry'))
       .finally(() => setLoading(false));
   };

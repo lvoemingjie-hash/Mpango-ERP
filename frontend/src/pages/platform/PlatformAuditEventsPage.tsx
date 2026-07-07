@@ -8,7 +8,8 @@
 import { useEffect, useState } from 'react';
 import { ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 import { usePlatformStore } from '@/stores/platformStore';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
+import type { PlatformAuditEventList } from '@/types/platform';
 import { PlatformAuditEventRow } from '@/components/platform/PlatformAuditEventRow';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -35,7 +36,7 @@ export function PlatformAuditEventsPage() {
     platformService
       .listAuditEvents(PAGE_SIZE, newOffset)
       .then((res) => {
-        const data = res.data?.data ?? res.data;
+        const data = unwrapApiResponse<PlatformAuditEventList>(res);
         setAuditEvents(data.items ?? [], data.total ?? 0);
         setOffset(newOffset);
       })

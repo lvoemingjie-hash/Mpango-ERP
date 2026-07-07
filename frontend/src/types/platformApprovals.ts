@@ -15,6 +15,7 @@
  * types so the P18 source-status vocabulary stays the single source of truth.
  */
 import type { RegistrySourceStatus } from './platformControlledActions';
+export type { RegistrySourceStatus };
 
 /** P19-A section 3 -- the seven approval lifecycle states. */
 export type ApprovalState =

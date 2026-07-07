@@ -6,7 +6,7 @@
  * No sensitive data -- tenant IDs only, no business records.
  */
 import { useEffect, useState } from 'react';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { NoisyNeighborSummary } from '@/types/platformOps';
@@ -21,7 +21,7 @@ export function OpsNoisyNeighborsPage() {
     setError(null);
     platformService
       .getOpsNoisyNeighbors()
-      .then((res) => setData(res.data?.data ?? res.data))
+      .then((res) => setData(unwrapApiResponse<NoisyNeighborSummary>(res)))
       .catch((err) => setError(err.message ?? 'Failed to load noisy neighbor data'))
       .finally(() => setLoading(false));
   };

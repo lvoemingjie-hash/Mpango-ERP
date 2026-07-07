@@ -14,12 +14,12 @@ import {
   SignalIcon,
 } from '@heroicons/react/24/outline';
 import { usePlatformStore } from '@/stores/platformStore';
-import { platformService } from '@/services/platformApi';
+import { platformService, unwrapApiResponse } from '@/services/platformApi';
 import { PlatformStatusBadge } from '@/components/platform/PlatformStatusBadge';
 import { PlatformMetricCard } from '@/components/platform/PlatformMetricCard';
 import { PlatformErrorState } from '@/components/platform/PlatformErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { displayCount } from '@/types/platform';
+import { displayCount, type PlatformSystemHealth } from '@/types/platform';
 
 /**
  * Read-only operations drill-downs not surfaced in the Sidebar. The Ops
@@ -49,7 +49,7 @@ export function OpsHealthPage() {
     platformService
       .getOpsHealth()
       .then((res) => {
-        const data = res.data?.data ?? res.data;
+        const data = unwrapApiResponse<PlatformSystemHealth>(res);
         setSystemHealth(data);
       })
       .catch((err) => setSystemHealthError(err.message ?? 'Failed to load ops health'));

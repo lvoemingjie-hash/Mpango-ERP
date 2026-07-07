@@ -11,6 +11,10 @@ import { usePlatformStore } from '@/stores/platformStore';
 import type { PlatformSystemHealth } from '@/types/platform';
 
 // Mock platformService — must return a promise from every method
+function unwrapMock<T>(res: { data: unknown }): T {
+  const body = res.data as Record<string, unknown> | undefined;
+  return (body && typeof body === 'object' && 'data' in body ? body.data : body) as unknown as T;
+}
 vi.mock('@/services/platformApi', () => ({
   platformService: {
     getSystemHealth: vi.fn().mockResolvedValue({ data: {} }),
@@ -20,6 +24,7 @@ vi.mock('@/services/platformApi', () => ({
     listAuditEvents: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
     getAuditEvent: vi.fn().mockResolvedValue({ data: {} }),
   },
+  unwrapApiResponse: unwrapMock,
 }));
 
 import { platformService } from '@/services/platformApi';

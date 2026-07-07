@@ -70,13 +70,13 @@ def _seed_approval(approval_id="ap-g", **overrides):
     return snap
 
 
-def _passed_dry_run(approval_id="ap-g", actor="super-exec", tenant_id=None):
+async def _passed_dry_run(approval_id="ap-g", actor="super-exec", tenant_id=None):
     """Seed a happy approval + run a real P22-B dry-run; return the dry_run_id."""
     from api.v1.platform.p22.schemas import ExecutionDryRunRequest
 
     services.set_approval_resolver(_resolver)
     _seed_approval(approval_id, action_type="backup.check", action_class="read", tenant_id=tenant_id)
-    resp = services.evaluate_dry_run(
+    resp = await services.evaluate_dry_run(
         ExecutionDryRunRequest(
             durable_approval_id=approval_id,
             action_type="backup.check",
@@ -93,12 +93,12 @@ def _passed_dry_run(approval_id="ap-g", actor="super-exec", tenant_id=None):
     return resp.dry_run_id
 
 
-def _record_request(approval_id="ap-g", actor="super-exec", tenant_id=None):
+async def _record_request(approval_id="ap-g", actor="super-exec", tenant_id=None):
     """Seed approval + dry-run + record a P22-B request; return the record response."""
     from api.v1.platform.p22.schemas import ExecutionRequestCreate
 
-    dry = _passed_dry_run(approval_id=approval_id, actor=actor, tenant_id=tenant_id)
-    record = services.record_execution_request(
+    dry = await _passed_dry_run(approval_id=approval_id, actor=actor, tenant_id=tenant_id)
+    record = await services.record_execution_request(
         ExecutionRequestCreate(
             durable_approval_id=approval_id,
             action_type="backup.check",
@@ -171,21 +171,25 @@ def _patch_read(monkeypatch, read):
 
 class TestNonExecutingInvariants:
     def test_dry_run_does_not_execute(self):
+        import asyncio
+
         from api.v1.platform.p22.schemas import ExecutionDryRunRequest
 
         services.set_approval_resolver(_resolver)
         _seed_approval(action_type="backup.check", action_class="read")
-        resp = services.evaluate_dry_run(
-            ExecutionDryRunRequest(
-                durable_approval_id="ap-g",
-                action_type="backup.check",
-                reason="review",
-                idempotency_key="idem-dry",
-                execution_mode="sync",
-            ),
-            actor="super-exec",
-            actor_role="super_admin",
-            identity_context="identity_only",
+        resp = asyncio.run(
+            services.evaluate_dry_run(
+                ExecutionDryRunRequest(
+                    durable_approval_id="ap-g",
+                    action_type="backup.check",
+                    reason="review",
+                    idempotency_key="idem-dry",
+                    execution_mode="sync",
+                ),
+                actor="super-exec",
+                actor_role="super_admin",
+                identity_context="identity_only",
+            )
         )
         assert resp.executed is False
         assert resp.execution_allowed is False
@@ -203,8 +207,9 @@ class TestNonExecutingInvariants:
 
 
 class TestRequestBinding:
+    @pytest.mark.asyncio
     async def test_missing_execution_request_id_blocks(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         req = _governed_request(record).model_copy(update={"execution_request_id": None})
         result = await complete_governed_backup_check(req, db=MagicMock())
         assert result.verdict == "blocked"
@@ -212,8 +217,9 @@ class TestRequestBinding:
         assert "execution_request_required" in result.block_reasons
         assert result.executed is False
 
+    @pytest.mark.asyncio
     async def test_unknown_execution_request_id_blocks(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         req = _governed_request(record).model_copy(
             update={"execution_request_id": "req-does-not-exist"}
         )
@@ -221,8 +227,9 @@ class TestRequestBinding:
         assert "execution_request_not_found" in result.block_reasons
         assert result.executed is False
 
+    @pytest.mark.asyncio
     async def test_mismatched_field_blocks(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         # Tamper with the tenant_id after binding -> mismatch.
         req = _governed_request(record).model_copy(
             update={"tenant_id": "11111111-1111-4111-8111-111111111111"}
@@ -231,8 +238,9 @@ class TestRequestBinding:
         assert "execution_request_mismatch" in result.block_reasons
         assert result.executed is False
 
+    @pytest.mark.asyncio
     async def test_mismatched_actor_blocks(self, monkeypatch):
-        record = _record_request(actor="super-exec")
+        record = await _record_request(actor="super-exec")
         req = _governed_request(record, actor="someone-else")
         result = await complete_governed_backup_check(req, db=MagicMock())
         assert "execution_request_mismatch" in result.block_reasons
@@ -245,8 +253,9 @@ class TestRequestBinding:
 
 
 class TestSourceMapping:
+    @pytest.mark.asyncio
     async def test_fresh_success_succeeds(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         _patch_read(monkeypatch, _source_read(source_status="known", source_summary="fresh_success"))
         result = await complete_governed_backup_check(_governed_request(record), db=MagicMock())
         assert result.verdict == "passed"
@@ -257,16 +266,18 @@ class TestSourceMapping:
         assert result.no_tenant_mutated is True
         assert result.execution_allowed is False
 
+    @pytest.mark.asyncio
     async def test_stale_completes_with_warning(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         _patch_read(monkeypatch, _source_read(source_status="degraded", source_summary="stale"))
         result = await complete_governed_backup_check(_governed_request(record), db=MagicMock())
         assert result.result_state == "completed_with_warning"
         assert result.executed is True
         assert result.warning is not None
 
+    @pytest.mark.asyncio
     async def test_partial_and_failed_carry_redacted_reason(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         _patch_read(
             monkeypatch,
             _source_read(
@@ -277,14 +288,16 @@ class TestSourceMapping:
         assert result.result_state == "completed_with_warning"
         assert result.failure_reason_redacted == "backup_incomplete"
 
+    @pytest.mark.asyncio
     async def test_in_progress_completes_with_warning(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         _patch_read(monkeypatch, _source_read(source_status="degraded", source_summary="in_progress"))
         result = await complete_governed_backup_check(_governed_request(record), db=MagicMock())
         assert result.result_state == "completed_with_warning"
 
+    @pytest.mark.asyncio
     async def test_no_source_unknown_never_healthy(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         _patch_read(monkeypatch, _source_read(source_status="unknown", source_summary="unknown"))
         result = await complete_governed_backup_check(_governed_request(record), db=MagicMock())
         assert result.source_status == "unknown"
@@ -293,8 +306,9 @@ class TestSourceMapping:
         assert result.result_state == "completed_with_warning"
         assert result.result_state != "succeeded"
 
+    @pytest.mark.asyncio
     async def test_read_failure_fail_closed(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         _patch_read(monkeypatch, _source_read(source_status="unknown", source_summary="unavailable"))
         result = await complete_governed_backup_check(_governed_request(record), db=MagicMock())
         assert result.result_state == "failed"
@@ -308,8 +322,9 @@ class TestSourceMapping:
 
 
 class TestTenantScope:
+    @pytest.mark.asyncio
     async def test_tenant_id_propagates(self, monkeypatch):
-        record = _record_request(tenant_id=TENANT_ID)
+        record = await _record_request(tenant_id=TENANT_ID)
         captured = {}
 
         async def _fake(db, tenant_id=None, now=None):  # noqa: ANN001
@@ -329,8 +344,9 @@ class TestTenantScope:
 
 
 class TestAudit:
+    @pytest.mark.asyncio
     async def test_audit_carries_execution_request_id(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         _patch_read(
             monkeypatch,
             _source_read(source_status="degraded", source_summary="failed", failure_reason_redacted="backup_incomplete"),
@@ -343,16 +359,18 @@ class TestAudit:
         assert ev.source_status == "degraded"
         assert "no tenant mutation" in (ev.reason_redacted or "").lower()
 
+    @pytest.mark.asyncio
     async def test_audit_denial_for_missing_binding(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         req = _governed_request(record).model_copy(update={"execution_request_id": None})
         await complete_governed_backup_check(req, db=MagicMock())
         ev = services.audit_log()[-1]
         assert ev.event_type == "execution_denied"
         assert ev.execution_request_id is None
 
+    @pytest.mark.asyncio
     async def test_audit_failure_for_read_error(self, monkeypatch):
-        record = _record_request()
+        record = await _record_request()
         _patch_read(monkeypatch, _source_read(source_status="unknown", source_summary="unavailable"))
         await complete_governed_backup_check(_governed_request(record), db=MagicMock())
         ev = services.audit_log()[-1]
@@ -381,6 +399,7 @@ class TestInvariantsPreserved:
         assert desc.source_status == "unknown"
         assert desc.realizes_execution is False
 
+    @pytest.mark.asyncio
     async def test_e3_source_read_still_honest(self):
         from api.v1.platform.p22.source_probe import read_backup_check_source
 
@@ -501,8 +520,10 @@ def _route_app():
 
 class TestRoute:
     def test_successful_governed_completion(self, monkeypatch):
+        import asyncio
+
         _enable_auth(monkeypatch)
-        record = _record_request(actor="super-exec")
+        record = asyncio.run(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(
             return_value=_source_read(source_status="known", source_summary="fresh_success")))
         monkeypatch.setattr("api.v1.platform.p22.routes._write_outcome_audit", AsyncMock(return_value=None))
@@ -519,12 +540,14 @@ class TestRoute:
         assert body["no_tenant_mutated"] is True
 
     def test_missing_auth_denied(self, monkeypatch):
+        import asyncio
+
         # No token AND no platform headers -> the guard denies.
         monkeypatch.setattr(
             "api.context.auth.get_auth_context",
             MagicMock(return_value=None),
         )
-        record = _record_request(actor="super-exec")
+        record = asyncio.run(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(return_value=_source_read()))
         payload = _governed_request(record).model_dump()
         with TestClient(_route_app()) as c:
@@ -532,8 +555,10 @@ class TestRoute:
         assert r.status_code in (401, 403)
 
     def test_missing_execution_request_id_blocked(self, monkeypatch):
+        import asyncio
+
         _enable_auth(monkeypatch)
-        record = _record_request(actor="super-exec")
+        record = asyncio.run(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(return_value=_source_read()))
         monkeypatch.setattr("api.v1.platform.p22.routes._write_outcome_audit", AsyncMock(return_value=None))
         payload = _governed_request(record).model_dump()
@@ -547,8 +572,10 @@ class TestRoute:
         assert body["executed"] is False
 
     def test_mismatched_execution_request_id_blocked(self, monkeypatch):
+        import asyncio
+
         _enable_auth(monkeypatch)
-        record = _record_request(actor="super-exec")
+        record = asyncio.run(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(return_value=_source_read()))
         monkeypatch.setattr("api.v1.platform.p22.routes._write_outcome_audit", AsyncMock(return_value=None))
         payload = _governed_request(record).model_dump()
@@ -561,8 +588,10 @@ class TestRoute:
         assert "execution_request_not_found" in body["block_reasons"]
 
     def test_audit_contains_execution_request_id(self, monkeypatch):
+        import asyncio
+
         _enable_auth(monkeypatch)
-        record = _record_request(actor="super-exec")
+        record = asyncio.run(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(
             return_value=_source_read(source_status="known", source_summary="fresh_success")))
         monkeypatch.setattr("api.v1.platform.p22.routes._write_outcome_audit", AsyncMock(return_value=None))

@@ -380,9 +380,11 @@ def _reset_p22_state():
 
     services.reset_store()
     services.reset_approval_resolver()
+    _CURRENT_AUTH["ctx"] = None
     yield
     services.reset_store()
     services.reset_approval_resolver()
+    _CURRENT_AUTH["ctx"] = None
 
 
 class TestDryRunAndRequestNeverExecute:
@@ -408,6 +410,8 @@ class TestDryRunAndRequestNeverExecute:
         return snapshot
 
     def test_backup_check_dry_run_never_sets_execution_flags(self):
+        import asyncio
+
         from api.v1.platform.p22.schemas import ExecutionDryRunRequest
         from api.v1.platform.p22.services import evaluate_dry_run
 
@@ -420,11 +424,13 @@ class TestDryRunAndRequestNeverExecute:
             idempotency_key="probe-key-1",
             execution_mode="sync",
         )
-        resp = evaluate_dry_run(
-            request,
-            actor="exec-1",
-            actor_role="super_admin",
-            identity_context="identity_only",
+        resp = asyncio.run(
+            evaluate_dry_run(
+                request,
+                actor="exec-1",
+                actor_role="super_admin",
+                identity_context="identity_only",
+            )
         )
         # A passed dry-run for a read against a known source is a PRECONDITION,
         # not an execution: the execution flags stay False regardless.
@@ -436,6 +442,8 @@ class TestDryRunAndRequestNeverExecute:
         assert resp.verdict in ("passed", "blocked")
 
     def test_backup_check_request_never_sets_execution_flags(self):
+        import asyncio
+
         from api.v1.platform.p22.schemas import (
             ExecutionDryRunRequest,
             ExecutionRequestCreate,
@@ -451,11 +459,13 @@ class TestDryRunAndRequestNeverExecute:
             idempotency_key="probe-key-2",
             execution_mode="sync",
         )
-        dry = evaluate_dry_run(
-            dry_request,
-            actor="exec-1",
-            actor_role="super_admin",
-            identity_context="identity_only",
+        dry = asyncio.run(
+            evaluate_dry_run(
+                dry_request,
+                actor="exec-1",
+                actor_role="super_admin",
+                identity_context="identity_only",
+            )
         )
         req = ExecutionRequestCreate(
             durable_approval_id="ap-bc",
@@ -467,11 +477,13 @@ class TestDryRunAndRequestNeverExecute:
             execution_ack=True,
             execution_mode="sync",
         )
-        resp = record_execution_request(
-            req,
-            actor="exec-1",
-            actor_role="super_admin",
-            identity_context="identity_only",
+        resp = asyncio.run(
+            record_execution_request(
+                req,
+                actor="exec-1",
+                actor_role="super_admin",
+                identity_context="identity_only",
+            )
         )
         assert resp.execution_allowed is False
         assert resp.executed is False
@@ -585,6 +597,35 @@ def _ast_dotted(node):
 AUTH_HEADERS = {"X-Platform-Test-Override": "test-platform-override-secret"}
 SOURCE_PATH = "/api/v1/platform/p22/backup-check/source"
 
+_CURRENT_AUTH: dict = {"ctx": None}
+
+
+def _auth_ctx(user_id="super-exec"):
+    """Return an identity-only super_admin auth context for P10 guard."""
+    t = MagicMock()
+    t.user_id = user_id
+    t.roles = ["super_admin"]
+    t.tenant_id = None
+    t.tenant_schema = None
+    t.is_identity_only = True
+    t.is_super_admin = True
+    ctx = MagicMock()
+    ctx.token = t
+    return ctx
+
+
+def _fake_get_auth_context(*args, **kwargs):
+    return _CURRENT_AUTH["ctx"]
+
+
+def _enable_auth(monkeypatch, user_id="super-exec"):
+    """Patch get_auth_context so the P10 guard sees an identity-only super_admin."""
+    _CURRENT_AUTH["ctx"] = _auth_ctx(user_id)
+    monkeypatch.setattr(
+        "api.context.auth.get_auth_context",
+        MagicMock(side_effect=_fake_get_auth_context),
+    )
+
 
 def _app_with_outcomes(monkeypatch, outcomes, policies):
     """A TestClient app whose session reads the given outcome/policy rows.
@@ -633,6 +674,7 @@ class TestRouteSurfacesProbe:
         from api.dependencies import get_db
         from api.v1.platform.p22 import routes as p22_routes
 
+        _enable_auth(monkeypatch)
         captured: dict = {}
 
         async def _spy(db, tenant_id=None, now=None):
@@ -663,10 +705,11 @@ class TestRouteSurfacesProbe:
         assert body["source_summary"] == "fresh_success"
 
     def test_fresh_success_visible_as_known(self, monkeypatch):
+        _enable_auth(monkeypatch)
         row = _outcome(
             tenant_id=TID_UUID,
             status="success",
-            completed_at=NOW - timedelta(hours=2),
+            completed_at=datetime.now(timezone.utc) - timedelta(hours=2),
             bytes_written=2048,
         )
         with TestClient(_app_with_outcomes(monkeypatch, [row], [])) as c:
@@ -683,6 +726,7 @@ class TestRouteSurfacesProbe:
         assert body["adapter_result"] == "not_implemented"
 
     def test_no_outcome_visible_as_unknown_never_healthy(self, monkeypatch):
+        _enable_auth(monkeypatch)
         with TestClient(_app_with_outcomes(monkeypatch, [], [])) as c:
             body = c.get(SOURCE_PATH + "?tenant_id=" + TENANT_ID, headers=AUTH_HEADERS).json()
         assert body["source_status"] == "unknown"
@@ -690,6 +734,7 @@ class TestRouteSurfacesProbe:
         assert body["source_status"] != "known"
 
     def test_read_failure_is_fail_closed_unavailable_no_500(self, monkeypatch):
+        _enable_auth(monkeypatch)
         with TestClient(_app_with_failing_read(monkeypatch)) as c:
             r = c.get(SOURCE_PATH + "?tenant_id=" + TENANT_ID, headers=AUTH_HEADERS)
         assert r.status_code == 200  # fail-closed, never a 500

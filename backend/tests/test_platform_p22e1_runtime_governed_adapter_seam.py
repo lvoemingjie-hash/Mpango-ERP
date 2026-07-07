@@ -112,20 +112,20 @@ def _install_resolver():
 # -- helpers ------------------------------------------------------------------
 
 
-def _passed_dry_run(
+async def _passed_dry_run(
     approval_id="ap-1",
     action_type="support_mode.on",
     actor="super-exec",
     **seed_over,
 ):
-    """Seed a happy approval, run a real P22-B dry-run, return (dry_run_id, digests)."""
+    """Seed a happy approval, run a real P22-B dry-run, return dry_run_id."""
     from api.v1.platform.p22 import services
     from api.v1.platform.p22.schemas import ExecutionDryRunRequest
 
     _install_resolver()
     _seed_approval(approval_id, action_type=action_type, **seed_over)
     tenant_id = seed_over.get("tenant_id")
-    resp = services.evaluate_dry_run(
+    resp = await services.evaluate_dry_run(
         ExecutionDryRunRequest(
             durable_approval_id=approval_id,
             action_type=action_type,
@@ -281,11 +281,12 @@ def test_backup_check_never_fabricates_a_healthy_source():
 # ============================================================================
 
 
-def test_preflight_passes_on_a_fully_valid_binding_but_realizes_no_execution():
+@pytest.mark.asyncio
+async def test_preflight_passes_on_a_fully_valid_binding_but_realizes_no_execution():
     from api.v1.platform.p22 import seam
 
-    dry = _passed_dry_run("ap-1", "support_mode.on")
-    v = seam.evaluate_preflight_gate(
+    dry = await _passed_dry_run("ap-1", "support_mode.on")
+    v = await seam.evaluate_preflight_gate(
         _valid_request("ap-1", "support_mode.on", dry_run_ref=dry)
     )
     assert v.verdict == "passed", v.block_reasons
@@ -304,11 +305,12 @@ def test_preflight_passes_on_a_fully_valid_binding_but_realizes_no_execution():
     }
 
 
-def test_preflight_blocks_when_acknowledgement_missing():
+@pytest.mark.asyncio
+async def test_preflight_blocks_when_acknowledgement_missing():
     from api.v1.platform.p22 import seam
 
-    dry = _passed_dry_run()
-    v = seam.evaluate_preflight_gate(
+    dry = await _passed_dry_run()
+    v = await seam.evaluate_preflight_gate(
         _valid_request(dry_run_ref=dry, execution_ack=False)
     )
     assert v.verdict == "blocked"
@@ -316,88 +318,95 @@ def test_preflight_blocks_when_acknowledgement_missing():
     assert v.executed is False
 
 
-def test_preflight_blocks_when_executor_not_identity_super_admin():
+@pytest.mark.asyncio
+async def test_preflight_blocks_when_executor_not_identity_super_admin():
     from api.v1.platform.p22 import seam
 
-    dry = _passed_dry_run()
-    v = seam.evaluate_preflight_gate(
+    dry = await _passed_dry_run()
+    v = await seam.evaluate_preflight_gate(
         _valid_request(dry_run_ref=dry, actor_role="support_operator")
     )
     assert v.verdict == "blocked"
     assert "executor_not_identity_super_admin" in v.block_reasons
 
 
-def test_preflight_blocks_when_action_not_allowlisted():
+@pytest.mark.asyncio
+async def test_preflight_blocks_when_action_not_allowlisted():
     from api.v1.platform.p22 import seam
 
-    dry = _passed_dry_run("ap-1", "support_mode.on")
+    dry = await _passed_dry_run("ap-1", "support_mode.on")
     # Same approval binding, but the request names an unknown action.
     req = _valid_request("ap-1", "orders.refund", dry_run_ref=dry)
-    v = seam.evaluate_preflight_gate(req)
+    v = await seam.evaluate_preflight_gate(req)
     assert v.verdict == "blocked"
     assert "action_not_allowlisted" in v.block_reasons
     assert v.registered is False
 
 
-def test_preflight_blocks_when_dry_run_missing_or_invalid():
+@pytest.mark.asyncio
+async def test_preflight_blocks_when_dry_run_missing_or_invalid():
     from api.v1.platform.p22 import seam
 
     _install_resolver()
     _seed_approval("ap-1")
     # No dry_run_ref at all.
-    v1 = seam.evaluate_preflight_gate(_valid_request(dry_run_ref=None))
+    v1 = await seam.evaluate_preflight_gate(_valid_request(dry_run_ref=None))
     assert v1.verdict == "blocked"
     assert "dry_run_required" in v1.block_reasons
     # A dry_run_ref that does not resolve.
-    v2 = seam.evaluate_preflight_gate(_valid_request(dry_run_ref="does-not-exist"))
+    v2 = await seam.evaluate_preflight_gate(_valid_request(dry_run_ref="does-not-exist"))
     assert v2.verdict == "blocked"
     assert "dry_run_invalid" in v2.block_reasons
 
 
-def test_preflight_blocks_when_idempotency_digest_missing():
+@pytest.mark.asyncio
+async def test_preflight_blocks_when_idempotency_digest_missing():
     from api.v1.platform.p22 import seam
 
-    dry = _passed_dry_run()
-    v = seam.evaluate_preflight_gate(
+    dry = await _passed_dry_run()
+    v = await seam.evaluate_preflight_gate(
         _valid_request(dry_run_ref=dry, idempotency_key_digest=None)
     )
     assert v.verdict == "blocked"
     assert "idempotency_key_required" in v.block_reasons
 
 
-def test_preflight_revalidates_approval_state_fail_closed():
+@pytest.mark.asyncio
+async def test_preflight_revalidates_approval_state_fail_closed():
     from api.v1.platform.p22 import seam
 
-    dry = _passed_dry_run("ap-1", "support_mode.on")
+    dry = await _passed_dry_run("ap-1", "support_mode.on")
     # The approval expires / changes state between dry-run and preflight.
     _seed_approval("ap-1", state="expired")
-    v = seam.evaluate_preflight_gate(
+    v = await seam.evaluate_preflight_gate(
         _valid_request("ap-1", "support_mode.on", dry_run_ref=dry)
     )
     assert v.verdict == "blocked"
     assert "approval_state_not_approved_execution_blocked" in v.block_reasons
 
 
-def test_preflight_revalidates_target_tenant_binding():
+@pytest.mark.asyncio
+async def test_preflight_revalidates_target_tenant_binding():
     from api.v1.platform.p22 import seam
 
     # Dry-run passes with the approval scoped to tenant-A and the request at tenant-A.
-    dry = _passed_dry_run("ap-1", "support_mode.on", tenant_id="tenant-A")
+    dry = await _passed_dry_run("ap-1", "support_mode.on", tenant_id="tenant-A")
     # The approval's target then moves to tenant-B between dry-run and preflight.
     _seed_approval("ap-1", action_type="support_mode.on", tenant_id="tenant-B")
     # The request still binds the dry-run (tenant-A), but the re-resolved approval
     # is now tenant-B -> target_mismatch_approval at execution time.
-    v = seam.evaluate_preflight_gate(
+    v = await seam.evaluate_preflight_gate(
         _valid_request("ap-1", "support_mode.on", dry_run_ref=dry, tenant_id="tenant-A")
     )
     assert v.verdict == "blocked"
     assert "target_mismatch_approval" in v.block_reasons
 
 
-def test_preflight_blocks_on_idempotency_conflict():
+@pytest.mark.asyncio
+async def test_preflight_blocks_on_idempotency_conflict():
     from api.v1.platform.p22 import services, seam
 
-    dry = _passed_dry_run("ap-1", "support_mode.on")
+    dry = await _passed_dry_run("ap-1", "support_mode.on")
     # Seed the recorded-request store with key K -> payload P1.
     key_digest = _digest("idem-conflict")
     services._EXEC_BY_KEY_DIGEST[key_digest] = "er-existing"
@@ -408,17 +417,18 @@ def test_preflight_blocks_on_idempotency_conflict():
     # Same key K, but a DIFFERENT payload digest -> conflict.
     req = _valid_request("ap-1", "support_mode.on", dry_run_ref=dry,
                          idempotency_key_digest=key_digest, payload_digest="payload-TWO")
-    v = seam.evaluate_preflight_gate(req)
+    v = await seam.evaluate_preflight_gate(req)
     assert v.verdict == "blocked"
     assert "idempotency_conflict" in v.block_reasons
     assert v.idempotency_class == "conflict"
     assert v.executed is False
 
 
-def test_preflight_idempotency_replay_does_not_block_and_executes_nothing():
+@pytest.mark.asyncio
+async def test_preflight_idempotency_replay_does_not_block_and_executes_nothing():
     from api.v1.platform.p22 import services, seam
 
-    dry = _passed_dry_run("ap-1", "support_mode.on")
+    dry = await _passed_dry_run("ap-1", "support_mode.on")
     key_digest = _digest("idem-replay")
     services._EXEC_BY_KEY_DIGEST[key_digest] = "er-existing"
     services._EXEC_REQUESTS["er-existing"] = services._StoredExecutionRequest(
@@ -427,20 +437,21 @@ def test_preflight_idempotency_replay_does_not_block_and_executes_nothing():
     )
     req = _valid_request("ap-1", "support_mode.on", dry_run_ref=dry,
                          idempotency_key_digest=key_digest)
-    v = seam.evaluate_preflight_gate(req)
+    v = await seam.evaluate_preflight_gate(req)
     assert v.idempotency_class == "replay"
     # A replay never applies a second state change and never executes.
     assert v.realized_execution is False
     assert v.executed is False
 
 
-def test_backup_check_passes_preflight_only_as_a_non_executing_slot():
+@pytest.mark.asyncio
+async def test_backup_check_passes_preflight_only_as_a_non_executing_slot():
     """Even with a valid read approval, backup.check realizes no execution and
     reports an honest source_unknown adapter -- it never fabricates a read."""
     from api.v1.platform.p22 import seam
 
-    dry = _passed_dry_run("ap-r", "backup.check", action_class="read", source_status="known")
-    v = seam.evaluate_preflight_gate(
+    dry = await _passed_dry_run("ap-r", "backup.check", action_class="read", source_status="known")
+    v = await seam.evaluate_preflight_gate(
         _valid_request("ap-r", "backup.check", dry_run_ref=dry)
     )
     assert v.verdict == "passed", v.block_reasons
@@ -500,12 +511,13 @@ def test_audit_shape_is_field_names_only_and_carries_no_value():
         assert "reason_redacted" in names
 
 
-def test_preflight_shape_does_not_leak_request_values():
+@pytest.mark.asyncio
+async def test_preflight_shape_does_not_leak_request_values():
     from api.v1.platform.p22 import seam
 
-    dry = _passed_dry_run()
+    dry = await _passed_dry_run()
     req = _valid_request(dry_run_ref=dry, correlation_id="SUPER-SECRET-CORR-XYZ")
-    v = seam.evaluate_preflight_gate(req)
+    v = await seam.evaluate_preflight_gate(req)
     blob = json.dumps(v.expected_audit_shape)
     assert "SUPER-SECRET-CORR-XYZ" not in blob  # templates carry field names only
 

@@ -383,7 +383,7 @@ async def complete_governed_backup_check(
         identity_context=request.identity_context,
         correlation_id=request.correlation_id,
     )
-    verdict = evaluate_preflight_gate(seam_request)
+    verdict = await evaluate_preflight_gate(seam_request, db=db)
     if verdict.verdict != "passed":
         # Fail closed: a blocked preflight never reaches the read.
         return _finish_blocked(

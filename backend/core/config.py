@@ -132,6 +132,23 @@ class Settings(BaseSettings):
         description="Enable SQL query profiling and metrics"
     )
 
+    # Email delivery
+    EMAIL_PROVIDER: Literal["dev_sink", "smtp"] = Field(
+        default="dev_sink",
+        description="Email provider: dev_sink for non-production tests, smtp for production",
+    )
+    EMAIL_DELIVERY_MODE: Literal["dev_sink", "smtp"] = Field(
+        default="dev_sink",
+        description="Email delivery mode: dev_sink or smtp",
+    )
+    SMTP_HOST: str | None = Field(default=None, description="SMTP host for production email")
+    SMTP_PORT: int = Field(default=587, description="SMTP port for production email")
+    SMTP_USER: str | None = Field(default=None, description="SMTP username")
+    SMTP_PASSWORD: str | None = Field(default=None, description="SMTP password")
+    EMAIL_FROM: str | None = Field(default=None, description="From address for outbound email")
+    SMTP_USE_TLS: bool = Field(default=False, description="Use implicit TLS for SMTP")
+    SMTP_STARTTLS: bool = Field(default=True, description="Upgrade SMTP connection with STARTTLS")
+
     @field_validator("MPANGO_ENV")
     @classmethod
     def validate_environment(cls, v: str) -> str:

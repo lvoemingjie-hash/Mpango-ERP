@@ -253,17 +253,20 @@ async def create_signup_registration(
             )
         )
         await db.flush()
+
+        record_verification_email(
+            settings=settings,
+            registration_id=registration.id,
+            to_email=owner_email,
+            token=raw_token,
+            verification_link=build_verification_link(raw_token),
+        )
     except IntegrityError:
         await db.rollback()
         return SignupResult(registration_id=None, status="pending_email_verification")
-
-    record_verification_email(
-        settings=settings,
-        registration_id=registration.id,
-        to_email=owner_email,
-        token=raw_token,
-        verification_link=build_verification_link(raw_token),
-    )
+    except EmailDeliveryNotConfiguredError:
+        await db.rollback()
+        raise
 
     return SignupResult(registration_id=registration.id, status=registration.status)
 

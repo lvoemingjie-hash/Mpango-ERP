@@ -22,7 +22,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 from api.v1.platform.p10.schemas import SystemHealth
 
@@ -91,7 +91,7 @@ async def _write_access_denied_audit(
 
 async def require_platform_operator_with_ops_audit(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     x_platform_operator: Optional[str] = Header(
         None,
         alias="X-Platform-Operator",
@@ -118,7 +118,7 @@ async def require_platform_operator_with_ops_audit(
 @router.get("/ops/health", response_model=SystemHealth)
 async def get_ops_health(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_ops_audit),
 ):
     """System health with P13 extensions (read-only).
@@ -138,7 +138,7 @@ async def get_ops_health(
 async def get_ops_errors(
     request: Request,
     window: int = Query(15, ge=1, le=1440, description="Aggregation window in minutes"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_ops_audit),
 ):
     """Error rate analysis (read-only).
@@ -161,7 +161,7 @@ async def get_ops_slow_routes(
     request: Request,
     window: int = Query(15, ge=1, le=1440, description="Aggregation window in minutes"),
     threshold: int = Query(1000, ge=1, le=60000, description="Slow threshold in ms"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_ops_audit),
 ):
     """Slow route analysis (read-only).
@@ -184,7 +184,7 @@ async def get_ops_slow_routes(
 @router.get("/ops/resources", response_model=ResourceHealthSummary)
 async def get_ops_resources(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_ops_audit),
 ):
     """Resource health summary (read-only).
@@ -205,7 +205,7 @@ async def get_ops_resources(
 async def get_ops_noisy_neighbors(
     request: Request,
     window: int = Query(15, ge=1, le=1440, description="Aggregation window in minutes"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_ops_audit),
 ):
     """Noisy-neighbor detection (read-only).

@@ -106,7 +106,7 @@ def _make_app(mock_db, *, summary_list=None, provisioning_map=None,
               single_summary=None):
     """Build an app with P10 sources patched to deterministic fakes."""
     from api.v1.platform.p17.routes import router
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
 
     app = FastAPI()
 
@@ -114,6 +114,7 @@ def _make_app(mock_db, *, summary_list=None, provisioning_map=None,
         yield mock_db
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(router)
 
     # Patch the service-layer source calls for deterministic data.

@@ -438,7 +438,7 @@ def _mock_db():
 
 def _app_with_backup_map(backup_map):
     from api.v1.platform.p17.routes import router
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
 
     app = FastAPI()
 
@@ -446,6 +446,7 @@ def _app_with_backup_map(backup_map):
         yield _mock_db()
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(router)
     _start_patch(
         "api.v1.platform.p17.services.list_tenant_summaries",

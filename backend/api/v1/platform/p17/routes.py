@@ -25,7 +25,7 @@ from uuid import UUID as PyUUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 
 from . import services
@@ -88,7 +88,7 @@ async def _write_access_denied_audit(
 
 async def require_platform_operator_with_registry_audit(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     x_platform_operator: Optional[str] = Header(
         None, alias="X-Platform-Operator",
         description="Platform operator shared secret",
@@ -160,7 +160,7 @@ async def list_tenant_registries(
     request: Request,
     limit: int = 50,
     offset: int = 0,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_registry_audit),
 ) -> PlatformTenantRegistryList:
     """Read-only paginated platform tenant registry (P17-B).
@@ -183,7 +183,7 @@ async def list_tenant_registries(
 async def get_tenant_registry(
     request: Request,
     tenant_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_registry_audit),
 ) -> PlatformTenantRegistry:
     """Read-only single-tenant platform registry (P17-B).

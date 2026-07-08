@@ -389,7 +389,7 @@ def _route_app(url, *, connect_args=None):
     NullPool gives each request a fresh connection so a multi-request lifecycle
     (POST -> GET -> GET -> POST) never reuses a stale pooled connection.
     """
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
     from api.v1.platform.p20.routes import router
 
     engine_kw = {"future": True, "poolclass": NullPool}
@@ -406,6 +406,7 @@ def _route_app(url, *, connect_args=None):
             await session.close()
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(router)
     return app
 

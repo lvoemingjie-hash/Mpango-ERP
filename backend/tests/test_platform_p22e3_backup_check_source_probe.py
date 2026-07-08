@@ -633,7 +633,7 @@ def _app_with_outcomes(monkeypatch, outcomes, policies):
     The best-effort outcome audit is patched to a no-op so the mock session is
     only exercised by the (read-only) P17 source loader the probe reuses.
     """
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
     from api.v1.platform.p22 import routes as p22_routes
 
     monkeypatch.setattr(p22_routes, "_write_outcome_audit", AsyncMock(return_value=None))
@@ -643,13 +643,14 @@ def _app_with_outcomes(monkeypatch, outcomes, policies):
         yield _mock_db_with(outcomes, policies)
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(p22_routes.router)
     return app
 
 
 def _app_with_failing_read(monkeypatch):
     """A TestClient app whose session read raises (source read failure)."""
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
     from api.v1.platform.p22 import routes as p22_routes
 
     monkeypatch.setattr(p22_routes, "_write_outcome_audit", AsyncMock(return_value=None))
@@ -661,6 +662,7 @@ def _app_with_failing_read(monkeypatch):
         yield db
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(p22_routes.router)
     return app
 
@@ -671,7 +673,7 @@ class TestRouteSurfacesProbe:
     def test_route_is_a_runtime_caller_of_the_probe(self, monkeypatch):
         # Direct proof: spy on read_backup_check_source at the routes module
         # (the name the route awaits) and assert the route called it.
-        from api.dependencies import get_db
+        from api.dependencies import get_db, get_platform_db
         from api.v1.platform.p22 import routes as p22_routes
 
         _enable_auth(monkeypatch)
@@ -692,6 +694,7 @@ class TestRouteSurfacesProbe:
             yield _mock_db_with([], [])
 
         app.dependency_overrides[get_db] = override
+        app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
         app.include_router(p22_routes.router)
 
         with TestClient(app) as c:

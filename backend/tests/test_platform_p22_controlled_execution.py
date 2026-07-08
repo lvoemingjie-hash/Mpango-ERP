@@ -213,7 +213,7 @@ def _seed(approval_id="ap-1", **overrides):
 
 
 def _make_app():
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
     from api.v1.platform.p22 import services
     from api.v1.platform.p22.routes import router
 
@@ -225,6 +225,7 @@ def _make_app():
         yield _mock_db()
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(router)
     return app
 

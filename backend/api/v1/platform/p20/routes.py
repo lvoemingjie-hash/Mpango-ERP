@@ -37,7 +37,7 @@ from uuid import UUID as PyUUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 
 from . import services
@@ -102,7 +102,7 @@ async def _write_access_denied_audit(
 
 async def require_platform_operator_with_p20_audit(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     x_platform_operator: Optional[str] = Header(
         None, alias="X-Platform-Operator", description="Platform operator shared secret"
     ),
@@ -230,7 +230,7 @@ def _raise_storage_not_ready(exc: Exception) -> None:
 async def create_durable_approval_route(
     payload: DurableApprovalCreateRequest,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p20_audit),
 ) -> DurableApprovalRecord:
     """Open (record) a durable approval request (P20-B). Nothing is executed.
@@ -264,7 +264,7 @@ async def list_durable_approvals_route(
     status: Optional[str] = Query(None, description="Filter by lifecycle state."),
     action_type: Optional[str] = Query(None, description="Filter by P18 action_type."),
     tenant_id: Optional[str] = Query(None, description="Filter by tenant_id."),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p20_audit),
 ) -> DurableApprovalQueue:
     """List the operator queue of durable approvals (with filters).
@@ -291,7 +291,7 @@ async def list_durable_approvals_route(
 async def read_durable_approval_route(
     approval_id: str,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p20_audit),
 ) -> DurableApprovalRecord:
     """Read a previously recorded durable approval by approval_id.
@@ -324,7 +324,7 @@ async def submit_decision_route(
     approval_id: str,
     payload: DurableApprovalDecisionRequest,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p20_audit),
 ) -> DurableApprovalRecord:
     """Record one checker's approve / reject decision for a durable approval (P20-B).

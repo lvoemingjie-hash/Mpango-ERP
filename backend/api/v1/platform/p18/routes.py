@@ -27,7 +27,7 @@ from uuid import UUID as PyUUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 
 from . import services
@@ -92,7 +92,7 @@ async def _write_access_denied_audit(
 
 async def require_platform_operator_with_p18_audit(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     x_platform_operator: Optional[str] = Header(
         None, alias="X-Platform-Operator", description="Platform operator shared secret"
     ),
@@ -194,7 +194,7 @@ async def _write_queue_audit(db: AsyncSession, request: Request, total: int) -> 
 @router.get("/actions/catalog", response_model=ActionCatalogResponse)
 async def get_catalog(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p18_audit),
 ) -> ActionCatalogResponse:
     """Read-only controlled-action catalog (P18-A section 3).
@@ -209,7 +209,7 @@ async def get_catalog(
 async def validate_action(
     payload: ActionRequest,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p18_audit),
 ) -> ActionRequestResponse:
     """Dry-run validation of a controlled-action request (P18-B).
@@ -231,7 +231,7 @@ async def validate_action(
 async def submit_action(
     payload: ActionRequest,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p18_audit),
 ) -> ActionRequestResponse:
     """Record a controlled-action request (P18-B). The request is NOT executed.
@@ -255,7 +255,7 @@ async def list_recorded_requests(
     request: Request,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p18_audit),
 ) -> ActionRequestQueueResponse:
     """List the current ephemeral operator queue of recorded P18 requests."""
@@ -268,7 +268,7 @@ async def list_recorded_requests(
 async def get_recorded_request(
     action_id: str,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p18_audit),
 ) -> ActionRequestResponse:
     """Read a previously recorded controlled-action request by action_id.

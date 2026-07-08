@@ -19,7 +19,7 @@ from uuid import UUID as PyUUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 
 from .schemas import (
@@ -86,7 +86,7 @@ async def _write_access_denied_audit(
 
 async def require_platform_operator_with_audit(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     x_platform_operator: Optional[str] = Header(
         None,
         alias="X-Platform-Operator",
@@ -170,7 +170,7 @@ async def _write_reason_denied_audit(
 async def create_session(
     request: Request,
     body: CreateSessionRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_audit),
 ):
     """
@@ -228,7 +228,7 @@ async def create_session(
 async def get_diagnostics(
     request: Request,
     session_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_audit),
 ):
     """
@@ -270,7 +270,7 @@ async def create_bundle(
     request: Request,
     session_id: str,
     body: CreateBundleRequest = CreateBundleRequest(),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_audit),
 ):
     """
@@ -313,7 +313,7 @@ async def create_bundle(
 async def close_session(
     request: Request,
     session_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_audit),
 ):
     """

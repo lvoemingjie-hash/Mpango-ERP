@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -42,6 +43,7 @@ TERMINAL_PASSWORD_CLEANUP_STATES = ("active", "cancelled", "expired")
 EMAIL_VERIFICATION_TOKEN_PURPOSE = "signup_email_verification"
 PASSWORD_RESET_TOKEN_PURPOSE = "password_reset"  # pragma: allowlist secret
 ONBOARDING_STATUS_TOKEN_PURPOSE = "onboarding_status"
+OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE = "owner_credential_setup"
 
 
 def _quoted(values: tuple[str, ...]) -> str:
@@ -299,4 +301,49 @@ class OnboardingStatusToken(PublicBaseModel):
         server_default=text(f"'{ONBOARDING_STATUS_TOKEN_PURPOSE}'"),
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OwnerCredentialSetupToken(PublicBaseModel):
+    """Single-use owner credential setup token metadata without raw token storage."""
+
+    __tablename__ = "owner_credential_setup_tokens"
+    __table_args__ = (
+        CheckConstraint(
+            f"purpose = '{OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE}'",
+            name="ck_owner_credential_setup_tokens_purpose",
+        ),
+        CheckConstraint(
+            "used_at IS NULL OR revoked_at IS NULL",
+            name="ck_owner_credential_setup_tokens_not_used_and_revoked",
+        ),
+        UniqueConstraint("token_hash", name="uq_owner_credential_setup_tokens_token_hash"),
+        Index("ux_owner_credential_setup_tokens_token_hash", "token_hash", unique=True),
+        Index("ix_owner_credential_setup_tokens_registration_id", "registration_id"),
+        Index("ix_owner_credential_setup_tokens_expires_at", "expires_at"),
+        Index(
+            "ux_owner_credential_setup_tokens_registration_active",
+            "registration_id",
+            unique=True,
+            postgresql_where=text(
+                "used_at IS NULL AND revoked_at IS NULL AND is_deleted = false"
+            ),
+        ),
+        {"schema": "public"},
+    )
+
+    registration_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("public.tenant_registrations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    purpose: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE,
+        server_default=text(f"'{OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE}'"),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

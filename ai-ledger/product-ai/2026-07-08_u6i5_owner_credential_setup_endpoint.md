@@ -3,7 +3,7 @@
 Date: 2026-07-08
 Branch: `opencode/u6i5-owner-credential-setup-endpoint-2026-07-08`
 Base: `origin/product-dev-recovered` at `2a5a31479faf8cf64e87cb5ba0fc4a7092f6d3f5`
-Verdict: `PASS_FOR_CTO_REVIEW_PENDING_GITNEXUS`
+Verdict: `PASS_FOR_CTO_REVIEW`
 
 ## Scope
 
@@ -57,7 +57,6 @@ Completed:
 - Mojibake scan on changed files: passed, no matches.
 - Secret-pattern scan on changed files: reviewed; matches were expected token/credential/password terminology and no actual secrets.
 - `pre-commit run` on all changed files: passed.
-
-Pending:
-
-- GitNexus analyze/status.
+- Implementation commit: `3fe87503 feat(U6-I5): add owner credential setup public endpoint`.
+- `npx gitnexus analyze`: repository indexed successfully, `7,042 nodes | 20,126 edges | 473 clusters | 239 flows`.
+- `npx gitnexus status`: indexed commit `3fe8750`, current commit `3fe8750`, status up to date.

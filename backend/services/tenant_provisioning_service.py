@@ -20,6 +20,25 @@ from models.wholesaler import Wholesaler as WholesalerModel
 BootstrapFunction = Callable[[str, str], Awaitable[None]]
 _BOOTSTRAP_MODULE = "scripts.bootstrap_tenant_" "schema"
 _BOOTSTRAP_FAILED = "BOOTSTRAP_FAILED"
+_BOOTSTRAP_REQUIRED_TABLES = {
+    "users",
+    "roles",
+    "permissions",
+    "user_" "roles",
+    "role_" "permissions",
+    "skus",
+    "inventory_stocks",
+    "inventory_movements",
+    "orders",
+    "order_items",
+    "payments",
+    "ledger_entries",
+    "import_runs",
+    "intake_workspaces",
+    "intake_uploads",
+    "intake_product_rows",
+    "intake_validation_issues",
+}
 
 
 @dataclass(frozen=True)
@@ -34,6 +53,15 @@ class TenantProvisioningClaimResult:
     provisioning_started_at: datetime | None = None
     provisioning_completed_at: datetime | None = None
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class _ProvisioningAssignment:
+    wholesaler_id: UUID
+    wholesaler_code: str
+    company_name: str
+    owner_email: str
+    tenant_schema: str
 
 
 class TenantProvisioningService:
@@ -109,30 +137,29 @@ class TenantProvisioningService:
         if registration.status != "provisioning":
             return _result("blocked", registration, reason="not_provisioning")
 
+        failed_assignment: _ProvisioningAssignment | None = None
         try:
+            if registration.wholesaler_id is not None or registration.tenant_schema is not None:
+                return await self._reconcile_existing_provisioning(registration)
+
             wholesaler = await self._ensure_wholesaler(registration)
             tenant_schema = wholesaler.get_tenant_schema()
             validate_identifier(tenant_schema, "tenant_schema")
+            failed_assignment = _assignment_from(registration, wholesaler, tenant_schema)
 
             registration.wholesaler_id = wholesaler.id
             registration.tenant_schema = tenant_schema
             await self.db.flush()
 
-            await self._bootstrap_func(
-                tenant_schema, self._database_url or get_settings().DATABASE_URL
+            return await self._complete_after_bootstrap(
+                registration,
+                wholesaler,
+                tenant_schema,
+                action="provisioned",
             )
-
-            completed_at = datetime.now(timezone.utc)
-            wholesaler.status = "active"
-            wholesaler.provisioned_at = completed_at
-            registration.status = "active"
-            registration.provisioning_completed_at = completed_at
-            _clear_registration_credential(registration, completed_at)
-            await self.db.flush()
-            return _result("provisioned", registration)
         except Exception as exc:
             await self.db.rollback()
-            await self._record_failure(registration_id, exc)
+            await self._record_failure(registration_id, exc, failed_assignment)
             return TenantProvisioningClaimResult(
                 action="failed",
                 registration_id=registration_id,
@@ -161,20 +188,90 @@ class TenantProvisioningService:
         await self.db.flush()
         return wholesaler
 
+    async def _reconcile_existing_provisioning(
+        self, registration: TenantRegistration
+    ) -> TenantProvisioningClaimResult:
+        if registration.wholesaler_id is None or registration.tenant_schema is None:
+            return _result("blocked", registration, reason="incomplete_assignment")
+
+        wholesaler = await self._get_wholesaler(registration.wholesaler_id)
+        if wholesaler is None:
+            return _result("blocked", registration, reason="wholesaler_missing")
+
+        tenant_schema = registration.tenant_schema
+        validate_identifier(tenant_schema, "tenant_schema")
+        if tenant_schema != wholesaler.get_tenant_schema():
+            return _result("blocked", registration, reason="tenant_schema_mismatch")
+
+        return await self._complete_after_bootstrap(
+            registration,
+            wholesaler,
+            tenant_schema,
+            action="reconciled",
+        )
+
+    async def _get_wholesaler(self, wholesaler_id: UUID) -> WholesalerModel | None:
+        result = await self.db.execute(
+            select(WholesalerModel)
+            .where(WholesalerModel.id == wholesaler_id)
+            .execution_options(ignore_tenant=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def _complete_after_bootstrap(
+        self,
+        registration: TenantRegistration,
+        wholesaler: WholesalerModel,
+        tenant_schema: str,
+        *,
+        action: str,
+    ) -> TenantProvisioningClaimResult:
+        if not await self._schema_is_bootstrapped(tenant_schema):
+            await self._bootstrap_func(
+                tenant_schema, self._database_url or get_settings().DATABASE_URL
+            )
+        if not await self._schema_is_bootstrapped(tenant_schema):
+            raise RuntimeError("BOOTSTRAP_INCOMPLETE")
+
+        completed_at = datetime.now(timezone.utc)
+        wholesaler.status = "active"
+        wholesaler.provisioned_at = completed_at
+        registration.status = "active"
+        registration.provisioning_completed_at = completed_at
+        registration.failed_at = None
+        registration.failure_code = None
+        registration.failure_message = None
+        _clear_registration_credential(registration, completed_at)
+        await self.db.flush()
+        return _result(action, registration)
+
     async def _schema_is_bootstrapped(self, tenant_schema: str | None) -> bool:
         if tenant_schema is None:
             return False
         validate_identifier(tenant_schema, "tenant_schema")
         result = await self.db.execute(
             text(
-                "SELECT 1 FROM information_schema.tables "
-                "WHERE table_schema = :schema AND table_name = 'skus'"
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = :schema"
             ),
+            {"schema": tenant_schema},
+        )
+        return _BOOTSTRAP_REQUIRED_TABLES <= set(result.scalars())
+
+    async def _schema_exists(self, tenant_schema: str) -> bool:
+        validate_identifier(tenant_schema, "tenant_schema")
+        result = await self.db.execute(
+            text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :schema"),
             {"schema": tenant_schema},
         )
         return result.first() is not None
 
-    async def _record_failure(self, registration_id: UUID, exc: Exception) -> None:
+    async def _record_failure(
+        self,
+        registration_id: UUID,
+        exc: Exception,
+        failed_assignment: _ProvisioningAssignment | None = None,
+    ) -> None:
         result = await self.db.execute(
             select(TenantRegistration)
             .where(TenantRegistration.id == registration_id)
@@ -184,10 +281,37 @@ class TenantProvisioningService:
         registration = result.scalar_one_or_none()
         if registration is None or registration.status != "provisioning":
             return
+        if failed_assignment is not None and await self._schema_exists(
+            failed_assignment.tenant_schema
+        ):
+            # Bootstrap commits independently; if it left a schema behind, persist
+            # the public assignment that derives that schema so retry can reconcile it.
+            await self._restore_failed_assignment(registration, failed_assignment)
         registration.failed_at = datetime.now(timezone.utc)
         registration.failure_code = _BOOTSTRAP_FAILED
         registration.failure_message = _safe_failure_message(exc)
         await self.db.flush()
+
+    async def _restore_failed_assignment(
+        self,
+        registration: TenantRegistration,
+        failed_assignment: _ProvisioningAssignment,
+    ) -> None:
+        if registration.wholesaler_id is not None or registration.tenant_schema is not None:
+            return
+        if await self._get_wholesaler(failed_assignment.wholesaler_id) is None:
+            self.db.add(
+                WholesalerModel(
+                    id=failed_assignment.wholesaler_id,
+                    code=failed_assignment.wholesaler_code,
+                    name=failed_assignment.company_name,
+                    contact=failed_assignment.owner_email,
+                    status="provisioning",
+                )
+            )
+            await self.db.flush()
+        registration.wholesaler_id = failed_assignment.wholesaler_id
+        registration.tenant_schema = failed_assignment.tenant_schema
 
 
 def _has_existing_active_assignment(registration: TenantRegistration) -> bool:
@@ -211,6 +335,20 @@ def _wholesaler_code(registration: TenantRegistration) -> str:
     if registration.tenant_code:
         return registration.tenant_code.strip().upper()[:32]
     return f"TR{registration.id.hex[:30]}".upper()
+
+
+def _assignment_from(
+    registration: TenantRegistration,
+    wholesaler: WholesalerModel,
+    tenant_schema: str,
+) -> _ProvisioningAssignment:
+    return _ProvisioningAssignment(
+        wholesaler_id=wholesaler.id,
+        wholesaler_code=wholesaler.code,
+        company_name=registration.company_name,
+        owner_email=registration.owner_email,
+        tenant_schema=tenant_schema,
+    )
 
 
 def _load_bootstrap() -> BootstrapFunction:

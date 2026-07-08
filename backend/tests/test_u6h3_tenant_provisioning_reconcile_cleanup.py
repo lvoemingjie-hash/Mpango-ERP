@@ -120,8 +120,8 @@ async def _insert_wholesaler() -> Wholesaler:
 
 async def _insert_registration(
     *,
-    wholesaler_id: uuid.UUID,
-    tenant_schema: str,
+    wholesaler_id: uuid.UUID | None,
+    tenant_schema: str | None,
     failure_code: str | None = None,
     failure_message: str | None = None,
 ) -> uuid.UUID:
@@ -197,6 +197,24 @@ async def _create_partial_schema(schema: str) -> None:
         await session.commit()
 
 
+async def _create_bootstrap_baseline_tables(schema: str) -> None:
+    assert schema.startswith("t_")
+    async with AsyncSessionLocal() as session:
+        await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+        for table_name in BOOTSTRAP_BASELINE_TABLES:
+            await session.execute(
+                text(f'CREATE TABLE IF NOT EXISTS "{schema}".{table_name} (id UUID PRIMARY KEY)')
+            )
+        await session.commit()
+
+
+async def _drop_schema_if_exists(schema: str) -> None:
+    assert schema.startswith("t_")
+    async with AsyncSessionLocal() as session:
+        await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await session.commit()
+
+
 async def _bootstrap_schema(schema: str) -> None:
     from scripts.bootstrap_tenant_schema import bootstrap
 
@@ -211,6 +229,95 @@ async def _wholesaler_count(wholesaler_id: uuid.UUID) -> int:
             .where(Wholesaler.id == wholesaler_id)
             .execution_options(ignore_tenant=True)
         )
+
+
+async def _wholesaler_ids_for_registration(registration_id: uuid.UUID) -> list[uuid.UUID]:
+    code = f"TR{registration_id.hex[:30]}".upper()
+    async with AsyncSessionLocal() as session:
+        return list(
+            (
+                await session.execute(
+                    select(Wholesaler.id)
+                    .where(Wholesaler.code == code)
+                    .order_by(Wholesaler.id)
+                    .execution_options(ignore_tenant=True)
+                )
+            ).scalars()
+        )
+
+
+async def test_first_attempt_partial_schema_failure_persists_retry_anchor_and_reconciles():
+    registration_id = await _insert_registration(
+        wholesaler_id=None,
+        tenant_schema=None,
+    )
+    created_schemas: list[str] = []
+
+    async def _create_partial_then_fail(schema: str, _database_url: str) -> None:
+        created_schemas.append(schema)
+        async with AsyncSessionLocal() as session:
+            await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+            await session.execute(
+                text(f'CREATE TABLE IF NOT EXISTS "{schema}".first_attempt_marker (id UUID)')
+            )
+            await session.commit()
+        raise RuntimeError("first attempt bootstrap failed after partial schema")
+
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SET search_path TO public"))
+            failed = await TenantProvisioningService(
+                session,
+                bootstrap_func=_create_partial_then_fail,
+                database_url=get_settings().DATABASE_URL,
+            ).provision_wholesaler_and_schema(registration_id)
+            await session.commit()
+
+        assert failed.action == "failed"
+        assert len(created_schemas) == 1
+        first_schema = created_schemas[0]
+        snapshot_after_failure = await _registration_snapshot(registration_id)
+        first_wholesaler_id = snapshot_after_failure["wholesaler_id"]
+        assert first_wholesaler_id is not None
+        assert snapshot_after_failure["tenant_schema"] == first_schema
+        assert snapshot_after_failure["failure_code"] == "BOOTSTRAP_FAILED"
+        assert snapshot_after_failure["failure_message"] == "RuntimeError: bootstrap failed"
+        assert await _wholesaler_ids_for_registration(registration_id) == [first_wholesaler_id]
+        assert "first_attempt_marker" in await _tenant_tables(first_schema)
+
+        retry_schemas: list[str] = []
+
+        async def _complete_bootstrap(schema: str, _database_url: str) -> None:
+            retry_schemas.append(schema)
+            await _create_bootstrap_baseline_tables(schema)
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SET search_path TO public"))
+            retried = await TenantProvisioningService(
+                session,
+                bootstrap_func=_complete_bootstrap,
+                database_url=get_settings().DATABASE_URL,
+            ).provision_wholesaler_and_schema(registration_id)
+            await session.commit()
+
+        assert retried.action == "reconciled"
+        assert retried.status == "active"
+        assert retried.wholesaler_id == first_wholesaler_id
+        assert retried.tenant_schema == first_schema
+        assert retry_schemas == [first_schema]
+        assert await _wholesaler_ids_for_registration(registration_id) == [first_wholesaler_id]
+        assert BOOTSTRAP_BASELINE_TABLES <= await _tenant_tables(first_schema)
+
+        snapshot_after_retry = await _registration_snapshot(registration_id)
+        assert snapshot_after_retry["status"] == "active"
+        assert snapshot_after_retry["wholesaler_id"] == first_wholesaler_id
+        assert snapshot_after_retry["tenant_schema"] == first_schema
+        assert snapshot_after_retry["failure_code"] is None
+        assert snapshot_after_retry["failure_message"] is None
+        assert snapshot_after_retry["password_hash"] is None
+    finally:
+        for schema in created_schemas:
+            await _drop_schema_if_exists(schema)
 
 
 async def test_partial_schema_after_failure_reconciles_to_active_without_duplicate_wholesaler():

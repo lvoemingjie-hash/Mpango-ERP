@@ -3,7 +3,8 @@
 Date: 2026-07-08
 Branch: `opencode/u6i1-owner-credential-setup-schema-2026-07-08`
 Base: `origin/product-dev-recovered` at `3726aa767d4d572c30e601ac53ceb1938cc6d014`
-Verdict: `PASS_FOR_CTO_REVIEW_PENDING_GITNEXUS`
+Implementation commit: `712db0c1 feat(U6-I1): add owner credential setup token schema`
+Verdict: `PASS_FOR_CTO_REVIEW`
 
 ## Scope
 
@@ -63,5 +64,6 @@ Completed:
 
 Pending:
 
-- Commit.
-- GitNexus analyze/status.
+- Commit: `712db0c1 feat(U6-I1): add owner credential setup token schema`.
+- `npx gitnexus analyze`: repository indexed successfully; `6,874 nodes`, `19,483 edges`, `461 clusters`, `229 flows`.
+- `npx gitnexus status`: indexed commit `712db0c`, current commit `712db0c`, status up-to-date.

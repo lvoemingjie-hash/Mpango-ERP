@@ -3,7 +3,8 @@
 Date: 2026-07-08
 Branch: `opencode/u6i0-owner-credential-setup-contract-2026-07-08`
 Base: `origin/product-dev-recovered` at `5beccba9eedcbf658c55f8b1beae5d067acaaba2`
-Verdict: `PASS_FOR_CTO_REVIEW_PENDING_FINAL_GITNEXUS`
+Implementation commit: `a8b7a981 docs(U6-I0): define owner credential setup contract`
+Verdict: `PASS_FOR_CTO_REVIEW`
 
 ## Scope
 
@@ -94,8 +95,6 @@ Completed:
 - Mojibake scan on changed files: passed, no matches.
 - Secret-pattern scan on changed files: reviewed; matches were expected contract/test vocabulary for setup-token and password-hash boundaries, with no actual secrets.
 - `pre-commit run --files backend/tests/test_u6i0_owner_credential_setup_contract.py ai-ledger/product-ai/2026-07-08_u6i0_owner_credential_setup_contract.md`: passed.
-
-Pending:
-
-- Commit.
-- GitNexus analyze/status.
+- Commit: `a8b7a981 docs(U6-I0): define owner credential setup contract`.
+- `npx gitnexus analyze`: repository indexed successfully; `6,845 nodes`, `19,417 edges`, `458 clusters`, `229 flows`.
+- `npx gitnexus status`: indexed commit `a8b7a98`, current commit `a8b7a98`, status up-to-date.

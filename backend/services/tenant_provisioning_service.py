@@ -218,8 +218,7 @@ def _load_bootstrap() -> BootstrapFunction:
 
 
 def _safe_failure_message(exc: Exception) -> str:
-    message = str(exc).strip() or exc.__class__.__name__
-    return message[:240]
+    return f"{exc.__class__.__name__}: bootstrap failed"
 
 
 def _clear_registration_credential(

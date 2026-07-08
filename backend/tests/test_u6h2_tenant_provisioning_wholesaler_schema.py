@@ -317,8 +317,37 @@ async def test_bootstrap_failure_does_not_mark_active_or_completed():
     assert snapshot["wholesaler_id"] is None
     assert snapshot["tenant_schema"] is None
     assert snapshot["failure_code"] == "BOOTSTRAP_FAILED"
-    assert "u6h2 simulated bootstrap failure" in snapshot["failure_message"]
+    assert snapshot["failure_message"] == "RuntimeError: bootstrap failed"
     assert await _wholesaler_count_for_registration(registration_id) == 0
+
+
+async def test_bootstrap_failure_message_does_not_persist_dsn_or_fake_password():
+    registration_id = await _insert_registration(status="provisioning")
+    fake_password = "FakeLeakPass123!"  # pragma: allowlist secret
+    fake_dsn = f"postgresql+asyncpg://user:{fake_password}@db.example.invalid:5432/app"
+
+    async def _fail_with_sensitive_message(_schema: str, _database_url: str) -> None:
+        raise RuntimeError(f"could not connect to {fake_dsn} using token abc123")
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        result = await TenantProvisioningService(
+            session,
+            bootstrap_func=_fail_with_sensitive_message,
+            database_url=get_settings().DATABASE_URL,
+        ).provision_wholesaler_and_schema(registration_id)
+        await session.commit()
+
+    assert result.action == "failed"
+    snapshot = await _registration_snapshot(registration_id)
+    assert snapshot["failure_code"] == "BOOTSTRAP_FAILED"
+    assert snapshot["failure_message"] == "RuntimeError: bootstrap failed"
+    assert fake_password not in snapshot["failure_message"]
+    assert fake_dsn not in snapshot["failure_message"]
+    assert "postgresql://" not in snapshot["failure_message"]
+    assert "postgresql+asyncpg://" not in snapshot["failure_message"]
+    assert "user:" not in snapshot["failure_message"]
+    assert "token abc123" not in snapshot["failure_message"]
 
 
 async def test_no_user_role_rbac_or_admin_rows_are_seeded_by_slice():

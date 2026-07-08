@@ -3,8 +3,9 @@
 Date: 2026-07-08
 Branch: `opencode/u6h2-tenant-provisioning-wholesaler-schema-2026-07-08`
 Base: `origin/product-dev-recovered` at `d275e1b0 merge: U6-H1 tenant provisioning service skeleton`
-Verdict: `PASS_FOR_CTO_REVIEW`
+Verdict: `PASS_FOR_CTO_MERGE_REVIEW_PENDING_R1_COMMIT_AND_GITNEXUS`
 Implementation commit: `0402ba97 feat(U6-H2): provision wholesaler and tenant schema`
+R1 fix commit: pending
 
 ## CTO Decision
 
@@ -46,6 +47,23 @@ Excluded:
 
 `bootstrap_tenant_schema.bootstrap` requires the migration-created database role `reporting_role`. The U6-H2 tests create that role in the disposable test database to mirror the migrated production/test database prerequisite. No bootstrap code was edited.
 
+## R1 Failure Message Sanitization
+
+Finding: U6-H2 initially persisted `str(exc)` into `TenantRegistration.failure_message` on bootstrap failure. That risk could store DSNs, embedded credentials, tokens, or other sensitive connection details if a lower-level exception included them.
+
+Fix: `failure_message` now stores only an allowlisted generic message in the form `<ExceptionClass>: bootstrap failed`, while preserving `failure_code = BOOTSTRAP_FAILED`. A regression test raises a fake DSN with a fake password and asserts neither the DSN, password, token text, nor connection string scheme is persisted.
+
+Residual P2 risk: `bootstrap_tenant_schema.bootstrap` commits independently inside its own engine/session. If bootstrap fails after creating or reconciling part of a tenant schema, the service rollback prevents active/completed registration state and public wholesaler linkage from being persisted, but it cannot transactionally undo already-committed schema DDL/reconcile work from bootstrap. Cleanup/reconcile of partial tenant schemas belongs to U6-H3.
+
+Confirmed unchanged in R1:
+
+- `backend/models/wholesaler.py` not edited.
+- `backend/api/v1/wholesalers.py` not edited.
+- `backend/crud/wholesaler.py` not edited.
+- `backend/repositories/wholesaler_repository.py` not edited.
+- Platform tenant APIs not edited.
+- `backend/scripts/bootstrap_tenant_schema.py` not edited.
+
 ## Validation Results
 
 Completed using disposable local Postgres container `opencode_u6h2_pg` on localhost port `55433`:
@@ -61,6 +79,26 @@ Completed using disposable local Postgres container `opencode_u6h2_pg` on localh
 - Commit: `0402ba97 feat(U6-H2): provision wholesaler and tenant schema`.
 - `npx gitnexus analyze`: repository indexed successfully, `6,760 nodes | 19,196 edges | 448 clusters | 229 flows`.
 - `npx gitnexus status`: indexed commit `0402ba9`, current commit `0402ba9`, status up-to-date.
+
+R1 validation completed using disposable local Postgres container `opencode_u6h2_r1_pg` on localhost port `55433`:
+
+- `poetry run pytest tests/test_u6h2_tenant_provisioning_wholesaler_schema.py -q`: `14 passed`.
+- `poetry run pytest tests/test_u6h1_tenant_provisioning_service_skeleton.py tests/test_u6f_onboarding_auth_chain_closeout.py -q`: `17 passed, 17 warnings`.
+
+Pending R1 validation:
+
+- Commit.
+- GitNexus analyze/status after commit.
+- Push.
+
+Completed R1 hygiene:
+
+- `poetry run python -m py_compile services/tenant_provisioning_service.py tests/test_u6h2_tenant_provisioning_wholesaler_schema.py`: passed.
+- `git diff --check`: passed.
+- ASCII scan on changed files: passed.
+- Mojibake scan on changed files: passed.
+- Secret-pattern scan on changed files: expected fake-secret regression test values and credential-cleanup/ledger terms only; no real secrets printed.
+- `pre-commit run --files <changed-files>`: passed.
 
 ## Result
 

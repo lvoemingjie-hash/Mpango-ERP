@@ -19,7 +19,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 
 from . import services
@@ -82,7 +82,7 @@ async def _write_access_denied_audit(
 
 async def require_platform_operator_with_triage_audit(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     x_platform_operator: Optional[str] = Header(
         None, alias="X-Platform-Operator",
         description="Platform operator shared secret",
@@ -144,7 +144,7 @@ async def _write_triage_view_audit(db: AsyncSession, request: Request) -> None:
 @router.get("/incidents/triage/snapshot", response_model=IncidentTriageSnapshot)
 async def get_incident_triage_snapshot(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_triage_audit),
 ) -> IncidentTriageSnapshot:
     """Read-only incident triage snapshot (P15-B).

@@ -821,7 +821,7 @@ def _route_app(url):
     binds to TestClient's own event loop -- the module engines are bound to the
     pytest-asyncio session loop and cannot be reused from a sync TestClient test.
     """
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
     from api.v1.platform.p20.routes import router
 
     engine = create_async_engine(url, future=True)
@@ -835,6 +835,7 @@ def _route_app(url):
             await session.close()
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(router)
     return app
 

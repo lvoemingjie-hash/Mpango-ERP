@@ -505,7 +505,7 @@ def _enable_auth(monkeypatch, user_id="super-exec"):
 
 def _route_app():
     from fastapi import FastAPI
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
     from api.v1.platform.p22 import routes as p22_routes
 
     app = FastAPI()
@@ -514,6 +514,7 @@ def _route_app():
         yield MagicMock()
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(p22_routes.router)
     return app
 

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 from models.wholesaler import Wholesaler
 from models.platform_tenant import PlatformTenant
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/v1/platform/tenants", tags=["platform-tenants"])
 
 @router.get("/")
 async def list_tenants(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _auth: None = Depends(require_platform_operator),
 ):
     """List all tenants with platform lifecycle status (read-only)."""
@@ -59,7 +59,7 @@ async def list_tenants(
 @router.get("/{wholesaler_id}")
 async def get_tenant(
     wholesaler_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _auth: None = Depends(require_platform_operator),
 ):
     """Get detailed platform lifecycle info for a single tenant (read-only)."""

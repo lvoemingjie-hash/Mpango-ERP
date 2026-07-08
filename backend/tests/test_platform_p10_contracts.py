@@ -50,7 +50,7 @@ from api.v1.platform.p10.schemas import (
 )
 from api.v1.platform.p10.routes import router as p10_router
 from api.v1.platform.p10.guard import require_platform_operator
-from api.dependencies import get_db
+from api.dependencies import get_db, get_platform_db
 from database.session import get_db as db_get_db
 
 
@@ -70,6 +70,7 @@ def _make_app(mock_db) -> FastAPI:
     # Override the platform guard to always allow in unit tests
     app.dependency_overrides[require_platform_operator] = lambda: None
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.dependency_overrides[db_get_db] = override
     return app
 
@@ -1148,6 +1149,7 @@ def _make_guarded_app(mock_db=None):
         yield mock_db
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.dependency_overrides[db_get_db] = override
     # Deliberately do NOT override require_platform_operator
     return app
@@ -1527,6 +1529,7 @@ def _make_app_with_auth(mock_db, user_roles=None, has_auth=True,
         yield mock_db
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.dependency_overrides[db_get_db] = override
 
     # Add middleware that simulates auth context attachment
@@ -1815,6 +1818,7 @@ def _make_app_with_real_middleware(mock_db):
         yield mock_db
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.dependency_overrides[db_get_db] = override
 
     # Use the real JWT auth middleware

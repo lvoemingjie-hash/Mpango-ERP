@@ -187,7 +187,7 @@ def _make_app(mock_db=None, *, source_status=None):
     """Build an app with the P20 router; reset the store; optionally fix P18 source status."""
     from api.v1.platform.p20 import services
     from api.v1.platform.p20.routes import router
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
 
     services.reset_store()
     app = FastAPI()
@@ -196,6 +196,7 @@ def _make_app(mock_db=None, *, source_status=None):
         yield mock_db or _mock_db()
 
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(router)
 
     if source_status is not None:

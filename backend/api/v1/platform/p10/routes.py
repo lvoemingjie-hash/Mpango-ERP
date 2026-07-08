@@ -17,7 +17,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 
 from . import services
 from .guard import require_platform_operator
@@ -41,7 +41,7 @@ async def list_tenants(
     request: Request,
     limit: int = Query(50, ge=1, le=200, description="Max results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator),
 ):
     """List all tenants with P10-A contract-compliant summaries (read-only)."""
@@ -52,7 +52,7 @@ async def list_tenants(
 async def get_tenant(
     request: Request,
     tenant_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator),
 ):
     """Get a single tenant's P10-A contract-compliant summary (read-only)."""
@@ -69,7 +69,7 @@ async def get_tenant(
 async def get_tenant_health(
     request: Request,
     tenant_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator),
 ):
     """Get P10-A contract-compliant health assessment for a single tenant (read-only)."""
@@ -85,7 +85,7 @@ async def get_tenant_health(
 @router.get("/system/health", response_model=SystemHealth)
 async def get_system_health(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator),
 ):
     """Get P10-A contract-compliant platform-wide health snapshot (read-only)."""
@@ -100,7 +100,7 @@ async def list_audit_events(
     request: Request,
     limit: int = Query(50, ge=1, le=200, description="Max results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator),
 ):
     """
@@ -116,7 +116,7 @@ async def list_audit_events(
 async def get_audit_event(
     request: Request,
     event_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator),
 ):
     """

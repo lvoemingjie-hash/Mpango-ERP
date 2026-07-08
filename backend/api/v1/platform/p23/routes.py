@@ -32,7 +32,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 
 from . import services, sources
@@ -344,7 +344,7 @@ def intake_route(
 )
 async def materialize_route(
     request: Request,
-    db: Any = Depends(get_db),
+    db: Any = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator),
 ) -> sources.MaterializeSummary:
     """P23-C: manually read the safe platform source surfaces and materialize

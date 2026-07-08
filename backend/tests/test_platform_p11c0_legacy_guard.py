@@ -44,12 +44,13 @@ def _make_app_with_routes(mock_db):
     from api.v1.platform.tenants import router as tenants_router
     from api.v1.platform.audit import router as audit_router
     from api.v1.platform.stats import router as stats_router
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
     from database.session import get_db as db_get_db
 
     async def override():
         yield mock_db
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.dependency_overrides[db_get_db] = override
     app.include_router(health_router)
     app.include_router(tenants_router)

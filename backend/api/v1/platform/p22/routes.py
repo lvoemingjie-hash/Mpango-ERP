@@ -44,7 +44,7 @@ from uuid import UUID as PyUUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 
 from . import services
@@ -117,7 +117,7 @@ async def _write_access_denied_audit(
 
 async def require_platform_operator_with_p22_audit(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     x_platform_operator: Optional[str] = Header(
         None, alias="X-Platform-Operator", description="Platform operator shared secret"
     ),
@@ -215,7 +215,7 @@ async def _write_outcome_audit(
 @router.get("/execution/catalog", response_model=ExecutionCatalogResponse)
 async def execution_catalog_route(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
 ) -> ExecutionCatalogResponse:
     """Return the closed v0 execution catalog (allowlist + exclusions). Read-only.
@@ -236,7 +236,7 @@ async def execution_catalog_route(
 async def execution_dry_run_route(
     payload: ExecutionDryRunRequest,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
 ) -> ExecutionDryRunResponse:
     """Validate an execution against the preconditions; return a no-mutation verdict.
@@ -267,7 +267,7 @@ async def execution_dry_run_route(
 async def create_execution_request_route(
     payload: ExecutionRequestCreate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
 ) -> ExecutionRequestResponse:
     """Record an execution request after a passed dry-run and acknowledgement.
@@ -303,7 +303,7 @@ async def list_execution_requests_route(
     result_state: Optional[str] = Query(None, description="Filter by execution-record state."),
     action_type: Optional[str] = Query(None, description="Filter by v0 action_type."),
     durable_approval_id: Optional[str] = Query(None, description="Filter by durable_approval_id."),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
 ) -> ExecutionRequestQueue:
     """List the recorded execution requests (with filters). Read-only; never executes."""
@@ -324,7 +324,7 @@ async def list_execution_requests_route(
 async def read_execution_request_route(
     execution_request_id: str,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
 ) -> ExecutionRequestResponse:
     """Read one recorded execution request by id. Read-only; never executes.
@@ -359,7 +359,7 @@ async def backup_check_source_route(
         None,
         description="Scoped tenant id; omit for the platform-wide backup outcome.",
     ),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
 ) -> BackupCheckSourceRead:
     """Read-only ``backup.check`` source status probe (P22-E3). READ-ONLY.
@@ -399,7 +399,7 @@ async def backup_check_source_route(
 async def governed_backup_check_route(
     payload: GovernedBackupCheckRequest,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p22_audit),
 ) -> GovernedBackupCheckResult:
     """Complete the governed ``backup.check`` action (P22-G). READ-ONLY action content.

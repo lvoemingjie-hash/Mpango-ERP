@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 from api.v1.platform.p10.services import redact_metadata
 from models.platform_audit_log import PlatformAuditLog
@@ -65,7 +65,7 @@ async def list_audit_logs(
     actor_type: Optional[str] = Query(None, description='Filter by actor type'),
     limit: int = Query(50, ge=1, le=200, description='Max results'),
     offset: int = Query(0, ge=0, description='Offset for pagination'),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _auth: None = Depends(require_platform_operator),
 ):
     """List platform audit log entries (read-only, paginated, time-range filterable)."""
@@ -144,7 +144,7 @@ async def audit_summary(
         description=f"Start of period (default: {DEFAULT_SINCE_DAYS} days ago)"
     ),
     before: Optional[str] = Query(None, description="End of period"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _auth: None = Depends(require_platform_operator),
 ):
     """Get action-grouped activity counts for a time period (read-only)."""
@@ -201,7 +201,7 @@ async def audit_summary(
 @router.get('/{log_id}')
 async def get_audit_log(
     log_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _auth: None = Depends(require_platform_operator),
 ):
     """Get a single audit log entry (read-only)."""

@@ -29,7 +29,7 @@ from uuid import UUID as PyUUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 
 from . import services
@@ -94,7 +94,7 @@ async def _write_access_denied_audit(
 
 async def require_platform_operator_with_p19_audit(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     x_platform_operator: Optional[str] = Header(
         None, alias="X-Platform-Operator", description="Platform operator shared secret"
     ),
@@ -187,7 +187,7 @@ async def _write_outcome_audit(
 async def create_approval_route(
     payload: ControlledActionApprovalRequest,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p19_audit),
 ) -> ControlledActionApprovalRecord:
     """Create (record) an approval request (P19-B). Nothing is executed.
@@ -213,7 +213,7 @@ async def list_approvals_route(
     request: Request,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p19_audit),
 ) -> ControlledActionApprovalQueue:
     """List the current ephemeral operator queue of recorded approvals."""
@@ -231,7 +231,7 @@ async def list_approvals_route(
 async def read_approval_route(
     approval_id: str,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p19_audit),
 ) -> ControlledActionApprovalRecord:
     """Read a previously recorded approval by approval_id.
@@ -259,7 +259,7 @@ async def submit_decision_route(
     approval_id: str,
     payload: ControlledActionApprovalDecision,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _platform_auth: None = Depends(require_platform_operator_with_p19_audit),
 ) -> ControlledActionApprovalRecord:
     """Submit an approve / reject decision for a recorded approval (P19-B).

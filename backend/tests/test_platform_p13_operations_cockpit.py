@@ -49,13 +49,14 @@ def _mock_db():
 def _make_app(mock_db):
     """Build test app with P13 routes and mocked DB."""
     from api.v1.platform.p13.routes import router
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
     from database.session import get_db as db_get_db
 
     app = FastAPI()
     async def override():
         yield mock_db
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.dependency_overrides[db_get_db] = override
     app.include_router(router)
     return app

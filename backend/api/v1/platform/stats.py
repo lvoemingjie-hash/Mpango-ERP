@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 from models.wholesaler import Wholesaler
 from models.platform_tenant import PlatformTenant
@@ -28,7 +28,7 @@ router = APIRouter(prefix='/api/v1/platform/stats', tags=['platform-stats'])
 
 @router.get('/')
 async def platform_stats(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
     _auth: None = Depends(require_platform_operator),
 ):
     """Platform-wide operational summary (read-only)."""

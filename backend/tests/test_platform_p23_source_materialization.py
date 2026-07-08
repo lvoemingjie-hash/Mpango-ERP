@@ -133,12 +133,13 @@ def _client():
 
 def _client_with_db(stub_db):
     """A TestClient whose get_db dependency resolves to the given stub session."""
-    from api.dependencies import get_db
+    from api.dependencies import get_db, get_platform_db
     from api.v1.platform.p23.routes import router
 
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_db] = lambda: stub_db
+    app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     return TestClient(app)
 
 

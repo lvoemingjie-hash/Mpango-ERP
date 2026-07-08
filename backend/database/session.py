@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import (
 
 from core.config import get_settings
 from db.sql_safety import validate_identifier
-from db.tenant_filter import install_global_tenant_filter
+from db.tenant_filter import install_global_tenant_filter, mark_session_as_system
 
 
 # Get settings
@@ -86,6 +86,32 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Compatibility helper: yield sessions from get_db()."""
     async for session in get_db():
         yield session
+
+
+async def get_platform_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Get database session for platform/system operations.
+
+    Marks the session as explicit system scope so that public-schema queries
+    on models with ``tenant_id`` / ``wholesaler_id`` columns (e.g.
+    ``PlatformAuditLog``, ``Wholesaler``, ``PlatformTenant``) do not raise
+    ``TenantContextMissingError`` from the global tenant filter.
+
+    This bypass is ONLY for platform routes that sit behind the P10 platform
+    operator guard.  Product tenant routes continue to use ``get_db`` /
+    ``get_tenant_db`` which are unaffected and fully tenant-scoped.
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            session.info["tenant_schema"] = "public"
+            mark_session_as_system(session, reason="platform_system_query")
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 async def get_tenant_db(tenant_schema: str) -> AsyncGenerator[AsyncSession, None]:

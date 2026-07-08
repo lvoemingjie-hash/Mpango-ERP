@@ -1,0 +1,736 @@
+{
+  "test_suite": "P25-EC Part D: Playwright Browser Smoke",
+  "base_url": "http://localhost:5173",
+  "browser": "chromium (headless)",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "auth": "identity-only super_admin JWT (injected via localStorage mpango-auth)",
+  "summary": {
+    "total_routes": 19,
+    "http_200": 19,
+    "redirected": 1,
+    "routes_with_errors": 18,
+    "routes_with_forbidden_controls": 0,
+    "screenshots_captured": 19
+  },
+  "routes": [
+    {
+      "route": "/platform",
+      "name": "Platform Overview",
+      "group": "overview",
+      "url": "http://localhost:5173/platform",
+      "final_url": "http://localhost:5173/platform",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 3,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 7,
+        "links": 21
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform.png",
+        "captured": true,
+        "bytes": 83880
+      }
+    },
+    {
+      "route": "/platform/system/health",
+      "name": "System Health",
+      "group": "health",
+      "url": "http://localhost:5173/platform/system/health",
+      "final_url": "http://localhost:5173/platform/system/health",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_system_health.png",
+        "captured": true,
+        "bytes": 54344
+      }
+    },
+    {
+      "route": "/platform/tenants",
+      "name": "Tenant Directory",
+      "group": "registry",
+      "url": "http://localhost:5173/platform/tenants",
+      "final_url": "http://localhost:5173/platform/tenants",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_tenants.png",
+        "captured": true,
+        "bytes": 54440
+      }
+    },
+    {
+      "route": "/platform/tenants/smoke-tenant-1/health",
+      "name": "Tenant Health",
+      "group": "health",
+      "url": "http://localhost:5173/platform/tenants/smoke-tenant-1/health",
+      "final_url": "http://localhost:5173/platform/tenants/smoke-tenant-1/health",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 0,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 18
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_tenants_smoke-tenant-1_health.png",
+        "captured": true,
+        "bytes": 49819
+      }
+    },
+    {
+      "route": "/platform/audit",
+      "name": "Audit Events",
+      "group": "overview",
+      "url": "http://localhost:5173/platform/audit",
+      "final_url": "http://localhost:5173/platform/audit",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_audit.png",
+        "captured": true,
+        "bytes": 53839
+      }
+    },
+    {
+      "route": "/platform/registry",
+      "name": "Registry",
+      "group": "registry",
+      "url": "http://localhost:5173/platform/registry",
+      "final_url": "http://localhost:5173/platform/registry",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 1,
+        "buttons": 3,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_registry.png",
+        "captured": true,
+        "bytes": 55296
+      }
+    },
+    {
+      "route": "/platform/support",
+      "name": "Support Console",
+      "group": "support",
+      "url": "http://localhost:5173/platform/support",
+      "final_url": "http://localhost:5173/platform/support",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 4,
+        "buttons": 2,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_support.png",
+        "captured": true,
+        "bytes": 54963
+      }
+    },
+    {
+      "route": "/platform/ops/health",
+      "name": "Ops Health",
+      "group": "ops",
+      "url": "http://localhost:5173/platform/ops/health",
+      "final_url": "http://localhost:5173/platform/ops/health",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 1,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 21
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_ops_health.png",
+        "captured": true,
+        "bytes": 67439
+      }
+    },
+    {
+      "route": "/platform/ops/errors",
+      "name": "Ops Errors",
+      "group": "ops",
+      "url": "http://localhost:5173/platform/ops/errors",
+      "final_url": "http://localhost:5173/platform/ops/errors",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_ops_errors.png",
+        "captured": true,
+        "bytes": 54329
+      }
+    },
+    {
+      "route": "/platform/ops/slow-routes",
+      "name": "Ops Slow Routes",
+      "group": "ops",
+      "url": "http://localhost:5173/platform/ops/slow-routes",
+      "final_url": "http://localhost:5173/platform/ops/slow-routes",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_ops_slow-routes.png",
+        "captured": true,
+        "bytes": 55249
+      }
+    },
+    {
+      "route": "/platform/ops/resources",
+      "name": "Ops Resources",
+      "group": "ops",
+      "url": "http://localhost:5173/platform/ops/resources",
+      "final_url": "http://localhost:5173/platform/ops/resources",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_ops_resources.png",
+        "captured": true,
+        "bytes": 54528
+      }
+    },
+    {
+      "route": "/platform/ops/noisy-neighbors",
+      "name": "Ops Noisy Neighbors",
+      "group": "ops",
+      "url": "http://localhost:5173/platform/ops/noisy-neighbors",
+      "final_url": "http://localhost:5173/platform/ops/noisy-neighbors",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_ops_noisy-neighbors.png",
+        "captured": true,
+        "bytes": 56269
+      }
+    },
+    {
+      "route": "/platform/ops/incidents/triage",
+      "name": "Incident Triage",
+      "group": "ops",
+      "url": "http://localhost:5173/platform/ops/incidents/triage",
+      "final_url": "http://localhost:5173/platform/ops/incidents/triage",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 4,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_ops_incidents_triage.png",
+        "captured": true,
+        "bytes": 55206
+      }
+    },
+    {
+      "route": "/platform/controlled-actions",
+      "name": "Controlled Actions",
+      "group": "actions",
+      "url": "http://localhost:5173/platform/controlled-actions",
+      "final_url": "http://localhost:5173/",
+      "redirected": true,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 0,
+        "h2": 0,
+        "nav": 0,
+        "main": 0,
+        "table": 0,
+        "cards": 0,
+        "testids": 0,
+        "buttons": 0,
+        "links": 0
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_controlled-actions.png",
+        "captured": true,
+        "bytes": 82857
+      }
+    },
+    {
+      "route": "/platform/approvals",
+      "name": "Approvals",
+      "group": "approvals",
+      "url": "http://localhost:5173/platform/approvals",
+      "final_url": "http://localhost:5173/platform/approvals",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 3,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 14,
+        "buttons": 5,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_approvals.png",
+        "captured": true,
+        "bytes": 99147
+      }
+    },
+    {
+      "route": "/platform/durable-approvals",
+      "name": "Durable Approvals",
+      "group": "approvals",
+      "url": "http://localhost:5173/platform/durable-approvals",
+      "final_url": "http://localhost:5173/platform/durable-approvals",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 3,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 17,
+        "buttons": 5,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_durable-approvals.png",
+        "captured": true,
+        "bytes": 116938
+      }
+    },
+    {
+      "route": "/platform/controlled-execution",
+      "name": "Controlled Execution",
+      "group": "execution",
+      "url": "http://localhost:5173/platform/controlled-execution",
+      "final_url": "http://localhost:5173/platform/controlled-execution",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 0,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 4,
+        "buttons": 3,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_controlled-execution.png",
+        "captured": true,
+        "bytes": 67571
+      }
+    },
+    {
+      "route": "/platform/operator-tasks",
+      "name": "Operator Tasks",
+      "group": "tasks",
+      "url": "http://localhost:5173/platform/operator-tasks",
+      "final_url": "http://localhost:5173/platform/operator-tasks",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 4,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 15,
+        "buttons": 7,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_operator-tasks.png",
+        "captured": true,
+        "bytes": 98591
+      }
+    },
+    {
+      "route": "/platform/incident-closeouts",
+      "name": "Incident Closeouts",
+      "group": "closeouts",
+      "url": "http://localhost:5173/platform/incident-closeouts",
+      "final_url": "http://localhost:5173/platform/incident-closeouts",
+      "redirected": false,
+      "http_status": 200,
+      "title": "Mpango ERP - African Wholesale-Retail Management",
+      "landmarks": {
+        "h1": 1,
+        "h2": 3,
+        "nav": 2,
+        "main": 1,
+        "table": 0,
+        "cards": 0,
+        "testids": 13,
+        "buttons": 6,
+        "links": 17
+      },
+      "forbidden_controls": [],
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "screenshot": {
+        "file": "platform_incident-closeouts.png",
+        "captured": true,
+        "bytes": 93036
+      }
+    }
+  ]
+}

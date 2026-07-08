@@ -3,7 +3,8 @@
 Date: 2026-07-08
 Branch: `opencode/u6h1-tenant-provisioning-service-skeleton-2026-07-08`
 Base: `origin/product-dev-recovered` at `68c4a024 merge: U6-H0 tenant provisioning schema gap decision`
-Verdict: `PASS_FOR_CTO_REVIEW_PENDING_COMMIT_AND_GITNEXUS`
+Verdict: `PASS_FOR_CTO_REVIEW`
+Implementation commit: `6043d6d1 feat(U6-H1): add tenant provisioning claim skeleton`
 
 ## Scope
 
@@ -49,11 +50,9 @@ Completed using disposable local Postgres container `opencode_u6h1_pg` on localh
 - Mojibake scan on changed files: passed.
 - Secret-pattern scan on changed files: expected text-only matches for test fixture and leak-prevention terms; no actual secrets printed.
 - `pre-commit run --files <changed-files>`: passed.
-
-Pending:
-
-- Commit.
-- GitNexus analyze/status after commit.
+- Commit: `6043d6d1 feat(U6-H1): add tenant provisioning claim skeleton`.
+- `npx gitnexus analyze`: repository indexed successfully, `6,723 nodes | 19,076 edges | 446 clusters | 229 flows`.
+- `npx gitnexus status`: indexed commit `6043d6d`, current commit `6043d6d`, status up-to-date.
 
 ## Result
 

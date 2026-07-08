@@ -3,7 +3,8 @@
 Date: 2026-07-08
 Branch: `opencode/u6h2-tenant-provisioning-wholesaler-schema-2026-07-08`
 Base: `origin/product-dev-recovered` at `d275e1b0 merge: U6-H1 tenant provisioning service skeleton`
-Verdict: `PASS_FOR_CTO_REVIEW_PENDING_COMMIT_AND_GITNEXUS`
+Verdict: `PASS_FOR_CTO_REVIEW`
+Implementation commit: `0402ba97 feat(U6-H2): provision wholesaler and tenant schema`
 
 ## CTO Decision
 
@@ -57,11 +58,9 @@ Completed using disposable local Postgres container `opencode_u6h2_pg` on localh
 - Mojibake scan on changed files: passed.
 - Secret-pattern scan on changed files: expected text-only matches for credential-cleanup/test/ledger terms; no actual secrets printed.
 - `pre-commit run --files <changed-files>`: passed.
-
-Pending:
-
-- Commit.
-- GitNexus analyze/status after commit.
+- Commit: `0402ba97 feat(U6-H2): provision wholesaler and tenant schema`.
+- `npx gitnexus analyze`: repository indexed successfully, `6,760 nodes | 19,196 edges | 448 clusters | 229 flows`.
+- `npx gitnexus status`: indexed commit `0402ba9`, current commit `0402ba9`, status up-to-date.
 
 ## Result
 

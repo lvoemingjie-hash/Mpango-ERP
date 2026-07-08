@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Settings, get_settings
+from core.security import hash_password
 from models.tenant_onboarding import (
     OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE,
     OwnerCredentialSetupToken,
@@ -20,6 +21,11 @@ from services.onboarding_service import generate_verification_token, hash_token
 
 
 OWNER_CREDENTIAL_SETUP_TOKEN_TTL = timedelta(hours=24)
+INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN = "INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN"
+
+
+class OwnerCredentialSetupTokenInvalidError(Exception):
+    """Raised for invalid, expired, used, revoked, or non-actionable setup tokens."""
 
 
 @dataclass(frozen=True)
@@ -31,6 +37,16 @@ class OwnerCredentialSetupTokenIssueResult:
     raw_token: str | None = None
     expires_at: datetime | None = None
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class OwnerCredentialSetupConsumeResult:
+    """Prepared owner credential data for the admin-creation slice."""
+
+    registration_id: UUID
+    tenant_schema: str
+    owner_email: str
+    password_hash: str
 
 
 class OwnerCredentialSetupService:
@@ -93,6 +109,41 @@ class OwnerCredentialSetupService:
             expires_at=token.expires_at,
         )
 
+    async def consume_setup_token(
+        self, raw_token: str | None, password: str
+    ) -> OwnerCredentialSetupConsumeResult:
+        if raw_token is None or not raw_token.strip():
+            _raise_invalid_setup_token()
+
+        now = datetime.now(timezone.utc)
+        result = await self.db.execute(
+            select(OwnerCredentialSetupToken, TenantRegistration)
+            .join(TenantRegistration, OwnerCredentialSetupToken.registration_id == TenantRegistration.id)
+            .where(OwnerCredentialSetupToken.token_hash == hash_token(raw_token.strip(), self.settings))
+            .with_for_update()
+            .execution_options(ignore_tenant=True)
+        )
+        row = result.one_or_none()
+        if row is None:
+            _raise_invalid_setup_token()
+
+        setup_token, registration = row
+        if not _is_actionable_setup_token(setup_token, now):
+            _raise_invalid_setup_token()
+        if registration.tenant_schema is None:
+            _raise_invalid_setup_token()
+
+        setup_token.used_at = now
+        await self.db.flush()
+        password_hash = hash_password(password)
+
+        return OwnerCredentialSetupConsumeResult(
+            registration_id=registration.id,
+            tenant_schema=registration.tenant_schema,
+            owner_email=registration.owner_email,
+            password_hash=password_hash,
+        )
+
     async def _get_registration(self, registration_id: UUID) -> TenantRegistration | None:
         result = await self.db.execute(
             select(TenantRegistration)
@@ -137,4 +188,22 @@ def _is_eligible(registration: TenantRegistration) -> bool:
         and registration.wholesaler_id is not None
         and registration.tenant_schema is not None
         and registration.provisioning_completed_at is not None
+    )
+
+
+def _is_actionable_setup_token(
+    setup_token: OwnerCredentialSetupToken, now: datetime
+) -> bool:
+    return (
+        setup_token.purpose == OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE
+        and setup_token.used_at is None
+        and setup_token.revoked_at is None
+        and not setup_token.is_deleted
+        and setup_token.expires_at > now
+    )
+
+
+def _raise_invalid_setup_token() -> None:
+    raise OwnerCredentialSetupTokenInvalidError(
+        INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN
     )

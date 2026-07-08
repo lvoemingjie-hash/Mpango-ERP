@@ -7,7 +7,7 @@
 | **Branch** | `codex/platform-p25ed-system-db-context-tenant-filter-fix-2026-07-08` |
 | **Base** | `origin/platform-dev @ fd907a51` |
 | **Scope** | Backend-only runtime fix + tests + ledger. No frontend, no migration, no package/lockfile. |
-| **Verdict** | **READY_FOR_CTO_REVIEW** |
+| **Verdict (R1)** | **P25-ED tenant-filter blocker: PROVEN CLOSED.** P25 customer readiness: **STILL BLOCKED** by independent P25-EE tenant-health UUID/slug validation defect (separate task, not in P25-ED scope). |
 
 ---
 
@@ -331,11 +331,126 @@ git status --short -> (clean)
 
 ## 9. Verdict
 
-**READY_FOR_CTO_REVIEW**
+**P25-ED tenant-filter blocker: PROVEN CLOSED.**
+**P25 customer readiness: STILL BLOCKED by independent P25-EE tenant-health UUID/slug validation defect.**
 
-Conditions met:
+CTO decision (2026-07-08): P25-ED-R1 evidence is committed as-is; the tenant-health
+UUID/slug validation defect is tracked separately as **P25-EE** and is explicitly out
+of P25-ED scope (no product business path touched in P25-ED).
+
+P25-ED deliverable proven (see Section 10 for real-stack evidence):
 1. Product tenant isolation preserved (regression tests prove fail-closed behavior unchanged).
 2. Platform real-stack 5xx root cause identified and fixed (`TenantContextMissingError` from global tenant filter on public-schema platform queries).
 3. Fix is scoped to platform routes only -- zero product route files modified.
 4. Fix uses existing vetted mechanism (`mark_session_as_system`) with no new security surface.
 5. All platform routes now sit behind both the P10 platform operator guard AND the system-scoped DB dependency.
+
+P25-ED is **not** declaring "P25 overall ready": the tenant-health endpoint's
+independent UUID/slug validation defect (Section 10.4) keeps P25 customer readiness blocked
+until P25-EE resolves it.
+
+---
+
+## 10. P25-ED-R1: Real-Stack Evidence Completion
+
+**Date:** 2026-07-08
+**Tip:** `be347318`
+**Stack:** Real Postgres 15 (Docker `mpango_p25ec_pg` @ :5433, alembic head) + real
+backend (uvicorn :8000) + real frontend (Vite :5173, proxies `/api` -> :8000) + real
+headless Chromium via Playwright.
+
+### 10.1 Identity Smoke (6/6 PASS)
+
+| # | Case | Headers | Expected | Actual | Result |
+|---|---|---|---|---|---|
+| 1 | operator_admit | `X-Platform-Operator` | 200 | 200 | PASS |
+| 2 | test_override_reject | `X-Platform-Test-Override` (production) | 403 | 403 | PASS |
+| 3 | identity_super_admin_admit | identity-only Bearer | 200 | 200 | PASS |
+| 4 | no_credentials_deny | (none) | 401 | 401 | PASS |
+| 5 | wrong_operator_deny | bad operator secret | 403 | 403 | PASS |
+| 6 | tenant_context_admin_deny | tenant-context Bearer | 401/403 | **401** | PASS |
+
+Case 6 is the critical P25-ED boundary: a tenant-context super_admin JWT is denied
+with a **clean 401, NOT a 500**. The P10 guard rejects tenant-context tokens before
+any DB query runs.
+
+### 10.2 19-Route Playwright Browser Smoke
+
+| Metric | Result |
+|---|---|
+| Total routes | 19 |
+| HTTP 200 (page load) | **19/19** |
+| Redirected | 0 |
+| Routes with forbidden controls | **0** |
+| Screenshots captured | **19/19** |
+| Routes with React page errors | 0 |
+| Routes with backend 5xx on an API call | 1 (route 4) |
+
+Every platform page renders (HTTP 200). 18/19 routes have zero console errors and
+zero page errors. **0 `TenantContextMissingError`** in the backend log across all
+requests.
+
+### 10.3 P25-ED Blocker: CLOSED
+
+| Criterion | Required | Actual | Status |
+|---|---|---|---|
+| Platform routes HTTP 200 | 19/19 | 19 | PASS |
+| `TenantContextMissingError` in logs | 0 | **0** | PASS |
+| tenant-context super_admin denied | clean 401/403 not 500 | 401 | PASS |
+| Forbidden controls | 0 | 0 | PASS |
+| Screenshots | 19/19 | 19 | PASS |
+| Identity smoke | all pass | 6/6 | PASS |
+
+The original P25-EC blocker (platform routes using `get_db` ->
+`TenantContextMissingError` -> HTTP 500 on 15/19 routes) is **proven closed** by the
+real stack. 0 occurrences of `TenantContextMissingError`; all 19 pages load; the P10
+identity boundary is clean (401/403, never 500).
+
+### 10.4 Residual 5xx -- Separate Pre-Existing Root Cause (OUT OF SCOPE)
+
+One route surfaced a backend 500 with a **different, unrelated root cause**:
+
+- **Route:** `/platform/tenants/smoke-tenant-1/health` (page HTTP 200; API call 500)
+- **API:** `GET /api/v1/platform/p10/tenants/smoke-tenant-1/health`
+- **Exception:**
+  ```
+  asyncpg.exceptions.DataError: invalid input for query argument $1: 'smoke-tenant-1'
+  (invalid UUID 'smoke-tenant-1': length must be between 32..36 characters, got 14)
+  [SQL: SELECT ... FROM public.wholesalers WHERE public.wholesalers.id = $1::UUID]
+  [parameters: ('smoke-tenant-1',)]
+  ```
+- **Source:** `backend/api/v1/platform/p10/services.py:248` --
+  `select(Wholesaler).where(Wholesaler.id == tenant_id)` where `Wholesaler.id` is a
+  UUID column but the path param `tenant_id = "smoke-tenant-1"` is a slug that cannot
+  cast to UUID.
+
+**This is NOT the P25-ED blocker.** It is a pre-existing product business-path
+defect (the tenant-health service does not validate/parse `tenant_id` as UUID before
+querying, so an invalid UUID string bubbles up as a raw DBAPI 500 instead of a clean
+404/422). It was previously **masked** by the `TenantContextMissingError` which fired
+earlier in the request pipeline (the `get_db` dependency); now that P25-ED fixed that
+dependency, the request proceeds further and hits this separate validation gap.
+
+P25-ED scope explicitly excludes product business paths (per task directive: do not
+touch product business paths).
+This residual 5xx requires its own task (e.g. P25-EE: tenant-health UUID validation +
+graceful 404) and is **not** addressable under P25-ED.
+
+### 10.5 R1 Verdict
+
+Per the R1 pass criteria, one residual 5xx remains (unrelated to P25-ED). CTO
+decision (2026-07-08): **commit P25-ED-R1 evidence as-is; do not fix the
+tenant-health UUID/slug validation defect inside P25-ED** (it is a product business
+path and is tracked separately as **P25-EE**).
+
+- **P25-ED tenant-filter blocker: PROVEN CLOSED.** The `TenantContextMissingError`
+  -> HTTP 500 blocker is closed on the real stack: 0 occurrences across all requests,
+  19/19 platform pages load HTTP 200, identity boundaries clean (401/403, never 500),
+  0 forbidden controls, 19/19 screenshots, 6/6 identity smoke cases pass.
+
+- **P25 customer readiness: STILL BLOCKED** by the independent P25-EE tenant-health
+  UUID/slug validation defect (Section 10.4). P25-ED does **not** declare P25 overall ready.
+
+- **R1 evidence committed** to the feature branch (`verify/p25ed/` + this ledger
+  R1 section). No runtime code changed in R1; no `services.py`, no product business
+  path, no migration, no frontend, no package/lockfile.

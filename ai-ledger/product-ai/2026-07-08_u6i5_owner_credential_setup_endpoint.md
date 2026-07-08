@@ -60,3 +60,22 @@ Completed:
 - Implementation commit: `3fe87503 feat(U6-I5): add owner credential setup public endpoint`.
 - `npx gitnexus analyze`: repository indexed successfully, `7,042 nodes | 20,126 edges | 473 clusters | 239 flows`.
 - `npx gitnexus status`: indexed commit `3fe8750`, current commit `3fe8750`, status up to date.
+
+## R1 Replay Safety Fix
+
+- Finding: the endpoint's used-token recovery path called `create_first_admin_rbac` with a fresh `hash_password(request.password)`, meaning a consumed setup token could be replayed to change the owner's password_hash.
+- Fix 1: removed `_recover_if_already_setup` and `_admin_already_exists` helpers entirely. Used/consumed tokens now return neutral 401.
+- Fix 2: added `test_replay_with_different_password_does_not_change_password_hash` regression test verifying that a second POST with a different password does not alter the stored `password_hash`.
+- Fix 3: added query-param rejection at the top of the endpoint handler. POST requests with `setup_token` or `password` query parameters return neutral 401 before processing the body.
+- Fix 4: removed `registration_id` from `OwnerCredentialSetupResponseData`; public response now contains only `success`, `data` (empty), `message`, and `timestamp`.
+
+### R1 Validation
+
+- `poetry run pytest tests/test_u6i5_owner_credential_setup_endpoint.py -q`: `10 passed`.
+- `poetry run pytest tests/test_route_authorization_policy.py tests/test_u6i4_first_admin_rbac_creation.py tests/test_u6i3_owner_credential_setup_consume.py -q`: `55 passed`.
+- `git diff --check`: passed.
+- ASCII/mojibake scans: clean.
+- Secret-pattern scan: reviewed, false positives only.
+- `pre-commit run`: passed.
+- `npx gitnexus analyze`: passed.
+- `npx gitnexus status`: up to date.

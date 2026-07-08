@@ -12,7 +12,6 @@ from sqlalchemy import text
 
 from api.app import app
 from api.dependencies import get_db_session
-from core.security import hash_password, verify_password
 from database.session import AsyncSessionLocal, async_engine
 from models.tenant_onboarding import (
     OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE,
@@ -279,6 +278,17 @@ async def _other_schema_empty(schema: str) -> bool:
     return True
 
 
+async def _user_password_hash(schema: str, owner_email: str) -> str | None:
+    async with AsyncSessionLocal() as session:
+        return await session.scalar(
+            text(
+                f'SELECT password_hash FROM "{schema}".users '
+                "WHERE email = :email"
+            ),
+            {"email": owner_email},
+        )
+
+
 async def test_setup_credential_succeeds_for_valid_token_and_password():
     owner_email, schema = await _setup_provisioned_tenant()
     setup_token = await _issue_setup_token(owner_email)
@@ -294,7 +304,7 @@ async def test_setup_credential_succeeds_for_valid_token_and_password():
     body = response.json()
     assert body["success"] is True
     assert body["message"] == NEUTRAL_SETUP_MESSAGE
-    assert "registrationId" in body.get("data", {})
+    assert "registrationId" not in str(body)
     assert "tenant_schema" not in str(body)
     assert "token_hash" not in str(body)
     assert "password_hash" not in str(body)
@@ -364,13 +374,43 @@ async def test_duplicate_setup_is_idempotent():
         )
         response_2 = await client.post(
             SETUP_CREDENTIAL_URL,
-            json={"setup_token": setup_token, "password": TEST_SETUP_PW},
+            json={"setup_token": setup_token, "password": "AltCred5678!"},  # pragma: allowlist secret
         )
 
     assert response_1.status_code == 200
-    assert response_2.status_code == 200
+    assert response_2.status_code == 401
     assert await _table_count(schema, "users") == 1
     assert await _table_count(schema, "roles") == 1
+
+
+async def test_replay_with_different_password_does_not_change_password_hash():
+    owner_email, schema = await _setup_provisioned_tenant()
+    setup_token = await _issue_setup_token(owner_email)
+
+    async with await _client() as client:
+        response_1 = await client.post(
+            SETUP_CREDENTIAL_URL,
+            json={"setup_token": setup_token, "password": TEST_SETUP_PW},
+        )
+        assert response_1.status_code == 200
+
+    pw_hash_after_first = await _user_password_hash(schema, owner_email)
+    assert pw_hash_after_first is not None
+
+    async with await _client() as client:
+        response_2 = await client.post(
+            SETUP_CREDENTIAL_URL,
+            json={"setup_token": setup_token, "password": "AltCred_NeverHashed_!"},  # pragma: allowlist secret
+        )
+        assert response_2.status_code == 401
+
+    pw_hash_after_replay = await _user_password_hash(schema, owner_email)
+    assert pw_hash_after_replay == pw_hash_after_first
+    assert await _table_count(schema, "users") == 1
+    assert await _table_count(schema, "roles") == 1
+    assert await _table_count(schema, "permissions") > 0
+    assert await _table_count(schema, "user_roles") == 1
+    assert await _table_count(schema, "role_permissions") > 0
 
 
 async def test_tenant_isolation_only_writes_requested_schema():
@@ -418,4 +458,22 @@ async def test_no_query_string_token_support():
         response = await client.get(
             SETUP_CREDENTIAL_URL + "?setup_token=any&password=any"
         )
-    assert response.status_code == 405
+        assert response.status_code == 405
+
+    owner_email, schema = await _setup_provisioned_tenant()
+    setup_token = await _issue_setup_token(owner_email)
+
+    async with await _client() as client:
+        response = await client.post(
+            SETUP_CREDENTIAL_URL + "?setup_token=any&password=any",
+            json={"setup_token": setup_token, "password": TEST_SETUP_PW},
+        )
+        assert response.status_code == 401
+
+        response = await client.post(
+            SETUP_CREDENTIAL_URL + "?setup_token=any",
+            json={"setup_token": setup_token, "password": TEST_SETUP_PW},
+        )
+        assert response.status_code == 401
+
+    assert await _table_count(schema, "users") == 0

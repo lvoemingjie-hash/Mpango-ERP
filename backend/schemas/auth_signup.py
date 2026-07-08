@@ -128,8 +128,6 @@ class OwnerCredentialSetupRequest(BaseModel):
 class OwnerCredentialSetupResponseData(BaseModel):
     """Neutral owner credential setup response data."""
 
-    registration_id: UUID | None = Field(None, alias="registrationId")
-
     model_config = ConfigDict(populate_by_name=True)
 
 

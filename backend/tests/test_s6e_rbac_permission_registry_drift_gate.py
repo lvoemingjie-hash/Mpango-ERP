@@ -132,9 +132,31 @@ def extract_seed_permissions(script_path: Path) -> set[str]:
 def extract_frontend_permissions() -> set[str]:
     permission_pattern = re.compile(r"['\"]([a-z_]+:[a-z_]+)['\"]")
     permissions: set[str] = set()
+
+    # G2-R2: Exclude test/spec files and __tests__ directories from the scan.
+    # Permission codes are defined in production source only. Test files
+    # contain mock fixtures and error-message literals (e.g. "denied:close")
+    # that match the regex but are NOT permission tokens.
+    _is_test_file = re.compile(r"\.(test|spec)\.(ts|tsx|js|jsx)$", re.IGNORECASE)
+
+    # G2-R2: Known false-positive prefixes -- tokens matched by the regex
+    # that are structurally like "<word>:<word>" but are never permission
+    # codes in this codebase:
+    #   - "node:*"  : Node.js built-in module specifiers (node:fs, node:path)
+    #   - "denied:*": platform transition/error status descriptors
+    #                 (denied:acknowledge, denied:close, denied:complete)
+    _false_positive_prefixes = ("node:", "denied:")
+
     for root in (FRONTEND_SRC / "utils", FRONTEND_SRC / "pages"):
         for source_file in root.rglob("*.ts*"):
-            permissions.update(permission_pattern.findall(source_file.read_text(encoding="utf-8")))
+            # Skip test files and __tests__ directories entirely.
+            if "__tests__" in source_file.parts or _is_test_file.search(source_file.name):
+                continue
+            for token in permission_pattern.findall(source_file.read_text(encoding="utf-8")):
+                if any(token.startswith(prefix) for prefix in _false_positive_prefixes):
+                    continue
+                permissions.add(token)
+
     assert permissions, "No frontend permission constants or UI gates extracted"
     return permissions
 

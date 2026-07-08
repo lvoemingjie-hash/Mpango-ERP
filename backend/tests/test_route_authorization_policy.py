@@ -98,7 +98,22 @@ AUTH_DEPENDENCY_NAMES: Set[str] = {
     "get_current_user_context",  # api.dependencies (validates JWT)
     "resolve_client_identity",   # api.v1.client.dependencies (JWT + retailer binding)
     "get_policy_subject",        # api.middleware.bi_access (JWT + tenant context)
+    # G2-R2: Platform P10 identity-only guard (api.v1.platform.p10.guard).
+    # This is a legitimate platform auth dependency that requires identity-only
+    # super_admin tokens or platform-operator secrets. Wrapper functions
+    # (require_platform_operator_with_pXX_audit) are matched via prefix below.
+    "require_platform_operator",
 }
+
+# G2-R2: Platform operator guard wrapper functions follow the naming pattern
+# ``require_platform_operator_with_<track>_audit``. They internally call
+# require_platform_operator so they are valid platform auth dependencies.
+PLATFORM_OPERATOR_GUARD_PREFIX = "require_platform_operator_with_"
+
+
+def _is_platform_operator_guard(name: str) -> bool:
+    """Return True for require_platform_operator and its audit-wrapper variants."""
+    return name == "require_platform_operator" or name.startswith(PLATFORM_OPERATOR_GUARD_PREFIX)
 
 # DB-only dependencies that do NOT constitute an auth strategy. Their presence
 # without an auth dependency means the route is non_compliant.
@@ -148,6 +163,16 @@ PUBLIC_ALLOWLIST: Set[str] = {
 INTERNAL_PATH_PREFIXES: Tuple[str, ...] = (
     "/api/v1/test/",
 )
+
+# G2-R2: Platform endpoints that are intentionally public (non-sensitive).
+# These expose only platform status/metadata -- no tenant data, no audit data,
+# no operational metrics. They are documented in P11-C0 as unauthenticated by
+# design. Sensitive platform routes (tenants/audit/stats) remain guarded by
+# require_platform_operator and are NOT in this list.
+PLATFORM_PUBLIC_ALLOWLIST: Set[str] = {
+    "/api/v1/platform/health",
+    "/api/v1/platform/info",
+}
 
 
 @dataclass
@@ -262,10 +287,19 @@ def classify_route(route: APIRoute) -> RouteClassification:
     non_auth_deps: List[str] = []
     permission_code: Optional[str] = None
     found_require_permission = False
+    found_platform_operator = False  # G2-R2: require_platform_operator guard
 
     for dep in deps:
         name = _dependency_name(dep)
-        if name in AUTH_DEPENDENCY_NAMES:
+        # G2-R2: Check platform operator guard FIRST. require_platform_operator
+        # is also in AUTH_DEPENDENCY_NAMES (for compliance counting), so the
+        # elif below would swallow it without setting found_platform_operator.
+        if _is_platform_operator_guard(name):
+            auth_deps.append(name)
+            found_platform_operator = True
+            if permission_code is None:
+                permission_code = "platform:operator"
+        elif name in AUTH_DEPENDENCY_NAMES:
             auth_deps.append(name)
             if name in (
                 "RequirePermission",
@@ -293,8 +327,14 @@ def classify_route(route: APIRoute) -> RouteClassification:
     # --- Classification (priority order) ---
     if path in PUBLIC_ALLOWLIST:
         policy = "public"
+    elif path in PLATFORM_PUBLIC_ALLOWLIST:
+        # G2-R2: Intentionally public platform endpoints (health/info).
+        policy = "public"
     elif any(path.startswith(p) for p in INTERNAL_PATH_PREFIXES):
         policy = "internal_only"
+    elif found_platform_operator and not found_require_permission:
+        # G2-R2: Platform routes guarded by require_platform_operator.
+        policy = "platform_permission"
     elif found_require_permission and permission_code:
         if any(
             permission_code.startswith(prefix)
@@ -395,8 +435,13 @@ class TestHarnessIntegrity:
         auth dependencies. This test verifies the harness detects those
         deps, proving it scans the FastAPI dependant tree correctly.
         """
-        # Platform routes now use RequirePlatformAdmin (S2-R1)
+        # Platform routes now use RequirePlatformAdmin (S2-R1) or
+        # require_platform_operator (G2-R2 merge from platform-dev).
+        # G2-R2: Intentionally-public platform endpoints (health/info) have
+        # no auth deps by design (P11-C0) and are exempt from this check.
         for c in PLATFORM_ROUTES:
+            if c.path in PLATFORM_PUBLIC_ALLOWLIST:
+                continue
             assert c.detected_auth_deps, (
                 f"Platform route {c.path} has no detected auth deps. "
                 f"The harness may be broken."
@@ -494,11 +539,9 @@ class TestPlatformRoutePolicy:
     def test_all_platform_routes_require_platform_permission(self):
         """
         Every /api/v1/platform/** route MUST have platform_permission or
-        platform_admin strategy.
+        be an intentionally-public platform endpoint (health/info).
 
         S2 RESOLVED (was: all 8 platform routes had NO auth at all):
-          - GET  /api/v1/platform/health
-          - GET  /api/v1/platform/info
           - GET  /api/v1/platform/tenants/
           - GET  /api/v1/platform/tenants/{wholesaler_id}
           - GET  /api/v1/platform/audit/
@@ -511,12 +554,14 @@ class TestPlatformRoutePolicy:
         accepted, preventing contextual tenant admins with system:admin
         from accessing cross-tenant platform data.
 
-        Impact: Any caller (including unauthenticated) can list ALL tenants,
-        read provisioning logs, read audit logs, and view platform stats.
+        G2-R2: Platform routes merged from platform-dev use
+        require_platform_operator (P10 identity-only guard) which is now
+        recognized by the harness as platform_permission. /health and /info
+        remain intentionally public (P11-C0: non-sensitive status only).
         """
         violations = [
             c for c in PLATFORM_ROUTES
-            if c.policy not in ("platform_permission",)
+            if c.policy not in ("platform_permission", "public")
         ]
         assert violations == [], (
             "Platform routes without platform_permission: "
@@ -524,10 +569,14 @@ class TestPlatformRoutePolicy:
         )
 
     def test_platform_routes_have_auth_dependency(self):
-        """Platform routes must have at least one auth dependency, not just get_db."""
+        """Protected platform routes must have at least one auth dependency.
+
+        G2-R2: Intentionally-public platform endpoints (health/info) are
+        exempt -- they expose only non-sensitive status (P11-C0).
+        """
         no_auth = [
             c for c in PLATFORM_ROUTES
-            if not c.detected_auth_deps
+            if not c.detected_auth_deps and c.path not in PLATFORM_PUBLIC_ALLOWLIST
         ]
         assert no_auth == [], (
             "Platform routes with zero auth dependencies: "
@@ -718,28 +767,46 @@ class TestPlatformAdminBoundary:
         assert exc.value.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_platform_routes_use_require_platform_admin(self):
-        """All 8 platform routes MUST use RequirePlatformAdmin (not RequirePermission)."""
+    async def test_platform_routes_use_platform_guard(self):
+        """Protected platform routes MUST use a platform auth guard.
+
+        G2-R2: Platform routes merged from platform-dev use
+        require_platform_operator (P10 identity-only guard) or its audit
+        wrappers (require_platform_operator_with_pXX_audit). Product-side
+        platform routes may still use RequirePlatformAdmin. Both are accepted.
+
+        Intentionally-public platform endpoints (health/info) are exempt --
+        they have no auth deps by design (P11-C0: non-sensitive status).
+        """
         for c in PLATFORM_ROUTES:
-            assert "RequirePlatformAdmin" in c.detected_auth_deps, (
-                f"Platform route {c.path} does NOT use RequirePlatformAdmin. "
+            if c.path in PLATFORM_PUBLIC_ALLOWLIST:
+                continue
+            has_platform_guard = any(
+                name == "RequirePlatformAdmin" or _is_platform_operator_guard(name)
+                for name in c.detected_auth_deps
+            )
+            assert has_platform_guard, (
+                f"Platform route {c.path} does NOT use a platform guard "
+                f"(RequirePlatformAdmin or require_platform_operator). "
                 f"Detected auth deps: {c.detected_auth_deps}"
             )
 
     def test_platform_routes_reject_non_platform_admin_http(self):
         """
-        HTTP GET /api/v1/platform/** with mock (non-super-admin) auth -> 403.
+        HTTP GET protected /api/v1/platform/** with mock (non-super-admin)
+        auth -> 401/403.
 
         In the test environment, MockAuthStrategy authenticates all requests
         with a contextual non-super-admin token (tenant_id=t_dev, roles=[]).
-        RequirePlatformAdmin rejects this with 403 PLATFORM_ADMIN_REQUIRED.
+        Both RequirePlatformAdmin and require_platform_operator reject this.
+
+        G2-R2: /health and /info are intentionally public (P11-C0) and are
+        excluded from the protected paths list.
         """
         from fastapi.testclient import TestClient
 
         client = TestClient(app, raise_server_exceptions=False)
         protected_paths = [
-            "/api/v1/platform/health",
-            "/api/v1/platform/info",
             "/api/v1/platform/tenants/",
             "/api/v1/platform/audit/summary",
             "/api/v1/platform/stats/",

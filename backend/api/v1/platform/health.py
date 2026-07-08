@@ -7,22 +7,24 @@ No tenant data, no audit data, no operational metrics are exposed.
 
 Sensitive P0 endpoints (tenants, audit, stats) have been guarded with
 require_platform_operator in their respective modules.
+
+G2-R2: Restored platform public behavior for /health and /info. The
+product-side S2/S2-R1 hardening had added RequirePlatformAdmin to these
+endpoints, but the platform contract (test_platform_p11c0_legacy_guard)
+requires them unauthenticated -- they expose only non-sensitive status.
+Actual sensitive platform routes (tenants/audit/stats) remain guarded
+by require_platform_operator and are unaffected.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from datetime import datetime
-
-from api.middleware.rbac import RequirePlatformAdmin
-from core.security import TokenPayload
 
 router = APIRouter(prefix="/api/v1/platform", tags=["platform"])
 
 
 @router.get("/health")
-async def platform_health(
-    token: TokenPayload = Depends(RequirePlatformAdmin()),
-):
+async def platform_health():
     """Platform layer health check - confirms platform routing is active."""
     return {
         "status": "ok",
@@ -32,9 +34,7 @@ async def platform_health(
 
 
 @router.get("/info")
-async def platform_info(
-    token: TokenPayload = Depends(RequirePlatformAdmin()),
-):
+async def platform_info():
     """Platform metadata - describes current platform track status."""
     return {
         "track": "platform-p0",

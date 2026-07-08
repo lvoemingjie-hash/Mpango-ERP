@@ -1,6 +1,10 @@
 """
 Platform Track P0 — Read-only audit log query endpoints.
 
+P11-C0: These endpoints now require P10 platform operator credentials.
+Identity-only super_admin Bearer tokens, X-Platform-Operator secret,
+or test override (test env only) are accepted.
+
 NO write endpoint is exposed — audit entries are written via internal
 services/platform_audit_service.py only.
 """
@@ -12,9 +16,9 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
-from api.middleware.rbac import RequirePlatformAdmin
-from core.security import TokenPayload
+from api.dependencies import get_platform_db
+from api.v1.platform.p10.guard import require_platform_operator
+from api.v1.platform.p10.services import redact_metadata
 from models.platform_audit_log import PlatformAuditLog
 
 router = APIRouter(prefix='/api/v1/platform/audit', tags=['platform-audit'])
@@ -48,7 +52,6 @@ def _get_default_since() -> datetime:
 
 @router.get('/')
 async def list_audit_logs(
-    token: TokenPayload = Depends(RequirePlatformAdmin()),
     since: Optional[str] = Query(
         None,
         description=f"Filter entries created after this ISO datetime (default: {DEFAULT_SINCE_DAYS} days ago)"
@@ -62,7 +65,8 @@ async def list_audit_logs(
     actor_type: Optional[str] = Query(None, description='Filter by actor type'),
     limit: int = Query(50, ge=1, le=200, description='Max results'),
     offset: int = Query(0, ge=0, description='Offset for pagination'),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
+    _auth: None = Depends(require_platform_operator),
 ):
     """List platform audit log entries (read-only, paginated, time-range filterable)."""
     # Parse and validate time range
@@ -120,7 +124,7 @@ async def list_audit_logs(
                 'wholesaler_id': str(e.wholesaler_id) if e.wholesaler_id else None,
                 'action': e.action,
                 'resource': e.resource,
-                'audit_metadata': e.audit_metadata,
+                'audit_metadata': redact_metadata(e.audit_metadata),
                 'created_at': e.created_at.isoformat() if e.created_at else None,
             }
             for e in entries
@@ -135,13 +139,13 @@ async def list_audit_logs(
 
 @router.get('/summary')
 async def audit_summary(
-    token: TokenPayload = Depends(RequirePlatformAdmin()),
     since: Optional[str] = Query(
         None,
         description=f"Start of period (default: {DEFAULT_SINCE_DAYS} days ago)"
     ),
     before: Optional[str] = Query(None, description="End of period"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
+    _auth: None = Depends(require_platform_operator),
 ):
     """Get action-grouped activity counts for a time period (read-only)."""
     # Parse and validate time range (same logic as list endpoint)
@@ -197,8 +201,8 @@ async def audit_summary(
 @router.get('/{log_id}')
 async def get_audit_log(
     log_id: str,
-    token: TokenPayload = Depends(RequirePlatformAdmin()),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
+    _auth: None = Depends(require_platform_operator),
 ):
     """Get a single audit log entry (read-only)."""
     result = await db.execute(
@@ -215,6 +219,6 @@ async def get_audit_log(
         'wholesaler_id': str(entry.wholesaler_id) if entry.wholesaler_id else None,
         'action': entry.action,
         'resource': entry.resource,
-        'audit_metadata': entry.audit_metadata,
+        'audit_metadata': redact_metadata(entry.audit_metadata),
         'created_at': entry.created_at.isoformat() if entry.created_at else None,
     }

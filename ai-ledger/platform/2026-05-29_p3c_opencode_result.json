@@ -1,0 +1,7 @@
+{
+  "status": "done",
+  "files_changed": [
+    "ai-ledger/platform/2026-05-29_p3c_night_worker_readiness_packet.md"
+  ],
+  "test_result": "git diff --check: PASS; git status --short: only expected P3-C packet/result/events"
+}

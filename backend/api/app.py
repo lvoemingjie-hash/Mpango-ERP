@@ -174,6 +174,69 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(platform_stats_router, tags=["platform-stats"])
     logger.info("Platform stats router registered (read-only)")
 
+    # Platform Track P10 — Read-only API skeleton (contract-compliant)
+    from api.v1.platform.p10.routes import router as platform_p10_router
+    app.include_router(platform_p10_router)
+    logger.info("Platform P10 router registered (read-only, contract-compliant)")
+
+    # Platform Track P12 -- Support Console API (request-scoped diagnostics)
+    from api.v1.platform.p12.routes import router as platform_p12_router
+    app.include_router(platform_p12_router)
+    logger.info("Platform P12 router registered (support console, request-scoped)")
+
+    # Platform Track P13 -- Operations Observability Cockpit (read-only)
+    from api.v1.platform.p13.routes import router as platform_p13_router
+    app.include_router(platform_p13_router)
+    logger.info("Platform P13 router registered (operations observability, read-only)")
+
+    # Platform Track P15 -- Incident Triage (read-only snapshot, P15-B)
+    from api.v1.platform.p15.routes import router as platform_p15_router
+    app.include_router(platform_p15_router)
+    logger.info("Platform P15 router registered (incident triage, read-only)")
+
+    # Platform Track P17 -- Platform Registry (read-only tenant registry, P17-B)
+    from api.v1.platform.p17.routes import router as platform_p17_router
+    app.include_router(platform_p17_router)
+    logger.info("Platform P17 router registered (platform registry, read-only)")
+
+    # Platform Track P18 -- Controlled Platform Actions (request skeleton, P18-B/C)
+    from api.v1.platform.p18.routes import router as platform_p18_router
+    app.include_router(platform_p18_router)
+    logger.info("Platform P18 router registered (controlled actions request skeleton)")
+
+    # Platform Track P19 -- Controlled Action Approval Workflow (backend skeleton, P19-B)
+    from api.v1.platform.p19.routes import router as platform_p19_router
+    app.include_router(platform_p19_router)
+    logger.info("Platform P19 router registered (approval workflow backend skeleton)")
+
+    # Platform Track P20 -- Durable Approval Governance (backend skeleton, P20-B)
+    from api.v1.platform.p20.routes import router as platform_p20_router
+    app.include_router(platform_p20_router)
+    logger.info("Platform P20 router registered (durable approval governance backend skeleton)")
+
+    # Platform Track P22 -- Controlled Execution v0 (non-executing backend skeleton, P22-B)
+    from api.v1.platform.p22.routes import router as platform_p22_router
+    app.include_router(platform_p22_router)
+    logger.info("Platform P22 router registered (controlled execution v0 non-executing skeleton)")
+
+    # Platform Track P23 -- Operator Task / Notification Queue (non-executing, non-sending
+    # in-memory backend skeleton, P23-B). A task is a view, not an executor; a
+    # notification is a record, not a delivery. No P22 action execution, no real
+    # notification delivery, no migration, no frontend, no auth/RBAC rewrite.
+    from api.v1.platform.p23.routes import router as platform_p23_router
+    app.include_router(platform_p23_router)
+    logger.info("Platform P23 router registered (operator task / notification queue skeleton)")
+
+    # Platform Track P24 -- Incident + Runbook Closeout (non-executing, non-sending
+    # in-memory backend skeleton, P24-B). An incident closeout is a view, not an
+    # executor; a runbook step is a pointer, not an execution; a follow-up task is
+    # a record, not a repair. No P22 action execution, no approval decision, no
+    # incident_active flag mutation, no registry mutation, no notification delivery,
+    # no migration, no frontend, no auth/RBAC rewrite.
+    from api.v1.platform.p24.routes import router as platform_p24_router
+    app.include_router(platform_p24_router)
+    logger.info("Platform P24 router registered (incident + runbook closeout skeleton)")
+
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router

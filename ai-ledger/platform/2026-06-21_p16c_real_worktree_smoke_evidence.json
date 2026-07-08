@@ -1,0 +1,46 @@
+{
+  "evidence_kind": "p16c_completion_report_sanitized",
+  "phase": "P16-C",
+  "sanitization_note": "This is a sanitized, committable copy of the platform_worktree_executor completion report. Raw 40-char git commit SHAs are truncated to 7-char short SHAs so the artifact passes the repo's detect-secrets pre-commit hook (Hex High Entropy false positive on full commit hashes). All other fields mirror the executor's raw report.",
+  "regenerate_raw_report_command": "python scripts/platform_worktree_executor.py --repo . --mission ai-ledger/platform/2026-06-21_p16c_real_worktree_smoke_mission.json --execute",
+  "raw_report_not_committed_reason": "detect-secrets (pre-commit, baseline .secrets.baseline) flags the raw report's full base_sha git-hash as a Hex High Entropy String (exit 1). JSON cannot carry an inline 'pragma: allowlist secret' comment, and the tracked .secrets.baseline lives outside the allowed scripts/ + ai-ledger/platform/ scope, so modifying it would fail the strict platform_diff_auditor allowlist audit. The raw report is therefore regenerated on demand; this sanitized artifact plus the ledger are the committed evidence.",
+  "branch": "codex/platform-p16c-smoke-worker-2026-06-21",
+  "base_ref": "HEAD",
+  "base_sha": "e3d31e2",
+  "worktree_dir": "../platform-p16c-smoke-worker-2026-06-21",
+  "verdict": "passed",
+  "expected_files": [
+    "scripts/p16c_smoke_worker_output.json"
+  ],
+  "changed_files": 1,
+  "base_resolve": {
+    "returncode": 0,
+    "resolved": "e3d31e2"
+  },
+  "worktree_add": {
+    "returncode": 0,
+    "note": "HEAD is now at e3d31e2; new branch codex/platform-p16c-smoke-worker-2026-06-21"
+  },
+  "worker": {
+    "returncode": 0,
+    "timed_out": false,
+    "stdout": "smoke worker: wrote scripts/p16c_smoke_worker_output.json (committed)"
+  },
+  "audit": {
+    "passed": true,
+    "violations": [],
+    "unexpected": [],
+    "forbidden": [],
+    "missing": [],
+    "total": 1
+  },
+  "audit_command": [
+    "git",
+    "-C",
+    "../platform-p16c-smoke-worker-2026-06-21",
+    "diff",
+    "--name-only",
+    "e3d31e2",
+    "HEAD"
+  ]
+}

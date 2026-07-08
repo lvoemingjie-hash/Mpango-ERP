@@ -1,0 +1,22 @@
+{
+  "phase": "P8-A",
+  "agent": "claude",
+  "mission": "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator.md",
+  "expected_files": [
+    "scripts/platform_worker_orchestrator.py",
+    "scripts/test_platform_worker_orchestrator.py",
+    "scripts/platform_merge_readiness_reporter.py",
+    "scripts/platform_agent_mission_gate.py",
+    "scripts/test_platform_agent_mission_gate.py",
+    "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator.md",
+    "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_mission.json",
+    "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_result.json",
+    "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_events.jsonl",
+    "ai-ledger/platform/2026-06-04_p8_merge_readiness_report.md"
+  ],
+  "result": "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_result.json",
+  "events": "ai-ledger/platform/2026-06-04_p8_governed_worker_orchestrator_events.jsonl",
+  "timeout_seconds": 600,
+  "allow_edits": false,
+  "notes": "P8 governed worker orchestrator. 10 changed files = 5 scripts + 5 ledger artifacts. R1: artifact audit contract fix. No product/runtime code."
+}

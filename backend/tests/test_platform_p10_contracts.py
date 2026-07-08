@@ -954,6 +954,69 @@ class TestTenantHealthAPI:
         assert resp.status_code == 404
 
 
+class TestP25EETenantIdBoundary:
+    """P25-EE: non-UUID tenant_id must yield clean 404, never reach DB (no DBAPI 500).
+
+    Regression for the asyncpg DataError that surfaced in P25-ED-R1 real-stack
+    smoke: GET /tenants/smoke-tenant-1/health passed the slug straight to a UUID
+    column. The fix validates the path param as UUID in the service layer and
+    short-circuits to None (-> route 404) without executing any query.
+    """
+
+    INVALID_IDS = [
+        "smoke-tenant-1",     # the slug from P25-ED-R1 smoke
+        "nonexistent",        # generic non-UUID string
+        "123",                # numeric, not UUID-shaped
+        "not-a-uuid-at-all",  # hyphenated but wrong length
+    ]
+    VALID_UUID = "550e8400-e29b-41d4-a716-446655440000"
+
+    def test_coerce_tenant_id_helper(self):
+        from api.v1.platform.p10.services import _coerce_tenant_id
+        import uuid as _uuid
+        # Invalid inputs -> None
+        for bad in self.INVALID_IDS:
+            assert _coerce_tenant_id(bad) is None, f"expected None for {bad!r}"
+        # Valid UUID -> UUID object
+        parsed = _coerce_tenant_id(self.VALID_UUID)
+        assert isinstance(parsed, _uuid.UUID)
+        assert str(parsed) == self.VALID_UUID
+
+    def test_health_invalid_uuid_returns_404_without_db_call(self):
+        for bad in self.INVALID_IDS:
+            db = MagicMock()
+            db.execute = AsyncMock()
+            client = TestClient(_make_app(db))
+            resp = client.get(f"/api/v1/platform/p10/tenants/{bad}/health")
+            assert resp.status_code == 404, f"{bad!r} should be 404"
+            db.execute.assert_not_awaited()  # short-circuit proof: DB never hit
+
+    def test_summary_invalid_uuid_returns_404_without_db_call(self):
+        for bad in self.INVALID_IDS:
+            db = MagicMock()
+            db.execute = AsyncMock()
+            client = TestClient(_make_app(db))
+            resp = client.get(f"/api/v1/platform/p10/tenants/{bad}")
+            assert resp.status_code == 404, f"{bad!r} should be 404"
+            db.execute.assert_not_awaited()  # short-circuit proof: DB never hit
+
+    def test_health_valid_uuid_still_queries_db(self):
+        w = _mock_wholesaler()
+        db = _mock_db_for_detail(w)
+        client = TestClient(_make_app(db))
+        resp = client.get(f"/api/v1/platform/p10/tenants/{self.VALID_UUID}/health")
+        assert resp.status_code == 200
+        db.execute.assert_awaited_once()  # valid UUID reaches the DB
+
+    def test_summary_valid_uuid_still_queries_db(self):
+        w = _mock_wholesaler()
+        db = _mock_db_for_detail(w)
+        client = TestClient(_make_app(db))
+        resp = client.get(f"/api/v1/platform/p10/tenants/{self.VALID_UUID}")
+        assert resp.status_code == 200
+        db.execute.assert_awaited_once()  # valid UUID reaches the DB
+
+
 class TestSystemHealthAPI:
     """API-level tests for SystemHealth endpoint."""
 

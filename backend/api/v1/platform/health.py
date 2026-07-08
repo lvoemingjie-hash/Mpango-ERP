@@ -7,6 +7,13 @@ No tenant data, no audit data, no operational metrics are exposed.
 
 Sensitive P0 endpoints (tenants, audit, stats) have been guarded with
 require_platform_operator in their respective modules.
+
+G2-R2: Restored platform public behavior for /health and /info. The
+product-side S2/S2-R1 hardening had added RequirePlatformAdmin to these
+endpoints, but the platform contract (test_platform_p11c0_legacy_guard)
+requires them unauthenticated -- they expose only non-sensitive status.
+Actual sensitive platform routes (tenants/audit/stats) remain guarded
+by require_platform_operator and are unaffected.
 """
 from __future__ import annotations
 

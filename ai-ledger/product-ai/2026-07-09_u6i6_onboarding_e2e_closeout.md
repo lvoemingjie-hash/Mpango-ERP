@@ -30,4 +30,7 @@
 - ASCII/mojibake scans: passed.
 - Secret-term scan: reviewed; findings are expected test token/password/hash terminology and allowlisted test credentials only.
 - `pre-commit run --files backend/tests/test_u6i6_onboarding_e2e_closeout.py ai-ledger/product-ai/2026-07-09_u6i6_onboarding_e2e_closeout.md`: passed.
+- Implementation/evidence commit: `aa566b1d test(U6-I6): add onboarding e2e closeout gate`.
+- `npx gitnexus analyze`: repository indexed successfully, `7,066 nodes | 20,207 edges | 470 clusters | 239 flows`.
+- `npx gitnexus status`: indexed commit `aa566b1`, current commit `aa566b1`, status up to date.
 - Verdict condition: `STOP_AND_REPORT_CTO` unless CTO authorizes updating the U6F closeout migration-head expectation or expands U6-I6 allowed files.

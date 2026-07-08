@@ -32,6 +32,9 @@ from schemas.auth_signup import (
     OnboardingStatusRequest,
     OnboardingStatusResponse,
     OnboardingStatusResponseData,
+    OwnerCredentialSetupRequest,
+    OwnerCredentialSetupResponse,
+    OwnerCredentialSetupResponseData,
     SignupRequest,
     SignupResponse,
     SignupResponseData,
@@ -65,9 +68,16 @@ from services.onboarding_service import (
     get_onboarding_status,
     verify_email_token,
 )
+from services.owner_credential_service import (
+    INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN,
+    OwnerCredentialSetupAdminCreationError,
+    OwnerCredentialSetupService,
+    OwnerCredentialSetupTokenInvalidError,
+)
 
 router = APIRouter()
 PUBLIC_SIGNUP_STATUS = "pending_email_verification"
+NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE = "Credential setup result is not disclosed through this endpoint."
 
 
 # ---------------------------------------------------------------------------
@@ -569,4 +579,59 @@ async def get_current_user(
             permissions=user_data["permissions"]
         ),
         timestamp=datetime.utcnow()
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/onboarding/setup-credential  (U6-I5 owner credential setup)
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/onboarding/setup-credential",
+    response_model=OwnerCredentialSetupResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def setup_credential(
+    request: OwnerCredentialSetupRequest,
+    db: AsyncSession = Depends(get_db_session),
+    http_request: Request = None,
+):
+    if http_request is not None and any(
+        k in http_request.query_params for k in ("setup_token", "setupToken", "password")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN,
+                "message": NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE,
+            },
+        )
+    try:
+        service = OwnerCredentialSetupService(db)
+        consume_result = await service.consume_setup_token(
+            request.setup_token, request.password
+        )
+        admin_result = await service.create_first_admin_rbac(consume_result)
+    except OwnerCredentialSetupTokenInvalidError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN,
+                "message": NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE,
+            },
+        )
+    except OwnerCredentialSetupAdminCreationError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "OWNER_ADMIN_RBAC_CREATION_FAILED",
+                "message": NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE,
+            },
+        )
+
+    return OwnerCredentialSetupResponse(
+        data=OwnerCredentialSetupResponseData(),
+        message=NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE,
+        timestamp=datetime.utcnow(),
     )

@@ -305,9 +305,7 @@ async def test_fail_closed_for_missing_absent_invalid_schema_or_missing_hash(set
 
 async def test_no_public_endpoint_placeholder_password_or_provisioning_behavior_change():
     service_source = OWNER_CREDENTIAL_SERVICE_PATH.read_text(encoding="utf-8")
-    auth_source = AUTH_ROUTE_PATH.read_text(encoding="utf-8")
     provisioning_source = TENANT_PROVISIONING_SERVICE_PATH.read_text(encoding="utf-8")
-    assert "create_first_admin_rbac" not in auth_source
     assert "placeholder" not in service_source.lower()
     assert "random" not in service_source.lower()
     assert "generate_verification_token()" in service_source

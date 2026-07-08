@@ -10,7 +10,11 @@ import pytest
 from sqlalchemy import func, select, text
 
 from database.session import AsyncSessionLocal, async_engine
-from models.tenant_onboarding import OwnerCredentialSetupToken, TenantRegistration
+from models.tenant_onboarding import (
+    OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE,
+    OwnerCredentialSetupToken,
+    TenantRegistration,
+)
 from models.wholesaler import Wholesaler
 from services.onboarding_service import hash_token
 from services.owner_credential_service import OwnerCredentialSetupService
@@ -127,6 +131,44 @@ async def _token_count(registration_id: uuid.UUID) -> int:
         )
 
 
+async def _unexpired_active_token_count(registration_id: uuid.UUID) -> int:
+    async with AsyncSessionLocal() as session:
+        return await session.scalar(
+            select(func.count())
+            .select_from(OwnerCredentialSetupToken)
+            .where(OwnerCredentialSetupToken.registration_id == registration_id)
+            .where(OwnerCredentialSetupToken.used_at.is_(None))
+            .where(OwnerCredentialSetupToken.revoked_at.is_(None))
+            .where(OwnerCredentialSetupToken.is_deleted.is_(False))
+            .where(OwnerCredentialSetupToken.expires_at > datetime.now(timezone.utc))
+            .execution_options(ignore_tenant=True)
+        )
+
+
+async def _insert_setup_token(
+    registration_id: uuid.UUID,
+    *,
+    expires_at: datetime,
+    used_at: datetime | None = None,
+    revoked_at: datetime | None = None,
+) -> str:
+    raw_token = f"u6i2-prior-{uuid.uuid4().hex}"
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        session.add(
+            OwnerCredentialSetupToken(
+                registration_id=registration_id,
+                token_hash=hash_token(raw_token),
+                purpose=OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE,
+                expires_at=expires_at,
+                used_at=used_at,
+                revoked_at=revoked_at,
+            )
+        )
+        await session.commit()
+    return raw_token
+
+
 async def test_active_provisioned_registration_issues_hash_only_setup_token():
     registration_id, _tenant_schema = await _insert_registration()
 
@@ -167,6 +209,63 @@ async def test_duplicate_issue_returns_existing_without_creating_second_active_t
     assert second.action == "existing"
     assert second.raw_token is None
     assert await _token_count(registration_id) == 1
+
+
+async def test_expired_prior_token_allows_new_setup_token_issue():
+    registration_id, _tenant_schema = await _insert_registration()
+    prior_raw_token = await _insert_setup_token(
+        registration_id,
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+    )
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        result = await OwnerCredentialSetupService(session).issue_setup_token(registration_id)
+        await session.commit()
+
+    assert result.action == "issued"
+    assert result.raw_token is not None
+    assert result.raw_token != prior_raw_token
+    rows = await _token_rows(registration_id)
+    assert len(rows) == 2
+    assert rows[0].token_hash == hash_token(prior_raw_token)
+    assert rows[0].token_hash != prior_raw_token
+    assert rows[1].token_hash == hash_token(result.raw_token)
+    assert await _unexpired_active_token_count(registration_id) == 1
+
+
+@pytest.mark.parametrize(
+    ("used_at", "revoked_at"),
+    [
+        (datetime.now(timezone.utc), None),
+        (None, datetime.now(timezone.utc)),
+    ],
+)
+async def test_used_or_revoked_prior_token_allows_new_setup_token_issue(
+    used_at: datetime | None,
+    revoked_at: datetime | None,
+):
+    registration_id, _tenant_schema = await _insert_registration()
+    prior_raw_token = await _insert_setup_token(
+        registration_id,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        used_at=used_at,
+        revoked_at=revoked_at,
+    )
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        result = await OwnerCredentialSetupService(session).issue_setup_token(registration_id)
+        await session.commit()
+
+    assert result.action == "issued"
+    assert result.raw_token is not None
+    assert result.raw_token != prior_raw_token
+    rows = await _token_rows(registration_id)
+    assert len(rows) == 2
+    assert rows[0].token_hash == hash_token(prior_raw_token)
+    assert rows[1].token_hash == hash_token(result.raw_token)
+    assert await _unexpired_active_token_count(registration_id) == 1
 
 
 @pytest.mark.parametrize("status", ["email_verified", "provisioning", "failed", "cancelled"])

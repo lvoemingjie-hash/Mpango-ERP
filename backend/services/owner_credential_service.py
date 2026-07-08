@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,13 +58,15 @@ class OwnerCredentialSetupService:
             )
 
         now = datetime.now(timezone.utc)
-        existing = await self._active_token(registration.id)
+        existing = await self._active_token(registration.id, now)
         if existing is not None:
             return OwnerCredentialSetupTokenIssueResult(
                 action="existing",
                 registration_id=registration.id,
                 expires_at=existing.expires_at,
             )
+
+        await self._close_expired_tokens(registration.id, now)
 
         raw_token = generate_verification_token()
         token = OwnerCredentialSetupToken(
@@ -100,18 +102,33 @@ class OwnerCredentialSetupService:
         )
         return result.scalar_one_or_none()
 
-    async def _active_token(self, registration_id: UUID) -> OwnerCredentialSetupToken | None:
+    async def _active_token(
+        self, registration_id: UUID, now: datetime
+    ) -> OwnerCredentialSetupToken | None:
         result = await self.db.execute(
             select(OwnerCredentialSetupToken)
             .where(OwnerCredentialSetupToken.registration_id == registration_id)
             .where(OwnerCredentialSetupToken.used_at.is_(None))
             .where(OwnerCredentialSetupToken.revoked_at.is_(None))
             .where(OwnerCredentialSetupToken.is_deleted.is_(False))
+            .where(OwnerCredentialSetupToken.expires_at > now)
             .order_by(OwnerCredentialSetupToken.created_at.desc())
             .limit(1)
             .execution_options(ignore_tenant=True)
         )
         return result.scalar_one_or_none()
+
+    async def _close_expired_tokens(self, registration_id: UUID, now: datetime) -> None:
+        await self.db.execute(
+            update(OwnerCredentialSetupToken)
+            .where(OwnerCredentialSetupToken.registration_id == registration_id)
+            .where(OwnerCredentialSetupToken.used_at.is_(None))
+            .where(OwnerCredentialSetupToken.revoked_at.is_(None))
+            .where(OwnerCredentialSetupToken.is_deleted.is_(False))
+            .where(OwnerCredentialSetupToken.expires_at <= now)
+            .values(revoked_at=now)
+            .execution_options(ignore_tenant=True)
+        )
 
 
 def _is_eligible(registration: TenantRegistration) -> bool:

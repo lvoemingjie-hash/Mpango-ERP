@@ -1,0 +1,79 @@
+======================================================================
+P25-EC-R1 Identity Smoke Test
+Endpoint: http://127.0.0.1:8001/api/v1/platform/p24/incident-closeouts
+MPANGO_ENV: production
+Tenant schema: t_smoke_r1 (provisioned throwaway)
+======================================================================
+[PASS] operator_admit: got 200 (expected [200])
+[PASS] test_override: got 403 (expected [403])
+[PASS] identity_super_admin_admit: got 200 (expected [200])
+[PASS] no_credentials_deny: got 401 (expected [401])
+[PASS] wrong_operator_deny: got 403 (expected [403])
+[PASS] tenant_context_admin_deny: got 401 (expected [401, 403])
+======================================================================
+Results: 6/6 passed, 0 failed
+======================================================================
+
+JSON_EVIDENCE_START
+{
+  "test_suite": "P25-EC-R1 Identity Smoke Test",
+  "endpoint": "http://127.0.0.1:8001/api/v1/platform/p24/incident-closeouts",
+  "mpango_env": "production",
+  "tenant_schema": "t_smoke_r1",
+  "summary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "test": "operator_admit",
+      "description": "Valid X-Platform-Operator secret should be admitted",
+      "expected_status": "[200]",
+      "actual_status": 200,
+      "passed": true,
+      "body_preview": "{\"closeouts\":[],\"total\":0,\"active_count\":0,\"limit\":50,\"offset\":0}"
+    },
+    {
+      "test": "test_override",
+      "description": "X-Platform-Test-Override rejected in production env (403)",
+      "expected_status": "[403]",
+      "actual_status": 403,
+      "passed": true,
+      "body_preview": "{\"code\":\"PERMISSION_DENIED\",\"message\":\"{'code': 'PLATFORM_ACCESS_DENIED', 'message': 'Insufficient platform credentials for P10 access'}\",\"request_id\":\"8077abc8-674c-4e51-9cc2-2e443e6808c9\"}"
+    },
+    {
+      "test": "identity_super_admin_admit",
+      "description": "Identity-only super_admin Bearer token should be admitted",
+      "expected_status": "[200]",
+      "actual_status": 200,
+      "passed": true,
+      "body_preview": "{\"closeouts\":[],\"total\":0,\"active_count\":0,\"limit\":50,\"offset\":0}"
+    },
+    {
+      "test": "no_credentials_deny",
+      "description": "No credentials should be denied (401)",
+      "expected_status": "[401]",
+      "actual_status": 401,
+      "passed": true,
+      "body_preview": "{\"code\":\"UNAUTHORIZED\",\"message\":\"{'code': 'PLATFORM_ACCESS_REQUIRED', 'message': 'P10 endpoints require platform-operator credentials'}\",\"request_id\":\"df976283-4e99-4c6a-98f4-0e3af0565a90\"}"
+    },
+    {
+      "test": "wrong_operator_deny",
+      "description": "Wrong X-Platform-Operator secret should be denied (403)",
+      "expected_status": "[403]",
+      "actual_status": 403,
+      "passed": true,
+      "body_preview": "{\"code\":\"PERMISSION_DENIED\",\"message\":\"{'code': 'PLATFORM_ACCESS_DENIED', 'message': 'Insufficient platform credentials for P10 access'}\",\"request_id\":\"a49b8d3f-17b9-49df-b97f-9af23bafd2ac\"}"
+    },
+    {
+      "test": "tenant_context_admin_deny",
+      "description": "Tenant-context super_admin token denied cleanly (401 or 403, NOT 500)",
+      "expected_status": "[401, 403]",
+      "actual_status": 401,
+      "passed": true,
+      "body_preview": "{\"code\":\"UNAUTHORIZED\",\"message\":\"{'code': 'PLATFORM_ACCESS_REQUIRED', 'message': 'P10 endpoints require platform-operator credentials'}\",\"request_id\":\"8c4d80c4-5bbb-4080-9baa-703927878de7\"}"
+    }
+  ]
+}
+JSON_EVIDENCE_END

@@ -2,10 +2,10 @@
 
 | Field | Value |
 |-------|-------|
-| **Task ID** | P25-EC (R3 ledger accuracy fix) |
+| **Task ID** | P25-EC (R4 ledger base ref correction) |
 | **Date** | 2026-07-08 |
 | **Branch** | `codex/platform-p25ec-real-stack-browser-smoke-evidence-2026-07-08` |
-| **Base** | `origin/product-dev @ 6de86015` |
+| **Base** | `origin/platform-dev @ 6de86015` |
 | **Scope** | Validation scripts, logs, screenshots, ledger ONLY. No backend/frontend runtime code, no migrations, no package/lockfile, no auth/RBAC rewrites. |
 | **Verdict** | **STOP_AND_REPORT_CTO** (Part A: 0-backend-5xx blocked by global tenant filter; Part B: identity smoke PASS; Part C: artifact cleanup PASS) |
 
@@ -26,12 +26,12 @@ R1 correction re-runs all tests with stricter success criteria:
 ## 2. Base Proof Gate
 
 P25-EC is a continuation branch. The authoritative diff base is
-`origin/product-dev = 6de86015` ("merge: P25-EB P22 durable approval resolver
+`origin/platform-dev = 6de86015` ("merge: P25-EB P22 durable approval resolver
 alignment"), which is the parent commit of the P25-EC commits. All scope diff
 gates compare against `6de86015`.
 
 ```
-git rev-parse 6de86015                  = 6de86015 (origin/product-dev)
+git rev-parse 6de86015                  = 6de86015 (origin/platform-dev)
 git log --oneline -1 6de86015           = 6de86015 merge: P25-EB P22 ...
 git rev-parse HEAD                      = 67db3ec3 (P25-EC-R2)
 git diff --name-status 6de86015..HEAD   = 30 files (all verify/p25ec/ + ledger)
@@ -39,7 +39,7 @@ git status --short                      = clean
 ```
 
 Base proof gate: PASS -- branch is a clean continuation on top of
-`origin/product-dev = 6de86015`; no staged/modified files.
+`origin/platform-dev = 6de86015`; no staged/modified files.
 
 ## 3. Part A -- Route Smoke Test (19 Routes)
 
@@ -231,7 +231,7 @@ R2 removes all root-level `_p25ec_*` evidence files and migrates evidence to
 
 ## 8. Scope Diff Gate
 
-Authoritative diff base: `origin/product-dev = 6de86015`.
+Authoritative diff base: `origin/platform-dev = 6de86015`.
 
 Net diff `6de86015..HEAD` (30 files, all added -- no deletions, no runtime code):
 - Added: `verify/p25ec/` (scripts, results, screenshots, SQL, logs)

@@ -79,3 +79,4 @@ Completed:
 - `pre-commit run`: passed.
 - `npx gitnexus analyze`: passed.
 - `npx gitnexus status`: up to date.
+- R1 implementation commit: `4b696b42 fix(U6-I5): prevent password reset replay on used setup tokens`.

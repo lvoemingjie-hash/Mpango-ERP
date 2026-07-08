@@ -141,6 +141,29 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# Valid audit result values per P10-A AuditResult closed vocab (P25-EF).
+_VALID_AUDIT_RESULTS: frozenset[str] = frozenset(
+    {"allowed", "denied", "failed", "completed", "recorded"}
+)
+
+
+def _coerce_audit_result(raw: object) -> str:
+    """Map an audit_metadata.result value to a valid AuditResult vocab term.
+
+    P19/P20 handlers legitimately write result='recorded' for record-only
+    audit events; that value is now part of the closed vocab. Any other
+    unexpected value is fail-closed to 'completed' so the API never raises a
+    Pydantic ValidationError -> HTTP 500. The raw metadata (before redaction)
+    is preserved in audit_metadata_redacted so real data is not silently hidden.
+    """
+    if raw is None:
+        return "completed"
+    candidate = str(raw).strip().lower()
+    if candidate in _VALID_AUDIT_RESULTS:
+        return candidate
+    return "completed"
+
+
 # ── TenantSummary ──
 
 
@@ -380,7 +403,7 @@ async def list_audit_events(
                 scope="tenant" if e.wholesaler_id else "global",
                 action=e.action or "unknown",
                 reason=None,  # proposed_public_metadata
-                result=meta.get("result", "completed"),
+                result=_coerce_audit_result(meta.get("result")),
                 metadata_redacted=redact_metadata(meta) if meta else None,
                 correlation_id=None,  # telemetry_required
                 created_at=e.created_at,
@@ -413,7 +436,7 @@ async def get_audit_event(
         scope="tenant" if e.wholesaler_id else "global",
         action=e.action or "unknown",
         reason=None,
-        result=meta.get("result", "completed"),
+        result=_coerce_audit_result(meta.get("result")),
         metadata_redacted=redact_metadata(meta) if meta else None,
         correlation_id=None,
         created_at=e.created_at,

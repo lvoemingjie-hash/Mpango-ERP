@@ -1,0 +1,428 @@
+{
+  "task": "P25-EF",
+  "timestamp": "2026-07-08T20:48:57",
+  "backend_port": 8000,
+  "frontend_port": 5173,
+  "identity_smoke": {
+    "test_suite": "P25-EF Identity Smoke",
+    "endpoint": "http://127.0.0.1:8000/api/v1/platform/p24/incident-closeouts",
+    "summary": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0
+    },
+    "cases": [
+      {
+        "test": "operator_admit",
+        "description": "Valid X-Platform-Operator secret admitted",
+        "expected_status": [
+          200
+        ],
+        "actual_status": 200,
+        "passed": true,
+        "body_preview": "{\"closeouts\":[],\"total\":0,\"active_count\":0,\"limit\":50,\"offset\":0}"
+      },
+      {
+        "test": "test_override_reject",
+        "description": "X-Platform-Test-Override rejected in production env (403)",
+        "expected_status": [
+          403
+        ],
+        "actual_status": 403,
+        "passed": true,
+        "body_preview": "{\"code\":\"PERMISSION_DENIED\",\"message\":\"{'code': 'PLATFORM_ACCESS_DENIED', 'message': 'Insufficient platform credentials for P10 access'}\",\"request_id\":\"9951cb1d-ea6d-45b4-83bd-6419f9d18765\"}"
+      },
+      {
+        "test": "identity_super_admin_admit",
+        "description": "Identity-only super_admin Bearer admitted",
+        "expected_status": [
+          200
+        ],
+        "actual_status": 200,
+        "passed": true,
+        "body_preview": "{\"closeouts\":[],\"total\":0,\"active_count\":0,\"limit\":50,\"offset\":0}"
+      },
+      {
+        "test": "no_credentials_deny",
+        "description": "No credentials denied (401)",
+        "expected_status": [
+          401
+        ],
+        "actual_status": 401,
+        "passed": true,
+        "body_preview": "{\"code\":\"UNAUTHORIZED\",\"message\":\"{'code': 'PLATFORM_ACCESS_REQUIRED', 'message': 'P10 endpoints require platform-operator credentials'}\",\"request_id\":\"87b92d99-e5b7-4594-b643-91ac31f98a60\"}"
+      },
+      {
+        "test": "wrong_operator_deny",
+        "description": "Wrong operator secret denied (403)",
+        "expected_status": [
+          403
+        ],
+        "actual_status": 403,
+        "passed": true,
+        "body_preview": "{\"code\":\"PERMISSION_DENIED\",\"message\":\"{'code': 'PLATFORM_ACCESS_DENIED', 'message': 'Insufficient platform credentials for P10 access'}\",\"request_id\":\"85e93009-3adf-447e-b5aa-e677beb34555\"}"
+      },
+      {
+        "test": "tenant_context_admin_deny",
+        "description": "Tenant-context super_admin denied cleanly (401/403, NOT 500)",
+        "expected_status": [
+          401,
+          403
+        ],
+        "actual_status": 401,
+        "passed": true,
+        "body_preview": "{\"code\":\"UNAUTHORIZED\",\"message\":\"{'code': 'PLATFORM_ACCESS_REQUIRED', 'message': 'P10 endpoints require platform-operator credentials'}\",\"request_id\":\"550ab975-22cf-4f7e-83a7-65c56ff0ecb1\"}"
+      }
+    ]
+  },
+  "route_smoke": {
+    "test_suite": "P25-EF Route Smoke",
+    "base_url": "http://127.0.0.1:5173",
+    "browser": "chromium (headless)",
+    "auth": "identity-only super_admin JWT",
+    "summary": {
+      "total_routes": 19,
+      "http_200": 19,
+      "redirected": 0,
+      "routes_with_errors": 1,
+      "routes_with_5xx": 0,
+      "routes_with_forbidden": 0,
+      "screenshots_captured": 19
+    },
+    "routes": [
+      {
+        "route": "/platform",
+        "name": "Platform Overview",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform.png",
+          "captured": true,
+          "bytes": 67572
+        }
+      },
+      {
+        "route": "/platform/system/health",
+        "name": "System Health",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/system/health",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_system_health.png",
+          "captured": true,
+          "bytes": 55750
+        }
+      },
+      {
+        "route": "/platform/tenants",
+        "name": "Tenant Directory",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/tenants",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_tenants.png",
+          "captured": true,
+          "bytes": 50320
+        }
+      },
+      {
+        "route": "/platform/tenants/smoke-tenant-1/health",
+        "name": "Tenant Health",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/tenants/smoke-tenant-1/health",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [
+          "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        ],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_tenants_smoke-tenant-1_health.png",
+          "captured": true,
+          "bytes": 42224
+        }
+      },
+      {
+        "route": "/platform/audit",
+        "name": "Audit Events",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/audit",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_audit.png",
+          "captured": true,
+          "bytes": 153033
+        }
+      },
+      {
+        "route": "/platform/registry",
+        "name": "Registry",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/registry",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_registry.png",
+          "captured": true,
+          "bytes": 48793
+        }
+      },
+      {
+        "route": "/platform/support",
+        "name": "Support Console",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/support",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_support.png",
+          "captured": true,
+          "bytes": 54963
+        }
+      },
+      {
+        "route": "/platform/ops/health",
+        "name": "Ops Health",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/ops/health",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_ops_health.png",
+          "captured": true,
+          "bytes": 69183
+        }
+      },
+      {
+        "route": "/platform/ops/errors",
+        "name": "Ops Errors",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/ops/errors",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_ops_errors.png",
+          "captured": true,
+          "bytes": 61899
+        }
+      },
+      {
+        "route": "/platform/ops/slow-routes",
+        "name": "Ops Slow Routes",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/ops/slow-routes",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_ops_slow-routes.png",
+          "captured": true,
+          "bytes": 60335
+        }
+      },
+      {
+        "route": "/platform/ops/resources",
+        "name": "Ops Resources",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/ops/resources",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_ops_resources.png",
+          "captured": true,
+          "bytes": 63841
+        }
+      },
+      {
+        "route": "/platform/ops/noisy-neighbors",
+        "name": "Ops Noisy Neighbors",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/ops/noisy-neighbors",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_ops_noisy-neighbors.png",
+          "captured": true,
+          "bytes": 59915
+        }
+      },
+      {
+        "route": "/platform/ops/incidents/triage",
+        "name": "Incident Triage",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/ops/incidents/triage",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_ops_incidents_triage.png",
+          "captured": true,
+          "bytes": 83656
+        }
+      },
+      {
+        "route": "/platform/controlled-actions",
+        "name": "Controlled Actions",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/controlled-actions",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_controlled-actions.png",
+          "captured": true,
+          "bytes": 124686
+        }
+      },
+      {
+        "route": "/platform/approvals",
+        "name": "Approvals",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/approvals",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_approvals.png",
+          "captured": true,
+          "bytes": 90223
+        }
+      },
+      {
+        "route": "/platform/durable-approvals",
+        "name": "Durable Approvals",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/durable-approvals",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_durable-approvals.png",
+          "captured": true,
+          "bytes": 108204
+        }
+      },
+      {
+        "route": "/platform/controlled-execution",
+        "name": "Controlled Execution",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/controlled-execution",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_controlled-execution.png",
+          "captured": true,
+          "bytes": 211163
+        }
+      },
+      {
+        "route": "/platform/operator-tasks",
+        "name": "Operator Tasks",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/operator-tasks",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_operator-tasks.png",
+          "captured": true,
+          "bytes": 90797
+        }
+      },
+      {
+        "route": "/platform/incident-closeouts",
+        "name": "Incident Closeouts",
+        "http_status": 200,
+        "redirected": false,
+        "final_url": "http://127.0.0.1:5173/platform/incident-closeouts",
+        "title": "Mpango ERP - African Wholesale-Retail Management",
+        "console_errors": [],
+        "page_errors": [],
+        "forbidden_controls": [],
+        "has_5xx": false,
+        "screenshot": {
+          "file": "platform_incident-closeouts.png",
+          "captured": true,
+          "bytes": 86467
+        }
+      }
+    ]
+  },
+  "log_grep": {
+    "tenant_context_missing_errors": 0,
+    "http_500_error_lines": 0,
+    "traceback_lines": 0,
+    "tcm_samples": [],
+    "http500_samples": []
+  }
+}

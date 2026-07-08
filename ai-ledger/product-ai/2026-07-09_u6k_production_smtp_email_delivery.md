@@ -25,3 +25,6 @@
 - ASCII/mojibake scans: passed on added diff and new U6-K files.
 - Secret-term scan: reviewed; findings are expected config/test token/password/SMTP terminology and placeholders only.
 - `pre-commit run --files .env.example backend/.env.example backend/core/config.py backend/services/email_delivery.py backend/services/onboarding_service.py backend/tests/test_u6k_production_smtp_email_delivery.py ai-ledger/product-ai/2026-07-09_u6k_production_smtp_email_delivery.md`: passed.
+- Implementation/evidence commit: `6987eff7 feat(U6-K): add production SMTP email delivery`.
+- `npx gitnexus analyze`: repository indexed successfully, `7,119 nodes | 20,340 edges | 477 clusters | 239 flows`.
+- `npx gitnexus status`: indexed commit `6987eff`, current commit `6987eff`, status up to date.

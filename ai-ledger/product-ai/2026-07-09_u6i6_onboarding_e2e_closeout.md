@@ -47,3 +47,6 @@
 - ASCII/mojibake scans: passed.
 - Secret-term scan: reviewed; findings are expected test token/password/hash terminology and existing allowlisted test credentials only.
 - `pre-commit run --files backend/tests/test_u6f_onboarding_auth_chain_closeout.py ai-ledger/product-ai/2026-07-09_u6i6_onboarding_e2e_closeout.md`: passed.
+- R1 implementation/evidence commit: `6623d561 test(U6-I6): align U6F closeout alembic head`.
+- `npx gitnexus analyze`: repository indexed successfully, `7,073 nodes | 20,208 edges | 476 clusters | 239 flows`.
+- `npx gitnexus status`: indexed commit `6623d56`, current commit `6623d56`, status up to date.

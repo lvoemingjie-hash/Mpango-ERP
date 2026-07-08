@@ -1,4 +1,4 @@
-﻿"""
+"""
 P25-EE Real-Stack Smoke Orchestrator.
 
 Starts backend (uvicorn) + frontend (vite) as subprocesses, waits for

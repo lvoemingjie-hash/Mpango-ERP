@@ -40,6 +40,19 @@ from .schemas import (
 )
 
 
+def _coerce_tenant_id(tenant_id: str) -> Optional[uuid.UUID]:
+    """Parse a tenant_id path parameter into a UUID.
+
+    Returns None when the value is not a valid UUID so that callers translate
+    invalid/slug identifiers into a clean 404 instead of letting the raw string
+    reach a UUID column and raise an asyncpg DataError (HTTP 500).
+    """
+    try:
+        return uuid.UUID(str(tenant_id))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
 # ── Metadata Redaction (P10-R1-B) ──
 
 
@@ -198,8 +211,11 @@ async def get_tenant_summary(
     tenant_id: str,
 ) -> Optional[TenantSummary]:
     """Get a single tenant's contract-compliant summary."""
+    parsed = _coerce_tenant_id(tenant_id)
+    if parsed is None:
+        return None
     result = await db.execute(
-        select(Wholesaler).where(Wholesaler.id == tenant_id)
+        select(Wholesaler).where(Wholesaler.id == parsed)
     )
     w = result.scalar_one_or_none()
     if w is None:
@@ -244,8 +260,11 @@ async def get_tenant_health(
       - tenant_id from wholesalers
       - tenant_schema from wholesaler
     """
+    parsed = _coerce_tenant_id(tenant_id)
+    if parsed is None:
+        return None
     result = await db.execute(
-        select(Wholesaler).where(Wholesaler.id == tenant_id)
+        select(Wholesaler).where(Wholesaler.id == parsed)
     )
     w = result.scalar_one_or_none()
     if w is None:

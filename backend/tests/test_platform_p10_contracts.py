@@ -2148,3 +2148,155 @@ class TestMetadataRedaction:
         assert "TOKEN" not in redacted
         assert "Secret_Key" not in redacted
         assert redacted["result"] == "ok"
+
+
+# ===============================================================
+# P25-EF: Audit Result Closed-Vocab Boundary Tests
+# ===============================================================
+
+
+class TestP25EFAuditResultBoundary:
+    """
+    P25-EF: Prove audit_metadata.result='recorded' no longer causes
+    Pydantic ValidationError -> HTTP 500.
+
+    Root cause (before P25-EF): P19/P20 handlers write result='recorded'
+    for record-only audit events, but AuditResult Literal did not include
+    'recorded'. list_audit_events passed raw value to PlatformAuditEvent
+    -> ValidationError -> HTTP 500.
+
+    Fix: AuditResult now includes 'recorded'; _coerce_audit_result maps
+    any non-vocab value to 'completed' (fail-closed).
+    """
+
+    def test_schema_accepts_recorded(self):
+        """AuditResult Literal now includes 'recorded'."""
+        event = PlatformAuditEvent(
+            event_id="880e8400-e29b-41d4-a716-446655440003",
+            scope="global",
+            action="p19_approval_queue_list",
+            result="recorded",
+            created_at=datetime.now(timezone.utc),
+        )
+        assert event.result == "recorded"
+
+    def test_schema_rejects_unknown_result(self):
+        """Unknown result value still rejected by schema Literal."""
+        with pytest.raises(ValidationError):
+            PlatformAuditEvent(
+                event_id="880e8400-e29b-41d4-a716-446655440003",
+                scope="global",
+                action="test.action",
+                result="nonsense",
+                created_at=datetime.now(timezone.utc),
+            )
+
+    def test_coerce_audit_result_valid_values(self):
+        """_coerce_audit_result passes through all valid vocab values."""
+        from api.v1.platform.p10.services import _coerce_audit_result
+
+        for valid in ("allowed", "denied", "failed", "completed", "recorded"):
+            assert _coerce_audit_result(valid) == valid
+
+    def test_coerce_audit_result_none_defaults_completed(self):
+        """None result maps to 'completed' (default)."""
+        from api.v1.platform.p10.services import _coerce_audit_result
+
+        assert _coerce_audit_result(None) == "completed"
+
+    def test_coerce_audit_result_unknown_fail_closed(self):
+        """Unknown result values fail-closed to 'completed'."""
+        from api.v1.platform.p10.services import _coerce_audit_result
+
+        assert _coerce_audit_result("nonsense") == "completed"
+        assert _coerce_audit_result("pending") == "completed"
+        assert _coerce_audit_result(12345) == "completed"
+
+    def test_coerce_audit_result_case_insensitive(self):
+        """Result values are case-normalized."""
+        from api.v1.platform.p10.services import _coerce_audit_result
+
+        assert _coerce_audit_result("RECORDED") == "recorded"
+        assert _coerce_audit_result("Allowed") == "allowed"
+        assert _coerce_audit_result("  Completed  ") == "completed"
+
+    def test_list_audit_events_with_recorded_no_500(self):
+        """list_audit_events with result='recorded' returns 200, not 500."""
+        from api.v1.platform.p10 import services as p10_services
+
+        mock_entry = MagicMock()
+        mock_entry.id = "880e8400-e29b-41d4-a716-446655440003"
+        mock_entry.actor_id = None
+        mock_entry.wholesaler_id = None
+        mock_entry.action = "p20_durable_approval_queue_list"
+        mock_entry.audit_metadata = {"result": "recorded"}
+        mock_entry.created_at = datetime(2026, 7, 8, 12, 12, 27, tzinfo=timezone.utc)
+
+        mock_db = AsyncMock()
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        rows_result = MagicMock()
+        rows_result.scalars.return_value.all.return_value = [mock_entry]
+        mock_db.execute = AsyncMock(side_effect=[count_result, rows_result])
+
+        import asyncio
+        result = asyncio.get_event_loop().run_until_complete(
+            p10_services.list_audit_events(mock_db, limit=20, offset=0)
+        )
+
+        assert result.total == 1
+        assert len(result.items) == 1
+        assert result.items[0].result == "recorded"
+
+    def test_list_audit_events_with_unknown_result_fail_closed(self):
+        """list_audit_events with unknown result value maps to 'completed'."""
+        from api.v1.platform.p10 import services as p10_services
+
+        mock_entry = MagicMock()
+        mock_entry.id = "880e8400-e29b-41d4-a716-446655440003"
+        mock_entry.actor_id = None
+        mock_entry.wholesaler_id = None
+        mock_entry.action = "future_action"
+        mock_entry.audit_metadata = {"result": "future_unknown_value"}
+        mock_entry.created_at = datetime(2026, 7, 8, 12, 12, 27, tzinfo=timezone.utc)
+
+        mock_db = AsyncMock()
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        rows_result = MagicMock()
+        rows_result.scalars.return_value.all.return_value = [mock_entry]
+        mock_db.execute = AsyncMock(side_effect=[count_result, rows_result])
+
+        import asyncio
+        result = asyncio.get_event_loop().run_until_complete(
+            p10_services.list_audit_events(mock_db, limit=20, offset=0)
+        )
+
+        assert result.items[0].result == "completed"
+
+    def test_existing_audit_results_unchanged(self):
+        """Existing allowed/denied/failed/completed values pass through unchanged."""
+        from api.v1.platform.p10 import services as p10_services
+        import asyncio
+
+        existing_values = ["allowed", "denied", "failed", "completed"]
+        for val in existing_values:
+            mock_entry = MagicMock()
+            mock_entry.id = "880e8400-e29b-41d4-a716-446655440003"
+            mock_entry.actor_id = None
+            mock_entry.wholesaler_id = None
+            mock_entry.action = "test.action"
+            mock_entry.audit_metadata = {"result": val}
+            mock_entry.created_at = datetime(2026, 7, 8, 12, 0, 0, tzinfo=timezone.utc)
+
+            mock_db = AsyncMock()
+            count_result = MagicMock()
+            count_result.scalar.return_value = 1
+            rows_result = MagicMock()
+            rows_result.scalars.return_value.all.return_value = [mock_entry]
+            mock_db.execute = AsyncMock(side_effect=[count_result, rows_result])
+
+            result = asyncio.get_event_loop().run_until_complete(
+                p10_services.list_audit_events(mock_db, limit=20, offset=0)
+            )
+            assert result.items[0].result == val

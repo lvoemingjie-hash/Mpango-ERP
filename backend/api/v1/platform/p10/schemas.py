@@ -40,7 +40,7 @@ ActorRole = Literal["super_admin", "support_operator", "engineering_operator"]
 
 AuditScope = Literal["global", "tenant", "system", "support"]
 
-AuditResult = Literal["allowed", "denied", "failed", "completed"]
+AuditResult = Literal["allowed", "denied", "failed", "completed", "recorded"]
 
 
 # ── UUID validation ──

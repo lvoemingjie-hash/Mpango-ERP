@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Task ID** | P25-EC (R2 artifact cleanup) |
+| **Task ID** | P25-EC (R3 ledger accuracy fix) |
 | **Date** | 2026-07-08 |
 | **Branch** | `codex/platform-p25ec-real-stack-browser-smoke-evidence-2026-07-08` |
-| **Base** | `origin/product-dev-recovered` |
+| **Base** | `origin/product-dev @ 6de86015` |
 | **Scope** | Validation scripts, logs, screenshots, ledger ONLY. No backend/frontend runtime code, no migrations, no package/lockfile, no auth/RBAC rewrites. |
-| **R2 Verdict** | **STOP_AND_REPORT_CTO** (Part A: 0-backend-5xx blocked by global tenant filter; Part B: identity smoke PASS) |
+| **Verdict** | **STOP_AND_REPORT_CTO** (Part A: 0-backend-5xx blocked by global tenant filter; Part B: identity smoke PASS; Part C: artifact cleanup PASS) |
 
 ---
 
@@ -25,14 +25,21 @@ R1 correction re-runs all tests with stricter success criteria:
 
 ## 2. Base Proof Gate
 
-R1 continues on the existing branch (no new base branch created per directive).
+P25-EC is a continuation branch. The authoritative diff base is
+`origin/product-dev = 6de86015` ("merge: P25-EB P22 durable approval resolver
+alignment"), which is the parent commit of the P25-EC commits. All scope diff
+gates compare against `6de86015`.
 
 ```
-git rev-parse HEAD                           = 73282ad5 (P25-EC initial commit)
-git status --short                           = (untracked verify/p25ec/ only)
+git rev-parse 6de86015                  = 6de86015 (origin/product-dev)
+git log --oneline -1 6de86015           = 6de86015 merge: P25-EB P22 ...
+git rev-parse HEAD                      = 67db3ec3 (P25-EC-R2)
+git diff --name-status 6de86015..HEAD   = 30 files (all verify/p25ec/ + ledger)
+git status --short                      = clean
 ```
 
-Base proof gate: N/A (continuation on existing branch per R1 directive).
+Base proof gate: PASS -- branch is a clean continuation on top of
+`origin/product-dev = 6de86015`; no staged/modified files.
 
 ## 3. Part A -- Route Smoke Test (19 Routes)
 
@@ -111,11 +118,14 @@ Routes WITH 500 errors (15):
 `/platform/controlled-execution`, `/platform/operator-tasks`,
 `/platform/incident-closeouts`
 
-Routes WITHOUT 500 errors (4):
-- `/platform` -- redirected to /login (401 console errors only)
-- `/platform/system/health` -- redirected to /login (401 console errors only)
-- `/platform/controlled-actions` -- redirected to /login (mixed 401/500)
-- `/platform/support` -- **clean** (0 errors, 0 forbidden controls)
+Routes WITHOUT 500 errors (4) -- NOTE: these are NOT customer-readiness passes;
+they merely had no backend 5xx observed in the smoke window. 3 of 4 redirect to
+`/login` (401), which means the route was never actually exercised against a
+backend query. Only 1 route (`/platform/support`) is genuinely clean.
+- `/platform` -- redirected to /login (401 console errors only; not exercised)
+- `/platform/system/health` -- redirected to /login (401 console errors only; not exercised)
+- `/platform/controlled-actions` -- redirected to /login (mixed 401/500; not exercised)
+- `/platform/support` -- **clean** (0 errors, 0 forbidden controls; genuinely exercised)
 
 Evidence:
 - JSON: `verify/p25ec/playwright_route_smoke_result.json`
@@ -221,10 +231,14 @@ R2 removes all root-level `_p25ec_*` evidence files and migrates evidence to
 
 ## 8. Scope Diff Gate
 
-Final diff scope:
-- Deleted: all root-level `_p25ec_*.txt` (9 files) + `_p25ec_evidence/` (31 files)
-- Added: `verify/p25ec/` (scripts, results, screenshots, SQL)
-- Modified: `ai-ledger/platform/2026-07-08_p25ec_real_stack_browser_smoke_evidence.md`
+Authoritative diff base: `origin/product-dev = 6de86015`.
+
+Net diff `6de86015..HEAD` (30 files, all added -- no deletions, no runtime code):
+- Added: `verify/p25ec/` (scripts, results, screenshots, SQL, logs)
+- Added: `ai-ledger/platform/2026-07-08_p25ec_real_stack_browser_smoke_evidence.md`
+
+(The root-level `_p25ec_*` files were created and deleted within P25-EC commits
+73282ad5/67db3ec3, so they do not appear in the net diff against `6de86015`.)
 
 No backend code, frontend code, migrations, package files, lockfiles, auth/RBAC
 code, or deployment configuration modified.
@@ -259,7 +273,7 @@ code, or deployment configuration modified.
 | B.1 | P10 admits identity-only tokens | PASS |
 | B.2 | P10 denies tenant-context tokens cleanly | PASS (401, not 500) |
 | B.3 | 6/6 identity boundary tests pass | PASS |
-| C | Artifact cleanup | PARTIAL (new evidence in verify/p25ec/, old files pending removal) |
+| C | Artifact cleanup | PASS (R2: old root `_p25ec_*` files deleted, evidence in `verify/p25ec/`, ASCII-clean) |
 | Build | `pnpm run build` exit 0 | PASS |
 
 ### Blocking Issue

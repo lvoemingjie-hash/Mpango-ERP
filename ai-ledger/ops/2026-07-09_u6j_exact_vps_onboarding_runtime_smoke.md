@@ -1,154 +1,130 @@
-# U6-J Exact VPS Redeploy + Onboarding Runtime Smoke
+# U6-J-R1 Email Delivery Runtime Configuration Gate
 
 **Date:** 2026-07-09
 **Branch:** product-dev-recovered
 **Commit:** 66e8371bf159fff4c2e8ea526a2c842da0783775
-**Verdict:** STOP_AND_REPORT_CTO
+**Verdict:** STOP_EMAIL_DELIVERY_NOT_CONFIGURED
 
 ---
 
-## Preflight
+## Environment Inventory
+
+### VPS Email Configuration (non-secret keys)
+
+| Key | Status |
+|-----|--------|
+| MPANGO_ENV | `production` |
+| EMAIL_DELIVERY | NOT CONFIGURED |
+| SMTP_HOST | NOT CONFIGURED |
+| SMTP_PORT | NOT CONFIGURED |
+| SMTP_USER | NOT CONFIGURED |
+| EMAIL_FROM | NOT CONFIGURED |
+| EMAIL_PROVIDER | NOT CONFIGURED |
+
+### .env.prod Email Keys
+
+**No email-related configuration keys exist in .env.prod.**
+
+### .env.example Email Keys
+
+**No email-related configuration keys exist in .env.example.**
+
+### Backend Code Analysis
+
+| File | Finding |
+|------|---------|
+| `/app/services/email_delivery.py` | Only implements dev email sink |
+| `is_verification_email_delivery_configured()` | Returns `settings.MPANGO_ENV != "production"` |
+| `record_verification_email()` | Raises `EmailDeliveryNotConfiguredError` when `MPANGO_ENV == "production"` |
+| `/app/services/onboarding_service.py` | Calls `record_verification_email()`, propagates error |
+
+### Root Cause
+
+The codebase **only has a dev email sink** for test/staging environments. There is **no production email delivery implementation**. When `MPANGO_ENV=production`, the system correctly refuses to send emails because no production email delivery path exists.
+
+---
+
+## Safe Delivery Path Analysis
+
+| Path | Status | Notes |
+|------|--------|-------|
+| A. Real SMTP/provider in .env.prod | NOT AVAILABLE | No SMTP config keys in codebase or .env.example |
+| B. CTO provides credentials | NOT AVAILABLE | No SMTP config keys to populate |
+| C. Local/sandbox mail sink | NOT AVAILABLE | Code only has dev sink, not staging sink |
+
+**Conclusion:** No safe delivery path exists because the codebase lacks production email delivery implementation.
+
+---
+
+## Missing Non-Secret Keys
+
+The following configuration keys would need to be added to support production email delivery:
+
+| Key | Purpose | Example |
+|-----|---------|---------|
+| `EMAIL_PROVIDER` | Email service provider | `smtp`, `sendgrid`, `ses` |
+| `SMTP_HOST` | SMTP server hostname | `smtp.gmail.com` |
+| `SMTP_PORT` | SMTP server port | `587` |
+| `SMTP_USER` | SMTP username | (secret) |
+| `SMTP_PASSWORD` | SMTP password | (secret) |
+| `EMAIL_FROM` | Sender email address | `noreply@mpango.com` |
+| `EMAIL_DELIVERY_MODE` | Delivery mode | `smtp`, `api`, `dev` |
+
+---
+
+## Recommended Provider Setup
+
+### Option 1: SMTP (Simple)
+1. Get SMTP credentials from email provider (Gmail, Outlook, etc.)
+2. Add config keys to codebase (`core/config.py`)
+3. Implement SMTP email delivery in `email_delivery.py`
+4. Add SMTP config to `.env.prod`
+
+### Option 2: Transactional Email API
+1. Sign up for SendGrid, AWS SES, or similar
+2. Add API key config to codebase
+3. Implement API-based email delivery
+4. Add API key to `.env.prod`
+
+### Option 3: Development Mode for Staging
+1. Change `MPANGO_ENV` to `staging`
+2. Use dev email sink
+3. **Not recommended for production claim**
+
+---
+
+## Runtime State
 
 | Item | Value |
 |------|-------|
-| Repo path | `/opt/mpango-erp` |
-| Git remote | `https://github.com/lvoemingjie-hash/Mpango-ERP.git` |
-| HEAD before deploy | `eac7642eefeee4539086f2a42fa7b87f0082fc4c` |
-| Docker compose | `docker-compose.prod.yml` + `.env.prod` |
-| 5 containers health | ALL HEALTHY |
+| 5/5 containers | HEALTHY |
+| /health/live | 200 |
+| /health/ready | 200 |
+| Alembic head | 028_owner_credential_setup_tokens |
+| platform_tenants | EMPTY (ENVIRONMENT_STATE_EMPTY) |
+| users | EMPTY (ENVIRONMENT_STATE_EMPTY) |
+| owner_credential_setup_tokens | EMPTY (ENVIRONMENT_STATE_EMPTY) |
 
 ---
 
-## Backup
+## CTO Decision Required
 
-| Item | Value |
-|------|-------|
-| Backup path | `~/.secure-backups/mpango_erp_u6j_20260709-031238.sql` |
-| Backup size | 215K |
-| SHA256 prefix | `7b3f929c` |
-| Backup committed | NO |
+**Question:** How should production email delivery be implemented?
 
----
+**Options:**
+1. **Implement SMTP email delivery** - Add SMTP config keys and implementation to codebase
+2. **Implement API email delivery** - Add SendGrid/SES config and implementation
+3. **Change to staging mode** - Set `MPANGO_ENV=staging` to use dev sink (not recommended for production)
+4. **Provide credentials out-of-band** - CTO provides SMTP/API credentials, OPS implements
 
-## Exact Checkout
-
-| Item | Value |
-|------|-------|
-| git fetch origin | OK |
-| git checkout -B product-dev-recovered origin/product-dev-recovered | OK |
-| New HEAD | `66e8371bf159fff4c2e8ea526a2c842da0783775` |
-| git status --short | CLEAN |
-
----
-
-## Build/Deploy
-
-| Item | Value |
-|------|-------|
-| Build command | `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build` |
-| Build result | OK |
-| Container health after deploy | ALL HEALTHY |
-
-| Container | Status |
-|-----------|--------|
-| mpango_prod_backend | Up (healthy) |
-| mpango_prod_frontend | Up (healthy) |
-| mpango_prod_gateway | Up (healthy) |
-| mpango_prod_postgres | Up (healthy) |
-| mpango_prod_redis | Up (healthy) |
-
----
-
-## Migration/Head Check
-
-| Item | Value |
-|------|-------|
-| Alembic version in DB (before) | `025_intake_apply_audit` |
-| Alembic head in code | `028_owner_credential_setup_tokens` |
-| Migration executed | `alembic upgrade head` |
-| Alembic version in DB (after) | `028_owner_credential_setup_tokens` |
-| Migration status | AT HEAD |
-
----
-
-## Runtime Smoke: U6 Onboarding Chain
-
-| # | Test | Result | Notes |
-|---|------|--------|-------|
-| 1 | POST /api/v1/auth/signup | FAIL | `EMAIL_DELIVERY_NOT_CONFIGURED` |
-| 2 | Email verification token retrieval | FAIL | No safe email sink exists |
-| 3 | POST /api/v1/auth/verify-email | BLOCKED | Cannot complete without token |
-| 4 | POST /api/v1/auth/onboarding/status | FAIL | METHOD_NOT_ALLOWED |
-| 5 | Tenant provisioning | EMPTY | No tenants in platform_tenants |
-| 6 | Owner setup token issued | EMPTY | No tokens in owner_credential_setup_tokens |
-| 7 | POST /api/v1/auth/onboarding/setup-credential | BLOCKED | Cannot complete without token |
-| 8 | Tenant admin user exists | EMPTY | No users in tenant schema |
-| 9 | Replay setup token returns 401 | N/A | No token to test |
-| 10 | Query-string setup token fails | N/A | No token to test |
-| 11 | Public responses leak internal data | N/A | Cannot test |
-
----
-
-## Existing MVP Smoke
-
-| # | Test | Result |
-|---|------|--------|
-| 1 | /health/live 200 | PASS |
-| 2 | /health/ready 200 | PASS |
-| 3 | Login existing admin | N/A (no admin user) |
-| 4 | Products/SKUs page/API | N/A (no products) |
-| 5 | Orders/Payments basic route | N/A (no orders) |
-| 6 | No 500s in backend logs | PASS |
-
----
-
-## DB Verification Summary
-
-| Item | Value |
-|------|-------|
-| Database | `mpango_erp` |
-| User | `mpango` |
-| Alembic head | `028_owner_credential_setup_tokens` |
-| Tenant schemas | `t_dev`, `t_550e8400e29b41d4a716446655440000` |
-| Platform tenants | EMPTY |
-| Owner setup tokens | EMPTY |
-| Email verification tokens | EMPTY |
-| Tenant users | EMPTY |
-
----
-
-## Log Review Summary
-
-- Backend logs show `EMAIL_DELIVERY_NOT_CONFIGURED` error
-- No 500 errors in backend logs
-- All health checks passing
-
----
-
-## Stop Conditions Met
-
-1. **No safe email/token delivery path exists** - Signup requires email verification but email delivery is not configured
-2. **Database tables are empty** - No existing tenants, users, or tokens
-
----
-
-## Required CTO Decisions
-
-1. **Email delivery configuration**: How should email verification work in production?
-   - Option A: Configure SMTP (e.g., SendGrid, AWS SES)
-   - Option B: Use dev/test email sink for staging
-   - Option C: Disable email verification for now
-
-2. **Tenant provisioning**: Should we provision a default tenant for testing?
-
-3. **Admin user**: Should we create an admin user for testing?
+**Blocker:** U6-J cannot complete signup → verify → onboard → setup-credential flow without email delivery.
 
 ---
 
 ## Verdict
 
 ```
-STOP_AND_REPORT_CTO
+STOP_EMAIL_DELIVERY_NOT_CONFIGURED
 ```
 
-**Reason:** Email delivery not configured, blocking U6 onboarding chain. Cannot complete signup → verify → onboard → setup-credential flow without email delivery.
+**Reason:** Codebase only has dev email sink. No production email delivery implementation exists. Cannot complete U6 onboarding chain without email delivery.

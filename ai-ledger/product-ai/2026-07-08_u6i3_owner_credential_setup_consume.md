@@ -3,7 +3,7 @@
 Date: 2026-07-08
 Branch: `opencode/u6i3-owner-credential-setup-consume-2026-07-08`
 Base: `origin/product-dev-recovered` at `e663394fd4b9fba43d09a2f2ab4b4be83d194610`
-Verdict: `PASS_FOR_CTO_REVIEW_PENDING_GITNEXUS`
+Verdict: `PASS_FOR_CTO_REVIEW`
 
 ## Scope
 
@@ -51,7 +51,6 @@ Completed:
 - Mojibake scan on changed files: passed, no matches.
 - Secret-pattern scan on changed files: reviewed; matches were expected token/hash/credential/password terminology and no actual secrets.
 - `pre-commit run --files backend/services/owner_credential_service.py backend/tests/test_u6i3_owner_credential_setup_consume.py ai-ledger/product-ai/2026-07-08_u6i3_owner_credential_setup_consume.md`: passed.
-
-Pending:
-
-- GitNexus analyze/status.
+- Implementation commit: `b6c04988 feat(U6-I3): consume owner credential setup tokens`.
+- `npx gitnexus analyze`: repository indexed successfully, `6,947 nodes | 19,725 edges | 463 clusters | 229 flows`.
+- `npx gitnexus status`: indexed commit `b6c0498`, current commit `b6c0498`, status up to date.

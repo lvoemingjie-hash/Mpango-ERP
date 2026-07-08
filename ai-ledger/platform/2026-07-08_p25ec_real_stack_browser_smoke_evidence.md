@@ -2,11 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Task ID** | P25-EC |
+| **Task ID** | P25-EC (R2 artifact cleanup) |
 | **Date** | 2026-07-08 |
 | **Branch** | `codex/platform-p25ec-real-stack-browser-smoke-evidence-2026-07-08` |
-| **Base** | `origin/platform-dev` @ `6de86015bbfb334e37ec11eb0279b9607c637116` |
+| **Base** | `origin/product-dev-recovered` |
 | **Scope** | Validation scripts, logs, screenshots, ledger ONLY. No backend/frontend runtime code, no migrations, no package/lockfile, no auth/RBAC rewrites. |
+| **R2 Verdict** | **STOP_AND_REPORT_CTO** (Part A: 0-backend-5xx blocked by global tenant filter; Part B: identity smoke PASS) |
 
 ---
 
@@ -15,75 +16,130 @@
 Validate the platform frontend (P10-P24 surface, 19 routes) against a **real**
 backend (uvicorn in production mode) + **real** database (Docker Postgres 15) +
 **real** browser (Chromium headless via Playwright), producing screenshot
-evidence and auth-boundary proof. This is NOT a component-level test-harness
-exercise -- every request flows through Vite dev server -> backend API ->
-Postgres.
+evidence and auth-boundary proof.
+
+R1 correction re-runs all tests with stricter success criteria:
+- **Part A (route smoke):** 0 backend 5xx console/network errors required.
+- **Part B (identity smoke):** `tenant_context_admin_deny` must be a clean
+  401/403, NOT 500.
 
 ## 2. Base Proof Gate
 
+R1 continues on the existing branch (no new base branch created per directive).
+
 ```
-git rev-parse HEAD                           = 6de86015bbfb334e37ec11eb0279b9607c637116
-git rev-parse origin/platform-dev            = 6de86015bbfb334e37ec11eb0279b9607c637116
-git diff --name-status origin/platform-dev..HEAD = (empty)
-git status --short                           = (untracked only, no staged/modified tracked files)
+git rev-parse HEAD                           = 73282ad5 (P25-EC initial commit)
+git status --short                           = (untracked verify/p25ec/ only)
 ```
 
-Base proof gate: **PASS**.
+Base proof gate: N/A (continuation on existing branch per R1 directive).
 
-## 3. Part A -- Production Frontend Build
+## 3. Part A -- Route Smoke Test (19 Routes)
 
-**Command:** `cd frontend && pnpm run build`
+### 3.1 Success Criteria (R1)
 
-**Result:** PASS (exit 0)
+- 19/19 routes load (HTTP 200 from Vite)
+- 0 React page errors (pageerror)
+- **0 backend 5xx console/network errors**
+- 0 forbidden controls
+- Screenshots captured
 
-- `tsc -p tsconfig.app.json` compiled cleanly (no type errors).
-- Vite v5.4.21 transformed 1258 modules in 8.88s.
-- `dist/` generated: 4 files, 731,486 bytes total.
-- Log: `_p25ec_build.txt`
+### 3.1 Results
 
-## 4. Part B -- Real-Stack Backend + Database
+| Metric | Value | Criterion Met? |
+|--------|-------|----------------|
+| Total routes navigated | 19 | -- |
+| HTTP 200 (page loaded) | 19/19 | PASS |
+| Screenshots captured | 19/19 | PASS |
+| Routes with page errors (React crash) | 0/19 | PASS |
+| Routes with forbidden controls | 0/19 | PASS |
+| **Routes with 5xx console errors** | **15/19** | **FAIL** |
+| Routes redirected (to /login) | 4/19 | -- |
 
-### 4.1 Docker Postgres 15
+### 3.2 Root Cause of 500 Errors
 
-- Container: `mpango_p25ec_pg` (postgres:15)
-- Port: `5433` (host) -> `5432` (container)
-- Database: `mpango_erp`, user: `mpango`
-- Password: throwaway smoke value (not persisted)
+The 500 errors originate from the **global tenant filter**
+(`install_global_tenant_filter` in `backend/db/tenant_filter.py`).
 
-### 4.2 Alembic Migrations
+The filter intercepts ALL SQLAlchemy ORM execute events via
+`Session.do_orm_execute`. For any model with a `tenant_id` or `wholesaler_id`
+column, it raises `TenantContextMissingError` unless both:
 
-- All 21 migrations applied successfully.
-- Final revision: `021_platform_backup_status_source`.
-- 18 tables in `public` schema.
-- **Known issue (environmental, not code):** Alembic's default
-  `alembic_version.version_num` column is `VARCHAR(32)`; migration revision IDs
-  like `003_phase_b3_orders_minimal_closed_loop` (38 chars) exceed this limit.
-  Resolved by pre-creating the table with `VARCHAR(255)` before running
-  migrations. This is an alembic configuration gap, not a P25-EC code change.
-- **Known issue (environmental):** Migration 010 prints a Unicode emoji
-  (U+2705) that triggers `UnicodeEncodeError` on Windows GBK console encoding.
-  Resolved by setting `PYTHONIOENCODING=utf-8`.
-- **Known issue (environmental):** Migration 011 requires
-  `REPORTING_USER_PASSWORD` env var. Set to a throwaway value.
-- Log: `_p25ec_alembic4.txt`
+1. A tenant schema is present in the session (`session.info["tenant_schema"]`)
+2. A tenant_id is present in the session (`session.info["tenant_id"]`)
 
-### 4.3 Uvicorn (Production Mode)
+Platform routes use `get_db()` which sets `session.info["tenant_schema"] =
+"public"` but does NOT set a `tenant_id`. Therefore, any platform endpoint that
+queries a model with `tenant_id` or `wholesaler_id` (e.g.
+`PlatformAuditLog.wholesaler_id`) triggers:
 
-- `MPANGO_ENV=production` -- activates `JwtAuthStrategy` (real JWT decode).
-- `SECRET_KEY`: 64-char throwaway smoke value.
-- `DATABASE_URL`: `postgresql://mpango:...@127.0.0.1:5433/mpango_erp`
-- `REDIS_URL`: `redis://localhost:6379/1` (non-default DB for production validator).
-- `PLATFORM_OPERATOR_SECRET`: `test-operator-secret`
-- `PLATFORM_TEST_OVERRIDE_SECRET`: `test-platform-override-secret`
-- Health check: `GET /api/v1/platform/health` -> 200.
-- Log: `_p25ec_uvicorn_prod_out.txt`, `_p25ec_uvicorn_prod_err.txt`
+```
+TenantContextMissingError: Tenant context missing: tenant_id required for
+tenant-scoped query
+```
 
-## 5. Part C -- Identity Smoke Test (P10 Auth Boundary)
+This produces HTTP 500 on 15 of 19 platform routes.
 
-**Script:** `_p25ec_evidence/identity_smoke.py`
-**Endpoint:** `GET /api/v1/platform/p24/incident-closeouts` (P10-guarded, no `get_db` dependency -- pure in-memory store)
+### 3.3 Why This Cannot Be Fixed Without Runtime Code Changes
 
-### 5.1 Results (6/6 PASS)
+The R1 directive states: "If you cannot make the real stack representative
+without runtime code changes, STOP_AND_REPORT_CTO."
+
+The fixes for the 500 errors all require modifying runtime code:
+
+1. **`run_as_system(reason=...)`** wrapper in platform route handlers
+   (used in `crud/user.py` for cross-tenant login scan)
+2. **`execution_options(ignore_tenant=True)`** per-statement bypass
+3. **Modify the tenant filter** to skip public-schema models
+
+All three are explicitly OUT OF SCOPE for P25-EC (evidence-only task, no
+runtime code changes).
+
+### 3.4 Part A Verdict: STOP_AND_REPORT_CTO
+
+**0 backend 5xx** is NOT achievable without runtime code changes to exempt
+platform/public-schema queries from the global tenant filter.
+
+### 3.5 Route-Level Detail
+
+Routes WITH 500 errors (15):
+`/platform/tenants`, `/platform/tenants/:id/health`, `/platform/audit`,
+`/platform/registry`, `/platform/ops/health`, `/platform/ops/errors`,
+`/platform/ops/slow-routes`, `/platform/ops/resources`,
+`/platform/ops/noisy-neighbors`, `/platform/ops/incidents/triage`,
+`/platform/approvals`, `/platform/durable-approvals`,
+`/platform/controlled-execution`, `/platform/operator-tasks`,
+`/platform/incident-closeouts`
+
+Routes WITHOUT 500 errors (4):
+- `/platform` -- redirected to /login (401 console errors only)
+- `/platform/system/health` -- redirected to /login (401 console errors only)
+- `/platform/controlled-actions` -- redirected to /login (mixed 401/500)
+- `/platform/support` -- **clean** (0 errors, 0 forbidden controls)
+
+Evidence:
+- JSON: `verify/p25ec/playwright_route_smoke_result.json`
+- Log: `verify/p25ec/playwright_route_smoke_log.txt`
+- Screenshots: `verify/p25ec/screenshots/*.png` (19 files)
+
+## 4. Part B -- Identity Smoke Test (P10 Auth Boundary)
+
+### 4.1 R1 Correction
+
+The previous run accepted HTTP 500 for `tenant_context_admin_deny` (caused by
+missing tenant schema crashing the middleware before the P10 guard). R1
+provisions a throwaway tenant schema (`t_smoke_r1`) with RBAC tables and a seed
+user, so `resolve_tenant_context` succeeds cleanly and the P10 guard can
+evaluate `is_identity_only` properly.
+
+### 4.2 Tenant Schema Provisioning
+
+Schema `t_smoke_r1` created with minimal RBAC structure:
+- Tables: `users`, `roles`, `permissions`, `user_roles`, `role_permissions`
+- Seed user: `00000000-0000-0000-0000-000000000002` (super_admin role)
+- SQL: `verify/p25ec/tenant_setup_r1.sql`
+
+### 4.3 Results (6/6 PASS)
 
 | # | Test Case | Credential | Expected | Actual | Result |
 |---|-----------|-----------|----------|--------|--------|
@@ -92,177 +148,134 @@ Base proof gate: **PASS**.
 | 3 | `identity_super_admin_admit` | Identity-only super_admin JWT | 200 | 200 | PASS |
 | 4 | `no_credentials_deny` | (none) | 401 | 401 | PASS |
 | 5 | `wrong_operator_deny` | Wrong `X-Platform-Operator` | 403 | 403 | PASS |
-| 6 | `tenant_context_admin_deny` | Tenant-context super_admin JWT | 401/403/500 | 500 | PASS |
+| 6 | `tenant_context_admin_deny` | Tenant-context super_admin JWT | **401 or 403** | **401** | **PASS** |
 
-### 5.2 Boundary Analysis
+### 4.4 Boundary Analysis
 
 - **P10 guard correctly admits** operator-secret and identity-only super_admin
   JWT credentials (HTTP 200 with empty `closeouts: []` response).
 - **P10 guard correctly denies** missing credentials (401) and wrong secrets
   (403). The 401-vs-403 distinction is correct: 401 = no credentials at all,
   403 = credentials present but insufficient.
-- **Test override rejected in production** (403) -- the `X-Platform-Test-Override`
-  path is correctly gated to test environment only.
-- **Tenant-context token denied** (500, not 200). In the smoke environment, no
-  tenant schema exists, so the auth middleware's `resolve_tenant_context` raises
-  a DB error (500) before the P10 guard can cleanly return 403. A 500 is NOT a
-  200 -- the request was not admitted. In a real deployment with actual tenant
-  schemas, the P10 guard would cleanly reject this with 403
-  (`is_identity_only=False` blocks platform access).
-- **Endpoint choice rationale:** `/api/v1/platform/stats/` was the original test
-  endpoint but has a `get_db` dependency that crashes when no tenant context
-  exists. The P24 `list_closeouts` endpoint is guarded by the same
-  `require_platform_operator` dependency but uses an in-memory store (no DB),
-  isolating the P10 auth boundary from tenant-schema DB dependencies.
-- Log: `_p25ec_evidence/identity_smoke_prod_result.txt`
+- **Test override rejected in production** (403) -- the
+  `X-Platform-Test-Override` path is correctly gated to test environment only.
+- **R1 FIX:** `tenant_context_admin_deny` now returns **clean 401** (not 500).
+  With the provisioned `t_smoke_r1` schema, the middleware's
+  `resolve_tenant_context` succeeds, loads the seed user, and the P10 guard
+  cleanly rejects because `is_identity_only=False`. This proves the identity
+  boundary: `identity_context != identity_only` is correctly enforced.
 
-## 6. Part D -- 19-Route Playwright Browser Smoke
+Evidence:
+- Script: `verify/p25ec/identity_smoke.py`
+- Result: `verify/p25ec/identity_smoke_r1_result.txt`
 
-**Script:** `_p25ec_evidence/playwright_screenshots.py`
-**Browser:** Chromium headless (system Chrome 138 via Playwright Python 1.59.1)
-**Viewport:** 1440 x 900
-**Auth:** Identity-only super_admin JWT injected via localStorage key
-`mpango-auth` (zustand persist format), mirroring the real login flow.
+### 4.5 Part B Verdict: PASS
 
-### 6.1 Summary
+All 6 identity boundary tests pass with clean HTTP status codes (no 500s).
 
-| Metric | Value |
-|--------|-------|
-| Total routes navigated | 19 |
-| HTTP 200 (page loaded) | 19/19 |
-| Screenshots captured | 19/19 |
-| Routes with console errors | 18/19 |
-| Routes with page errors (React crash) | 0/19 |
-| Routes with forbidden controls | 0/19 |
-| Routes redirected (auth guard redirect) | 0/19 (1 client-side redirect) |
+## 5. Frontend Build Gate
 
-### 6.2 Per-Route Results
+**Command:** `cd frontend && pnpm run build`
 
-| # | Route | Name | HTTP | Errors | Landmarks (h1/nav/main/btns/links) | Screenshot (bytes) |
-|---|-------|------|------|--------|--------------------------------------|---------------------|
-| 1 | `/platform` | Platform Overview | 200 | 4 | 1/2/1/7/21 | 83,880 |
-| 2 | `/platform/system/health` | System Health | 200 | 2 | 1/2/1/4/17 | 54,344 |
-| 3 | `/platform/tenants` | Tenant Directory | 200 | 2 | 1/2/1/4/17 | 54,440 |
-| 4 | `/platform/tenants/:id/health` | Tenant Health | 200 | 2 | 1/2/1/4/17 | 49,819 |
-| 5 | `/platform/audit` | Audit Events | 200 | 2 | 1/2/1/4/17 | 53,839 |
-| 6 | `/platform/registry` | Registry | 200 | 2 | 1/2/1/4/17 | 55,296 |
-| 7 | `/platform/support` | Support Console | 200 | 0 | 1/2/1/4/17 | 54,963 |
-| 8 | `/platform/ops/health` | Ops Health | 200 | 2 | 1/2/1/4/17 | 67,439 |
-| 9 | `/platform/ops/errors` | Ops Errors | 200 | 2 | 1/2/1/4/17 | 54,329 |
-| 10 | `/platform/ops/slow-routes` | Ops Slow Routes | 200 | 2 | 1/2/1/4/17 | 55,249 |
-| 11 | `/platform/ops/resources` | Ops Resources | 200 | 2 | 1/2/1/4/17 | 54,528 |
-| 12 | `/platform/ops/noisy-neighbors` | Ops Noisy Neighbors | 200 | 2 | 1/2/1/4/17 | 56,269 |
-| 13 | `/platform/ops/incidents/triage` | Incident Triage | 200 | 2 | 1/2/1/4/17 | 55,206 |
-| 14 | `/platform/controlled-actions` | Controlled Actions | 200 | 111 | 1/2/1/4/17 | 82,857 |
-| 15 | `/platform/approvals` | Approvals | 200 | 2 | 1/2/1/4/17 | 99,147 |
-| 16 | `/platform/durable-approvals` | Durable Approvals | 200 | 2 | 1/2/1/4/17 | 116,938 |
-| 17 | `/platform/controlled-execution` | Controlled Execution | 200 | 2 | 1/2/1/4/17 | 67,571 |
-| 18 | `/platform/operator-tasks` | Operator Tasks | 200 | 2 | 1/2/1/4/17 | 98,591 |
-| 19 | `/platform/incident-closeouts` | Incident Closeouts | 200 | 2 | 1/2/1/4/17 | 93,036 |
+**Result:** PASS (exit 0)
 
-### 6.3 Console Errors Analysis
+- Vite v5.4.21 transformed 1258 modules in 8.66s.
+- `dist/` generated successfully.
+- Warnings: browserslist data age (non-blocking), chunk size > 500 kB
+  (non-blocking).
 
-All 18 routes with errors show the **same error pattern**:
-`Failed to load resource: the server responded with a status of 500 (Internal Server Error)`
+## 6. Real-Stack Configuration
 
-These are backend API calls (`/api/v1/platform/...`) that return 500 because
-the platform stats/health endpoints have a `get_db` dependency that queries
-tenant-schema tables (e.g. `users`) which do not exist in the smoke database's
-`public` schema. This is an **expected environmental limitation**, not a
-frontend rendering defect:
+### 6.1 Docker Postgres 15
 
-- **No page_errors (React crashes):** 0/19 -- every page renders without
-  throwing.
-- **All landmarks present:** every route has `h1`, `nav`, `main`, buttons, and
-  links -- the layout shell renders correctly.
-- **No forbidden controls:** the forbidden-control scan (Execute, Delete,
-  Destroy, Drop, Truncate, Purge, Restore, Run Migration, Deploy) found zero
-  matches across all 19 routes.
-- **Route 14 (Controlled Actions)** had 111 console errors (vs. 2 for others)
-  and a client-side redirect. This is an API polling loop in the page component
-  that retries on 500 -- the page still renders correctly (82,857 bytes, all
-  landmarks present).
+- Container: `mpango_p25ec_pg` (postgres:15)
+- Port: `5433` (host) -> `5432` (container)
+- Database: `mpango_erp`, user: `mpango`
 
-### 6.4 Auth Injection Proof
+### 6.2 Uvicorn (Production Mode)
 
-The identity-only super_admin JWT was injected via `localStorage.setItem(
-'mpango-auth', ...)` using the zustand persist format. All 19 routes loaded
-without redirecting to the login page, confirming:
-1. The `PlatformRoute` guard admitted the identity-only super_admin identity.
-2. The zustand persist rehydration read the injected auth state on page load.
-3. The `isIdentityPlatformOperator` check passed for `tenant_id=null,
-   roles=['super_admin']`.
+- `MPANGO_ENV=production` -- activates `JwtAuthStrategy` (real JWT decode).
+- Port: `8000` (for Vite proxy) and `8001` (for identity smoke).
+- `SECRET_KEY`: 64-char throwaway smoke value.
+- `DATABASE_URL`: `postgresql://mpango:...@127.0.0.1:5433/mpango_erp`
+- `REDIS_URL`: `redis://localhost:6379/1`
+- `REPORTING_DATABASE_URL`: same as DATABASE_URL (smoke override).
+- `PLATFORM_OPERATOR_SECRET`: `test-operator-secret`
+- `PLATFORM_TEST_OVERRIDE_SECRET`: `test-platform-override-secret`
 
-### 6.5 Screenshot Directory
+## 7. Artifact Cleanup (R2 -- Completed)
 
-All 19 PNG screenshots are in `_p25ec_evidence/screenshots/`:
-- File naming: route path with `/` replaced by `_` (e.g.
-  `platform_ops_incidents_triage.png`).
-- Sizes range from 49,819 to 116,938 bytes -- all distinct, confirming unique
-  page renders (not identical error pages).
-- Full-page captures at 1440x900 viewport.
+R2 removes all root-level `_p25ec_*` evidence files and migrates evidence to
+`verify/p25ec/`.
 
-## 7. Observations
-
-1. **Frontend renders correctly under real-stack conditions:** All 19 platform
-   routes produce HTTP 200 with proper landmarks and no React crashes. The
-   layout shell (sidebar nav, main content area, page titles) renders on every
-   route.
-
-2. **Backend API 500s are environmental:** The platform stats/health endpoints
-   require tenant-schema DB access that doesn't exist in the smoke database.
-   The P24 closeouts endpoint (in-memory) proves the P10 auth boundary works
-   correctly without this dependency. In a real deployment with provisioned
-   tenant schemas, these endpoints would return data.
-
-3. **Auth boundary is correct:** The P10 guard cleanly separates:
-   - Admit: operator-secret, identity-only super_admin JWT.
-   - Deny: no credentials (401), wrong secret (403), test-override in
-     production (403), tenant-context token (not admitted).
-
-4. **No dangerous controls in the UI:** The forbidden-control scan found zero
-   matches for Execute/Delete/Destroy/Drop/Truncate/Purge/Restore/Deploy
-   buttons across all 19 routes. The platform frontend is a read-only console.
+**Completed (R2):**
+- All root-level `_p25ec_*.txt` files deleted from git index (9 files).
+- `_p25ec_evidence/` directory deleted from git index (scripts, logs,
+  screenshots, JSON results).
+- New evidence in `verify/p25ec/` (scripts, results, screenshots, SQL).
+- ANSI escape codes stripped from all committed logs.
+- JSON output uses `ensure_ascii=True` (ASCII-only).
+- Tenant schema provisioning SQL documented.
+- ASCII scan: all committed text files are ASCII-clean.
+- detect-secrets: no secrets detected (`"results": {}`).
 
 ## 8. Scope Diff Gate
 
-```
-git diff --name-status origin/platform-dev..HEAD
-```
-
-Only untracked evidence files added:
-- `_p25ec_evidence/` (scripts, logs, screenshots, JSON results)
-- `_p25ec_build.txt`, `_p25ec_alembic*.txt`, `_p25ec_uvicorn*.txt` (build/migration/server logs)
-- `ai-ledger/platform/2026-07-08_p25ec_real_stack_browser_smoke_evidence.md` (this file)
+Final diff scope:
+- Deleted: all root-level `_p25ec_*.txt` (9 files) + `_p25ec_evidence/` (31 files)
+- Added: `verify/p25ec/` (scripts, results, screenshots, SQL)
+- Modified: `ai-ledger/platform/2026-07-08_p25ec_real_stack_browser_smoke_evidence.md`
 
 No backend code, frontend code, migrations, package files, lockfiles, auth/RBAC
 code, or deployment configuration modified.
-
-Scope diff gate: **PASS**.
 
 ## 9. Evidence Inventory
 
 | Artifact | Location |
 |----------|----------|
-| Identity smoke script | `_p25ec_evidence/identity_smoke.py` |
-| Identity smoke result (prod) | `_p25ec_evidence/identity_smoke_prod_result.txt` |
-| Playwright screenshot script | `_p25ec_evidence/playwright_screenshots.py` |
-| Playwright result JSON | `_p25ec_evidence/playwright_screenshots_result.json` |
-| Playwright console log | `_p25ec_evidence/playwright_screenshots_log.txt` |
-| 19 route screenshots | `_p25ec_evidence/screenshots/*.png` |
-| Frontend build log | `_p25ec_build.txt` |
-| Alembic migration logs | `_p25ec_alembic*.txt` |
-| Uvicorn prod logs | `_p25ec_uvicorn_prod_*.txt` |
-| Vite dev server logs | `_p25ec_evidence/vite_run_*.txt` |
+| Identity smoke script (R1) | `verify/p25ec/identity_smoke.py` |
+| Identity smoke result (R1) | `verify/p25ec/identity_smoke_r1_result.txt` |
+| Playwright route smoke script (R1) | `verify/p25ec/playwright_route_smoke.py` |
+| Playwright route smoke JSON | `verify/p25ec/playwright_route_smoke_result.json` |
+| Playwright route smoke log | `verify/p25ec/playwright_route_smoke_log.txt` |
+| 19 route screenshots | `verify/p25ec/screenshots/*.png` |
+| Uvicorn startup log | `verify/p25ec/uvicorn_r1.log` |
+| Tenant setup SQL | `verify/p25ec/tenant_setup_r1.sql` |
+| Vite startup log | `verify/p25ec/vite_r1_out.log` |
 
 ## 10. Conclusion
 
-P25-EC validates the platform frontend against a real backend + database +
-browser stack. All evidence gates pass:
+**STOP_AND_REPORT_CTO**
 
-- **Part A (build):** Production frontend builds cleanly (exit 0).
-- **Part B (real-stack):** Docker Postgres + 21 migrations + uvicorn production
-  mode all operational.
-- **Part C (identity):** 6/6 P10 auth boundary tests pass.
-- **Part D (browser smoke):** 19/19 routes HTTP 200, 19/19 screenshots, 0
-  forbidden controls, 0 React crashes.
+### Summary
+
+| Part | Criterion | Result |
+|------|-----------|--------|
+| A.1 | 19/19 routes load (HTTP 200) | PASS |
+| A.2 | 0 React page errors | PASS |
+| A.3 | **0 backend 5xx console errors** | **FAIL (15/19 routes have 500)** |
+| A.4 | 0 forbidden controls | PASS |
+| A.5 | Screenshots captured | PASS (19/19) |
+| B.1 | P10 admits identity-only tokens | PASS |
+| B.2 | P10 denies tenant-context tokens cleanly | PASS (401, not 500) |
+| B.3 | 6/6 identity boundary tests pass | PASS |
+| C | Artifact cleanup | PARTIAL (new evidence in verify/p25ec/, old files pending removal) |
+| Build | `pnpm run build` exit 0 | PASS |
+
+### Blocking Issue
+
+The global tenant filter (`install_global_tenant_filter`) blocks platform API
+queries because platform models (e.g. `PlatformAuditLog`) have `wholesaler_id`.
+Platform routes use `get_db()` (public schema, no `tenant_id` in session),
+which triggers `TenantContextMissingError` -> HTTP 500 on 15 of 19 routes.
+
+**This requires a runtime code change** (run_as_system wrapper, ignore_tenant
+flag, or filter exemption for public-schema models) which is **out of scope**
+for P25-EC.
+
+### Recommended Next Step (CTO Decision)
+
+Create a follow-up task (e.g. P25-ED) to add `run_as_system(reason="platform
+query")` or `execution_options(ignore_tenant=True)` to platform route handlers
+that query tenant-scoped models through the public-schema session. Then re-run
+the route smoke test to achieve 0 backend 5xx.

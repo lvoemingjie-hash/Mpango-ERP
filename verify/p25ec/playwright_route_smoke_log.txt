@@ -1,0 +1,31 @@
+======================================================================
+P25-EC-R1: 19-Route Playwright Browser Smoke
+Target: http://localhost:5173
+Routes: 19
+======================================================================
+Generated identity-only super_admin JWT (224 chars)
+Using system Chrome: C:\Program Files\Google\Chrome\Application\chrome.exe
+[ 1/19] Platform Overview              /platform ... HTTP 200 | errors=29 | forbidden=0 | shot=OK REDIR
+[ 2/19] System Health                  /platform/system/health ... HTTP 200 | errors=30 | forbidden=0 | shot=OK REDIR
+[ 3/19] Tenant Directory               /platform/tenants ... HTTP 200 | errors=4 | forbidden=0 | shot=OK
+[ 4/19] Tenant Health                  /platform/tenants/smoke-tenant-1/health ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[ 5/19] Audit Events                   /platform/audit ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[ 6/19] Registry                       /platform/registry ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[ 7/19] Support Console                /platform/support ... HTTP 200 | errors=0 | forbidden=0 | shot=OK
+[ 8/19] Ops Health                     /platform/ops/health ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[ 9/19] Ops Errors                     /platform/ops/errors ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[10/19] Ops Slow Routes                /platform/ops/slow-routes ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[11/19] Ops Resources                  /platform/ops/resources ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[12/19] Ops Noisy Neighbors            /platform/ops/noisy-neighbors ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[13/19] Incident Triage                /platform/ops/incidents/triage ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[14/19] Controlled Actions             /platform/controlled-actions ... HTTP 200 | errors=32 | forbidden=0 | shot=OK REDIR
+[15/19] Approvals                      /platform/approvals ... HTTP 200 | errors=28 | forbidden=0 | shot=OK REDIR
+[16/19] Durable Approvals              /platform/durable-approvals ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[17/19] Controlled Execution           /platform/controlled-execution ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[18/19] Operator Tasks                 /platform/operator-tasks ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+[19/19] Incident Closeouts             /platform/incident-closeouts ... HTTP 200 | errors=2 | forbidden=0 | shot=OK
+======================================================================
+Summary: 19 routes | HTTP-200=19 | redirected=4 | with_errors=18 | with_5xx_console=15 | with_forbidden=0 | screenshots=19/19
+======================================================================
+Detailed JSON: C:\Users\Jeff0\MPANGO ERP\_p25ec_2026-07-08\verify\p25ec\playwright_route_smoke_result.json
+Screenshots dir: C:\Users\Jeff0\MPANGO ERP\_p25ec_2026-07-08\verify\p25ec\screenshots

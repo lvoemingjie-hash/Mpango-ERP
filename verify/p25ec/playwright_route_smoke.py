@@ -1,5 +1,5 @@
 """
-P25-EC Part D: 19-Route Playwright Chromium Real-Stack Browser Smoke.
+P25-EC-R1 19-Route Playwright Chromium Real-Stack Browser Smoke.
 
 Navigates to all 19 PLATFORM_ROUTES against the real Vite dev server (port 5173)
 + real backend (port 8000) + real Docker Postgres (port 5433). Captures:
@@ -13,9 +13,17 @@ Navigates to all 19 PLATFORM_ROUTES against the real Vite dev server (port 5173)
 Auth state is injected into localStorage as an identity-only super_admin via the
 zustand persist key ``mpango-auth`` (mirrors the real login flow).
 
+KNOWN FINDING (R1): Platform API endpoints that query tenant-scoped models
+(e.g. PlatformAuditLog with wholesaler_id) through the public-schema session
+trigger the global tenant filter (TenantContextMissingError) because the
+public session has no tenant_id.  This produces HTTP 500 on those endpoints.
+Fixing this requires runtime code changes (run_as_system / ignore_tenant /
+filter exemption for public-schema models), which are OUT OF SCOPE for P25-EC
+(evidence-only task).  See STOP_AND_REPORT_CTO note in the ledger.
+
 Usage:
   cd backend
-  python ../_p25ec_evidence/playwright_screenshots.py
+  python ../verify/p25ec/playwright_route_smoke.py
 """
 import json
 import os
@@ -24,7 +32,8 @@ import time
 from pathlib import Path
 
 # Ensure backend imports resolve for JWT generation
-BACKEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.join(SCRIPT_DIR, "..", "..", "backend")
 sys.path.insert(0, BACKEND_DIR)
 
 from playwright.sync_api import sync_playwright
@@ -32,7 +41,7 @@ from playwright.sync_api import sync_playwright
 # -- Config ------------------------------------------------------------------
 
 BASE_URL = "http://localhost:5173"
-SHOTS_DIR = Path(__file__).parent / "screenshots"
+SHOTS_DIR = Path(SCRIPT_DIR) / "screenshots"
 SHOTS_DIR.mkdir(exist_ok=True)
 
 # 19 routes from PLATFORM_ROUTES (readiness.tsx); tenant-health uses a dummy id.
@@ -95,7 +104,7 @@ def generate_auth_jwt():
     )
 
 
-def build_auth_storage(jwt_token: str) -> str:
+def build_auth_storage(jwt_token):
     """Build the zustand persist JSON for localStorage key 'mpango-auth'."""
     return json.dumps({
         "state": {
@@ -121,7 +130,7 @@ def scan_route(page, route_entry):
     path = route_entry["path"]
     full_url = BASE_URL + path
     screenshot_name = path.strip("/").replace("/", "_") or "root"
-    screenshot_path = SHOTS_DIR / f"{screenshot_name}.png"
+    screenshot_path = SHOTS_DIR / (screenshot_name + ".png")
 
     console_errors = []
     page_errors = []
@@ -142,7 +151,7 @@ def scan_route(page, route_entry):
         http_status = response.status if response else 0
     except Exception as e:
         http_status = -1
-        console_errors.append(f"Navigation error: {str(e)[:200]}")
+        console_errors.append("Navigation error: " + str(e)[:200])
         response = None
 
     # Wait for React hydration + async data fetches to settle
@@ -186,7 +195,7 @@ def scan_route(page, route_entry):
     except Exception as e:
         screenshot_ok = False
         screenshot_size = 0
-        console_errors.append(f"Screenshot error: {str(e)[:200]}")
+        console_errors.append("Screenshot error: " + str(e)[:200])
 
     # Clean up listeners
     page.remove_listener("console", on_console_msg)
@@ -204,7 +213,7 @@ def scan_route(page, route_entry):
         "http_status": http_status,
         "title": title,
         "landmarks": landmarks,
-        "forbidden_controls": forbidden_found,
+        "forbidden_control": forbidden_found,
         "console_errors": console_errors,
         "page_errors": page_errors,
         "screenshot": {
@@ -217,14 +226,14 @@ def scan_route(page, route_entry):
 
 def main():
     print("=" * 70)
-    print("P25-EC Part D: 19-Route Playwright Browser Smoke")
-    print(f"Target: {BASE_URL}")
-    print(f"Routes: {len(ROUTES)}")
+    print("P25-EC-R1: 19-Route Playwright Browser Smoke")
+    print("Target: %s" % BASE_URL)
+    print("Routes: %d" % len(ROUTES))
     print("=" * 70)
 
     jwt_token = generate_auth_jwt()
     auth_json = build_auth_storage(jwt_token)
-    print(f"Generated identity-only super_admin JWT ({len(jwt_token)} chars)")
+    print("Generated identity-only super_admin JWT (%d chars)" % len(jwt_token))
 
     results = []
 
@@ -235,10 +244,10 @@ def main():
         launch_opts = {"headless": True}
         if os.path.exists(chrome_path):
             launch_opts["executable_path"] = chrome_path
-            print(f"Using system Chrome: {chrome_path}")
+            print("Using system Chrome: %s" % chrome_path)
         elif os.path.exists(edge_path):
             launch_opts["executable_path"] = edge_path
-            print(f"Using system Edge: {edge_path}")
+            print("Using system Edge: %s" % edge_path)
         browser = pw.chromium.launch(**launch_opts)
         context = browser.new_context(
             viewport={"width": 1440, "height": 900},
@@ -246,24 +255,23 @@ def main():
         )
 
         # Inject auth into localStorage before any page loads
-        context.add_init_script(f"""
-            try {{
-                localStorage.setItem('mpango-auth', {json.dumps(auth_json)});
-            }} catch(e) {{}}
-        """)
+        context.add_init_script(
+            "try { localStorage.setItem('mpango-auth', " + json.dumps(auth_json) + "); } catch(e) {}"
+        )
 
         page = context.new_page()
 
         for i, route in enumerate(ROUTES, 1):
-            print(f"[{i:2d}/{len(ROUTES)}] {route['name']:30s} {route['path']}", end=" ... ")
+            label = "[%2d/%d] %-30s %s ..." % (i, len(ROUTES), route["name"], route["path"])
+            print(label, end=" ")
             result = scan_route(page, route)
             results.append(result)
             status_str = str(result["http_status"])
             errs = len(result["console_errors"]) + len(result["page_errors"])
-            forbidden = len(result["forbidden_controls"])
+            forbidden = len(result["forbidden_control"])
             shot = "OK" if result["screenshot"]["captured"] else "FAIL"
             redir = " REDIR" if result["redirected"] else ""
-            print(f"HTTP {status_str:>3} | errors={errs} | forbidden={forbidden} | shot={shot}{redir}")
+            print("HTTP %3s | errors=%d | forbidden=%d | shot=%s%s" % (status_str, errs, forbidden, shot, redir))
 
         browser.close()
 
@@ -272,17 +280,20 @@ def main():
     ok = sum(1 for r in results if r["http_status"] == 200)
     redirected = sum(1 for r in results if r["redirected"])
     with_errors = sum(1 for r in results if r["console_errors"] or r["page_errors"])
-    with_forbidden = sum(1 for r in results if r["forbidden_controls"])
+    with_5xx = sum(
+        1 for r in results
+        if any("500" in e for e in r["console_errors"])
+    )
+    with_forbidden = sum(1 for r in results if r["forbidden_control"])
     screenshots_ok = sum(1 for r in results if r["screenshot"]["captured"])
 
     print("=" * 70)
-    print(f"Summary: {total} routes | HTTP-200={ok} | redirected={redirected} | "
-          f"with_errors={with_errors} | with_forbidden={with_forbidden} | "
-          f"screenshots={screenshots_ok}/{total}")
+    print("Summary: %d routes | HTTP-200=%d | redirected=%d | with_errors=%d | with_5xx_console=%d | with_forbidden=%d | screenshots=%d/%d" % (
+        total, ok, redirected, with_errors, with_5xx, with_forbidden, screenshots_ok, total))
     print("=" * 70)
 
     output = {
-        "test_suite": "P25-EC Part D: Playwright Browser Smoke",
+        "test_suite": "P25-EC-R1: Playwright Browser Smoke",
         "base_url": BASE_URL,
         "browser": "chromium (headless)",
         "viewport": {"width": 1440, "height": 900},
@@ -292,17 +303,18 @@ def main():
             "http_200": ok,
             "redirected": redirected,
             "routes_with_errors": with_errors,
+            "routes_with_5xx_console_errors": with_5xx,
             "routes_with_forbidden_controls": with_forbidden,
             "screenshots_captured": screenshots_ok,
         },
         "routes": results,
     }
 
-    output_path = Path(__file__).parent / "playwright_screenshots_result.json"
+    output_path = Path(SCRIPT_DIR) / "playwright_route_smoke_result.json"
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(output, f, indent=2, ensure_ascii=False)
-    print(f"\nDetailed JSON: {output_path}")
-    print(f"Screenshots dir: {SHOTS_DIR}")
+        json.dump(output, f, indent=2, ensure_ascii=True)
+    print("Detailed JSON: %s" % output_path)
+    print("Screenshots dir: %s" % SHOTS_DIR)
 
 
 if __name__ == "__main__":

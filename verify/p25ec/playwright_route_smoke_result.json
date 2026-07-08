@@ -1,5 +1,5 @@
 {
-  "test_suite": "P25-EC Part D: Playwright Browser Smoke",
+  "test_suite": "P25-EC-R1: Playwright Browser Smoke",
   "base_url": "http://localhost:5173",
   "browser": "chromium (headless)",
   "viewport": {
@@ -10,8 +10,9 @@
   "summary": {
     "total_routes": 19,
     "http_200": 19,
-    "redirected": 1,
+    "redirected": 4,
     "routes_with_errors": 18,
+    "routes_with_5xx_console_errors": 15,
     "routes_with_forbidden_controls": 0,
     "screenshots_captured": 19
   },
@@ -21,33 +22,58 @@
       "name": "Platform Overview",
       "group": "overview",
       "url": "http://localhost:5173/platform",
-      "final_url": "http://localhost:5173/platform",
-      "redirected": false,
+      "final_url": "http://localhost:5173/login",
+      "redirected": true,
       "http_status": 200,
       "title": "Mpango ERP - African Wholesale-Retail Management",
       "landmarks": {
-        "h1": 1,
-        "h2": 3,
-        "nav": 2,
-        "main": 1,
+        "h1": 0,
+        "h2": 0,
+        "nav": 0,
+        "main": 0,
         "table": 0,
         "cards": 0,
         "testids": 0,
-        "buttons": 7,
-        "links": 21
+        "buttons": 0,
+        "links": 0
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
       ],
       "page_errors": [],
       "screenshot": {
         "file": "platform.png",
         "captured": true,
-        "bytes": 83880
+        "bytes": 16436
       }
     },
     {
@@ -55,31 +81,59 @@
       "name": "System Health",
       "group": "health",
       "url": "http://localhost:5173/platform/system/health",
-      "final_url": "http://localhost:5173/platform/system/health",
-      "redirected": false,
+      "final_url": "http://localhost:5173/login",
+      "redirected": true,
       "http_status": 200,
       "title": "Mpango ERP - African Wholesale-Retail Management",
       "landmarks": {
-        "h1": 1,
+        "h1": 0,
         "h2": 0,
-        "nav": 2,
-        "main": 1,
+        "nav": 0,
+        "main": 0,
         "table": 0,
         "cards": 0,
         "testids": 0,
-        "buttons": 4,
-        "links": 17
+        "buttons": 0,
+        "links": 0
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
       ],
       "page_errors": [],
       "screenshot": {
         "file": "platform_system_health.png",
         "captured": true,
-        "bytes": 54344
+        "bytes": 16436
       }
     },
     {
@@ -102,8 +156,10 @@
         "buttons": 4,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
       ],
@@ -134,7 +190,7 @@
         "buttons": 4,
         "links": 18
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -166,7 +222,7 @@
         "buttons": 4,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -198,7 +254,7 @@
         "buttons": 3,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -230,7 +286,7 @@
         "buttons": 2,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [],
       "page_errors": [],
       "screenshot": {
@@ -259,7 +315,7 @@
         "buttons": 4,
         "links": 21
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -291,7 +347,7 @@
         "buttons": 4,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -323,7 +379,7 @@
         "buttons": 4,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -355,7 +411,7 @@
         "buttons": 4,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -387,7 +443,7 @@
         "buttons": 4,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -419,7 +475,7 @@
         "buttons": 4,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -436,7 +492,7 @@
       "name": "Controlled Actions",
       "group": "actions",
       "url": "http://localhost:5173/platform/controlled-actions",
-      "final_url": "http://localhost:5173/",
+      "final_url": "http://localhost:5173/login",
       "redirected": true,
       "http_status": 200,
       "title": "Mpango ERP - African Wholesale-Retail Management",
@@ -451,7 +507,7 @@
         "buttons": 0,
         "links": 0
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
         "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
@@ -484,92 +540,13 @@
         "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
         "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
         "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
       ],
       "page_errors": [],
       "screenshot": {
         "file": "platform_controlled-actions.png",
         "captured": true,
-        "bytes": 82857
+        "bytes": 16436
       }
     },
     {
@@ -577,23 +554,49 @@
       "name": "Approvals",
       "group": "approvals",
       "url": "http://localhost:5173/platform/approvals",
-      "final_url": "http://localhost:5173/platform/approvals",
-      "redirected": false,
+      "final_url": "http://localhost:5173/",
+      "redirected": true,
       "http_status": 200,
       "title": "Mpango ERP - African Wholesale-Retail Management",
       "landmarks": {
-        "h1": 1,
-        "h2": 3,
-        "nav": 2,
-        "main": 1,
+        "h1": 0,
+        "h2": 0,
+        "nav": 0,
+        "main": 0,
         "table": 0,
         "cards": 0,
-        "testids": 14,
-        "buttons": 5,
+        "testids": 0,
+        "buttons": 3,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
       ],
@@ -601,7 +604,7 @@
       "screenshot": {
         "file": "platform_approvals.png",
         "captured": true,
-        "bytes": 99147
+        "bytes": 50663
       }
     },
     {
@@ -624,7 +627,7 @@
         "buttons": 5,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -656,7 +659,7 @@
         "buttons": 3,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -688,7 +691,7 @@
         "buttons": 7,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
@@ -720,7 +723,7 @@
         "buttons": 6,
         "links": 17
       },
-      "forbidden_controls": [],
+      "forbidden_control": [],
       "console_errors": [
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
         "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"

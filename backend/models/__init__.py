@@ -25,6 +25,7 @@ from models.intake import IntakeProductRow, IntakeUpload, IntakeValidationIssue,
 from models.tenant_onboarding import (
     EmailVerificationToken,
     OnboardingStatusToken,
+    OwnerCredentialSetupToken,
     PasswordResetToken,
     TenantRegistration,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "EmailVerificationToken",
     "PasswordResetToken",
     "OnboardingStatusToken",
+    "OwnerCredentialSetupToken",
 
     # Tenant schema models
     "User",

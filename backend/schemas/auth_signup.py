@@ -114,3 +114,31 @@ class OnboardingStatusResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class OwnerCredentialSetupRequest(BaseModel):
+    """Public owner credential setup request."""
+
+    setup_token: str | None = Field(None, alias="setupToken", max_length=512)
+    password: str = Field(..., min_length=8, max_length=128)
+
+    model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True)
+
+
+class OwnerCredentialSetupResponseData(BaseModel):
+    """Neutral owner credential setup response data."""
+
+    registration_id: UUID | None = Field(None, alias="registrationId")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class OwnerCredentialSetupResponse(BaseModel):
+    """Neutral public owner credential setup response."""
+
+    success: bool = True
+    data: OwnerCredentialSetupResponseData = Field(default_factory=OwnerCredentialSetupResponseData)
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = ConfigDict(populate_by_name=True)

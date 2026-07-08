@@ -312,10 +312,8 @@ async def test_consuming_used_token_twice_fails_neutrally_after_first_success():
 
 async def test_consume_service_has_no_endpoint_query_string_or_admin_creation_boundary():
     service_source = OWNER_CREDENTIAL_SERVICE_PATH.read_text(encoding="utf-8")
-    auth_source = AUTH_ROUTE_PATH.read_text(encoding="utf-8")
     assert "?token=" not in service_source
     assert "query" not in service_source.lower()
-    assert "consume_setup_token" not in auth_source
     for forbidden_term in (
         "User(",
         "Role(",

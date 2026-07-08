@@ -20,6 +20,7 @@ from core.security import (
     create_contextual_token,
     create_identity_token,
     decode_token,
+    hash_password,
     TokenPayload,
     InvalidTokenError,
     ExpiredTokenError
@@ -28,10 +29,14 @@ from crud.wholesaler import get_wholesaler_by_id
 from crud.user import find_user_across_tenants, get_user_with_permissions
 from database.session import get_tenant_db
 from models.user import User, Role
+from models.tenant_onboarding import OwnerCredentialSetupToken, TenantRegistration
 from schemas.auth_signup import (
     OnboardingStatusRequest,
     OnboardingStatusResponse,
     OnboardingStatusResponseData,
+    OwnerCredentialSetupRequest,
+    OwnerCredentialSetupResponse,
+    OwnerCredentialSetupResponseData,
     SignupRequest,
     SignupResponse,
     SignupResponseData,
@@ -63,11 +68,20 @@ from services.onboarding_service import (
     VerificationTokenInvalidError,
     create_signup_registration,
     get_onboarding_status,
+    hash_token,
     verify_email_token,
+)
+from services.owner_credential_service import (
+    INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN,
+    OwnerCredentialSetupAdminCreationError,
+    OwnerCredentialSetupConsumeResult,
+    OwnerCredentialSetupService,
+    OwnerCredentialSetupTokenInvalidError,
 )
 
 router = APIRouter()
 PUBLIC_SIGNUP_STATUS = "pending_email_verification"
+NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE = "Credential setup result is not disclosed through this endpoint."
 
 
 # ---------------------------------------------------------------------------
@@ -570,3 +584,117 @@ async def get_current_user(
         ),
         timestamp=datetime.utcnow()
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/onboarding/setup-credential  (U6-I5 owner credential setup)
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/onboarding/setup-credential",
+    response_model=OwnerCredentialSetupResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def setup_credential(
+    request: OwnerCredentialSetupRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    try:
+        service = OwnerCredentialSetupService(db)
+        consume_result = await service.consume_setup_token(
+            request.setup_token, request.password
+        )
+        admin_result = await service.create_first_admin_rbac(consume_result)
+    except OwnerCredentialSetupTokenInvalidError:
+        consume_result = await _recover_if_already_setup(service, request, db)
+        if consume_result is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN,
+                    "message": NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE,
+                },
+            )
+        admin_result = await service.create_first_admin_rbac(consume_result)
+    except OwnerCredentialSetupAdminCreationError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "OWNER_ADMIN_RBAC_CREATION_FAILED",
+                "message": NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE,
+            },
+        )
+
+    return OwnerCredentialSetupResponse(
+        data=OwnerCredentialSetupResponseData(
+            registration_id=admin_result.registration_id,
+        ),
+        message=NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE,
+        timestamp=datetime.utcnow(),
+    )
+
+
+async def _recover_if_already_setup(
+    service: OwnerCredentialSetupService,
+    request: OwnerCredentialSetupRequest,
+    db: AsyncSession,
+) -> OwnerCredentialSetupConsumeResult | None:
+    raw_token = request.setup_token
+    if raw_token is None or not raw_token.strip():
+        return None
+    token_hash = hash_token(raw_token.strip(), service.settings)
+    token_row = await db.execute(
+        select(OwnerCredentialSetupToken)
+        .where(OwnerCredentialSetupToken.token_hash == token_hash)
+        .execution_options(ignore_tenant=True)
+    )
+    setup_token = token_row.scalar_one_or_none()
+    if setup_token is None:
+        return None
+    if setup_token.used_at is None:
+        return None
+    if (
+        setup_token.revoked_at is not None
+        or setup_token.is_deleted
+        or setup_token.purpose != "owner_credential_setup"
+    ):
+        return None
+    registration_result = await db.execute(
+        select(TenantRegistration)
+        .where(TenantRegistration.id == setup_token.registration_id)
+        .execution_options(ignore_tenant=True)
+    )
+    registration = registration_result.scalar_one_or_none()
+    if registration is None:
+        return None
+    if registration.tenant_schema is None:
+        return None
+    admin_exists = await _admin_already_exists(
+        db, registration.tenant_schema, registration.owner_email
+    )
+    if not admin_exists:
+        return None
+    return OwnerCredentialSetupConsumeResult(
+        registration_id=registration.id,
+        tenant_schema=registration.tenant_schema,
+        owner_email=registration.owner_email,
+        password_hash=hash_password(request.password),
+    )
+
+
+async def _admin_already_exists(
+    db: AsyncSession, tenant_schema: str, owner_email: str
+) -> bool:
+    from db.sql_safety import validate_identifier
+    validate_identifier(tenant_schema, "tenant_schema")
+    count = await db.scalar(
+        text(
+            f'SELECT count(*) FROM "{tenant_schema}".user_roles ur '
+            f'JOIN "{tenant_schema}".users u ON u.id = ur.user_id '
+            f'JOIN "{tenant_schema}".roles r ON r.id = ur.role_id '
+            f"WHERE u.email = :email AND r.name = 'admin'"
+        ),
+        {"email": owner_email},
+    )
+    return count is not None and count > 0

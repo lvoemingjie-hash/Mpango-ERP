@@ -39,6 +39,7 @@ EXPECTED_PUBLIC_ALLOWLIST = {
     "/api/v1/auth/signup",
     "/api/v1/auth/verify-email",
     "/api/v1/auth/onboarding/status",
+    "/api/v1/auth/onboarding/setup-credential",
     "/api/v1/auth/refresh",
     "/api/v1/invitations/{code}",
     "/api/v1/retailers/register",

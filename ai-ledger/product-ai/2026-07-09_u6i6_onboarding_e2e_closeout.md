@@ -34,3 +34,16 @@
 - `npx gitnexus analyze`: repository indexed successfully, `7,066 nodes | 20,207 edges | 470 clusters | 239 flows`.
 - `npx gitnexus status`: indexed commit `aa566b1`, current commit `aa566b1`, status up to date.
 - Verdict condition: `STOP_AND_REPORT_CTO` unless CTO authorizes updating the U6F closeout migration-head expectation or expands U6-I6 allowed files.
+
+## R1 Closeout Regression Head Alignment
+
+- CTO authorized editing `backend/tests/test_u6f_onboarding_auth_chain_closeout.py` because the U6F closeout gate carried stale Alembic head contract text from before U6-I1/U6-I2.
+- Root cause: `TEST_CONTRACT_DRIFT`, not a product defect.
+- Updated the U6F migration sanity assertion from `027_onboarding_status_tokens` to the current canonical onboarding/auth head `028_owner_credential_setup_tokens`.
+- The test was not weakened: it now asserts `script.get_heads() == ["028_owner_credential_setup_tokens"]` and `script.get_current_head() == "028_owner_credential_setup_tokens"`.
+- `poetry run pytest tests/test_u6i6_onboarding_e2e_closeout.py -q`: `1 passed` using disposable Postgres `opencode_u6i6_r1_pg` on `127.0.0.1:55438`.
+- `poetry run pytest tests/test_u6i5_owner_credential_setup_endpoint.py tests/test_u6f_onboarding_auth_chain_closeout.py tests/test_route_authorization_policy.py -q`: `51 passed`.
+- `git diff --check`: passed.
+- ASCII/mojibake scans: passed.
+- Secret-term scan: reviewed; findings are expected test token/password/hash terminology and existing allowlisted test credentials only.
+- `pre-commit run --files backend/tests/test_u6f_onboarding_auth_chain_closeout.py ai-ledger/product-ai/2026-07-09_u6i6_onboarding_e2e_closeout.md`: passed.

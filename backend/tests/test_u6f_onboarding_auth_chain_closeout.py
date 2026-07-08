@@ -466,7 +466,9 @@ async def test_migration_schema_sanity_for_u6f_closeout_gate():
     backend_dir = Path(__file__).resolve().parents[1]
     alembic_cfg = Config(str(backend_dir / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
-    assert ScriptDirectory.from_config(alembic_cfg).get_current_head() == "027_onboarding_status_tokens"
+    script = ScriptDirectory.from_config(alembic_cfg)
+    assert script.get_heads() == ["028_owner_credential_setup_tokens"]
+    assert script.get_current_head() == "028_owner_credential_setup_tokens"
 
     assert TenantRegistration.__tablename__ == "tenant_registrations"
     assert EmailVerificationToken.__tablename__ == "email_verification_tokens"

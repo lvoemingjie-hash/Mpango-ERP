@@ -5,7 +5,8 @@ Branch: `opencode/u6h3-tenant-provisioning-reconcile-cleanup-2026-07-08`
 Base: `origin/product-dev-recovered` at `27623beb merge: U6-H2 tenant provisioning wholesaler schema`
 Implementation commit: `b622f351 feat(U6-H3): reconcile partial tenant provisioning`
 R1 base commit: `b7a91394 docs(U6-H3): record final validation evidence`
-Verdict: `PASS_FOR_CTO_REVIEW_PENDING_R1_FINAL_GITNEXUS`
+R1 implementation commit: `57b27abd fix(U6-H3): preserve partial schema retry anchor`
+Verdict: `PASS_FOR_CTO_MERGE_REVIEW`
 
 ## Pre-Edit GitNexus Impact
 
@@ -87,7 +88,12 @@ R1 validation using disposable local Postgres container `opencode_u6h3_r1_pg` on
 Final GitNexus evidence:
 
 - `npx gitnexus analyze`: repository indexed successfully; `6,794 nodes`, `19,319 edges`, `449 clusters`, `229 flows`.
-- `npx gitnexus status`: indexed commit `b622f35`, current commit `b622f35`, status up-to-date.
+- `npx gitnexus status`: indexed commit `b7a9139`, current commit `b7a9139`, status up-to-date.
+
+R1 GitNexus evidence:
+
+- `npx gitnexus analyze`: repository indexed successfully; `6,816 nodes`, `19,371 edges`, `454 clusters`, `229 flows`.
+- `npx gitnexus status`: indexed commit `57b27ab`, current commit `57b27ab`, status up-to-date.
 
 ## Residual Risk
 

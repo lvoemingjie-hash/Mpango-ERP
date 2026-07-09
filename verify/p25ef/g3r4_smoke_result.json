@@ -1,0 +1,218 @@
+{
+  "task": "G3-R4",
+  "smoke_type": "backend-only",
+  "timestamp": "2026-07-09T14:33:35",
+  "identity_smoke": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "cases": [
+      {
+        "test": "operator_admit",
+        "expected": [
+          200
+        ],
+        "actual": 200,
+        "passed": true,
+        "body": "{\"closeouts\":[],\"total\":0,\"active_count\":0,\"limit\":50,\"offset\":0}"
+      },
+      {
+        "test": "test_override_reject",
+        "expected": [
+          403
+        ],
+        "actual": 403,
+        "passed": true,
+        "body": "{\"code\":\"PERMISSION_DENIED\",\"message\":\"{'code': 'PLATFORM_ACCESS_DENIED', 'message': 'Insufficient platform credentials for P10 access'}\",\"request_id\":\"55ed0c2a-2848-4baf-82f9-84bbcd24ce04\"}"
+      },
+      {
+        "test": "identity_super_admin_admit",
+        "expected": [
+          200
+        ],
+        "actual": 200,
+        "passed": true,
+        "body": "{\"closeouts\":[],\"total\":0,\"active_count\":0,\"limit\":50,\"offset\":0}"
+      },
+      {
+        "test": "no_credentials_deny",
+        "expected": [
+          401
+        ],
+        "actual": 401,
+        "passed": true,
+        "body": "{\"code\":\"UNAUTHORIZED\",\"message\":\"{'code': 'PLATFORM_ACCESS_REQUIRED', 'message': 'P10 endpoints require platform-operator credentials'}\",\"request_id\":\"27047a4c-b1d1-4e22-93d0-6fe7b5651a8d\"}"
+      },
+      {
+        "test": "wrong_operator_deny",
+        "expected": [
+          403
+        ],
+        "actual": 403,
+        "passed": true,
+        "body": "{\"code\":\"PERMISSION_DENIED\",\"message\":\"{'code': 'PLATFORM_ACCESS_DENIED', 'message': 'Insufficient platform credentials for P10 access'}\",\"request_id\":\"8c94d221-ea05-40bb-a5a4-7c88f040a6bf\"}"
+      },
+      {
+        "test": "tenant_context_admin_deny",
+        "expected": [
+          401,
+          403
+        ],
+        "actual": 401,
+        "passed": true,
+        "body": "{\"code\":\"TENANT_CONTEXT_UNRESOLVABLE\",\"message\":\"Tenant context referenced by token is not available\"}"
+      }
+    ]
+  },
+  "route_smoke": {
+    "total": 19,
+    "http_200": 18,
+    "count_5xx": 0,
+    "registry_status": 200,
+    "audit_status": 200,
+    "routes": [
+      {
+        "path": "/api/v1/platform/health",
+        "name": "Platform Health",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"status\":\"ok\",\"track\":\"platform-p0\",\"timestamp\":\"2026-07-09T06:33:41.390875\"}"
+      },
+      {
+        "path": "/api/v1/platform/p10/system/health",
+        "name": "System Health",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"overall_status\":\"unknown\",\"api_status\":null,\"database_status\":null,\"database_connections\":null,\"queue_status\":null,\"cpu_status\":null,\"memory_status\":null,\"disk_status\":null,\"error_rate\":null,\"slow_request_count\":null,\"generated_at\":\"2026-07-09T06:33:41.396875Z\"}"
+      },
+      {
+        "path": "/api/v1/platform/p10/tenants",
+        "name": "Tenant Directory [P25-EG]",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"items\":[{\"tenant_id\":\"428620e1-be09-492f-ba9a-fb98289a39e2\",\"tenant_name\":\"U6I2 Owner Credential Wholesaler\",\"tenant_schema\":\"t_428620e1be09492fba9afb98289a39e2\",\"status\":\"active\",\"tier\":null,\"created_at\":\"2026-07-09T05:12:19.447171Z\",\"last_activity_at\":null,\"user_count\":null,\"health_status\":\"unkn"
+      },
+      {
+        "path": "/api/v1/platform/p10/tenants/00000000-0000-0000-0000-000000000099/health",
+        "name": "Tenant Health",
+        "status": 404,
+        "is_5xx": false,
+        "body": "{\"code\":\"RESOURCE_NOT_FOUND\",\"message\":\"Tenant not found\",\"request_id\":\"f9fad799-15b6-4abe-84d6-d425a5aecfc9\"}"
+      },
+      {
+        "path": "/api/v1/platform/p10/audit/events",
+        "name": "Audit Events [P25-EF]",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"items\":[{\"event_id\":\"3d0e9de3-ad1a-4027-bf9a-388f0c653017\",\"actor_id\":\"00000000-0000-0000-0000-000000000001\",\"actor_role\":null,\"tenant_id\":null,\"scope\":\"global\",\"action\":\"p22_execution_catalog\",\"reason\":null,\"result\":\"completed\",\"metadata_redacted\":{\"scope\":\"platform_p22\",\"total\":7,\"executed\":fals"
+      },
+      {
+        "path": "/api/v1/platform/p17/registry",
+        "name": "Registry [P25-EH+EJ]",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"items\":[{\"tenant_id\":\"428620e1-be09-492f-ba9a-fb98289a39e2\",\"tenant_name\":\"U6I2 Owner Credential Wholesaler\",\"tenant_schema\":\"t_428620e1be09492fba9afb98289a39e2\",\"tier\":null,\"created_at\":\"2026-07-09T05:12:19.447171Z\",\"lifecycle_state\":{\"state\":\"active\",\"previous_state\":null,\"entered_at\":null,\"last"
+      },
+      {
+        "path": "/api/v1/platform/stats/",
+        "name": "Support/Stats",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"tenants\":{\"total\":4,\"active\":4,\"suspended\":0,\"other\":0},\"provisioning\":{\"complete\":0,\"pending\":0,\"failed\":0},\"audit\":{\"total_entries\":87,\"last_24h\":87},\"generated_at\":\"2026-07-09T06:33:41.693938+00:00\"}"
+      },
+      {
+        "path": "/api/v1/platform/p13/ops/health",
+        "name": "Ops Health",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"overall_status\":\"unknown\",\"api_status\":null,\"database_status\":null,\"database_connections\":null,\"queue_status\":null,\"cpu_status\":null,\"memory_status\":null,\"disk_status\":null,\"error_rate\":null,\"slow_request_count\":null,\"generated_at\":\"2026-07-09T06:33:41.714594Z\"}"
+      },
+      {
+        "path": "/api/v1/platform/p13/ops/errors",
+        "name": "Ops Errors",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"source_status\":\"unavailable\",\"window_minutes\":15,\"total_errors\":null,\"error_classes\":[],\"top_routes\":[],\"top_tenants\":null,\"unavailable_reason\":\"Request error telemetry is not instrumented; correlation IDs are required for class/route breakdown.\",\"generated_at\":\"2026-07-09T06:33:41.750678Z\"}"
+      },
+      {
+        "path": "/api/v1/platform/p13/ops/slow-routes",
+        "name": "Ops Slow Routes",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"source_status\":\"unavailable\",\"window_minutes\":15,\"threshold_ms\":1000,\"total_slow_requests\":null,\"routes\":[],\"unavailable_reason\":\"Per-request latency telemetry is not instrumented.\",\"generated_at\":\"2026-07-09T06:33:41.778362Z\"}"
+      },
+      {
+        "path": "/api/v1/platform/p13/ops/resources",
+        "name": "Ops Resources",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"database\":{\"status\":\"healthy\",\"connection_pool_active\":0,\"connection_pool_max\":5,\"connection_pool_idle\":1,\"latency_ms\":5},\"queue\":null,\"memory\":null,\"cpu\":null,\"disk\":null,\"generated_at\":\"2026-07-09T06:33:41.804378Z\"}"
+      },
+      {
+        "path": "/api/v1/platform/p13/ops/noisy-neighbors",
+        "name": "Ops Noisy Neighbors",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"window_minutes\":15,\"tenants\":[],\"unavailable_reason\":\"Cross-tenant activity telemetry is not available; requires business-scope instrumentation outside platform-runtime scope.\",\"generated_at\":\"2026-07-09T06:33:41.823053Z\"}"
+      },
+      {
+        "path": "/api/v1/platform/p15/incidents/triage/snapshot",
+        "name": "Incident Triage",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"snapshot_id\":\"1b152f209872\",\"generated_at\":\"2026-07-09T06:33:41.841580Z\",\"overall_status\":\"healthy\",\"signals\":[{\"signal_id\":\"f73952bbf947\",\"kind\":\"database\",\"severity\":\"info\",\"source_ref\":\"p14.ops.resources.database\",\"observed_value\":\"healthy\",\"source_status\":\"available\",\"unavailable_reason\":null,"
+      },
+      {
+        "path": "/api/v1/platform/p18/actions/catalog",
+        "name": "Controlled Actions",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"items\":[{\"action_type\":\"support_mode.on\",\"classification\":\"write\",\"allowed_actors\":[\"super_admin\",\"support_operator\"],\"confirmation_required\":true,\"degraded_allowed\":false,\"description\":\"Request to enable support mode. Recorded only; not executed.\"},{\"action_type\":\"support_mode.off\",\"classificatio"
+      },
+      {
+        "path": "/api/v1/platform/p19/approvals",
+        "name": "Approvals",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"items\":[],\"total\":0,\"limit\":50,\"offset\":0,\"storage\":\"memory\",\"executed\":false}"
+      },
+      {
+        "path": "/api/v1/platform/p20/durable-approvals",
+        "name": "Durable Approvals",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"items\":[],\"total\":0,\"limit\":50,\"offset\":0,\"storage\":\"durable\",\"executed\":false}"
+      },
+      {
+        "path": "/api/v1/platform/p22/execution/catalog",
+        "name": "Controlled Execution",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"items\":[{\"action_type\":\"support_mode.on\",\"action_class\":\"write\",\"executor\":\"super_admin (identity-only)\",\"reversible\":true,\"reversibility_via\":\"support_mode.off\",\"tenant_business_mutation\":\"none\"},{\"action_type\":\"support_mode.off\",\"action_class\":\"write\",\"executor\":\"super_admin (identity-only)\",\"re"
+      },
+      {
+        "path": "/api/v1/platform/p23/operator-tasks",
+        "name": "Operator Tasks",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"tasks\":[],\"total\":0,\"active_count\":0,\"limit\":50,\"offset\":0}"
+      },
+      {
+        "path": "/api/v1/platform/p24/incident-closeouts",
+        "name": "Incident Closeouts",
+        "status": 200,
+        "is_5xx": false,
+        "body": "{\"closeouts\":[],\"total\":0,\"active_count\":0,\"limit\":50,\"offset\":0}"
+      }
+    ]
+  },
+  "log_grep": {
+    "tcm": 0,
+    "http_500": 0,
+    "pending_rollback": 0,
+    "undefined_table": 0,
+    "tracebacks": 0,
+    "tcm_samples": [],
+    "http500_samples": []
+  }
+}

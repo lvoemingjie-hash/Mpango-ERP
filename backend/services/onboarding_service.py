@@ -24,6 +24,7 @@ from models.tenant_onboarding import (
     ONBOARDING_STATUS_TOKEN_PURPOSE,
     EmailVerificationToken,
     OnboardingStatusToken,
+    OwnerCredentialSetupToken,
     TenantRegistration,
 )
 from schemas.auth_signup import SignupRequest
@@ -130,17 +131,24 @@ async def verify_email_token(
         raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
 
     verification_token, registration = row
+    retryable_after_setup_email_failure = await _is_retryable_setup_email_failure(
+        db, registration, now
+    )
     if (
         verification_token.used_at is not None
         or verification_token.revoked_at is not None
         or verification_token.expires_at <= now
-        or registration.status != "pending_email_verification"
+        or (
+            registration.status != "pending_email_verification"
+            and not retryable_after_setup_email_failure
+        )
     ):
         raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
 
-    registration.status = "email_verified"
-    registration.email_verified_at = now
-    verification_token.used_at = now
+    if registration.status == "pending_email_verification":
+        registration.status = "email_verified"
+    if registration.email_verified_at is None:
+        registration.email_verified_at = now
     await db.flush()
 
     await complete_email_verified_onboarding(
@@ -148,6 +156,9 @@ async def verify_email_token(
         registration_id=registration.id,
         settings=settings,
     )
+
+    verification_token.used_at = datetime.now(timezone.utc)
+    await db.flush()
 
     return VerifyEmailResult(status=registration.status)
 
@@ -160,6 +171,9 @@ async def complete_email_verified_onboarding(
 ) -> None:
     """Provision tenant and deliver owner setup credential email after verification."""
     settings = settings or get_settings()
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+
     provisioning = TenantProvisioningService(
         db,
         database_url=getattr(settings, "DATABASE_URL", None),
@@ -173,6 +187,11 @@ async def complete_email_verified_onboarding(
         raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
     if provisioned.status != "active":
         raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+
+    # Real bootstrap can commit tenant schema DDL independently. Persist the
+    # public assignment before setup email delivery so SMTP failure can retry
+    # against the same wholesaler/schema instead of orphaning the schema.
+    await db.commit()
 
     from services.owner_credential_service import OwnerCredentialSetupService
 
@@ -390,6 +409,31 @@ async def _registration_by_id(db: AsyncSession, registration_id: UUID) -> Tenant
         .execution_options(ignore_tenant=True)
     )
     return result.scalar_one_or_none()
+
+
+async def _is_retryable_setup_email_failure(
+    db: AsyncSession, registration: TenantRegistration, now: datetime
+) -> bool:
+    if (
+        registration.status != "active"
+        or registration.email_verified_at is None
+        or registration.wholesaler_id is None
+        or registration.tenant_schema is None
+        or registration.provisioning_completed_at is None
+    ):
+        return False
+
+    result = await db.execute(
+        select(OwnerCredentialSetupToken)
+        .where(OwnerCredentialSetupToken.registration_id == registration.id)
+        .where(OwnerCredentialSetupToken.used_at.is_(None))
+        .where(OwnerCredentialSetupToken.revoked_at.is_(None))
+        .where(OwnerCredentialSetupToken.is_deleted.is_(False))
+        .where(OwnerCredentialSetupToken.expires_at > now)
+        .limit(1)
+        .execution_options(ignore_tenant=True)
+    )
+    return result.scalar_one_or_none() is None
 
 
 def _request_fingerprint_hash(

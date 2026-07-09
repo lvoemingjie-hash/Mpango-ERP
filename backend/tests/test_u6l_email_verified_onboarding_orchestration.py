@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlparse
 from types import SimpleNamespace
 from typing import Any
 
@@ -309,6 +310,14 @@ def _assert_public_response_safe(response, *, forbidden_values: tuple[Any, ...] 
             assert str(value).lower() not in body
 
 
+def _setup_token_from_smtp_message(message) -> str:
+    body = message.get_content()
+    setup_line = next(line for line in body.splitlines() if "setupToken=" in line)
+    query = parse_qs(urlparse(setup_line).query)
+    assert "setupToken" in query
+    return query["setupToken"][0]
+
+
 async def test_verify_email_provisions_tenant_issues_setup_token_and_sends_owner_email():
     email = f"u6l_{uuid.uuid4().hex}@example.com"
     verification_token = await _signup(email)
@@ -442,7 +451,7 @@ async def test_production_missing_owner_setup_smtp_config_fails_closed(monkeypat
     _assert_public_response_safe(response, forbidden_values=(verification_token,))
 
 
-async def test_production_owner_setup_smtp_failure_fails_closed(monkeypatch):
+async def test_production_owner_setup_smtp_failure_fails_closed_with_retry_anchor(monkeypatch):
     email = f"u6l_{uuid.uuid4().hex}@example.com"
     verification_token = await _signup(email)
     settings = _production_settings()
@@ -457,12 +466,82 @@ async def test_production_owner_setup_smtp_failure_fails_closed(monkeypatch):
     assert response.json()["detail"]["code"] == "EMAIL_DELIVERY_NOT_CONFIGURED"
     registration = await _registration_row(email)
     verification_row = (await _verification_token_rows(email))[0]
-    assert registration["status"] == "pending_email_verification"
-    assert registration["tenant_schema"] is None
+    assert registration["status"] == "active"
+    assert registration["tenant_schema"] is not None
+    assert registration["wholesaler_id"] is not None
     assert verification_row["used_at"] is None
     assert await _setup_token_rows(registration["id"]) == []
     assert FakeSMTP.sent_messages == []
-    _assert_public_response_safe(response, forbidden_values=(verification_token,))
+    _assert_public_response_safe(
+        response,
+        forbidden_values=(
+            verification_token,
+            registration["id"],
+            registration["wholesaler_id"],
+            registration["tenant_schema"],
+        ),
+    )
+
+
+async def test_real_bootstrap_owner_setup_smtp_failure_persists_anchor_and_retry_reconciles(monkeypatch):
+    email = f"u6l_{uuid.uuid4().hex}@example.com"
+    verification_token = await _signup(email)
+    settings = _production_settings()
+    FakeSMTP.fail_send = True
+    monkeypatch.setattr(onboarding_service, "get_settings", lambda: settings)
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", FakeSMTP)
+
+    first = await _verify(verification_token)
+
+    assert first.status_code == 503, first.text
+    assert first.json()["detail"]["code"] == "EMAIL_DELIVERY_NOT_CONFIGURED"
+    registration_after_failure = await _registration_row(email)
+    verification_row = (await _verification_token_rows(email))[0]
+    assert registration_after_failure["status"] == "active"
+    assert registration_after_failure["wholesaler_id"] is not None
+    assert registration_after_failure["tenant_schema"] is not None
+    assert registration_after_failure["provisioning_completed_at"] is not None
+    assert registration_after_failure["password_hash"] is None
+    assert verification_row["used_at"] is None
+    assert await _setup_token_rows(registration_after_failure["id"]) == []
+    assert FakeSMTP.sent_messages == []
+    _assert_public_response_safe(
+        first,
+        forbidden_values=(
+            verification_token,
+            registration_after_failure["id"],
+            registration_after_failure["wholesaler_id"],
+            registration_after_failure["tenant_schema"],
+        ),
+    )
+
+    FakeSMTP.fail_send = False
+    retry = await _verify(verification_token)
+
+    assert retry.status_code == 200, retry.text
+    registration_after_retry = await _registration_row(email)
+    setup_rows = await _setup_token_rows(registration_after_retry["id"])
+    assert registration_after_retry["wholesaler_id"] == registration_after_failure["wholesaler_id"]
+    assert registration_after_retry["tenant_schema"] == registration_after_failure["tenant_schema"]
+    assert await _wholesaler_count(registration_after_retry["wholesaler_id"]) == 1
+    assert len(setup_rows) == 1
+    assert len(FakeSMTP.sent_messages) == 1
+    setup_token = _setup_token_from_smtp_message(FakeSMTP.sent_messages[0])
+    assert setup_rows[0]["token_hash"] == hash_token(setup_token)
+    assert setup_rows[0]["token_hash"] != setup_token
+    verification_row_after_retry = (await _verification_token_rows(email))[0]
+    assert verification_row_after_retry["used_at"] is not None
+    _assert_public_response_safe(
+        retry,
+        forbidden_values=(
+            verification_token,
+            setup_token,
+            setup_rows[0]["token_hash"],
+            registration_after_retry["id"],
+            registration_after_retry["wholesaler_id"],
+            registration_after_retry["tenant_schema"],
+        ),
+    )
 
 
 class FakeProvisioningService:

@@ -51,3 +51,17 @@
 - R1 implementation commit: `21de59fe` (`fix(U6-L): persist retry anchor after setup email failure`).
 - Post-R1-commit `npx gitnexus analyze` -> indexed successfully; 7,178 nodes, 20,553 edges, 473 clusters, 243 flows.
 - Post-R1-commit `npx gitnexus status` -> up-to-date at current commit `21de59f`.
+
+## R2 Finding/Fix
+
+- Finding: `_production_settings()` in `tests/test_u6l_email_verified_onboarding_orchestration.py` hardcoded `postgresql://postgres@127.0.0.1:55440/mpango_erp`, so the real-bootstrap retry proof failed on disposable Postgres ports other than `55440` before reaching the intended SMTP failure boundary.
+- Fix: `_production_settings()` now derives `DATABASE_URL` from `TEST_DATABASE_URL`, then `DATABASE_URL`, then current test settings, matching the active test database used by the session and bootstrap code.
+
+## R2 Validation Results
+
+- Fresh disposable Postgres: `opencode_u6l_r2_pg` on `127.0.0.1:55447`.
+- `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/mpango_erp poetry run pytest tests/test_u6l_email_verified_onboarding_orchestration.py -q` -> 7 passed.
+- `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/mpango_erp poetry run pytest tests/test_u6d_verify_email_endpoint.py tests/test_u6e_onboarding_status_endpoint.py tests/test_u6i5_owner_credential_setup_endpoint.py -q` -> 31 passed.
+- `git diff --check` -> passed; Git emitted LF/CRLF warnings only.
+- `pre-commit run --files backend/tests/test_u6l_email_verified_onboarding_orchestration.py` -> passed, including `detect-secrets`.
+- Hardcoded URL scan for `postgresql://postgres@127.0.0.1:55440/mpango_erp` in U6-L test file -> no matches.

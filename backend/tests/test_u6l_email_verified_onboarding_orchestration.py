@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
@@ -170,7 +171,7 @@ def _production_settings(**overrides: Any):
     values = {
         "MPANGO_ENV": "production",
         "SECRET_KEY": onboarding_service.get_settings().SECRET_KEY,
-        "DATABASE_URL": "postgresql://postgres@127.0.0.1:55440/mpango_erp",
+        "DATABASE_URL": _active_test_database_url(),
         "EMAIL_PROVIDER": "smtp",
         "EMAIL_DELIVERY_MODE": "smtp",
         "SMTP_HOST": "smtp.example.invalid",
@@ -183,6 +184,14 @@ def _production_settings(**overrides: Any):
     }
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def _active_test_database_url() -> str:
+    return (
+        os.environ.get("TEST_DATABASE_URL")
+        or os.environ.get("DATABASE_URL")
+        or onboarding_service.get_settings().DATABASE_URL
+    )
 
 
 async def _signup(email: str) -> str:

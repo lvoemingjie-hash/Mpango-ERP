@@ -1,8 +1,11 @@
 """
 Platform Track P0 - Read-only tenant lifecycle visibility endpoints.
 
-These endpoints provide platform administrators with visibility into
-tenant lifecycle status WITHOUT allowing mutations.
+P11-C0: These endpoints now require P10 platform operator credentials.
+Identity-only super_admin Bearer tokens, X-Platform-Operator secret,
+or test override (test env only) are accepted.
+
+Health and info endpoints remain unauthenticated (see health.py).
 """
 from __future__ import annotations
 
@@ -10,9 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
-from api.middleware.rbac import RequirePlatformAdmin
-from core.security import TokenPayload
+from api.dependencies import get_platform_db
+from api.v1.platform.p10.guard import require_platform_operator
 from models.wholesaler import Wholesaler
 from models.platform_tenant import PlatformTenant
 
@@ -21,8 +23,8 @@ router = APIRouter(prefix="/api/v1/platform/tenants", tags=["platform-tenants"])
 
 @router.get("/")
 async def list_tenants(
-    token: TokenPayload = Depends(RequirePlatformAdmin()),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
+    _auth: None = Depends(require_platform_operator),
 ):
     """List all tenants with platform lifecycle status (read-only)."""
     result = await db.execute(
@@ -57,8 +59,8 @@ async def list_tenants(
 @router.get("/{wholesaler_id}")
 async def get_tenant(
     wholesaler_id: str,
-    token: TokenPayload = Depends(RequirePlatformAdmin()),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_platform_db),
+    _auth: None = Depends(require_platform_operator),
 ):
     """Get detailed platform lifecycle info for a single tenant (read-only)."""
     result = await db.execute(

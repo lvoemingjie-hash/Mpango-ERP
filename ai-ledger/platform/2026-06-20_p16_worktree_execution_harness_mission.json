@@ -1,0 +1,18 @@
+{
+  "phase": "P16-A",
+  "branch": "codex/platform-p16a-worktree-harness-2026-06-20",
+  "base_ref": "HEAD",
+  "worktree_dir": "../platform-p16a-worktree-harness-2026-06-20",
+  "worker_command": [
+    "python",
+    "--version"
+  ],
+  "expected_files": [
+    "scripts/platform_worktree_executor.py",
+    "scripts/test_platform_worktree_executor.py"
+  ],
+  "report": "ai-ledger/platform/2026-06-20_p16_worktree_execution_harness_report.json",
+  "timeout_seconds": 600,
+  "allow_edits": true,
+  "notes": "P16-A/B foundation. Default dry-run; no risky worker executed in this slice."
+}

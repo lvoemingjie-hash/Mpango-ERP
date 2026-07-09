@@ -1,0 +1,17 @@
+{
+  "phase": "P6-B",
+  "agent": "claude",
+  "mission": "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run.md",
+  "expected_files": [
+    "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run.md",
+    "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run_mission.json",
+    "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run_result.json",
+    "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run_events.jsonl",
+    "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run_ledger.md"
+  ],
+  "result": "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run_result.json",
+  "events": "ai-ledger/platform/2026-06-03_p6b_first_function_dry_run_events.jsonl",
+  "timeout_seconds": 300,
+  "allow_edits": false,
+  "notes": "P6-B first-function dry run. Validates P6-phase mission gate acceptance and evidence pipeline. No runtime code changes."
+}

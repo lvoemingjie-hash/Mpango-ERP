@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.context import get_auth_context, get_tenant_context as fetch_tenant_context
 from core.security import TokenPayload
-from database.session import get_db
+from database.session import get_db, get_platform_db
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

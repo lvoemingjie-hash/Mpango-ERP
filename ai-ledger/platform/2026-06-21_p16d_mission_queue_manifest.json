@@ -1,0 +1,10 @@
+{
+  "phase": "P16-D",
+  "missions": [
+    "ai-ledger/platform/2026-06-21_p16d_smoke_success_a.json",
+    "ai-ledger/platform/2026-06-21_p16d_smoke_failure.json",
+    "ai-ledger/platform/2026-06-21_p16d_smoke_success_c.json"
+  ],
+  "report": "ai-ledger/platform/2026-06-21_p16d_mission_queue_batch_report.json",
+  "notes": "P16-D mission queue smoke manifest. Three ordered missions: success A (P16-C-style smoke worker + commit), controlled failure B (worker exits non-zero), success C (uncommitted output). Demonstrates sequential ordering, stop-on-first-failure (C is skipped after B fails), --continue-on-failure (all three run, aggregate still fails), and the failed-aggregate invariant. Default mode is dry-run; --execute runs the real batch through platform_worktree_executor."
+}

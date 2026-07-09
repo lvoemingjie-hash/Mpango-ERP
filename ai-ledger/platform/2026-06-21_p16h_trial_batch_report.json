@@ -1,0 +1,53 @@
+{
+  "evidence_kind": "platform_worktree_batch_report",
+  "phase": "P16-H",
+  "mode": "execute",
+  "continue_on_failure": true,
+  "aggregate_verdict": "failed",
+  "stopped_early": false,
+  "total_missions": 3,
+  "passed": 1,
+  "retried": 1,
+  "failed": 1,
+  "skipped": 0,
+  "max_retries": 1,
+  "resumed": true,
+  "report": "ai-ledger/platform/h_batch.json",
+  "missions": [
+    {
+      "order": 0,
+      "mission": "ai-ledger/platform/h_ok.json",
+      "mode": "execute",
+      "verdict": "passed",
+      "report": null,
+      "changed_files": null,
+      "failure": null,
+      "attempts": 0,
+      "resumed": true
+    },
+    {
+      "order": 1,
+      "mission": "ai-ledger/platform/h_fail.json",
+      "mode": "execute",
+      "verdict": "failed",
+      "report": "ai-ledger/platform/h_fail_rep.json",
+      "changed_files": 0,
+      "failure": "worker exited 2",
+      "attempts": 2,
+      "resumed": false
+    },
+    {
+      "order": 2,
+      "mission": "ai-ledger/platform/h_retry.json",
+      "mode": "execute",
+      "verdict": "retried",
+      "report": null,
+      "changed_files": null,
+      "failure": null,
+      "attempts": 0,
+      "resumed": true
+    }
+  ],
+  "notes": null,
+  "keep_reports": true
+}

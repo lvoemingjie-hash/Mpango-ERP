@@ -1,0 +1,4 @@
+{"event": "mission_validated", "gate": "platform_agent_mission_gate", "phase": "P3-A", "agent": "opencode", "exit_code": 0, "redacted": true}
+{"event": "batch_check", "gate": "platform_batch_mission_check", "total": 4, "passed": 4, "failed": 0, "exit_code": 0, "elapsed_seconds": 1.2, "redacted": true}
+{"event": "worker_summary", "gate": "platform_worker_reliability_summary", "total_missions": 4, "done": 2, "partial": 2, "failed": 0, "exit_code": 0, "elapsed_seconds": 0.4, "redacted": true}
+{"event": "harness_index_check", "gate": "platform_harness_index --check", "scripts": 19, "ledgers": 48, "issues": 0, "exit_code": 0, "elapsed_seconds": 0.3, "redacted": true}

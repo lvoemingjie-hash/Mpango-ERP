@@ -52,7 +52,6 @@ def _get_default_since() -> datetime:
 
 @router.get('/')
 async def list_audit_logs(
-    token: TokenPayload = Depends(RequirePlatformAdmin()),
     since: Optional[str] = Query(
         None,
         description=f"Filter entries created after this ISO datetime (default: {DEFAULT_SINCE_DAYS} days ago)"
@@ -140,7 +139,6 @@ async def list_audit_logs(
 
 @router.get('/summary')
 async def audit_summary(
-    token: TokenPayload = Depends(RequirePlatformAdmin()),
     since: Optional[str] = Query(
         None,
         description=f"Start of period (default: {DEFAULT_SINCE_DAYS} days ago)"

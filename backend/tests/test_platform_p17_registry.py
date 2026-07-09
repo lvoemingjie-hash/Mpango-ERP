@@ -700,3 +700,147 @@ class TestCounterexamples:
         client = TestClient(app)
         d = client.get(REGISTRY_PATH, headers=AUTH_HEADERS).json()
         assert d["items"][0]["lifecycle_state"]["state"] != "active"
+
+
+# ============================================================
+# P25-EH: P17 Registry Legacy UUID Robustness
+# ============================================================
+
+
+class TestP25EHRegistryLegacyUUID:
+    """P25-EH: platform registry must not 500 on legacy/non-v4-v7 UUIDs.
+
+    Root cause: PlatformTenantRegistry.tenant_id used the strict
+    validate_uuid_v4_v7 validator, but tenant_id is surfaced from legacy
+    product tables (public.wholesalers.id) which may contain non-v4/v7
+    UUIDs (e.g. seeded test rows like v1 11111111-...). The validator raised
+    ValueError -> Pydantic ValidationError -> HTTP 500 on
+    /api/v1/platform/p17/registry (discovered in G3-R3 real-stack smoke).
+
+    Fix: PlatformTenantRegistry._validate_tenant_id now uses
+    validate_uuid_any_version (P25-EG pattern). Strict v4/v7 stays in force
+    for platform-generated identifiers (PlatformRegistryAuditEvent,
+    TenantLifecycleState.last_audit_event_id).
+    """
+
+    LEGACY_V1 = "11111111-1111-1111-1111-111111111111"
+    VALID_V4 = "550e8400-e29b-41d4-a716-446655440000"
+
+    def _lifecycle(self):
+        from api.v1.platform.p17.schemas import TenantLifecycleState
+
+        return TenantLifecycleState(state="active", state_source_status="available")
+
+    def _flags(self):
+        from api.v1.platform.p17.schemas import TenantOperationalFlags
+
+        # all-false flags must carry flags_source_status="unknown" (not
+        # "available") per the cross-rule: unknown != false.
+        return TenantOperationalFlags(
+            support_mode_active=False,
+            incident_active=False,
+            login_paused=False,
+            writes_paused=False,
+            billing_hold=False,
+            backup_attention_required=False,
+            migration_attention_required=False,
+            quota_attention_required=False,
+            flags_source_status="unknown",
+        )
+
+    def _registry(self, tenant_id):
+        from api.v1.platform.p17.schemas import PlatformTenantRegistry
+
+        return PlatformTenantRegistry(
+            tenant_id=tenant_id,
+            tenant_name="Legacy Tenant",
+            tenant_schema="t_legacy",
+            tier=None,
+            created_at=None,
+            lifecycle_state=self._lifecycle(),
+            operational_flags=self._flags(),
+            provisioning_status=None,
+            backup_status=None,
+            last_registry_update_at=None,
+            registry_source_status="available",
+            unavailable_reason=None,
+        )
+
+    # -- PlatformTenantRegistry accepts legacy UUIDs --
+
+    def test_registry_accepts_legacy_v1_uuid(self):
+        """Must not raise -- this was the 500 root cause."""
+        reg = self._registry(self.LEGACY_V1)
+        assert reg.tenant_id == self.LEGACY_V1
+
+    def test_registry_accepts_valid_v4_uuid(self):
+        reg = self._registry(self.VALID_V4)
+        assert reg.tenant_id == self.VALID_V4
+
+    def test_registry_rejects_slug(self):
+        with pytest.raises(Exception):
+            self._registry("smoke-tenant-1")
+
+    def test_registry_rejects_garbage(self):
+        with pytest.raises(Exception):
+            self._registry("not-a-uuid")
+
+    def test_registry_rejects_empty_string(self):
+        with pytest.raises(Exception):
+            self._registry("")
+
+    # -- Strict validators stay in force (security/audit boundary) --
+
+    def test_audit_event_tenant_id_stays_strict(self):
+        """TenantRegistryAuditEvent.tenant_id must still enforce v4/v7."""
+        from api.v1.platform.p17.schemas import TenantRegistryAuditEvent
+
+        with pytest.raises(Exception):
+            TenantRegistryAuditEvent(
+                event_id=self.VALID_V4,
+                tenant_id=self.LEGACY_V1,
+                registry_action="registry_view",
+                result="completed",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+
+    def test_audit_event_event_id_stays_strict(self):
+        """TenantRegistryAuditEvent.event_id must still enforce v4/v7."""
+        from api.v1.platform.p17.schemas import TenantRegistryAuditEvent
+
+        with pytest.raises(Exception):
+            TenantRegistryAuditEvent(
+                event_id=self.LEGACY_V1,
+                tenant_id=self.VALID_V4,
+                registry_action="registry_view",
+                result="completed",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+
+    def test_lifecycle_audit_event_id_stays_strict(self):
+        """TenantLifecycleState.last_audit_event_id must still enforce v4/v7."""
+        from api.v1.platform.p17.schemas import TenantLifecycleState
+
+        with pytest.raises(Exception):
+            TenantLifecycleState(
+                state="active",
+                state_source_status="available",
+                last_audit_event_id=self.LEGACY_V1,
+            )
+
+    # -- Registry endpoint does not 500 on legacy UUID row --
+
+    def test_registry_endpoint_no_500_on_legacy_uuid(self):
+        """The actual 500 found in G3-R3: /p17/registry must return 200 when
+        a tenant row has a legacy v1 UUID."""
+        app = _make_app(
+            _mock_db(),
+            summary_list=_summary_list([_summary(tenant_id=self.LEGACY_V1)]),
+            provisioning_map={},
+        )
+        client = TestClient(app)
+        resp = client.get(REGISTRY_PATH, headers=AUTH_HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["tenant_id"] == self.LEGACY_V1

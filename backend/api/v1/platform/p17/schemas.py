@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from api.v1.platform.p10.schemas import (
     ActorRole,
     AuditResult,
+    validate_uuid_any_version,
     validate_uuid_v4_v7,
 )
 
@@ -377,7 +378,13 @@ class PlatformTenantRegistry(BaseModel):
         None, description="set when any sub-source is unavailable or unknown"
     )
 
-    _validate_tenant_id = field_validator("tenant_id")(validate_uuid_v4_v7)
+    # P25-EH: PlatformTenantRegistry is a read-only registry DTO that surfaces
+    # tenant_id from legacy product tables (public.wholesalers.id) which may
+    # contain non-v4/v7 UUIDs (e.g. seeded test rows). Use the lenient
+    # validate_uuid_any_version (P25-EG pattern) so the read-only API never
+    # 500s on legacy rows. Strict v4/v7 stays in force for platform-generated
+    # identifiers (PlatformRegistryAuditEvent below, TenantLifecycleState above).
+    _validate_tenant_id = field_validator("tenant_id")(validate_uuid_any_version)
 
 
 class PlatformTenantRegistryList(BaseModel):

@@ -24,14 +24,17 @@ from models.tenant_onboarding import (
     ONBOARDING_STATUS_TOKEN_PURPOSE,
     EmailVerificationToken,
     OnboardingStatusToken,
+    OwnerCredentialSetupToken,
     TenantRegistration,
 )
 from schemas.auth_signup import SignupRequest
 from services.email_delivery import (
     EmailDeliveryNotConfiguredError,
     is_verification_email_delivery_configured,
+    record_owner_setup_email,
     record_verification_email,
 )
+from services.tenant_provisioning_service import TenantProvisioningService
 
 
 NEUTRAL_SIGNUP_MESSAGE = "If this email can be used, verification instructions will be sent."
@@ -60,6 +63,10 @@ class VerificationTokenInvalidError(Exception):
 
 class OnboardingStatusTokenInvalidError(Exception):
     """Raised for invalid, expired, revoked, or non-actionable status tokens."""
+
+
+class OnboardingOrchestrationError(Exception):
+    """Raised when post-verification provisioning/setup orchestration fails."""
 
 
 @dataclass(frozen=True)
@@ -124,20 +131,88 @@ async def verify_email_token(
         raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
 
     verification_token, registration = row
+    retryable_after_setup_email_failure = await _is_retryable_setup_email_failure(
+        db, registration, now
+    )
     if (
         verification_token.used_at is not None
         or verification_token.revoked_at is not None
         or verification_token.expires_at <= now
-        or registration.status != "pending_email_verification"
+        or (
+            registration.status != "pending_email_verification"
+            and not retryable_after_setup_email_failure
+        )
     ):
         raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
 
-    registration.status = "email_verified"
-    registration.email_verified_at = now
-    verification_token.used_at = now
+    if registration.status == "pending_email_verification":
+        registration.status = "email_verified"
+    if registration.email_verified_at is None:
+        registration.email_verified_at = now
+    await db.flush()
+
+    await complete_email_verified_onboarding(
+        db=db,
+        registration_id=registration.id,
+        settings=settings,
+    )
+
+    verification_token.used_at = datetime.now(timezone.utc)
     await db.flush()
 
     return VerifyEmailResult(status=registration.status)
+
+
+async def complete_email_verified_onboarding(
+    *,
+    db: AsyncSession,
+    registration_id: UUID,
+    settings: Settings | None = None,
+) -> None:
+    """Provision tenant and deliver owner setup credential email after verification."""
+    settings = settings or get_settings()
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+
+    provisioning = TenantProvisioningService(
+        db,
+        database_url=getattr(settings, "DATABASE_URL", None),
+    )
+    claimed = await provisioning.claim_registration_for_provisioning(registration_id)
+    if claimed.action not in {"claimed", "existing"}:
+        raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+
+    provisioned = await provisioning.provision_wholesaler_and_schema(registration_id)
+    if provisioned.action not in {"provisioned", "reconciled", "existing"}:
+        raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+    if provisioned.status != "active":
+        raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+
+    # Real bootstrap can commit tenant schema DDL independently. Persist the
+    # public assignment before setup email delivery so SMTP failure can retry
+    # against the same wholesaler/schema instead of orphaning the schema.
+    await db.commit()
+
+    from services.owner_credential_service import OwnerCredentialSetupService
+
+    issued = await OwnerCredentialSetupService(db, settings=settings).issue_setup_token(
+        registration_id
+    )
+    if issued.action == "blocked":
+        raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+    if issued.action == "issued":
+        if issued.raw_token is None:
+            raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+        registration = await _registration_by_id(db, registration_id)
+        if registration is None:
+            raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+        record_owner_setup_email(
+            settings=settings,
+            registration_id=registration_id,
+            to_email=registration.owner_email,
+            token=issued.raw_token,
+            setup_link=build_owner_setup_link(issued.raw_token),
+        )
 
 
 async def get_onboarding_status(
@@ -288,6 +363,11 @@ def build_verification_link(token: str) -> str:
     return f"/verify-email?token={quote(token, safe='')}"
 
 
+def build_owner_setup_link(token: str) -> str:
+    """Build the owner credential setup link for email delivery only."""
+    return f"/setup-credential?setupToken={quote(token, safe='')}"
+
+
 def _public_onboarding_status(status: str) -> str:
     if status == "provisioning":
         return "email_verified"
@@ -320,6 +400,40 @@ async def _registration_for_idempotency_key(
         .execution_options(ignore_tenant=True)
     )
     return result.scalar_one_or_none()
+
+
+async def _registration_by_id(db: AsyncSession, registration_id: UUID) -> TenantRegistration | None:
+    result = await db.execute(
+        select(TenantRegistration)
+        .where(TenantRegistration.id == registration_id)
+        .execution_options(ignore_tenant=True)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _is_retryable_setup_email_failure(
+    db: AsyncSession, registration: TenantRegistration, now: datetime
+) -> bool:
+    if (
+        registration.status != "active"
+        or registration.email_verified_at is None
+        or registration.wholesaler_id is None
+        or registration.tenant_schema is None
+        or registration.provisioning_completed_at is None
+    ):
+        return False
+
+    result = await db.execute(
+        select(OwnerCredentialSetupToken)
+        .where(OwnerCredentialSetupToken.registration_id == registration.id)
+        .where(OwnerCredentialSetupToken.used_at.is_(None))
+        .where(OwnerCredentialSetupToken.revoked_at.is_(None))
+        .where(OwnerCredentialSetupToken.is_deleted.is_(False))
+        .where(OwnerCredentialSetupToken.expires_at > now)
+        .limit(1)
+        .execution_options(ignore_tenant=True)
+    )
+    return result.scalar_one_or_none() is None
 
 
 def _request_fingerprint_hash(

@@ -14,6 +14,7 @@ from database.session import AsyncSessionLocal, async_engine
 from models.tenant_onboarding import (
     EmailVerificationToken,
     OnboardingStatusToken,
+    OwnerCredentialSetupToken,
     TenantRegistration,
 )
 from models.wholesaler import Wholesaler
@@ -41,15 +42,44 @@ async def _u6e_public_schema():
 async def _ensure_onboarding_tables() -> None:
     async with async_engine.begin() as connection:
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+        await connection.execute(
+            text(
+                "DO $$ BEGIN "
+                "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reporting_role') "
+                "THEN CREATE ROLE reporting_role NOLOGIN; END IF; "
+                "END $$"
+            )
+        )
         await connection.run_sync(Wholesaler.__table__.create, checkfirst=True)
         await connection.run_sync(TenantRegistration.__table__.create, checkfirst=True)
         await connection.run_sync(EmailVerificationToken.__table__.create, checkfirst=True)
         await connection.run_sync(OnboardingStatusToken.__table__.create, checkfirst=True)
+        await connection.run_sync(OwnerCredentialSetupToken.__table__.create, checkfirst=True)
 
 
 async def _clear_u6e_rows() -> None:
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT wholesaler_id, tenant_schema FROM public.tenant_registrations "
+                    "WHERE owner_email LIKE 'u6e_%@example.com'"
+                )
+            )
+        ).mappings().all()
+        wholesaler_ids = [row["wholesaler_id"] for row in rows if row["wholesaler_id"] is not None]
+        for schema in {row["tenant_schema"] for row in rows if row["tenant_schema"] is not None}:
+            if schema.startswith("t_") and schema.replace("_", "").isalnum():
+                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await session.execute(
+            text(
+                "DELETE FROM public.owner_credential_setup_tokens "
+                "WHERE registration_id IN ("
+                "SELECT id FROM public.tenant_registrations "
+                "WHERE owner_email LIKE 'u6e_%@example.com')"
+            )
+        )
         await session.execute(
             text(
                 "DELETE FROM public.onboarding_status_tokens "
@@ -69,6 +99,11 @@ async def _clear_u6e_rows() -> None:
         await session.execute(
             text("DELETE FROM public.tenant_registrations WHERE owner_email LIKE 'u6e_%@example.com'")
         )
+        if wholesaler_ids:
+            await session.execute(
+                text("DELETE FROM public.wholesalers WHERE id = ANY(:wholesaler_ids)"),
+                {"wholesaler_ids": wholesaler_ids},
+            )
         await session.commit()
 
 
@@ -273,7 +308,7 @@ async def test_valid_body_status_token_returns_pending_email_verification():
     assert raw_status_token not in response.text
 
 
-async def test_after_verify_email_valid_status_token_returns_email_verified():
+async def test_after_verify_email_valid_status_token_returns_active():
     email = f"u6e_{uuid.uuid4().hex}@example.com"
     raw_status_token = await _signup_and_status_token(email)
 
@@ -287,7 +322,7 @@ async def test_after_verify_email_valid_status_token_returns_email_verified():
 
     assert verify_response.status_code == 200, verify_response.text
     assert status_response.status_code == 200, status_response.text
-    assert status_response.json()["data"] == {"status": "email_verified"}
+    assert status_response.json()["data"] == {"status": "active"}
 
 
 async def test_invalid_status_token_returns_neutral_failure_and_writes_nothing():

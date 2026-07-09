@@ -14,13 +14,14 @@ from core.config import Settings
 
 @dataclass(frozen=True)
 class VerificationEmailDelivery:
-    """Captured verification delivery for non-production tests."""
+    """Captured onboarding delivery for non-production tests."""
 
     registration_id: UUID
     to_email: str
     verification_link: str
     token: str
     created_at: datetime
+    purpose: str = "email_verification"
 
 
 _DEV_EMAIL_DELIVERIES: list[VerificationEmailDelivery] = []
@@ -68,6 +69,44 @@ def record_verification_email(
     )
 
 
+def record_owner_setup_email(
+    *,
+    settings: Settings,
+    registration_id: UUID,
+    to_email: str,
+    token: str,
+    setup_link: str,
+) -> None:
+    """Deliver owner setup email or capture it in non-production sink."""
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+
+    if settings.MPANGO_ENV == "production":
+        _send_smtp_email(
+            settings=settings,
+            to_email=to_email,
+            subject="Set up your Mpango ERP owner account",
+            body=(
+                "Your Mpango ERP tenant is ready.\n\n"
+                "Use this link to set your owner administrator password:\n"
+                f"{setup_link}\n\n"
+                "If you did not request this signup, ignore this email."
+            ),
+        )
+        return
+
+    _DEV_EMAIL_DELIVERIES.append(
+        VerificationEmailDelivery(
+            registration_id=registration_id,
+            to_email=to_email,
+            token=token,
+            verification_link=setup_link,
+            created_at=datetime.now(timezone.utc),
+            purpose="owner_setup",
+        )
+    )
+
+
 def get_dev_email_deliveries(email: str | None = None) -> list[VerificationEmailDelivery]:
     """Return captured non-production verification deliveries for tests."""
     if email is None:
@@ -106,16 +145,31 @@ def _send_smtp_verification_email(
     to_email: str,
     verification_link: str,
 ) -> None:
+    _send_smtp_email(
+        settings=settings,
+        to_email=to_email,
+        subject="Verify your Mpango ERP email",
+        body=(
+            "Welcome to Mpango ERP.\n\n"
+            "Use this verification link to continue onboarding:\n"
+            f"{verification_link}\n\n"
+            "If you did not request this signup, ignore this email."
+        ),
+    )
+
+
+def _send_smtp_email(
+    *,
+    settings: Settings,
+    to_email: str,
+    subject: str,
+    body: str,
+) -> None:
     message = EmailMessage()
-    message["Subject"] = "Verify your Mpango ERP email"
+    message["Subject"] = subject
     message["From"] = str(settings.EMAIL_FROM).strip()
     message["To"] = to_email
-    message.set_content(
-        "Welcome to Mpango ERP.\n\n"
-        "Use this verification link to continue onboarding:\n"
-        f"{verification_link}\n\n"
-        "If you did not request this signup, ignore this email."
-    )
+    message.set_content(body)
 
     context = ssl.create_default_context()
     host = str(settings.SMTP_HOST).strip()

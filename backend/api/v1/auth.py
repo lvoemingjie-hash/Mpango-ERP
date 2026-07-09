@@ -62,6 +62,7 @@ from services.onboarding_service import (
     NEUTRAL_ONBOARDING_STATUS_MESSAGE,
     NEUTRAL_SIGNUP_MESSAGE,
     NEUTRAL_VERIFY_EMAIL_MESSAGE,
+    OnboardingOrchestrationError,
     OnboardingStatusTokenInvalidError,
     VerificationTokenInvalidError,
     create_signup_registration,
@@ -135,7 +136,7 @@ async def verify_email(
     verify_request: VerifyEmailRequest = Body(default_factory=VerifyEmailRequest),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Verify a signup email token without provisioning a tenant."""
+    """Verify signup email and complete backend onboarding orchestration."""
     try:
         await verify_email_token(db=db, token=verify_request.token)
     except VerificationTokenInvalidError:
@@ -144,6 +145,22 @@ async def verify_email(
             detail={
                 "code": INVALID_OR_EXPIRED_VERIFICATION_TOKEN,
                 "message": "Verification link is invalid or expired",
+            },
+        )
+    except EmailDeliveryNotConfiguredError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "EMAIL_DELIVERY_NOT_CONFIGURED",
+                "message": NEUTRAL_VERIFY_EMAIL_MESSAGE,
+            },
+        )
+    except OnboardingOrchestrationError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "ONBOARDING_ORCHESTRATION_FAILED",
+                "message": NEUTRAL_VERIFY_EMAIL_MESSAGE,
             },
         )
 

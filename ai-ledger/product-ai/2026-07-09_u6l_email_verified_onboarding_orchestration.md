@@ -65,3 +65,6 @@
 - `git diff --check` -> passed; Git emitted LF/CRLF warnings only.
 - `pre-commit run --files backend/tests/test_u6l_email_verified_onboarding_orchestration.py` -> passed, including `detect-secrets`.
 - Hardcoded URL scan for `postgresql://postgres@127.0.0.1:55440/mpango_erp` in U6-L test file -> no matches.
+- R2 implementation commit: `40a0bcb5` (`test(U6-L): use active database URL in bootstrap retry proof`).
+- Post-R2-commit `npx gitnexus analyze` -> indexed successfully; 7,185 nodes, 20,559 edges, 477 clusters, 243 flows.
+- Post-R2-commit `npx gitnexus status` -> up-to-date at current commit `40a0bcb`.

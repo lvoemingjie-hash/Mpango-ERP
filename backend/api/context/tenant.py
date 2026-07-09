@@ -19,6 +19,39 @@ def _http_exc(detail_code: str, message: str) -> HTTPException:
     )
 
 
+def _is_missing_tenant_resource_error(exc: BaseException) -> bool:
+    """Detect DB errors caused by a missing tenant schema or table.
+
+    Tenant-context resolution queries the tenant-scoped users table. When the
+    tenant schema or table does not exist, asyncpg raises UndefinedTableError /
+    UndefinedSchemaError / InvalidSchemaNameError, which SQLAlchemy wraps as
+    ProgrammingError. These must fail closed as a clean 401 (the token's tenant
+    context is unresolvable) rather than leaking as a raw 500.
+
+    Only ProgrammingError whose message references a missing relation/schema is
+    converted; connection faults, timeouts, and genuine code bugs keep
+    propagating so they are never silently hidden.
+    """
+    try:
+        from sqlalchemy.exc import ProgrammingError
+    except Exception:  # pragma: no cover - sqlalchemy always installed
+        return False
+    if not isinstance(exc, ProgrammingError):
+        return False
+    msg = str(exc).lower()
+    return any(
+        marker in msg
+        for marker in (
+            "undefined table",
+            "undefined schema",
+            "invalid schema name",
+            "does not exist",
+            "42p01",  # postgres SQLSTATE: undefined_table
+            "3f000",  # postgres SQLSTATE: invalid_schema_name
+        )
+    )
+
+
 @dataclass
 class TenantContext:
     """Container for tenant-scoped request data."""
@@ -65,8 +98,18 @@ async def resolve_tenant_context(token: TokenPayload) -> TenantContext:
             session=session,
             user=user,
         )
-    except Exception:
+    except Exception as exc:
         await session.close()
+        if isinstance(exc, HTTPException):
+            raise
+        # G3-R2: tenant-context resolution failure caused by a missing tenant
+        # schema/table must fail closed as a clean 401. The token references a
+        # tenant scope that cannot be resolved, so it is denied -- never a 500.
+        if _is_missing_tenant_resource_error(exc):
+            raise _http_exc(
+                "TENANT_CONTEXT_UNRESOLVABLE",
+                "Tenant context referenced by token is not available",
+            )
         raise
 
 

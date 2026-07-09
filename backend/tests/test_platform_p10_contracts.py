@@ -2300,3 +2300,204 @@ class TestP25EFAuditResultBoundary:
                 p10_services.list_audit_events(mock_db, limit=20, offset=0)
             )
             assert result.items[0].result == val
+
+
+# ===============================================================
+# G3-R2: Tenant-Context Platform Deny Fail-Closed Hardening
+# ===============================================================
+
+
+class TestG3R2TenantContextFailClosed:
+    """G3-R2: tenant-context resolution failure (missing tenant schema/table)
+    must fail closed as a clean 401, never a raw 500.
+
+    Root cause: ``resolve_tenant_context`` queries the tenant-scoped users
+    table. When the schema/table is missing, asyncpg raises
+    UndefinedTableError which SQLAlchemy wraps as ProgrammingError. Before
+    G3-R2 this leaked as a 500. After G3-R2 it is converted to a clean 401
+    (TENANT_CONTEXT_UNRESOLVABLE).
+
+    Preserved behaviors (proven by existing test classes above):
+      - Identity-only super_admin is admitted to platform routes (no tenant
+        resolution): TestBearerSuperAdminAccess / TestBearerRealMiddleware.
+      - Tenant-context super_admin is denied even when schema exists: the
+        platform guard rejects contextual tokens regardless of DB state
+        (test_contextual_super_admin_denied).
+      - Valid tenant auth path works when schema/table exists: the happy
+        path returns a TenantContext unchanged.
+    """
+
+    @staticmethod
+    def _make_programming_error(message: str):
+        from sqlalchemy.exc import ProgrammingError
+
+        return ProgrammingError("SELECT ...", {}, orig=Exception(message))
+
+    # -- helper: _is_missing_tenant_resource_error --
+
+    def test_helper_detects_undefined_table(self):
+        from api.context.tenant import _is_missing_tenant_resource_error
+
+        exc = self._make_programming_error('relation "users" does not exist')
+        assert _is_missing_tenant_resource_error(exc) is True
+
+    def test_helper_detects_undefined_schema(self):
+        from api.context.tenant import _is_missing_tenant_resource_error
+
+        exc = self._make_programming_error("schema t_smoke_r1 does not exist")
+        assert _is_missing_tenant_resource_error(exc) is True
+
+    def test_helper_detects_sqlstate_42p01(self):
+        from api.context.tenant import _is_missing_tenant_resource_error
+
+        exc = self._make_programming_error("sqlstate 42p01 undefined_table")
+        assert _is_missing_tenant_resource_error(exc) is True
+
+    def test_helper_rejects_non_db_error(self):
+        from api.context.tenant import _is_missing_tenant_resource_error
+
+        assert _is_missing_tenant_resource_error(ValueError("oops")) is False
+
+    def test_helper_rejects_connection_error(self):
+        """OperationalError (connection fault) is NOT a missing-resource error."""
+        from sqlalchemy.exc import OperationalError
+        from api.context.tenant import _is_missing_tenant_resource_error
+
+        exc = OperationalError(
+            "SELECT ...", {}, orig=Exception("connection refused")
+        )
+        assert _is_missing_tenant_resource_error(exc) is False
+
+    # -- resolve_tenant_context: 401 on missing schema/table --
+
+    @pytest.mark.asyncio
+    async def test_resolve_converts_missing_table_to_401(self):
+        """Missing users table -> clean 401 (TENANT_CONTEXT_UNRESOLVABLE)."""
+        from unittest.mock import patch
+        from fastapi import HTTPException
+        from api.context.tenant import resolve_tenant_context
+        from core.security import TokenPayload
+
+        token = TokenPayload(
+            user_id="user-1",
+            roles=["super_admin"],
+            tenant_id="tenant-1",
+            tenant_schema="t_smoke_r1",
+        )
+        mock_session = MagicMock()
+        mock_session.close = AsyncMock()
+
+        with patch(
+            "api.context.tenant.create_tenant_session",
+            new=AsyncMock(return_value=mock_session),
+        ), patch(
+            "crud.user.get_user_with_permissions",
+            new=AsyncMock(
+                side_effect=self._make_programming_error(
+                    'relation "users" does not exist'
+                )
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await resolve_tenant_context(token)
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail["code"] == "TENANT_CONTEXT_UNRESOLVABLE"
+        mock_session.close.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resolve_converts_invalid_schema_to_401(self):
+        """Invalid schema name -> clean 401."""
+        from unittest.mock import patch
+        from fastapi import HTTPException
+        from api.context.tenant import resolve_tenant_context
+        from core.security import TokenPayload
+
+        token = TokenPayload(
+            user_id="user-1",
+            roles=["super_admin"],
+            tenant_id="tenant-1",
+            tenant_schema="t_ghost",
+        )
+        mock_session = MagicMock()
+        mock_session.close = AsyncMock()
+
+        with patch(
+            "api.context.tenant.create_tenant_session",
+            new=AsyncMock(return_value=mock_session),
+        ), patch(
+            "crud.user.get_user_with_permissions",
+            new=AsyncMock(
+                side_effect=self._make_programming_error(
+                    "invalid schema name t_ghost"
+                )
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await resolve_tenant_context(token)
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail["code"] == "TENANT_CONTEXT_UNRESOLVABLE"
+
+    # -- resolve_tenant_context: non-schema errors propagate --
+
+    @pytest.mark.asyncio
+    async def test_resolve_connection_error_propagates(self):
+        """OperationalError (connection fault) is NOT converted -- propagates."""
+        from unittest.mock import patch
+        from sqlalchemy.exc import OperationalError
+        from api.context.tenant import resolve_tenant_context
+        from core.security import TokenPayload
+
+        token = TokenPayload(
+            user_id="user-1",
+            roles=["admin"],
+            tenant_id="tenant-1",
+            tenant_schema="tenant_ok",
+        )
+        mock_session = MagicMock()
+        mock_session.close = AsyncMock()
+        conn_err = OperationalError(
+            "SELECT ...", {}, orig=Exception("connection refused")
+        )
+
+        with patch(
+            "api.context.tenant.create_tenant_session",
+            new=AsyncMock(return_value=mock_session),
+        ), patch(
+            "crud.user.get_user_with_permissions",
+            new=AsyncMock(side_effect=conn_err),
+        ):
+            with pytest.raises(OperationalError):
+                await resolve_tenant_context(token)
+
+    @pytest.mark.asyncio
+    async def test_resolve_http_exception_passthrough(self):
+        """HTTPException (USER_NOT_FOUND) still raised as clean 401."""
+        from unittest.mock import patch
+        from fastapi import HTTPException
+        from api.context.tenant import resolve_tenant_context
+        from core.security import TokenPayload
+
+        token = TokenPayload(
+            user_id="user-1",
+            roles=["admin"],
+            tenant_id="tenant-1",
+            tenant_schema="tenant_ok",
+        )
+        mock_session = MagicMock()
+        mock_session.close = AsyncMock()
+
+        with patch(
+            "api.context.tenant.create_tenant_session",
+            new=AsyncMock(return_value=mock_session),
+        ), patch(
+            "crud.user.get_user_with_permissions",
+            new=AsyncMock(return_value=None),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await resolve_tenant_context(token)
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail["code"] == "USER_NOT_FOUND"
+        mock_session.close.assert_awaited()

@@ -1,7 +1,7 @@
-"""021: P17-D-C - Backup / Status Source (additive, public-schema-only)
+"""030: P17-D-C - Backup / Status Source (additive, public-schema-only)
 
-Revision ID: 021_platform_backup_status_source
-Revises: 020_durable_approval_store
+Revision ID: 030_platform_backup_status_source
+Revises: 029_durable_approval_store
 Create Date: 2026-07-03
 
 P17-D-C implements the accepted P17-D-A backup / status source contract and the
@@ -43,8 +43,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = '021_platform_backup_status_source'
-down_revision = '020_durable_approval_store'
+revision = '030_platform_backup_status_source'
+down_revision = '029_durable_approval_store'
 branch_labels = None
 depends_on = None
 

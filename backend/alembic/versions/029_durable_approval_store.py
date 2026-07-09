@@ -1,7 +1,7 @@
-"""020: P21-C1 - Durable Approval Store (additive, public-schema-only)
+"""029: P21-C1 - Durable Approval Store (additive, public-schema-only)
 
-Revision ID: 020_durable_approval_store
-Revises: 019_platform_audit_logs
+Revision ID: 029_durable_approval_store
+Revises: 028_owner_credential_setup_tokens
 Create Date: 2026-06-26
 
 P21-C1 implements the accepted P21-A durable approval store contract and P21-B schema
@@ -45,8 +45,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = '020_durable_approval_store'
-down_revision = '019_platform_audit_logs'
+revision = '029_durable_approval_store'
+down_revision = '028_owner_credential_setup_tokens'
 branch_labels = None
 depends_on = None
 

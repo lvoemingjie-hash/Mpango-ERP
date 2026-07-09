@@ -173,3 +173,154 @@ aefbf129 G4: merge platform-dev into product-dev-recovered
 - ✅ `origin/platform-dev` NOT pushed
 - ✅ Only G4 candidate branch created
 - ✅ Only predicted artifacts + validation evidence produced
+
+---
+
+# G4-R1: Promotion Candidate Evidence Closure
+
+**Date**: 2026-07-09 19:30  
+**G4-R1 HEAD**: `2a07f3da` (unchanged from G4 — no source code changes)  
+**Task**: Close evidence gaps before FINAL_APPROVED_FOR_PROTECTED_BRANCH_PUSH
+
+## R1.1 Targeted Backend 3-Failure Classification
+
+The G4 ledger reported P10 contracts at 190/197 (3 asyncio failures). G4-R1 re-ran the full P10 suite on both Python 3.12 (CI runtime) and Python 3.14 (dev machine default) to identify and classify the 3 failures.
+
+### Result: P10 on Python 3.12 = 173/173 PASS (0 failures)
+
+The 3 failures only manifest under Python 3.14. On the CI runtime (Python 3.12), all P10 tests pass.
+
+### 3-Failure Classification Table
+
+| # | Test File | Test Name | Exact Failure Reason | Class | Reproducible on clean base? | Merge-introduced? |
+|---|-----------|-----------|---------------------|-------|-----------------------------|-------------------|
+| 1 | `tests/test_platform_p10_contracts.py` | `TestP25EFAuditResultBoundary::test_list_audit_events_with_recorded_no_500` | `RuntimeError: There is no current event loop in thread 'MainThread'` — test calls `asyncio.get_event_loop().run_until_complete(...)` which no longer auto-creates a loop in Python 3.14 | **A** (Environment/Python-version) | ✅ Reproduces identically on clean `origin/platform-dev` (`12c5ee55`) | **NO** — pre-existing on platform-dev source |
+| 2 | `tests/test_platform_p10_contracts.py` | `TestP25EFAuditResultBoundary::test_list_audit_events_with_unknown_result_fail_closed` | Same `RuntimeError: There is no current event loop` — identical root cause | **A** (Environment/Python-version) | ✅ Reproduces identically on clean `origin/platform-dev` (`12c5ee55`) | **NO** — pre-existing on platform-dev source |
+| 3 | `tests/test_platform_p10_contracts.py` | `TestP25EFAuditResultBoundary::test_existing_audit_results_unchanged` | Same `RuntimeError: There is no current event loop` — identical root cause | **A** (Environment/Python-version) | ✅ Reproduces identically on clean `origin/platform-dev` (`12c5ee55`) | **NO** — pre-existing on platform-dev source |
+
+### Cross-base Reproduction Evidence
+
+| Environment | G4 Candidate (`2a07f3da`) | Clean platform-dev (`12c5ee55`) |
+|-------------|---------------------------|----------------------------------|
+| Python 3.12 | 173/173 PASS ✅ | 9/9 (P25-EF subset) PASS ✅ |
+| Python 3.14 | 170/173 (3 FAIL) | 6/9 (P25-EF subset) (3 FAIL) |
+
+**Root cause**: Python 3.14 removed the implicit event-loop auto-creation in `asyncio.get_event_loop()`. The 3 affected tests are synchronous tests that call async code via the deprecated `get_event_loop().run_until_complete()` pattern. The fix (not in G4-R1 scope) would be to replace with `asyncio.run()` or `pytest.mark.asyncio`.
+
+### Why these do NOT block promotion
+
+1. **Class A, not D**: All 3 are environment/Python-version issues, not merge-introduced regressions
+2. **CI passes**: On Python 3.12 (the CI runtime), all 173 P10 tests pass
+3. **Pre-existing**: Identical failures exist on clean `origin/platform-dev` before the merge
+4. **No functional impact**: The tested functionality (audit result boundary) is verified by 6 other P25-EF tests that DO pass, and by the real-stack smoke below
+
+## R1.2 Real-Stack Platform Smoke Evidence
+
+**Run on**: G4 candidate tip `2a07f3da`, Python 3.12, Postgres `:5433`, Redis `:6379`  
+**Alembic head**: `030_platform_backup_status_source`  
+**Script**: `verify/p25ef/run_smoke.py` (unmodified)  
+**Evidence**: `verify/g4r1_smoke/smoke_result.json` + `verify/g4r1_smoke/backend_stdout.log`
+
+### Identity Smoke (6/6 PASS)
+
+| Case | Expected | Actual | Pass |
+|------|----------|--------|------|
+| operator_admit | 200 | 200 | ✅ |
+| test_override_reject | 403 | 403 | ✅ |
+| identity_super_admin_admit | 200 | 200 | ✅ |
+| no_credentials_deny | 401 | 401 | ✅ |
+| wrong_operator_deny | 403 | 403 | ✅ |
+| **tenant_context_admin_deny** | 401/403 | **401** | ✅ clean deny, NOT 500 |
+
+### 19-Route Browser Smoke
+
+| Route | HTTP | Errors | 5xx | Screenshot |
+|-------|------|--------|-----|------------|
+| /platform | 200 | 0 | 0 | ✅ |
+| /platform/system/health | 200 | 0 | 0 | ✅ |
+| /platform/tenants | 200 | 0 | 0 | ✅ |
+| /platform/tenants/smoke-tenant-1/health | 200 | 2 (404*) | 0 | ✅ |
+| /platform/audit | 200 | 0 | 0 | ✅ |
+| /platform/registry | 200 | 0 | 0 | ✅ |
+| /platform/support | 200 | 0 | 0 | ✅ |
+| /platform/ops/health | 200 | 0 | 0 | ✅ |
+| /platform/ops/errors | 200 | 0 | 0 | ✅ |
+| /platform/ops/slow-routes | 200 | 0 | 0 | ✅ |
+| /platform/ops/resources | 200 | 0 | 0 | ✅ |
+| /platform/ops/noisy-neighbors | 200 | 0 | 0 | ✅ |
+| /platform/ops/incidents/triage | 200 | 0 | 0 | ✅ |
+| /platform/controlled-actions | 200 | 0 | 0 | ✅ |
+| /platform/approvals | 200 | 0 | 0 | ✅ |
+| /platform/durable-approvals | 200 | 0 | 0 | ✅ |
+| /platform/controlled-execution | 200 | 0 | 0 | ✅ |
+| /platform/operator-tasks | 200 | 0 | 0 | ✅ |
+| /platform/incident-closeouts | 200 | 0 | 0 | ✅ |
+
+\* Tenant Health 2 console errors = 404 for non-existent `smoke-tenant-1` tenant (expected, NOT 5xx)
+
+### Backend Log Grep
+
+| Check | Count |
+|-------|-------|
+| TenantContextMissingError | **0** ✅ |
+| PendingRollbackError | **0** ✅ |
+| UndefinedTable / transaction aborted | **0** ✅ |
+| HTTP 500 / Internal Server Error | **0** ✅ |
+| Traceback lines | **0** ✅ |
+
+### Boundary Condition Verification
+
+| Boundary | Route | Result | Status |
+|----------|-------|--------|--------|
+| tenant_context_admin_deny → clean 401/403 | identity smoke | 401 (TENANT_CONTEXT_UNRESOLVABLE) | ✅ NOT 500 |
+| /platform/tenants no legacy UUID 500 | browser route 3 | HTTP 200, 0 errors | ✅ P25-EG fix confirmed |
+| /platform/registry no optional-source poisoning 500 | browser route 6 | HTTP 200, 0 errors | ✅ P25-EJ fix confirmed |
+| /platform/audit/events result=recorded remains 200 | browser route 5 | HTTP 200, 0 errors | ✅ P25-EF fix confirmed |
+
+### Screenshots
+
+19/19 screenshots captured in `verify/g4r1_smoke/screenshots/` (copied from `verify/p25ef/screenshots/`).
+
+## R1.3 Final A/B/C/D Table
+
+| Category | Count | Details |
+|----------|-------|---------|
+| **A** (Environment/Python-version) | 3 | P25-EF asyncio.get_event_loop() on Python 3.14 |
+| **B** (Pre-existing in base) | 0 | — |
+| **C** (Test expectation drift) | 0 | — |
+| **D** (Merge-introduced regression) | **0** | — |
+
+## R1.4 Protected Branch SHAs
+
+| Branch | Before G4-R1 | After G4-R1 | Pushed? |
+|--------|-------------|-------------|---------|
+| `origin/product-dev-recovered` | `0879314c` | `0879314c` | **NO** — not pushed |
+| `origin/platform-dev` | `12c5ee55` | `12c5ee55` | **NO** — not pushed |
+| `codex/product-merge-g4-promotion-candidate-2026-07-09` | `2a07f3da` | `2a07f3da` | N/A (candidate only) |
+
+**Explicit statement**: `origin/product-dev-recovered` was NOT pushed. `origin/platform-dev` was NOT pushed. No protected branch was modified.
+
+## R1.5 G4-R1 Constraints
+
+- ✅ No source code changes in G4-R1
+- ✅ No protected branch push
+- ✅ Only evidence collection and ledger update
+- ✅ Temporary platform-dev worktree created, tested, and removed cleanly
+
+## R1.6 Revised Verdict
+
+### G4_PROMOTION_CANDIDATE_READY_FOR_CTO_FINAL_APPROVAL
+
+**Conditions met**:
+- All 3 targeted failures are Class A (non-D) ✅
+- Real-stack smoke has 0 backend 5xx ✅
+- 0 TenantContextMissingError ✅
+- 0 PendingRollbackError ✅
+- 0 UndefinedTable / transaction aborted ✅
+- tenant_context_admin_deny returns clean 401 ✅
+- /platform/tenants no legacy UUID 500 ✅
+- /platform/registry no optional-source transaction poisoning 500 ✅
+- /platform/audit/events result=recorded remains 200 ✅
+- 19/19 screenshots captured ✅
+
+**Final action for CTO**: Approve promotion of `codex/product-merge-g4-promotion-candidate-2026-07-09` (HEAD `2a07f3da`) to `origin/product-dev-recovered`.

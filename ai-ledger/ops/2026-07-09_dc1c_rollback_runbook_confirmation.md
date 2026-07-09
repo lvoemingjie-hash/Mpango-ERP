@@ -12,27 +12,27 @@ Dry-run confirmation of rollback runbook for production at commit `9bb2b30`. No 
 
 ## Dry-Run Verification Results
 
-### 1. Backup Artifact ✅
+### 1. Backup Artifact - PASS
 - **Path**: `/home/ubuntu/.secure-backups/mpango_erp_dc1a_20260709-210407.sql`
 - **Size**: 309,157 bytes (301.9 KB)
 - **SHA256 prefix**: `b512815d80ccdb47`
 - **Format**: PostgreSQL plain SQL dump (ASCII text)
 - **Header**: `-- PostgreSQL database dump`
-- **Readable**: ✅
+- **Readable**: PASS
 
-### 2. Rollback Target Commit ✅
+### 2. Rollback Target Commit - PASS
 - **Commit**: `9bb2b3090c946d5edb6a4d17958fdebe9c5dd95f`
 - **Type**: commit (resolvable)
 - **Log**: `docs(g5-r1): remove promotion ledger trailing whitespace`
 - **Branch**: `product-dev-recovered`
 - **Diff from target to HEAD**: empty (current HEAD = target)
 
-### 3. Docker Compose Config ✅
+### 3. Docker Compose Config - PASS
 - **Config file**: `docker-compose.prod.yml`
 - **Env file**: `.env.prod`
 - **Parse result**: exit_code=0 (valid)
 
-### 4. Restore Path ✅
+### 4. Restore Path - PASS
 - **DB container**: `mpango_prod_postgres` (postgres:15-alpine)
 - **PG tools**: pg_dump, pg_restore, psql all available
 - **psql version**: PostgreSQL 15.18
@@ -121,12 +121,12 @@ curl -s http://localhost:80/api/v1/auth/me -H "Authorization: Bearer <jwt-redact
 
 | Condition | Status |
 |-----------|--------|
-| Backup missing | ✅ PASS - backup exists |
-| Backup checksum cannot be computed | ✅ PASS - SHA256 `b512815d80ccdb47` |
-| Rollback target commit cannot be resolved | ✅ PASS - commit `9bb2b30` resolvable |
-| Docker compose config invalid | ✅ PASS - config parses |
-| Secret/JWT/password/token printed | ✅ PASS - all redacted |
-| Real DB restore attempted | ✅ PASS - no restore executed |
+| Backup missing | PASS - backup exists |
+| Backup checksum cannot be computed | PASS - SHA256 `b512815d80ccdb47` |
+| Rollback target commit cannot be resolved | PASS - commit `9bb2b30` resolvable |
+| Docker compose config invalid | PASS - config parses |
+| Secret/JWT/password/token printed | PASS - all redacted |
+| Real DB restore attempted | PASS - no restore executed |
 
 ## Verdict
 

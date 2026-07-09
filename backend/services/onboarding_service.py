@@ -30,8 +30,10 @@ from schemas.auth_signup import SignupRequest
 from services.email_delivery import (
     EmailDeliveryNotConfiguredError,
     is_verification_email_delivery_configured,
+    record_owner_setup_email,
     record_verification_email,
 )
+from services.tenant_provisioning_service import TenantProvisioningService
 
 
 NEUTRAL_SIGNUP_MESSAGE = "If this email can be used, verification instructions will be sent."
@@ -60,6 +62,10 @@ class VerificationTokenInvalidError(Exception):
 
 class OnboardingStatusTokenInvalidError(Exception):
     """Raised for invalid, expired, revoked, or non-actionable status tokens."""
+
+
+class OnboardingOrchestrationError(Exception):
+    """Raised when post-verification provisioning/setup orchestration fails."""
 
 
 @dataclass(frozen=True)
@@ -137,7 +143,57 @@ async def verify_email_token(
     verification_token.used_at = now
     await db.flush()
 
+    await complete_email_verified_onboarding(
+        db=db,
+        registration_id=registration.id,
+        settings=settings,
+    )
+
     return VerifyEmailResult(status=registration.status)
+
+
+async def complete_email_verified_onboarding(
+    *,
+    db: AsyncSession,
+    registration_id: UUID,
+    settings: Settings | None = None,
+) -> None:
+    """Provision tenant and deliver owner setup credential email after verification."""
+    settings = settings or get_settings()
+    provisioning = TenantProvisioningService(
+        db,
+        database_url=getattr(settings, "DATABASE_URL", None),
+    )
+    claimed = await provisioning.claim_registration_for_provisioning(registration_id)
+    if claimed.action not in {"claimed", "existing"}:
+        raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+
+    provisioned = await provisioning.provision_wholesaler_and_schema(registration_id)
+    if provisioned.action not in {"provisioned", "reconciled", "existing"}:
+        raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+    if provisioned.status != "active":
+        raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+
+    from services.owner_credential_service import OwnerCredentialSetupService
+
+    issued = await OwnerCredentialSetupService(db, settings=settings).issue_setup_token(
+        registration_id
+    )
+    if issued.action == "blocked":
+        raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+    if issued.action == "issued":
+        if issued.raw_token is None:
+            raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+        registration = await _registration_by_id(db, registration_id)
+        if registration is None:
+            raise OnboardingOrchestrationError("ONBOARDING_ORCHESTRATION_FAILED")
+        record_owner_setup_email(
+            settings=settings,
+            registration_id=registration_id,
+            to_email=registration.owner_email,
+            token=issued.raw_token,
+            setup_link=build_owner_setup_link(issued.raw_token),
+        )
 
 
 async def get_onboarding_status(
@@ -288,6 +344,11 @@ def build_verification_link(token: str) -> str:
     return f"/verify-email?token={quote(token, safe='')}"
 
 
+def build_owner_setup_link(token: str) -> str:
+    """Build the owner credential setup link for email delivery only."""
+    return f"/setup-credential?setupToken={quote(token, safe='')}"
+
+
 def _public_onboarding_status(status: str) -> str:
     if status == "provisioning":
         return "email_verified"
@@ -317,6 +378,15 @@ async def _registration_for_idempotency_key(
         select(TenantRegistration).where(
             TenantRegistration.idempotency_key_hash == idempotency_key_hash
         )
+        .execution_options(ignore_tenant=True)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _registration_by_id(db: AsyncSession, registration_id: UUID) -> TenantRegistration | None:
+    result = await db.execute(
+        select(TenantRegistration)
+        .where(TenantRegistration.id == registration_id)
         .execution_options(ignore_tenant=True)
     )
     return result.scalar_one_or_none()

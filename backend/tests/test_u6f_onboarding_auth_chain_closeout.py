@@ -17,6 +17,7 @@ from database.session import AsyncSessionLocal, async_engine
 from models.tenant_onboarding import (
     EmailVerificationToken,
     OnboardingStatusToken,
+    OwnerCredentialSetupToken,
     TenantRegistration,
 )
 from models.wholesaler import Wholesaler
@@ -87,15 +88,44 @@ async def _u6f_public_schema():
 async def _ensure_onboarding_tables() -> None:
     async with async_engine.begin() as connection:
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+        await connection.execute(
+            text(
+                "DO $$ BEGIN "
+                "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reporting_role') "
+                "THEN CREATE ROLE reporting_role NOLOGIN; END IF; "
+                "END $$"
+            )
+        )
         await connection.run_sync(Wholesaler.__table__.create, checkfirst=True)
         await connection.run_sync(TenantRegistration.__table__.create, checkfirst=True)
         await connection.run_sync(EmailVerificationToken.__table__.create, checkfirst=True)
         await connection.run_sync(OnboardingStatusToken.__table__.create, checkfirst=True)
+        await connection.run_sync(OwnerCredentialSetupToken.__table__.create, checkfirst=True)
 
 
 async def _clear_u6f_rows() -> None:
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT wholesaler_id, tenant_schema FROM public.tenant_registrations "
+                    "WHERE owner_email LIKE 'u6f_%@example.com'"
+                )
+            )
+        ).mappings().all()
+        wholesaler_ids = [row["wholesaler_id"] for row in rows if row["wholesaler_id"] is not None]
+        for schema in {row["tenant_schema"] for row in rows if row["tenant_schema"] is not None}:
+            if schema.startswith("t_") and schema.replace("_", "").isalnum():
+                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await session.execute(
+            text(
+                "DELETE FROM public.owner_credential_setup_tokens "
+                "WHERE registration_id IN ("
+                "SELECT id FROM public.tenant_registrations "
+                "WHERE owner_email LIKE 'u6f_%@example.com')"
+            )
+        )
         await session.execute(
             text(
                 "DELETE FROM public.onboarding_status_tokens "
@@ -115,6 +145,11 @@ async def _clear_u6f_rows() -> None:
         await session.execute(
             text("DELETE FROM public.tenant_registrations WHERE owner_email LIKE 'u6f_%@example.com'")
         )
+        if wholesaler_ids:
+            await session.execute(
+                text("DELETE FROM public.wholesalers WHERE id = ANY(:wholesaler_ids)"),
+                {"wholesaler_ids": wholesaler_ids},
+            )
         await session.commit()
 
 
@@ -259,6 +294,25 @@ async def _side_effect_table_inventory() -> set[tuple[str, str]]:
         return {(schema, table) for schema, table in rows if table in SIDE_EFFECT_TABLES}
 
 
+async def _setup_token_rows(email: str):
+    async with AsyncSessionLocal() as session:
+        return (
+            await session.execute(
+                text(
+                    "SELECT oct.* FROM public.owner_credential_setup_tokens oct "
+                    "JOIN public.tenant_registrations tr ON tr.id = oct.registration_id "
+                    "WHERE tr.owner_email = :email ORDER BY oct.created_at"
+                ),
+                {"email": email},
+            )
+        ).mappings().all()
+
+
+async def _table_count(schema: str, table: str) -> int:
+    async with AsyncSessionLocal() as session:
+        return int(await session.scalar(text(f'SELECT count(*) FROM "{schema}"."{table}"')))
+
+
 async def _signup(email: str, *, payload: dict[str, str] | None = None, headers=None):
     async with await _client() as client:
         return await client.post(
@@ -267,7 +321,19 @@ async def _signup(email: str, *, payload: dict[str, str] | None = None, headers=
 
 
 def _dev_token(email: str) -> str:
-    deliveries = get_dev_email_deliveries(email)
+    deliveries = [
+        delivery
+        for delivery in get_dev_email_deliveries(email)
+        if delivery.purpose == "email_verification"
+    ]
+    assert len(deliveries) == 1
+    return deliveries[0].token
+
+
+def _owner_setup_token(email: str) -> str:
+    deliveries = [
+        delivery for delivery in get_dev_email_deliveries(email) if delivery.purpose == "owner_setup"
+    ]
     assert len(deliveries) == 1
     return deliveries[0].token
 
@@ -299,7 +365,7 @@ def _assert_hash_only_rows(rows) -> None:
         assert row["token_hash"]
 
 
-async def test_end_to_end_signup_verify_status_happy_path_is_neutral_and_non_provisioning():
+async def test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisions_without_admin():
     email = f"u6f_{uuid.uuid4().hex}@example.com"
     schemas_before = await _tenant_schema_names()
     side_effect_tables_before = await _side_effect_table_inventory()
@@ -324,19 +390,28 @@ async def test_end_to_end_signup_verify_status_happy_path_is_neutral_and_non_pro
     assert pending.json()["data"] == {"status": "pending_email_verification"}
     assert verify.status_code == 200, verify.text
     assert verified.status_code == 200, verified.text
-    assert verified.json()["data"] == {"status": "email_verified"}
+    assert verified.json()["data"] == {"status": "active"}
+    owner_setup_token = _owner_setup_token(email)
 
     for response in (pending, verify, verified):
         _assert_public_response_safe(response, email=email, raw_token=raw_token)
+        _assert_public_response_safe(response, email=email, raw_token=owner_setup_token)
 
     registration = await _registration_by_email(email)
-    assert registration["status"] == "email_verified"
+    assert registration["status"] == "active"
     for response in (signup, pending, verify, verified):
         assert str(registration["id"]).lower() not in response.text.lower()
-    assert registration["tenant_schema"] is None
-    assert registration["wholesaler_id"] is None
-    assert await _tenant_schema_names() == schemas_before
-    assert await _side_effect_table_inventory() == side_effect_tables_before
+        assert str(registration["tenant_schema"]).lower() not in response.text.lower()
+        assert str(registration["wholesaler_id"]).lower() not in response.text.lower()
+    assert registration["tenant_schema"] is not None
+    assert registration["wholesaler_id"] is not None
+    assert registration["tenant_schema"] in ((await _tenant_schema_names()) - schemas_before)
+    assert len(await _setup_token_rows(email)) == 1
+    assert await _side_effect_table_inventory() != side_effect_tables_before
+    assert await _table_count(registration["tenant_schema"], "users") == 0
+    assert await _table_count(registration["tenant_schema"], "roles") == 0
+    assert await _table_count(registration["tenant_schema"], "user_roles") == 0
+    assert await _table_count(registration["tenant_schema"], "role_permissions") == 0
 
 
 async def test_duplicate_email_neutrality_creates_no_second_live_registration_or_status_token():
@@ -428,10 +503,9 @@ async def test_token_transport_and_invalid_missing_expired_reused_fail_neutrally
     assert verify_first.status_code == 200, verify_first.text
 
 
-async def test_closeout_has_no_provisioning_side_effects_or_assignment_fields():
+async def test_closeout_provisions_tenant_but_defers_admin_rbac_until_setup_credential():
     email = f"u6f_{uuid.uuid4().hex}@example.com"
     schemas_before = await _tenant_schema_names()
-    side_effect_tables_before = await _side_effect_table_inventory()
 
     signup = await _signup(email)
     raw_token = _dev_token(email)
@@ -444,12 +518,18 @@ async def test_closeout_has_no_provisioning_side_effects_or_assignment_fields():
     assert signup.status_code == 202, signup.text
     assert verify.status_code == 200, verify.text
     assert status_response.status_code == 200, status_response.text
-    assert await _tenant_schema_names() == schemas_before
-    assert await _side_effect_table_inventory() == side_effect_tables_before
+    assert status_response.json()["data"] == {"status": "active"}
 
     registration = await _registration_by_email(email)
-    assert registration["tenant_schema"] is None
-    assert registration["wholesaler_id"] is None
+    assert registration["status"] == "active"
+    assert registration["tenant_schema"] is not None
+    assert registration["wholesaler_id"] is not None
+    assert registration["tenant_schema"] in ((await _tenant_schema_names()) - schemas_before)
+    assert len(await _setup_token_rows(email)) == 1
+    assert await _table_count(registration["tenant_schema"], "users") == 0
+    assert await _table_count(registration["tenant_schema"], "roles") == 0
+    assert await _table_count(registration["tenant_schema"], "user_roles") == 0
+    assert await _table_count(registration["tenant_schema"], "role_permissions") == 0
 
 
 async def test_route_policy_keeps_only_expected_onboarding_auth_routes_public():

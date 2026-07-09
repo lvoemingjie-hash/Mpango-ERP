@@ -11,7 +11,12 @@ from sqlalchemy import text
 from api.app import app
 from api.dependencies import get_db_session
 from database.session import AsyncSessionLocal, async_engine
-from models.tenant_onboarding import EmailVerificationToken, TenantRegistration
+from models.tenant_onboarding import (
+    EmailVerificationToken,
+    OnboardingStatusToken,
+    OwnerCredentialSetupToken,
+    TenantRegistration,
+)
 from models.wholesaler import Wholesaler
 from services.email_delivery import clear_dev_email_deliveries, get_dev_email_deliveries
 
@@ -37,14 +42,44 @@ async def _u6d_public_schema():
 async def _ensure_onboarding_tables() -> None:
     async with async_engine.begin() as connection:
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+        await connection.execute(
+            text(
+                "DO $$ BEGIN "
+                "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reporting_role') "
+                "THEN CREATE ROLE reporting_role NOLOGIN; END IF; "
+                "END $$"
+            )
+        )
         await connection.run_sync(Wholesaler.__table__.create, checkfirst=True)
         await connection.run_sync(TenantRegistration.__table__.create, checkfirst=True)
         await connection.run_sync(EmailVerificationToken.__table__.create, checkfirst=True)
+        await connection.run_sync(OnboardingStatusToken.__table__.create, checkfirst=True)
+        await connection.run_sync(OwnerCredentialSetupToken.__table__.create, checkfirst=True)
 
 
 async def _clear_u6d_rows() -> None:
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT wholesaler_id, tenant_schema FROM public.tenant_registrations "
+                    "WHERE owner_email LIKE 'u6d_%@example.com'"
+                )
+            )
+        ).mappings().all()
+        wholesaler_ids = [row["wholesaler_id"] for row in rows if row["wholesaler_id"] is not None]
+        for schema in {row["tenant_schema"] for row in rows if row["tenant_schema"] is not None}:
+            if schema.startswith("t_") and schema.replace("_", "").isalnum():
+                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await session.execute(
+            text(
+                "DELETE FROM public.owner_credential_setup_tokens "
+                "WHERE registration_id IN ("
+                "SELECT id FROM public.tenant_registrations "
+                "WHERE owner_email LIKE 'u6d_%@example.com')"
+            )
+        )
         await session.execute(
             text(
                 "DELETE FROM public.email_verification_tokens "
@@ -56,6 +91,11 @@ async def _clear_u6d_rows() -> None:
         await session.execute(
             text("DELETE FROM public.tenant_registrations WHERE owner_email LIKE 'u6d_%@example.com'")
         )
+        if wholesaler_ids:
+            await session.execute(
+                text("DELETE FROM public.wholesalers WHERE id = ANY(:wholesaler_ids)"),
+                {"wholesaler_ids": wholesaler_ids},
+            )
         await session.commit()
 
 
@@ -178,6 +218,11 @@ async def _rbac_table_inventory() -> set[tuple[str, str]]:
         return {(schema, table) for schema, table in rows}
 
 
+async def _table_count(schema: str, table: str) -> int:
+    async with AsyncSessionLocal() as session:
+        return int(await session.scalar(text(f'SELECT count(*) FROM "{schema}"."{table}"')))
+
+
 def _assert_neutral_failure(response):
     assert response.status_code == 400, response.text
     body = response.json()
@@ -203,8 +248,10 @@ async def test_valid_token_verifies_registration_and_marks_token_used():
     assert "tenant" not in str(body).lower()
 
     registration = await _registration_row(email)
-    assert registration["status"] == "email_verified"
+    assert registration["status"] == "active"
     assert registration["email_verified_at"] is not None
+    assert registration["tenant_schema"] is not None
+    assert registration["wholesaler_id"] is not None
 
     token_rows = await _token_rows_for_email(email)
     assert len(token_rows) == 1
@@ -275,7 +322,7 @@ async def test_reused_token_cannot_verify_twice():
     assert first.status_code == 200, first.text
     _assert_neutral_failure(second)
     registration = await _registration_row(email)
-    assert registration["status"] == "email_verified"
+    assert registration["status"] == "active"
     token_rows = await _token_rows_for_email(email)
     assert len(token_rows) == 1
     assert token_rows[0]["used_at"] is not None
@@ -296,18 +343,18 @@ async def test_token_for_non_pending_registration_does_not_regress_state():
     assert await _token_rows_for_email(email) == before_tokens
 
 
-async def test_verify_email_has_no_tenant_schema_users_roles_or_rbac_side_effects():
+async def test_verify_email_provisions_tenant_schema_without_admin_rbac_side_effects():
     email = f"u6d_{uuid.uuid4().hex}@example.com"
     raw_token = await _signup_and_token(email)
     schemas_before = await _tenant_schema_names()
-    rbac_before = await _rbac_table_inventory()
 
     async with await _client() as client:
         response = await client.post("/api/v1/auth/verify-email", json={"token": raw_token})
 
     assert response.status_code == 200, response.text
-    assert await _tenant_schema_names() == schemas_before
-    assert await _rbac_table_inventory() == rbac_before
     registration = await _registration_row(email)
-    assert registration["tenant_schema"] is None
-    assert registration["wholesaler_id"] is None
+    assert await _tenant_schema_names() == schemas_before | {registration["tenant_schema"]}
+    assert registration["tenant_schema"] is not None
+    assert registration["wholesaler_id"] is not None
+    for table in ("users", "roles", "permissions", "user_roles", "role_permissions"):
+        assert await _table_count(registration["tenant_schema"], table) == 0

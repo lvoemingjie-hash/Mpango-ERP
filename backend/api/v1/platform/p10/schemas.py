@@ -62,6 +62,31 @@ def validate_uuid_v4_v7(value: Optional[str]) -> Optional[str]:
     return value
 
 
+# P25-EG: Platform read DTOs (TenantSummary, TenantHealth) surface tenant_id from
+# legacy product tables (public.wholesalers.id) which may contain non-v4/v7 UUIDs
+# (e.g. seeded test rows). A lenient validator accepts any valid UUID-format
+# string so the read-only API never 500s on legacy rows. Strict v4/v7 stays in
+# force for platform-generated identifiers (audit event_id).
+UUID_ANY_VERSION_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def validate_uuid_any_version(value: Optional[str]) -> Optional[str]:
+    """Validate UUID format (any version) for platform read DTOs.
+
+    Accepts v1/v4/v7 and other valid UUID-format strings. Non-None values that
+    are not valid UUID format are still rejected so slugs/garbage do not leak
+    through; callers translate those into clean 404s via _coerce_tenant_id.
+    """
+    if value is None:
+        return value
+    if not UUID_ANY_VERSION_PATTERN.match(value):
+        raise ValueError(f"Invalid UUID format, got: {value}")
+    return value
+
+
 # ── Sub-structures ──
 
 
@@ -172,7 +197,7 @@ class TenantSummary(BaseModel):
         ..., description="false if support mode not yet implemented"
     )
 
-    _validate_tenant_id = field_validator("tenant_id")(validate_uuid_v4_v7)
+    _validate_tenant_id = field_validator("tenant_id")(validate_uuid_any_version)
 
 
 class TenantSummaryList(BaseModel):
@@ -227,7 +252,7 @@ class TenantHealth(BaseModel):
         None, description="null if no snapshot generated"
     )
 
-    _validate_tenant_id = field_validator("tenant_id")(validate_uuid_v4_v7)
+    _validate_tenant_id = field_validator("tenant_id")(validate_uuid_any_version)
 
 
 # ── Contract: SystemHealth ──

@@ -2501,3 +2501,166 @@ class TestG3R2TenantContextFailClosed:
         assert exc_info.value.status_code == 401
         assert exc_info.value.detail["code"] == "USER_NOT_FOUND"
         mock_session.close.assert_awaited()
+
+
+# =============================================================================
+# P25-EG: Tenant List Legacy UUID Robustness
+# =============================================================================
+
+
+class TestP25EGTenantListLegacyUUID:
+    """P25-EG: platform tenant list must not 500 on legacy/non-v4-v7 UUIDs.
+
+    Root cause: TenantSummary.tenant_id used the strict validate_uuid_v4_v7
+    validator, but tenant_id is surfaced from legacy product tables
+    (public.wholesalers.id) which may contain non-v4/v7 UUIDs. The validator
+    raised ValueError -> Pydantic ValidationError -> HTTP 500.
+    """
+
+    LEGACY_V1 = "11111111-1111-1111-1111-111111111111"
+    VALID_V4 = "550e8400-e29b-41d4-a716-446655440000"
+
+    # -- validate_uuid_any_version helper --
+
+    def test_lenient_accepts_legacy_v1(self):
+        from api.v1.platform.p10.schemas import validate_uuid_any_version
+
+        assert validate_uuid_any_version(self.LEGACY_V1) == self.LEGACY_V1
+
+    def test_lenient_accepts_valid_v4(self):
+        from api.v1.platform.p10.schemas import validate_uuid_any_version
+
+        assert validate_uuid_any_version(self.VALID_V4) == self.VALID_V4
+
+    def test_lenient_accepts_none(self):
+        from api.v1.platform.p10.schemas import validate_uuid_any_version
+
+        assert validate_uuid_any_version(None) is None
+
+    def test_lenient_rejects_garbage(self):
+        from api.v1.platform.p10.schemas import validate_uuid_any_version
+
+        with pytest.raises(ValueError):
+            validate_uuid_any_version("not-a-uuid")
+
+    def test_lenient_rejects_slug(self):
+        from api.v1.platform.p10.schemas import validate_uuid_any_version
+
+        with pytest.raises(ValueError):
+            validate_uuid_any_version("smoke-tenant-1")
+
+    # -- TenantSummary constructs with legacy UUID --
+
+    def test_tenant_summary_accepts_legacy_uuid(self):
+        from api.v1.platform.p10.schemas import TenantSummary
+
+        # Must not raise -- this was the 500 root cause.
+        summary = TenantSummary(
+            tenant_id=self.LEGACY_V1,
+            tenant_name="S5D4B R1 Test Wholesaler",
+            tenant_schema="t_s5d4b",
+            status="active",
+            health_status="unknown",
+            support_mode_active=False,
+        )
+        assert summary.tenant_id == self.LEGACY_V1
+
+    def test_tenant_summary_accepts_valid_v4(self):
+        from api.v1.platform.p10.schemas import TenantSummary
+
+        summary = TenantSummary(
+            tenant_id=self.VALID_V4,
+            tenant_name="Normal Tenant",
+            status="active",
+            health_status="unknown",
+            support_mode_active=False,
+        )
+        assert summary.tenant_id == self.VALID_V4
+
+    def test_tenant_summary_accepts_none_tenant_id(self):
+        from api.v1.platform.p10.schemas import TenantSummary
+
+        summary = TenantSummary(
+            tenant_id=None,
+            tenant_name=None,
+            status="unknown",
+            health_status="unknown",
+            support_mode_active=False,
+        )
+        assert summary.tenant_id is None
+
+    # -- TenantHealth constructs with legacy UUID --
+
+    def test_tenant_health_accepts_legacy_uuid(self):
+        from api.v1.platform.p10.schemas import TenantHealth
+
+        # Must not raise -- same latent bug as TenantSummary.
+        health = TenantHealth(
+            tenant_id=self.LEGACY_V1,
+            tenant_schema="t_s5d4b",
+            health_status="unknown",
+        )
+        assert health.tenant_id == self.LEGACY_V1
+
+    # -- Strict validator still in force for audit event_id --
+
+    def test_audit_event_id_still_strict_v4_v7(self):
+        """PlatformAuditEvent.event_id must still enforce v4/v7 (not relaxed)."""
+        from api.v1.platform.p10.schemas import PlatformAuditEvent
+
+        with pytest.raises(Exception):
+            PlatformAuditEvent(
+                event_id=self.LEGACY_V1,
+                scope="global",
+                action="test",
+                result="completed",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+
+    # -- list_tenant_summaries does not raise on legacy UUID row --
+
+    @pytest.mark.asyncio
+    async def test_list_tenant_summaries_legacy_uuid_no_500(self):
+        """list_tenant_summaries must not raise when a wholesaler row has a
+        legacy v1 UUID id."""
+        from unittest.mock import AsyncMock, MagicMock
+        from api.v1.platform.p10.services import list_tenant_summaries
+
+        mock_db = MagicMock()
+        legacy_w = MagicMock()
+        legacy_w.id = "11111111-1111-1111-1111-111111111111"
+        legacy_w.name = "S5D4B R1 Test Wholesaler"
+        legacy_w.status = "active"
+        legacy_w.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        legacy_w.is_deleted = False
+        legacy_w.get_tenant_schema = MagicMock(return_value="t_s5d4b")
+
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        rows_result = MagicMock()
+        rows_result.scalars.return_value.all.return_value = [legacy_w]
+
+        mock_db.execute = AsyncMock(side_effect=[count_result, rows_result])
+
+        result = await list_tenant_summaries(mock_db, limit=50, offset=0)
+
+        assert result.total == 1
+        assert len(result.items) == 1
+        assert result.items[0].tenant_id == "11111111-1111-1111-1111-111111111111"
+        assert result.items[0].tenant_name == "S5D4B R1 Test Wholesaler"
+
+    # -- _coerce_tenant_id still translates slugs to None (-> 404) --
+
+    def test_coerce_tenant_id_slug_returns_none(self):
+        """Invalid slug identifiers must still coerce to None (clean 404)."""
+        from api.v1.platform.p10.services import _coerce_tenant_id
+
+        assert _coerce_tenant_id("smoke-tenant-1") is None
+
+    def test_coerce_tenant_id_legacy_uuid_parsed(self):
+        """Legacy UUID is parseable by uuid.UUID (used for DB lookup)."""
+        from api.v1.platform.p10.services import _coerce_tenant_id
+
+        parsed = _coerce_tenant_id(self.LEGACY_V1)
+        assert parsed is not None
+        assert str(parsed) == self.LEGACY_V1

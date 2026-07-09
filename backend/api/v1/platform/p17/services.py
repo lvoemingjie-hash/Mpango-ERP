@@ -68,16 +68,22 @@ async def _load_provisioning_map(
     Returns a {wholesaler_id_str: PlatformTenant} map. On any error returns an
     empty map so the adapter degrades gracefully (provisioning reads null +
     reason), never raises to the caller, and never fabricates.
+
+    P25-EJ: The query runs inside a SAVEPOINT (``db.begin_nested()``). If the
+    query fails (e.g. table absent), the SAVEPOINT is rolled back -- only the
+    nested scope, not the outer request transaction -- so the swallowed error
+    does NOT poison the AsyncSession for the subsequent audit-log commit.
     """
     if not wholesaler_ids:
         return {}
     try:
-        result = await db.execute(
-            select(PlatformTenant).where(
-                PlatformTenant.wholesaler_id.in_(wholesaler_ids)
+        async with db.begin_nested():
+            result = await db.execute(
+                select(PlatformTenant).where(
+                    PlatformTenant.wholesaler_id.in_(wholesaler_ids)
+                )
             )
-        )
-        rows = result.scalars().all()
+            rows = result.scalars().all()
         return {str(r.wholesaler_id): r for r in rows}
     except Exception:
         return {}
@@ -335,28 +341,30 @@ async def _load_backup_status_map(
     tenant_uuids = [u for u in (_to_uuid(t) for t in tenant_ids) if u is not None]
 
     try:
-        outcomes_result = await db.execute(
-            select(PlatformBackupOutcome).where(
-                or_(
-                    PlatformBackupOutcome.tenant_id.in_(tenant_uuids),
-                    PlatformBackupOutcome.tenant_id.is_(None),
-                ),
-                PlatformBackupOutcome.completed_at.is_not(None),
-            )
-        )
-        outcomes = outcomes_result.scalars().all()
-
-        policies_result = await db.execute(
-            select(PlatformBackupPolicy).where(
-                or_(
-                    PlatformBackupPolicy.tenant_id.in_(tenant_uuids),
-                    PlatformBackupPolicy.tenant_id.is_(None),
+        async with db.begin_nested():
+            outcomes_result = await db.execute(
+                select(PlatformBackupOutcome).where(
+                    or_(
+                        PlatformBackupOutcome.tenant_id.in_(tenant_uuids),
+                        PlatformBackupOutcome.tenant_id.is_(None),
+                    ),
+                    PlatformBackupOutcome.completed_at.is_not(None),
                 )
             )
-        )
-        policies = policies_result.scalars().all()
+            outcomes = outcomes_result.scalars().all()
+
+            policies_result = await db.execute(
+                select(PlatformBackupPolicy).where(
+                    or_(
+                        PlatformBackupPolicy.tenant_id.in_(tenant_uuids),
+                        PlatformBackupPolicy.tenant_id.is_(None),
+                    )
+                )
+            )
+            policies = policies_result.scalars().all()
     except Exception:
-        # Read failure -> unavailable for every tenant (caller surfaces reason).
+        # Read failure -> SAVEPOINT rolled back, outer session is clean.
+        # Unavailable for every tenant (caller surfaces reason).
         return None
 
     def _latest(rows: list[PlatformBackupOutcome]) -> Optional[PlatformBackupOutcome]:

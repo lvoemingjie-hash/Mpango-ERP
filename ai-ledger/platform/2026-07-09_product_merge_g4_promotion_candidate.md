@@ -1,9 +1,9 @@
 # G4 Product-Line Promotion Execution Gate Ledger
 
-**Date**: 2026-07-09  
-**Branch**: `codex/product-merge-g4-promotion-candidate-2026-07-09`  
-**HEAD**: `8766a49fa393d6b84abe3c34438455dc8c9523df`  
-**Base**: `origin/product-dev-recovered` @ `0879314c`  
+**Date**: 2026-07-09
+**Branch**: `codex/product-merge-g4-promotion-candidate-2026-07-09`
+**HEAD**: `8766a49fa393d6b84abe3c34438455dc8c9523df`
+**Base**: `origin/product-dev-recovered` @ `0879314c`
 **Pre-authorized by**: G3-R4 verdict `GO_TO_G4_EXECUTION_GATE`
 
 ---
@@ -178,8 +178,8 @@ aefbf129 G4: merge platform-dev into product-dev-recovered
 
 # G4-R1: Promotion Candidate Evidence Closure
 
-**Date**: 2026-07-09 19:30  
-**G4-R1 HEAD**: `2a07f3da` (unchanged from G4 — no source code changes)  
+**Date**: 2026-07-09 19:30
+**G4-R1 HEAD**: `2a07f3da` (unchanged from G4 — no source code changes)
 **Task**: Close evidence gaps before FINAL_APPROVED_FOR_PROTECTED_BRANCH_PUSH
 
 ## R1.1 Targeted Backend 3-Failure Classification
@@ -216,9 +216,9 @@ The 3 failures only manifest under Python 3.14. On the CI runtime (Python 3.12),
 
 ## R1.2 Real-Stack Platform Smoke Evidence
 
-**Run on**: G4 candidate tip `2a07f3da`, Python 3.12, Postgres `:5433`, Redis `:6379`  
-**Alembic head**: `030_platform_backup_status_source`  
-**Script**: `verify/p25ef/run_smoke.py` (unmodified)  
+**Run on**: G4 candidate tip `2a07f3da`, Python 3.12, Postgres `:5433`, Redis `:6379`
+**Alembic head**: `030_platform_backup_status_source`
+**Script**: `verify/p25ef/run_smoke.py` (unmodified)
 **Evidence**: `verify/g4r1_smoke/smoke_result.json` + `verify/g4r1_smoke/backend_stdout.log`
 
 ### Identity Smoke (6/6 PASS)

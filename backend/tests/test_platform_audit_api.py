@@ -119,7 +119,7 @@ def _list_client():
     """Client with mock returning empty list."""
     mock_db = MagicMock()
     mock_db.execute = AsyncMock(side_effect=_make_empty_list_result())
-    return TestClient(_make_app(mock_db))
+    return TestClient(_make_app(mock_db, auth="none"))
 
 
 # === Guard tests ===

@@ -106,7 +106,7 @@ TEST_HEADERS = {"X-Platform-Test-Override": "test-platform-override-secret"}
 
 
 def _stats_client():
-    return TestClient(_make_app(_make_stats_db()))
+    return TestClient(_make_app(_make_stats_db(), auth="none"))
 
 
 # === Guard tests ===

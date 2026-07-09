@@ -48,4 +48,6 @@
 - `pre-commit run --files backend/services/onboarding_service.py backend/tests/test_u6l_email_verified_onboarding_orchestration.py` -> passed, including `detect-secrets`.
 - Pre-commit caveat from initial U6-L remains: repo-wide `pre-commit run --all-files` is blocked by unrelated legacy YAML parse errors and Windows GBK filename printing.
 - Pre-commit secret gate passed for changed R1 files; `gitleaks` binary remains unavailable on PATH.
-- Pre-commit `npx gitnexus analyze` -> already up to date at committed head `4808ae5`; final post-commit GitNexus evidence will be recorded in the session summary.
+- R1 implementation commit: `21de59fe` (`fix(U6-L): persist retry anchor after setup email failure`).
+- Post-R1-commit `npx gitnexus analyze` -> indexed successfully; 7,178 nodes, 20,553 edges, 473 clusters, 243 flows.
+- Post-R1-commit `npx gitnexus status` -> up-to-date at current commit `21de59f`.

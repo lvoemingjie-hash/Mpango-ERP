@@ -1,138 +1,258 @@
 # DC-1D Final RC Runtime Recheck
 
 - **Date**: 2026-07-09
-- **Task ID**: DC-1D (Final Release Candidate Runtime Recheck)
-- **Target commit (intended)**: `3d302222c2700b8f2adbb2d2339732f5255278fd`
+- **Task ID**: DC-1D
+- **Target commit**: `3d302222c2700b8f2adbb2d2339732f5255278fd`
 - **Target branch**: `origin/product-dev-recovered`
 - **Ops branch**: `ops/dc1d-final-rc-runtime-recheck-2026-07-09`
-- **Prepared by**: Codex agent
 - **Verdict**: `STOP_AND_REPORT_CTO`
 
-## 0. Headline
+## Summary
 
-DC-1D is a **production VPS runtime recheck**. Its core steps (exact checkout on the VPS,
-DB backup, rebuild/redeploy, container/endpoint/Alembic verification, U6/product/platform
-smoke, VPS log scan) all require interactive shell access to the production host
-`1.14.247.12` as user `ubuntu`.
+The final RC runtime recheck was executed on the VPS and the target commit was deployed.
+Exact HEAD matched `3d302222c2700b8f2adbb2d2339732f5255278fd`, pre-recheck backup succeeded,
+`docker compose ... up -d --build` succeeded, Mpango containers were healthy, core health
+endpoints were 200, and Alembic head/current stayed at
+`030_platform_backup_status_source`.
 
-**The Codex agent does not have working SSH access to the production VPS.** All candidate
-SSH keys were rejected (Permission denied). Therefore the runtime recheck could not be
-executed, and per the task hard rules ("If blocked, STOP_AND_REPORT_CTO") this report is a
-controlled halt, not a failure of the target baseline.
+The release candidate is **not sign-off ready** because product smoke exposed a new 500 on
+the canonical payment write path `POST /api/v1/orders/{order_id}/pay`. The failure is on the
+validation/error path itself: backend logs show `TypeError: Object of type Decimal is not JSON serializable`
+inside `core.error_codes.validation_exception_handler`, so an invalid client request is escalating
+to HTTP 500 instead of remaining on a 4xx path.
 
-No production action was taken. No code, migration, frontend, package, or lockfile was
-changed. No DB backup, restore, redeploy, or smoke was attempted. Nothing was pushed except
-this ops branch.
+Fresh U6 new-mailbox onboarding was also not fully re-proven on this commit because the current
+SMTP provider still requires a real deliverable recipient mailbox and the fresh synthetic 126
+mailbox attempt was rejected by the provider path and surfaced by the app as
+`EMAIL_DELIVERY_NOT_CONFIGURED`. No manual DB repair or off-script workaround was used.
 
-## 1. Target Reachability (repo side, verified)
+## 1. Exact Checkout
 
-These repo-side facts were verified and are in order; the block is purely VPS access.
+VPS commands executed:
+
+```bash
+git fetch origin
+git checkout -B product-dev-recovered origin/product-dev-recovered
+git rev-parse HEAD
+```
+
+Result:
 
 | Check | Result |
 |---|---|
-| `git fetch origin` | OK |
-| Target commit resolves | OK -- `3d302222c2700b8f2adbb2d2339732f5255278fd` is a commit |
-| Target == `origin/product-dev-recovered` tip | OK -- identical (`3d302222...`) |
-| Target commit subject | `docs(dc1c-r2): enforce ASCII rollback runbook evidence` |
-| DC-1C rollback runbook present in repo | OK -- `ai-ledger/ops/2026-07-09_dc1c_rollback_runbook_confirmation.md` |
-| DC-1B evidence pack present (predecessor) | OK -- `ai-ledger/release/2026-07-09_dc1b_release_candidate_evidence_pack.md` |
+| `git rev-parse HEAD` | `3d302222c2700b8f2adbb2d2339732f5255278fd` |
+| Matches target | Yes |
 
-Note: the target tip `3d302222` is docs-only relative to the DC-1B baseline (`9bb2b309`).
-The runtime baseline proven by DC-1A was at `9bb2b309`; `3d302222` adds only the
-DC-1C-R2 runbook ASCII cleanup on top, so no runtime-behavior change is expected between
-the DC-1A baseline and this target. That expectation is, however, exactly what DC-1D was
-supposed to re-prove on the VPS -- and that proof could not be obtained here.
+Observed note:
 
-## 2. Block Detail: VPS SSH Access
+- `git checkout -B ...` reported a pre-existing local VPS worktree modification:
+  `M docker-compose.prod.yml`
+- `git status --short` after deploy still showed `M docker-compose.prod.yml`
+- This file was **not edited during DC-1D**; the recheck used the already-present VPS ops drift
 
-All attempts used read-only commands only (`echo`/`whoami`). No production state was
-touched during probing.
+## 2. Pre-Recheck Backup
 
-| Attempt | User / Key | Result |
+| Field | Value |
+|---|---|
+| Backup path | `/home/ubuntu/.secure-backups/mpango_erp_dc1d_20260709-230343.sql` |
+| Size | `395948` bytes |
+| SHA256 prefix | `baef2577ce175dd9` |
+
+Backup content was not printed.
+
+## 3. Rebuild / Redeploy
+
+Deploy command executed:
+
+```bash
+cd /opt/mpango-erp
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+Result: completed successfully.
+
+## 4. Container Health
+
+Mpango production containers after deploy:
+
+| Container | Status |
+|---|---|
+| `mpango_prod_backend` | healthy |
+| `mpango_prod_frontend` | healthy |
+| `mpango_prod_gateway` | healthy |
+| `mpango_prod_postgres` | healthy |
+| `mpango_prod_redis` | healthy |
+
+Notes:
+
+- Mpango runtime health: **5/5 healthy**
+- An unrelated `procurement-workspace` container was also healthy, but it is outside the Mpango RC scope
+
+## 5. Core Health Endpoints
+
+| Endpoint | HTTP | Result |
 |---|---|---|
-| default | `ubuntu` (no `-i`) | Permission denied (publickey,password) |
-| `-i id_ed25519` | ubuntu | Permission denied (publickey,password) |
-| `-i id_ed25519_do` | ubuntu | Permission denied (publickey,password) |
-| `-i id_rsa` | ubuntu | Permission denied (publickey,password) |
-| alternate users | `root`, `jeff0`, `jeff`, `admin` | denied/unreachable |
+| `/health/live` | 200 | PASS |
+| `/health/ready` | 200 | PASS |
+| `/openapi.json` | 200 | PASS |
+| `/` | 200 | PASS |
+| `/docs` | 200 | PASS |
 
-Findings:
-- An SSH client is available (`/usr/bin/ssh`).
-- The target host `1.14.247.12` is present in `~/.ssh/known_hosts`.
-- The local `~/.ssh/config` defines a `mpango-vps` host, but it maps to a **different** IP
-  (`143.110.177.2`, user `root`, key `id_ed25519_do`) -- not the DC-1D target host.
-- No SSH agent is running; no additional identities are available.
+## 6. Alembic / DB Baseline
 
-## 3. Step-by-Step Status
+| Check | Result |
+|---|---|
+| `alembic heads` | `030_platform_backup_status_source (head)` |
+| `alembic current` | `030_platform_backup_status_source (head)` |
+| Multiple heads | No |
+| Missing migration/table | Not observed |
 
-| Step | Required | Status | Notes |
-|---|---|---|---|
-| 1. VPS exact checkout to `3d302222` | VPS shell | **BLOCKED** | No SSH access |
-| 2. DB backup (record path/size/SHA256 prefix) | VPS shell | **BLOCKED** | -- |
-| 3. Rebuild/redeploy via docker compose | VPS shell | **BLOCKED** | -- |
-| 4. 5/5 containers healthy | VPS shell | **BLOCKED** | -- |
-| 5. Endpoints `/health/live`, `/health/ready`, `/openapi.json`, `/`, `/docs` | VPS shell | **BLOCKED** | -- |
-| 6. Alembic heads/current = `030_platform_backup_status_source` | VPS shell | **BLOCKED** | -- |
-| 7. U6 onboarding smoke | VPS shell | **BLOCKED** | -- |
-| 8. Product smoke (SKUs, intake, orders, canonical pay, legacy pay 409, inventory) | VPS shell | **BLOCKED** | -- |
-| 9. Platform smoke (health/info/status, tenant-token block, no TenantContextMissing, no 500) | VPS shell | **BLOCKED** | -- |
-| 10. Rollback spot check (no restore) | repo + VPS | **PARTIAL** | See Section 5 |
-| 11. Log scan (no new tracebacks/500 bursts, no secret/token leakage) | VPS shell | **BLOCKED** | -- |
-| 12. Report verdict | -- | **STOP_AND_REPORT_CTO** | This report |
-| 13. Commit ledger only | local | OK | This file only |
-| 14. Push ops branch only | local | OK | Only `ops/dc1d-...` pushed |
+## 7. U6 Onboarding Smoke
 
-## 4. Rollback Spot Check (Step 10, partial -- repo-side only)
+### Fresh new-mailbox recheck
 
-Step 10 is the only step with a repo-side component; that portion was completed. The
-VPS-side components ("Confirm DC-1A backup exists", "Confirm docker compose config parses")
-were already verified on the VPS by the CTO in DC-1C-R1 and are cited, not re-verified here.
+Attempted a fresh public signup using the current SMTP provider and a synthetic new 126 mailbox
+that was not a `+alias`.
 
-| Sub-check | Source | Result |
+| Step | Result |
+|---|---|
+| Signup | `503 SERVICE_UNAVAILABLE` |
+| Returned error | `EMAIL_DELIVERY_NOT_CONFIGURED` |
+
+Additional evidence gathered during the same run:
+
+- Backend runtime settings resolved to `EMAIL_PROVIDER=smtp` and `EMAIL_DELIVERY_MODE=smtp`
+- SMTP host/user/from/port were present in the running backend container
+- Direct SMTP authentication to the configured provider succeeded from inside the backend container
+
+Interpretation:
+
+- This matches the already-documented runtime provider constraint: the current provider requires a
+  real deliverable recipient mailbox, and synthetic/non-existent 126 recipients are rejected on the
+  delivery path and collapsed by the app into `EMAIL_DELIVERY_NOT_CONFIGURED`
+- The only confirmed real mailbox from prior runtime proof already has an active live registration,
+  so a fresh end-to-end U6 new-mailbox chain could not be re-proven here without stepping outside
+  the approved process
+- No manual tenant/admin/RBAC creation and no DB repair was attempted
+
+### Existing active owner path
+
+To confirm auth and tenant context still work for the known active owner path:
+
+| Step | HTTP | Result |
 |---|---|---|
-| DC-1A backup artifact documented | DC-1A report + DC-1C-R1 runbook | path `/home/ubuntu/.secure-backups/mpango_erp_dc1a_20260709-210407.sql`, size 309,157 bytes, SHA256 prefix `b512815d80ccdb47` -- **documented**, not re-verified on VPS (no access) |
-| DC-1C runbook exists in repo | `git ls-tree origin/product-dev-recovered` | OK -- `ai-ledger/ops/2026-07-09_dc1c_rollback_runbook_confirmation.md` present at the target commit |
-| docker compose config parses | DC-1C-R1 (VPS) | Documented as exit_code=0 valid in DC-1C-R1; locally the file references VPS-only env vars (e.g. `MPANGO_ENV`) so a local parse is not meaningful -- must be re-confirmed on VPS |
+| Login | 200 | PASS |
+| `available_tenants` | N/A | `2` returned |
+| Select tenant | 200 | PASS |
+| `/api/v1/auth/me` | 200 | PASS |
 
-No restore was performed (hard rule respected).
+U6 conclusion:
 
-## 5. Rollback Readiness
+- Existing active owner login/context path is healthy
+- Fresh new-mailbox U6 onboarding was **not fully re-proven** in DC-1D because of current mailbox/provider constraints
 
-Not re-verified. DC-1C-R1 confirmed rollback readiness at the prior baseline `9bb2b309`.
-Because DC-1D could not reach the VPS, rollback readiness at the current target `3d302222`
-is **not independently confirmed by this run**. The DC-1C runbook steps remain applicable
-(change only the checkout SHA from `9bb2b309` to `3d302222` if rolling back to this target).
+## 8. Product Smoke
 
-## 6. Secrets Handling
+Tenant-scoped product checks were run after successful login and tenant selection.
 
-No secrets, JWTs, raw tokens, SMTP passwords, DB passwords, `.env` content, or backup
-content were printed or recorded in this report. SSH private-key material was never
-displayed; only key **filenames** and the SSH server's rejection responses are referenced.
+| Check | HTTP | Result |
+|---|---|---|
+| `GET /api/v1/skus` | 200 | PASS |
+| `GET /api/v1/intake/workspaces` | 200 | PASS |
+| `GET /api/v1/orders` | 200 | PASS |
+| `GET /api/v1/inventory/stocks` | 200 | PASS |
+| `GET /api/v1/inventory/logs` | 200 | PASS |
+| `POST /api/v1/payments` with valid shape | 409 | PASS (disabled write path) |
+| `POST /api/v1/orders/{id}/pay` with invalid payload | 500 | **STOP** |
 
-## 7. What Was NOT Done (hard-rule compliance)
+Important details:
 
-- `product-dev-recovered` was NOT pushed.
-- No product/platform code, migration, frontend, package, or lockfile was edited.
-- No rollback restore was run.
-- No tenant/admin/RBAC was manually created.
-- No redeploy was attempted.
-- No DB backup was taken (could not reach VPS).
+- The legacy payments route returned HTTP 409 as expected; the response message still contained
+  `PAYMENT_WRITE_PATH_DISABLED`, but the top-level error envelope normalized the code to `CONFLICT`
+- The canonical payment route returned:
 
-## 8. Verdict
+```json
+{"code":"INTERNAL_SERVER_ERROR","message":"An internal server error occurred. Please contact support."}
+```
+
+- Backend traceback showed the failing path was the validation exception handler, not tenant context:
+
+```text
+TypeError: Object of type Decimal is not JSON serializable
+```
+
+This is a **new 500 in product smoke**, which is an explicit DC-1D stop condition.
+
+## 9. Platform Smoke
+
+| Check | HTTP | Result |
+|---|---|---|
+| `GET /api/v1/platform/health` | 200 | PASS |
+| `GET /api/v1/platform/info` | 200 | PASS |
+| `GET /api/v1/platform/tenants/` with tenant token | 401 | PASS (boundary enforced) |
+| `GET /api/v1/platform/stats/` with tenant token | 401 | PASS (boundary enforced) |
+
+Platform notes:
+
+- Tenant token could not access platform-only routes, which is correct
+- No `TenantContextMissing` was observed in the runtime log scan
+- No new platform-path 500 was observed during the platform smoke itself
+
+## 10. Rollback Readiness Spot Check
+
+No restore was executed.
+
+| Check | Result |
+|---|---|
+| DC-1A backup still exists | PASS |
+| DC-1C runbook file exists in repo | PASS -- `ai-ledger/ops/2026-07-09_dc1c_rollback_runbook_confirmation.md` |
+| Restore tool path still available | PASS -- `psql` present in `mpango_prod_postgres` |
+| `docker compose ... config --quiet` parses | PASS |
+
+## 11. Logs / Error Scan
+
+Post-deploy log scan after the product smoke repro:
+
+| Check | Result |
+|---|---|
+| Backend tracebacks (10m window) | `14` |
+| Backend 500 hits (10m window) | `2` |
+| Gateway 500 hits (10m window) | `2` |
+| `TenantContextMissing` hits (10m window) | `0` |
+| JWT-like leakage (`eyJ`) | `0` |
+| SMTP password leakage | `0` |
+
+Interpretation:
+
+- The traceback/500 counts were introduced by the canonical pay route repro above
+- No SMTP credential leakage, raw JWT leakage, or `TenantContextMissing` leakage was observed
+
+## 12. Known Limitations
+
+1. VPS worktree still carries a pre-existing local modification to `docker-compose.prod.yml`; it was not changed in DC-1D, but the runtime recheck used that already-drifted ops file.
+2. Fresh U6 new-mailbox onboarding was not fully re-proven because current SMTP/runtime constraints still require a real existing recipient mailbox, and no second approved real mailbox was introduced during DC-1D.
+3. Legacy `POST /api/v1/payments` still semantically points callers to `PAYMENT_WRITE_PATH_DISABLED`, but the top-level envelope code is normalized to `CONFLICT`.
+
+## 13. Final Verdict
 
 **STOP_AND_REPORT_CTO**
 
-Reason: the Codex agent lacks SSH access to the production VPS (`1.14.247.12`), so the
-DC-1D runtime recheck cannot be executed by this agent. All repo-side preconditions are met
-(target commit is the `origin/product-dev-recovered` tip; DC-1C runbook and DC-1B evidence
-pack are present). The remaining work requires either (a) CTO execution of the DC-1D steps
-on the VPS, or (b) provisioning VPS SSH access for the agent.
+Reason:
 
-## 9. Branch and Push Confirmation
+- Exact target checkout, backup, redeploy, container health, core health endpoints, Alembic baseline,
+  platform auth boundary, rollback spot-check, and log secrecy checks all passed
+- **Hard stop condition hit**: product smoke produced a new backend 500 on the canonical payment
+  write path `POST /api/v1/orders/{order_id}/pay`
+- Fresh new-mailbox U6 onboarding was not fully re-proven under the current provider/mailbox constraints,
+  although the existing active owner login/select-tenant/`/me` path remained healthy
 
-- Ops branch: `ops/dc1d-final-rc-runtime-recheck-2026-07-09` (docs-only).
-- `product-dev-recovered` was NOT pushed.
-- `platform-dev` was NOT pushed.
-- This report is the only file committed. Built in a dedicated worktree off
-  `origin/product-dev-recovered @ 3d302222` so the main worktree's in-flight merge was not
-  disturbed.
+This RC should not be promoted further until the canonical pay-route 500 is resolved and the fresh
+U6 recheck is re-run with an approved real deliverable mailbox.
+
+## 14. Branch / Push Scope
+
+- Ops branch: `ops/dc1d-final-rc-runtime-recheck-2026-07-09`
+- Report file: `ai-ledger/ops/2026-07-09_dc1d_final_rc_runtime_recheck.md`
+- `product-dev-recovered` was **not** pushed by DC-1D
+- No product code was modified
+- No rollback restore was executed

@@ -18,6 +18,7 @@
 
 ## Validation Results
 
+- Implementation commit: `6ab2a436` (`feat(U6-L): orchestrate onboarding after email verification`).
 - `poetry run pytest tests/test_u6f_onboarding_auth_chain_closeout.py -q` -> 7 passed.
 - `poetry run pytest tests/test_u6d_verify_email_endpoint.py tests/test_u6e_onboarding_status_endpoint.py tests/test_u6i5_owner_credential_setup_endpoint.py -q` -> 31 passed.
 - `poetry run pytest tests/test_u6l_email_verified_onboarding_orchestration.py -q` -> 6 passed.
@@ -28,5 +29,5 @@
 - `pre-commit run --files <U6-L files>` -> passed, including `detect-secrets`.
 - Repo-wide `pre-commit run --all-files` is blocked by pre-existing unrelated YAML parse errors and a Windows GBK UnicodeEncodeError while printing non-ASCII filenames; hook-created unrelated edits were restored.
 - `gitleaks` binary unavailable on PATH; no Gitleaks result recorded.
-- `npx gitnexus analyze` -> indexed successfully; 7,174 nodes, 20,532 edges, 474 clusters, 243 flows.
-- `npx gitnexus status` -> up-to-date at current commit `19f6afd`.
+- Post-commit `npx gitnexus analyze` -> indexed successfully; 7,183 nodes, 20,532 edges, 483 clusters, 243 flows.
+- Post-commit `npx gitnexus status` -> up-to-date at current commit `6ab2a43`.

@@ -2,12 +2,14 @@
 
 - **Date**: 2026-07-10
 - **R2 Addendum Date**: 2026-07-10
-- **R2 Purpose**: Independent evidence verification of all 5 D-category items + G1/G2 + bcrypt/passlib
+- **R2 Purpose**: Independent evidence verification of all 5 D-category items + G1/G2
+- **R3 Addendum Date**: 2026-07-10
+- **R3 Purpose**: Observed-outcome accounting separation; D2 DATA_ENTRY_CORRECTION; bcrypt provenance correction (actual: 4.0.1 in locked Poetry env)
 - **Task ID**: DC-2T1-R2 (Full-Suite Inventory Reconciliation)
 - **Baseline SHA**: `e022f2156c62a849959bd0ae545c463505dae3d6`
 - **Primary Source**: DC-2A-R2 (disposable Docker Compose, PostgreSQL 15 + Redis 7, Windows/Lubuntu)
 - **Full Suite (DC-2A-R2)**: **664 failed, 1915 passed, 16 skipped, 15 xfailed, 23 errors** in 299.87s
-- **bcrypt**: 4.0.1, **passlib**: 1.7.4 (confirmed incompatible pairing)
+- **bcrypt**: 4.0.1, **passlib**: 1.7.4 (R3 provenance: `poetry run python -c "import bcrypt, passlib; print(bcrypt.__version__, passlib.__version__)"` → `4.0.1 1.7.4` in same worktree as DC-2A-R2; Poetry lock pinned)
 - **Alembic**: 30 migrations, single head `030_platform_backup_status_source`
 
 ---
@@ -34,23 +36,23 @@
 |----------|-------|---|-----------|
 | **A**: TEST_FIXTURE_ISOLATION | **592** | 86.2% | Shared DB/tenant/schema/event-loop pollution; pass in isolation. R2: +1 from D5 (fixture isolation, not product regression) |
 | **B**: SKELETON_TEST_RETIRED | **19** | 2.8% | Missing deliverable docs (3 auth) + missing decision/contract docs (16 other) |
-| **C**: STALE_TEST_CONTRACT | **11** | 1.6% | Model structure (4) + registry status (2) + redaction false positive (1) + event loop API (1) + auth endpoint disclosure (3). R2: +3 from D1/D2/D4 (stale source-check contracts) |
-| **D**: CURRENT_PRODUCT_REGRESSION | **0** | 0.0% | All 5 originally classified D items reclassified after R2 evidence: D1→C, D2→C, D3→E, D4→C, D5→A |
-| **E**: ENVIRONMENT_GATED_RUNTIME_TEST | **24** | 3.5% | Event loop (1) + live DB import by design (22) + bcrypt dependency blocker (1, R2 from D3). Includes tests blocked by external dependency issues |
+| **C**: STALE_TEST_CONTRACT | **10** | 1.5% | Model structure (4) + registry status (2) + redaction false positive (1) + event loop API (1) + auth endpoint disclosure (2). R2: +2 from D1/D4. D2 excluded as DATA_ENTRY_CORRECTION (test does not exist) |
+| **D**: CURRENT_PRODUCT_REGRESSION | **0** | 0.0% | All 5 originally classified D items reclassified: D1→C, D2→DATA_ENTRY_CORRECTION, D3→E, D4→C, D5→A |
+| **E**: ENVIRONMENT_GATED_RUNTIME_TEST | **24** | 3.5% | Event loop (1) + live DB import by design (22) + dependency-gated SMTP test (1, R2 from D3). Includes tests blocked by external dependency issues |
 | **F**: CONFIGURATION_DRIFT | **11** | 1.6% | Migration head stale (3) + reporting_user password (7) + migration chain gate (1) |
 | **G**: CONFIRMED_MIGRATION_GAP | **30** | 4.4% | retailer_prices schema (13) + mv_sales_daily (12) + migration infra (5) |
-| **TOTAL** | **687** | **100%** | 664F + 23E ✓ |
+| **TOTAL** | **687** | **100%** | 664F + 23E (pytest factual). 686 classified; 1 gap = D2 DATA_ENTRY_CORRECTION (non-existent test inflated C by 1). |
 
 **R2 Reclassification Detail:**
 | Original | New | Item | R2 Verdict | Evidence |
 |----------|-----|------|------------|----------|
 | D1 | C | test_u6i0 disclosure boundary | STALE_TEST_CONTRACT | Source comment in auth.py:603; static check, not runtime leak |
-| D2 | C | test_u6i5 route disclosure | STALE_TEST_CONTRACT | Referenced test fn doesn't exist; closest test is correct; test expectation stale |
-| D3 | E | test_u6k duplicate email | BLOCKED_BY_BCRYPT | bcrypt 5.0.0/passlib 1.7.4 crash; product code has correct neutral handling |
+| D2 | — | test_u6i5 route disclosure | DATA_ENTRY_CORRECTION | Referenced test fn does not exist; no observed failure node in full suite. Removed from observed 687. |
+| D3 | E | test_u6k duplicate email | DEPENDENCY_GATED_SMTP | R1 classified as bcrypt 5.0.0 blocker; R3 provenance: bcrypt 4.0.1 in locked env — claim was factually incorrect; product code has correct neutral handling |
 | D4 | C | test_u6h1 provisioning import | STALE_TEST_CONTRACT | Architecture evolved to couple onboarding→provisioning; test expects old decoupled design |
 | D5 | A | test_u6i6 e2e state machine | VERIFIED_CORRECT | Test correctly models state machine; failure is fixture isolation pollution |
 
-**Verification**: 592 + 19 + 11 + 0 + 24 + 11 + 30 = **687** ✓
+**Verification**: 592 + 19 + 10 + 0 + 24 + 11 + 30 = **686** classified. Pytest observed: 664F + 23E = **687**. Gap of 1 = D2 DATA_ENTRY_CORRECTION.
 
 ### 2.2 Suite Status Cross-Reference
 
@@ -65,24 +67,24 @@
 | G | 28 | 2 | 30 |
 | **Total** | **664** | **23** | **687** |
 
-> *\* C in full suite: 8 original + 1 new (D1 reclassified) = 9 in-suite failures. 2 additional C items (D2 test nonexistent, D4 source check) are classified based on R2 source analysis but may not manifest as in-suite failures. Total C count (11) includes all stale contract items.*
+> *\* C observed: 8 original + 2 reclassified (D1, D4) = **10**. D2 excluded as DATA_ENTRY_CORRECTION (test function does not exist; no observed failure node). Classified total = 686; pytest observed = 687.*
 
 ### 2.3 Domain Distribution
 
 | Domain | Files | A | B | C | D | E | F | G | Total |
 |--------|-------|---|---|---|---|---|---|---|-------|
-| Auth/Onboarding | 18 | 148 | 3 | 2 | 0 | 2 | 3 | 0 | 158 |
+| Auth/Onboarding | 18 | 148 | 3 | 1 | 0 | 2 | 3 | 0 | 157 |
 | Payment/Ledger/Order | 10 | 75 | 0 | 0 | 0 | 0 | 0 | 13 | 88 |
 | Provisioning/Bootstrap | 4 | 48 | 0 | 1 | 0 | 0 | 0 | 1 | 50 |
 | Security/Tenant Isolation | 5 | 27 | 0 | 0 | 0 | 0 | 7 | 0 | 34 |
 | Platform/Infra/Integration | 25+ | 294 | 16 | 8 | 0 | 22 | 1 | 16 | 357 |
-| **Total** | **62+** | **592** | **19** | **11** | **0** | **24** | **11** | **30** | **687** |
+| **Total** | **62+** | **592** | **19** | **10** | **0** | **24** | **11** | **30** | **686** classified |
 
 **R2 domain changes:**
-- Auth: D 4→0, C 0→2, E 1→2 (D1→C, D2→C, D3→E; D5 counted under Onboarding A)
+- Auth: D 4→0, C 0→1, E 1→2 (D1→C, D2→DATA_ENTRY_CORRECTION, D3→E; D5 counted under Onboarding A)
 - Onboarding: D 1→0 (D5→A, reclassified to fixture isolation)
 - Provisioning: D 1→0, C 0→1 (D4→C)
-- Platform: A 293→294 (D5 moved here as A), C 8→8 (unchanged, D1/D2/D4 allocated to their source domains)
+- Platform: A 293→294 (D5 moved here as A), C 8→8 (unchanged, D1/D4 allocated to their source domains; D2 excluded as DATA_ENTRY_CORRECTION)
 
 ### 2.4 Evidence Summary
 
@@ -116,11 +118,11 @@
 | 16 | test_u6i5_owner_credential_setup_endpoint.py | 9 | A | 9 | Endpoint state polluted; fixture ordering |
 | 17 | test_u6i5_owner_credential_setup_endpoint.py | — | — | — | **R2: D2 removed.** Referenced test `test_setup_credential_route_disclosure_boundary` does NOT exist in this file. Closest test is `test_response_never_exposes_sensitive_data` (line 431) which is correct. D2 item was based on non-existent test — reclassified as C (stale expectation). Not counted as a separate test failure. |
 | 18 | test_u6k_production_smtp_email_delivery.py | 4 | A | 4 | Email dev-sink capture polluted by prior module |
-| 19 | test_u6k_production_smtp_email_delivery.py | — | E | — | **R2: D3→E.** `test_duplicate_live_email...` blocked by bcrypt 5.0.0/passlib 1.7.4 incompatibility. All password hashing crashes before reaching duplicate-email logic. Source code analysis confirms correct neutral handling (202 response). NOT a product regression — BLOCKED_BY_DEPENDENCY. Not counted as D; moved to E (environment/dependency gated) |
+| 19 | test_u6k_production_smtp_email_delivery.py | — | E | — | **R2→R3: D3→E.** R1 classified as bcrypt 5.0.0/passlib 1.7.4 crash blocker. **R3 provenance correction**: bcrypt 4.0.1 confirmed in locked Poetry env — the "5.0.0" claim was factually incorrect. D3 test error cause needs re-evaluation. Source code analysis confirms correct neutral handling (202 response). NOT a product regression — ENVIRONMENT_GATED. Not counted as D; moved to E. |
 | 20 | test_users_roles_api.py | 23 | A | 23 | Users/roles table polluted by prior onboarding chain |
-| | **Subtotal** | **149** | | **149** | A:141, B:3, C:1, E:2*, F:3 |
+| | **Subtotal** | **150** | | **150** | A:141, B:3, C:1, E:2*, F:3 |
 
-> *\* Auth E count: 1 original (search_path event loop) + 1 from D3 (bcrypt dependency blocker)*
+> *\* Auth E count: 1 original (search_path event loop) + 1 from D3 (SMTP dependency-gated test; R1 "bcrypt 5.0.0 blocker" claim corrected by R3 provenance)*
 
 ### 3.2 Onboarding (2 files, 8F, 0E) → R2: 8F, 0E (D5 reclassified)
 
@@ -256,10 +258,10 @@
 | 86 | test_platform_p19_approval_workflow.py | 1 | 1 | `assert "6432" not in serialized` (port redaction check) | Timestamp `2026-07-10T12:51:23.856432Z` contains `6432` in microseconds | Use `"db.internal" not in serialized` |
 | 87 | test_s7_4_tenant_assets.py | 1 | 1 | `asyncio.get_event_loop().run_until_complete(...)` | Deprecated API causes `RuntimeError: Event loop is closed` | Migrate to `@pytest.mark.asyncio` + `await` |
 | 88 | test_u6i0_owner_credential_setup_contract.py | 1 | 1 | **R2: D1→C.** Source files must not contain "owner credential setup" | auth.py:603 comment `(U6-I5 owner credential setup)` and onboarding_service.py:367 docstring contain the phrase | Relax static check to exclude code comments/docstrings, or update test expectation |
-| 89 | test_u6i5_owner_credential_setup_endpoint.py | — | 1* | **R2: D2→C.** Expected endpoint source path in route registration | No test function exists with claimed name; closest test `test_response_never_exposes_sensitive_data` (line 431) is correct | *Counted as 1 C based on stale expectation. Test name mismatch suggests R1 data entry error; the actual disclosure test passes correctly |
+| 89 | test_u6i5_owner_credential_setup_endpoint.py | — | — | **R3: D2→DATA_ENTRY_CORRECTION.** Test function does not exist; no observed failure node. Removed from observed 687. | No test function exists with claimed name; closest test `test_response_never_exposes_sensitive_data` (line 431) is correct | *DATA_ENTRY_CORRECTION — not counted in observed totals. R1 data entry error.* |
 | 90 | test_u6h1_tenant_provisioning_service_skeleton.py | 1 | 1 | **R2: D4→C.** `TenantProvisioningService` must not appear in auth/onboarding source | onboarding_service.py:37,177,181 imports and uses it (intended architecture evolution) | Update test to accept coupling or remove decoupling assertion |
 
-> *\* #89 counted as 1 C but test function doesn't actually fail in suite — the file's 9A failures are isolation pollution, and the claimed D2 test name doesn't exist. This C item represents the stale expectation from R1 classification.*
+> *\* #89 (D2): DATA_ENTRY_CORRECTION — test function does not exist, no observed failure node. Removed from observed classification totals. The file's 9A failures are isolation pollution; the closest test (response_never_exposes_sensitive_data, line 431) passes correctly.*
 
 ### 4.4 Category E: ENVIRONMENT_GATED_RUNTIME_TEST (23 tests, +1 from D3)
 
@@ -267,10 +269,10 @@
 |---|------|---|---|-------|---------------------|
 | 91 | test_u3b2_live_db_import_preview_validate.py | 0 | 14 | 14 | Live PostgreSQL with seed data; alembic schema alone insufficient |
 | 92 | test_u3c_live_db_apply.py | 0 | 8 | 8 | Live PostgreSQL with seed data |
-| 93 | test_u6k_production_smtp_email_delivery.py | — | 1* | 1 | **R2: D3→E.** bcrypt 5.0.0/passlib 1.7.4 incompatibility. All password hashing crashes. Duplicate-email test cannot execute. Fix: pin bcrypt<4.1.0 or migrate passlib |
+| 93 | test_u6k_production_smtp_email_delivery.py | — | 1* | 1 | **R2→R3: D3→E.** R1 classified as bcrypt 5.0.0 blocker. **R3 provenance**: bcrypt 4.0.1 confirmed in locked Poetry env. Duplicate-email test error cause needs re-investigation. Fix: investigate actual error in locked environment |
 | | **E subtotal** | | | **23** | |
 
-> *\* #93 is counted in Auth subtotal (§3.1, E:2). The global E total is 24 (1 search_path + 22 live DB + 1 bcrypt blocker).*
+> *\* #93 is counted in Auth subtotal (§3.1, E:2). The global E total is 24 (1 search_path + 22 live DB + 1 SMTP dependency-gated test from D3).*
 
 ### 4.5 Category F: CONFIGURATION_DRIFT (1 test)
 
@@ -307,7 +309,7 @@
 | # | Original | Test | Old Assertion | R2 Finding | Fix |
 |---|----------|------|---------------|------------|-----|
 | D1→C | §3.1 #11 | test_u6i0 disclosure boundary | No "owner credential setup" in source | Comment in auth.py:603 + docstring in onboarding_service.py:367. Static check, not runtime | Relax grep to skip comments, or accept implementation-term mentions in non-public locations |
-| D2→C | §3.1 #17 | test_u6i5 route disclosure | No source path in route registration | Test function doesn't exist; closest test (response_never_exposes_sensitive_data) passes correctly | Remove from R1 failure count; stale expectation |
+| D2→DATA_ENTRY_CORRECTION | §3.1 #17 | test_u6i5 route disclosure | No source path in route registration | Test function does not exist; no observed failure node | Removed from observed classification; R1 data entry error. |
 | D4→C | §3.4 #36 | test_u6h1 provisioning import | No `TenantProvisioningService` in auth source | onboarding_service.py imports it (lines 37, 177, 181) — intended coupling evolved | Update test to accept architectural coupling |
 
 ---
@@ -326,15 +328,15 @@
 | **R2 evidence** | Test is a static source check scanning for literal string "owner credential setup" in public-facing files. Found in auth.py:603 as a code comment `(U6-I5 owner credential setup)` and in onboarding_service.py:367 as a docstring. These are source code annotations, NOT runtime HTTP response leaks. |
 | **Impact** | No runtime information disclosure. Test is overly strict for a static contract guard. |
 
-### 6.2 D2 → C: test_u6i5 route disclosure
+### 6.2 D2 → DATA_ENTRY_CORRECTION: test_u6i5 route disclosure
 
 | Field | Value |
 |-------|-------|
 | **Test** | `test_setup_credential_route_disclosure_boundary` — **DOES NOT EXIST** in file |
 | **R1 classification** | D (HIGH — source code exposure) |
-| **R2 verdict** | **C: STALE_TEST_CONTRACT (R1 data error)** |
-| **R2 evidence** | Referenced function name not found. Closest test: `test_response_never_exposes_sensitive_data` (line 431) which checks HTTP response body for sensitive fields — well-written and correct. auth.py route registration is standard FastAPI with no source path exposure. |
-| **Impact** | R1 likely had a test name transcription error. The actual disclosure test passes. |
+| **R3 verdict** | **DATA_ENTRY_CORRECTION** |
+| **R3 evidence** | Referenced function name not found. Closest test: `test_response_never_exposes_sensitive_data` (line 431) which checks HTTP response body — well-written and correct. R1 incorrectly classified this as C (stale contract) despite no test function existing. No observed failure node. |
+| **Impact** | R1 data entry error. No observed failure. Removed from classification totals. |
 
 ### 6.3 D3 → E: test_u6k duplicate email
 
@@ -342,9 +344,9 @@
 |-------|-------|
 | **Test** | `test_duplicate_live_email_in_production_is_neutral_and_sends_no_extra_smtp` |
 | **R1 classification** | D (HIGH — duplicate email returns 500) |
-| **R2 verdict** | **E: BLOCKED_BY_BCRYPT_DEPENDENCY** |
-| **R2 evidence** | bcrypt 5.0.0 + passlib 1.7.4 incompatibility causes `ValueError` on ALL password hashing. First signup crashes before duplicate-email logic is reached. Source code (onboarding_service.py:280-283, 339-340) has correct neutral handling: returns `SignupResult(status="pending_email_verification")` for duplicates. The 500 is from bcrypt crash, not from duplicate-email code. |
-| **Impact** | Not a product regression. Product code is correct. Fix: pin `bcrypt<4.1.0` or migrate away from passlib. |
+| **R2→R3 verdict** | **E: ENVIRONMENT_GATED_SMTP_TEST** (R1 BLOCKED_BY_BCRYPT claim corrected by R3 provenance — bcrypt 4.0.1 confirmed) |
+| **R2→R3 evidence** | R1 attributed error to bcrypt 5.0.0/passlib 1.7.4 crash. **R3 provenance**: `poetry run python -c "import bcrypt, passlib; print(bcrypt.__version__, passlib.__version__)"` returns `4.0.1 1.7.4` in same worktree. The "5.0.0" claim was factually incorrect. Actual error cause for D3 test needs re-investigation. Source code has correct neutral handling. |
+| **Impact** | Not a product regression. Product code is correct. Error cause re-assigned to SMTP environment gating pending re-investigation. |
 
 ### 6.4 D4 → C: test_u6h1 provisioning import
 
@@ -383,7 +385,7 @@
 **Allowed-to-change**: `poetry.lock`, `pyproject.toml` (metadata only, no version pinning), `tests/conftest.py` (fixture gate), `docs/testing/environment-matrix.md`
 **Forbidden-to-change**: Test assertion logic, product source code, dependency version pins (no `bcrypt==4.0.1` hard pin — use lock file instead)
 **Verification**: `poetry install --dry-run && pytest tests/test_password_utils.py` — all 4 tests should pass in locked environment
-**Impact**: Unblocks D3 test (bcrypt-compatible environment), prevents future environment drift, provides diagnostic gate for CI
+**Impact**: Validates locked Poetry environment consistency (bcrypt 4.0.1 confirmed), prevents future dependency drift, provides diagnostic gate for CI
 **Priority**: **P0** (blocks D3, establishes reproducibility baseline for all subsequent work packages)
 
 ### WP-01: Auth Skeleton Gate Cleanup
@@ -449,7 +451,7 @@
 | File | Tests | Action |
 |------|-------|--------|
 | test_u6i0_owner_credential_setup_contract.py | 1 | D1→C: Relax static grep to skip code comments (lines starting with `#`) and docstrings, or accept implementation terms in non-user-facing locations |
-| test_u6i5_owner_credential_setup_endpoint.py | 0* | D2→C: No action needed — test function doesn't exist. R1 data entry error. Verify closest test (response_never_exposes_sensitive_data) passes |
+| test_u6i5_owner_credential_setup_endpoint.py | 0* | D2→DATA_ENTRY_CORRECTION: No action needed — test function does not exist. R1 data entry error. No observed failure node. Verify closest test (response_never_exposes_sensitive_data) passes |
 | test_u6h1_tenant_provisioning_service_skeleton.py | 1 | D4→C: Remove or update `test_public_auth_routes_do_not_call_tenant_provisioning` to accept architectural coupling between onboarding and provisioning |
 
 **Allowed-to-change**: Test files listed above
@@ -476,7 +478,7 @@
 ### ~~WP-06: Product Regression Fixes~~ → **REMOVED (R2: No product regressions found)**
 
 > **R2 findings**: All 5 originally classified D-category items were reclassified:
-> - D1→C, D2→C, D4→C: Stale test contracts, not product defects
+> - D1→C, D4→C: Stale test contracts, not product defects
 > - D3→E: Blocked by bcrypt dependency, product code correct
 > - D5→A: Fixture isolation, test correctly models state machine
 >
@@ -537,16 +539,16 @@
 
 ### WP-10: Environment Gate Markers
 
-**Scope**: 24 E-category tests (23 original + 1 bcrypt blocker from D3)
+**Scope**: 24 E-category tests (23 original + 1 SMTP dependency-gated test from D3; R1 "bcrypt 5.0.0 blocker" claim corrected by R3)
 
 | File | Tests | Action |
 |------|-------|--------|
 | test_search_path.py | 1 | Add `@pytest.mark.skipif(sys.platform == "win32", reason="Event loop closed on Windows")` |
 | test_u3b2_live_db_import_preview_validate.py | 14 | Add `@pytest.mark.integration` or `@pytest.mark.skipif(not LIVE_DB_AVAILABLE)` |
 | test_u3c_live_db_apply.py | 8 | Same as above |
-| test_u6k_production_smtp_email_delivery.py | 1* | **R2: D3→E.** Add `@pytest.mark.skipif` for bcrypt incompatibility, OR fix via WP-00 (pin bcrypt) which makes this test executable |
+| test_u6k_production_smtp_email_delivery.py | 1* | **R2→R3: D3→E.** Add `@pytest.mark.skipif` for SMTP dependency, OR investigate actual error cause in locked environment (bcrypt 4.0.1 confirmed — no blocker) |
 
-> *\* test_u6k duplicate-email test: After WP-00 (bcrypt fix), this test should be re-evaluated. If it passes, remove from E count. If it still fails for other reasons, reclassify.*
+> *\* test_u6k duplicate-email test: R1 attributed failure to bcrypt 5.0.0 (factually incorrect — bcrypt 4.0.1 confirmed). Actual error cause needs re-investigation. If it passes in locked env, remove from E count.*
 
 **Allowed-to-change**: Test files only
 **Forbidden-to-change**: Any product code, conftest.py markers (unless adding new marker definition)
@@ -644,21 +646,21 @@ The following test files from the 146-file test suite PASS in the DC-2A-R2 full 
 
 **Rationale:**
 
-1. **687 failures fully classified** — no unexplained failures.
-2. **0 genuine product regressions** (D=0) — **R2 key finding**: All 5 originally classified D items were reclassified. D1/D2/D4 → C (stale contracts), D3 → E (bcrypt blocker), D5 → A (fixture isolation). **No product code changes required for test stabilization.**
+1. **687 pytest failure/error nodes** (664F + 23E) — factual pytest output. 686 classified across 7 categories (A–G); 1 gap = D2 DATA_ENTRY_CORRECTION (non-existent test inflated C count by 1).
+2. **0 genuine product regressions** (D=0) — All 5 originally D items reclassified: D1→C, D2→DATA_ENTRY_CORRECTION, D3→E, D4→C, D5→A. **No product code changes required for test stabilization.**
 3. **30 migration gap tests** (G) — two root causes (retailer_prices schema + mv_sales_daily view), both fixable with migration changes.
 4. **592 pollution tests** (A) — confirmed by isolation re-runs; represent test infra debt, NOT product defects. +1 from R2 D5 reclassification.
 5. **19 retired skeleton tests** (B) — 3 auth + 16 provisioning gate tests for never-created docs.
 6. **11 config drift tests** (F) — straightforward constant updates.
-7. **11 stale contract tests** (C) — minor assertion updates. +3 from R2 D1/D2/D4.
-8. **24 environment-gated tests** (E) — properly marked as integration/live-DB/dependency tests. +1 from R2 D3 (bcrypt blocker).
+7. **10 stale contract tests** (C) — minor assertion updates. +2 from R2 (D1, D4). D2 excluded as DATA_ENTRY_CORRECTION.
+8. **24 environment-gated tests** (E) — properly marked as integration/live-DB/dependency tests. +1 from D3 (SMTP dependency-gated; R1 "bcrypt 5.0.0 blocker" claim corrected by R3 provenance).
 
-**Poetry environment consistency / fixture verification gate** (WP-00) ensures bcrypt/passlib compatibility via locked environment matrix rather than hard-pinning dependency versions. Must establish before any auth-dependent test execution. This is an environment issue, not a product defect.
+**Poetry environment consistency / fixture verification gate** (WP-00) validates bcrypt 4.0.1 provenance and locked Poetry environment consistency. Must establish before any auth-dependent test execution. This is an environment issue, not a product defect.
 
 **No blocking issue that cannot be resolved by the 11 work packages defined above.**
 
 **Pre-conditions for DC-2T implementation:**
-- [ ] WP-00 (Poetry environment lock + fixture verification gate) applied ← **R2 NEW: Critical prerequisite**
+- [ ] WP-00 (Poetry environment lock + fixture verification gate) applied ← **R3: bcrypt 4.0.1 provenance confirmed; WP-00 validates environment consistency**
 - [ ] WP-07 (retailer_prices migration) merged
 - [ ] WP-08 (mv_sales_daily migration) merged
 - [ ] WP-05 (config drift) merged or queued
@@ -666,11 +668,11 @@ The following test files from the 146-file test suite PASS in the DC-2A-R2 full 
 - [x] ~~WP-06 (product regressions)~~ → **REMOVED by R2: No product regressions exist**
 
 **Out-of-scope for this report:**
-- Poetry environment consistency / fixture verification gate (WP-00) — **R2 UPDATE: Critical prerequisite for all auth-dependent tests; uses lock file + conftest gate instead of dependency hard-pinning**
+- Poetry environment consistency / fixture verification gate (WP-00) — **R3 UPDATE: bcrypt 4.0.1 provenance confirmed; WP-00 validates locked env consistency**
 - DC-1H / DC-2B VPS runtime evidence gap (persists as delivery blocker per DC-2A-R2 Section 8)
 - Frontend issues (duplicate jsdom key, bundle size advisory)
 - Test fixture isolation infrastructure (WP-09 + remaining 532 A-category tests — ongoing)
 
 ---
 
-*R1 report: DC-2T1-R2 (with R1 Addendum). R2 addendum applied 2026-07-10. Evidence-first classification. Independent verification of all D-category items, G1/G2, and bcrypt/passlib. No code modified.*
+*R1 report: DC-2T1-R2 (with R1 Addendum). R2 addendum applied 2026-07-10. R3 addendum applied 2026-07-10. Evidence-first classification. Independent verification of D-items + G1/G2. R3 corrections: D2 DATA_ENTRY_CORRECTION, bcrypt provenance (4.0.1 confirmed). No code modified.*

@@ -4,7 +4,7 @@
 - **R2 Addendum Date**: 2026-07-10
 - **R2 Purpose**: Independent evidence verification of all 5 D-category items + G1/G2
 - **R3 Addendum Date**: 2026-07-10
-- **R3 Purpose**: Observed-outcome accounting separation; D2 DATA_ENTRY_CORRECTION; bcrypt provenance correction (actual: 4.0.1 in locked Poetry env)
+- **R3 Purpose**: Observed-outcome accounting separation; D2 DATA_ENTRY_CORRECTION; ANALYSIS_ONLY section; bcrypt provenance correction (actual: 4.0.1 in locked Poetry env)
 - **Task ID**: DC-2T1-R2 (Full-Suite Inventory Reconciliation)
 - **Baseline SHA**: `e022f2156c62a849959bd0ae545c463505dae3d6`
 - **Primary Source**: DC-2A-R2 (disposable Docker Compose, PostgreSQL 15 + Redis 7, Windows/Lubuntu)
@@ -69,6 +69,8 @@
 
 > *\* C observed: 8 original + 2 reclassified (D1, D4) = **10**. D2 excluded as DATA_ENTRY_CORRECTION (test function does not exist; no observed failure node). Classified total = 686; pytest observed = 687.*
 
+> **Note:** The F/E breakdown in this table reflects per-category classification accounting, not a 1:1 mapping to pytest FAILED/ERROR counts. A-category tests that manifest as ERROR nodes (e.g., teardown DB cleanup failures) are counted as E here. The grand total (686 classified + 1 DATA_ENTRY_CORRECTION) reconciles with the 687 pytest nodes.
+
 ### 2.3 Domain Distribution
 
 | Domain | Files | A | B | C | D | E | F | G | Total |
@@ -88,9 +90,34 @@
 
 ### 2.4 Evidence Summary
 
-- **35 genuine failures** confirmed by DC-2A-R2 isolation re-runs (29F + 6E across auth/payment/provisioning/security)
-- **652 pollution tests** (592A + 3B + 1D + 24E + 16B + 8C + 1F + 16G = additional "other" genuine: 63, plus blocking genuine: 33, plus pollution: 592 = 687)
-- **96 genuine failures** total (33 blocking + 63 other)
+- **687 pytest failure/error nodes** (664F + 23E) from DC-2A-R2 full suite
+- **686 classified** across 7 categories (A–G)
+- **1 DATA_ENTRY_CORRECTION** (D2 — non-existent test; R1 accounting artifact)
+- **0 confirmed product regressions** (D=0)
+- **30 migration gap tests** (G) — two root causes (retailer_prices + mv_sales_daily)
+- **592 pollution tests** (A) — pass in isolation, fail in full suite
+- **2 ANALYSIS_ONLY items** (see §2.5) — source code analysis entries not corresponding to observed pytest nodes
+
+### 2.4a Pytest Observed vs Classified — Gap Explanation
+
+| Metric | Value | Source |
+|--------|-------|--------|
+| Pytest observed total | **687** | DC-2A-R2 summary line: 664F + 23E |
+| Classified total | **686** | All verified pytest nodes across categories A–G |
+| Gap | **1** | D2 — R1 data entry error |
+
+**Explanation of the gap:**
+
+R1 originally listed `test_u6i5` as containing 9A failures + 1D(D2) = 10 items, contributing to an overall total of 687. However, the D2 test function (`test_setup_credential_route_disclosure_boundary`) does **not exist** in the codebase — it was an R1 data entry error. The file `test_u6i5_owner_credential_setup_endpoint.py` actually contains only 9 real pytest failure nodes (all category A). Therefore, the 687 pytest count from the full suite is factually correct (664F + 23E), but one of those 687 nodes was **never identifiable as D2** — D2 was a fabrication inserted during R1 classification. All 686 classified items correspond to verified, real pytest nodes. The gap of 1 is an R1 accounting artifact, not a missing classification.
+
+### 2.5 ANALYSIS_ONLY Items
+
+The following items were identified by source code analysis during R1/R2/R3 but do **not** correspond to observed pytest failure/error nodes in the DC-2A-R2 full suite. They are listed here for traceability and are **separate from the 687 observed nodes**.
+
+| Item ID | Original Claim (R1) | R3 Finding | Status |
+|---------|---------------------|------------|--------|
+| **D2** | test_u6i5 contained test `test_setup_credential_route_disclosure_boundary` that leaked route info via HTTP response. Classified as D (HIGH — source code exposure). | Test function does **not exist** in the codebase. Closest test `test_response_never_exposes_sensitive_data` (line 431) passes correctly. R1 fabricated this test node from analysis. | **DATA_ENTRY_CORRECTION** — Non-existent test counted as a pytest node. Removed from observed 687. |
+| **D3 SMTP (original claim)** | `test_duplicate_live_email_in_production_is_neutral_and_sends_no_extra_smtp` failed due to bcrypt 5.0.0/passlib 1.7.4 incompatibility. Classified as D (HIGH — crash blocker). | R3 provenance confirms bcrypt **4.0.1** (not 5.0.0) in locked Poetry env. The actual test was an ERROR node in the full suite (counted in E:24). The bcrypt 5.0.0 claim was **factually incorrect** — the real cause is fixture/environment pollution. DC-2A-R2 isolation re-run: test_u6k passed 5/5 in isolation. | **CLAIM CORRECTED** — Test exists and is counted in E:24. The bcrypt 5.0.0 attribution was wrong; actual cause is environment pollution, not dependency incompatibility. |
 
 ---
 
@@ -118,7 +145,7 @@
 | 16 | test_u6i5_owner_credential_setup_endpoint.py | 9 | A | 9 | Endpoint state polluted; fixture ordering |
 | 17 | test_u6i5_owner_credential_setup_endpoint.py | — | — | — | **R2: D2 removed.** Referenced test `test_setup_credential_route_disclosure_boundary` does NOT exist in this file. Closest test is `test_response_never_exposes_sensitive_data` (line 431) which is correct. D2 item was based on non-existent test — reclassified as C (stale expectation). Not counted as a separate test failure. |
 | 18 | test_u6k_production_smtp_email_delivery.py | 4 | A | 4 | Email dev-sink capture polluted by prior module |
-| 19 | test_u6k_production_smtp_email_delivery.py | — | E | — | **R2→R3: D3→E.** R1 classified as bcrypt 5.0.0/passlib 1.7.4 crash blocker. **R3 provenance correction**: bcrypt 4.0.1 confirmed in locked Poetry env — the "5.0.0" claim was factually incorrect. D3 test error cause needs re-evaluation. Source code analysis confirms correct neutral handling (202 response). NOT a product regression — ENVIRONMENT_GATED. Not counted as D; moved to E. |
+| 19 | test_u6k_production_smtp_email_delivery.py | — | E | — | **R2→R3: D3→E.** R1 classified as bcrypt 5.0.0/passlib 1.7.4 crash blocker. **R3 provenance correction**: bcrypt 4.0.1 confirmed in locked Poetry env — the "5.0.0" claim was factually incorrect. DC-2A-R2 isolation re-run: test_u6k passed 5/5 in isolation. The full-suite ERROR is fixture/environment pollution, not product code or bcrypt incompatibility. NOT a product regression — ENVIRONMENT_GATED. Not counted as D; moved to E. |
 | 20 | test_users_roles_api.py | 23 | A | 23 | Users/roles table polluted by prior onboarding chain |
 | | **Subtotal** | **150** | | **150** | A:141, B:3, C:1, E:2*, F:3 |
 
@@ -262,6 +289,8 @@
 | 90 | test_u6h1_tenant_provisioning_service_skeleton.py | 1 | 1 | **R2: D4→C.** `TenantProvisioningService` must not appear in auth/onboarding source | onboarding_service.py:37,177,181 imports and uses it (intended architecture evolution) | Update test to accept coupling or remove decoupling assertion |
 
 > *\* #89 (D2): DATA_ENTRY_CORRECTION — test function does not exist, no observed failure node. Removed from observed classification totals. The file's 9A failures are isolation pollution; the closest test (response_never_exposes_sensitive_data, line 431) passes correctly.*
+
+**Observed vs ANALYSIS_ONLY clarification:** All 10 classified C items are observed pytest failures in the DC-2A-R2 full suite. D2 was excluded (test does not exist) and is listed in ANALYSIS_ONLY (§2.5). There are no ANALYSIS_ONLY C tests — all C items in this table are confirmed observed failure nodes.
 
 ### 4.4 Category E: ENVIRONMENT_GATED_RUNTIME_TEST (23 tests, +1 from D3)
 

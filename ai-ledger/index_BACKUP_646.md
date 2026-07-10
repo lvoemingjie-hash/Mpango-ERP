@@ -1,10 +1,6 @@
 ﻿# Mpango ERP — AI Ledger Index
 
-<<<<<<< HEAD
 **Last Updated**: 2026-02-18
-=======
-**Last Updated**: 2026-02-16
->>>>>>> d70c0ef (feat: v0.2.0 PRD GAP FILL WITH PHASE A&B)
 **Purpose**: Central index of all AI-generated technical ledger documents.
 
 ---
@@ -115,20 +111,20 @@
 
 ---
 
-<<<<<<< HEAD
 ## QA & Test
 
 | Track | Title | Status | Ledger |
 |-------|-------|--------|--------|
 | E1-SEC | Cross-Tenant Exploit Guardrail | ✅ PASS | [test/2026-02-15_22-15_cross_tenant_exploit_guardrail.md](test/2026-02-15_22-15_cross_tenant_exploit_guardrail.md) |
 | **v0.2.0-QA** | **Acceptance Test (RBAC + Financial Loop + Docker)** | **⚠️ WARN** | [**test/2026-02-18_12-31_v0.2.0_acceptance_test.md**](test/2026-02-18_12-31_v0.2.0_acceptance_test.md) |
-=======
+
+---
+
 ## CTO Reviews & Analysis
 
 | Track | Title | Status | Ledger |
 |-------|-------|--------|--------|
 | PRD | PRD v1.0 Gap Analysis (15 Areas) | 📋 PENDING REVIEW | [cto/2026-02-16_PRD_v10_gap_analysis.md](cto/2026-02-16_PRD_v10_gap_analysis.md) |
->>>>>>> d70c0ef (feat: v0.2.0 PRD GAP FILL WITH PHASE A&B)
 
 ---
 

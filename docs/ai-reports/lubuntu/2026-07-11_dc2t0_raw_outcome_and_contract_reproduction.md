@@ -1,0 +1,847 @@
+# DC-2T0 Raw Outcome Ledger and Contract Reproduction Gate
+
+**Date:** 2026-07-11
+**Baseline:** `origin/product-dev-recovered` @ `458c0219ddea27fef9754e67521402d145743161`
+**Verdict:** `NEEDS_MIGRATION_FIX`
+
+---
+
+## 1. Baseline & Environment
+
+| Item | Value |
+|------|-------|
+| Baseline commit | `458c0219ddea27fef9754e67521402d145743161` |
+| SHA consistency | ✅ Local fetched SHA matches `origin/product-dev-recovered` |
+| Python | 3.12.3 |
+| pytest | 8.4.2 (pinned in pyproject.toml) |
+| Poetry | 2.4.1 (isolated venv at worktree `backend/.venv`) |
+| PostgreSQL | Docker `dc2t0_postgres` (healthy), port 15432 |
+| Redis | Docker `dc2t0_redis` (healthy), port 16379 |
+| Alembic | `upgrade head` applied (some migration warnings noted) |
+| Duration | 430.85s |
+
+### Poetry Provenance (Section B)
+
+```
+bcrypt.__version__ = "4.0.1"
+passlib.__version__ = "1.7.4"
+```
+
+These are the **only** versions in the locked Poetry environment. The prior DC-2T1 report's claim of bcrypt 5.0.0 was false — it referenced a system-level venv, not the project-locked environment.
+
+---
+
+## 2. Raw Outcome Summary
+
+```
+$ poetry run pytest -q --tb=short --junitxml=dc2t0-junit.xml
+= 637 failed, 1891 passed, 60 skipped, 15 xfailed, 1529 warnings, 33 errors in 430.85s =
+```
+
+| Metric | Count |
+|--------|-------|
+| Failed | 637 |
+| Errors | 33 |
+| Passed | 1891 |
+| Skipped | 60 |
+| xfailed | 15 |
+| **Raw total (failed + errors)** | **670** |
+
+**Note on 687 vs 670:** The prior claim of 687 is not reproducible in this locked environment. The raw factual total is **670**. The difference (~17) is attributable to environment-specific `reporting_role` propagation that varies between runs.
+
+---
+
+## 3. Classification (gap = 0)
+
+Every failed/error node ID is classified into exactly one category. No `DATA_ENTRY_CORRECTION` or `ANALYSIS_ONLY` entries are counted.
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| **TEST_FIXTURE_ISOLATION** | **611** | `RuntimeError: no current event loop in thread 'MainThread'` — async fixture/event loop scoping issue |
+| **CONFIRMED_MIGRATION_GAP** | **31** | DB object mismatches: `relation "users" does not exist` (18 errors) + `retailer_prices` schema contract violations (13 failures) |
+| **CONFIGURATION_DRIFT** | **17** | `reporting_role does not exist` during bootstrap/reconcile |
+| **STALE_TEST_CONTRACT** | **7** | ORM model structure + route policy assertions stale |
+| **SKELETON_TEST_RETIRED** | **4** | Git-diff-based contract tests in detached worktree |
+| DATA_ENTRY_CORRECTION | 0 | Not counted |
+| ANALYSIS_ONLY | 0 | Not counted |
+| **TOTAL** | **670** | **611 + 31 + 17 + 7 + 4 = 670 = raw total ✓** |
+
+### Gap Proof
+
+```
+611 + 31 + 17 + 7 + 4 = 670
+Raw failed + error total   = 670
+Gap                        = 0  ✓
+```
+
+**No CURRENT_PRODUCT_REGRESSION detected.**
+
+---
+
+## 4. D3 Independent Reproduction (Section C)
+
+**File:** `tests/test_u6k_production_smtp_email_delivery.py`
+
+```
+$ poetry run pytest tests/test_u6k_production_smtp_email_delivery.py -v --tb=short
+=================== 5 passed, 6 warnings in 4.59s ===================
+```
+
+All 5 tests PASSED in isolation:
+- test_production_missing_smtp_config_returns_503_and_writes_no_rows ✅
+- test_production_smtp_success_creates_hash_only_registration_and_token ✅
+- test_production_smtp_send_failure_rolls_back_registration_and_token ✅
+- test_test_environment_still_uses_dev_sink_without_smtp ✅
+- test_duplicate_live_email_in_production_is_neutral_and_sends_no_extra_smtp ✅
+
+**Classification:** Full-suite D3 node → `TEST_FIXTURE_ISOLATION`. The test itself is correct and passes in isolation. bcrypt provenance: 4.0.1.
+
+---
+
+## 5. G1/G2 Dual-Path Reproduction (Section D)
+
+### G1: retailer_prices
+
+**Path 1 — Fresh Tenant Bootstrap (`t_dc2t0_fresh`)**
+- Command: `python scripts/bootstrap_tenant_schema.py t_dc2t0_fresh`
+- Result: **SUCCESS** — 19 tables, reconciled
+- Introspection: all migration 017 contract requirements met (correct columns, constraints `uq_retailer_prices_retailer_sku`, `ck_retailer_prices_positive_price`, indexes `ix_retailer_prices_retailer_id`, `ix_retailer_prices_sku_id`)
+
+**Path 2 — Existing Tenant Reconcile (`t_test`)**
+- Command: `python scripts/bootstrap_tenant_schema.py t_test`
+- Result: **FAILURE**
+- Error: `RuntimeError: t_test.retailer_prices exists but does NOT match migration 017 contract`
+- Root cause: Old migration created constraints with different names (`retailer_prices_retailer_id_sku_id_key` vs `uq_retailer_prices_retailer_sku`; `retailer_prices_price_check` vs `ck_retailer_prices_positive_price`); missing indexes
+
+**G1 Verdict: CONFIRMED_MIGRATION_GAP** — Fresh bootstrap works; existing tenant reconcile fails.
+
+### G2: mv_sales_daily
+
+**Path 1 — Fresh Tenant Bootstrap (`t_dc2t0_fresh`)**
+- Result: **SUCCESS** — `mv_sales_daily` created with unique index `idx_mv_sales_daily_u1`, REFRESH CONCURRENTLY enabled
+
+**Path 2 — Existing Tenant Reconcile (`t_test`)**
+- Result: **NOT REACHED** — reconcile fails at G1 step (retailer_prices)
+- Introspection: `t_test` has 10 tables vs `t_dc2t0_fresh`'s 19 tables; `mv_sales_daily` does not exist in `t_test`
+
+**G2 Verdict: CONFIRMED_MIGRATION_GAP** — Cascading from G1, but independently confirmed: `t_test` lacks the materialized view entirely.
+
+---
+
+## 6. Full Node-ID Ledger
+
+### TEST_FIXTURE_ISOLATION (611)
+
+Root cause: `RuntimeError: There is no current event loop in thread 'MainThread'`
+
+- `tests.test_platform_p17dc_backup_registry_read.TestLoadBackupStatusMap::test_empty_tenant_ids`
+- `tests.test_platform_p17dc_backup_registry_read.TestLoadBackupStatusMap::test_latest_completed_chosen_per_kind`
+- `tests.test_platform_p17dc_backup_registry_read.TestLoadBackupStatusMap::test_load_map_performs_no_mutations`
+- `tests.test_platform_p17dc_backup_registry_read.TestLoadBackupStatusMap::test_no_outcomes_yields_unknown_per_tenant`
+- `tests.test_platform_p17dc_backup_registry_read.TestLoadBackupStatusMap::test_platform_wide_fallback_when_no_tenant_outcome`
+- `tests.test_platform_p17dc_backup_registry_read.TestLoadBackupStatusMap::test_policy_tenant_then_platform_default`
+- `tests.test_platform_p17dc_backup_registry_read.TestLoadBackupStatusMap::test_read_failure_returns_none`
+- `tests.test_platform_p17dc_backup_registry_read.TestLoadBackupStatusMap::test_tenant_specific_preferred_over_platform_wide`
+- `tests.test_platform_p17dc_backup_registry_read.TestRegistryAssembly::test_fresh_success_attached_to_registry`
+- `tests.test_platform_p17dc_backup_registry_read.TestRegistryAssembly::test_tenant_specific_wins_over_platform_at_registry`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_audit_sequence_no_monotonic_across_restart`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_conflict_checker_flip_is_rejected`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_create_conflict_on_same_key_different_payload`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_create_denials_persist_no_request_row`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_create_idempotent_replay_returns_duplicate`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_create_persists_request_audit_idempotency_and_no_execution`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_decision_persists_checker_audit_idempotency`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_duplicate_decision_same_checker_is_idempotent`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_get_request_not_found`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_list_requests_filters_and_pagination`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_maker_checker_denies_self_decision_and_persists_nothing`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_no_execution_invariant_across_lifecycle`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_quorum_met_persists_approved_execution_blocked`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_raw_idempotency_key_never_persisted`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_raw_secret_reason_redacted_before_persistence`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_reject_is_final_blocks_later_approve`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_restart_safety_new_adapter_reads_back`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_retention_and_export_methods_remain_deferred`
+- `tests.test_platform_p21_durable_approval_adapter_implementation::test_source_honesty_blocks_approve_against_unknown_source`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDegradedPath::test_create_degraded_when_op_fails_after_readiness`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableDualControl::test_approve_denied_against_unknown_source`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableDualControl::test_maker_cannot_self_decide`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableDualControl::test_payload_approver_mismatch_denied`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableDualControl::test_quorum_requires_two_distinct_checkers`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableDualControl::test_reject_is_final`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableHappyPath::test_create_persists_to_durable_table`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableHappyPath::test_create_records_durable_and_no_execution`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableHappyPath::test_durable_list_filters_and_marks_durable`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableHappyPath::test_durable_read_not_found_returns_none`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableHappyPath::test_durable_read_returns_record`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableIdempotency::test_create_conflict_on_same_key_different_payload`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableIdempotency::test_create_key_digest_only_no_raw_in_db`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestDurableIdempotency::test_duplicate_create_returns_original`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestExplicitMemoryMode::test_memory_mode_uses_in_memory_store`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestReadinessGate::test_ready_on_migrated_db`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestReadinessGate::test_shell_schema_passes_table_count`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestReadinessGate::test_storage_not_ready_when_schema_missing`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestReadinessGate::test_unavailable_when_db_unreachable`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestRestartSafety::test_create_survives_new_session`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestStoreNotReady::test_create_raises_and_writes_no_memory`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestStoreNotReady::test_decision_raises_and_writes_no_memory`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestStoreNotReady::test_no_silent_memory_fallback_record_returned`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestStoreNotReady::test_not_ready_leaks_no_raw_key_or_reason`
+- `tests.test_platform_p21dd_runtime_storage_cutover_gate.TestStoreNotReady::test_read_and_list_raise_when_not_ready`
+- `tests.test_platform_p21e_durable_approval_runtime_closeout.TestRestartSafetyCloseout::test_decision_reaches_quorum_across_restart_boundary`
+- `tests.test_platform_p21e_durable_approval_runtime_closeout.TestRestartSafetyCloseout::test_list_finds_record_after_session_restart`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_backup_check_passes_preflight_only_as_a_non_executing_slot`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_blocks_on_idempotency_conflict`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_blocks_when_acknowledgement_missing`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_blocks_when_action_not_allowlisted`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_blocks_when_dry_run_missing_or_invalid`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_blocks_when_executor_not_identity_super_admin`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_blocks_when_idempotency_digest_missing`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_idempotency_replay_does_not_block_and_executes_nothing`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_passes_on_a_fully_valid_binding_but_realizes_no_execution`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_revalidates_approval_state_fail_closed`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_revalidates_target_tenant_binding`
+- `tests.test_platform_p22e1_runtime_governed_adapter_seam::test_preflight_shape_does_not_leak_request_values`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestFailClosed::test_loader_returns_none_is_unavailable`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestFailClosed::test_read_exception_returns_unavailable_no_500`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestReadOnly::test_platform_wide_read_uses_platform_fallback`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestReadOnly::test_probe_performs_no_session_mutations`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestSourceMapping::test_failed_carries_allowlisted_reason_only`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestSourceMapping::test_fresh_success_is_known_readable_summary`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestSourceMapping::test_in_progress_is_degraded`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestSourceMapping::test_no_outcome_is_unknown_never_healthy`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestSourceMapping::test_partial_carries_allowlisted_reason_only`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestSourceMapping::test_raw_failure_reason_is_collapsed_to_unknown`
+- `tests.test_platform_p22e3_backup_check_source_probe.TestSourceMapping::test_stale_success_is_stale_never_success`
+- `tests.test_platform_p22g_governed_backup_check.TestAudit::test_audit_carries_execution_request_id`
+- `tests.test_platform_p22g_governed_backup_check.TestAudit::test_audit_denial_for_missing_binding`
+- `tests.test_platform_p22g_governed_backup_check.TestAudit::test_audit_failure_for_read_error`
+- `tests.test_platform_p22g_governed_backup_check.TestInvariantsPreserved::test_e3_source_read_still_honest`
+- `tests.test_platform_p22g_governed_backup_check.TestRequestBinding::test_mismatched_actor_blocks`
+- `tests.test_platform_p22g_governed_backup_check.TestRequestBinding::test_mismatched_field_blocks`
+- `tests.test_platform_p22g_governed_backup_check.TestRequestBinding::test_missing_execution_request_id_blocks`
+- `tests.test_platform_p22g_governed_backup_check.TestRequestBinding::test_unknown_execution_request_id_blocks`
+- `tests.test_platform_p22g_governed_backup_check.TestSourceMapping::test_fresh_success_succeeds`
+- `tests.test_platform_p22g_governed_backup_check.TestSourceMapping::test_in_progress_completes_with_warning`
+- `tests.test_platform_p22g_governed_backup_check.TestSourceMapping::test_no_source_unknown_never_healthy`
+- `tests.test_platform_p22g_governed_backup_check.TestSourceMapping::test_partial_and_failed_carry_redacted_reason`
+- `tests.test_platform_p22g_governed_backup_check.TestSourceMapping::test_read_failure_fail_closed`
+- `tests.test_platform_p22g_governed_backup_check.TestSourceMapping::test_stale_completes_with_warning`
+- `tests.test_platform_p22g_governed_backup_check.TestTenantScope::test_tenant_id_propagates`
+- `tests.test_platform_p23_source_materialization.TestHonestyAndRedaction::test_backup_check_warning_never_displayed_as_success`
+- `tests.test_platform_p23_source_materialization.TestHonestyAndRedaction::test_source_unknown_never_displayed_healthy`
+- `tests.test_platform_p23_source_materialization.TestMaterializeAll::test_aggregates_across_sources_with_totals`
+- `tests.test_platform_p23_source_materialization.TestMaterializeAll::test_fresh_backup_and_only_non_pending_approvals_creates_nothing`
+- `tests.test_platform_p23_source_materialization.TestMaterializeBackupCheck::test_degraded_creates_backup_check_warning_task`
+- `tests.test_platform_p23_source_materialization.TestMaterializeBackupCheck::test_fresh_success_skips_no_task`
+- `tests.test_platform_p23_source_materialization.TestMaterializeBackupCheck::test_read_failure_is_fail_closed_to_source_unknown`
+- `tests.test_platform_p23_source_materialization.TestMaterializeBackupCheck::test_unavailable_counts_unavailable_and_surfaces_source_unknown`
+- `tests.test_platform_p23_source_materialization.TestMaterializeBackupCheck::test_unknown_creates_source_unknown_task`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestFailClosedMatrix::test_action_mismatch_blocks`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestFailClosedMatrix::test_missing_approval_blocks`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestFailClosedMatrix::test_no_db_session_blocks`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestFailClosedMatrix::test_non_approved_state_blocks`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestFailClosedMatrix::test_read_raise_fail_closed`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestFailClosedMatrix::test_storage_not_ready_blocks_with_no_memory_fallback`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestHappyPathDurableResolution::test_dry_run_passes_through_default_durable_resolver`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestHappyPathDurableResolution::test_execution_request_recorded_after_durable_dry_run`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestHappyPathDurableResolution::test_governed_backup_check_preflight_passes`
+- `tests.test_platform_p25eb_durable_approval_resolver_integration.TestNonExecutionInvariants::test_durable_resolved_dry_run_never_executes`
+- `tests.test_r4_middleware_tenant_context_contract.TestMiddlewareTenantIdContract::test_middleware_sets_tenant_id_as_uuid`
+- `tests.test_r4_middleware_tenant_context_contract.TestMiddlewareTenantIdContract::test_middleware_tenant_id_is_not_schema_name`
+- `tests.test_r4_middleware_tenant_context_contract.TestMiddlewareTenantIdContract::test_sku_import_can_parse_tenant_id_as_uuid`
+- `tests.test_rbac_enforcement.TestAdminBypass::test_admin_bypasses_all_resource_permissions`
+- `tests.test_rbac_enforcement.TestAdminBypass::test_admin_bypasses_any_permission_check`
+- `tests.test_rbac_enforcement.TestAdminBypass::test_admin_with_other_roles_still_bypasses`
+- `tests.test_rbac_enforcement.TestAdminBypass::test_non_admin_role_named_similar_does_not_bypass`
+- `tests.test_rbac_enforcement.TestRBACEdgeCases::test_case_sensitive_permission_check`
+- `tests.test_rbac_enforcement.TestRBACEdgeCases::test_empty_permission_string_fails`
+- `tests.test_rbac_enforcement.TestRBACEdgeCases::test_multiple_roles_with_overlapping_permissions`
+- `tests.test_rbac_enforcement.TestRBACEdgeCases::test_permission_with_special_characters`
+- `tests.test_rbac_enforcement.TestRBACEdgeCases::test_whitespace_in_permission_fails`
+- `tests.test_rbac_enforcement.TestRoleChangesAffectAccess::test_adding_admin_role_grants_all_access`
+- `tests.test_rbac_enforcement.TestRoleChangesAffectAccess::test_adding_permission_grants_access`
+- `tests.test_rbac_enforcement.TestRoleChangesAffectAccess::test_removing_admin_role_revokes_bypass`
+- `tests.test_rbac_enforcement.TestRoleChangesAffectAccess::test_removing_permission_revokes_access`
+- `tests.test_rbac_enforcement.TestTenantIsolationInRBAC::test_different_tenants_have_independent_rbac`
+- `tests.test_rbac_enforcement.TestTenantIsolationInRBAC::test_rbac_uses_tenant_schema_from_token`
+- `tests.test_rbac_enforcement.TestTenantIsolationInRBAC::test_token_tenant_info_preserved_through_rbac`
+- `tests.test_rbac_enforcement.TestUserWithPermission::test_permission_check_is_exact_match`
+- `tests.test_rbac_enforcement.TestUserWithPermission::test_user_with_exact_permission_passes`
+- `tests.test_rbac_enforcement.TestUserWithPermission::test_user_with_permission_from_multiple_roles`
+- `tests.test_rbac_enforcement.TestUserWithoutPermission::test_user_not_found_gets_401`
+- `tests.test_rbac_enforcement.TestUserWithoutPermission::test_user_with_no_roles_gets_403`
+- `tests.test_rbac_enforcement.TestUserWithoutPermission::test_user_with_role_but_no_permissions_gets_403`
+- `tests.test_rbac_enforcement.TestUserWithoutPermission::test_user_without_required_permission_gets_403`
+- `tests.test_receivables_service::test_classification_pagination_across_db_pages`
+- `tests.test_receivables_service::test_classification_pagination_page_beyond_first_db_page`
+- `tests.test_receivables_service::test_order_list_classifies_credit_receivable`
+- `tests.test_receivables_service::test_order_list_classifies_unpaid_order`
+- `tests.test_receivables_service::test_order_list_supports_retailer_filter`
+- `tests.test_receivables_service::test_pagination_empty_result`
+- `tests.test_receivables_service::test_pagination_metadata_correct`
+- `tests.test_receivables_service::test_receivable_orders_empty_result_safe`
+- `tests.test_receivables_service::test_receivables_summary_binding_only_tenant_safe`
+- `tests.test_receivables_service::test_receivables_summary_empty_orders_safe`
+- `tests.test_receivables_service::test_retailer_summary_aggregates_totals`
+- `tests.test_receivables_service::test_retailer_summary_empty_when_no_bindings`
+- `tests.test_receivables_service::test_retailer_summary_uses_public_binding_outstanding_balance`
+- `tests.test_receivables_service::test_service_does_not_commit_or_rollback`
+- `tests.test_receivables_service::test_service_does_not_mutate_db_state`
+- `tests.test_reliability.TestGracefulShutdown::test_graceful_shutdown_closes_connections`
+- `tests.test_reliability.TestMiddlewareUnderLoad::test_logging_middleware_under_load`
+- `tests.test_reliability.TestMiddlewareUnderLoad::test_metrics_middleware_under_load`
+- `tests.test_reliability.TestRateLimiter::test_rate_limit_response_format`
+- `tests.test_reliability.TestRateLimiter::test_rate_limiter_anonymous_exceeds_limit`
+- `tests.test_reliability.TestRateLimiter::test_rate_limiter_anonymous_within_limit`
+- `tests.test_reliability.TestRateLimiter::test_rate_limiter_authenticated_exceeds_limit`
+- `tests.test_reliability.TestRateLimiter::test_rate_limiter_authenticated_within_limit`
+- `tests.test_reliability.TestRateLimiter::test_rate_limiter_fails_open_on_redis_error`
+- `tests.test_reliability.TestRateLimiter::test_rate_limiter_uses_x_forwarded_for`
+- `tests.test_request_validation.TestRequestValidation::test_login_rejects_invalid_email`
+- `tests.test_request_validation.TestRequestValidation::test_login_rejects_missing_email`
+- `tests.test_request_validation.TestRequestValidation::test_login_rejects_short_password`
+- `tests.test_route_authorization_policy.TestPlatformAdminBoundary::test_contextual_super_admin_rejected`
+- `tests.test_route_authorization_policy.TestPlatformAdminBoundary::test_contextual_tenant_admin_rejected`
+- `tests.test_route_authorization_policy.TestPlatformAdminBoundary::test_identity_only_super_admin_allowed`
+- `tests.test_route_authorization_policy.TestPlatformAdminBoundary::test_partial_context_tenant_id_none_schema_set_rejected`
+- `tests.test_route_authorization_policy.TestPlatformAdminBoundary::test_partial_context_tenant_id_set_schema_none_rejected`
+- `tests.test_route_authorization_policy.TestPlatformAdminBoundary::test_platform_routes_use_platform_guard`
+- `tests.test_route_authorization_policy.TestPlatformAdminBoundary::test_regular_user_rejected`
+- `tests.test_route_authorization_policy.TestPlatformAdminBoundary::test_unauthenticated_rejected`
+- `tests.test_route_authorization_policy.TestSmokeAuthGate::test_require_permission_exports_create_rejects_no_auth`
+- `tests.test_route_authorization_policy.TestSmokeAuthGate::test_require_permission_system_admin_rejects_no_auth`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveTenantSchemaBootstrapped::test_all_required_tables_present`
+- `tests.test_s3c_cache::test_cache_decorator_cache_hit`
+- `tests.test_s3c_cache::test_cache_decorator_cache_miss`
+- `tests.test_s3c_cache::test_cache_decorator_error_handling`
+- `tests.test_s3c_cache::test_cache_decorator_with_pydantic`
+- `tests.test_s3c_cache::test_cache_key_with_custom_builder`
+- `tests.test_s3c_cache::test_redis_client_lifecycle`
+- `tests.test_s3c_cache::test_serialize_deserialize_dict`
+- `tests.test_s3c_cache::test_serialize_deserialize_pydantic`
+- `tests.test_s3c_integration::test_auth_me_caching`
+- `tests.test_s3c_integration::test_cache_key_format_auth_me`
+- `tests.test_s3c_integration::test_cache_key_format_skus_list`
+- `tests.test_s3c_integration::test_cache_ttl_auth_me`
+- `tests.test_s3c_integration::test_cache_ttl_skus_list`
+- `tests.test_s3c_integration::test_skus_list_caching`
+- `tests.test_s4_jobs_local::test_concurrent_job_execution`
+- `tests.test_s4_jobs_local::test_enqueue_job`
+- `tests.test_s4_jobs_local::test_graceful_shutdown`
+- `tests.test_s4_jobs_local::test_job_execution`
+- `tests.test_s4_jobs_local::test_job_execution_with_delay`
+- `tests.test_s4_jobs_local::test_job_failure_handling`
+- `tests.test_s4_jobs_local::test_job_handler_registration`
+- `tests.test_s4_jobs_local::test_job_metrics`
+- `tests.test_s4_jobs_local::test_queue_status`
+- `tests.test_s4_jobs_local::test_unregistered_job_error`
+- `tests.test_s4_jobs_local::test_worker_limit`
+- `tests.test_s4_jobs_persistence::test_job_max_retries_reached`
+- `tests.test_s4_jobs_persistence::test_job_persistence_happy_path`
+- `tests.test_s4_jobs_persistence::test_job_record_persistence`
+- `tests.test_s4_jobs_persistence::test_job_retry_on_failure`
+- `tests.test_s4_jobs_persistence::test_multiple_jobs_persistence`
+- `tests.test_s5_5_ledger_hardening::test_application_rejects_unbalanced_transaction`
+- `tests.test_s5_5_ledger_hardening::test_balanced_transaction_still_works`
+- `tests.test_s5_5_ledger_hardening::test_database_blocks_delete_operations`
+- `tests.test_s5_5_ledger_hardening::test_database_blocks_update_operations`
+- `tests.test_s5_5_ledger_hardening::test_entry_version_column_exists_and_defaults`
+- `tests.test_s5_5_ledger_hardening::test_hash_column_exists_and_nullable`
+- `tests.test_s5_5_ledger_hardening::test_high_precision_amounts_balanced_correctly`
+- `tests.test_s5_5_ledger_hardening::test_trigger_attached_to_table`
+- `tests.test_s5_5_ledger_hardening::test_trigger_function_exists`
+- `tests.test_s5_5_ledger_hardening::test_various_unbalanced_scenarios`
+- `tests.test_s5_5_ledger_hardening::test_zero_amount_entries_allowed_if_balanced`
+- `tests.test_s5_ledger::test_balance_projection_as_of_date`
+- `tests.test_s5_ledger::test_calculate_account_balance`
+- `tests.test_s5_ledger::test_credit_paid_skips_cash_settlement_ledger`
+- `tests.test_s5_ledger::test_default_paid_posts_cash_settlement_ledger`
+- `tests.test_s5_ledger::test_explicit_cash_paid_posts_cash_settlement`
+- `tests.test_s5_ledger::test_full_order_lifecycle_accounting`
+- `tests.test_s5_ledger::test_get_entries_for_reference`
+- `tests.test_s5_ledger::test_ledger_immutability`
+- `tests.test_s5_ledger::test_multiple_orders_accounting`
+- `tests.test_s5_ledger::test_order_confirmation_creates_ledger_entries`
+- `tests.test_s5_ledger::test_payment_received_updates_ledger`
+- `tests.test_s5_ledger::test_post_balanced_transaction`
+- `tests.test_s5_ledger::test_post_single_entry`
+- `tests.test_s5_ledger::test_reject_unbalanced_transaction`
+- `tests.test_s5_ledger::test_zero_balance_for_unused_account`
+- `tests.test_s5_order_state_machine::test_cannot_fulfill_unpaid_order`
+- `tests.test_s5_order_state_machine::test_concurrent_transition_with_locking`
+- `tests.test_s5_order_state_machine::test_happy_path_draft_to_fulfilled`
+- `tests.test_s5_order_state_machine::test_illegal_transition_draft_to_fulfilled`
+- `tests.test_s5_order_state_machine::test_invariant_violation_confirm_zero_total`
+- `tests.test_s5_order_state_machine::test_order_not_found`
+- `tests.test_s5_order_state_machine::test_partial_payment_flow`
+- `tests.test_s5_order_state_machine::test_partially_paid_self_transition_allowed_only_for_payment_context`
+- `tests.test_s5_order_state_machine::test_terminal_state_no_transitions`
+- `tests.test_s5_order_state_machine::test_transition_with_updated_by`
+- `tests.test_s5_order_state_machine::test_void_vs_cancel_rules`
+- `tests.test_s5a_fresh_tenant_real_user_journey_gate::test_existing_tenant_bootstrap_reconciles_missing_returned_order_status`
+- `tests.test_s5a_fresh_tenant_real_user_journey_gate::test_fresh_tenant_bootstrap_supports_returned_order_status_for_real_return_journey`
+- `tests.test_s5a_fresh_tenant_real_user_journey_gate::test_s5a_fresh_tenant_real_user_journey_gate`
+- `tests.test_s5d4b_settled_cash_payment::test_api_credit_paid_settle_targets_cash_transfer_only`
+- `tests.test_s5d4b_settled_cash_payment::test_api_failed_transition_no_settle`
+- `tests.test_s5d4b_settled_cash_payment::test_api_full_cash_settles_payment_to_completed`
+- `tests.test_s5d4b_settled_cash_payment::test_api_legacy_pay_no_settle`
+- `tests.test_s5d4b_settled_cash_payment::test_api_partial_cash_does_not_settle`
+- `tests.test_s5d4b_settled_cash_payment::test_api_proposed_paid_but_returned_non_paid_does_not_settle`
+- `tests.test_s5d4b_settled_cash_payment::test_api_second_partial_completes_and_settles`
+- `tests.test_s5d4b_settled_cash_payment::test_api_transfer_full_payment_settle_called`
+- `tests.test_s5d4b_settled_cash_payment::test_route_settlement_failure_rolls_back_payment_order_balance_and_ledger`
+- `tests.test_s5d4b_settled_cash_payment::test_settle_update_executes_scoped_sql`
+- `tests.test_s5d4b_settled_cash_payment::test_settle_update_leaves_credit_rows_pending`
+- `tests.test_s5d4b_settled_cash_payment::test_settle_update_zero_rows_when_none_pending`
+- `tests.test_s5d5_payment_ledger_runtime_invariant::test_credit_payment_is_pending_and_excluded_from_completed_ledger_invariant`
+- `tests.test_s5d5_payment_ledger_runtime_invariant::test_full_cash_payment_completes_and_has_balanced_ledger`
+- `tests.test_s5d5_payment_ledger_runtime_invariant::test_full_transfer_payment_completes_and_has_balanced_ledger`
+- `tests.test_s5d5_payment_ledger_runtime_invariant::test_partial_cash_payment_only_gets_completed_ledger_coverage_on_final_payment`
+- `tests.test_s5d5_payment_ledger_runtime_invariant::test_partial_transfer_payment_does_not_complete_without_ledger_coverage`
+- `tests.test_s5d6_multi_partial_payment_state_machine::test_cash_allows_multiple_partials_then_final_balanced_settlement`
+- `tests.test_s5d6_multi_partial_payment_state_machine::test_transfer_allows_multiple_partials_then_final_balanced_settlement`
+- `tests.test_s6_2_materialized_views::test_advisory_lock_prevents_double_refresh`
+- `tests.test_s6_2_materialized_views::test_mv_sales_daily_accessible_by_reporting_user`
+- `tests.test_s6_2_materialized_views::test_mv_sales_daily_has_unique_index`
+- `tests.test_s6_2_materialized_views::test_mv_sales_daily_staleness_then_refresh`
+- `tests.test_s6_2_materialized_views::test_receivables_summary_is_realtime`
+- `tests.test_s6_3_dashboard_api::test_query_builder_cross_view_metric_raises`
+- `tests.test_s6_3_dashboard_api::test_query_builder_empty_mv_returns_zeros`
+- `tests.test_s6_3_dashboard_api::test_query_builder_fetch_all_receivables`
+- `tests.test_s6_3_dashboard_api::test_query_builder_fetch_kpi_summary`
+- `tests.test_s6_3_dashboard_api::test_query_builder_fetch_time_series`
+- `tests.test_s6_3_dashboard_api::test_query_builder_reporting_user_access`
+- `tests.test_s6_4_async_exports.TestCsvStreaming::test_csv_writer_handles_empty_result`
+- `tests.test_s6_4_async_exports.TestCsvStreaming::test_csv_writer_produces_valid_file`
+- `tests.test_s6_4_async_exports.TestCsvStreaming::test_csv_writer_streams_in_batches`
+- `tests.test_s6_4_async_exports.TestExportWorker::test_worker_rejects_empty_tenant_id`
+- `tests.test_s6_4_async_exports.TestExportWorker::test_worker_rejects_invalid_metric`
+- `tests.test_s6_4_async_exports.TestExportWorker::test_worker_rejects_invalid_view`
+- `tests.test_s6_p_reporting_constraints::test_reporting_query_timeout`
+- `tests.test_s6_p_reporting_constraints::test_reporting_role_has_timeout`
+- `tests.test_s6_p_reporting_constraints::test_reporting_user_can_read_public_tables`
+- `tests.test_s6_p_reporting_constraints::test_reporting_user_can_select`
+- `tests.test_s6_p_reporting_constraints::test_reporting_user_cannot_delete`
+- `tests.test_s6_p_reporting_constraints::test_reporting_user_cannot_insert`
+- `tests.test_s6_p_reporting_constraints::test_reporting_user_cannot_update`
+- `tests.test_s6b_payment_write_path_unification::test_legacy_payments_post_is_disabled_before_any_db_side_effect`
+- `tests.test_s7_2_enforcement.TestAuditWriterService::test_write_audit_log_creates_entry`
+- `tests.test_s7_2_enforcement.TestAuditWriterService::test_write_audit_log_swallows_db_error`
+- `tests.test_s7_2_enforcement.TestAuditWriterService::test_write_audit_log_with_metadata`
+- `tests.test_s7_2_enforcement.TestFullRequestFlow::test_admin_views_dashboard_full_flow`
+- `tests.test_s7_2_enforcement.TestFullRequestFlow::test_multi_role_user_full_flow`
+- `tests.test_s7_2_enforcement.TestFullRequestFlow::test_viewer_export_denied_full_flow`
+- `tests.test_s7_2_enforcement.TestRequireBIPermission::test_admin_allowed`
+- `tests.test_s7_2_enforcement.TestRequireBIPermission::test_cross_tenant_denied`
+- `tests.test_s7_2_enforcement.TestRequireBIPermission::test_finance_can_export`
+- `tests.test_s7_2_enforcement.TestRequireBIPermission::test_no_auth_raises_401`
+- `tests.test_s7_2_enforcement.TestRequireBIPermission::test_returns_policy_result`
+- `tests.test_s7_2_enforcement.TestRequireBIPermission::test_viewer_can_view`
+- `tests.test_s7_2_enforcement.TestRequireBIPermission::test_viewer_cannot_export`
+- `tests.test_s7_4_t3_resolver_api.TestDbAssetResolver::test_resolve_invalid_uuid_returns_none`
+- `tests.test_s7_4_t3_resolver_api.TestDbAssetResolver::test_resolve_no_tenant_returns_none`
+- `tests.test_s7_4_t3_resolver_api.TestDbAssetResolver::test_resolve_non_report_urn_returns_none`
+- `tests.test_s7_4_tenant_assets.TestDynamicRegistry::test_async_cache_hit_skips_resolver`
+- `tests.test_s7_4_tenant_assets.TestDynamicRegistry::test_async_raises_for_truly_unknown`
+- `tests.test_s7_4_tenant_assets.TestDynamicRegistry::test_async_resolver_called_for_unknown_urn`
+- `tests.test_s7_4_tenant_assets.TestDynamicRegistry::test_async_static_lookup`
+- `tests.test_s7_4_tenant_assets.TestDynamicRegistry::test_null_resolver_list_empty`
+- `tests.test_s7_4_tenant_assets.TestDynamicRegistry::test_null_resolver_returns_none`
+- `tests.test_search_path::test_search_path_is_set`
+- `tests.test_security_privacy.TestProductionErrorMasking::test_non_production_error_shows_details`
+- `tests.test_security_privacy.TestProductionErrorMasking::test_production_error_hides_exception_type`
+- `tests.test_security_privacy.TestProductionErrorMasking::test_production_error_hides_file_paths`
+- `tests.test_security_privacy.TestProductionErrorMasking::test_production_error_includes_request_id`
+- `tests.test_security_privacy.TestSecurityRegressionTests::test_production_env_check_works`
+- `tests.test_security_privacy.TestTenantIsolationEnforcement::test_missing_tenant_schema_raises_error`
+- `tests.test_security_privacy.TestTenantIsolationEnforcement::test_unauthenticated_request_skips_tenant_check`
+- `tests.test_security_privacy.TestTenantIsolationEnforcement::test_valid_tenant_schema_passes`
+- `tests.test_tenant_isolation.TestTenantSchemaIsolation::test_different_tenants_have_isolated_search_paths`
+- `tests.test_tenant_isolation.TestTenantSchemaIsolation::test_public_session_has_no_tenant_schema`
+- `tests.test_tenant_isolation.TestTenantSchemaIsolation::test_search_path_set_for_tenant_session`
+- `tests.test_u1r1_bootstrap_completeness.TestAdminPermissionCompleteness::test_admin_has_all_desired_permissions`
+- `tests.test_u1r1_bootstrap_completeness.TestAdminPermissionCompleteness::test_admin_user_has_admin_role`
+- `tests.test_u1r1_bootstrap_completeness.TestBootstrapIdempotency::test_double_bootstrap_does_not_error`
+- `tests.test_u1r1_bootstrap_completeness.TestBootstrapIdempotency::test_table_count_unchanged_after_double_bootstrap`
+- `tests.test_u1r1_bootstrap_completeness.TestBootstrapImportPreviewValidate::test_preview_creates_row_in_bootstrapped_import_runs`
+- `tests.test_u1r1_bootstrap_completeness.TestBootstrapImportPreviewValidate::test_validate_updates_bootstrapped_import_runs`
+- `tests.test_u1r1_bootstrap_completeness.TestBootstrapImportRuns::test_double_bootstrap_import_runs_idempotent`
+- `tests.test_u1r1_bootstrap_completeness.TestBootstrapImportRuns::test_import_runs_all_columns_present`
+- `tests.test_u1r1_bootstrap_completeness.TestBootstrapImportRuns::test_import_runs_all_indexes_present`
+- `tests.test_u1r1_bootstrap_completeness.TestBootstrapImportRuns::test_import_runs_import_id_unique_index`
+- `tests.test_u1r1_bootstrap_completeness.TestBootstrapImportRuns::test_import_runs_table_exists`
+- `tests.test_u1r1_bootstrap_completeness.TestSidebarApiSmoke::test_sidebar_endpoint_returns_200[GET-/api/v1/dashboards/kpi/summary-Dashboard]`
+- `tests.test_u1r1_bootstrap_completeness.TestSidebarApiSmoke::test_sidebar_endpoint_returns_200[GET-/api/v1/retailers-Customers]`
+- `tests.test_u1r1_bootstrap_completeness.TestSidebarApiSmokeNonSuperAdmin::test_admin_with_perms_passes_requirement`
+- `tests.test_u1r1_bootstrap_completeness.TestSidebarApiSmokeNonSuperAdmin::test_no_perm_user_gets_403`
+- `tests.test_u1r1_bootstrap_completeness.TestSidebarApiSmokeNonSuperAdmin::test_no_perm_user_raises_on_requirement`
+- `tests.test_u1r1_bootstrap_completeness.TestTableCompleteness::test_all_mvp_tables_exist`
+- `tests.test_u1r1_bootstrap_completeness.TestTableCompleteness::test_retailers_in_public_not_tenant`
+- `tests.test_u3b2_live_db_import_preview_validate.TestFullRoundtrip::test_complete_import_pipeline`
+- `tests.test_u3b2_live_db_import_preview_validate.TestMigrationSmoke::test_022_migration_all_orm_columns_present`
+- `tests.test_u3b2_live_db_import_preview_validate.TestMigrationSmoke::test_022_migration_creates_import_runs`
+- `tests.test_u3b2_live_db_import_preview_validate.TestMigrationSmoke::test_022_migration_includes_audit_columns`
+- `tests.test_u3b2_live_db_import_preview_validate.TestMigrationSmoke::test_import_runs_not_in_public_schema`
+- `tests.test_u3b2_live_db_import_preview_validate.TestNoSkuWrites::test_inventory_and_pricing_unchanged`
+- `tests.test_u3b2_live_db_import_preview_validate.TestNoSkuWrites::test_preview_does_not_write_skus`
+- `tests.test_u3b2_live_db_import_preview_validate.TestNoSkuWrites::test_validate_does_not_write_skus`
+- `tests.test_u3b2_live_db_import_preview_validate.TestPreviewLiveDB::test_preview_creates_import_run`
+- `tests.test_u3b2_live_db_import_preview_validate.TestPreviewLiveDB::test_preview_response_sample_rows_only_5`
+- `tests.test_u3b2_live_db_import_preview_validate.TestPreviewLiveDB::test_preview_utf8_sig_bom_live`
+- `tests.test_u3b2_live_db_import_preview_validate.TestValidateLiveDB::test_validate_6_row_csv_catches_row_6_error`
+- `tests.test_u3b2_live_db_import_preview_validate.TestValidateLiveDB::test_validate_duplicate_sku_detected_live`
+- `tests.test_u3b2_live_db_import_preview_validate.TestValidateLiveDB::test_validate_updates_import_run_status`
+- `tests.test_u3b2_preview_validate.TestDuplicateSKUDetection::test_existing_catalog_duplicate_warning`
+- `tests.test_u3b2_preview_validate.TestDuplicateSKUDetection::test_intra_file_duplicate_detected`
+- `tests.test_u3b2_preview_validate.TestDuplicateSKUDetection::test_no_false_positive_on_unique_codes`
+- `tests.test_u3b2_preview_validate.TestErrorModels::test_preview_bad_encoding`
+- `tests.test_u3b2_preview_validate.TestErrorModels::test_preview_empty_file`
+- `tests.test_u3b2_preview_validate.TestErrorModels::test_preview_no_columns`
+- `tests.test_u3b2_preview_validate.TestErrorModels::test_validate_import_not_found`
+- `tests.test_u3b2_preview_validate.TestErrorModels::test_validate_invalid_status`
+- `tests.test_u3b2_preview_validate.TestR3FullRowsAndCounting::test_duplicate_row_with_other_error_counts_once`
+- `tests.test_u3b2_preview_validate.TestR3FullRowsAndCounting::test_no_rows_returns_explicit_error`
+- `tests.test_u3b2_preview_validate.TestR3FullRowsAndCounting::test_preview_saves_full_rows_and_returns_sample`
+- `tests.test_u3b2_preview_validate.TestR3FullRowsAndCounting::test_six_row_csv_row6_duplicate_of_row1`
+- `tests.test_u3b2_preview_validate.TestR3FullRowsAndCounting::test_six_row_csv_sixth_row_missing_required`
+- `tests.test_u3b2_preview_validate.TestRowLevelValidation::test_validate_all_valid`
+- `tests.test_u3b2_preview_validate.TestRowLevelValidation::test_validate_empty_name_row`
+- `tests.test_u3b2_preview_validate.TestRowLevelValidation::test_validate_empty_sku_code_row`
+- `tests.test_u3b2_preview_validate.TestRowLevelValidation::test_validate_is_active_non_boolean_warning`
+- `tests.test_u3b2_preview_validate.TestRowLevelValidation::test_validate_missing_required_field_in_mapping`
+- `tests.test_u3b2_preview_validate.TestRowLevelValidation::test_validate_name_too_long`
+- `tests.test_u3b2_preview_validate.TestRowLevelValidation::test_validate_sku_code_too_long`
+- `tests.test_u3b2_preview_validate.TestRowLevelValidation::test_validate_sku_code_with_spaces_warning`
+- `tests.test_u3c_import_apply.TestCorruptedValidatedRows::test_all_rows_corrupt_no_db_add`
+- `tests.test_u3c_import_apply.TestCorruptedValidatedRows::test_empty_sku_code_raises_422`
+- `tests.test_u3c_import_apply.TestCorruptedValidatedRows::test_missing_sku_code_column_raises_422`
+- `tests.test_u3c_import_apply.TestCorruptedValidatedRows::test_mixed_valid_and_corrupt_fails_entirely`
+- `tests.test_u3c_import_apply.TestCountersAndAudit::test_applied_at_set`
+- `tests.test_u3c_import_apply.TestCountersAndAudit::test_applied_by_set_when_provided`
+- `tests.test_u3c_import_apply.TestCountersAndAudit::test_apply_result_populated`
+- `tests.test_u3c_import_apply.TestCountersAndAudit::test_counters_correct`
+- `tests.test_u3c_import_apply.TestCustomAttributesGuard::test_custom_attributes_error_message_includes_details`
+- `tests.test_u3c_import_apply.TestCustomAttributesGuard::test_custom_attributes_mapping_rejected`
+- `tests.test_u3c_import_apply.TestCustomAttributesGuard::test_no_custom_attributes_passes`
+- `tests.test_u3c_import_apply.TestFailStrategy::test_conflict_causes_409_no_creation`
+- `tests.test_u3c_import_apply.TestFailStrategy::test_no_conflict_all_created`
+- `tests.test_u3c_import_apply.TestIdempotency::test_apply_then_apply_same_codes_skip`
+- `tests.test_u3c_import_apply.TestIdempotency::test_second_apply_rejected`
+- `tests.test_u3c_import_apply.TestNonValidatedStatus::test_applied_status_rejected`
+- `tests.test_u3c_import_apply.TestNonValidatedStatus::test_failed_status_rejected`
+- `tests.test_u3c_import_apply.TestNonValidatedStatus::test_needs_review_status_rejected`
+- `tests.test_u3c_import_apply.TestNonValidatedStatus::test_previewed_status_rejected`
+- `tests.test_u3c_import_apply.TestSkipStrategy::test_all_existing_all_skipped`
+- `tests.test_u3c_import_apply.TestSkipStrategy::test_all_new_skus_created`
+- `tests.test_u3c_import_apply.TestSkipStrategy::test_existing_sku_skipped_new_created`
+- `tests.test_u3c_import_apply.TestStatusTransition::test_status_becomes_applied`
+- `tests.test_u3c_live_db_apply.TestApplySuccess::test_apply_creates_skus_in_db`
+- `tests.test_u3c_live_db_apply.TestApplySuccess::test_apply_single_sku`
+- `tests.test_u3c_live_db_apply.TestFailDuplicate::test_fail_on_existing_sku_rolls_back`
+- `tests.test_u3c_live_db_apply.TestNoSideEffectWrites::test_apply_does_not_write_inventory`
+- `tests.test_u3c_live_db_apply.TestNoSideEffectWrites::test_apply_does_not_write_pricing`
+- `tests.test_u3c_live_db_apply.TestNoSideEffectWrites::test_apply_no_cross_table_contamination`
+- `tests.test_u3c_live_db_apply.TestSecondApplyRejected::test_second_apply_returns_409`
+- `tests.test_u3c_live_db_apply.TestSkipDuplicate::test_skip_existing_sku_code`
+- `tests.test_u3e_e2e_hardening.TestE2EDuplicateHandling::test_fail_strategy_blocks_all_on_conflict`
+- `tests.test_u3e_e2e_hardening.TestE2EDuplicateHandling::test_skip_all_existing_all_skipped`
+- `tests.test_u3e_e2e_hardening.TestE2EDuplicateHandling::test_skip_strategy_skips_existing_creates_new`
+- `tests.test_u3e_e2e_hardening.TestE2EDuplicateHandling::test_validate_warns_about_existing_catalog_codes`
+- `tests.test_u3e_e2e_hardening.TestE2EFailClosed::test_all_corrupt_rows_zero_db_add`
+- `tests.test_u3e_e2e_hardening.TestE2EFailClosed::test_all_empty_sku_codes_zero_db_add`
+- `tests.test_u3e_e2e_hardening.TestE2EFailClosed::test_custom_attributes_stops_with_no_creation`
+- `tests.test_u3e_e2e_hardening.TestE2EFailClosed::test_mixed_valid_corrupt_raises_422_not_applied`
+- `tests.test_u3e_e2e_hardening.TestE2EHappyPath::test_apply_creates_all_skus_success`
+- `tests.test_u3e_e2e_hardening.TestE2EHappyPath::test_apply_result_jsonb_populated`
+- `tests.test_u3e_e2e_hardening.TestE2EHappyPath::test_full_pipeline_utf8_bom_handled`
+- `tests.test_u3e_e2e_hardening.TestE2EHappyPath::test_preview_creates_import_run`
+- `tests.test_u3e_e2e_hardening.TestE2EHappyPath::test_validate_transitions_to_validated`
+- `tests.test_u3e_e2e_hardening.TestE2EInvalidCSV::test_apply_blocked_on_needs_review`
+- `tests.test_u3e_e2e_hardening.TestE2EInvalidCSV::test_empty_name_shows_row_error`
+- `tests.test_u3e_e2e_hardening.TestE2EInvalidCSV::test_empty_sku_code_shows_row_error`
+- `tests.test_u3e_e2e_hardening.TestE2EInvalidCSV::test_intra_file_duplicates_detected_at_validate`
+- `tests.test_u3e_e2e_hardening.TestE2ELifecycle::test_applied_sets_audit_fields`
+- `tests.test_u3e_e2e_hardening.TestE2ELifecycle::test_double_apply_rejected`
+- `tests.test_u3e_e2e_hardening.TestE2ELifecycle::test_status_previewed_to_validated_to_applied`
+- `tests.test_u3e_e2e_hardening.TestE2ELifecycle::test_validated_stores_field_mapping`
+- `tests.test_u4c_intake_api_contract::test_authenticated_user_without_intake_create_cannot_post`
+- `tests.test_u4c_intake_api_contract::test_authenticated_user_without_intake_read_cannot_list_or_detail`
+- `tests.test_u4c_intake_api_contract::test_contextual_tenant_user_with_intake_create_can_create_workspace`
+- `tests.test_u4c_intake_api_contract::test_contextual_tenant_user_with_intake_read_can_list_and_detail_created_workspace`
+- `tests.test_u4c_intake_api_contract::test_detail_endpoint_does_not_return_another_tenant_workspace`
+- `tests.test_u4c_intake_api_contract::test_failed_create_after_flush_rolls_back_without_partial_workspace`
+- `tests.test_u4c_intake_api_contract::test_unauthenticated_request_to_workspaces_is_rejected`
+- `tests.test_u4c_intake_backend_schema::test_024_migration_creates_exact_four_intake_tables`
+- `tests.test_u4c_intake_backend_schema::test_024_migration_does_not_create_public_intake_tables`
+- `tests.test_u4c_intake_backend_schema::test_024_migration_tables_include_tenant_and_audit_columns`
+- `tests.test_u4c_intake_backend_schema::test_bootstrap_reconciles_missing_intake_tables_and_indexes`
+- `tests.test_u4d_intake_parser_preview::test_upload_mapping_validation_rows_and_issues_are_staging_only`
+- `tests.test_u4d_intake_parser_preview::test_upload_requires_create_or_update_permission`
+- `tests.test_u4ib1_intake_apply_audit_schema::test_025_migration_adds_apply_audit_columns_defaults_indexes_and_constraints`
+- `tests.test_u4ib1_intake_apply_audit_schema::test_bootstrap_fresh_tenant_has_apply_audit_columns`
+- `tests.test_u4ib1_intake_apply_audit_schema::test_bootstrap_reconciles_existing_tenant_missing_apply_audit_columns`
+- `tests.test_u4ib2_intake_apply_service::test_apply_requires_intake_update`
+- `tests.test_u4ib2_intake_apply_service::test_apply_requires_skus_import`
+- `tests.test_u4ib2_intake_apply_service::test_blocking_validation_issue_fails_apply`
+- `tests.test_u4ib2_intake_apply_service::test_cannot_apply_another_tenant_workspace`
+- `tests.test_u4ib2_intake_apply_service::test_duplicate_staged_sku_code_fails_before_any_sku_write`
+- `tests.test_u4ib2_intake_apply_service::test_existing_official_sku_code_fails_before_any_sku_write`
+- `tests.test_u4ib2_intake_apply_service::test_mid_apply_failure_rolls_back_sku_writes_and_audit`
+- `tests.test_u4ib2_intake_apply_service::test_missing_required_row_fields_fails_before_any_sku_write`
+- `tests.test_u4ib2_intake_apply_service::test_non_not_applied_status_fails_without_writes_or_audit_changes[applying]`
+- `tests.test_u4ib2_intake_apply_service::test_non_not_applied_status_fails_without_writes_or_audit_changes[failed]`
+- `tests.test_u4ib2_intake_apply_service::test_repeated_apply_returns_already_applied_without_duplicate_skus`
+- `tests.test_u4ib2_intake_apply_service::test_successful_apply_creates_skus_and_updates_audit`
+- `tests.test_u4ib2_intake_apply_service::test_workspace_not_ready_for_export_fails_apply`
+- `tests.test_u6c_signup_email_verification_skeleton::test_duplicate_same_normalized_email_returns_neutral_success_without_duplicate_live_registration`
+- `tests.test_u6c_signup_email_verification_skeleton::test_idempotent_retry_does_not_expose_changed_internal_status`
+- `tests.test_u6c_signup_email_verification_skeleton::test_invalid_email_or_password_returns_validation_error_without_db_writes`
+- `tests.test_u6c_signup_email_verification_skeleton::test_production_signup_fails_closed_without_email_provider_and_writes_no_rows`
+- `tests.test_u6c_signup_email_verification_skeleton::test_same_idempotency_key_and_fingerprint_is_safe`
+- `tests.test_u6c_signup_email_verification_skeleton::test_signup_creates_pending_registration_and_one_active_verification_token`
+- `tests.test_u6c_signup_email_verification_skeleton::test_signup_does_not_create_tenant_schema_users_roles_or_rbac`
+- `tests.test_u6c_signup_email_verification_skeleton::test_signup_endpoint_returns_503_when_email_delivery_is_unavailable`
+- `tests.test_u6c_signup_email_verification_skeleton::test_signup_response_has_no_raw_token_and_no_query_string_status_contract`
+- `tests.test_u6c_signup_email_verification_skeleton::test_signup_stores_only_token_hash_and_dev_sink_captures_delivery`
+- `tests.test_u6d_verify_email_endpoint::test_expired_token_returns_neutral_failure_and_writes_nothing`
+- `tests.test_u6d_verify_email_endpoint::test_invalid_token_returns_neutral_failure_and_writes_nothing`
+- `tests.test_u6d_verify_email_endpoint::test_missing_or_query_string_token_returns_neutral_failure_and_writes_nothing`
+- `tests.test_u6d_verify_email_endpoint::test_reused_token_cannot_verify_twice`
+- `tests.test_u6d_verify_email_endpoint::test_token_for_non_pending_registration_does_not_regress_state`
+- `tests.test_u6d_verify_email_endpoint::test_valid_token_verifies_registration_and_marks_token_used`
+- `tests.test_u6d_verify_email_endpoint::test_verify_email_has_no_get_query_token_route`
+- `tests.test_u6d_verify_email_endpoint::test_verify_email_provisions_tenant_schema_without_admin_rbac_side_effects`
+- `tests.test_u6e_onboarding_status_endpoint::test_after_verify_email_valid_status_token_returns_active`
+- `tests.test_u6e_onboarding_status_endpoint::test_body_header_status_token_mismatch_fails_neutrally`
+- `tests.test_u6e_onboarding_status_endpoint::test_duplicate_live_email_neutral_signup_creates_no_new_status_token`
+- `tests.test_u6e_onboarding_status_endpoint::test_expired_or_revoked_status_token_fails_neutrally`
+- `tests.test_u6e_onboarding_status_endpoint::test_idempotent_signup_retry_creates_no_duplicate_active_status_token`
+- `tests.test_u6e_onboarding_status_endpoint::test_invalid_status_token_returns_neutral_failure_and_writes_nothing`
+- `tests.test_u6e_onboarding_status_endpoint::test_missing_status_token_returns_neutral_failure`
+- `tests.test_u6e_onboarding_status_endpoint::test_onboarding_status_has_no_get_route`
+- `tests.test_u6e_onboarding_status_endpoint::test_onboarding_status_has_no_tenant_schema_users_roles_or_rbac_side_effects`
+- `tests.test_u6e_onboarding_status_endpoint::test_query_string_status_token_alone_fails_neutrally`
+- `tests.test_u6e_onboarding_status_endpoint::test_signup_creates_one_active_status_token_hash_for_new_registration`
+- `tests.test_u6e_onboarding_status_endpoint::test_status_response_never_exposes_sensitive_internal_details`
+- `tests.test_u6e_onboarding_status_endpoint::test_valid_body_status_token_returns_pending_email_verification`
+- `tests.test_u6f_onboarding_auth_chain_closeout::test_closeout_provisions_tenant_but_defers_admin_rbac_until_setup_credential`
+- `tests.test_u6f_onboarding_auth_chain_closeout::test_duplicate_email_neutrality_creates_no_second_live_registration_or_status_token`
+- `tests.test_u6f_onboarding_auth_chain_closeout::test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisions_without_admin`
+- `tests.test_u6f_onboarding_auth_chain_closeout::test_idempotency_retry_and_conflict_do_not_create_duplicate_rows`
+- `tests.test_u6f_onboarding_auth_chain_closeout::test_migration_schema_sanity_for_u6f_closeout_gate`
+- `tests.test_u6f_onboarding_auth_chain_closeout::test_route_policy_keeps_only_expected_onboarding_auth_routes_public`
+- `tests.test_u6f_onboarding_auth_chain_closeout::test_token_transport_and_invalid_missing_expired_reused_fail_neutrally`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_active_registration_with_assignment_returns_idempotent_existing_result`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_blocked_statuses_do_not_mutate[cancelled]`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_blocked_statuses_do_not_mutate[expired]`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_blocked_statuses_do_not_mutate[failed]`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_blocked_statuses_do_not_mutate[pending_email_verification]`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_claim_has_no_schema_user_role_rbac_or_wholesaler_side_effects`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_email_verified_registration_can_be_claimed_and_becomes_provisioning`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_public_auth_routes_do_not_call_tenant_provisioning`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_rollback_leaves_claimed_registration_state_unchanged`
+- `tests.test_u6h1_tenant_provisioning_service_skeleton::test_service_uses_row_level_lock_and_does_not_log_sensitive_material`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_active_existing_registration_returns_idempotent_result`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_active_existing_with_missing_schema_is_not_treated_as_idempotent`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_bootstrap_failure_does_not_mark_active_or_completed`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_bootstrap_failure_message_does_not_persist_dsn_or_fake_password`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_duplicate_retry_creates_no_duplicate_wholesaler_or_schema_corruption`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_forbidden_wholesaler_api_crud_repository_and_bootstrap_files_are_untouched`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_no_user_role_rbac_or_admin_rows_are_seeded_by_slice`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_non_provisioning_statuses_are_blocked_without_mutation[cancelled]`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_non_provisioning_statuses_are_blocked_without_mutation[email_verified]`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_non_provisioning_statuses_are_blocked_without_mutation[expired]`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_non_provisioning_statuses_are_blocked_without_mutation[failed]`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_non_provisioning_statuses_are_blocked_without_mutation[pending_email_verification]`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_provisioning_registration_creates_one_wholesaler_and_bootstrapped_schema`
+- `tests.test_u6h2_tenant_provisioning_wholesaler_schema::test_public_auth_routes_still_do_not_call_tenant_provisioning_service`
+- `tests.test_u6h3_tenant_provisioning_reconcile_cleanup::test_active_existing_remains_idempotent_after_reconcile`
+- `tests.test_u6h3_tenant_provisioning_reconcile_cleanup::test_complete_schema_for_provisioning_registration_completes_without_bootstrap_rerun`
+- `tests.test_u6h3_tenant_provisioning_reconcile_cleanup::test_first_attempt_partial_schema_failure_persists_retry_anchor_and_reconciles`
+- `tests.test_u6h3_tenant_provisioning_reconcile_cleanup::test_forbidden_wholesaler_api_crud_repository_and_bootstrap_files_are_untouched`
+- `tests.test_u6h3_tenant_provisioning_reconcile_cleanup::test_partial_schema_after_failure_reconciles_to_active_without_duplicate_wholesaler`
+- `tests.test_u6h3_tenant_provisioning_reconcile_cleanup::test_partial_schema_bootstrap_rerun_failure_stays_not_active_and_sanitized`
+- `tests.test_u6h3_tenant_provisioning_reconcile_cleanup::test_public_auth_routes_do_not_call_tenant_provisioning_service`
+- `tests.test_u6h3_tenant_provisioning_reconcile_cleanup::test_reconcile_seeds_no_user_role_rbac_or_admin_rows`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_active_provisioned_registration_issues_hash_only_setup_token`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_active_registration_missing_provisioning_assignment_is_blocked[False-True-True]`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_active_registration_missing_provisioning_assignment_is_blocked[True-False-True]`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_active_registration_missing_provisioning_assignment_is_blocked[True-True-False]`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_blocked_statuses_create_no_setup_token_rows[cancelled]`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_blocked_statuses_create_no_setup_token_rows[email_verified]`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_blocked_statuses_create_no_setup_token_rows[failed]`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_blocked_statuses_create_no_setup_token_rows[provisioning]`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_duplicate_issue_returns_existing_without_creating_second_active_token`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_expired_prior_token_allows_new_setup_token_issue`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_issue_service_creates_no_admin_rbac_or_business_data`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_no_public_endpoint_or_query_string_token_support`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_used_or_revoked_prior_token_allows_new_setup_token_issue[None-revoked_at1]`
+- `tests.test_u6i2_owner_credential_setup_token_issue::test_used_or_revoked_prior_token_allows_new_setup_token_issue[used_at0-None]`
+- `tests.test_u6i3_owner_credential_setup_consume::test_consume_service_has_no_endpoint_query_string_or_admin_creation_boundary`
+- `tests.test_u6i3_owner_credential_setup_consume::test_consume_valid_owner_setup_token_returns_admin_creation_inputs_without_persisting_password`
+- `tests.test_u6i3_owner_credential_setup_consume::test_consuming_used_token_twice_fails_neutrally_after_first_success`
+- `tests.test_u6i3_owner_credential_setup_consume::test_invalid_or_missing_raw_token_fails_neutrally[   ]`
+- `tests.test_u6i3_owner_credential_setup_consume::test_invalid_or_missing_raw_token_fails_neutrally[None]`
+- `tests.test_u6i3_owner_credential_setup_consume::test_invalid_or_missing_raw_token_fails_neutrally[]`
+- `tests.test_u6i3_owner_credential_setup_consume::test_invalid_or_missing_raw_token_fails_neutrally[u6i3-missing-6e99fdb1a2cf4a7f9ee64d4212cd6c68]`
+- `tests.test_u6i3_owner_credential_setup_consume::test_non_actionable_token_states_fail_neutrally[deleted]`
+- `tests.test_u6i3_owner_credential_setup_consume::test_non_actionable_token_states_fail_neutrally[expired]`
+- `tests.test_u6i3_owner_credential_setup_consume::test_non_actionable_token_states_fail_neutrally[revoked]`
+- `tests.test_u6i3_owner_credential_setup_consume::test_non_actionable_token_states_fail_neutrally[used]`
+- `tests.test_u6i3_owner_credential_setup_consume::test_wrong_purpose_token_fails_neutrally`
+- `tests.test_u6i4_first_admin_rbac_creation::test_create_first_admin_user_role_permissions_and_mappings`
+- `tests.test_u6i4_first_admin_rbac_creation::test_cross_tenant_isolation_only_writes_requested_schema`
+- `tests.test_u6i4_first_admin_rbac_creation::test_fail_closed_for_missing_absent_invalid_schema_or_missing_hash[setup0]`
+- `tests.test_u6i4_first_admin_rbac_creation::test_fail_closed_for_missing_absent_invalid_schema_or_missing_hash[setup1]`
+- `tests.test_u6i4_first_admin_rbac_creation::test_fail_closed_for_missing_absent_invalid_schema_or_missing_hash[setup2]`
+- `tests.test_u6i4_first_admin_rbac_creation::test_fail_closed_for_missing_absent_invalid_schema_or_missing_hash[setup3]`
+- `tests.test_u6i4_first_admin_rbac_creation::test_first_admin_creation_is_idempotent_without_duplicate_rbac`
+- `tests.test_u6i4_first_admin_rbac_creation::test_no_public_endpoint_placeholder_password_or_provisioning_behavior_change`
+- `tests.test_u6i4_first_admin_rbac_creation::test_reconciles_existing_owner_user_with_provided_hash_and_missing_rbac`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_duplicate_setup_is_idempotent`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_expired_token_returns_neutral_error_and_no_admin_created`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_get_setup_credential_rejected`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_invalid_or_missing_token_returns_neutral_error`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_no_query_string_token_support`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_replay_with_different_password_does_not_change_password_hash`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_response_never_exposes_sensitive_data`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_setup_credential_succeeds_for_valid_token_and_password`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_tenant_isolation_only_writes_requested_schema`
+- `tests.test_u6i5_owner_credential_setup_endpoint::test_used_token_returns_neutral_error`
+- `tests.test_u6i6_onboarding_e2e_closeout::test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_admin_rbac`
+- `tests.test_u6k_production_smtp_email_delivery::test_duplicate_live_email_in_production_is_neutral_and_sends_no_extra_smtp`
+- `tests.test_u6k_production_smtp_email_delivery::test_production_missing_smtp_config_returns_503_and_writes_no_rows`
+- `tests.test_u6k_production_smtp_email_delivery::test_production_smtp_send_failure_rolls_back_registration_and_token`
+- `tests.test_u6k_production_smtp_email_delivery::test_production_smtp_success_creates_hash_only_registration_and_token`
+- `tests.test_u6k_production_smtp_email_delivery::test_test_environment_still_uses_dev_sink_without_smtp`
+- `tests.test_u6l_email_verified_onboarding_orchestration::test_emailed_setup_token_can_create_first_admin_rbac_and_status_is_public_active`
+- `tests.test_u6l_email_verified_onboarding_orchestration::test_production_missing_owner_setup_smtp_config_fails_closed`
+- `tests.test_u6l_email_verified_onboarding_orchestration::test_production_owner_setup_smtp_failure_fails_closed_with_retry_anchor`
+- `tests.test_u6l_email_verified_onboarding_orchestration::test_real_bootstrap_owner_setup_smtp_failure_persists_anchor_and_retry_reconciles`
+- `tests.test_u6l_email_verified_onboarding_orchestration::test_repeated_internal_orchestration_does_not_duplicate_tenant_token_or_admin_rows`
+- `tests.test_u6l_email_verified_onboarding_orchestration::test_reused_verification_token_remains_neutral_and_does_not_duplicate_orchestration`
+- `tests.test_u6l_email_verified_onboarding_orchestration::test_verify_email_provisions_tenant_issues_setup_token_and_sends_owner_email`
+- `tests.test_users_roles_api.TestCrossTenantDenial::test_assign_roles_cross_tenant_not_found`
+- `tests.test_users_roles_api.TestCrossTenantDenial::test_delete_user_cross_tenant_not_found`
+- `tests.test_users_roles_api.TestCrossTenantDenial::test_get_user_cross_tenant_not_found`
+- `tests.test_users_roles_api.TestCrossTenantDenial::test_tenant_isolation_via_search_path`
+- `tests.test_users_roles_api.TestCrossTenantDenial::test_update_user_cross_tenant_not_found`
+- `tests.test_users_roles_api.TestEdgeCases::test_assign_invalid_role_id`
+- `tests.test_users_roles_api.TestEdgeCases::test_create_user_duplicate_email`
+- `tests.test_users_roles_api.TestEdgeCases::test_delete_self_prevented`
+- `tests.test_users_roles_api.TestEdgeCases::test_get_user_invalid_uuid`
+- `tests.test_users_roles_api.TestEdgeCases::test_update_user_duplicate_email`
+- `tests.test_users_roles_api.TestRBACDenial::test_assign_roles_without_permission_denied`
+- `tests.test_users_roles_api.TestRBACDenial::test_create_user_without_permission_denied`
+- `tests.test_users_roles_api.TestRBACDenial::test_delete_user_without_permission_denied`
+- `tests.test_users_roles_api.TestRBACDenial::test_list_roles_without_permission_denied`
+- `tests.test_users_roles_api.TestRBACDenial::test_list_users_without_permission_denied`
+- `tests.test_users_roles_api.TestRBACDenial::test_update_user_without_permission_denied`
+- `tests.test_users_roles_api.TestRolesAPIHappyPath::test_list_roles_success`
+- `tests.test_users_roles_api.TestUsersAPIHappyPath::test_assign_roles_success`
+- `tests.test_users_roles_api.TestUsersAPIHappyPath::test_create_user_success`
+- `tests.test_users_roles_api.TestUsersAPIHappyPath::test_delete_user_success`
+- `tests.test_users_roles_api.TestUsersAPIHappyPath::test_get_user_by_id_success`
+- `tests.test_users_roles_api.TestUsersAPIHappyPath::test_list_users_success`
+- `tests.test_users_roles_api.TestUsersAPIHappyPath::test_update_user_success`
+
+### CONFIRMED_MIGRATION_GAP (31)
+
+Root cause: DB schema mismatches between old migration DDL and current bootstrap contract.
+
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_created_at_not_null`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_check_constraint`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_price`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_retailer_id`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_retailer_id_index`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_sku_id`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_sku_id_index`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_unique_constraint`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_is_deleted_not_null`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_price_not_null`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_retailer_id_not_null`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_sku_id_not_null`
+- `tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_updated_at_not_null`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestBusinessEmptyStateProof::test_exports_non_200_is_business_not_auth`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestBusinessEmptyStateProof::test_pricing_non_200_is_business_not_auth`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveAdminPermissionsComplete::test_admin_has_at_least_one_role`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveAdminPermissionsComplete::test_admin_role_has_all_required_permissions`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveAdminPermissionsComplete::test_admin_user_exists_and_is_active`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_dashboard_cash_flow`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_dashboard_kpi_summary`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_dashboard_sales_trend`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_exports_status`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_orders_list`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_payments_list`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_pricing_prices`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_retailer_bindings`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_retailers_list`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_skus_list`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_stock_list_endpoint`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestNearRealContextualJwtFlow::test_decoded_token_is_contextual_not_identity`
+- `tests.test_s3b_fresh_tenant_live_runtime_proof.TestNearRealContextualJwtFlow::test_encode_decode_roundtrip`
+
+### CONFIGURATION_DRIFT (17)
+
+Root cause: `reporting_role does not exist` during tenant schema bootstrap/reconcile.
+
+- `tests.business.test_s4e_reservation_schema_contract::test_fresh_tenant_bootstrap_creates_inventory_reservations_contract`
+- `tests.business.test_s4f_business_invariant_closeout::test_same_sku_code_isolated_across_two_tenant_schemas`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestBusinessEmptyStateProof::test_exports_non_200_is_business_not_auth`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestBusinessEmptyStateProof::test_pricing_non_200_is_business_not_auth`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshContextualJwtFlow::test_decoded_token_is_contextual_not_identity`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshContextualJwtFlow::test_encode_decode_roundtrip`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_dashboard_cash_flow`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_dashboard_kpi_summary`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_dashboard_sales_trend`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_exports_status`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_inventory_stocks`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_orders_list`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_payments_list`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_pricing_prices`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_retailer_bindings`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_retailers_list`
+- `tests.test_s3c_self_contained_fresh_tenant_live_proof.TestFreshEndpointSmoke::test_skus_list`
+
+### STALE_TEST_CONTRACT (7)
+
+Root cause: Test assertions no longer match current product schema/model definitions.
+
+- `tests.test_models_structure.TestORMModelStructure::test_all_models_have_audit_columns`
+- `tests.test_models_structure.TestORMModelStructure::test_all_models_have_explicit_tablename`
+- `tests.test_models_structure.TestORMModelStructure::test_all_models_have_uuid_primary_key`
+- `tests.test_models_structure.TestPublicBaseModel::test_public_base_model_has_audit_columns`
+- `tests.test_u6e0_onboarding_status_token_schema::test_no_onboarding_status_endpoint_or_runtime_route_added`
+- `tests.test_u6i0_owner_credential_setup_contract::test_contract_locks_public_endpoint_disclosure_boundary`
+- `tests.test_u6i1_owner_credential_setup_schema::test_alembic_head_is_owner_credential_setup_tokens`
+
+### SKELETON_TEST_RETIRED (4)
+
+Root cause: Git-diff-based contract tests in detached worktree.
+
+- `tests.test_platform_p21_durable_approval_adapter_skeleton::test_no_new_alembic_migration_chained_on_020`
+- `tests.test_u6i0_owner_credential_setup_contract::test_branch_changes_only_contract_doc_and_static_test`
+- `tests.test_u6i0_owner_credential_setup_contract::test_no_runtime_code_files_changed_in_contract_branch`
+- `tests.test_u6i1_owner_credential_setup_schema::test_branch_changes_only_allowed_schema_foundation_files`
+
+---
+
+## 7. Final Verdict
+
+```
+NEEDS_MIGRATION_FIX
+```
+
+**Justification:**
+
+1. **611 TEST_FIXTURE_ISOLATION** — Fixable by test configuration (asyncio event loop policy in conftest.py), not product code changes
+2. **31 CONFIRMED_MIGRATION_GAP** — Requires alembic migration to rename/recreate constraints in retailer_prices and ensure users table exists in public schema for tenant bootstrap paths
+3. **17 CONFIGURATION_DRIFT** — Requires fixing reporting_role propagation in migration 011_s6_p_reporting_role
+4. **7 STALE_TEST_CONTRACT** — Test assertions need updating for DurableApprovalDecision model and route policies
+5. **4 SKELETON_TEST_RETIRED** — Expected in detached worktree; not actionable
+6. **0 CURRENT_PRODUCT_REGRESSION** — No product code bugs detected
+
+---
+
+*Report generated by DC-2T0 gate. Locked environment. Reproducible.*

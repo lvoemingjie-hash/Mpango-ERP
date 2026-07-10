@@ -15,7 +15,7 @@
 
 This task did **not** proceed to VPS checkout, backup, compose validation, deploy, onboarding, or tenant runtime proof.
 
-Reason: the required VPS access path was not available from this operator machine, so the run stopped before any on-host mutation.
+Reason: SSH access was established, but the target VPS deployment tree at `/opt/mpango-erp` is **tracked-dirty**. The required preflight stop condition triggered before any fetch, checkout, backup, compose validation, deploy, onboarding, or runtime mutation.
 
 No product code, test, migration, config, compose file, database row, tenant, admin, role, permission, schema, SKU, payment, or ledger data was changed on the target runtime.
 
@@ -74,23 +74,30 @@ All commands were run in non-interactive batch mode to avoid secret prompts in l
 
 | Attempt | Result |
 |---|---|
-| `ssh ubuntu@1.14.247.12` | `Permission denied (publickey,password)` |
-| `ssh root@1.14.247.12` | `Permission denied (publickey,password)` |
-| `ssh -i ~/.ssh/id_ed25519 ubuntu@1.14.247.12` | `Permission denied (publickey,password)` |
-| `ssh -i ~/.ssh/id_ed25519_do ubuntu@1.14.247.12` | `Permission denied (publickey,password)` |
-| older DO host `root@143.110.177.2` | timeout |
+| `ssh` with operator-provided password to `ubuntu@1.14.247.12` | SUCCESS |
+
+### Observed VPS repo state before any mutation
+
+| Item | Value |
+|---|---|
+| Remote | `origin https://github.com/lvoemingjie-hash/Mpango-ERP.git` |
+| Current branch | `product-dev-recovered` |
+| Current HEAD on VPS | `bce3dcfc72b459a6a5ca429874ae3cb6be794b88` |
+| Tracked status | `M docker-compose.prod.yml` |
 
 ### Consequence
 
-Because SSH access failed, the task stopped **before** these mandatory VPS-only checks could be executed:
+Because the deploy tree is tracked-dirty, DC-2B stopped **before** these mandatory mutating steps could be executed:
 
-1. `git checkout -B product-dev-recovered origin/product-dev-recovered`
-2. tracked-tree cleanliness verification on the VPS
+1. `git fetch origin`
+2. `git checkout -B product-dev-recovered origin/product-dev-recovered`
 3. repo-external DB backup creation on the VPS
 4. `docker compose -f docker-compose.prod.yml --env-file .env.prod config`
 5. Alembic head/current verification on the VPS
 6. `docker compose ... up -d --build` on the VPS
 7. all onboarding/business/runtime proofs A/B/C
+
+The stop condition matched the CTO directive exactly: if `docker-compose.prod.yml` or any tracked file is dirty, stop and do not overwrite or reset.
 
 ---
 
@@ -135,19 +142,19 @@ This branch therefore contains **zero actual unresolved merge markers**.
 
 Status: **NOT RUN**
 
-Reason: no VPS access, therefore no deploy/runtime path and no safe way to trigger signup or collect mail evidence.
+Reason: VPS preflight stopped on tracked-dirty deploy tree.
 
 ### Core Proof B: real new-tenant business loop
 
 Status: **NOT RUN**
 
-Reason: Proof A was not reachable.
+Reason: Proof A was not reachable after preflight stop.
 
 ### Core Proof C: security + platform boundary
 
 Status: **NOT RUN ON VPS**
 
-Reason: target runtime was not accessible for deploy/recheck.
+Reason: target runtime was accessible for read-only inspection only; deploy/recheck was blocked by preflight stop.
 
 ---
 
@@ -164,9 +171,9 @@ Reason: target runtime was not accessible for deploy/recheck.
 
 ## Stop Reason
 
-This run is blocked by missing operational access to the target VPS.
+This run is blocked by a tracked-dirty deployment tree on the target VPS.
 
-The exact runtime candidate SHA is known and locally rechecked, but the required VPS re-deploy and onboarding/runtime evidence cannot be produced until CTO provides a working access path for `1.14.247.12`.
+The exact runtime candidate SHA is known and locally rechecked, and SSH access to `1.14.247.12` works with the operator-provided credential. However, `/opt/mpango-erp` currently contains a tracked modification to `docker-compose.prod.yml`, so DC-2B cannot legally fetch, checkout, backup, compose-validate, deploy, or proceed to onboarding/runtime proof until CTO clears or explains that drift.
 
 ---
 

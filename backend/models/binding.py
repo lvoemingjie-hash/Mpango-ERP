@@ -1,7 +1,9 @@
 """Wholesaler-Retailer binding model - stored in public schema."""
 
 import uuid
-from sqlalchemy import String, Index, ForeignKey, UniqueConstraint
+from decimal import Decimal
+
+from sqlalchemy import String, Index, ForeignKey, Numeric, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,4 +41,11 @@ class WholesalerRetailerBinding(PublicBaseModel):
         default="active",
         server_default="active",
         comment="active|inactive",
+    )
+
+    outstanding_balance: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+        comment="Outstanding balance / credit exposure cache (MVP)",
     )

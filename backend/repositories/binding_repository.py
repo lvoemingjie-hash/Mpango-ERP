@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import List, Optional
 
 from sqlalchemy import select
@@ -37,6 +38,7 @@ class BindingRepository:
             wholesaler_id=wholesaler_id,
             retailer_id=retailer_id,
             status=status,
+            outstanding_balance=Decimal("0.00"),
         )
         db.add(binding)
         await db.flush()

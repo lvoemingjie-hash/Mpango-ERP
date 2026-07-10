@@ -3,7 +3,7 @@
 Date: 2026-07-12
 Branch: `opencode/dc2m1-legacy-tenant-reconciliation-design-2026-07-12`
 Baseline: `origin/product-dev-recovered @ 458c0219ddea27fef9754e67521402d145743161`
-Status: `DESIGN_READY_FOR_CTO_REVIEW`
+Status: `DESIGN_READY_FOR_CTO_REVIEW` (revised by DC-2M1-R1; see the "DC-2M1-R1 CTO Design Corrections" section)
 
 ## Scope
 
@@ -260,6 +260,299 @@ Risk controls:
 - Test both migration and bootstrap reconciliation paths.
 - Keep new-tenant bootstrap behavior unchanged.
 
+## DC-2M1-R1 CTO Design Corrections
+
+Date: 2026-07-12 (revision R1)
+Branch: `opencode/dc2m1-legacy-tenant-reconciliation-design-2026-07-12`
+Revises: commit `c9714c1bdfc10daf17c9c4581a14bd1250c19ec1`
+Baseline: `origin/product-dev-recovered @ 458c0219ddea27fef9754e67521402d145743161` (unchanged; verified no drift)
+Scope of this revision: design text only. No production code, migration, bootstrap, test,
+frontend, config, or lockfile is modified. This revision tightens and, where noted,
+overrides the original design above. Where the original text and this section disagree,
+THIS SECTION GOVERNS for DC-2M2 implementation.
+
+The four corrections below are mandatory for DC-2M2.
+
+### Correction 1. Authoritative Tenant Schema Enumeration and Safe Identifiers
+
+The original design said eligibility "should be conservative" and gave `t_%` as an example.
+That is rejected. The DC-2M2 implementation MUST NOT discover tenants by scanning schemas.
+
+1.1 Sole authoritative source of tenant schemas.
+
+- The single authoritative source is the public registry, read from `public.tenant_registrations`
+  joined to `public.wholesalers`. A schema is "registered/active" only when BOTH hold:
+  (a) a `tenant_registrations` row with `status IN (LIVE_REGISTRATION_STATUSES)` AND a
+      non-null `tenant_schema` (the partial unique index `ux_tenant_registrations_tenant_schema`
+      guarantees at most one registration per schema); AND
+  (b) a matching `wholesalers` row whose derived tenant schema equals that value and whose
+      `wholesalers.status` indicates an active/provisioned tenant.
+- `LIVE_REGISTRATION_STATUSES` / `TENANT_REGISTRATION_STATUSES` (defined in
+  `backend/models/tenant_onboarding.py`) are the only acceptable status filters. The
+  implementation must read these constants from the model, not hardcode a copy.
+
+1.2 Explicit exclusions (mandatory).
+
+- MUST NOT enumerate schemas via `LIKE 't_%'`, `information_schema.schemata`, `pg_namespace`,
+  or any directory-style scan.
+- MUST exclude test schemas (`t_test`, `t_dev`, `t_u1r1_test`, and any schema not present in
+  the registry result).
+- MUST exclude deleted / cancelled / expired / never-completed registrations
+  (`status` not in the live set), and any registration whose `tenant_schema` is NULL or empty.
+- MUST exclude any `tenant_schema` value that is not a valid, single PostgreSQL identifier
+  matching the system's tenant-schema naming rule (the same derivation used by
+  `wholesalers.get_tenant_schema()`).
+
+1.3 Safe identifiers (mandatory; no exceptions).
+
+- Every dynamic schema, table, index, constraint, and role identifier used in generated SQL
+  MUST be produced through a database-side quote-ident mechanism, never by Python string
+  interpolation/concatenation.
+- Acceptable mechanisms: `quote_ident(<name>)` executed server-side, or
+  `format('%I', <name>)` executed server-side, with the rendered SQL parameterized for all
+  values. Identifiers must be quoted even when they appear "safe".
+- Tenant-table and tenant-object names that are fixed by the contract (e.g.
+  `retailer_prices`, `mv_sales_daily`, `idx_mv_sales_daily_u1`,
+  `uq_retailer_prices_retailer_sku`, `reporting_role`) are constants and are also passed
+  through the same quote-ident path for uniformity, but they are never data-derived.
+
+1.4 Fail-closed for identifier problems.
+
+- If a registered `tenant_schema` is illegal (not a valid identifier), duplicated across two
+  registrations, missing from `pg_namespace` (registered but the schema object is absent),
+  or otherwise unresolvable, the migration MUST fail closed for that tenant with a
+  schema-named, non-sensitive error, and MUST NOT execute any DDL in that schema.
+- A tenant schema that exists in the registry but whose schema object is missing is itself a
+  fail-closed condition: the migration must not silently create or assume the schema.
+
+### Correction 2. G1 Constraint Compatibility Policy
+
+The original design allowed adding a second, duplicate canonical unique constraint alongside
+a compatible legacy one. That is rejected as sloppy. The DC-2M2 G1 logic MUST first attempt a
+safe rename of an exactly-equivalent legacy constraint to the canonical name, and only add a
+new constraint when no equivalent exists.
+
+2.1 Exact definition of "business-equivalent legacy unique constraint".
+
+A legacy object on `retailer_prices` qualifies as business-equivalent to the canonical
+`uq_retailer_prices_retailer_sku` if and only if ALL of the following are true, verified from
+catalog evidence (`pg_constraint` / `pg_index`), not from name guessing:
+
+- The containing relation is exactly `retailer_prices` in this tenant schema.
+- The object is a UNIQUE CONSTRAINT (`pg_constraint.contype = 'u'`), not a unique index
+  without a constraint, not a primary key, not an exclusion constraint.
+- The constraint's column set is EXACTLY `(retailer_id, sku_id)` in that order, resolved by
+  `pg_constraint.conkey` -> `pg_attribute.attname` (compare by name, not by attnum).
+- It is NOT a partial unique constraint: `pg_constraint.conpredid IS NULL` and there is no
+  predicate / WHERE clause.
+- The constraint is valid: `pg_constraint.convalidated = true` (for a `u` constraint this is
+  the expected state).
+- Column types are compatible with migration `017`: `retailer_id` and `sku_id` are
+  `uuid` (non-nullable); `price` is `numeric(12,2)`.
+
+Any deviation (extra columns, wrong columns, wrong order, partial predicate, invalidated,
+wrong type, or a same-named object of the wrong kind) means NOT equivalent.
+
+2.2 Repair decision tree (in order, per tenant schema).
+
+- (a) If `uq_retailer_prices_retailer_sku` already exists and satisfies 2.1 exactly: no-op
+      (canonical already present). G1 succeeds for this schema.
+- (b) Else if exactly one legacy constraint satisfies 2.1 (business-equivalent) AND the
+      canonical name is free (no object of any kind named
+      `uq_retailer_prices_retailer_sku`): rename that legacy constraint to the canonical
+      name via `ALTER TABLE ... RENAME CONSTRAINT <legacy> TO uq_retailer_prices_retailer_sku`.
+      This is the preferred path: it avoids creating a second index for the same guarantee.
+- (c) Else if NO legacy constraint satisfies 2.1 AND the canonical name is free AND the data
+      has no duplicate `(retailer_id, sku_id)` pairs: add the canonical unique constraint with
+      `ALTER TABLE ... ADD CONSTRAINT uq_retailer_prices_retailer_sku UNIQUE (retailer_id, sku_id)`.
+- (d) Else: fail closed (see 2.3).
+
+2.3 Mandatory fail-closed conditions for G1 (do not auto-fix, do not skip).
+
+The migration MUST fail closed and stop (no partial success) when, for a tenant schema:
+
+- The canonical name `uq_retailer_prices_retailer_sku` is occupied by an INCOMPATIBLE object
+  (wrong columns/order/type, non-unique, partial, invalidated, or wrong object kind).
+- More than one legacy constraint satisfies the 2.1 equivalence test (ambiguous; the rename
+  target is undefined).
+- A legacy constraint satisfies 2.1 but the canonical name is occupied by a different object,
+  so the rename cannot proceed.
+- The `retailer_prices` table is missing required columns, has wrong column types, or has
+  nullable required columns.
+- Duplicate `(retailer_id, sku_id)` business rows exist (the canonical uniqueness cannot be
+  established without changing business data).
+- Any row has `price <= 0` / NULL where the `ck_retailer_prices_positive_price` check would
+  be violated.
+- The `ck_retailer_prices_positive_price` check exists with an incompatible definition.
+
+On any fail-closed the migration must: report the tenant schema name and a non-sensitive
+reason (e.g. "duplicate (retailer_id, sku_id) rows", "canonical name occupied by
+non-unique index"), and MUST NOT rewrite, deduplicate, delete, or type-coerce any business
+data, and MUST NOT drop or alter the legacy constraint.
+
+2.4 Catalog evidence strategy (required; no information_schema short-cuts).
+
+- Columns/types/nullability: `pg_attribute` + `pg_type` + `pg_attrdef` (NOT
+  `information_schema.columns`, which can misreport on tenant schemas).
+- Constraints: `pg_constraint` (contype, conkey, convalidated, conpredid).
+- Indexes: `pg_index` (indisunique, indisvalid, indkey, indpredicate) cross-referenced to
+  `pg_constraint.conindid` so that a constraint-backed unique index is attributed to its
+  constraint, not double-counted.
+- Data duplicates: `SELECT retailer_id, sku_id, COUNT(*) ... GROUP BY ... HAVING COUNT(*) > 1`.
+- Price violations: `SELECT COUNT(*) FROM ... WHERE price IS NULL OR price <= 0`.
+- All data-count queries are read-only and run in the preflight (see Correction 3).
+
+### Correction 3. DDL Locks, Execution Model, and Failure Handling
+
+3.1 Transaction and timeout strategy.
+
+- The migration runs each tenant schema's G1+G2 work inside its own transaction with explicit:
+  - `lock_timeout` (short, e.g. 3-5s) so a contended table cannot hang the run;
+  - `statement_timeout` (bounded, e.g. 30-60s) so a slow scan cannot hang the run.
+- Both are set per-transaction via `SET LOCAL` so they do not leak beyond the migration.
+- A cluster-wide advisory lock (e.g. `pg_advisory_xact_lock(<hashed app:key>))`) serializes
+  the whole migration so two concurrent runs (e.g. two boots) cannot interleave DDL on the
+  same tenant objects.
+
+3.2 Read-only preflight BEFORE any DDL.
+
+- Before writing anything, run a single read-only preflight across ALL registered tenant
+  schemas that classifies each as: OK / INCOMPATIBLE / NEEDS_REPAIR, and for NEEDS_REPAIR
+  records the planned action (rename legacy / add canonical / create MV+index / grant).
+- The preflight MUST output a desensitized report: tenant schema names + non-sensitive
+  classifications + planned action only. No business values, prices, row contents, emails,
+  or tokens.
+- If ANY registered schema is INCOMPATIBLE (Correction 2.3 / 3.4 conditions), the migration
+  MUST stop and fail closed; it MUST NOT silently skip an incompatible schema, MUST NOT mark
+  a partial run as successful, and MUST NOT proceed to DDL on other schemas in the same run
+  unless the CTO explicitly authorizes a "continue past incompatible" mode (not the default).
+
+3.3 Single-tenant incompatibility handling.
+
+- Incompatibility is detected in preflight; no DDL is issued for an incompatible schema.
+- The error surface is: schema name + non-sensitive reason + the catalog fact that triggered
+  it (e.g. "retailer_prices.uq_retailer_prices_retailer_sku is a non-unique index").
+- The migration does not attempt automatic repair of incompatible structures.
+
+3.4 Production execution window, backup, recovery ownership.
+
+- Execution window: a maintenance window with no onboarding/signup traffic (signup path may
+  trigger provisioning/reconcile). Coordinate so no concurrent `bootstrap_tenant_schema` runs.
+- Backup precondition: a verified DB backup/snapshot MUST exist before running `031` in
+  production (the DC-1C runbook pattern). Record backup path/size/SHA256 prefix only.
+- Recovery ownership: rollback is application-version rollback plus DB restore/snapshot
+  restore (see Correction 4). The migration itself is forward-only.
+
+3.5 G1 -> G2 continuation in the same flow (per schema).
+
+- Within a single tenant schema, after G1 succeeds (canonical unique constraint present and
+  valid), the same migration transaction continues to G2 for that schema:
+  - Ensure `mv_sales_daily` exists as a MATERIALIZED VIEW with the migration-013 SQL shape.
+    If a legacy `rpt_sales_daily` view exists and `mv_sales_daily` is absent, drop only that
+    legacy view then create the materialized view (matches migration 013).
+  - Ensure `idx_mv_sales_daily_u1` exists as a UNIQUE index over
+    `(transaction_date, reporting_currency_code)`.
+  - Grant `SELECT` on `mv_sales_daily` to `reporting_role`.
+- G2 fail-closed conditions (stop, no partial success): `mv_sales_daily` exists as a
+  non-materialized relation (table/standard view); `idx_mv_sales_daily_u1` exists with a
+  non-unique / wrong-column / partial definition; `reporting_role` does not exist
+  (migration 011 should have created it); `ledger_entries` is missing so the MV cannot be
+  defined. Any of these fails the schema closed and the migration stops per 3.2.
+- G1 and G2 for one schema run in one transaction; if G2 fails after G1 succeeded, the
+  transaction rolls back so the schema is not left half-reconciled.
+
+### Correction 4. Rollback and Test Boundaries
+
+4.1 Forward-only repair; no promised automatic downgrade.
+
+- This legacy-tenant DDL reconcile is a FORWARD-ONLY repair. The DC-2M2 migration MUST NOT
+  promise a reliable automatic `downgrade()`. A best-effort downgrade may drop only objects
+  this migration created (the canonical constraint it added, the MV/index it created), and
+  only when it can prove it created them; it MUST NOT attempt to reverse a safe rename
+  (renaming back to the original legacy name is not reliable and is forbidden), MUST NOT
+  drop legacy noncanonical constraints, and MUST NOT delete business rows.
+
+4.2 Real rollback strategy.
+
+- The only supported rollback is: application-version rollback (deploy the previous app
+  build) PLUS restore from a verified pre-migration database backup/snapshot. This must be
+  stated in the migration docstring and the implementation ledger.
+
+4.3 down_revision is fixed.
+
+- The new migration's `down_revision` MUST be the current single head
+  `030_platform_backup_status_source`. Historical migration `017_retailer_prices.py` is
+  immutable and is NOT the down_revision. The new revision id is `031_legacy_tenant_reconciliation`
+  (or the next legal number if `031` is taken by a merged change at implementation time; in
+  that case STOP_AND_REPORT_CTO).
+
+4.4 DC-2M2 mandatory test coverage (must all pass before the slice can be merged).
+
+The implementation tests MUST prove each of the following; any missing case is a blocker:
+
+- Fresh bootstrap is unchanged: a brand-new tenant still gets all canonical objects
+  (`retailer_prices` + `uq_retailer_prices_retailer_sku` + check + indexes; `mv_sales_daily`
+  + `idx_mv_sales_daily_u1`; `reporting_role` SELECT).
+- One-shot legacy DDL repair: a tenant with a legacy noncanonical unique constraint on
+  `(retailer_id, sku_id)`, real business rows, and no reporting objects is fully repaired in
+  a single run (canonical constraint via safe rename per 2.2(b), MV + unique index + grant).
+- Idempotent second run: a second run on the same repaired tenant is a no-op (no errors, no
+  row changes, no duplicate objects).
+- Canonical already present: when `uq_retailer_prices_retailer_sku` already satisfies 2.1,
+  G1 is a no-op and G2 still proceeds.
+- Legacy equivalent constraint is safely normalized: per 2.2(b) the legacy constraint is
+  RENAMED (not duplicated); assert no second unique index is created.
+- Fail-closed cases (each must raise and stop, no DDL, no data change):
+  - duplicate `(retailer_id, sku_id)` business data;
+  - wrong column type (e.g. `retailer_id` as text);
+  - canonical name occupied by an incompatible object (e.g. a non-unique index);
+  - `mv_sales_daily` exists as a standard view/table (G2 incompatible);
+  - `idx_mv_sales_daily_u1` exists with a non-unique/wrong definition (G2 incompatible).
+- Business-row preservation: `retailer_prices` and `ledger_entries` row counts and content
+  hashes are identical before and after a successful run.
+- G1 -> G2 same-flow success: after G1 repair, G2 completes in the same run for the same
+  schema (MV + index + grant present).
+- Tenant isolation: a schema that is NOT in the public registry (e.g. an orphan `t_%`
+  schema, or a test schema) is never touched, even if it contains a `retailer_prices` table.
+- Registry-gated enumeration: a registration whose `status` is not live, or whose
+  `tenant_schema` is NULL, is never enumerated.
+
+### Correction 5. DC-2M2 Slice Boundaries (definitive)
+
+Allowed files for DC-2M2 (this list replaces the original "Next Implementation Slice
+Boundaries"):
+
+- `backend/alembic/versions/031_legacy_tenant_reconciliation.py` (new migration).
+- `backend/scripts/bootstrap_tenant_schema.py` (reconcile branch only; new-tenant path unchanged).
+- `backend/tests/test_dc2m2_legacy_tenant_reconciliation_forward_migration.py` (new).
+- `backend/tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py` (only if a new targeted reconcile case is required).
+- `backend/tests/test_payments_schema_contract.py` (only if static contract coverage must be extended).
+- `ai-ledger/product-ai/2026-07-12_dc2m2_legacy_tenant_reconciliation_implementation.md` (new ledger).
+
+Forbidden files for DC-2M2:
+
+- `backend/alembic/versions/017_retailer_prices.py` and every historical migration `< 031`.
+- Frontend, production compose/config/env, lockfiles.
+- Onboarding API/service, auth, RBAC, pricing API, reporting API, dashboard runtime logic
+  (unless CTO explicitly expands scope in writing).
+- The authoritative status constants in `backend/models/tenant_onboarding.py` must be READ,
+  not redefined or moved.
+
+Migration numbering strategy: exactly one new revision `031_legacy_tenant_reconciliation`
+chained on the single current head `030_platform_backup_status_source`; do not branch the
+Alembic graph; do not edit old revisions. If `031` is already taken at implementation time,
+STOP_AND_REPORT_CTO.
+
+Risk (revised): Medium, unchanged in level but tightened in controls — registry-gated
+enumeration (no `t_%` scan), safe quote-ident, read-only preflight, per-tenant fail-closed,
+prefer-rename-over-duplicate, forward-only with backup-restore rollback.
+
+Stop conditions for DC-2M2: (1) baseline `458c0219` has drifted; (2) head is no longer a
+single head at `030_platform_backup_status_source`; (3) `031` is taken by another merged
+change; (4) any required test case in 4.4 cannot be made to pass without touching a
+forbidden file; (5) a registered tenant schema in production preflight is incompatible and
+the CTO has not authorized continued execution.
+
 ## Evidence For This Design Gate
 
 - `git diff --check`: passed.
@@ -272,4 +565,11 @@ Risk controls:
 
 ## Verdict
 
-`PASS_FOR_IMPLEMENTATION_PLANNING_REVIEW`
+DC-2M1-R1 final verdict: `PASS_FOR_CTO_DC2M2_IMPLEMENTATION`
+
+The original `PASS_FOR_IMPLEMENTATION_PLANNING_REVIEW` is superseded. The four CTO
+corrections (registry-gated enumeration with safe identifiers; exact G1 equivalence with
+prefer-rename-over-duplicate and mandatory fail-closed; preflight + per-tenant DDL locks and
+same-flow G1->G2; forward-only rollback with the DC-2M2 test matrix) are now captured and
+govern DC-2M2. No remaining design decision requires CTO input before implementation begins;
+the stop conditions in Correction 5 are the only valid reasons to escalate.

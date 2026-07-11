@@ -482,3 +482,109 @@ def test_migration_uses_registry_gate_and_ignores_inactive_and_unregistered_sche
         with engine.begin() as connection:
             _cleanup(connection, schemas)
         engine.dispose()
+
+
+@pytest.mark.parametrize("relkind", [b"i", memoryview(b"I")])
+def test_relkind_normalization_accepts_dbapi_encoded_index_values(monkeypatch, relkind):
+    module = _load_migration_031()
+
+    monkeypatch.setattr(
+        module,
+        "_index_rows",
+        lambda *_args: [
+            {
+                "relkind": relkind,
+                "table_oid": 42,
+                "table_name": "retailer_prices",
+                "indisunique": False,
+                "indisvalid": True,
+                "has_predicate": False,
+                "column_names": ["retailer_id"],
+            }
+        ],
+    )
+
+    assert module._validate_or_plan_index(
+        None,
+        "t_08177e1717de4fdb873d9e18561e732a",
+        42,
+        "retailer_prices",
+        "ix_retailer_prices_retailer_id",
+        ["retailer_id"],
+        unique=False,
+    ) is False
+
+
+def test_relkind_normalization_accepts_dbapi_encoded_materialized_view(monkeypatch):
+    module = _load_migration_031()
+    q = module.QuotedNames(
+        schema='"t_08177e1717de4fdb873d9e18561e732a"',
+        retailer_prices='"retailer_prices"',
+        ledger_entries='"ledger_entries"',
+        rpt_sales_daily='"rpt_sales_daily"',
+        mv_sales_daily='"mv_sales_daily"',
+        reporting_role='"reporting_role"',
+        uq_retailer_prices='"uq_retailer_prices_retailer_sku"',
+        ck_retailer_prices='"ck_retailer_prices_positive_price"',
+        ix_retailer_prices_retailer='"ix_retailer_prices_retailer_id"',
+        ix_retailer_prices_sku='"ix_retailer_prices_sku_id"',
+        ix_mv_sales_daily='"idx_mv_sales_daily_u1"',
+    )
+
+    def _fake_scalar(_bind, sql, _params=None):
+        if "SELECT c.relkind" in sql:
+            return b"m"
+        if "pg_roles" in sql:
+            return 1
+        raise AssertionError(sql)
+
+    def _fake_regclass_oid(_bind, qualified_name):
+        if qualified_name.endswith('"ledger_entries"'):
+            return 10
+        if qualified_name.endswith('"mv_sales_daily"'):
+            return 20
+        return None
+
+    monkeypatch.setattr(module, "_scalar", _fake_scalar)
+    monkeypatch.setattr(module, "_regclass_oid", _fake_regclass_oid)
+    monkeypatch.setattr(module, "_validate_mv_columns", lambda *_args: None)
+    monkeypatch.setattr(module, "_validate_or_plan_index", lambda *_args, **_kwargs: False)
+
+    plan = module._preflight_reporting(
+        None,
+        "t_08177e1717de4fdb873d9e18561e732a",
+        q,
+    )
+
+    assert plan.create_mv_sales_daily is False
+    assert plan.create_unique_index is False
+
+
+def test_relkind_normalization_keeps_incompatible_objects_fail_closed(monkeypatch):
+    module = _load_migration_031()
+    monkeypatch.setattr(
+        module,
+        "_index_rows",
+        lambda *_args: [
+            {
+                "relkind": b"r",
+                "table_oid": 42,
+                "table_name": "retailer_prices",
+                "indisunique": False,
+                "indisvalid": True,
+                "has_predicate": False,
+                "column_names": ["retailer_id"],
+            }
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="name is occupied by table"):
+        module._validate_or_plan_index(
+            None,
+            "t_08177e1717de4fdb873d9e18561e732a",
+            42,
+            "retailer_prices",
+            "ix_retailer_prices_retailer_id",
+            ["retailer_id"],
+            unique=False,
+        )

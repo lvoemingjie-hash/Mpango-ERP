@@ -35,6 +35,44 @@ This is a forward-only tenant reconciliation. The supported rollback is applicat
 - `poetry run pytest tests/test_dc2m2_legacy_tenant_reconciliation_forward_migration.py -q`: 7 passed.
 - `poetry run pytest tests/test_u1_bootstrap_permission_completeness.py tests/test_s6_2_materialized_views.py tests/test_s6_3_dashboard_api.py -q`: 38 passed after bootstrapping disposable `t_test` and removing the old bootstrap-only `prevent_ledger_mod` trigger so the pytest fixture owns the ledger immutability trigger.
 
+## DC-2M2-R2 Catalog Relkind Normalization Hotfix
+
+### Runtime Finding
+
+DC-2B-R4 backend unhealthy triage found `031_legacy_tenant_reconciliation` failed closed on a valid index because the PostgreSQL catalog `pg_class.relkind` value was returned by the runtime DBAPI as bytes:
+
+`t_08177e1717de4fdb873d9e18561e732a.ix_retailer_prices_retailer_id: name is occupied by b'i'`
+
+The migration compared raw catalog values against string literals like `"i"`, `"I"`, `"m"`, and `"v"`. That preserved fail-closed behavior but incorrectly rejected valid catalog objects when the driver returned `bytes` or `memoryview` representations.
+
+### Fix
+
+- Added `_catalog_code()` in `backend/alembic/versions/031_legacy_tenant_reconciliation.py`.
+- `_catalog_code()` normalizes `None`, `str`, `bytes`, and `memoryview` catalog enum-ish values before compatibility checks.
+- `_relation_kind()` now returns normalized relkind values.
+- `_label_relkind()`, `_constraint_type()`, and `_validate_or_plan_index()` use normalized catalog values.
+- Valid `b"i"`, `b"I"`, and `b"m"` values now compare as `"i"`, `"I"`, and `"m"`.
+- Incompatible values such as `b"r"` still fail closed and are labeled as `table`.
+
+### Bootstrap Script Check
+
+`backend/scripts/bootstrap_tenant_schema.py` had the same raw relkind comparison risk in `_relation_kind()` for canonical unique-name checks and reporting object checks. The same `_catalog_code()` normalization was added there. This keeps bootstrap reconcile behavior aligned with migration `031`; no product route/service behavior changed.
+
+### R2 Regression Coverage
+
+- Existing valid index row with `relkind=b"i"` is accepted.
+- Existing valid partitioned-index relkind through `memoryview(b"I")` is accepted.
+- Existing valid materialized view with `relkind=b"m"` is accepted by reporting preflight.
+- Incompatible relkind `b"r"` still fails closed.
+
+### R2 Validation
+
+- `poetry run pytest tests/test_dc2m2_legacy_tenant_reconciliation_forward_migration.py -q`: 11 passed.
+- `poetry run pytest tests/test_u1_bootstrap_permission_completeness.py -q`: 6 passed.
+- `poetry run alembic heads`: `031_legacy_tenant_reconciliation (head)`.
+- `poetry run python -m py_compile alembic/versions/031_legacy_tenant_reconciliation.py scripts/bootstrap_tenant_schema.py tests/test_dc2m2_legacy_tenant_reconciliation_forward_migration.py`: passed.
+- Historical migration `backend/alembic/versions/017_retailer_prices.py` was not touched.
+
 ## Verdict
 
 Implementation has R1 DB-backed evidence and is ready for CTO review.

@@ -156,6 +156,16 @@ def _normalize_type(type_name: str) -> str:
     return "".join(type_name.lower().split())
 
 
+def _catalog_code(value) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value)
+
+
 async def _regclass_oid(db, qualified_name: str) -> int | None:
     from sqlalchemy import text
 
@@ -168,14 +178,16 @@ async def _regclass_oid(db, qualified_name: str) -> int | None:
 async def _relation_kind(db, schema: str, object_name: str) -> str | None:
     from sqlalchemy import text
 
-    return (await db.execute(
-        text(
-            "SELECT c.relkind FROM pg_class c "
-            "JOIN pg_namespace n ON n.oid = c.relnamespace "
-            "WHERE n.nspname = :schema AND c.relname = :object_name"
-        ),
-        {"schema": schema, "object_name": object_name},
-    )).scalar()
+    return _catalog_code(
+        (await db.execute(
+            text(
+                "SELECT c.relkind FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = :schema AND c.relname = :object_name"
+            ),
+            {"schema": schema, "object_name": object_name},
+        )).scalar()
+    )
 
 
 async def _relation_columns(db, relation_oid: int) -> dict[str, dict]:
@@ -237,9 +249,8 @@ def _catalog_column_names(value) -> list[str]:
 
 
 def _constraint_type(value) -> str:
-    if isinstance(value, bytes):
-        return value.decode()
-    return str(value)
+    normalized = _catalog_code(value)
+    return normalized or ""
 
 
 def _is_equivalent_retailer_unique(row: dict) -> bool:

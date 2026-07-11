@@ -18,8 +18,6 @@ from typing import Any
 from alembic import op
 import sqlalchemy as sa
 
-from models.tenant_onboarding import LIVE_REGISTRATION_STATUSES
-
 
 # revision identifiers, used by Alembic.
 revision = "031_legacy_tenant_reconciliation"
@@ -32,6 +30,13 @@ ADVISORY_LOCK_KEY = 20260712031
 LOCK_TIMEOUT = "5s"
 STATEMENT_TIMEOUT = "60s"
 TENANT_SCHEMA_RE = re.compile(r"^t_[0-9a-f]{32}$")
+LIVE_REGISTRATION_STATUSES = (
+    "pending_email_verification",
+    "email_verified",
+    "provisioning",
+    "active",
+    "failed",
+)
 WHOLESALER_ACTIVE_STATUSES = ("active", "provisioning")
 
 RETAILER_PRICES = "retailer_prices"
@@ -388,14 +393,29 @@ def _constraint_rows(bind, table_oid: int) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def _catalog_column_names(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip("{}")
+        return [part.strip().strip('"') for part in stripped.split(",") if part]
+    return [str(part) for part in value]
+
+
+def _constraint_type(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value)
+
+
 def _is_equivalent_unique_constraint(row: dict[str, Any]) -> bool:
     return (
-        row["contype"] == "u"
+        _constraint_type(row["contype"]) == "u"
         and bool(row["convalidated"])
-        and bool(row["indisunique"])
-        and bool(row["indisvalid"])
+        and row["indisunique"] is not False
+        and row["indisvalid"] is not False
         and not bool(row["has_predicate"])
-        and list(row["column_names"] or []) == ["retailer_id", "sku_id"]
+        and _catalog_column_names(row["column_names"]) == ["retailer_id", "sku_id"]
     )
 
 
@@ -446,14 +466,17 @@ def _has_price_violations(bind, q: QuotedNames) -> bool:
 
 def _check_constraint_is_canonical(row: dict[str, Any]) -> bool:
     definition = _normalize_sql(row["constraint_def"] or "")
+    expression = (
+        definition.replace("check", "")
+        .replace("(", "")
+        .replace(")", "")
+        .replace("::numeric", "")
+    )
+    expression = "".join(expression.split())
     return (
-        row["contype"] == "c"
+        _constraint_type(row["contype"]) == "c"
         and bool(row["convalidated"])
-        and (
-            "check((price>(0)::numeric))" in definition
-            or "check((price>0))" in definition
-            or "check(price>0)" in definition
-        )
+        and expression == "price>0"
     )
 
 
@@ -519,7 +542,7 @@ def _validate_or_plan_index(
         raise PreflightFailure(f"{schema}.{index_name}: index is invalid")
     if bool(row["has_predicate"]):
         raise PreflightFailure(f"{schema}.{index_name}: partial indexes are incompatible")
-    if list(row["column_names"] or []) != expected_columns:
+    if _catalog_column_names(row["column_names"]) != expected_columns:
         raise PreflightFailure(f"{schema}.{index_name}: index columns are incompatible")
     return False
 
@@ -547,7 +570,7 @@ def _detect_unique_index_only_equivalents(bind, schema: str, table_oid: int) -> 
         {"table_oid": table_oid},
     ).mappings()
     for row in rows:
-        if bool(row["indisunique"]) and list(row["column_names"] or []) == ["retailer_id", "sku_id"]:
+        if bool(row["indisunique"]) and _catalog_column_names(row["column_names"]) == ["retailer_id", "sku_id"]:
             raise PreflightFailure(
                 f"{schema}.{row['index_name']}: unique-index-only retailer_prices equivalent "
                 "is not a constraint"

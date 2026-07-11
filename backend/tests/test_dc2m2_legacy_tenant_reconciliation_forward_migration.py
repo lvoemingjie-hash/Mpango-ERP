@@ -19,6 +19,7 @@ from models.wholesaler import Wholesaler
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MIGRATION_031 = BACKEND_DIR / "alembic" / "versions" / "031_legacy_tenant_reconciliation.py"
+OBSERVED_LEGACY_UNIQUE = "retailer_prices_retailer_id_sku_id_key"
 
 
 def _database_url() -> str:
@@ -124,13 +125,17 @@ def _create_legacy_tenant_schema(
     *,
     unique_mode: str = "legacy_constraint",
     duplicate_prices: bool = False,
+    include_positive_price_check: bool = True,
 ) -> tuple[uuid.UUID, uuid.UUID]:
     retailer_id = uuid.uuid4()
     sku_id = uuid.uuid4()
     connection.execute(text(f'CREATE SCHEMA "{schema}"'))
     unique_clause = ""
     if unique_mode == "legacy_constraint":
-        unique_clause = ", CONSTRAINT legacy_retailer_sku_unique UNIQUE (retailer_id, sku_id)"
+        unique_clause = f", CONSTRAINT {OBSERVED_LEGACY_UNIQUE} UNIQUE (retailer_id, sku_id)"
+    check_clause = ""
+    if include_positive_price_check:
+        check_clause = ", CONSTRAINT ck_retailer_prices_positive_price CHECK (price > 0)"
     connection.execute(
         text(
             f"""
@@ -144,8 +149,8 @@ def _create_legacy_tenant_schema(
                 is_deleted BOOLEAN NOT NULL DEFAULT false,
                 deleted_at TIMESTAMPTZ,
                 created_by UUID,
-                updated_by UUID,
-                CONSTRAINT ck_retailer_prices_positive_price CHECK (price > 0)
+                updated_by UUID
+                {check_clause}
                 {unique_clause}
             )
             """
@@ -278,11 +283,16 @@ def _assert_reporting_contract(connection, schema: str) -> None:
 def _assert_retailer_prices_canonical(connection, schema: str) -> None:
     constraints = _constraint_names(connection, schema, "retailer_prices")
     assert "uq_retailer_prices_retailer_sku" in constraints
-    assert "legacy_retailer_sku_unique" not in constraints
+    assert OBSERVED_LEGACY_UNIQUE not in constraints
     assert _unique_constraint_count(connection, schema) == 1
     indexes = _index_names(connection, schema, "retailer_prices")
     assert "ix_retailer_prices_retailer_id" in indexes
     assert "ix_retailer_prices_sku_id" in indexes
+
+
+def _assert_retailer_prices_check_constraint(connection, schema: str) -> None:
+    constraints = _constraint_names(connection, schema, "retailer_prices")
+    assert "ck_retailer_prices_positive_price" in constraints
 
 
 def test_fresh_bootstrap_creates_canonical_retailer_prices_and_reporting():
@@ -319,6 +329,7 @@ def test_migration_renames_legacy_unique_and_creates_reporting_idempotently():
 
             _run_migration_031(connection)
             _assert_retailer_prices_canonical(connection, schema)
+            _assert_retailer_prices_check_constraint(connection, schema)
             _assert_reporting_contract(connection, schema)
             assert _row_count(connection, schema, "retailer_prices") == before_rows
             assert connection.execute(
@@ -331,8 +342,46 @@ def test_migration_renames_legacy_unique_and_creates_reporting_idempotently():
 
             _run_migration_031(connection)
             _assert_retailer_prices_canonical(connection, schema)
+            _assert_retailer_prices_check_constraint(connection, schema)
             _assert_reporting_contract(connection, schema)
             assert _row_count(connection, schema, "retailer_prices") == before_rows
+    finally:
+        with engine.begin() as connection:
+            _cleanup(connection, [schema])
+        engine.dispose()
+
+
+def test_migration_adds_missing_positive_price_check_when_rows_are_valid():
+    schema = _schema_name()
+    engine = _engine()
+    try:
+        with engine.begin() as connection:
+            _ensure_public_prerequisites(connection)
+            _cleanup(connection, [schema])
+            _register_tenant(connection, schema)
+            before_retailer_id, before_sku_id = _create_legacy_tenant_schema(
+                connection,
+                schema,
+                include_positive_price_check=False,
+            )
+            before_rows = _row_count(connection, schema, "retailer_prices")
+            assert "ck_retailer_prices_positive_price" not in _constraint_names(
+                connection, schema, "retailer_prices"
+            )
+
+            _run_migration_031(connection)
+
+            _assert_retailer_prices_canonical(connection, schema)
+            _assert_retailer_prices_check_constraint(connection, schema)
+            assert _row_count(connection, schema, "retailer_prices") == before_rows
+            assert connection.execute(
+                text(
+                    f"SELECT price FROM {_qualified(schema, 'retailer_prices')} "
+                    "WHERE retailer_id = :retailer_id AND sku_id = :sku_id"
+                ),
+                {"retailer_id": before_retailer_id, "sku_id": before_sku_id},
+            ).scalar_one() == 10
+            _assert_reporting_contract(connection, schema)
     finally:
         with engine.begin() as connection:
             _cleanup(connection, [schema])
@@ -417,13 +466,13 @@ def test_migration_uses_registry_gate_and_ignores_inactive_and_unregistered_sche
             _run_migration_031(connection)
 
             _assert_retailer_prices_canonical(connection, active_schema)
-            assert "legacy_retailer_sku_unique" in _constraint_names(
+            assert OBSERVED_LEGACY_UNIQUE in _constraint_names(
                 connection, cancelled_schema, "retailer_prices"
             )
             assert "uq_retailer_prices_retailer_sku" not in _constraint_names(
                 connection, cancelled_schema, "retailer_prices"
             )
-            assert "legacy_retailer_sku_unique" in _constraint_names(
+            assert OBSERVED_LEGACY_UNIQUE in _constraint_names(
                 connection, unregistered_schema, "retailer_prices"
             )
             assert "uq_retailer_prices_retailer_sku" not in _constraint_names(

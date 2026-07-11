@@ -227,27 +227,45 @@ async def _retailer_price_constraint_rows(db, table_oid: int) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def _catalog_column_names(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip("{}")
+        return [part.strip().strip('"') for part in stripped.split(",") if part]
+    return [str(part) for part in value]
+
+
+def _constraint_type(value) -> str:
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value)
+
+
 def _is_equivalent_retailer_unique(row: dict) -> bool:
     return (
-        row["contype"] == "u"
+        _constraint_type(row["contype"]) == "u"
         and bool(row["convalidated"])
-        and bool(row["indisunique"])
-        and bool(row["indisvalid"])
+        and row["indisunique"] is not False
+        and row["indisvalid"] is not False
         and not bool(row["has_predicate"])
-        and list(row["column_names"] or []) == ["retailer_id", "sku_id"]
+        and _catalog_column_names(row["column_names"]) == ["retailer_id", "sku_id"]
     )
 
 
 def _check_constraint_is_canonical(row: dict) -> bool:
     definition = _normalize_sql(row["constraint_def"] or "")
+    expression = (
+        definition.replace("check", "")
+        .replace("(", "")
+        .replace(")", "")
+        .replace("::numeric", "")
+    )
+    expression = "".join(expression.split())
     return (
-        row["contype"] == "c"
+        _constraint_type(row["contype"]) == "c"
         and bool(row["convalidated"])
-        and (
-            "check((price>(0)::numeric))" in definition
-            or "check((price>0))" in definition
-            or "check(price>0)" in definition
-        )
+        and expression == "price>0"
     )
 
 
@@ -314,7 +332,7 @@ async def _has_unique_index_only_retailer_equivalent(db, table_oid: int) -> str 
         {"table_oid": table_oid},
     )).mappings()
     for row in rows:
-        if bool(row["indisunique"]) and list(row["column_names"] or []) == ["retailer_id", "sku_id"]:
+        if bool(row["indisunique"]) and _catalog_column_names(row["column_names"]) == ["retailer_id", "sku_id"]:
             return row["index_name"]
     return None
 

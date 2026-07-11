@@ -27,6 +27,20 @@ class VerificationEmailDelivery:
 _DEV_EMAIL_DELIVERIES: list[VerificationEmailDelivery] = []
 
 
+@dataclass(frozen=True)
+class PasswordResetEmailDelivery:
+    """Captured password-reset delivery for non-production tests."""
+
+    to_email: str
+    reset_link: str
+    token: str
+    created_at: datetime
+    purpose: str = "password_reset"
+
+
+_DEV_RESET_EMAIL_DELIVERIES: list[PasswordResetEmailDelivery] = []
+
+
 class EmailDeliveryNotConfiguredError(RuntimeError):
     """Raised when signup email delivery cannot run safely."""
 
@@ -107,6 +121,47 @@ def record_owner_setup_email(
     )
 
 
+def record_password_reset_email(
+    *,
+    settings: Settings,
+    to_email: str,
+    token: str,
+    reset_link: str,
+) -> None:
+    """Deliver password reset email or capture it in non-production sink.
+
+    Production fails closed: if SMTP delivery is not configured, raises
+    EmailDeliveryNotConfiguredError and NO email is sent. The raw token exists
+    only in memory and the email channel; it is never logged.
+    """
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+
+    if settings.MPANGO_ENV == "production":
+        _send_smtp_email(
+            settings=settings,
+            to_email=to_email,
+            subject="Reset your Mpango ERP password",
+            body=(
+                "We received a request to reset your Mpango ERP password.\n\n"
+                "Use this link to choose a new password:\n"
+                f"{reset_link}\n\n"
+                "If you did not request a password reset, ignore this email "
+                "and your password will stay unchanged."
+            ),
+        )
+        return
+
+    _DEV_RESET_EMAIL_DELIVERIES.append(
+        PasswordResetEmailDelivery(
+            to_email=to_email.strip().lower(),
+            reset_link=reset_link,
+            token=token,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+
+
 def get_dev_email_deliveries(email: str | None = None) -> list[VerificationEmailDelivery]:
     """Return captured non-production verification deliveries for tests."""
     if email is None:
@@ -115,9 +170,18 @@ def get_dev_email_deliveries(email: str | None = None) -> list[VerificationEmail
     return [delivery for delivery in _DEV_EMAIL_DELIVERIES if delivery.to_email == normalized]
 
 
+def get_dev_reset_email_deliveries(email: str | None = None) -> list[PasswordResetEmailDelivery]:
+    """Return captured non-production password-reset deliveries for tests."""
+    if email is None:
+        return list(_DEV_RESET_EMAIL_DELIVERIES)
+    normalized = email.strip().lower()
+    return [delivery for delivery in _DEV_RESET_EMAIL_DELIVERIES if delivery.to_email == normalized]
+
+
 def clear_dev_email_deliveries() -> None:
     """Clear captured deliveries between tests."""
     _DEV_EMAIL_DELIVERIES.clear()
+    _DEV_RESET_EMAIL_DELIVERIES.clear()
 
 
 def _smtp_config_complete(settings: Settings) -> bool:

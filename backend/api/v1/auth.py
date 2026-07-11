@@ -29,12 +29,18 @@ from crud.user import find_user_across_tenants, get_user_with_permissions
 from database.session import get_tenant_db
 from models.user import User, Role
 from schemas.auth_signup import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    ForgotPasswordResponseData,
     OnboardingStatusRequest,
     OnboardingStatusResponse,
     OnboardingStatusResponseData,
     OwnerCredentialSetupRequest,
     OwnerCredentialSetupResponse,
     OwnerCredentialSetupResponseData,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
+    ResetPasswordResponseData,
     SignupRequest,
     SignupResponse,
     SignupResponseData,
@@ -74,6 +80,12 @@ from services.owner_credential_service import (
     OwnerCredentialSetupAdminCreationError,
     OwnerCredentialSetupService,
     OwnerCredentialSetupTokenInvalidError,
+)
+from services.password_reset_service import (
+    INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN,
+    NEUTRAL_PASSWORD_RESET_MESSAGE,
+    PasswordResetService,
+    PasswordResetTokenInvalidError,
 )
 
 router = APIRouter()
@@ -650,5 +662,115 @@ async def setup_credential(
     return OwnerCredentialSetupResponse(
         data=OwnerCredentialSetupResponseData(),
         message=NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE,
+        timestamp=datetime.utcnow(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/forgot-password  (DC-3B credential recovery)
+# ---------------------------------------------------------------------------
+@router.post(
+    "/forgot-password",
+    response_model=ForgotPasswordResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Request a password reset link.
+
+    Always returns a neutral 200 regardless of whether the email exists, to
+    avoid account-existence disclosure. If active tenant users exist for the
+    email, a single canonical reset token is issued and the reset email is
+    sent. Production fails closed: if email delivery is unavailable, no token
+    is committed and the endpoint still responds neutrally.
+    """
+    service = PasswordResetService(db)
+    try:
+        await service.request_reset(request.email)
+    except EmailDeliveryNotConfiguredError:
+        # Fail-closed: do not commit a token without a delivered email.
+        await db.rollback()
+    except Exception:
+        # Any unexpected error must not leak account existence; respond neutral.
+        await db.rollback()
+    return ForgotPasswordResponse(
+        data=ForgotPasswordResponseData(),
+        message=NEUTRAL_PASSWORD_RESET_MESSAGE,
+        timestamp=datetime.utcnow(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/reset-password  (DC-3B credential recovery)
+# ---------------------------------------------------------------------------
+@router.post(
+    "/reset-password",
+    response_model=ResetPasswordResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def reset_password(
+    request: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db_session),
+    http_request: Request = None,
+):
+    """Consume a reset token and set a new password.
+
+    Token must arrive in the body only; query-string token/password params are
+    rejected. On success the new password is applied to every active tenant
+    user copy for the email (canonical multi-tenant rule) and the token is
+    marked used. Invalid/expired/used/revoked tokens return a neutral error.
+    """
+    # Reject query-string token/password (anti-leakage, mirrors setup-credential).
+    if http_request is not None and any(
+        k in http_request.query_params
+        for k in ("reset_token", "resetToken", "new_password", "newPassword", "token")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN,
+                "message": NEUTRAL_PASSWORD_RESET_MESSAGE,
+            },
+        )
+
+    if not request.reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN,
+                "message": NEUTRAL_PASSWORD_RESET_MESSAGE,
+            },
+        )
+
+    service = PasswordResetService(db)
+    try:
+        await service.consume_reset(request.reset_token, request.new_password)
+        await db.commit()
+    except PasswordResetTokenInvalidError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN,
+                "message": NEUTRAL_PASSWORD_RESET_MESSAGE,
+            },
+        )
+    except ValueError:
+        # Password policy violation (e.g. blank / < 8). Surface as neutral 401
+        # so the reset-consume surface does not leak which validation failed.
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN,
+                "message": NEUTRAL_PASSWORD_RESET_MESSAGE,
+            },
+        )
+
+    return ResetPasswordResponse(
+        data=ResetPasswordResponseData(),
+        message=NEUTRAL_PASSWORD_RESET_MESSAGE,
         timestamp=datetime.utcnow(),
     )

@@ -60,6 +60,8 @@ async def find_user_across_tenants(
     matches: List[TenantUserMatch] = []
     verified_user_id: Optional[str] = None
 
+    # First pass: collect every active copy of this email across tenant schemas.
+    candidate_matches: List[TenantUserMatch] = []
     for ws in wholesalers:
         tenant_schema = ws.get_tenant_schema()
         try:
@@ -69,15 +71,8 @@ async def find_user_across_tenants(
                     continue
                 if not user.is_active:
                     continue
-
-                # Verify password (only once — all tenant copies share same email)
-                if verified_user_id is None:
-                    if not verify_password(password, user.password_hash):
-                        return (None, [])
-                    verified_user_id = str(user.id)
-
                 role_names = [r.name for r in user.roles] if user.roles else []
-                matches.append(TenantUserMatch(
+                candidate_matches.append(TenantUserMatch(
                     wholesaler=ws,
                     user=user,
                     roles=role_names,
@@ -85,7 +80,21 @@ async def find_user_across_tenants(
         except Exception:
             continue
 
-    return (verified_user_id, matches)
+    if not candidate_matches:
+        return (None, [])
+
+    # Second pass: succeed if ANY active copy verifies the password. This closes
+    # the DC-3A multi-tenant hazard where a stale hash in one tenant copy could
+    # cause a 401 even when another active copy has the correct password. The
+    # canonical rule (DC-3B) keeps all same-email copies identical via fan-out
+    # on setup/reset, but verifying against any copy is the fail-safe.
+    for match in candidate_matches:
+        if verify_password(password, match.user.password_hash):
+            verified_user_id = str(match.user.id)
+            matches = candidate_matches
+            return (verified_user_id, matches)
+
+    return (None, [])
 
 
 async def get_user_by_email(

@@ -140,3 +140,54 @@ class OwnerCredentialSetupResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Public forgot-password request. Response is always neutral (no existence leak)."""
+
+    email: EmailStr
+
+    model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True)
+
+
+class ForgotPasswordResponseData(BaseModel):
+    """Neutral forgot-password response data (no account-existence signal)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ForgotPasswordResponse(BaseModel):
+    """Neutral public forgot-password response."""
+
+    success: bool = True
+    data: ForgotPasswordResponseData = Field(default_factory=ForgotPasswordResponseData)
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ResetPasswordRequest(BaseModel):
+    """Public reset-password request. Token must arrive in the body, never the query string."""
+
+    reset_token: str | None = Field(None, alias="resetToken", max_length=512)
+    new_password: str = Field(..., min_length=8, max_length=128, alias="newPassword")
+
+    model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=False)
+
+
+class ResetPasswordResponseData(BaseModel):
+    """Neutral reset-password response data (no token/hash/user/schema/internal IDs)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ResetPasswordResponse(BaseModel):
+    """Neutral public reset-password response."""
+
+    success: bool = True
+    data: ResetPasswordResponseData = Field(default_factory=ResetPasswordResponseData)
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = ConfigDict(populate_by_name=True)

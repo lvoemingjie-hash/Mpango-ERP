@@ -24,6 +24,29 @@ import sys
 from pathlib import Path
 
 
+RETAILER_PRICES = "retailer_prices"
+UQ_RETAILER_PRICES = "uq_retailer_prices_retailer_sku"
+CK_RETAILER_PRICES = "ck_retailer_prices_positive_price"
+IX_RETAILER_PRICES_RETAILER = "ix_retailer_prices_retailer_id"
+IX_RETAILER_PRICES_SKU = "ix_retailer_prices_sku_id"
+MV_SALES_DAILY = "mv_sales_daily"
+IX_MV_SALES_DAILY = "idx_mv_sales_daily_u1"
+REPORTING_ROLE = "reporting_role"
+
+RETAILER_PRICE_COLUMNS = {
+    "id": ("uuid", True),
+    "retailer_id": ("uuid", True),
+    "sku_id": ("uuid", True),
+    "price": ("numeric(12,2)", True),
+    "created_at": ("timestamp with time zone", True),
+    "updated_at": ("timestamp with time zone", True),
+    "is_deleted": ("boolean", True),
+    "deleted_at": ("timestamp with time zone", False),
+    "created_by": ("uuid", False),
+    "updated_by": ("uuid", False),
+}
+
+
 def _add_backend_to_path() -> None:
     backend_dir = Path(__file__).resolve().parents[1]
     if str(backend_dir) not in sys.path:
@@ -115,6 +138,187 @@ async def _ensure_index(
     await db.execute(text(create_sql))
 
 
+async def _quote_ident(db, identifier: str) -> str:
+    from sqlalchemy import text
+
+    return (await db.execute(
+        text("SELECT quote_ident(:identifier)"), {"identifier": identifier}
+    )).scalar_one()
+
+
+async def _qualified_identifier(db, schema: str, object_name: str) -> str:
+    quoted_schema = await _quote_ident(db, schema)
+    quoted_object = await _quote_ident(db, object_name)
+    return f"{quoted_schema}.{quoted_object}"
+
+
+def _normalize_type(type_name: str) -> str:
+    return "".join(type_name.lower().split())
+
+
+async def _regclass_oid(db, qualified_name: str) -> int | None:
+    from sqlalchemy import text
+
+    return (await db.execute(
+        text("SELECT to_regclass(:qualified_name)::oid"),
+        {"qualified_name": qualified_name},
+    )).scalar()
+
+
+async def _relation_kind(db, schema: str, object_name: str) -> str | None:
+    from sqlalchemy import text
+
+    return (await db.execute(
+        text(
+            "SELECT c.relkind FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = :schema AND c.relname = :object_name"
+        ),
+        {"schema": schema, "object_name": object_name},
+    )).scalar()
+
+
+async def _relation_columns(db, relation_oid: int) -> dict[str, dict]:
+    from sqlalchemy import text
+
+    rows = (await db.execute(
+        text(
+            "SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS formatted_type, "
+            "a.attnotnull "
+            "FROM pg_attribute a "
+            "WHERE a.attrelid = :relation_oid AND a.attnum > 0 AND NOT a.attisdropped"
+        ),
+        {"relation_oid": relation_oid},
+    )).mappings()
+    return {row["attname"]: dict(row) for row in rows}
+
+
+async def _retailer_price_constraint_rows(db, table_oid: int) -> list[dict]:
+    from sqlalchemy import text
+
+    rows = (await db.execute(
+        text(
+            """
+            SELECT c.oid AS constraint_oid,
+                   c.conname,
+                   c.contype,
+                   c.convalidated,
+                   c.conindid,
+                   pg_get_constraintdef(c.oid, true) AS constraint_def,
+                   i.indisunique,
+                   i.indisvalid,
+                   i.indpred IS NOT NULL AS has_predicate,
+                   COALESCE(array_agg(a.attname ORDER BY cols.ordinality)
+                       FILTER (WHERE a.attname IS NOT NULL), ARRAY[]::name[]) AS column_names
+            FROM pg_constraint c
+            LEFT JOIN pg_index i ON i.indexrelid = c.conindid
+            LEFT JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS cols(attnum, ordinality)
+                ON true
+            LEFT JOIN pg_attribute a
+                ON a.attrelid = c.conrelid AND a.attnum = cols.attnum
+            WHERE c.conrelid = :table_oid
+            GROUP BY c.oid, c.conname, c.contype, c.convalidated, c.conindid,
+                     i.indisunique, i.indisvalid, i.indpred
+            ORDER BY c.conname
+            """
+        ),
+        {"table_oid": table_oid},
+    )).mappings()
+    return [dict(row) for row in rows]
+
+
+def _is_equivalent_retailer_unique(row: dict) -> bool:
+    return (
+        row["contype"] == "u"
+        and bool(row["convalidated"])
+        and bool(row["indisunique"])
+        and bool(row["indisvalid"])
+        and not bool(row["has_predicate"])
+        and list(row["column_names"] or []) == ["retailer_id", "sku_id"]
+    )
+
+
+def _check_constraint_is_canonical(row: dict) -> bool:
+    definition = _normalize_sql(row["constraint_def"] or "")
+    return (
+        row["contype"] == "c"
+        and bool(row["convalidated"])
+        and (
+            "check((price>(0)::numeric))" in definition
+            or "check((price>0))" in definition
+            or "check(price>0)" in definition
+        )
+    )
+
+
+async def _validate_retailer_price_columns(db, ts: str, table_oid: int) -> list[str]:
+    columns = await _relation_columns(db, table_oid)
+    violations: list[str] = []
+    for column_name, (expected_type, expected_not_null) in RETAILER_PRICE_COLUMNS.items():
+        column = columns.get(column_name)
+        if column is None:
+            violations.append(f"missing column '{column_name}'")
+            continue
+        actual_type = _normalize_type(column["formatted_type"])
+        if actual_type != _normalize_type(expected_type):
+            violations.append(
+                f"column '{column_name}' has type {column['formatted_type']}, "
+                f"expected {expected_type}"
+            )
+        if expected_not_null and not column["attnotnull"]:
+            violations.append(f"column '{column_name}' is nullable, expected NOT NULL")
+    return violations
+
+
+async def _retailer_price_duplicate_count(db, qualified_table: str) -> int:
+    from sqlalchemy import text
+
+    return int((await db.execute(text(f"""
+        SELECT COUNT(*) FROM (
+            SELECT retailer_id, sku_id
+            FROM {qualified_table}
+            GROUP BY retailer_id, sku_id
+            HAVING COUNT(*) > 1
+        ) duplicates
+    """))).scalar() or 0)
+
+
+async def _retailer_price_violation_count(db, qualified_table: str) -> int:
+    from sqlalchemy import text
+
+    return int((await db.execute(text(
+        f"SELECT COUNT(*) FROM {qualified_table} WHERE price IS NULL OR price <= 0"
+    ))).scalar() or 0)
+
+
+async def _has_unique_index_only_retailer_equivalent(db, table_oid: int) -> str | None:
+    from sqlalchemy import text
+
+    rows = (await db.execute(
+        text(
+            """
+            SELECT idx.relname AS index_name,
+                   i.indisunique,
+                   COALESCE(array_agg(a.attname ORDER BY keys.ordinality)
+                       FILTER (WHERE a.attname IS NOT NULL), ARRAY[]::name[]) AS column_names
+            FROM pg_index i
+            JOIN pg_class idx ON idx.oid = i.indexrelid
+            LEFT JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS keys(attnum, ordinality)
+                ON true
+            LEFT JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = keys.attnum
+            WHERE i.indrelid = :table_oid
+              AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = i.indexrelid)
+            GROUP BY idx.relname, i.indisunique
+            """
+        ),
+        {"table_oid": table_oid},
+    )).mappings()
+    for row in rows:
+        if bool(row["indisunique"]) and list(row["column_names"] or []) == ["retailer_id", "sku_id"]:
+            return row["index_name"]
+    return None
+
+
 
 async def _reconcile_payments(db, ts: str) -> None:
     """Idempotent reconciliation of payments table to match 021 contract.
@@ -193,107 +397,126 @@ async def _reconcile_payments(db, ts: str) -> None:
 
 
 async def _reconcile_retailer_prices(db, ts: str) -> None:
-    """Structural validation and index reconciliation for retailer_prices.
+    """Structural reconciliation for retailer_prices.
 
-    Mirrors Alembic migration 017 contract exactly.  Two-phase approach:
-
-    Phase 1 - if the table does not exist at all, return (the CREATE TABLE IF
-    NOT EXISTS in the tables list above will create it fresh with full DDL).
-
-    Phase 2 - if the table *does* exist, validate every column, constraint,
-    and index against the migration 017 contract.  Any structural mismatch
-    triggers an immediate RuntimeError with a precise description of what is
-    wrong.  No silent patching, no guessing.
+    Mirrors migration 017 plus DC-2M2 legacy compatibility: a single
+    business-equivalent legacy UNIQUE CONSTRAINT on (retailer_id, sku_id) is
+    renamed to the canonical name; unique-index-only equivalents and ambiguous
+    structures fail closed.
     """
     from sqlalchemy import text
 
-    # Phase 1: missing table -> nothing to reconcile (CREATE TABLE handles it)
-    if not await _table_exists(db, ts, "retailer_prices"):
+    if not await _table_exists(db, ts, RETAILER_PRICES):
         return
 
-    # Phase 2: table exists - full structural contract check
     violations: list[str] = []
+    qualified_table = await _qualified_identifier(db, ts, RETAILER_PRICES)
+    table_oid = await _regclass_oid(db, qualified_table)
+    if table_oid is None:
+        raise RuntimeError(f"Bootstrap reconcile: {ts}.{RETAILER_PRICES} is unresolved")
 
-    # --- Required NOT NULL columns ---
-    required_not_null = {
-        "retailer_id": "UUID",
-        "sku_id": "UUID",
-        "price": "NUMERIC(12,2)",
-        "created_at": "TIMESTAMPTZ",
-        "updated_at": "TIMESTAMPTZ",
-        "is_deleted": "BOOLEAN",
-    }
-
-    for col_name, expected_type in required_not_null.items():
-        if not await _column_exists(db, ts, "retailer_prices", col_name):
-            violations.append(f"missing column '{col_name}'")
-            continue
-        if await _column_is_nullable(db, ts, "retailer_prices", col_name):
-            violations.append(f"column '{col_name}' is nullable, expected NOT NULL")
-
-    # --- Unique constraint: uq_retailer_prices_retailer_sku ---
-    # Check via pg_constraint (covers both table constraints and unique indexes)
-    uq_result = await db.execute(text(
-        "SELECT 1 FROM pg_constraint "
-        "WHERE connamespace = (SELECT oid FROM pg_namespace WHERE nspname = :schema) "
-        "AND conname = 'uq_retailer_prices_retailer_sku' "
-        "AND contype = 'u'"
-    ), {"schema": ts})
-    uq_constraint_exists = uq_result.first() is not None
-    # Also accept if a unique *index* with the same name provides the guarantee
-    uq_idx_result = await db.execute(text(
-        "SELECT 1 FROM pg_indexes "
-        "WHERE schemaname = :schema AND indexname = 'uq_retailer_prices_retailer_sku' "
-        "AND indexdef LIKE '%UNIQUE%'"
-    ), {"schema": ts})
-    uq_index_exists = uq_idx_result.first() is not None
-    if not uq_constraint_exists and not uq_index_exists:
+    violations.extend(await _validate_retailer_price_columns(db, ts, table_oid))
+    duplicate_count = await _retailer_price_duplicate_count(db, qualified_table)
+    if duplicate_count > 0:
+        violations.append("duplicate (retailer_id, sku_id) rows")
+    price_violation_count = await _retailer_price_violation_count(db, qualified_table)
+    if price_violation_count > 0:
+        violations.append("rows violate price > 0")
+    index_only_equivalent = await _has_unique_index_only_retailer_equivalent(db, table_oid)
+    if index_only_equivalent:
         violations.append(
-            "missing unique constraint 'uq_retailer_prices_retailer_sku' "
-            "on (retailer_id, sku_id)"
+            f"unique-index-only equivalent '{index_only_equivalent}' is not a constraint"
         )
 
-    # --- Check constraint: ck_retailer_prices_positive_price ---
-    ck_result = await db.execute(text(
-        "SELECT 1 FROM pg_constraint "
-        "WHERE connamespace = (SELECT oid FROM pg_namespace WHERE nspname = :schema) "
-        "AND conname = 'ck_retailer_prices_positive_price' "
-        "AND contype = 'c'"
-    ), {"schema": ts})
-    if ck_result.first() is None:
-        violations.append(
-            "missing check constraint 'ck_retailer_prices_positive_price'"
+    constraints = await _retailer_price_constraint_rows(db, table_oid)
+    canonical_rows = [row for row in constraints if row["conname"] == UQ_RETAILER_PRICES]
+    equivalent_legacy = [
+        row
+        for row in constraints
+        if row["conname"] != UQ_RETAILER_PRICES and _is_equivalent_retailer_unique(row)
+    ]
+    unique_action: tuple[str, str | None] = ("none", None)
+
+    if len(canonical_rows) > 1:
+        violations.append(f"duplicate canonical constraint '{UQ_RETAILER_PRICES}'")
+    elif canonical_rows:
+        if not _is_equivalent_retailer_unique(canonical_rows[0]):
+            violations.append(f"canonical constraint '{UQ_RETAILER_PRICES}' is incompatible")
+    else:
+        canonical_kind = await _relation_kind(db, ts, UQ_RETAILER_PRICES)
+        if canonical_kind is not None:
+            violations.append(
+                f"canonical name '{UQ_RETAILER_PRICES}' is occupied by a non-constraint object"
+            )
+        elif len(equivalent_legacy) > 1:
+            violations.append("ambiguous equivalent legacy unique constraints")
+        elif len(equivalent_legacy) == 1:
+            unique_action = ("rename", equivalent_legacy[0]["conname"])
+        else:
+            unique_action = ("add", None)
+
+    check_rows = [row for row in constraints if row["conname"] == CK_RETAILER_PRICES]
+    add_check_constraint = False
+    if len(check_rows) > 1:
+        violations.append(f"duplicate check constraint '{CK_RETAILER_PRICES}'")
+    elif check_rows:
+        if not _check_constraint_is_canonical(check_rows[0]):
+            violations.append(f"check constraint '{CK_RETAILER_PRICES}' is incompatible")
+    else:
+        add_check_constraint = True
+
+    if violations:
+        violation_list = "\n  - ".join(violations)
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.{RETAILER_PRICES} exists but does NOT match "
+            f"migration 017/DC-2M2 contract. Violations:\n  - {violation_list}\n"
+            "Manual schema correction is required before continuing."
         )
+
+    quoted_uq = await _quote_ident(db, UQ_RETAILER_PRICES)
+    quoted_ck = await _quote_ident(db, CK_RETAILER_PRICES)
+    if unique_action[0] == "rename":
+        quoted_legacy = await _quote_ident(db, unique_action[1] or "")
+        await db.execute(text(
+            f"ALTER TABLE {qualified_table} RENAME CONSTRAINT {quoted_legacy} TO {quoted_uq}"
+        ))
+        print(
+            f"[reconcile] {ts}.{RETAILER_PRICES}: renamed legacy unique constraint "
+            f"to {UQ_RETAILER_PRICES}"
+        )
+    elif unique_action[0] == "add":
+        await db.execute(text(
+            f"ALTER TABLE {qualified_table} "
+            f"ADD CONSTRAINT {quoted_uq} UNIQUE (retailer_id, sku_id)"
+        ))
+        print(f"[reconcile] {ts}.{RETAILER_PRICES}: added {UQ_RETAILER_PRICES}")
+
+    if add_check_constraint:
+        await db.execute(text(
+            f"ALTER TABLE {qualified_table} ADD CONSTRAINT {quoted_ck} CHECK (price > 0)"
+        ))
+        print(f"[reconcile] {ts}.{RETAILER_PRICES}: added {CK_RETAILER_PRICES}")
 
     # --- Indexes ---
     await _ensure_index(
         db,
         ts,
-        "ix_retailer_prices_retailer_id",
-        f'CREATE INDEX IF NOT EXISTS ix_retailer_prices_retailer_id '
-        f'ON "{ts}".retailer_prices (retailer_id)',
-        ("retailer_prices", "(retailer_id)"),
+        IX_RETAILER_PRICES_RETAILER,
+        f'CREATE INDEX IF NOT EXISTS {IX_RETAILER_PRICES_RETAILER} '
+        f'ON {qualified_table} (retailer_id)',
+        (RETAILER_PRICES, "(retailer_id)"),
     )
 
     await _ensure_index(
         db,
         ts,
-        "ix_retailer_prices_sku_id",
-        f'CREATE INDEX IF NOT EXISTS ix_retailer_prices_sku_id '
-        f'ON "{ts}".retailer_prices (sku_id)',
-        ("retailer_prices", "(sku_id)"),
+        IX_RETAILER_PRICES_SKU,
+        f'CREATE INDEX IF NOT EXISTS {IX_RETAILER_PRICES_SKU} '
+        f'ON {qualified_table} (sku_id)',
+        (RETAILER_PRICES, "(sku_id)"),
     )
 
-    # --- Fail fast if any violations ---
-    if violations:
-        violation_list = "\n  - ".join(violations)
-        raise RuntimeError(
-            f"Bootstrap reconcile: {ts}.retailer_prices exists but does NOT match "
-            f"migration 017 contract. Violations:\n  - {violation_list}\n"
-            "Manual schema correction is required before continuing."
-        )
-
-    print(f"[reconcile] {ts}.retailer_prices: contract validated, indexes ensured")
+    print(f"[reconcile] {ts}.{RETAILER_PRICES}: contract validated, indexes ensured")
 
 
 async def _reconcile_reporting(db, ts: str) -> None:
@@ -374,23 +597,34 @@ async def _reconcile_reporting(db, ts: str) -> None:
     ))
 
     # --- mv_sales_daily (from 013, replaces rpt_sales_daily view) ---
-    # Drop the old standard view first (migration 013 did this)
-    await db.execute(text(
-        f'DROP VIEW IF EXISTS "{ts}".rpt_sales_daily'
-    ))
-    # Create materialized view if it does not already exist
-    mv_exists = await db.execute(text(
-        "SELECT 1 FROM pg_matviews WHERE schemaname = :schema AND matviewname = 'mv_sales_daily'"
-    ), {"schema": ts})
-    if mv_exists.first() is None:
+    qualified_ledger_entries = await _qualified_identifier(db, ts, "ledger_entries")
+    qualified_rpt_sales_daily = await _qualified_identifier(db, ts, "rpt_sales_daily")
+    qualified_mv_sales_daily = await _qualified_identifier(db, ts, MV_SALES_DAILY)
+
+    mv_kind = await _relation_kind(db, ts, MV_SALES_DAILY)
+    if mv_kind is not None and mv_kind != "m":
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.{MV_SALES_DAILY} exists but is not a "
+            "materialized view. Manual schema correction is required before continuing."
+        )
+
+    if mv_kind is None:
+        rpt_kind = await _relation_kind(db, ts, "rpt_sales_daily")
+        if rpt_kind is not None and rpt_kind != "v":
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts}.rpt_sales_daily exists but is not a view. "
+                "Manual schema correction is required before continuing."
+            )
+        if rpt_kind == "v":
+            await db.execute(text(f"DROP VIEW {qualified_rpt_sales_daily}"))
         await db.execute(text(f"""
-            CREATE MATERIALIZED VIEW "{ts}".mv_sales_daily AS
+            CREATE MATERIALIZED VIEW {qualified_mv_sales_daily} AS
             SELECT
                 transaction_date::DATE                          AS transaction_date,
                 'USD'::CHAR(3)                                  AS reporting_currency_code,
                 ABS(SUM(amount))::NUMERIC(20, 4)                AS daily_revenue,
                 COUNT(*)::INTEGER                               AS transaction_count
-            FROM "{ts}".ledger_entries
+            FROM {qualified_ledger_entries}
             WHERE account_type = 'revenue'
               AND is_deleted = false
             GROUP BY transaction_date::DATE
@@ -403,15 +637,15 @@ async def _reconcile_reporting(db, ts: str) -> None:
     await _ensure_index(
         db,
         ts,
-        "idx_mv_sales_daily_u1",
-        f'CREATE UNIQUE INDEX idx_mv_sales_daily_u1 '
-        f'ON "{ts}".mv_sales_daily (transaction_date, reporting_currency_code)',
-        ("unique index", "mv_sales_daily", "(transaction_date, reporting_currency_code)"),
+        IX_MV_SALES_DAILY,
+        f'CREATE UNIQUE INDEX {IX_MV_SALES_DAILY} '
+        f'ON {qualified_mv_sales_daily} (transaction_date, reporting_currency_code)',
+        ("unique index", MV_SALES_DAILY, "(transaction_date, reporting_currency_code)"),
     )
-    print(f"[reconcile] {ts}: ensured idx_mv_sales_daily_u1")
+    print(f"[reconcile] {ts}: ensured {IX_MV_SALES_DAILY}")
 
     await db.execute(text(
-        f'GRANT SELECT ON "{ts}".mv_sales_daily TO reporting_role'
+        f'GRANT SELECT ON {qualified_mv_sales_daily} TO {REPORTING_ROLE}'
     ))
 
     # Mirror migration 011's reporting contract for tenants created after 011.

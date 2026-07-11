@@ -221,20 +221,33 @@ def _normalize_sql(sql: str) -> str:
     return "".join(sql.lower().split())
 
 
-def _label_relkind(relkind: str | None) -> str:
-    return RELKIND_LABELS.get(relkind or "", relkind or "missing")
+def _catalog_code(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value)
+
+
+def _label_relkind(relkind: Any) -> str:
+    normalized = _catalog_code(relkind)
+    return RELKIND_LABELS.get(normalized or "", normalized or "missing")
 
 
 def _relation_kind(bind, schema: str, object_name: str) -> str | None:
-    return _scalar(
-        bind,
-        """
-        SELECT c.relkind
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = :schema AND c.relname = :object_name
-        """,
-        {"schema": schema, "object_name": object_name},
+    return _catalog_code(
+        _scalar(
+            bind,
+            """
+            SELECT c.relkind
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = :schema AND c.relname = :object_name
+            """,
+            {"schema": schema, "object_name": object_name},
+        )
     )
 
 
@@ -403,9 +416,8 @@ def _catalog_column_names(value: Any) -> list[str]:
 
 
 def _constraint_type(value: Any) -> str:
-    if isinstance(value, bytes):
-        return value.decode()
-    return str(value)
+    normalized = _catalog_code(value)
+    return normalized or ""
 
 
 def _is_equivalent_unique_constraint(row: dict[str, Any]) -> bool:
@@ -529,7 +541,8 @@ def _validate_or_plan_index(
     if len(rows) > 1:
         raise PreflightFailure(f"{schema}.{index_name}: duplicate index-name objects")
     row = rows[0]
-    if row["relkind"] not in ("i", "I"):
+    relkind = _catalog_code(row["relkind"])
+    if relkind not in ("i", "I"):
         raise PreflightFailure(
             f"{schema}.{index_name}: name is occupied by {_label_relkind(row['relkind'])}"
         )

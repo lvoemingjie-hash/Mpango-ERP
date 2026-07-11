@@ -78,16 +78,16 @@ Required validation:
 - Existing data has no duplicate `(retailer_id, sku_id)` pairs.
 - Existing data has no rows violating `price > 0` before adding or validating the check constraint.
 
-Repair behavior:
+Repair behavior (authoritative policy: DC-2M1-R1 Correction 2; this section is kept consistent with it):
 
-- If `uq_retailer_prices_retailer_sku` exists and is exactly a unique constraint over `(retailer_id, sku_id)`, leave it untouched.
-- If the canonical unique constraint is absent but the table shape and data are compatible, add the canonical unique constraint with `ALTER TABLE ... ADD CONSTRAINT uq_retailer_prices_retailer_sku UNIQUE (retailer_id, sku_id)`.
-- Do not drop or rename legacy noncanonical unique constraints in this slice. Keeping the legacy constraint preserves rollback simplicity and avoids destructive assumptions.
-- If a compatible noncanonical unique constraint already exists, the canonical constraint may duplicate the same guarantee. That is acceptable for this repair because it preserves all rows and creates the canonical contract required by code/tests.
+- If `uq_retailer_prices_retailer_sku` already exists and is exactly a UNIQUE constraint over `(retailer_id, sku_id)`, leave it untouched (canonical already present).
+- If the canonical constraint is absent but an exactly business-equivalent legacy UNIQUE constraint over `(retailer_id, sku_id)` exists (non-partial, valid, correct column types per the R1 equivalence test) and the canonical name is free, prefer a safe `RENAME` of that legacy constraint to `uq_retailer_prices_retailer_sku`. Do NOT create a second, duplicate unique index/constraint alongside an equivalent legacy one.
+- Add a NEW canonical unique constraint with `ALTER TABLE ... ADD CONSTRAINT uq_retailer_prices_retailer_sku UNIQUE (retailer_id, sku_id)` only when NO exactly-equivalent legacy UNIQUE constraint exists, the canonical name is free, and the data has no duplicate `(retailer_id, sku_id)` pairs.
+- Legacy noncanonical constraints that are NOT exactly equivalent are never dropped, renamed, or weakened; their presence is handled by the R1 fail-closed rules.
 - If the canonical name is already used for an incompatible object, fail closed.
 - If duplicate data prevents adding the canonical unique constraint, fail closed and report the schema/table needing manual data resolution.
 
-This approach is forward-compatible with old unique names because it does not require knowing every old name. It validates the table and data, then establishes the canonical named guarantee additively.
+The earlier "additive/duplicate" wording (do-not-rename plus duplicate-acceptable) is superseded and removed; DC-2M1-R1 Correction 2 is the single authoritative policy. The full equivalence test, catalog-evidence strategy, and fail-closed matrix live in the "DC-2M1-R1 CTO Design Corrections" section.
 
 ### G2: Continue To Reporting Reconciliation In The Same Flow
 

@@ -1,20 +1,20 @@
 """
-S6-4: Export API Router — Async File Export Endpoints.
+S6-4: Export API Router - Async File Export Endpoints.
 
 Philosophy: "Request now, download later."
 
 Architecture:
-    POST /api/v1/exports          → Enqueue export job (returns job_id)
-    GET  /api/v1/exports/{job_id} → Poll export status (returns progress/download URL)
-    GET  /api/v1/exports/{job_id}/download → Download the exported file
+    POST /api/v1/exports          -> Enqueue export job (returns job_id)
+    GET  /api/v1/exports/{job_id} -> Poll export status (returns progress/download URL)
+    GET  /api/v1/exports/{job_id}/download -> Download the exported file
 
 Context Propagation (Critical):
     The POST endpoint runs in authenticated HTTP context. It captures
     tenant_id from request.state (JWT claims) and serializes it into
     the ExportJobPayload. The S4 worker then reconstructs the tenant
-    context from the payload — never from ambient state.
+    context from the payload - never from ambient state.
 
-    JWT → request.state → TenantContext → ExportJobPayload → Job Queue → Worker
+    JWT -> request.state -> TenantContext -> ExportJobPayload -> Job Queue -> Worker
 
 Security:
     - tenant_id comes ONLY from request.state (Rule #1)
@@ -22,7 +22,7 @@ Security:
     - Worker re-validates tenant_id and enums (defense in depth)
     - Download endpoint verifies tenant_id matches the export's tenant
 
-API Contract Compliance (api_contract.md §3):
+API Contract Compliance (api_contract.md section 3):
     - Success: {"success": true, "data": {...}, "timestamp": "..."}
     - Error:   {"success": false, "error": {"code": ..., "message": ...}, "timestamp": "..."}
 """
@@ -35,7 +35,6 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 
 from api.context.tenant import TenantContext, get_tenant_context
-from api.dependencies import get_current_user_context
 from api.middleware.rbac import RequirePermission
 from api.schemas.dashboard import make_success, make_error
 from core.security import TokenPayload
@@ -72,7 +71,7 @@ def _extract_tenant(request: Request) -> TenantContext:
 
 
 # ============================================================================
-# POST /exports — Enqueue an export job
+# POST /exports - Enqueue an export job
 # ============================================================================
 
 @exports_router.post(
@@ -189,7 +188,7 @@ async def create_export(
 
 
 # ============================================================================
-# GET /exports/{job_id} — Poll export status
+# GET /exports/{job_id} - Poll export status
 # ============================================================================
 
 @exports_router.get(
@@ -203,7 +202,7 @@ async def create_export(
 async def get_export_status(
     request: Request,
     job_id: str,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("exports:create")),
 ) -> JSONResponse:
     """
     Return the current status of an export job.
@@ -281,7 +280,7 @@ async def get_export_status(
 
 
 # ============================================================================
-# GET /exports/{job_id}/download — Download the exported file
+# GET /exports/{job_id}/download - Download the exported file
 # ============================================================================
 
 @exports_router.get(
@@ -292,7 +291,7 @@ async def get_export_status(
 async def download_export(
     request: Request,
     job_id: str,
-    token: TokenPayload = Depends(get_current_user_context),
+    token: TokenPayload = Depends(RequirePermission("exports:create")),
 ) -> Any:
     """
     Serve the exported file for download.

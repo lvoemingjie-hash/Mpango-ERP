@@ -252,8 +252,9 @@ async def login(
     Raises:
         HTTPException 401: Invalid credentials.
     """
+    normalized_email = str(request.email).strip().lower()
     verified_user_id, matches = await find_user_across_tenants(
-        db, request.email, request.password
+        db, normalized_email, request.password
     )
 
     if verified_user_id is None or len(matches) == 0:

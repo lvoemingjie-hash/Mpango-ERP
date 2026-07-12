@@ -106,4 +106,30 @@ describe('credential lifecycle frontend', () => {
       '/forgot-password',
     );
   });
+
+  it('login page submits lowercase trimmed email', async () => {
+    mockPost.mockResolvedValue({
+      data: {
+        data: {
+          access_token: 'identity-access-value',
+          refresh_token: 'identity-refresh-value',
+          roles: [],
+          available_tenants: [],
+        },
+      },
+    });
+
+    renderAt('/login', <LoginPage />);
+
+    await userEvent.type(screen.getByLabelText(/email/i), '  Owner@Example.COM  ');
+    await userEvent.type(screen.getByLabelText(/password/i), 'valid-passphrase');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith('/auth/login', {
+        email: 'owner@example.com',
+        password: 'valid-passphrase', // pragma: allowlist secret
+      });
+    });
+  });
 });

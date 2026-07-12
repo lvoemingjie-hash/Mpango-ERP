@@ -39,10 +39,14 @@ export function LoginPage() {
 
   const onSubmit = async (formData: LoginFormData) => {
     setServerError(null);
+    const normalizedFormData = {
+      ...formData,
+      email: formData.email.trim().toLowerCase(),
+    };
 
     try {
       // 1. Identity Phase - get identity tokens + available tenants
-      const loginRes = await authService.login(formData);
+      const loginRes = await authService.login(normalizedFormData);
       const identityData = loginRes.data.data;
 
       // Keep identity token in a local variable - do NOT store in global

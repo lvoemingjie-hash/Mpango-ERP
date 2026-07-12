@@ -452,7 +452,7 @@ class TestHarnessIntegrity:
                 f"Platform route {c.path} has no detected auth deps. "
                 f"The harness may be broken."
             )
-        # Export status/download routes now have get_current_user_context
+        # Export routes must have explicit RBAC permission dependencies.
         export_get_routes = [
             c for c in EXPORT_ROUTES if "GET" in c.method
         ]
@@ -832,13 +832,12 @@ class TestPlatformAdminBoundary:
 class TestExportRoutePolicy:
     """
     Exports status/download routes (/api/v1/exports/{job_id} and
-    /api/v1/exports/{job_id}/download). S2 fixed both by adding explicit
-    Depends(get_current_user_context) alongside the body-level tenant check
-    (defense in depth).
+    /api/v1/exports/{job_id}/download) must require the same exports:create
+    permission as export creation, alongside tenant ownership checks.
     """
 
     def test_export_create_has_permission(self):
-        """POST /api/v1/exports MUST have RequirePermission (it does)."""
+        """POST /api/v1/exports requires exports:create."""
         create_routes = [
             c for c in EXPORT_ROUTES if "POST" in c.method
         ]
@@ -847,27 +846,33 @@ class TestExportRoutePolicy:
         assert create_routes[0].permission_code == "exports:create"
 
     def test_export_status_has_explicit_permission(self):
-        """GET /api/v1/exports/{job_id} must have an explicit auth dependency."""
+        """GET /api/v1/exports/{job_id} requires exports:create."""
         status_routes = [
             c for c in EXPORT_ROUTES
             if "GET" in c.method and c.path == "/api/v1/exports/{job_id}"
         ]
         assert len(status_routes) == 1
-        assert status_routes[0].is_compliant, (
-            f"{status_routes[0].path} has no explicit auth dependency. "
-            f"Detected deps: {status_routes[0].detected_non_auth_deps}"
-        )
+        assert status_routes[0].policy == "tenant_permission"
+        assert status_routes[0].permission_code == "exports:create"
 
     def test_export_download_has_explicit_permission(self):
-        """GET /api/v1/exports/{job_id}/download must have explicit auth."""
+        """GET /api/v1/exports/{job_id}/download requires exports:create."""
         download_routes = [
             c for c in EXPORT_ROUTES
             if "GET" in c.method and c.path == "/api/v1/exports/{job_id}/download"
         ]
         assert len(download_routes) == 1
-        assert download_routes[0].is_compliant, (
-            f"{download_routes[0].path} has no explicit auth dependency. "
-            f"Detected deps: {download_routes[0].detected_non_auth_deps}"
+        assert download_routes[0].policy == "tenant_permission"
+        assert download_routes[0].permission_code == "exports:create"
+
+    def test_no_export_route_is_plain_authenticated(self):
+        """Export routes must not rely on plain authenticated-only access."""
+        plain_authenticated = [
+            c for c in EXPORT_ROUTES if c.policy == "authenticated"
+        ]
+        assert plain_authenticated == [], (
+            "Export routes without explicit permission: "
+            + ", ".join(c.path for c in plain_authenticated)
         )
 
     def test_streaming_exports_have_permission(self):

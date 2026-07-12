@@ -187,7 +187,7 @@ The login endpoint (`backend/api/v1/auth.py`) builds the map from verified
 matches and passes it to both access and refresh identity tokens.
 
 **Disclosure truth (corrected in R2):** `tmap` is a SIGNED JWT claim and is
-**client-decodable** — any holder of the JWT can decode it (JWT payloads are
+**client-decodable** -- any holder of the JWT can decode it (JWT payloads are
 base64, not encrypted). It is therefore NOT confidential. What it guarantees is
 **integrity**, not secrecy: it cannot be tampered with without `SECRET_KEY`.
 Consequently `tmap` is visible to the authenticated client as a JWT claim, but
@@ -226,9 +226,12 @@ rejection. Still enforced.
   fan-out, both tenant copies can login and select-tenant succeeds for both.
 - `test_r1_identity_refresh_preserves_tenant_selection`: after identity refresh,
   every originally-available tenant is still selectable.
-- `test_r1_no_internal_mapping_in_public_responses`: no `tmap`, no
-  `tenant_user_map`, no `password_hash`/`token_hash`, and not both tenant user
-  IDs simultaneously in any login/select/refresh response body.
+- `test_r1_no_internal_mapping_in_public_responses`: proves `tmap` is present
+  inside identity JWTs when multiple verified tenant copies exist, that `tmap`
+  is verified-only (unverified tenants absent), and that `tmap` is NOT exposed
+  as a separate top-level JSON field (it lives only inside the encoded JWT).
+  Also confirms no `password_hash`/`token_hash` in the response JSON. (R2
+  rewrote this test to decode the JWTs instead of asserting tmap absence.)
 
 The R1 tests use a module-level `_real_token_dependency` that overrides
 `get_current_user_context` to decode the real bearer JWT (the default
@@ -283,7 +286,7 @@ Date: 2026-07-12 (revision R2). Base: `7ea825a1`.
 
 ### R2.2 Corrected test (replaces prior R1-e assertion)
 `test_r1_no_internal_mapping_in_public_responses` was rewritten. It NO LONGER
-asserts `tmap` is absent from the JWT (that was wrong — tmap IS a decodable
+asserts `tmap` is absent from the JWT (that was wrong -- tmap IS a decodable
 claim). The rewritten test:
 - Sets up two VERIFIED tenants (same password) + one UNVERIFIED tenant
   (different password) for the same shared email.
@@ -301,11 +304,11 @@ The `TokenPayload.tmap` field docstring is clarified to state it is a signed,
 client-decodable (non-confidential) claim carrying verified-tenant-only pairs.
 
 ### R2.4 Changed files (R2)
-- `backend/tests/test_dc3b_credential_recovery_backend.py` — rewritten R1-e test
+- `backend/tests/test_dc3b_credential_recovery_backend.py` -- rewritten R1-e test
   + restored `_client()` helper (accidentally dropped during R1.6 editing).
-- `ai-ledger/product-ai/2026-07-12_dc3b_credential_recovery_backend.md` — R1.2
+- `ai-ledger/product-ai/2026-07-12_dc3b_credential_recovery_backend.md` -- R1.2
   wording corrected; R2 section added.
-- `backend/core/security.py` — docstring wording only (tmap non-confidential).
+- `backend/core/security.py` -- docstring wording only (tmap non-confidential).
 
 No migration, no frontend, no deploy, no `.env`/secrets. Query-string token
 rejection unchanged. `.secrets.baseline` not modified.

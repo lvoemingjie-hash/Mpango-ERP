@@ -82,7 +82,7 @@ def create_identity_token(
     tenant_user_map: Optional[Dict[str, str]] = None,
 ) -> str:
     """
-    Create an Identity JWT — no tenant context.
+    Create an Identity JWT -- no tenant context.
 
     Issued at login before tenant selection.  Contains user_id and roles
     so the frontend can show tenant picker / super-admin UI.
@@ -127,7 +127,7 @@ def create_contextual_token(
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
-    Create a Contextual JWT — includes tenant context.
+    Create a Contextual JWT -- includes tenant context.
 
     Issued after POST /auth/select-tenant.  The existing Tenant Guardrail
     (ORM filtering) reads tenant_id / tenant_schema from this token.
@@ -169,7 +169,7 @@ def create_access_token(
     """
     Create JWT access token with tenant claims.
 
-    Legacy wrapper — delegates to create_contextual_token.
+    Legacy wrapper -- delegates to create_contextual_token.
     Kept for backward compatibility with existing callers.
     """
     return create_contextual_token(
@@ -192,7 +192,7 @@ def create_refresh_token(
     """
     Create JWT refresh token with tenant claims.
 
-    Legacy wrapper — delegates to create_contextual_token.
+    Legacy wrapper -- delegates to create_contextual_token.
     Kept for backward compatibility with existing callers.
     """
     return create_contextual_token(

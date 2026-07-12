@@ -162,6 +162,95 @@ Regression suites (all PASS):
 Backend credential recovery is implemented and fully tested. Forgot-password,
 reset-password (hash-only, body-only, fail-closed, single-use), and the
 multi-tenant same-email password-consistency fix (fan-out on reset + setup,
-login verifies any copy) are in place. No migration was needed. 87 tests pass
-(10 DC-3B + 77 regressions). DC-3C (frontend setup-credential/forgot/reset
-pages) remains the other delivery dependency identified in DC-3A.
+login verifies any copy) are in place. No migration was needed. DC-3C (frontend
+setup-credential/forgot/reset pages) remains the other delivery dependency
+identified in DC-3A.
+
+## 11. DC-3B-R1 Auth Tenant Selection Consistency (CTO review fixes)
+
+Date: 2026-07-12 (revision R1). Base: `b23bcfb9`. CTO verdict on R0:
+`REQUEST_CHANGES_BEFORE_MERGE`. This section documents the R1 fixes.
+
+### R1.1 Verified-tenant-only match list
+`find_user_across_tenants` (`backend/crud/user.py`) now returns ONLY tenant
+copies whose own `password_hash` verifies against the supplied password. An
+unverified copy (same email, different password in another tenant) is no longer
+granted or listed. `verified_user_id` is the user_id of the first verified copy;
+the match list contains only verified copies. (Previously it returned ALL
+copies once any one verified.)
+
+### R1.2 Signed tenant_id -> user_id map in the identity JWT
+`create_identity_token` (`backend/core/security.py`) now accepts an optional
+`tenant_user_map: {tenant_id: tenant_local_user_id}` of VERIFIED matches and
+embeds it as a signed `tmap` JWT claim. `TokenPayload` gained a `tmap` field.
+The login endpoint (`backend/api/v1/auth.py`) builds the map from verified
+matches and passes it to both access and refresh identity tokens. The map is
+signed (part of the JWT) so it cannot be tampered with, and it is NEVER exposed
+in the public response body.
+
+### R1.3 select-tenant uses the per-tenant user_id
+`/auth/select-tenant` (`backend/api/v1/auth.py`) resolves the tenant-local
+user_id from `tmap` for identity-only tokens, so the correct per-tenant user is
+selected even when the same email has different user IDs across tenants.
+Contextual tokens and legacy/mock tokens without `tmap` fall back to
+`token.user_id` (`getattr(token, "tmap", None)` tolerates mock tokens). A
+tenant not present in `tmap` is rejected with 403.
+
+### R1.4 Identity refresh preserves the map
+`/auth/refresh` (`backend/api/v1/auth.py`) preserves `tmap` across identity
+refresh. Also fixed: the refresh endpoint `response_model` was `LoginResponse`
+(required `tenant_id`/`tenant_schema`) but the identity-refresh branch returns
+`IdentityLoginResponse`; changed to `Union[LoginResponse, IdentityLoginResponse]`
+so identity refresh no longer triggers a 500 ResponseValidationError.
+
+### R1.5 Query-string token rejection unchanged
+No change to the `/reset-password` and `/setup-credential` query-string token
+rejection. Still enforced.
+
+### R1.6 Tests (5 new in test_dc3b_credential_recovery_backend.py)
+- `test_r1_different_passwords_isolates_unverified_tenant`: same email, two
+  tenants, different passwords -> login with password A lists/selects only
+  tenant A; the other tenant is not selectable (403).
+- `test_r1_same_password_different_user_ids_selects_both`: same email + same
+  password but distinct user IDs -> login lists both and select-tenant succeeds
+  for both (uses tmap per-tenant user_id).
+- `test_r1_after_reset_both_copies_login_and_select`: after password reset
+  fan-out, both tenant copies can login and select-tenant succeeds for both.
+- `test_r1_identity_refresh_preserves_tenant_selection`: after identity refresh,
+  every originally-available tenant is still selectable.
+- `test_r1_no_internal_mapping_in_public_responses`: no `tmap`, no
+  `tenant_user_map`, no `password_hash`/`token_hash`, and not both tenant user
+  IDs simultaneously in any login/select/refresh response body.
+
+The R1 tests use a module-level `_real_token_dependency` that overrides
+`get_current_user_context` to decode the real bearer JWT (the default
+`MockAuthStrategy` in test mode ignores the Authorization header and injects a
+fixed mock token without `tmap`).
+
+### R1.7 Changed files (R1)
+- `backend/core/security.py` -- `TokenPayload.tmap`; `create_identity_token(tenant_user_map=...)`.
+- `backend/crud/user.py` -- verified-tenant-only match list.
+- `backend/api/v1/auth.py` -- login builds tmap; select-tenant uses tmap; refresh preserves tmap; refresh response_model union.
+- `backend/tests/test_dc3b_credential_recovery_backend.py` -- 5 R1 tests + `_client_with_real_auth` helper.
+
+No migration, no frontend, no deploy, no `.env`/secrets. `.secrets.baseline`
+not modified.
+
+### R1.8 Validation (R1)
+- `poetry run pytest tests/test_dc3b_credential_recovery_backend.py -q`: **15 passed** (10 R0 + 5 R1).
+- `poetry run pytest tests/test_auth_regressions.py tests/test_route_authorization_policy.py -q`: **36 passed**.
+- U6 regression (u6c/d/e + u6i5): **41 passed**.
+- `py_compile` on `core/security.py`, `crud/user.py`, `api/v1/auth.py`, `schemas/auth.py`: PASS.
+- `git diff --check`: PASS.
+- ASCII / mojibake scan on all changed files: PASS.
+- `detect-secrets` / pre-commit on all changed files: PASS.
+- `npx gitnexus analyze`: indexed successfully (12,585 nodes); `npx gitnexus status`: up-to-date.
+
+### R1.9 Selectability guarantee
+Every tenant returned in `available_tenants` is selectable: `available_tenants`
+is built from the verified-only match list, and `tmap` carries the signed
+user_id for each of those exact tenants, so `select-tenant` resolves and admits
+each one. A tenant not verified at login is neither listed nor selectable.
+
+### R1.10 R1 Verdict
+**PASS_FOR_CTO_DC3B_REVIEW** (R1 fixes applied; all R1 + regression tests green).

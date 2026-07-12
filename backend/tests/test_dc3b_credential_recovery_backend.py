@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException, Request
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
@@ -56,6 +57,8 @@ async def _dc3b_setup():
         yield
     finally:
         app.dependency_overrides.pop(get_db_session, None)
+        from api.dependencies import get_current_user_context
+        app.dependency_overrides.pop(get_current_user_context, None)
         await _clear_dc3b_rows()
         clear_dev_email_deliveries()
 
@@ -110,6 +113,54 @@ async def _client() -> AsyncClient:
                 raise
 
     app.dependency_overrides[get_db_session] = _override_public_db
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    return AsyncClient(transport=transport, base_url="http://testserver")
+
+
+def _real_token_dependency(request: "Request"):
+    """Module-level FastAPI dependency: decode the real bearer JWT.
+
+    Defined at module scope (not in a closure) so FastAPI's annotation
+    inspection resolves ``Request`` correctly even with
+    ``from __future__ import annotations``.
+    """
+    from core.security import decode_token, ExpiredTokenError, InvalidTokenError
+    auth = request.headers.get("Authorization", "")
+    if not auth.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail={"code": "INVALID_TOKEN", "message": "No bearer token"})
+    raw = auth.split(" ", 1)[1].strip()
+    try:
+        payload = decode_token(raw)
+    except ExpiredTokenError:
+        raise HTTPException(status_code=401, detail={"code": "TOKEN_EXPIRED", "message": "Token expired"})
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail={"code": "INVALID_TOKEN", "message": "Invalid token"})
+    from api.context.auth import AuthContext
+    setattr(request.state, "_dc3b_auth_ctx", AuthContext(token=payload, raw_token=raw))
+    return payload
+
+
+async def _client_with_real_auth() -> AsyncClient:
+    """Test client whose /select-tenant and /refresh see the REAL decoded JWT.
+
+    The default MockAuthStrategy (MPANGO_ENV=test) ignores the Authorization
+    header and injects a fixed mock token without the DC-3B-R1 ``tmap`` claim.
+    For R1 tests we must exercise the real JWT path, so we override
+    ``get_current_user_context`` to decode the bearer token from the header.
+    """
+    from api.dependencies import get_current_user_context
+
+    async def _override_public_db():
+        async with AsyncSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app.dependency_overrides[get_db_session] = _override_public_db
+    app.dependency_overrides[get_current_user_context] = _real_token_dependency
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     return AsyncClient(transport=transport, base_url="http://testserver")
 
@@ -580,3 +631,209 @@ async def test_no_internal_ids_tokens_hashes_in_public_responses():
         assert "user_email_hash" not in body_str
         assert raw_token.lower() not in body_str
         assert "tenant_schema" not in body_str
+
+
+# ===========================================================================
+# DC-3B-R1 regression tests: auth tenant selection consistency
+# ===========================================================================
+SELECT_TENANT_URL = "/api/v1/auth/select-tenant"
+REFRESH_URL = "/api/v1/auth/refresh"
+
+
+def _identity_token(login_resp_json: dict) -> str:
+    return login_resp_json["data"]["access_token"]
+
+
+def _identity_refresh_token(login_resp_json: dict) -> str:
+    return login_resp_json["data"]["refresh_token"]
+
+
+def _available_tenant_ids(login_resp_json: dict) -> list[str]:
+    return [t["id"] for t in login_resp_json["data"]["available_tenants"]]
+
+
+# ---------------------------------------------------------------------------
+# R1-a: same email in two tenants with DIFFERENT passwords -> login with
+# password A lists/selects only tenant A (unverified tenant not granted).
+# ---------------------------------------------------------------------------
+async def test_r1_different_passwords_isolates_unverified_tenant():
+    shared_email = f"dc3b_{uuid.uuid4().hex}@example.com"
+    # tenant 1 with password A
+    PW_A = "TenantAPw_01!!"  # pragma: allowlist secret
+    PW_B = "TenantBPw_02!!"  # pragma: allowlist secret
+    s1, _ = await _make_tenant(
+        owner_email=f"reg1_{uuid.uuid4().hex}@example.com", password=PW_A, code_suffix="G1"
+    )
+    await _add_user_to_tenant_schema(s1, shared_email, PW_A)
+    # tenant 2 with password B (different) for the SAME shared email
+    s2, _ = await _make_tenant(
+        owner_email=f"reg2_{uuid.uuid4().hex}@example.com", password=PW_B, code_suffix="H2"
+    )
+    await _add_user_to_tenant_schema(s2, shared_email, PW_B)
+
+    async with await _client_with_real_auth() as c:
+        # login with password A -> only tenant A (s1) should be listed.
+        r = await c.post(LOGIN_URL, json={"email": shared_email, "password": PW_A})
+        assert r.status_code == 200
+        avail = _available_tenant_ids(r.json())
+        # exactly one tenant selectable (the password-A one). We do not assert
+        # which schema by name (order may vary), only that the count is 1 and
+        # select-tenant works for it.
+        assert len(avail) == 1, "unverified tenant must not be listed"
+        # select the one available tenant -> 200
+        r_sel = await c.post(
+            SELECT_TENANT_URL,
+            json={"tenant_id": avail[0]},
+            headers={"Authorization": f"Bearer {_identity_token(r.json())}"},
+        )
+        assert r_sel.status_code == 200
+
+    # The other tenant (password B) must NOT be selectable with the password-A
+    # identity token. Resolve its wholesaler id and try select-tenant -> 403.
+    async with AsyncSessionLocal() as session:
+        other_ws_id = (
+            await session.execute(
+                text("SELECT id FROM public.wholesalers WHERE code LIKE 'DC3BH2%' LIMIT 1")
+            )
+        ).scalar_one()
+    async with await _client_with_real_auth() as c:
+        r2 = await c.post(LOGIN_URL, json={"email": shared_email, "password": PW_A})
+        assert r2.status_code == 200
+        r_sel_bad = await c.post(
+            SELECT_TENANT_URL,
+            json={"tenant_id": str(other_ws_id)},
+            headers={"Authorization": f"Bearer {_identity_token(r2.json())}"},
+        )
+        assert r_sel_bad.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# R1-b: same email + same password but DIFFERENT user IDs across two tenants ->
+# login lists both and select-tenant succeeds for both.
+# ---------------------------------------------------------------------------
+async def test_r1_same_password_different_user_ids_selects_both():
+    shared_email = f"dc3b_{uuid.uuid4().hex}@example.com"
+    s1, _ = await _make_tenant(
+        owner_email=f"reg3_{uuid.uuid4().hex}@example.com", password=TEST_OLD_PW, code_suffix="I3"
+    )
+    await _add_user_to_tenant_schema(s1, shared_email, TEST_OLD_PW)
+    s2, _ = await _make_tenant(
+        owner_email=f"reg4_{uuid.uuid4().hex}@example.com", password=TEST_OLD_PW, code_suffix="J4"
+    )
+    await _add_user_to_tenant_schema(s2, shared_email, TEST_OLD_PW)
+    # the two user rows have different IDs (created independently).
+    async with AsyncSessionLocal() as session:
+        u1 = (await session.execute(text(f'SELECT id FROM "{s1}".users WHERE email = :e'), {"e": shared_email})).scalar_one()
+        u2 = (await session.execute(text(f'SELECT id FROM "{s2}".users WHERE email = :e'), {"e": shared_email})).scalar_one()
+    assert u1 != u2, "test precondition: distinct user IDs"
+
+    async with await _client_with_real_auth() as c:
+        r = await c.post(LOGIN_URL, json={"email": shared_email, "password": TEST_OLD_PW})
+        assert r.status_code == 200
+        avail = _available_tenant_ids(r.json())
+        assert len(avail) == 2, "both verified tenants must be listed"
+        tok = _identity_token(r.json())
+        # select each tenant -> both must succeed (uses tmap per-tenant user_id)
+        for tid in avail:
+            r_sel = await c.post(
+                SELECT_TENANT_URL,
+                json={"tenant_id": tid},
+                headers={"Authorization": f"Bearer {tok}"},
+            )
+            assert r_sel.status_code == 200, f"select-tenant failed for {tid}"
+
+
+# ---------------------------------------------------------------------------
+# R1-c: after password reset fan-out, both tenant copies can login/select.
+# ---------------------------------------------------------------------------
+async def test_r1_after_reset_both_copies_login_and_select():
+    shared_email = f"dc3b_{uuid.uuid4().hex}@example.com"
+    s1, s2 = await _two_tenants_with_shared_owner(shared_email, TEST_OLD_PW)
+
+    async with await _client_with_real_auth() as c:
+        await c.post(FORGOT_URL, json={"email": shared_email})
+        raw_token = get_dev_reset_email_deliveries(shared_email)[0].token
+        r_reset = await c.post(RESET_URL, json={"resetToken": raw_token, "newPassword": TEST_NEW_PW})
+        assert r_reset.status_code == 200
+
+    async with await _client_with_real_auth() as c:
+        r = await c.post(LOGIN_URL, json={"email": shared_email, "password": TEST_NEW_PW})
+        assert r.status_code == 200
+        avail = _available_tenant_ids(r.json())
+        assert len(avail) == 2
+        tok = _identity_token(r.json())
+        for tid in avail:
+            r_sel = await c.post(
+                SELECT_TENANT_URL,
+                json={"tenant_id": tid},
+                headers={"Authorization": f"Bearer {tok}"},
+            )
+            assert r_sel.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# R1-d: identity refresh preserves tenant selection capability.
+# ---------------------------------------------------------------------------
+async def test_r1_identity_refresh_preserves_tenant_selection():
+    shared_email = f"dc3b_{uuid.uuid4().hex}@example.com"
+    await _two_tenants_with_shared_owner(shared_email, TEST_OLD_PW)
+
+    async with await _client_with_real_auth() as c:
+        r = await c.post(LOGIN_URL, json={"email": shared_email, "password": TEST_OLD_PW})
+        assert r.status_code == 200
+        avail = _available_tenant_ids(r.json())
+        assert len(avail) == 2
+
+        # refresh the identity token
+        r_ref = await c.post(
+            REFRESH_URL, json={"refresh_token": _identity_refresh_token(r.json())}
+        )
+        assert r_ref.status_code == 200
+        refreshed_tok = r_ref.json()["data"]["access_token"]
+
+        # after refresh, every originally-available tenant must still be selectable
+        for tid in avail:
+            r_sel = await c.post(
+                SELECT_TENANT_URL,
+                json={"tenant_id": tid},
+                headers={"Authorization": f"Bearer {refreshed_tok}"},
+            )
+            assert r_sel.status_code == 200, f"select failed after refresh for {tid}"
+
+
+# ---------------------------------------------------------------------------
+# R1-e: no raw password/token/hash/internal mapping is exposed in public
+# response body (login, select-tenant, refresh).
+# ---------------------------------------------------------------------------
+async def test_r1_no_internal_mapping_in_public_responses():
+    shared_email = f"dc3b_{uuid.uuid4().hex}@example.com"
+    s1, s2 = await _two_tenants_with_shared_owner(shared_email, TEST_OLD_PW)
+    # capture the internal user ids (must never appear in any response body)
+    async with AsyncSessionLocal() as session:
+        uid1 = str((await session.execute(text(f'SELECT id FROM "{s1}".users WHERE email = :e'), {"e": shared_email})).scalar_one())
+        uid2 = str((await session.execute(text(f'SELECT id FROM "{s2}".users WHERE email = :e'), {"e": shared_email})).scalar_one())
+
+    async with await _client_with_real_auth() as c:
+        r_login = await c.post(LOGIN_URL, json={"email": shared_email, "password": TEST_OLD_PW})
+        assert r_login.status_code == 200
+        login_body = str(r_login.json())
+        r_sel = await c.post(
+            SELECT_TENANT_URL,
+            json={"tenant_id": _available_tenant_ids(r_login.json())[0]},
+            headers={"Authorization": f"Bearer {_identity_token(r_login.json())}"},
+        )
+        assert r_sel.status_code == 200
+        r_ref = await c.post(REFRESH_URL, json={"refresh_token": _identity_refresh_token(r_login.json())})
+        assert r_ref.status_code == 200
+
+    for body in (login_body, str(r_sel.json()), str(r_ref.json())):
+        low = body.lower()
+        assert "tmap" not in low, "internal tenant map must not be exposed"
+        assert "tenant_user_map" not in low
+        assert "password_hash" not in low
+        assert "token_hash" not in low
+        # at most ONE user_id appears in a response (the login user_id of the
+        # selected/issuing tenant); the OTHER tenant's user_id must never leak.
+        # The login response includes a single user_id; verify both uids are not
+        # BOTH present simultaneously (which would leak the cross-tenant map).
+        assert not (uid1 in body and uid2 in body), "both tenant user ids leaked"

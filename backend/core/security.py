@@ -10,7 +10,7 @@ Per multi_tenancy_spec.md section 4.1, JWT claims must contain:
 - type: "access" or "refresh"
 """
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from jose import jwt, JWTError, ExpiredSignatureError
 from passlib.context import CryptContext
@@ -51,6 +51,11 @@ class TokenPayload(BaseModel):
     roles: List[str] = []
     exp: Optional[int] = None
     type: str = "access"  # "access" or "refresh"
+    # DC-3B-R1: signed tenant_id -> tenant-local user_id map for verified
+    # identity-only tokens. Lets /select-tenant resolve the correct per-tenant
+    # user_id when the same email exists in multiple tenants with different
+    # user IDs. Absent on contextual tokens and on legacy identity tokens.
+    tmap: Optional[Dict[str, str]] = None
 
     @property
     def is_identity_only(self) -> bool:
@@ -69,6 +74,7 @@ def create_identity_token(
     *,
     token_type: str = "access",
     expires_delta: Optional[timedelta] = None,
+    tenant_user_map: Optional[Dict[str, str]] = None,
 ) -> str:
     """
     Create an Identity JWT — no tenant context.
@@ -81,6 +87,11 @@ def create_identity_token(
         roles: Aggregated role names across all tenants (or ["super_admin"])
         token_type: "access" or "refresh"
         expires_delta: Optional custom expiration time
+        tenant_user_map: Optional signed {tenant_id: tenant_local_user_id} map
+            of VERIFIED tenant matches (DC-3B-R1). Carried so /select-tenant
+            can resolve the correct per-tenant user_id when the same email
+            exists in multiple tenants with different user IDs. Only verified
+            matches (password_hash verified at login) are included.
     """
     settings = get_settings()
     if expires_delta is None:
@@ -96,6 +107,8 @@ def create_identity_token(
         "exp": expire,
         "type": token_type,
     }
+    if tenant_user_map:
+        payload["tmap"] = tenant_user_map
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 

@@ -83,18 +83,21 @@ async def find_user_across_tenants(
     if not candidate_matches:
         return (None, [])
 
-    # Second pass: succeed if ANY active copy verifies the password. This closes
-    # the DC-3A multi-tenant hazard where a stale hash in one tenant copy could
-    # cause a 401 even when another active copy has the correct password. The
-    # canonical rule (DC-3B) keeps all same-email copies identical via fan-out
-    # on setup/reset, but verifying against any copy is the fail-safe.
+    # Second pass: include ONLY copies whose own password_hash verifies.
+    # DC-3B-R1 fix: an unverified copy (e.g. same email but a different password
+    # in another tenant) must NOT be granted or listed in available_tenants. The
+    # verified_user_id is the user_id of the first verified copy; the returned
+    # match list contains only verified copies.
     for match in candidate_matches:
         if verify_password(password, match.user.password_hash):
-            verified_user_id = str(match.user.id)
-            matches = candidate_matches
-            return (verified_user_id, matches)
+            if verified_user_id is None:
+                verified_user_id = str(match.user.id)
+            matches.append(match)
 
-    return (None, [])
+    if verified_user_id is None or not matches:
+        return (None, [])
+
+    return (verified_user_id, matches)
 
 
 async def get_user_by_email(

@@ -7,6 +7,7 @@ H-Fix-01: Decoupled Identity from Tenant Context.
 - POST /auth/refresh -> works for both Identity and Contextual refresh tokens
 """
 from datetime import datetime
+from typing import Union
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, status
@@ -261,10 +262,11 @@ async def login(
             detail={"code": "INVALID_CREDENTIALS", "message": "Invalid credentials"}
         )
 
-    # Aggregate unique roles across all tenants
+    # Aggregate unique roles across all VERIFIED tenants only (DC-3B-R1: matches
+    # now contains only copies whose own password_hash verified at login).
     all_roles = sorted({r for m in matches for r in m.roles})
 
-    # Build available tenants list
+    # Build available tenants list (only verified tenants are listed/selectable).
     available_tenants = [
         TenantInfo(
             id=str(m.wholesaler.id),
@@ -274,16 +276,24 @@ async def login(
         for m in matches
     ]
 
-    # Create identity tokens (no tenant context)
+    # DC-3B-R1: signed tenant_id -> tenant-local user_id map for verified
+    # matches. Carried in the identity JWT so /select-tenant resolves the
+    # correct per-tenant user_id when the same email has different user IDs
+    # across tenants. Never exposed in the public response body.
+    tenant_user_map = {str(m.wholesaler.id): str(m.user.id) for m in matches}
+
+    # Create identity tokens (no tenant context) carrying the signed map.
     access_token = create_identity_token(
         user_id=verified_user_id,
         roles=all_roles,
         token_type="access",
+        tenant_user_map=tenant_user_map,
     )
     refresh_token = create_identity_token(
         user_id=verified_user_id,
         roles=all_roles,
         token_type="refresh",
+        tenant_user_map=tenant_user_map,
     )
 
     return IdentityLoginResponse(
@@ -340,9 +350,30 @@ async def select_tenant(
 
     tenant_schema = wholesaler.get_tenant_schema()
 
-    # 2. Verify user exists in this tenant schema using a raw query to bypass the ORM filter.
+    # DC-3B-R1: resolve the tenant-local user_id. For identity-only tokens that
+    # carry the signed tenant_id->user_id map (tmap), use the map entry for the
+    # requested tenant so the correct per-tenant user is selected even when the
+    # same email has different user IDs across tenants. For contextual tokens or
+    # legacy/mock identity tokens without tmap, fall back to token.user_id.
+    # getattr() tolerates mock tokens (test mode) that don't expose the field.
+    token_tmap = getattr(token, "tmap", None)
+    if token.is_identity_only and token_tmap:
+        local_user_id_str = token_tmap.get(str(wholesaler.id))
+        if not local_user_id_str:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "TENANT_ACCESS_DENIED",
+                    "message": "You do not have access to this tenant"
+                },
+            )
+        effective_user_id = UUID(local_user_id_str)
+    else:
+        effective_user_id = UUID(token.user_id)
+
+    # 2. Verify user exists and is active in this tenant schema.
     user_query = text(f'SELECT id, is_active FROM "{tenant_schema}".users WHERE id = :user_id')
-    user_result = await db.execute(user_query, {"user_id": UUID(token.user_id)})
+    user_result = await db.execute(user_query, {"user_id": effective_user_id})
     user = user_result.fetchone()
 
     if not user or not user.is_active:
@@ -361,7 +392,7 @@ async def select_tenant(
         f'WHERE ur.user_id = :user_id'
     )
 
-    roles_result = await db.execute(roles_query, {"user_id": UUID(token.user_id)})
+    roles_result = await db.execute(roles_query, {"user_id": effective_user_id})
     roles = [row[0] for row in roles_result.fetchall()]
 
     # 3. Issue contextual tokens
@@ -399,7 +430,7 @@ async def select_tenant(
 # POST /auth/refresh
 # ---------------------------------------------------------------------------
 
-@router.post("/refresh", response_model=LoginResponse, status_code=status.HTTP_200_OK)
+@router.post("/refresh", response_model=Union[LoginResponse, IdentityLoginResponse], status_code=status.HTTP_200_OK)
 async def refresh_token(request: RefreshTokenRequest):
     """
     Refresh access token endpoint.
@@ -424,16 +455,20 @@ async def refresh_token(request: RefreshTokenRequest):
             )
 
         if payload.is_identity_only:
-            # Identity refresh - re-issue identity tokens
+            # Identity refresh - re-issue identity tokens (preserve the signed
+            # tenant_id->user_id map so tenant selection still works after
+            # refresh; DC-3B-R1).
             access_token = create_identity_token(
                 user_id=payload.user_id,
                 roles=payload.roles,
                 token_type="access",
+                tenant_user_map=payload.tmap,
             )
             new_refresh = create_identity_token(
                 user_id=payload.user_id,
                 roles=payload.roles,
                 token_type="refresh",
+                tenant_user_map=payload.tmap,
             )
             # For identity-only refresh we still return LoginResponse
             # but with placeholder tenant fields - the frontend should

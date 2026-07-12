@@ -8,8 +8,8 @@ import type {
 } from '@/types/auth';
 
 /**
- * Auth API service — thin wrapper over api.ts.
- * No business logic here (per frontend_contract.md §3).
+ * Auth API service - thin wrapper over api.ts.
+ * No business logic here (per frontend_contract.md section 3).
  */
 export const authService = {
   login: (payload: LoginRequest) =>
@@ -29,4 +29,13 @@ export const authService = {
     ),
 
   logout: () => api.post('/auth/logout'),
+
+  setupCredential: (payload: { setupToken: string; password: string }) =>
+    api.post('/auth/onboarding/setup-credential', payload),
+
+  forgotPassword: (payload: { email: string }) =>
+    api.post('/auth/forgot-password', payload),
+
+  resetPassword: (payload: { resetToken: string; newPassword: string }) =>
+    api.post('/auth/reset-password', payload),
 };

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -41,11 +41,11 @@ export function LoginPage() {
     setServerError(null);
 
     try {
-      // 1. Identity Phase — get identity tokens + available tenants
+      // 1. Identity Phase - get identity tokens + available tenants
       const loginRes = await authService.login(formData);
       const identityData = loginRes.data.data;
 
-      // Keep identity token in a local variable — do NOT store in global
+      // Keep identity token in a local variable - do NOT store in global
       // auth store yet, because ProtectedRoute checks accessToken and would
       // render dashboard components before tenant selection completes.
       const idToken = identityData.access_token;
@@ -86,7 +86,7 @@ export function LoginPage() {
           }
         }
 
-        // Store identity token only for workspace selector navigation —
+        // Store identity token only for workspace selector navigation -
         // this is the one case where we need the token in the store before
         // tenant selection, but the target page is /select-workspace, not /.
         useAuthStore.getState().updateTokens({
@@ -176,7 +176,7 @@ export function LoginPage() {
               id="password"
               type="password"
               autoComplete="current-password"
-              placeholder="••••••••"
+              placeholder="Password"
               className="input-field"
               {...register('password')}
             />
@@ -193,8 +193,14 @@ export function LoginPage() {
             disabled={isSubmitting}
             className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? 'Signing in…' : 'Sign In'}
+            {isSubmitting ? 'Signing in...' : 'Sign In'}
           </button>
+
+          <div className="text-center text-sm">
+            <Link to="/forgot-password" className="font-medium text-primary-600 hover:text-primary-700">
+              Forgot password?
+            </Link>
+          </div>
         </form>
       </div>
     </div>

@@ -3,6 +3,9 @@ import { ProtectedRoute, PublicRoute, PlatformRoute } from '@/router/guards';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
+import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
+import { SetupCredentialPage } from '@/pages/auth/SetupCredentialPage';
 import { WorkspaceSelectorPage } from '@/pages/auth/WorkspaceSelectorPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { OrderListPage } from '@/pages/orders/OrderListPage';
@@ -53,6 +56,9 @@ const router = createBrowserRouter([
     element: <PublicRoute />,
     children: [
       { path: '/login', element: <LoginPage /> },
+      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      { path: '/reset-password', element: <ResetPasswordPage /> },
+      { path: '/setup-credential', element: <SetupCredentialPage /> },
     ],
   },
   // Client login -- separate from wholesaler login

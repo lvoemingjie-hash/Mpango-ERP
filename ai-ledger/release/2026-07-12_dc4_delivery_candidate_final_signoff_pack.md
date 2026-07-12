@@ -69,7 +69,7 @@ This pack consolidates the evidence trail that the `product-dev-recovered` runti
 **Key results**:
 - Exact checkout `bf0649c0`, backup 398318 bytes (SHA `37ea35320d47`)
 - SPA crash fixed (DC-3E merge) — 0 console errors on all credential routes
-- SMTP delivers to `jeff05992582@126.com`
+- SMTP delivers to a verified 126.com mailbox (address redacted)
 - Forgot/reset password flow end-to-end: email delivery -> browser URL scrub -> password reset -> new login 200 -> old login 401 -> tenant selection -> `/auth/me` 200 -> skus/orders 200
 - Signup deferred (sub-addressing not supported by 126.com, later resolved by DC-3F)
 - All log scans zero
@@ -187,12 +187,12 @@ All predecessor phases passed. DC-3F closed the final DC-3D-R3 caveat.
 
 | Check | Result |
 |---|---|
-| `git diff --check` | Will be run before commit |
-| ASCII / mojibake scan | Will be run before commit |
-| `poetry run detect-secrets scan` | Will be run before commit |
-| `poetry run pre-commit` | Will be run before commit |
-| `npx gitnexus analyze` | Will be run before commit |
-| `npx gitnexus status` | Will be run before commit |
+| `git diff --check` | Passed |
+| ASCII / mojibake scan | Passed (em dashes for formatting only, no secrets) |
+| `poetry run detect-secrets scan` | Passed |
+| `poetry run pre-commit` | Passed (trailing whitespace, EOF, large files, detect secrets) |
+| `npx gitnexus analyze` | Passed (12557 nodes, 37961 edges) |
+| `npx gitnexus status` | Up-to-date at commit `ac99bec` |
 
 ## 12. Verdict
 

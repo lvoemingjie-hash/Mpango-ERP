@@ -51,10 +51,15 @@ class TokenPayload(BaseModel):
     roles: List[str] = []
     exp: Optional[int] = None
     type: str = "access"  # "access" or "refresh"
-    # DC-3B-R1: signed tenant_id -> tenant-local user_id map for verified
+    # DC-3B-R2: signed tenant_id -> tenant-local user_id map for verified
     # identity-only tokens. Lets /select-tenant resolve the correct per-tenant
     # user_id when the same email exists in multiple tenants with different
     # user IDs. Absent on contextual tokens and on legacy identity tokens.
+    # This claim is SIGNED but NOT ENCRYPTED: it is client-decodable (any JWT
+    # holder can read it) and therefore NOT confidential. It guarantees
+    # integrity only (tampering is detected via signature verification). It
+    # must contain ONLY verified tenant_id -> user_id pairs and must never
+    # include unverified tenants, password hashes, token hashes, or raw tokens.
     tmap: Optional[Dict[str, str]] = None
 
     @property

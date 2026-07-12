@@ -184,9 +184,17 @@ copies once any one verified.)
 `tenant_user_map: {tenant_id: tenant_local_user_id}` of VERIFIED matches and
 embeds it as a signed `tmap` JWT claim. `TokenPayload` gained a `tmap` field.
 The login endpoint (`backend/api/v1/auth.py`) builds the map from verified
-matches and passes it to both access and refresh identity tokens. The map is
-signed (part of the JWT) so it cannot be tampered with, and it is NEVER exposed
-in the public response body.
+matches and passes it to both access and refresh identity tokens.
+
+**Disclosure truth (corrected in R2):** `tmap` is a SIGNED JWT claim and is
+**client-decodable** — any holder of the JWT can decode it (JWT payloads are
+base64, not encrypted). It is therefore NOT confidential. What it guarantees is
+**integrity**, not secrecy: it cannot be tampered with without `SECRET_KEY`.
+Consequently `tmap` is visible to the authenticated client as a JWT claim, but
+only for verified selectable tenants. It must NEVER contain unverified tenants,
+password hashes, token hashes, raw tokens, or unrelated tenant IDs. It is not
+exposed as a separate top-level field in the JSON response; it exists only
+inside the encoded `access_token`/`refresh_token`.
 
 ### R1.3 select-tenant uses the per-tenant user_id
 `/auth/select-tenant` (`backend/api/v1/auth.py`) resolves the tenant-local
@@ -254,3 +262,67 @@ each one. A tenant not verified at login is neither listed nor selectable.
 
 ### R1.10 R1 Verdict
 **PASS_FOR_CTO_DC3B_REVIEW** (R1 fixes applied; all R1 + regression tests green).
+
+## 12. DC-3B-R2 JWT tmap Disclosure Truth Gate
+
+Date: 2026-07-12 (revision R2). Base: `7ea825a1`.
+
+### R2.1 tmap disclosure truth (corrected wording)
+- `tmap` is a **signed JWT claim** and is **client-decodable**. Any holder of the
+  JWT can decode it (JWT payloads are base64url, not encrypted). It is therefore
+  **NOT confidential**.
+- What it guarantees is **integrity, not secrecy**: it cannot be tampered with
+  without `SECRET_KEY` (signature verification fails on any modification).
+- `tmap` is visible to the authenticated client as a JWT claim, but **only for
+  verified selectable tenants**.
+- It must contain ONLY verified `tenant_id -> tenant-local user_id` pairs. It
+  must NOT include unverified tenants, password hashes, token hashes, raw
+  tokens, or unrelated tenant IDs.
+- It is not exposed as a separate top-level field in the JSON response; it
+  exists only inside the encoded `access_token` / `refresh_token`.
+
+### R2.2 Corrected test (replaces prior R1-e assertion)
+`test_r1_no_internal_mapping_in_public_responses` was rewritten. It NO LONGER
+asserts `tmap` is absent from the JWT (that was wrong — tmap IS a decodable
+claim). The rewritten test:
+- Sets up two VERIFIED tenants (same password) + one UNVERIFIED tenant
+  (different password) for the same shared email.
+- Decodes the login access, login refresh, and refreshed-access identity JWTs.
+- Asserts `tmap` exists on identity tokens when multiple verified copies exist.
+- Asserts `tmap` keys equal `available_tenants` exactly.
+- Asserts `tmap` values are only the verified tenant-local user IDs.
+- Asserts the unverified tenant (id + user_id) is absent from `tmap`.
+- Asserts `tmap` values are UUIDs only (no password/token hashes, no raw tokens).
+- Asserts the top-level JSON response does NOT expose `tmap` (or
+  `tenant_user_map`, `password_hash`, `token_hash`) as a separate field.
+
+### R2.3 security.py docstring (clarified)
+The `TokenPayload.tmap` field docstring is clarified to state it is a signed,
+client-decodable (non-confidential) claim carrying verified-tenant-only pairs.
+
+### R2.4 Changed files (R2)
+- `backend/tests/test_dc3b_credential_recovery_backend.py` — rewritten R1-e test
+  + restored `_client()` helper (accidentally dropped during R1.6 editing).
+- `ai-ledger/product-ai/2026-07-12_dc3b_credential_recovery_backend.md` — R1.2
+  wording corrected; R2 section added.
+- `backend/core/security.py` — docstring wording only (tmap non-confidential).
+
+No migration, no frontend, no deploy, no `.env`/secrets. Query-string token
+rejection unchanged. `.secrets.baseline` not modified.
+
+### R2.5 Validation (R2)
+- `poetry run pytest tests/test_dc3b_credential_recovery_backend.py -q`: **15 passed**.
+- `poetry run pytest tests/test_auth_regressions.py tests/test_route_authorization_policy.py -q`: 36 passed.
+- `git diff --check`: PASS.
+- ASCII / mojibake scan on changed files: PASS.
+- `detect-secrets` / pre-commit on changed files: PASS.
+- `npx gitnexus analyze` + `npx gitnexus status`: indexed / up-to-date.
+
+### R2.6 Explicit statement
+`tmap` is visible to the authenticated client as a JWT claim, but only for
+verified selectable tenants. It is signed (integrity) but not encrypted
+(Not confidential). It carries only verified tenant_id -> tenant-local user_id
+pairs; unverified tenants, hashes, and raw tokens are excluded.
+
+### R2.7 R2 Verdict
+**PASS_FOR_CTO_DC3B_REVIEW** (R2 disclosure-truth gate applied).

@@ -802,38 +802,81 @@ async def test_r1_identity_refresh_preserves_tenant_selection():
 
 
 # ---------------------------------------------------------------------------
-# R1-e: no raw password/token/hash/internal mapping is exposed in public
-# response body (login, select-tenant, refresh).
+# R1-e: tmap truth gate.
+# tmap is a SIGNED JWT claim: it is client-decodable (NOT confidential) but not
+# tamperable without SECRET_KEY. It must contain ONLY verified tenant_id ->
+# tenant-local user_id pairs, and never unverified tenants, hashes, or tokens.
+# The top-level JSON response must not expose tmap as a separate field; it
+# exists only inside the encoded JWT (access_token/refresh_token).
 # ---------------------------------------------------------------------------
 async def test_r1_no_internal_mapping_in_public_responses():
+    from core.security import decode_token
+
     shared_email = f"dc3b_{uuid.uuid4().hex}@example.com"
-    s1, s2 = await _two_tenants_with_shared_owner(shared_email, TEST_OLD_PW)
-    # capture the internal user ids (must never appear in any response body)
+    # two VERIFIED tenants (same password) + one UNVERIFIED tenant (different pw)
+    s1, _ = await _make_tenant(
+        owner_email=f"regv1_{uuid.uuid4().hex}@example.com", password=TEST_OLD_PW, code_suffix="V1"
+    )
+    await _add_user_to_tenant_schema(s1, shared_email, TEST_OLD_PW)
+    s2, _ = await _make_tenant(
+        owner_email=f"regv2_{uuid.uuid4().hex}@example.com", password=TEST_OLD_PW, code_suffix="V2"
+    )
+    await _add_user_to_tenant_schema(s2, shared_email, TEST_OLD_PW)
+    PW_OTHER = "OtherPw_99!xx"  # pragma: allowlist secret
+    s3, _ = await _make_tenant(
+        owner_email=f"regu3_{uuid.uuid4().hex}@example.com", password=PW_OTHER, code_suffix="U3"
+    )
+    await _add_user_to_tenant_schema(s3, shared_email, PW_OTHER)
+
+    # resolve the verified tenant-local user ids and the three wholesaler ids
     async with AsyncSessionLocal() as session:
         uid1 = str((await session.execute(text(f'SELECT id FROM "{s1}".users WHERE email = :e'), {"e": shared_email})).scalar_one())
         uid2 = str((await session.execute(text(f'SELECT id FROM "{s2}".users WHERE email = :e'), {"e": shared_email})).scalar_one())
+        uid3 = str((await session.execute(text(f'SELECT id FROM "{s3}".users WHERE email = :e'), {"e": shared_email})).scalar_one())
+        ws_v1 = str((await session.execute(text("SELECT id FROM public.wholesalers WHERE code LIKE 'DC3BV1%' LIMIT 1"))).scalar_one())
+        ws_v2 = str((await session.execute(text("SELECT id FROM public.wholesalers WHERE code LIKE 'DC3BV2%' LIMIT 1"))).scalar_one())
+        ws_u3 = str((await session.execute(text("SELECT id FROM public.wholesalers WHERE code LIKE 'DC3BU3%' LIMIT 1"))).scalar_one())
+    verified_uids = {uid1, uid2}
+    verified_ws = {ws_v1, ws_v2}
 
     async with await _client_with_real_auth() as c:
         r_login = await c.post(LOGIN_URL, json={"email": shared_email, "password": TEST_OLD_PW})
         assert r_login.status_code == 200
-        login_body = str(r_login.json())
-        r_sel = await c.post(
-            SELECT_TENANT_URL,
-            json={"tenant_id": _available_tenant_ids(r_login.json())[0]},
-            headers={"Authorization": f"Bearer {_identity_token(r_login.json())}"},
-        )
-        assert r_sel.status_code == 200
-        r_ref = await c.post(REFRESH_URL, json={"refresh_token": _identity_refresh_token(r_login.json())})
-        assert r_ref.status_code == 200
+        login_json = r_login.json()
+        avail = _available_tenant_ids(login_json)
+        # available_tenants must be exactly the two verified tenants
+        assert set(avail) == verified_ws, "available_tenants must be exactly the two verified tenants"
 
-    for body in (login_body, str(r_sel.json()), str(r_ref.json())):
-        low = body.lower()
-        assert "tmap" not in low, "internal tenant map must not be exposed"
-        assert "tenant_user_map" not in low
-        assert "password_hash" not in low
-        assert "token_hash" not in low
-        # at most ONE user_id appears in a response (the login user_id of the
-        # selected/issuing tenant); the OTHER tenant's user_id must never leak.
-        # The login response includes a single user_id; verify both uids are not
-        # BOTH present simultaneously (which would leak the cross-tenant map).
-        assert not (uid1 in body and uid2 in body), "both tenant user ids leaked"
+        login_access = _identity_token(login_json)
+        login_refresh = _identity_refresh_token(login_json)
+        r_ref = await c.post(REFRESH_URL, json={"refresh_token": login_refresh})
+        assert r_ref.status_code == 200
+        refreshed_access = r_ref.json()["data"]["access_token"]
+
+    # --- decode the identity JWTs and assert tmap truth ---
+    for raw_jwt in (login_access, login_refresh, refreshed_access):
+        claims = decode_token(raw_jwt)
+        tmap = claims.tmap
+        # tmap exists on identity tokens when multiple verified copies require it
+        assert tmap is not None, "identity JWT must carry tmap for multi-tenant verified login"
+        # keys == available_tenants exactly (verified selectable tenants only)
+        assert set(tmap.keys()) == set(avail), "tmap keys must equal available_tenants"
+        assert set(tmap.keys()) == verified_ws, "tmap keys must be the verified wholesaler ids"
+        # values are only the verified tenant-local user IDs
+        assert set(tmap.values()) == verified_uids, "tmap values must be verified user ids only"
+        # the unverified tenant (s3) is absent from tmap (keys and values)
+        assert ws_u3 not in tmap, "unverified tenant must be absent from tmap"
+        assert uid3 not in tmap.values(), "unverified tenant user id must be absent from tmap"
+        # tmap carries only tenant_id->user_id uuids; no hashes/raw tokens
+        for v in tmap.values():
+            assert len(v) == 36 and "$2" not in v and "password" not in v.lower(), "tmap value must be a uuid only"
+
+    # --- top-level JSON response must NOT expose tmap as a separate field ---
+    # tmap lives only inside the encoded JWT, never as a sibling JSON field.
+    for resp_json in (login_json, r_ref.json()):
+        assert "tmap" not in resp_json, "top-level response must not expose tmap"
+        assert "tmap" not in resp_json.get("data", {}), "response data must not expose tmap"
+        assert "tenant_user_map" not in str(resp_json).lower()
+        # no raw password/token hashes surfaced anywhere in the response JSON
+        assert "password_hash" not in str(resp_json).lower()
+        assert "token_hash" not in str(resp_json).lower()

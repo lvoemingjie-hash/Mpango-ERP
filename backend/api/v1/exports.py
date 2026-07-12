@@ -70,6 +70,24 @@ def _extract_tenant(request: Request) -> TenantContext:
     return get_tenant_context(request)
 
 
+def _parse_export_job_id(job_id: str) -> uuid.UUID | None:
+    """Parse external job IDs before DB lookup so malformed IDs fail closed."""
+    try:
+        return uuid.UUID(job_id)
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _invalid_export_id_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=make_error(
+            "INVALID_EXPORT_ID",
+            "Export job id must be a valid UUID",
+        ),
+    )
+
+
 # ============================================================================
 # POST /exports - Enqueue an export job
 # ============================================================================
@@ -214,6 +232,9 @@ async def get_export_status(
     Security: Verifies the requesting tenant owns this export.
     """
     tenant_ctx: TenantContext = _extract_tenant(request)
+    parsed_job_id = _parse_export_job_id(job_id)
+    if parsed_job_id is None:
+        return _invalid_export_id_response()
 
     # --- Look up job in database ---
     try:
@@ -224,7 +245,7 @@ async def get_export_status(
         async with AsyncSessionLocal() as session:
             session.info["tenant_schema"] = "public"
             result = await session.execute(
-                select(Job).where(Job.id == uuid.UUID(job_id))
+                select(Job).where(Job.id == parsed_job_id)
             )
             job = result.scalar_one_or_none()
 
@@ -275,7 +296,10 @@ async def get_export_status(
         )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=make_error("EXPORT_STATUS_FAILED", str(e)),
+            content=make_error(
+                "EXPORT_STATUS_FAILED",
+                "Unable to retrieve export status",
+            ),
         )
 
 
@@ -302,6 +326,9 @@ async def download_export(
     - File path is derived from metadata, never from user input
     """
     tenant_ctx: TenantContext = _extract_tenant(request)
+    parsed_job_id = _parse_export_job_id(job_id)
+    if parsed_job_id is None:
+        return _invalid_export_id_response()
 
     try:
         from database.session import AsyncSessionLocal
@@ -311,7 +338,7 @@ async def download_export(
         async with AsyncSessionLocal() as session:
             session.info["tenant_schema"] = "public"
             result = await session.execute(
-                select(Job).where(Job.id == uuid.UUID(job_id))
+                select(Job).where(Job.id == parsed_job_id)
             )
             job = result.scalar_one_or_none()
 
@@ -373,7 +400,10 @@ async def download_export(
         )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=make_error("EXPORT_DOWNLOAD_FAILED", str(e)),
+            content=make_error(
+                "EXPORT_DOWNLOAD_FAILED",
+                "Unable to download export",
+            ),
         )
 
 

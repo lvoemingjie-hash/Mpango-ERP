@@ -1,11 +1,11 @@
 """
-S6-4: Async Export Engine — Test Suite.
+S6-4: Async Export Engine - Test Suite.
 
 Tests cover:
 1. ExportJobPayload validation (tenant_id propagation, empty rejection)
 2. ExportRequest Pydantic validation (enum whitelist enforcement)
 3. Export worker logic (streaming, file generation, metadata)
-4. Context propagation chain (HTTP → payload → worker)
+4. Context propagation chain (HTTP -> payload -> worker)
 5. Security: tenant ownership verification
 """
 import json
@@ -15,22 +15,108 @@ import asyncio
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
+from starlette.requests import Request as StarletteRequest
 
+from api.context.auth import AuthContext, attach_auth_context
+from api.context.tenant import TenantContext, attach_tenant_context
+from api.middleware.rbac import RequirePermission
 from api.schemas.jobs import (
     ExportRequest,
     ExportJobPayload,
     ExportFormat,
     ExportStatusData,
 )
+from core.security import TokenPayload
 from services.reporting.semantic_layer import (
     ViewScope,
     ReportMetric,
     ReportDimension,
 )
+
+
+TEST_TENANT_ID = "550e8400-e29b-41d4-a716-446655440000"
+OTHER_TENANT_ID = "660e8400-e29b-41d4-a716-446655440000"
+TEST_TENANT_SCHEMA = "t_550e8400e29b41d4a716446655440000"
+
+
+def _response_json(response):
+    return json.loads(response.body.decode("utf-8"))
+
+
+def _request_with_context() -> StarletteRequest:
+    request = StarletteRequest({"type": "http", "headers": []})
+    permission = SimpleNamespace(code="exports:create")
+    role = SimpleNamespace(permissions=[permission])
+    user = SimpleNamespace(id="user-123", roles=[role])
+    token = TokenPayload(
+        user_id="user-123",
+        tenant_id=TEST_TENANT_ID,
+        tenant_schema=TEST_TENANT_SCHEMA,
+        roles=["admin"],
+    )
+    attach_auth_context(request, AuthContext(token=token, raw_token="redacted-test-token"))
+    attach_tenant_context(
+        request,
+        TenantContext(
+            tenant_id=TEST_TENANT_ID,
+            tenant_schema=TEST_TENANT_SCHEMA,
+            session=SimpleNamespace(),
+            user=user,
+        ),
+    )
+    return request
+
+
+async def _exports_create_token(request: StarletteRequest) -> TokenPayload:
+    return await RequirePermission("exports:create")(request)
+
+
+class _FakeResult:
+    def __init__(self, job):
+        self.job = job
+
+    def scalar_one_or_none(self):
+        return self.job
+
+
+class _FakeSession:
+    def __init__(self, job):
+        self.job = job
+        self.info = {}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def execute(self, statement):
+        return _FakeResult(self.job)
+
+
+def _patch_job_lookup(monkeypatch, job) -> None:
+    monkeypatch.setattr(
+        "database.session.AsyncSessionLocal",
+        lambda: _FakeSession(job),
+    )
+
+
+def _job(*, tenant_id: str = TEST_TENANT_ID, status: str = "pending"):
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        status=status,
+        payload={"tenant_id": tenant_id, "format": "csv"},
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        started_at=None,
+        completed_at=None,
+        last_error=None,
+    )
 
 
 # ============================================================================
@@ -365,7 +451,7 @@ class TestMetadata:
     """Test the metadata sidecar read/write."""
 
     def test_write_and_read_metadata(self, tmp_path):
-        """Metadata should survive write → read round-trip."""
+        """Metadata should survive write -> read round-trip."""
         from jobs.export_jobs import _write_metadata, read_metadata, EXPORT_DIR
 
         # Temporarily override EXPORT_DIR
@@ -412,12 +498,12 @@ class TestMetadata:
 class TestContextPropagation:
     """
     Verify the full context propagation chain:
-    HTTP request → ExportRequest → ExportJobPayload → Worker validation
+    HTTP request -> ExportRequest -> ExportJobPayload -> Worker validation
     """
 
     def test_full_chain_preserves_tenant_id(self):
         """
-        Simulate: Frontend sends ExportRequest → API builds payload → Worker validates.
+        Simulate: Frontend sends ExportRequest -> API builds payload -> Worker validates.
         tenant_id must survive the entire chain.
         """
         # Step 1: Frontend sends request (Pydantic validates enums)
@@ -509,7 +595,84 @@ class TestExportStatusData:
 
 
 # ============================================================================
-# 8. Value Serialization Tests
+# 8. Export API Fail-Closed Security Tests
+# ============================================================================
+
+class TestExportApiFailClosed:
+    """Test export API security behavior at handler boundaries."""
+
+    @pytest.mark.asyncio
+    async def test_status_malformed_job_id_returns_controlled_error(self):
+        from api.v1.exports import get_export_status
+
+        request = _request_with_context()
+        token = await _exports_create_token(request)
+
+        response = await get_export_status(request, "not-a-uuid", token)
+        body = _response_json(response)
+
+        assert response.status_code in (400, 404)
+        assert response.status_code != 500
+        assert body["error"]["code"] in {"INVALID_EXPORT_ID", "EXPORT_NOT_FOUND"}
+        assert "badly formed hexadecimal UUID string" not in json.dumps(body)
+        assert "ValueError" not in json.dumps(body)
+
+    @pytest.mark.asyncio
+    async def test_download_malformed_job_id_returns_controlled_error(self):
+        from api.v1.exports import download_export
+
+        request = _request_with_context()
+        token = await _exports_create_token(request)
+
+        response = await download_export(request, "not-a-uuid", token)
+        body = _response_json(response)
+
+        assert response.status_code in (400, 404)
+        assert response.status_code != 500
+        assert body["error"]["code"] in {"INVALID_EXPORT_ID", "EXPORT_NOT_FOUND"}
+        assert "badly formed hexadecimal UUID string" not in json.dumps(body)
+        assert "ValueError" not in json.dumps(body)
+
+    @pytest.mark.asyncio
+    async def test_export_permission_rejects_no_auth(self):
+        request = StarletteRequest({"type": "http", "headers": []})
+
+        with pytest.raises(HTTPException) as exc:
+            await RequirePermission("exports:create")(request)
+
+        assert exc.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_wrong_tenant_status_job_id_remains_hidden(self, monkeypatch):
+        from api.v1.exports import get_export_status
+
+        request = _request_with_context()
+        token = await _exports_create_token(request)
+        _patch_job_lookup(monkeypatch, _job(tenant_id=OTHER_TENANT_ID))
+
+        response = await get_export_status(request, str(uuid.uuid4()), token)
+        body = _response_json(response)
+
+        assert response.status_code == 404
+        assert body["error"]["code"] == "EXPORT_NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_pending_job_download_remains_conflict(self, monkeypatch):
+        from api.v1.exports import download_export
+
+        request = _request_with_context()
+        token = await _exports_create_token(request)
+        _patch_job_lookup(monkeypatch, _job(status="pending"))
+
+        response = await download_export(request, str(uuid.uuid4()), token)
+        body = _response_json(response)
+
+        assert response.status_code == 409
+        assert body["error"]["code"] == "EXPORT_NOT_READY"
+
+
+# ============================================================================
+# 9. Value Serialization Tests
 # ============================================================================
 
 class TestValueSerialization:

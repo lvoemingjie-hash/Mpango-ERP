@@ -60,6 +60,8 @@ async def find_user_across_tenants(
     matches: List[TenantUserMatch] = []
     verified_user_id: Optional[str] = None
 
+    # First pass: collect every active copy of this email across tenant schemas.
+    candidate_matches: List[TenantUserMatch] = []
     for ws in wholesalers:
         tenant_schema = ws.get_tenant_schema()
         try:
@@ -69,21 +71,31 @@ async def find_user_across_tenants(
                     continue
                 if not user.is_active:
                     continue
-
-                # Verify password (only once — all tenant copies share same email)
-                if verified_user_id is None:
-                    if not verify_password(password, user.password_hash):
-                        return (None, [])
-                    verified_user_id = str(user.id)
-
                 role_names = [r.name for r in user.roles] if user.roles else []
-                matches.append(TenantUserMatch(
+                candidate_matches.append(TenantUserMatch(
                     wholesaler=ws,
                     user=user,
                     roles=role_names,
                 ))
         except Exception:
             continue
+
+    if not candidate_matches:
+        return (None, [])
+
+    # Second pass: include ONLY copies whose own password_hash verifies.
+    # DC-3B-R1 fix: an unverified copy (e.g. same email but a different password
+    # in another tenant) must NOT be granted or listed in available_tenants. The
+    # verified_user_id is the user_id of the first verified copy; the returned
+    # match list contains only verified copies.
+    for match in candidate_matches:
+        if verify_password(password, match.user.password_hash):
+            if verified_user_id is None:
+                verified_user_id = str(match.user.id)
+            matches.append(match)
+
+    if verified_user_id is None or not matches:
+        return (None, [])
 
     return (verified_user_id, matches)
 

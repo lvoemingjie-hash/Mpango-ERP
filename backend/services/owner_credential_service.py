@@ -13,11 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import Settings, get_settings
 from core.security import hash_password
 from db.sql_safety import validate_identifier
+from db.tenant_filter import mark_session_as_system, run_as_system
 from models.tenant_onboarding import (
     OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE,
     OwnerCredentialSetupToken,
     TenantRegistration,
 )
+from models.wholesaler import Wholesaler
 from services.onboarding_service import generate_verification_token, hash_token
 
 
@@ -309,6 +311,9 @@ class OwnerCredentialSetupService:
                 ),
                 {"password_hash": setup.password_hash, "user_id": user_id},
             )
+            await self._propagate_password_to_other_tenants(
+                setup.owner_email, setup.password_hash, exclude_schema=tenant_schema
+            )
             return user_id, False
 
         user_id = await self.db.scalar(
@@ -324,7 +329,65 @@ class OwnerCredentialSetupService:
                 "full_name": "Owner Admin",
             },
         )
+        await self._propagate_password_to_other_tenants(
+            setup.owner_email, setup.password_hash, exclude_schema=tenant_schema
+        )
         return user_id, True
+
+    async def _propagate_password_to_other_tenants(
+        self, owner_email: str, password_hash: str, *, exclude_schema: str
+    ) -> None:
+        """DC-3B canonical rule: keep every active same-email copy in sync.
+
+        After the primary tenant's owner user is created/updated, propagate the
+        same password_hash to every OTHER active tenant schema where the same
+        normalized email already exists as an active user. This prevents the
+        multi-tenant stale-hash login hazard (DC-3A Section 5). Schemas that do
+        not contain the email are not touched (no new users are created in other
+        tenants). The primary schema is excluded (already written).
+
+        Each per-tenant update runs in its own SAVEPOINT so a single schema
+        failure (e.g. a dropped schema, a tenant without a users table) cannot
+        abort the outer setup transaction.
+        """
+        normalized = owner_email.strip().lower()
+        try:
+            mark_session_as_system(self.db, reason="owner_password_fanout")
+            with run_as_system(reason="owner_password_fanout"):
+                result = await self.db.execute(
+                    select(Wholesaler)
+                    .where(Wholesaler.is_deleted == False)  # noqa: E712
+                    .order_by(Wholesaler.created_at),
+                    execution_options={"ignore_tenant": True},
+                )
+                wholesalers = list(result.scalars().all())
+        except Exception:
+            # If the wholesaler scan itself fails, skip fan-out; the primary
+            # tenant is already written and the caller will commit it.
+            return
+        for ws in wholesalers:
+            schema = ws.get_tenant_schema()
+            if schema == exclude_schema:
+                continue
+            try:
+                validate_identifier(schema)
+            except Exception:
+                continue
+            try:
+                async with self.db.begin_nested():
+                    await self.db.execute(
+                        text(
+                            f'UPDATE "{schema}".users '
+                            "SET password_hash = :password_hash, updated_at = now() "
+                            "WHERE lower(email) = :email AND is_active = true "
+                            "AND is_deleted = false"
+                        ),
+                        {"password_hash": password_hash, "email": normalized},
+                    )
+            except Exception:
+                # A schema without a users table or a dropped schema must not
+                # abort the owner setup; the SAVEPOINT rollback isolates it.
+                continue
 
     async def _ensure_admin_role(self, tenant_schema: str) -> UUID:
         role_id = await self.db.scalar(

@@ -10,7 +10,7 @@ Per multi_tenancy_spec.md section 4.1, JWT claims must contain:
 - type: "access" or "refresh"
 """
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from jose import jwt, JWTError, ExpiredSignatureError
 from passlib.context import CryptContext
@@ -51,6 +51,16 @@ class TokenPayload(BaseModel):
     roles: List[str] = []
     exp: Optional[int] = None
     type: str = "access"  # "access" or "refresh"
+    # DC-3B-R2: signed tenant_id -> tenant-local user_id map for verified
+    # identity-only tokens. Lets /select-tenant resolve the correct per-tenant
+    # user_id when the same email exists in multiple tenants with different
+    # user IDs. Absent on contextual tokens and on legacy identity tokens.
+    # This claim is SIGNED but NOT ENCRYPTED: it is client-decodable (any JWT
+    # holder can read it) and therefore NOT confidential. It guarantees
+    # integrity only (tampering is detected via signature verification). It
+    # must contain ONLY verified tenant_id -> user_id pairs and must never
+    # include unverified tenants, password hashes, token hashes, or raw tokens.
+    tmap: Optional[Dict[str, str]] = None
 
     @property
     def is_identity_only(self) -> bool:
@@ -69,9 +79,10 @@ def create_identity_token(
     *,
     token_type: str = "access",
     expires_delta: Optional[timedelta] = None,
+    tenant_user_map: Optional[Dict[str, str]] = None,
 ) -> str:
     """
-    Create an Identity JWT — no tenant context.
+    Create an Identity JWT -- no tenant context.
 
     Issued at login before tenant selection.  Contains user_id and roles
     so the frontend can show tenant picker / super-admin UI.
@@ -81,6 +92,11 @@ def create_identity_token(
         roles: Aggregated role names across all tenants (or ["super_admin"])
         token_type: "access" or "refresh"
         expires_delta: Optional custom expiration time
+        tenant_user_map: Optional signed {tenant_id: tenant_local_user_id} map
+            of VERIFIED tenant matches (DC-3B-R1). Carried so /select-tenant
+            can resolve the correct per-tenant user_id when the same email
+            exists in multiple tenants with different user IDs. Only verified
+            matches (password_hash verified at login) are included.
     """
     settings = get_settings()
     if expires_delta is None:
@@ -96,6 +112,8 @@ def create_identity_token(
         "exp": expire,
         "type": token_type,
     }
+    if tenant_user_map:
+        payload["tmap"] = tenant_user_map
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
@@ -109,7 +127,7 @@ def create_contextual_token(
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
-    Create a Contextual JWT — includes tenant context.
+    Create a Contextual JWT -- includes tenant context.
 
     Issued after POST /auth/select-tenant.  The existing Tenant Guardrail
     (ORM filtering) reads tenant_id / tenant_schema from this token.
@@ -151,7 +169,7 @@ def create_access_token(
     """
     Create JWT access token with tenant claims.
 
-    Legacy wrapper — delegates to create_contextual_token.
+    Legacy wrapper -- delegates to create_contextual_token.
     Kept for backward compatibility with existing callers.
     """
     return create_contextual_token(
@@ -174,7 +192,7 @@ def create_refresh_token(
     """
     Create JWT refresh token with tenant claims.
 
-    Legacy wrapper — delegates to create_contextual_token.
+    Legacy wrapper -- delegates to create_contextual_token.
     Kept for backward compatibility with existing callers.
     """
     return create_contextual_token(

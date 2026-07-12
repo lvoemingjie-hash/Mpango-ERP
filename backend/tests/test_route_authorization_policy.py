@@ -143,6 +143,8 @@ PLATFORM_PERMISSION_PREFIXES: Tuple[str, ...] = (
 # - /api/v1/auth/verify-email   : public email verification token exchange
 # - /api/v1/auth/onboarding/status : public onboarding status token exchange
 # - /api/v1/auth/onboarding/setup-credential : public owner credential setup token exchange (U6-I5)
+# - /api/v1/auth/forgot-password : public neutral reset-link request (DC-3B, no existence leak)
+# - /api/v1/auth/reset-password  : public reset-token consume + new password (DC-3B, body-only token)
 # - /api/v1/auth/refresh        : refresh token in body (pre-auth, validates internally)
 # - /api/v1/invitations/{code}  : pre-auth invitation code validation (retailer signup flow)
 # - /api/v1/retailers/register  : pre-auth retailer self-registration via invitation code
@@ -154,6 +156,8 @@ PUBLIC_ALLOWLIST: Set[str] = {
     "/api/v1/auth/verify-email",
     "/api/v1/auth/onboarding/status",
     "/api/v1/auth/onboarding/setup-credential",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password",
     "/api/v1/auth/refresh",
     "/api/v1/invitations/{code}",
     "/api/v1/retailers/register",
@@ -927,6 +931,8 @@ class TestPublicAllowlistIntegrity:
             "/api/v1/auth/verify-email",
             "/api/v1/auth/onboarding/status",
             "/api/v1/auth/onboarding/setup-credential",
+            "/api/v1/auth/forgot-password",
+            "/api/v1/auth/reset-password",
             "/api/v1/auth/refresh",
             "/api/v1/invitations/{code}",
             "/api/v1/retailers/register",

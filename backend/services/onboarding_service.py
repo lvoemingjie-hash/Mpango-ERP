@@ -100,6 +100,17 @@ def normalize_email(email: str) -> str:
 
 def validate_signup_password(password: str) -> None:
     """Validate the U6-C password policy before bcrypt hashing."""
+    validate_password_policy(password)
+
+
+def validate_password_policy(password: str) -> None:
+    """Shared backend password policy for signup, setup-credential, and reset.
+
+    Minimal policy (DC-3B): non-blank and length >= 8. Frontend policy is
+    intentionally not added in DC-3B. Stronger rules may be layered here later.
+    """
+    if not isinstance(password, str) or not password or not password.strip():
+        raise ValueError("Password must not be blank")
     if len(password) < 8:
         raise ValueError("Password must be at least 8 characters")
 
@@ -366,6 +377,16 @@ def build_verification_link(token: str) -> str:
 def build_owner_setup_link(token: str) -> str:
     """Build the owner credential setup link for email delivery only."""
     return f"/setup-credential?setupToken={quote(token, safe='')}"
+
+
+def build_password_reset_link(token: str) -> str:
+    """Build the password reset link for email delivery only.
+
+    The consuming /auth/reset-password endpoint rejects query-string tokens, so
+    (like the owner setup link) this link is informational only: a dedicated
+    frontend page must POST the token in the body.
+    """
+    return f"/reset-password?resetToken={quote(token, safe='')}"
 
 
 def _public_onboarding_status(status: str) -> str:

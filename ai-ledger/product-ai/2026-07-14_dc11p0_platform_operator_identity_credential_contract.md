@@ -4,207 +4,248 @@
 |---|---|
 | Date | 2026-07-14 |
 | Task ID | DC-11P0 (Platform Operator Identity + Credential Lifecycle Contract) |
+| Revision | R1 (corrects R0 on migration numbering, collision semantics, session invalidation, staged cutover, break-glass, rollback safety) |
 | Mode | Docs/tests-only audit and contract. No runtime implementation. |
 | Base | `origin/product-dev-recovered @ cb1b1fffc63ed19e320701043eed38b8f2bea0c7` |
 | Branch | `opencode/dc11p0-platform-operator-identity-contract-2026-07-14` |
-| Verdict | `PASS_FOR_CTO_DC11P1_IMPLEMENTATION` |
+| R0 commit | `6a0f4b01` |
+| Verdict | `PASS_FOR_CTO_DC11P1_SCHEMA_IMPLEMENTATION` |
 
-## 1. Current State Confirmation
+## 1. Current State Confirmation (unchanged from R0)
 
 ### 1.1 Platform browser login uses the common /auth/login entry
 
-**CONFIRMED.** Platform operators log in through `POST /api/v1/auth/login`
-(`backend/api/v1/auth.py:232`) -- the same endpoint as regular tenant users.
-No separate platform login endpoint exists. The frontend `LoginPage.tsx:58`
-detects `super_admin` in the identity token roles after the common login and
-routes to the platform dashboard. Evidence: `auth.py:232-236`,
-`frontend/src/services/authService.ts:15-16`.
+CONFIRMED. Platform operators log in through `POST /api/v1/auth/login`
+(`backend/api/v1/auth.py:232`). No separate platform login endpoint exists.
+Evidence: `auth.py:232-236`, `frontend/src/services/authService.ts:15-16`.
 
 ### 1.2 Platform access requires identity-only global super_admin
 
-**CONFIRMED.** The platform guard (`backend/api/v1/platform/p10/guard.py:81`)
-requires ALL three: (a) valid JWT auth context, (b) `super_admin` role in
-token, (c) token must be identity-only (`tenant_id is None or tenant_schema
-is None`). A contextual super_admin token (with tenant context) is rejected
-with 403 `PLATFORM_ACCESS_DENIED`. Evidence: `guard.py:61-84, 155-174`,
-`core/security.py:66-68, 71-73`.
+CONFIRMED. The platform guard (`guard.py:81`) requires ALL three: valid JWT
+auth context, `super_admin` role, and identity-only token (`tenant_id is None
+or tenant_schema is None`). Evidence: `guard.py:61-84, 155-174`.
 
 ### 1.3 Current global role is derived from tenant-local user roles
 
-**CONFIRMED.** The `super_admin` role is aggregated from tenant-local
-`user_roles` at login (`backend/api/v1/auth.py:268`: `all_roles = sorted({r
-for m in matches for r in m.roles})`) and stamped into the identity JWT.
-There is NO global/platform-level role table. The role originates as a
-tenant-local `roles.name` / `user_roles` row. Evidence: `crud/user.py:74-79`,
-`auth.py:268, 287-298`, `models/user.py:52-57`.
+CONFIRMED. `super_admin` is aggregated from tenant-local `user_roles`
+(`auth.py:268`) and stamped into the identity JWT. No global/platform role
+table exists. Evidence: `crud/user.py:74-79`, `auth.py:268, 287-298`.
 
 ### 1.4 No dedicated platform operator identity/provisioning/recovery path exists
 
-**CONFIRMED.** No `platform_operators` or `platform_users` table/model exists
-in `backend/models/`. No platform-specific signup, provisioning, or
-forgot/reset password endpoint exists under `backend/api/v1/platform/`.
-Operator provisioning is implicitly "give a tenant user the tenant-local
-`super_admin` role" with no dedicated flow. The common forgot/reset
-endpoints (`auth.py:708-812`) are tenant-user oriented.
+CONFIRMED. No `platform_operators` table/model. No platform-specific
+signup/provisioning/recovery endpoint.
 
 ### 1.5 X-Platform-Operator is machine/server-only and forbidden in browsers
 
-**CONFIRMED.** The guard docstring (`guard.py:8-11`) states: "The frontend
-never receives or sends PLATFORM_OPERATOR_SECRET." The frontend
-`platformApi.ts:11-13` explicitly states no X-Platform-Operator secret is
-sent or stored. A code search across `frontend/` found only comments and a
-test assertion -- no code path attaches the header to outgoing requests.
+CONFIRMED. Guard docstring (`guard.py:8-11`) and frontend `platformApi.ts`
+confirm the header is never sent by the browser.
 
-## 2. Problem Statement
+## 2. Problem Statement (unchanged from R0)
 
-The current architecture has a security gap: platform operator identity is
-derived from tenant-local RBAC. A tenant-local `super_admin` role (which can
-be granted by any tenant admin via the RBAC system) is promoted to a "global"
-platform-access claim purely by being unioned across tenants into the identity
-JWT. This means:
+Platform operator identity is derived from tenant-local RBAC. A tenant-local
+`super_admin` role (grantable by any tenant admin) is promoted to a "global"
+platform-access claim purely by being unioned into the identity JWT. This
+means any tenant admin can grant platform access, with no platform-scope
+revocation, no dedicated operator lifecycle, and no maker-checker separation.
 
-- Any tenant admin can grant platform access by assigning `super_admin` to a
-  user in their tenant.
-- There is no platform-scope role revocation (removing the tenant-local role
-  is the only way to revoke platform access).
-- There is no dedicated operator lifecycle (provisioning, recovery, lockout,
-  disable, audit).
-- There is no maker-checker separation for platform operations.
-
-## 3. Design Requirements
+## 3. Design Requirements (R1 corrected)
 
 ### 3.1 One customer-facing login entry
 
 Keep the single `POST /auth/login` entry. Platform operators authenticate
-through the same endpoint. The identity JWT will carry a new `platform_role`
-claim (separate from tenant-local `roles`) when the authenticated email maps
-to a platform operator record. The platform guard will check `platform_role`
-instead of (or in addition to) the tenant-local `super_admin` role.
+through the same endpoint. R1 correction: platform operator authentication
+must be INDEPENDENT of tenant users. A platform-only operator with no
+tenant-local user must be able to authenticate safely through /auth/login.
+
+The login handler will be extended to:
+1. First check `public.platform_operators` for the email. If found and
+   active, verify the platform password independently. If it verifies, issue
+   an identity JWT with `platform_role` set from the operator record.
+2. Then check tenant schemas (existing flow). If any tenant copy verifies,
+   issue tenant claims as today.
+3. If BOTH platform and tenant passwords verify (collision case), the JWT
+   carries BOTH `platform_role` AND tenant claims. See Section 3.3.
 
 ### 3.2 Global platform role must not derive from tenant-local RBAC
 
-Introduce a `platform_operators` table in the public schema with:
+R1 correction: `platform_role` is a signed JWT claim that is client-readable
+and non-confidential (like `tmap` in DC-3B-R2). It guarantees integrity (not
+secrety). It is set ONLY when the platform operator password verifies at
+login. Tenant-local `super_admin` MUST NEVER produce `platform_role`. The
+platform guard checks `platform_role`, not tenant `super_admin`.
+
+### 3.3 Collision semantics (R1 new)
+
+When one email belongs to BOTH a platform operator AND one or more tenant
+users:
+
+| Scenario | JWT claims | Behavior |
+|---|---|---|
+| Platform password verifies, tenant password does NOT | `platform_role` only | Operator can access platform; cannot select tenants (no tenant matches) |
+| Tenant password verifies, platform password does NOT | tenant claims only (no `platform_role`) | User can select tenants; cannot access platform |
+| BOTH verify | `platform_role` AND tenant claims | Full access: platform + tenant selection |
+| Neither verifies | 401 INVALID_CREDENTIALS | Login rejected |
+
+The login handler verifies the platform password against
+`platform_operators.password_hash` and the tenant password(s) against
+tenant-local `users.password_hash` independently. They may differ.
+
+### 3.4 Separate token tables (R1 corrected)
+
+Three separate public-schema tables:
+
+**`public.platform_operators`**:
 - `id` UUID PK
-- `email` VARCHAR UNIQUE (the operator's email; normalized to lowercase)
-- `email_hash` VARCHAR(128) (SHA-256 of normalized email for indexing)
-- `password_hash` VARCHAR(255) (bcrypt hash; NULL until first setup)
-- `status` VARCHAR (pending_setup, active, disabled, locked)
-- `role` VARCHAR (platform_admin, platform_operator)
-- `setup_token_hash` VARCHAR(128) (HMAC-SHA256 hash; NULL after setup)
-- `setup_token_expires_at` TIMESTAMPTZ
-- `setup_token_used_at` TIMESTAMPTZ (NULL until consumed)
-- `reset_token_hash` VARCHAR(128) (HMAC-SHA256 hash; NULL when no active reset)
-- `reset_token_expires_at` TIMESTAMPTZ
-- `reset_token_used_at` TIMESTAMPTZ
-- `failed_login_attempts` INT DEFAULT 0
-- `locked_until` TIMESTAMPTZ (NULL when not locked)
+- `email` VARCHAR UNIQUE NOT NULL (normalized lowercase)
+- `email_hash` VARCHAR(128) NOT NULL (SHA-256 of normalized email)
+- `password_hash` VARCHAR(255) (NULL until first setup)
+- `status` VARCHAR NOT NULL DEFAULT 'pending_setup' (pending_setup, active, disabled, locked)
+- `role` VARCHAR NOT NULL DEFAULT 'platform_operator' (platform_admin, platform_operator)
+- `failed_login_attempts` INT NOT NULL DEFAULT 0
+- `locked_until` TIMESTAMPTZ
+- `credentials_changed_at` TIMESTAMPTZ NOT NULL DEFAULT now() (for session invalidation)
 - `last_login_at` TIMESTAMPTZ
-- `revoked_at` TIMESTAMPTZ (NULL when active)
-- `created_by` UUID (the inviting operator's id; NULL for bootstrap)
-- `created_at`, `updated_at`, `is_deleted`, `deleted_at` (AuditMixin)
+- `revoked_at` TIMESTAMPTZ
+- `invited_by` UUID (FK platform_operators.id; NULL for bootstrap)
+- AuditMixin (created_at, updated_at, is_deleted, deleted_at)
 
-The platform guard will verify the `platform_role` claim from the JWT, which
-is set at login ONLY when the email matches an active `platform_operators`
-row. Tenant-local `super_admin` will NO LONGER grant platform access.
+**`public.platform_operator_setup_tokens`**:
+- `id` UUID PK
+- `operator_id` UUID NOT NULL FK platform_operators.id
+- `token_hash` VARCHAR(128) NOT NULL UNIQUE
+- `purpose` VARCHAR(32) NOT NULL DEFAULT 'setup'
+- `expires_at` TIMESTAMPTZ NOT NULL
+- `used_at` TIMESTAMPTZ
+- `revoked_at` TIMESTAMPTZ
+- AuditMixin
 
-### 3.3 Operator accounts are invite/bootstrap-only; no public signup
+**`public.platform_operator_reset_tokens`**:
+- `id` UUID PK
+- `operator_id` UUID NOT NULL FK platform_operators.id
+- `token_hash` VARCHAR(128) NOT NULL UNIQUE
+- `purpose` VARCHAR(32) NOT NULL DEFAULT 'reset'
+- `expires_at` TIMESTAMPTZ NOT NULL
+- `used_at` TIMESTAMPTZ
+- `revoked_at` TIMESTAMPTZ
+- AuditMixin
 
-No public `/platform/signup` endpoint. Operators are provisioned by:
-- **Bootstrap**: a CLI/management command creates the first operator with a
-  setup token (no plaintext password). The setup token is displayed once to
-  the bootstrap operator (or written to a secure file). The first operator
-  uses the setup-credential flow to set their password.
-- **Invite**: an active `platform_admin` invites a new operator via
-  `POST /api/v1/platform/operators/invite`. This creates a `platform_operators`
-  row with `status=pending_setup` and issues a setup token delivered once via
-  email (or secure out-of-band channel for the first operator after bootstrap).
+Token tables store HASH ONLY. Raw tokens exist only in memory and the email
+channel. Body-only (no query-string). Single-use. Setup TTL = 24h, Reset
+TTL = 1h.
 
-### 3.4 First-operator secure bootstrap without default/random passwords
+### 3.5 First-operator bootstrap (R1 corrected)
 
 The bootstrap command (`python -m scripts.bootstrap_platform_operator --email
 <email>`) will:
 - Create a `platform_operators` row with `status=pending_setup`,
   `password_hash=NULL`.
-- Generate a setup token (raw token returned to stdout ONCE or written to a
-  file with mode 0600).
-- The raw token is never stored; only `setup_token_hash` is persisted.
-- The operator navigates to `/setup-credential?setupToken=<token>` (frontend)
-  and POSTs the token + new password to `POST /api/v1/platform/operators/
-  setup-credential`.
-- No default or random password is ever seeded.
+- Generate a setup token. Store ONLY `token_hash` in
+  `platform_operator_setup_tokens`.
+- Deliver the setup token VIA EMAIL through the configured SMTP provider
+  (reusing the existing `email_delivery.py` fail-closed mechanism).
+- NO raw token on stdout. NO raw token written to disk. NO default or random
+  password.
+- Production email failure MUST fail closed (no token committed without
+  delivery). The operator navigates to `/setup-credential?setupToken=<token>`
+  from the email.
+- Never log the raw token or setup URL.
 
-### 3.5 Setup, forgot/reset, revoke, disable, lockout, audit lifecycle
+### 3.6 Immediate session invalidation (R1 new)
 
-| Lifecycle event | Mechanism |
-|---|---|
-| **Setup** | `POST /platform/operators/setup-credential` (body-only token; hash-only lookup; single-use; 24h TTL) |
-| **Forgot password** | `POST /platform/operators/forgot-password` (neutral 200; creates reset token; email delivered; fail-closed in production) |
-| **Reset password** | `POST /platform/operators/reset-password` (body-only token; hash-only; single-use; 1h TTL; updates password_hash) |
-| **Revoke** | `POST /platform/operators/{id}/revoke` (platform_admin only; sets `revoked_at`; immediate session invalidation via JWT expiry) |
-| **Disable** | `POST /platform/operators/{id}/disable` (platform_admin only; sets `status=disabled`; blocks future logins) |
-| **Lockout** | Automatic after 5 failed login attempts; sets `locked_until = now + 15min`; `failed_login_attempts` resets on successful login |
-| **Audit** | Every lifecycle event (setup, login, reset, revoke, disable, lockout, invite) writes to `platform_audit_logs` with `actor_type=platform_operator` |
+Two complementary mechanisms:
 
-### 3.6 Hash-only token storage
+1. **`credentials_changed_at` guard**: Every platform operator JWT includes
+   a `iat` (issued-at) claim. The platform guard checks
+   `operator.credentials_changed_at > jwt.iat`. If true, the JWT is stale
+   (password was changed after issuance) and the guard rejects with 401.
+2. **Active-state guard validation**: On every platform request, the guard
+   fetches the operator row and checks `status=active AND revoked_at IS NULL
+   AND locked_until IS NULL OR locked_until < now()`. If the operator was
+   disabled/revoked/locked AFTER the JWT was issued, the guard rejects with
+   401/403.
 
-All setup and reset tokens are stored as HMAC-SHA256 hashes (reusing the
-existing `hash_token` function from `onboarding_service.py`). Raw tokens
-exist only in memory and the email/setup channel. Never logged. Never in
-query strings (body-only).
+This ensures disabled/revoked operators lose access IMMEDIATELY, not at JWT
+expiry.
 
-### 3.7 Maker-checker (two-operator requirement)
+### 3.7 /auth/me behavior for platform-only operators (R1 new)
 
-- At least two distinct human operators must exist before any destructive
-  platform action (revoke, disable, delete tenant).
-- The inviting operator (`created_by`) and the invited operator must be
-  different humans.
-- The bootstrap creates exactly one operator; a second must be invited before
-  destructive actions are permitted. The API enforces: if
-  `count(active_operators) < 2`, destructive endpoints return 409
+`GET /auth/me` returns:
+- `email`: the operator email
+- `roles`: `[]` (no tenant roles for a platform-only operator)
+- `platform_role`: `"platform_admin"` or `"platform_operator"` (new field)
+- `available_tenants`: `[]` (no tenant matches for a platform-only operator)
+
+Frontend routing: if `platform_role` is present and `available_tenants` is
+empty, route directly to `/platform` (platform dashboard). Do NOT require
+tenant selection. If both `platform_role` and `available_tenants` are
+present, show the workspace selector (tenant selection) as today, with
+platform access available after any selection or none.
+
+### 3.8 Safe staged cutover (R1 new)
+
+| Stage | Action | Guard behavior |
+|---|---|---|
+| 1. Add schema | Migration 034 creates tables. No guard change. | Tenant-local super_admin still accepted. |
+| 2. Bootstrap operators | CLI bootstraps at least 2 operators via email. Verify both can log in and access platform. | Both paths accepted (tenant super_admin OR platform_role). |
+| 3. Validate | Run smoke tests: both operators authenticate, platform_role in JWT, maker-checker enforced. | Both paths accepted. |
+| 4. Switch guard | Deploy guard change: platform access requires `platform_role`. Tenant-local `super_admin` NO LONGER sufficient. | Only `platform_role` accepted. |
+
+No deployment step leaves all operators locked out: stage 4 is deployed only
+after stage 2 confirms at least 2 operators can authenticate. If stage 4
+fails, rollback to stage 3 guard (both paths) -- operators retain access.
+
+### 3.9 Maker-checker (R1 corrected)
+
+- The first operator (bootstrap) is `platform_admin` and may invite the
+  second.
+- Destructive actions (revoke, disable, delete tenant) require two distinct
+  active operators: the actor and a checker who approves.
+- `count(active_operators) < 2` -> destructive endpoints return 409
   `MAKER_CHECKER_MINIMUM_NOT_MET`.
+- Break-glass recovery: if ALL operators are disabled/locked, a CLI command
+  (`python -m scripts.break_glass_platform_operator --email <email>`)
+  re-enables one operator. This command:
+  - Requires a file-based token (written by the CTO out-of-band) OR
+    interactive confirmation.
+  - Logs to `platform_audit_logs` with `actor_type=system`,
+    `action=break_glass_enable`.
+  - Is NOT network-accessible (CLI only, not an API endpoint).
+- Every action is audited with stable operator IDs (the `platform_operators.id`
+  UUID, never the email).
 
-### 3.8 No plaintext password or shared operator secrets
+### 3.10 X-Platform-Operator remains machine/server-only (unchanged)
 
-- No plaintext password is ever seeded, stored, or logged.
-- No shared operator secret exists (each operator has their own
-  `password_hash`).
-- The `X-Platform-Operator` machine secret remains server-only and is NOT
-  used for browser auth.
+The header is for server/operator contexts only. The frontend never sends it.
+It is NOT a human browser credential.
 
-## 4. Schema / Migration Plan
+## 4. Schema / Migration Plan (R1 corrected)
 
-### 4.1 New migration: `032_platform_operators.py`
+### 4.1 Migration: `034_platform_operators.py`
 
-- `down_revision`: current single head (verify at implementation time).
-- Creates `public.platform_operators` table with the columns in Section 3.2.
-- Unique index on `email`; unique partial index on `email_hash WHERE
-  is_deleted = false`.
-- Unique partial index on `setup_token_hash WHERE setup_token_used_at IS
-  NULL AND revoked_at IS NULL`.
-- Unique partial index on `reset_token_hash WHERE reset_token_used_at IS
-  NULL AND revoked_at IS NULL`.
-- Does NOT modify existing tables (additive only).
+- `revision`: `034_platform_operators`
+- `down_revision`: `033_order_status_enum_reconciliation`
+- NEVER edit migration <= 033.
+- Creates three tables: `platform_operators`,
+  `platform_operator_setup_tokens`, `platform_operator_reset_tokens`.
+- Additive only. Does NOT modify existing tables.
 
 ### 4.2 Login integration
 
-The `/auth/login` handler will be extended to:
-1. After successful tenant-user password verification, check if the email
-   matches an active `platform_operators` row.
-2. If yes, add `platform_role` to the identity JWT claims (in addition to
-   tenant roles).
-3. The platform guard checks `platform_role` (not tenant `super_admin`).
+The `/auth/login` handler will be extended to check `platform_operators`
+FIRST (before the tenant scan). If the email matches an active operator and
+the platform password verifies, `platform_role` is added to the JWT. The
+tenant scan continues as today (tenant claims added if any tenant copy
+verifies). See Section 3.3 for collision semantics.
 
-### 4.3 Platform guard update
+### 4.3 Platform guard staged cutover
 
-`guard.py` will accept EITHER:
-- `token.platform_role` in `["platform_admin", "platform_operator"]` (new
-  path), OR
-- The `X-Platform-Operator` machine secret (unchanged, server-only).
+The guard will use a feature flag (env var `PLATFORM_GUARD_MODE`):
+- `legacy` (default during cutover): accepts tenant-local `super_admin` OR
+  `platform_role`.
+- `strict` (after cutover): accepts ONLY `platform_role`.
 
-Tenant-local `super_admin` will NO LONGER be sufficient for browser-based
-platform access. This is a breaking change for existing operators who have
-only the tenant-local role; they must be bootstrapped into the new
-`platform_operators` table.
+This allows a safe staged rollout without leaving operators locked out.
 
 ## 5. API Slices (DC-11P1+)
 
@@ -215,88 +256,102 @@ only the tenant-local role; they must be bootstrapped into the new
 | `/platform/operators/reset-password` | POST | Public (token-gated) | Set new password from reset token |
 | `/platform/operators` | GET | platform_admin | List operators (sanitized) |
 | `/platform/operators/invite` | POST | platform_admin | Invite new operator |
-| `/platform/operators/{id}` | GET | platform_admin | Get operator detail (sanitized) |
+| `/platform/operators/{id}` | GET | platform_admin | Get operator detail |
 | `/platform/operators/{id}/disable` | POST | platform_admin | Disable operator |
 | `/platform/operators/{id}/revoke` | POST | platform_admin | Revoke operator |
 | `/platform/operators/{id}/enable` | POST | platform_admin | Re-enable operator |
 
 ## 6. Frontend Slices (DC-11P2+)
 
-- `/platform/operators` -- operator management console (list, invite, disable,
-  revoke).
-- `/setup-credential` -- reuse the existing page (extend to handle platform
-  operator setup tokens).
-- `/forgot-password` -- reuse the existing page (extend to handle platform
-  operator emails).
-- `/reset-password` -- reuse the existing page (extend to handle platform
-  operator reset tokens).
+- `/platform/operators` -- operator management console.
+- `/setup-credential`, `/forgot-password`, `/reset-password` -- extend
+  existing pages to handle platform operator tokens.
+- `/auth/me` response handling: detect `platform_role`, route to platform
+  dashboard without requiring tenant selection.
 
-## 7. Threat Model
+## 7. Threat Model (R1 corrected)
 
 | Threat | Mitigation |
 |---|---|
-| Tenant admin grants platform access via tenant-local `super_admin` | Platform access requires `platform_operators` row; tenant role no longer sufficient |
+| Tenant admin grants platform access via tenant-local super_admin | platform_role set ONLY from platform_operators table; tenant super_admin never produces platform_role |
 | Brute-force platform operator login | Lockout after 5 attempts; 15min lock; bcrypt hash |
-| Token interception | Body-only tokens; no query-string; HTTPS; short TTL (1h reset, 24h setup) |
-| Token replay | Single-use (`used_at` set on consume); `with_for_update()` row lock |
-| Privilege escalation by disabled/revoked operator | Login checks `status=active AND revoked_at IS NULL AND locked_until < now` |
-| Single-operator takeover (no maker-checker) | Destructive actions require 2+ active operators |
-| Bootstrap token leak | Raw token displayed once; file mode 0600; 24h TTL; single-use |
-| Email enumeration via forgot-password | Neutral 200 always; no existence disclosure |
-| Secret logging | Only exception class name logged; no raw tokens/passwords |
-| X-Platform-Operator browser leak | Header never sent by frontend; documented and tested |
+| Token interception | Body-only; no query-string; HTTPS; short TTL |
+| Token replay | Single-use; with_for_update(); hash-only |
+| Disabled/revoked operator retains JWT until expiry | credentials_changed_at + active-state guard validation on every request |
+| Single-operator takeover | Maker-checker: 2+ operators for destructive actions |
+| Bootstrap token leak | No stdout/disk; email-only delivery; fail-closed SMTP; 24h TTL; single-use |
+| Email enumeration | Neutral 200 on forgot-password |
+| Collision confusion (same email, different passwords) | Independent verification; JWT claims reflect what actually verified |
+| All operators disabled/locked | Break-glass CLI (not network-accessible); audited |
+| Rollback restores unsafe tenant super_admin | Rollback keeps strict guard; application rollback + controlled guard mode |
 
-## 8. Rollback
+## 8. Rollback (R1 corrected)
 
-- The migration is additive (new table only). Downgrade drops
-  `platform_operators` and reverts the login/guard changes.
-- The login handler reverts to checking tenant-local `super_admin`.
-- The guard reverts to the current behavior.
-- No existing data is modified or lost.
+- Migration downgrade drops the three tables (additive only; no data loss to
+  existing tables).
+- Login handler reverts to tenant-only scan (no platform_operators check).
+- Guard reverts to `PLATFORM_GUARD_MODE=legacy` (accepts tenant super_admin
+  OR platform_role). This is the safe intermediate state.
+- R1 correction: rollback must NOT silently restore tenant-local super_admin
+  as the sole platform authority. The guard mode is explicitly controlled:
+  - `legacy` = both paths (safe during cutover).
+  - `strict` = platform_role only (post-cutover).
+  - Rolling back from `strict` to `legacy` is a DELIBERATE action, not a
+    silent side effect of the migration downgrade.
 
 ## 9. Tests (DC-11P1+)
 
 | Test | Description |
 |---|---|
-| Bootstrap creates operator with setup token (no password) | setup_token_hash set; password_hash NULL; raw token returned once |
-| Setup credential consumes token and sets password | Single-use; 24h TTL; hash-only lookup |
-| Login with platform operator credentials | platform_role in JWT; tenant super_admin no longer sufficient alone |
-| Login as disabled/revoked/locked operator | 401/403; no platform_role in JWT |
-| Forgot-password neutral response | 200 for existing and non-existing email |
+| Bootstrap creates operator via email (no stdout/disk token) | setup token hash stored; email delivered; no raw token leaked |
+| Setup credential consumes token and sets password | Single-use; 24h TTL; hash-only |
+| Login as platform-only operator (no tenant user) | platform_role in JWT; available_tenants empty |
+| Login collision: both passwords verify | platform_role AND tenant claims in JWT |
+| Login collision: only platform password verifies | platform_role only; no tenant claims |
+| Login collision: only tenant password verifies | tenant claims only; no platform_role |
+| Login as disabled/revoked/locked operator | 401/403; platform_role not in JWT |
+| Session invalidation after password change | credentials_changed_at > jwt.iat -> 401 |
+| Session invalidation after disable | Guard active-state check -> 401 on next request |
+| Forgot-password neutral response | 200 for existing and non-existing |
 | Reset-password body-only token | Query-string rejected; hash-only; single-use; 1h TTL |
-| Invite new operator | platform_admin only; creates pending_setup row; setup token issued |
-| Revoke operator | platform_admin only; sets revoked_at; future logins blocked |
+| Invite new operator | platform_admin only; pending_setup; setup token emailed |
+| Revoke operator | platform_admin only; revoked_at set; immediate session loss |
 | Maker-checker minimum | Destructive action blocked when < 2 active operators |
-| No plaintext password/token in response or logs | Sentinel exception test (like DC-10G) |
-| Platform guard rejects tenant-local super_admin | Contextual super_admin token -> 403 |
-| Lockout after 5 failed attempts | failed_login_attempts increments; locked_until set |
+| Break-glass CLI | Re-enables one operator; audited; not network-accessible |
+| Platform guard strict mode rejects tenant super_admin | Contextual super_admin -> 403 in strict mode |
+| Platform guard legacy mode accepts both | Tenant super_admin OR platform_role accepted |
+| No plaintext token/password in response or logs | Sentinel exception test |
 
 ## 10. Contract Tests (this gate)
 
-Static contract tests that verify the current architecture matches the
-assumptions in this document:
+Static contract tests verifying the current architecture matches assumptions.
+Updated for R1:
 
-- Platform guard requires identity-only super_admin (not contextual).
-- No platform operator model/table exists yet (confirming the gap).
-- No platform-specific auth endpoints exist (confirming the gap).
-- Login aggregates roles from tenant-local user_roles (confirming the gap).
-- X-Platform-Operator is not sent by the frontend (contract assertion).
+- Platform guard checks is_identity_only and is_super_admin.
+- No platform operator model/table exists yet.
+- No platform operator token tables exist yet.
+- No platform-specific auth endpoints exist.
+- Login aggregates roles from tenant-local user_roles.
+- Frontend platformApi states no X-Platform-Operator secret sent.
+- Alembic head is 033 (confirms 034 is the next migration number).
+- No 034 migration exists yet.
 
 ## 11. Allowed Files (DC-11P1+)
 
-- `backend/alembic/versions/032_platform_operators.py` (new migration)
-- `backend/models/platform_operator.py` (new model)
+- `backend/alembic/versions/034_platform_operators.py` (new migration)
+- `backend/models/platform_operator.py` (new model, 3 tables)
 - `backend/api/v1/platform/operators.py` (new router)
 - `backend/services/platform_operator_service.py` (new service)
-- `backend/api/v1/auth.py` (extend login to set platform_role)
-- `backend/api/v1/platform/p10/guard.py` (check platform_role)
+- `backend/api/v1/auth.py` (extend login for platform_operators check)
+- `backend/api/v1/platform/p10/guard.py` (add platform_role + guard mode)
 - `backend/scripts/bootstrap_platform_operator.py` (CLI bootstrap)
+- `backend/scripts/break_glass_platform_operator.py` (CLI break-glass)
 - `backend/tests/test_dc11p1_platform_operator_identity.py` (new tests)
 - `ai-ledger/product-ai/2026-07-14_dc11p1_platform_operator_implementation.md`
 
 ## 12. Forbidden Files
 
-- Existing historical migrations (`<= 031`).
+- Existing historical migrations (`<= 033`).
 - Frontend files (DC-11P2 scope).
 - Production compose/config/env.
 - Lockfiles.
@@ -305,18 +360,20 @@ assumptions in this document:
 ## 13. Stop Conditions
 
 - Baseline `cb1b1fff` has drifted.
-- Alembic head is not single.
-- `032` revision number is taken by another merged change.
+- Alembic head is not `033_order_status_enum_reconciliation`.
+- `034` revision number is taken by another merged change.
 - Maker-checker cannot be enforced without a broader design decision.
+- Break-glass recovery cannot be made safe (CTO decision needed).
 - Any secret would be printed or persisted.
 
 ## 14. Verdict
 
-**PASS_FOR_CTO_DC11P1_IMPLEMENTATION**
+**PASS_FOR_CTO_DC11P1_SCHEMA_IMPLEMENTATION**
 
-All 5 current-state confirmations are verified with file:line evidence. The
-design addresses the security gap (platform role derived from tenant-local
-RBAC), defines a complete operator lifecycle, and scopes the implementation
-into additive migration + API + frontend slices. The contract tests verify
-the current architecture matches the assumptions. No unresolved design
+All 5 current-state confirmations verified. R1 corrections address: migration
+numbering (034, down_revision 033), independent platform authentication,
+collision semantics, separate token tables, email-only bootstrap (no
+stdout/disk), immediate session invalidation, /auth/me for platform-only
+operators, safe staged cutover, maker-checker with break-glass, and rollback
+safety (no silent restoration of tenant super_admin). No unresolved design
 decisions remain.

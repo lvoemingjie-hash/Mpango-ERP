@@ -1,9 +1,12 @@
-"""DC-11P0 Platform Operator Identity + Credential Lifecycle Contract Tests.
+"""DC-11P0-R1 Platform Operator Identity + Credential Lifecycle Contract Tests.
 
 Static contract tests that verify the current architecture matches the
-assumptions in the DC-11P0 contract document. These tests do NOT implement
+assumptions in the DC-11P0-R1 contract document. These tests do NOT implement
 the new platform operator system; they assert the current state so that
 DC-11P1 implementation changes are detectable.
+
+R1 additions: alembic head check (033), no 034 migration yet, no token
+tables exist yet.
 """
 from __future__ import annotations
 
@@ -159,4 +162,55 @@ class TestFrontendPlatformOperatorSecretContract:
         # The file must state the frontend does NOT send it
         assert "never" in source.lower() or "not" in source.lower(), (
             "platformApi.ts must state the secret is never sent"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R1 additions: migration numbering and token table gap verification
+# ---------------------------------------------------------------------------
+
+class TestMigrationAndTableState:
+    """Verify alembic head and that 034 + platform tables do not exist yet."""
+
+    def test_alembic_head_is_033(self):
+        """The alembic head must be 033 (034 is the next migration)."""
+        import pathlib
+        versions_dir = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "alembic" / "versions"
+        )
+        # Find the highest numeric prefix among migration files
+        prefixes = []
+        for f in versions_dir.glob("[0-9][0-9][0-9]_*.py"):
+            prefixes.append(int(f.name[:3]))
+        assert prefixes, "expected at least one alembic migration"
+        assert max(prefixes) == 33, (
+            f"highest migration must be 033 (found {max(prefixes)}); "
+            "034_platform_operators is the DC-11P1 migration"
+        )
+
+    def test_no_034_migration_exists(self):
+        """No 034 migration file should exist yet."""
+        import pathlib
+        versions_dir = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "alembic" / "versions"
+        )
+        matches = list(versions_dir.glob("034_*.py"))
+        assert len(matches) == 0, (
+            "034 migration must not exist yet (DC-11P1 creates it)"
+        )
+
+    def test_no_platform_operator_setup_tokens_model(self):
+        """No platform_operator_setup_tokens model should exist yet."""
+        mod = importlib.import_module("models")
+        assert not hasattr(mod, "PlatformOperatorSetupToken"), (
+            "PlatformOperatorSetupToken model should not exist yet"
+        )
+
+    def test_no_platform_operator_reset_tokens_model(self):
+        """No platform_operator_reset_tokens model should exist yet."""
+        mod = importlib.import_module("models")
+        assert not hasattr(mod, "PlatformOperatorResetToken"), (
+            "PlatformOperatorResetToken model should not exist yet"
         )

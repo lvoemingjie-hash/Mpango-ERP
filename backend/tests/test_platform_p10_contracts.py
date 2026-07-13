@@ -2220,7 +2220,8 @@ class TestP25EFAuditResultBoundary:
         assert _coerce_audit_result("Allowed") == "allowed"
         assert _coerce_audit_result("  Completed  ") == "completed"
 
-    def test_list_audit_events_with_recorded_no_500(self):
+    @pytest.mark.asyncio
+    async def test_list_audit_events_with_recorded_no_500(self):
         """list_audit_events with result='recorded' returns 200, not 500."""
         from api.v1.platform.p10 import services as p10_services
 
@@ -2239,16 +2240,14 @@ class TestP25EFAuditResultBoundary:
         rows_result.scalars.return_value.all.return_value = [mock_entry]
         mock_db.execute = AsyncMock(side_effect=[count_result, rows_result])
 
-        import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            p10_services.list_audit_events(mock_db, limit=20, offset=0)
-        )
+        result = await p10_services.list_audit_events(mock_db, limit=20, offset=0)
 
         assert result.total == 1
         assert len(result.items) == 1
         assert result.items[0].result == "recorded"
 
-    def test_list_audit_events_with_unknown_result_fail_closed(self):
+    @pytest.mark.asyncio
+    async def test_list_audit_events_with_unknown_result_fail_closed(self):
         """list_audit_events with unknown result value maps to 'completed'."""
         from api.v1.platform.p10 import services as p10_services
 
@@ -2267,18 +2266,14 @@ class TestP25EFAuditResultBoundary:
         rows_result.scalars.return_value.all.return_value = [mock_entry]
         mock_db.execute = AsyncMock(side_effect=[count_result, rows_result])
 
-        import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            p10_services.list_audit_events(mock_db, limit=20, offset=0)
-        )
+        result = await p10_services.list_audit_events(mock_db, limit=20, offset=0)
 
         assert result.items[0].result == "completed"
 
-    def test_existing_audit_results_unchanged(self):
+    @pytest.mark.asyncio
+    async def test_existing_audit_results_unchanged(self):
         """Existing allowed/denied/failed/completed values pass through unchanged."""
         from api.v1.platform.p10 import services as p10_services
-        import asyncio
-
         existing_values = ["allowed", "denied", "failed", "completed"]
         for val in existing_values:
             mock_entry = MagicMock()
@@ -2296,9 +2291,7 @@ class TestP25EFAuditResultBoundary:
             rows_result.scalars.return_value.all.return_value = [mock_entry]
             mock_db.execute = AsyncMock(side_effect=[count_result, rows_result])
 
-            result = asyncio.get_event_loop().run_until_complete(
-                p10_services.list_audit_events(mock_db, limit=20, offset=0)
-            )
+            result = await p10_services.list_audit_events(mock_db, limit=20, offset=0)
             assert result.items[0].result == val
 
 

@@ -68,10 +68,13 @@ Two tests call `get_audit_event` directly:
 - Malformed UUID -> None, `db.execute.await_count == 0`
 - Well-formed missing UUID -> None, `db.execute.await_count >= 1`
 
-### 3.5 asyncio.run (no @pytest.mark.asyncio)
-All async handler tests use `asyncio.run()` instead of `@pytest.mark.asyncio`
-to avoid consuming the pytest-asyncio event loop and polluting subsequent
-test files (route-auth tests).
+### 3.5 Integrated event-loop isolation correction
+The stabilization candidate uses `@pytest.mark.asyncio` and direct `await`
+for async handler tests. Integrated validation proved that `asyncio.run()`
+clears the current event loop on Python 3.12 and breaks later legacy P10 tests
+that call `asyncio.get_event_loop()`. Pytest-managed loops pass DC-10G,
+route-authorization, and P10 tests in the same process without production-code
+changes.
 
 ## 4. GitNexus Compare Result
 

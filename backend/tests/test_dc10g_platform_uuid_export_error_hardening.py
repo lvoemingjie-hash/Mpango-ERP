@@ -12,7 +12,6 @@ Corrections from R0:
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -41,21 +40,23 @@ def _mock_db_returns_none():
 class TestPlatformTenantUUIDHardening:
     """Malformed wholesaler_id must return 404 (not 500) and never reach SQL."""
 
-    def test_malformed_wholesaler_id_returns_404_before_sql(self):
+    @pytest.mark.asyncio
+    async def test_malformed_wholesaler_id_returns_404_before_sql(self):
         from api.v1.platform.tenants import get_tenant
         mock_db = _mock_db_returns_none()
 
-        result = asyncio.run(get_tenant("not-a-uuid", db=mock_db, _auth=None))
+        result = await get_tenant("not-a-uuid", db=mock_db, _auth=None)
         assert isinstance(result, JSONResponse)
         assert result.status_code == 404
         assert mock_db.execute.await_count == 0
 
-    def test_well_formed_missing_uuid_returns_404(self):
+    @pytest.mark.asyncio
+    async def test_well_formed_missing_uuid_returns_404(self):
         from api.v1.platform.tenants import get_tenant
         mock_db = _mock_db_returns_none()
 
-        result = asyncio.run(
-            get_tenant("00000000-0000-0000-0000-000000000000", db=mock_db, _auth=None)
+        result = await get_tenant(
+            "00000000-0000-0000-0000-000000000000", db=mock_db, _auth=None
         )
         assert isinstance(result, JSONResponse)
         assert result.status_code == 404
@@ -69,22 +70,24 @@ class TestPlatformTenantUUIDHardening:
 class TestPlatformAuditUUIDHardening:
     """Malformed log_id must return 404 (not 500) and never reach SQL."""
 
-    def test_malformed_log_id_returns_404_before_sql(self):
+    @pytest.mark.asyncio
+    async def test_malformed_log_id_returns_404_before_sql(self):
         from api.v1.platform.audit import get_audit_log
         mock_db = _mock_db_returns_none()
 
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(get_audit_log("not-a-uuid", db=mock_db, _auth=None))
+            await get_audit_log("not-a-uuid", db=mock_db, _auth=None)
         assert exc_info.value.status_code == 404
         assert mock_db.execute.await_count == 0
 
-    def test_well_formed_missing_log_id_returns_404(self):
+    @pytest.mark.asyncio
+    async def test_well_formed_missing_log_id_returns_404(self):
         from api.v1.platform.audit import get_audit_log
         mock_db = _mock_db_returns_none()
 
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(
-                get_audit_log("00000000-0000-0000-0000-000000000000", db=mock_db, _auth=None)
+            await get_audit_log(
+                "00000000-0000-0000-0000-000000000000", db=mock_db, _auth=None
             )
         assert exc_info.value.status_code == 404
         assert mock_db.execute.await_count >= 1
@@ -97,20 +100,24 @@ class TestPlatformAuditUUIDHardening:
 class TestP10GetAuditEventDirect:
     """Direct unit test for the get_audit_event service function."""
 
-    def test_malformed_uuid_returns_none_without_db_call(self):
+    @pytest.mark.asyncio
+    async def test_malformed_uuid_returns_none_without_db_call(self):
         from api.v1.platform.p10.services import get_audit_event
         mock_db = MagicMock()
         mock_db.execute = AsyncMock()
 
-        result = asyncio.run(get_audit_event(mock_db, "not-a-uuid"))
+        result = await get_audit_event(mock_db, "not-a-uuid")
         assert result is None
         assert mock_db.execute.await_count == 0
 
-    def test_well_formed_missing_uuid_returns_none(self):
+    @pytest.mark.asyncio
+    async def test_well_formed_missing_uuid_returns_none(self):
         from api.v1.platform.p10.services import get_audit_event
         mock_db = _mock_db_returns_none()
 
-        result = asyncio.run(get_audit_event(mock_db, "00000000-0000-0000-0000-000000000000"))
+        result = await get_audit_event(
+            mock_db, "00000000-0000-0000-0000-000000000000"
+        )
         assert result is None
         assert mock_db.execute.await_count >= 1
 
@@ -122,7 +129,8 @@ class TestP10GetAuditEventDirect:
 class TestExportEnqueueErrorBoundary:
     """Execute the actual create_export handler; prove no str(exception) leak."""
 
-    def test_enqueue_failure_sanitized_response_and_logs(self, capsys):
+    @pytest.mark.asyncio
+    async def test_enqueue_failure_sanitized_response_and_logs(self, caplog):
         """When enqueue raises a sentinel exception containing fake internal
         URL/credential text, the 500 response must use a fixed sanitized
         message and the sentinel text must not appear in response or logs."""
@@ -153,6 +161,8 @@ class TestExportEnqueueErrorBoundary:
 
         sentinel_exc = ConnectionError(SENTINEL_TEXT)
 
+        caplog.set_level(logging.ERROR, logger="api.v1.exports")
+
         with patch("api.v1.exports._extract_tenant", return_value=fake_tenant_ctx), \
              patch("main.get_job_queue") as mock_get_queue:
             mock_queue = MagicMock()
@@ -160,10 +170,9 @@ class TestExportEnqueueErrorBoundary:
             mock_get_queue.return_value = mock_queue
 
             mock_request = MagicMock()
-            result = asyncio.run(create_export(request=mock_request, body=body))
+            result = await create_export(request=mock_request, body=body)
 
-        captured = capsys.readouterr()
-        log_text = captured.out + captured.err
+        log_text = caplog.text
 
         # Assert HTTP 500
         assert isinstance(result, JSONResponse)

@@ -15,7 +15,7 @@ authoritative retailer balance cache.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -23,6 +23,20 @@ from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.order import Order, OrderStatus
+
+
+def calculate_age_days(created_at: datetime | None) -> int:
+    """Return a non-negative UTC age for naive or timezone-aware timestamps."""
+    if created_at is None:
+        return 0
+
+    normalized = created_at
+    if normalized.tzinfo is None:
+        normalized = normalized.replace(tzinfo=timezone.utc)
+    else:
+        normalized = normalized.astimezone(timezone.utc)
+
+    return max((datetime.now(timezone.utc) - normalized).days, 0)
 
 
 class ReceivablesService:
@@ -35,6 +49,7 @@ class ReceivablesService:
         self,
         *,
         tenant_db: AsyncSession,
+        wholesaler_id: uuid.UUID | str,
     ) -> dict[str, Any]:
         """
         Generate comprehensive receivables summary by retailer.
@@ -51,7 +66,9 @@ class ReceivablesService:
         Raises:
             Exception: Database query errors (read-only, no rollback needed)
         """
-        # Query 1: Get all retailers with their binding balances from public schema
+        current_wholesaler_id = uuid.UUID(str(wholesaler_id))
+
+        # Query 1: Get this wholesaler's retailer balances from public schema.
         binding_result = await tenant_db.execute(
             text(
                 """
@@ -61,11 +78,13 @@ class ReceivablesService:
                     r.name as retailer_name
                 FROM public.wholesaler_retailer_bindings wrb
                 JOIN public.retailers r ON r.id = wrb.retailer_id
-                WHERE wrb.is_deleted IS FALSE
+                WHERE wrb.wholesaler_id = :wholesaler_id
+                  AND wrb.is_deleted IS FALSE
                   AND wrb.outstanding_balance != 0
                 ORDER BY wrb.outstanding_balance DESC
                 """
-            )
+            ),
+            {"wholesaler_id": current_wholesaler_id},
         )
         binding_rows = binding_result.mappings().all()
 
@@ -91,6 +110,7 @@ class ReceivablesService:
                 Order.total_amount,
                 Order.created_at,
             )
+            .where(Order.wholesaler_id == current_wholesaler_id)
             .where(Order.retailer_id.in_(retailer_ids))
             .where(Order.is_deleted.is_(False))
             .order_by(Order.retailer_id, Order.created_at.desc())
@@ -193,6 +213,7 @@ class ReceivablesService:
         self,
         *,
         tenant_db: AsyncSession,
+        wholesaler_id: uuid.UUID | str,
         page: int = 1,
         size: int = 20,
         retailer_id: str | None = None,
@@ -219,6 +240,8 @@ class ReceivablesService:
             - credit_receivable: order with credit payment exposure (may be PAID)
             - unpaid_order: confirmed/partially_paid with remaining non-credit balance
         """
+        current_wholesaler_id = uuid.UUID(str(wholesaler_id))
+
         # Build base query for orders with potential receivables
         # Include PAID orders because they may have credit receivables
         receivable_statuses = [
@@ -228,7 +251,11 @@ class ReceivablesService:
         ]
 
         # Build filters
-        filters = [Order.is_deleted.is_(False), Order.status.in_(receivable_statuses)]
+        filters = [
+            Order.wholesaler_id == current_wholesaler_id,
+            Order.is_deleted.is_(False),
+            Order.status.in_(receivable_statuses),
+        ]
 
         if retailer_id:
             try:
@@ -338,18 +365,20 @@ class ReceivablesService:
                     r.name as retailer_name
                 FROM public.wholesaler_retailer_bindings wrb
                 JOIN public.retailers r ON r.id = wrb.retailer_id
-                WHERE wrb.retailer_id = ANY(:retailer_ids)
+                WHERE wrb.wholesaler_id = :wholesaler_id
+                  AND wrb.retailer_id = ANY(:retailer_ids)
                   AND wrb.is_deleted IS FALSE
                 """
             ),
-            {"retailer_ids": retailer_ids},
+            {
+                "wholesaler_id": current_wholesaler_id,
+                "retailer_ids": retailer_ids,
+            },
         )
         retailer_names = {row["retailer_id"]: row["retailer_name"] for row in retailer_result.mappings().all()}
 
         # Build items with classification
         items = []
-        now = datetime.utcnow()
-
         for order in order_rows:
             order_id = order.id
             credit_amt = credit_totals.get(order_id, Decimal("0"))
@@ -374,7 +403,7 @@ class ReceivablesService:
             elif cash_amt > 0:
                 payment_method = "cash"  # Represents cash or transfer
 
-            age_days = (now - order.created_at).days if order.created_at else 0
+            age_days = calculate_age_days(order.created_at)
 
             # Handle both enum and string status values
             status_value = order.status.value if hasattr(order.status, "value") else order.status

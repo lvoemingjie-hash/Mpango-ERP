@@ -16,6 +16,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
 
+TEST_WHOLESALER_ID = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+
+
 @pytest.fixture
 def mock_db_session():
     """Create a mock async session."""
@@ -104,7 +107,10 @@ async def test_retailer_summary_aggregates_totals(mock_db_session, receivables_s
     mock_db_session.execute.side_effect = mock_execute
 
     # Call service
-    result = await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
+    result = await receivables_service.get_receivables_summary(
+        tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
+    )
 
     # Verify structure
     assert "total_outstanding" in result
@@ -159,7 +165,10 @@ async def test_retailer_summary_uses_public_binding_outstanding_balance(mock_db_
 
     mock_db_session.execute.side_effect = mock_execute
 
-    result = await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
+    result = await receivables_service.get_receivables_summary(
+        tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
+    )
 
     # Verify outstanding_balance from public binding is used
     assert result["total_outstanding"] == 7500.50
@@ -175,7 +184,10 @@ async def test_retailer_summary_empty_when_no_bindings(mock_db_session, receivab
 
     mock_db_session.execute.return_value = mock_binding_result
 
-    result = await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
+    result = await receivables_service.get_receivables_summary(
+        tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
+    )
 
     assert result["total_outstanding"] == 0.0
     assert result["retailer_count"] == 0
@@ -247,6 +259,7 @@ async def test_order_list_classifies_credit_receivable(mock_db_session, receivab
 
     result = await receivables_service.list_receivable_orders(
         tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
         page=1,
         size=20,
     )
@@ -312,6 +325,7 @@ async def test_order_list_classifies_unpaid_order(mock_db_session, receivables_s
 
     result = await receivables_service.list_receivable_orders(
         tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
         page=1,
         size=20,
     )
@@ -375,6 +389,7 @@ async def test_order_list_supports_retailer_filter(mock_db_session, receivables_
 
     result = await receivables_service.list_receivable_orders(
         tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
         page=1,
         size=20,
         retailer_id=str(retailer_id),
@@ -430,6 +445,7 @@ async def test_pagination_metadata_correct(mock_db_session, receivables_service)
     # Test page 2, size 20
     result = await receivables_service.list_receivable_orders(
         tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
         page=2,
         size=20,
     )
@@ -457,6 +473,7 @@ async def test_pagination_empty_result(mock_db_session, receivables_service):
 
     result = await receivables_service.list_receivable_orders(
         tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
         page=1,
         size=20,
     )
@@ -479,8 +496,14 @@ async def test_service_does_not_commit_or_rollback(mock_db_session, receivables_
     mock_db_session.execute.return_value = mock_count_result
 
     # Call both methods
-    await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
-    await receivables_service.list_receivable_orders(tenant_db=mock_db_session)
+    await receivables_service.get_receivables_summary(
+        tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
+    )
+    await receivables_service.list_receivable_orders(
+        tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
+    )
 
     # Verify no commit or rollback
     mock_db_session.commit.assert_not_called()
@@ -498,8 +521,14 @@ async def test_service_does_not_mutate_db_state(mock_db_session, receivables_ser
     mock_db_session.execute.return_value = mock_count_result
 
     # Call service methods
-    await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
-    await receivables_service.list_receivable_orders(tenant_db=mock_db_session)
+    await receivables_service.get_receivables_summary(
+        tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
+    )
+    await receivables_service.list_receivable_orders(
+        tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
+    )
 
     # Verify all queries are SELECT (not INSERT/UPDATE/DELETE as standalone operations)
     for call in mock_db_session.execute.call_args_list:
@@ -581,6 +610,7 @@ async def test_classification_pagination_across_db_pages(mock_db_session, receiv
     # Should find 15 credit_receivable orders (10 on page 1, 5 on page 2)
     result = await receivables_service.list_receivable_orders(
         tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
         page=1,
         size=10,
         classification="credit_receivable",
@@ -660,6 +690,7 @@ async def test_classification_pagination_page_beyond_first_db_page(mock_db_sessi
     # Should return the remaining 5 credit_receivable orders from DB page 2
     result = await receivables_service.list_receivable_orders(
         tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
         page=2,
         size=10,
         classification="credit_receivable",
@@ -711,7 +742,10 @@ async def test_receivables_summary_empty_orders_safe(mock_db_session, receivable
     mock_db_session.execute.side_effect = mock_execute
 
     # Should not crash with empty order_ids collection
-    result = await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
+    result = await receivables_service.get_receivables_summary(
+        tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
+    )
 
     # Verify result structure with zero order data
     assert result["total_outstanding"] == 5000.00  # Still has binding balance
@@ -755,7 +789,10 @@ async def test_receivables_summary_binding_only_tenant_safe(mock_db_session, rec
     mock_db_session.execute.side_effect = mock_execute
 
     # Should not attempt payment aggregation with empty order_ids
-    result = await receivables_service.get_receivables_summary(tenant_db=mock_db_session)
+    result = await receivables_service.get_receivables_summary(
+        tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
+    )
 
     # Verify safe return with binding data but zero order breakdown
     assert result["total_outstanding"] == 10000.00
@@ -782,6 +819,7 @@ async def test_receivable_orders_empty_result_safe(mock_db_session, receivables_
     # Should not crash with empty orders
     result = await receivables_service.list_receivable_orders(
         tenant_db=mock_db_session,
+        wholesaler_id=TEST_WHOLESALER_ID,
         page=1,
         size=20,
     )

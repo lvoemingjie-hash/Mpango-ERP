@@ -235,7 +235,7 @@ describe('S5-B frontend real user smoke gate', () => {
     expect(screen.getByText('No stock yet')).toBeInTheDocument();
     await assertNoGuardrailToasts();
 
-    await user.click(screen.getByRole('link', { name: 'Money' }));
+    await user.click(screen.getByRole('link', { name: 'Finance' }));
     await screen.findByRole('heading', { name: 'Accounts Receivable' });
     expect(screen.getByRole('button', { name: 'Record Repayment' })).toBeInTheDocument();
     expect(screen.getByText('No outstanding receivables')).toBeInTheDocument();

@@ -35,6 +35,16 @@ IX_MV_SALES_DAILY = "idx_mv_sales_daily_u1"
 REPORTING_ROLE = "reporting_role"
 CK_PAYMENTS_METHOD = "ck_payments_method_canonical"
 CANONICAL_PAYMENT_METHODS = ("cash", "transfer", "credit")
+CANONICAL_ORDER_STATUSES = (
+    "draft",
+    "confirmed",
+    "partially_paid",
+    "paid",
+    "fulfilled",
+    "cancelled",
+    "voided",
+    "returned",
+)
 
 RETAILER_PRICE_COLUMNS = {
     "id": ("uuid", True),
@@ -285,6 +295,59 @@ async def _qualified_identifier(db, schema: str, object_name: str) -> str:
     quoted_schema = await _quote_ident(db, schema)
     quoted_object = await _quote_ident(db, object_name)
     return f"{quoted_schema}.{quoted_object}"
+
+
+async def _reconcile_order_status(db, schema: str) -> None:
+    """Add missing canonical enum labels and reject non-canonical live rows."""
+    from sqlalchemy import text
+
+    qualified_orders = await _qualified_identifier(db, schema, "orders")
+    metadata = (await db.execute(
+        text(
+            """
+            SELECT type_ns.nspname AS type_schema,
+                   typ.typname AS type_name,
+                   typ.typtype AS type_kind
+            FROM pg_attribute attr
+            JOIN pg_class rel ON rel.oid = attr.attrelid
+            JOIN pg_namespace rel_ns ON rel_ns.oid = rel.relnamespace
+            JOIN pg_type typ ON typ.oid = attr.atttypid
+            JOIN pg_namespace type_ns ON type_ns.oid = typ.typnamespace
+            WHERE rel_ns.nspname = :schema
+              AND rel.relname = 'orders'
+              AND attr.attname = 'status'
+              AND attr.attnum > 0
+              AND NOT attr.attisdropped
+            """
+        ),
+        {"schema": schema},
+    )).mappings().one_or_none()
+    if metadata is None:
+        raise RuntimeError(f"{schema}.orders.status column is missing")
+    if (
+        _catalog_code(metadata["type_schema"]) != schema
+        or _catalog_code(metadata["type_name"]) != "order_status"
+        or _catalog_code(metadata["type_kind"]) != "e"
+    ):
+        raise RuntimeError(
+            f"{schema}.orders.status must use the schema-local order_status enum"
+        )
+
+    members = ", ".join(f"'{value}'" for value in CANONICAL_ORDER_STATUSES)
+    invalid_count = int((await db.execute(text(
+        f"SELECT COUNT(*) FROM {qualified_orders} "
+        f"WHERE status IS NULL OR status::text NOT IN ({members})"
+    ))).scalar() or 0)
+    if invalid_count:
+        raise RuntimeError(
+            f"{schema}.orders.status contains {invalid_count} non-canonical rows"
+        )
+
+    qualified_type = await _qualified_identifier(db, schema, "order_status")
+    for value in CANONICAL_ORDER_STATUSES:
+        await db.execute(text(
+            f"ALTER TYPE {qualified_type} ADD VALUE IF NOT EXISTS '{value}'"
+        ))
 
 
 def _normalize_type(type_name: str) -> str:
@@ -1103,7 +1166,6 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "EXCEPTION WHEN duplicate_object THEN null; END $$",
         ]:
             await db.execute(text(enum_ddl))
-        await db.execute(text("ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'returned'"))
 
         # Core business tables (idempotent via CREATE TABLE IF NOT EXISTS)
         tables = [
@@ -1428,6 +1490,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- payments: reconcile retailer_id / transaction_id (mirrors 021) ---
         await _reconcile_payments(db, ts)
+
+        # --- orders: reconcile canonical order_status enum values ---
+        await _reconcile_order_status(db, ts)
 
         # --- retailer_prices: reconcile indexes (mirrors 017) ---
         await _reconcile_retailer_prices(db, ts)

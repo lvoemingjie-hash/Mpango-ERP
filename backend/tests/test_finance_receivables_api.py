@@ -136,6 +136,7 @@ async def test_get_receivables_summary_calls_service_once():
 
     with patch.object(ReceivablesService, 'get_receivables_summary', return_value=mock_summary) as mock_service:
         mock_token = MagicMock()
+        mock_token.tenant_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
         mock_db = AsyncMock()
 
         await get_receivables_summary(token=mock_token, db=mock_db)
@@ -146,6 +147,7 @@ async def test_get_receivables_summary_calls_service_once():
         call_args = mock_service.call_args
         assert 'tenant_db' in call_args.kwargs
         assert call_args.kwargs['tenant_db'] == mock_db
+        assert call_args.kwargs['wholesaler_id'] == mock_token.tenant_id
 
 
 @pytest.mark.asyncio
@@ -304,6 +306,7 @@ async def test_get_receivable_orders_passes_query_params():
 
     with patch.object(ReceivablesService, 'list_receivable_orders', return_value=mock_response) as mock_service:
         mock_token = MagicMock()
+        mock_token.tenant_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
         mock_db = AsyncMock()
 
         await get_receivable_orders(
@@ -326,6 +329,7 @@ async def test_get_receivable_orders_passes_query_params():
         assert call_kwargs['status'] == status_filter
         assert 'tenant_db' in call_kwargs
         assert call_kwargs['tenant_db'] == mock_db
+        assert call_kwargs['wholesaler_id'] == mock_token.tenant_id
 
 
 @pytest.mark.asyncio

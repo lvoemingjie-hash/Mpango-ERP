@@ -33,7 +33,7 @@ const navItems: NavItem[] = [
   { label: 'Sales', path: '/orders', icon: ClipboardDocumentListIcon },
   { label: 'Products', path: '/skus', icon: CubeIcon },
   { label: 'Stock', path: '/inventory', icon: CubeIcon },
-  { label: 'Money', path: '/finance', icon: BanknotesIcon },
+  { label: 'Finance', path: '/finance', icon: BanknotesIcon },
   { label: 'Payments', path: '/payments', icon: CreditCardIcon },
   { label: 'Customers', path: '/retailers', icon: BuildingOfficeIcon },
   { label: 'Pricing', path: '/pricing', icon: CurrencyDollarIcon },

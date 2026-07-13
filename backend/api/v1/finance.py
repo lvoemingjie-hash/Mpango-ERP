@@ -34,7 +34,7 @@ from schemas.finance import (
     ReceivableOrdersResponse,
     ReceivablesSummaryResponse,
 )
-from services.receivables_service import ReceivablesService
+from services.receivables_service import ReceivablesService, calculate_age_days
 
 router = APIRouter()
 
@@ -224,7 +224,7 @@ async def list_receivables(
             "total_paid": float(total_paid),
             "balance_due": float(balance),
             "created_at": order.created_at.isoformat() if order.created_at else None,
-            "age_days": (datetime.utcnow() - order.created_at).days if order.created_at else 0,
+            "age_days": calculate_age_days(order.created_at),
         })
 
     return DataResponse(
@@ -352,7 +352,10 @@ async def get_receivables_summary(
     Permission: finance:read
     """
     service = ReceivablesService()
-    summary = await service.get_receivables_summary(tenant_db=db)
+    summary = await service.get_receivables_summary(
+        tenant_db=db,
+        wholesaler_id=token.tenant_id,
+    )
 
     return DataResponse(
         success=True,
@@ -401,6 +404,7 @@ async def get_receivable_orders(
         retailer_id=retailer_id,
         classification=classification,
         status=status_filter,
+        wholesaler_id=token.tenant_id,
     )
 
     return DataResponse(

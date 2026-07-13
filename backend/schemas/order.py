@@ -12,6 +12,7 @@ from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 import re
 from schemas.base import CamelModel
+from schemas.payment import PaymentMethod
 
 
 # S2.5: Regex patterns for input validation
@@ -198,7 +199,7 @@ class PayOrderRequest(BaseModel):
     - If `amount` is provided, `method` must also be provided
     - `transaction_id` is only meaningful for transfer method
     """
-    method: Optional[str] = Field(
+    method: Optional[PaymentMethod] = Field(
         None,
         description="Payment method: cash, transfer, credit",
     )
@@ -210,7 +211,7 @@ class PayOrderRequest(BaseModel):
     transaction_id: Optional[str] = Field(
         None,
         max_length=255,
-        description="External transaction reference (for transfer/mobile_money)",
+        description="External transaction reference (for transfer)",
     )
     notes: Optional[str] = Field(
         None,

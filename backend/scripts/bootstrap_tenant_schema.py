@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -32,6 +33,8 @@ IX_RETAILER_PRICES_SKU = "ix_retailer_prices_sku_id"
 MV_SALES_DAILY = "mv_sales_daily"
 IX_MV_SALES_DAILY = "idx_mv_sales_daily_u1"
 REPORTING_ROLE = "reporting_role"
+CK_PAYMENTS_METHOD = "ck_payments_method_canonical"
+CANONICAL_PAYMENT_METHODS = ("cash", "transfer", "credit")
 
 RETAILER_PRICE_COLUMNS = {
     "id": ("uuid", True),
@@ -105,8 +108,140 @@ async def _constraint_exists(db, schema: str, table: str, constraint_name: str) 
     return result.first() is not None
 
 
+async def _check_constraint_rows(db, schema: str, table: str) -> list[dict]:
+    from sqlalchemy import text
+
+    rows = (await db.execute(
+        text(
+            """
+            SELECT c.conname,
+                   c.contype,
+                   c.convalidated,
+                   pg_get_constraintdef(c.oid, true) AS constraint_def,
+                   pg_get_expr(c.conbin, c.conrelid, true) AS check_expr,
+                   COALESCE(array_agg(a.attname ORDER BY cols.ordinality)
+                       FILTER (WHERE a.attname IS NOT NULL), ARRAY[]::name[]) AS column_names
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            LEFT JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS cols(attnum, ordinality)
+                ON true
+            LEFT JOIN pg_attribute a
+                ON a.attrelid = c.conrelid AND a.attnum = cols.attnum
+            WHERE n.nspname = :schema
+              AND t.relname = :table
+              AND c.contype = 'c'
+            GROUP BY c.oid, c.conname, c.contype, c.convalidated, c.conbin, c.conrelid
+            ORDER BY c.conname
+            """
+        ),
+        {"schema": schema, "table": table},
+    )).mappings()
+    return [dict(row) for row in rows]
+
+
+def _is_equivalent_payment_method_constraint(row: dict) -> bool:
+    if _catalog_code(row.get("contype")) != "c" or not bool(row.get("convalidated")):
+        return False
+    if _catalog_column_names(row.get("column_names")) != ["method"]:
+        return False
+    expression = str(row.get("check_expr") or row.get("constraint_def") or "")
+    normalized = _normalize_expression(expression)
+    compact = _compact_sql(expression)
+    if _has_forbidden_payment_method_semantics(normalized, compact):
+        return False
+    members = _positive_payment_method_members(normalized)
+    return (
+        members is not None
+        and len(members) == len(CANONICAL_PAYMENT_METHODS)
+        and set(members) == set(CANONICAL_PAYMENT_METHODS)
+    )
+
+
+def _is_payment_method_constraint_candidate(row: dict) -> bool:
+    columns = _catalog_column_names(row.get("column_names"))
+    expression = str(row.get("check_expr") or row.get("constraint_def") or "")
+    literal_values = set(re.findall(r"'([^']+)'", expression))
+    return "method" in columns or literal_values == set(CANONICAL_PAYMENT_METHODS)
+
+
+def _has_forbidden_payment_method_semantics(normalized: str, compact: str) -> bool:
+    return bool(
+        re.search(r"\bor\b|\band\b|\bnot\b", normalized)
+        or re.search(r"\bcurrent_user\b|\bcurrent_role\b", normalized)
+        or "<>" in normalized
+        or "!=" in normalized
+        or "||" in normalized
+        or "<>all" in compact
+        or "notin" in compact
+        or "isdistinctfrom" in compact
+    )
+
+
+def _positive_payment_method_members(normalized: str) -> list[str] | None:
+    method_lhs = r"\(?method\)?(?:::[a-z_][a-z0-9_.]*(?:\s+[a-z_][a-z0-9_]*)?)?"
+    in_match = re.fullmatch(method_lhs + r"\s+in\s*\((?P<members>.*)\)", normalized)
+    if in_match:
+        return _direct_string_literal_members(in_match.group("members"))
+
+    any_match = re.fullmatch(
+        method_lhs
+        + r"\s*=\s*any\s*\(\s*array\[(?P<members>.*?)\]"
+        + r"(?:::[a-z_][a-z0-9_.]*(?:\s+[a-z_][a-z0-9_]*)?\[\])?\s*\)",
+        normalized,
+    )
+    if any_match:
+        return _direct_string_literal_members(any_match.group("members"))
+
+    return None
+
+
+def _direct_string_literal_members(member_sql: str) -> list[str] | None:
+    values: list[str] = []
+    for member in _split_top_level_sql_members(member_sql):
+        match = re.fullmatch(
+            r"'([^']+)'(?:::[a-z_][a-z0-9_.]*(?:\s+[a-z_][a-z0-9_]*)?)?",
+            member.strip(),
+        )
+        if not match:
+            return None
+        values.append(match.group(1))
+    return values
+
+
+def _split_top_level_sql_members(member_sql: str) -> list[str]:
+    members: list[str] = []
+    start = 0
+    depth = 0
+    in_quote = False
+    index = 0
+    while index < len(member_sql):
+        char = member_sql[index]
+        if char == "'":
+            in_quote = not in_quote
+        elif not in_quote:
+            if char in "([":
+                depth += 1
+            elif char in ")]" and depth > 0:
+                depth -= 1
+            elif char == "," and depth == 0:
+                members.append(member_sql[start:index].strip())
+                start = index + 1
+        index += 1
+    members.append(member_sql[start:].strip())
+    return members
+
+
 def _normalize_sql(sql: str) -> str:
     return " ".join(sql.lower().split())
+
+
+def _normalize_expression(sql: str) -> str:
+    return " ".join(sql.lower().split())
+
+
+def _compact_sql(sql: str) -> str:
+    return "".join(sql.lower().split())
 
 
 async def _ensure_index(
@@ -359,7 +494,8 @@ async def _reconcile_payments(db, ts: str) -> None:
     4. Set retailer_id NOT NULL
     5. Add transaction_id if missing
     6. Create ix_payments_order_id if missing
-    7. Create uq_payments_transaction_id partial unique if missing
+    7. Ensure canonical payments.method check constraint
+    8. Create uq_payments_transaction_id partial unique if missing
     """
     from sqlalchemy import text
 
@@ -401,6 +537,71 @@ async def _reconcile_payments(db, ts: str) -> None:
             f'ALTER TABLE "{ts}".payments ADD COLUMN transaction_id VARCHAR(64)'
         ))
         print(f"[reconcile] {ts}.payments: added transaction_id (nullable)")
+
+    invalid_method_count = (await db.execute(text(
+        f'SELECT COUNT(*) FROM "{ts}".payments '
+        "WHERE method IS NULL OR method NOT IN ('cash', 'transfer', 'credit')"
+    ))).scalar()
+    if invalid_method_count and int(invalid_method_count) > 0:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {invalid_method_count} payments rows have "
+            "non-canonical or NULL method values. Manual data resolution is required."
+        )
+
+    constraints = await _check_constraint_rows(db, ts, "payments")
+    canonical_rows = [row for row in constraints if row["conname"] == CK_PAYMENTS_METHOD]
+    if len(canonical_rows) > 1:
+        raise RuntimeError(f"Bootstrap reconcile: duplicate {ts}.{CK_PAYMENTS_METHOD} constraints")
+
+    equivalent_rows = [row for row in constraints if _is_equivalent_payment_method_constraint(row)]
+    incompatible_rows = [
+        row
+        for row in constraints
+        if not _is_equivalent_payment_method_constraint(row)
+        and _is_payment_method_constraint_candidate(row)
+    ]
+
+    if canonical_rows:
+        if not _is_equivalent_payment_method_constraint(canonical_rows[0]):
+            raise RuntimeError(
+                f"Bootstrap reconcile: existing {ts}.{CK_PAYMENTS_METHOD} "
+                "does not match expected payment method contract."
+            )
+        duplicate_equivalent = [row for row in equivalent_rows if row["conname"] != CK_PAYMENTS_METHOD]
+        if duplicate_equivalent:
+            raise RuntimeError(
+                f"Bootstrap reconcile: duplicate equivalent {ts}.payments method constraints"
+            )
+        if incompatible_rows:
+            names = ", ".join(row["conname"] for row in incompatible_rows)
+            raise RuntimeError(
+                f"Bootstrap reconcile: incompatible {ts}.payments method constraints: {names}"
+            )
+    else:
+        if incompatible_rows:
+            names = ", ".join(row["conname"] for row in incompatible_rows)
+            raise RuntimeError(
+                f"Bootstrap reconcile: incompatible {ts}.payments method constraints: {names}"
+            )
+        if len(equivalent_rows) > 1:
+            raise RuntimeError(
+                f"Bootstrap reconcile: multiple equivalent {ts}.payments method constraints"
+            )
+        if equivalent_rows:
+            legacy_name = equivalent_rows[0]["conname"]
+            quoted_legacy_name = await _quote_ident(db, legacy_name)
+            quoted_constraint_name = await _quote_ident(db, CK_PAYMENTS_METHOD)
+            await db.execute(text(
+                f'ALTER TABLE "{ts}".payments '
+                f'RENAME CONSTRAINT {quoted_legacy_name} TO {quoted_constraint_name}'
+            ))
+        else:
+            await db.execute(text(
+                f'ALTER TABLE "{ts}".payments '
+                f'ADD CONSTRAINT {CK_PAYMENTS_METHOD} '
+                "CHECK (method IN ('cash', 'transfer', 'credit'))"
+            ))
+        print(f"[reconcile] {ts}.payments: ensured {CK_PAYMENTS_METHOD}")
 
     # --- Phase 2: indexes (require both columns to exist) ---
 
@@ -1021,7 +1222,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "idempotency_key VARCHAR(64) UNIQUE,"
             "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-            "created_by UUID, updated_by UUID)",
+            "created_by UUID, updated_by UUID,"
+            "CONSTRAINT ck_payments_method_canonical "
+            "CHECK (method IN ('cash', 'transfer', 'credit')))",
 
             f'CREATE TABLE IF NOT EXISTS "{ts}".ledger_entries ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"

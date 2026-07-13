@@ -50,6 +50,7 @@ from schemas.order import (
     PayOrderRequest,
 )
 from schemas.common import Pagination
+from schemas.payment import PaymentMethod
 
 router = APIRouter()
 
@@ -432,6 +433,21 @@ async def pay_order(
                 },
             )
 
+        payment_method = (
+            payment_input.method.value
+            if isinstance(payment_input.method, PaymentMethod)
+            else str(payment_input.method)
+        )
+        allowed_methods = {method.value for method in PaymentMethod}
+        if payment_method not in allowed_methods:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "INVALID_PAYMENT_METHOD",
+                    "message": "Payment method must be one of: cash, transfer, credit",
+                },
+            )
+
         pay_amount = Decimal(str(payment_input.amount))
         order_total = order.total_amount
 
@@ -471,9 +487,9 @@ async def pay_order(
         # Determine target state from CUMULATIVE settlement.
         # Credit closes the order lifecycle (PAID) but does NOT inflate
         # paid_total (which counts only cash/transfer for financial reporting).
-        # MVP constraint: credit is full-credit sale only — amount must equal
+        # MVP constraint: credit is full-credit sale only - amount must equal
         # remaining balance.  No partial credit or split tender in this slice.
-        if payment_input.method == "credit":
+        if payment_method == "credit":
             # Guard 1: No duplicate credit on the same order.
             credit_count = await payment_repo.count_order_payments(
                 db, order_id=order.id, method="credit",
@@ -489,7 +505,7 @@ async def pay_order(
                         ),
                     },
                 )
-            # Guard 2: No split tender — credit is only allowed on a clean
+            # Guard 2: No split tender - credit is only allowed on a clean
             # order with zero prior cash/transfer settlement.
             if prior_paid > 0:
                 raise HTTPException(
@@ -504,7 +520,7 @@ async def pay_order(
                         ),
                     },
                 )
-            # Guard 3: Full-credit sale only — amount must equal order total.
+            # Guard 3: Full-credit sale only - amount must equal order total.
             if pay_amount != order_total:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -549,11 +565,11 @@ async def pay_order(
                 transaction_id=payment_input.transaction_id,
                 idempotency_key=None,
                 amount=pay_amount,
-                method=payment_input.method,
+                method=payment_method,
                 status=(
                     "completed"
                     if (
-                        payment_input.method == "transfer"
+                        payment_method == "transfer"
                         and target_state == OrderState.PAID
                     )
                     else "pending"
@@ -572,7 +588,7 @@ async def pay_order(
             payment_svc = PaymentService()
             balance_delta = (
                 pay_amount
-                if payment_input.method == "credit"
+                if payment_method == "credit"
                 else -pay_amount
             )
             await payment_svc._apply_outstanding_balance_delta(
@@ -586,11 +602,11 @@ async def pay_order(
                 order_id=order.id,
                 target_state=target_state,
                 reason=(
-                    f"Payment recorded: {payment_input.method} "
+                    f"Payment recorded: {payment_method} "
                     f"{payment_input.amount}"
                 ),
                 updated_by=token.user_id,
-                payment_method=payment_input.method,
+                payment_method=payment_method,
             )
 
             # S5-D4B: Settle only after the transition returns an actual PAID

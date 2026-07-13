@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
-import type { PayOrderData } from '@/services/orderService';
+import type { PayOrderData, PaymentMethod } from '@/services/orderService';
 
 interface PaymentRecordModalProps {
   open: boolean;
@@ -15,10 +15,9 @@ interface PaymentRecordModalProps {
 
 const METHODS = [
   { value: 'cash', label: 'Cash' },
-  { value: 'transfer', label: 'Bank Transfer' },
-  { value: 'mobile_money', label: 'Mobile Money' },
+  { value: 'transfer', label: 'Bank Transfer / Mobile Money' },
   { value: 'credit', label: 'Credit Sale' },
-] as const;
+] as const satisfies readonly { value: PaymentMethod; label: string }[];
 
 export function PaymentRecordModal({
   open,
@@ -29,7 +28,7 @@ export function PaymentRecordModal({
   remainingAmount,
   loading = false,
 }: PaymentRecordModalProps) {
-  const [method, setMethod] = useState('');
+  const [method, setMethod] = useState<PaymentMethod | ''>('');
   const [amount, setAmount] = useState('');
   const [transactionId, setTransactionId] = useState('');
   const [notes, setNotes] = useState('');
@@ -46,6 +45,10 @@ export function PaymentRecordModal({
     const numAmount = Number(amount);
     if (numAmount <= 0) {
       setError('Amount must be greater than 0');
+      return;
+    }
+    if (!method) {
+      setError('Select a payment method');
       return;
     }
     if (method === 'credit') {
@@ -118,7 +121,7 @@ export function PaymentRecordModal({
             id="pay-method"
             value={method}
             onChange={(e) => {
-              const next = e.target.value;
+              const next = e.target.value as PaymentMethod | '';
               setError(null);
               if (next === 'credit' && creditUnavailable) {
                 setMethod('');
@@ -169,7 +172,7 @@ export function PaymentRecordModal({
           />
         </div>
 
-        {(method === 'transfer' || method === 'mobile_money') && (
+        {method === 'transfer' && (
           <div>
             <label htmlFor="pay-txn-id" className="block text-sm font-medium text-gray-700">
               Transaction ID

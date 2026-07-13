@@ -191,3 +191,221 @@ GitNexus note:
 
 - npx gitnexus_detect_changes compare --base origin/product-dev-recovered failed because gitnexus_detect_changes is not available as an npm package in this environment.
 - npx gitnexus analyze before the R1 commit reported already up to date at 5cad2e7; final branch-tip analyze/status evidence is captured after commit in the R1 handoff.
+
+## R2: Strict CHECK Semantic Equivalence Gate
+
+Commit base: b7a717f256566604eac8e9f338adf5a70fbdcbb8
+
+R2 changes:
+
+- Migration 032 now reads CHECK expressions from pg_constraint/pg_get_expr plus constrained column names from conkey.
+- Equivalent payment method constraints must be validated CHECK constraints, depend only on payments.method, use positive membership semantics, and contain exactly cash, transfer, and credit.
+- NOT IN, negation, inequality, OR, AND/extra conditions, extra columns, and same literals on non-method columns fail closed.
+- Canonical plus duplicate equivalent constraints fail closed.
+- More than one equivalent legacy candidate fails closed instead of choosing by sorted name.
+- A same-name canonical constraint with incompatible semantics still fails closed.
+- Exactly one equivalent legacy constraint is still safely renamed to ck_payments_method_canonical.
+- Future tenant bootstrap reconciliation mirrors the same strict semantic gate and duplicate policy.
+
+R2 DB-backed test coverage added:
+
+- method NOT IN ('cash', 'transfer', 'credit') fails closed.
+- method IN (...) OR method = 'banana' fails closed.
+- status IN ('cash', 'transfer', 'credit') fails closed.
+- COALESCE(method IN ('cash', 'transfer', 'credit'), false) wrapper fails closed.
+- canonical plus equivalent legacy duplicate fails closed.
+- multiple equivalent legacy constraints fail closed.
+- same canonical name with incompatible NOT IN semantics fails closed in bootstrap reconciliation.
+- existing canonical constraint is a no-op.
+- one equivalent legacy constraint is renamed.
+- repeated migration run remains idempotent.
+- canonical inserts succeed and banana insert is rejected by ck_payments_method_canonical.
+- fresh bootstrap still creates the canonical constraint.
+
+R2 validation environment:
+
+- Disposable/local Postgres: mpango_dc10g_test_pg on 127.0.0.1:5435.
+- TEST_DATABASE_URL/DATABASE_URL: postgresql://mpango_test:***@127.0.0.1:5435/mpango_erp_test.
+- REDIS_URL: redis://127.0.0.1:6379/0.
+- Initial un-overridden test run failed before assertions because the default test DB host postgres is not resolvable from this Windows shell; rerun used TEST_DATABASE_URL against the local mapped port.
+
+R2 validation evidence:
+
+```text
+poetry run python -m py_compile alembic/versions/032_payment_method_integrity.py scripts/bootstrap_tenant_schema.py tests/test_dc10f_r1_payment_method_migration.py
+PASS
+```
+
+```text
+poetry run pytest tests/test_dc10f_r1_payment_method_migration.py -q
+18 passed
+```
+
+```text
+poetry run pytest tests/test_dc10f_payment_method_integrity.py -q
+4 passed, 29 warnings
+```
+
+```text
+poetry run pytest tests/test_phase5_order_payment.py tests/test_s5d4b_settled_cash_payment.py tests/test_s5d5_payment_ledger_runtime_invariant.py tests/test_s5d6_multi_partial_payment_state_machine.py -q
+72 passed, 1 xfailed, 137 warnings
+```
+
+```text
+poetry run pytest tests/test_s4g_migration_infrastructure_hardening.py -q
+5 passed
+```
+
+```text
+poetry run alembic upgrade head
+Running upgrade 031_legacy_tenant_reconciliation -> 032_payment_method_integrity
+```
+
+```text
+poetry run alembic current
+032_payment_method_integrity (head)
+```
+
+```text
+poetry run alembic heads
+032_payment_method_integrity (head)
+```
+
+```text
+pnpm vitest run src/tests/PaymentRecordModal.test.tsx
+1 passed
+```
+
+```text
+pnpm build
+PASS
+```
+
+```text
+git diff --check
+PASS; only CRLF conversion warnings
+```
+
+```text
+pre-commit run --files backend/alembic/versions/032_payment_method_integrity.py backend/scripts/bootstrap_tenant_schema.py backend/tests/test_dc10f_r1_payment_method_migration.py
+trim trailing whitespace: Passed
+fix end of files: Passed
+check yaml: Skipped (no files)
+check for added large files: Passed
+Detect secrets: Passed
+```
+
+```text
+npx gitnexus analyze
+Already up to date
+```
+
+```text
+npx gitnexus status
+Indexed commit: b7a717f
+Current commit: b7a717f
+Status: up-to-date
+```
+
+R2 verdict:
+
+```text
+PASS_FOR_CTO_DC10F_MERGE_REVIEW
+```
+
+## R3: Exact Membership Member Gate
+
+Commit base: b7a717f256566604eac8e9f338adf5a70fbdcbb8 plus uncommitted R2 worktree.
+
+R3 changes:
+
+- Replaced wildcard IN/ANY matching with exact member parsing for migration 032 and bootstrap_tenant_schema.py.
+- Accepted member shapes are limited to direct SQL string literals with optional PostgreSQL-generated casts.
+- IN/ANY member lists must contain exactly three members and the unique member set must be exactly cash, transfer, credit.
+- Explicitly fail closed for NULL members, current_user/current_role, function/expression members, ARRAY concatenation, duplicate canonical literals, fourth members, subqueries, and any nonliteral member.
+- Preserved R2 duplicate policy: exactly one equivalent legacy constraint can be renamed; multiple equivalents and canonical-plus-equivalent duplicates fail closed.
+
+R3 DB-backed test coverage added:
+
+- CHECK (method IN ('cash', 'transfer', 'credit', NULL)) allows banana under PostgreSQL CHECK semantics, then migration rejects it as incompatible and does not rename/accept it.
+- CHECK (method = ANY (ARRAY['cash', 'transfer', 'credit', NULL])) allows banana under PostgreSQL CHECK semantics, then migration rejects it as incompatible and does not rename/accept it.
+- The same two NULL-member cases are proven against bootstrap reconciliation: banana is allowed before reconciliation, then bootstrap rejects the malformed constraint and leaves it unaccepted.
+- CHECK (method IN ('cash', 'transfer', 'credit', current_user::text)) fails closed.
+- CHECK (method = ANY (ARRAY['cash', 'transfer', 'credit'] || ARRAY[current_user::text])) fails closed.
+
+R3 validation evidence:
+
+```text
+poetry run python -m py_compile alembic/versions/032_payment_method_integrity.py scripts/bootstrap_tenant_schema.py tests/test_dc10f_r1_payment_method_migration.py
+PASS
+```
+
+```text
+poetry run pytest tests/test_dc10f_r1_payment_method_migration.py -q
+24 passed
+```
+
+```text
+poetry run pytest tests/test_dc10f_payment_method_integrity.py -q
+4 passed, 29 warnings
+```
+
+```text
+poetry run pytest tests/test_phase5_order_payment.py tests/test_s5d4b_settled_cash_payment.py tests/test_s5d5_payment_ledger_runtime_invariant.py tests/test_s5d6_multi_partial_payment_state_machine.py -q
+72 passed, 1 xfailed, 137 warnings
+```
+
+```text
+poetry run pytest tests/test_s4g_migration_infrastructure_hardening.py -q
+5 passed
+```
+
+```text
+poetry run alembic upgrade head
+PASS
+```
+
+```text
+poetry run alembic current
+032_payment_method_integrity (head)
+```
+
+```text
+poetry run alembic heads
+032_payment_method_integrity (head)
+```
+
+```text
+pnpm vitest run src/tests/PaymentRecordModal.test.tsx
+1 passed
+```
+
+```text
+pnpm build
+PASS
+```
+
+```text
+git diff --check
+PASS; only CRLF conversion warnings
+```
+
+```text
+pre-commit run --files backend/alembic/versions/032_payment_method_integrity.py backend/scripts/bootstrap_tenant_schema.py backend/tests/test_dc10f_r1_payment_method_migration.py ai-ledger/product-ai/2026-07-13_dc10f_payment_method_financial_integrity.md
+trim trailing whitespace: Passed
+fix end of files: Passed
+check yaml: Skipped (no files)
+check for added large files: Passed
+Detect secrets: Passed
+```
+
+```text
+npx gitnexus_detect_changes compare --staged
+FAILED: npm 404 Not Found for gitnexus_detect_changes@*; requested package is unavailable in this environment.
+```
+
+R3 verdict:
+
+```text
+PASS_FOR_CTO_DC10F_MERGE_REVIEW
+```

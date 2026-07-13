@@ -187,19 +187,41 @@ def _plan_schema(bind, schema: str) -> PaymentMethodPlan:
     canonical_rows = [row for row in rows if row["conname"] == CONSTRAINT_NAME]
     if len(canonical_rows) > 1:
         raise PreflightFailure(f"{schema}.{CONSTRAINT_NAME}: duplicate canonical constraints")
+
+    equivalent_rows = [row for row in rows if _is_equivalent_payment_method_constraint(row)]
+    incompatible_rows = [
+        row
+        for row in rows
+        if not _is_equivalent_payment_method_constraint(row)
+        and _is_payment_method_constraint_candidate(row)
+    ]
+
     if canonical_rows:
         row = canonical_rows[0]
         if not _is_equivalent_payment_method_constraint(row):
             raise PreflightFailure(f"{schema}.{CONSTRAINT_NAME}: check constraint is incompatible")
+        duplicate_equivalent = [row for row in equivalent_rows if row["conname"] != CONSTRAINT_NAME]
+        if duplicate_equivalent:
+            raise PreflightFailure(
+                f"{schema}.{CONSTRAINT_NAME}: duplicate equivalent payment method constraints"
+            )
+        if incompatible_rows:
+            names = ", ".join(row["conname"] for row in incompatible_rows)
+            raise PreflightFailure(f"{schema}.{PAYMENTS}: incompatible method check constraints: {names}")
         return PaymentMethodPlan(schema=schema, action="none")
 
-    equivalent_legacy = [row for row in rows if _is_equivalent_payment_method_constraint(row)]
-    if equivalent_legacy:
-        equivalent_legacy.sort(key=lambda row: row["conname"])
+    if incompatible_rows:
+        names = ", ".join(row["conname"] for row in incompatible_rows)
+        raise PreflightFailure(f"{schema}.{PAYMENTS}: incompatible method check constraints: {names}")
+
+    if len(equivalent_rows) > 1:
+        raise PreflightFailure(f"{schema}.{PAYMENTS}: multiple equivalent payment method constraints")
+
+    if equivalent_rows:
         return PaymentMethodPlan(
             schema=schema,
             action="rename",
-            legacy_constraint_name=equivalent_legacy[0]["conname"],
+            legacy_constraint_name=equivalent_rows[0]["conname"],
         )
 
     return PaymentMethodPlan(schema=schema, action="add")
@@ -242,13 +264,21 @@ def _payment_method_constraint_rows(bind, schema: str) -> list[dict[str, Any]]:
             SELECT c.conname,
                    c.contype,
                    c.convalidated,
-                   pg_get_constraintdef(c.oid, true) AS constraint_def
+                   pg_get_constraintdef(c.oid, true) AS constraint_def,
+                   pg_get_expr(c.conbin, c.conrelid, true) AS check_expr,
+                   COALESCE(array_agg(a.attname ORDER BY cols.ordinality)
+                       FILTER (WHERE a.attname IS NOT NULL), ARRAY[]::name[]) AS column_names
             FROM pg_constraint c
             JOIN pg_class t ON t.oid = c.conrelid
             JOIN pg_namespace n ON n.oid = t.relnamespace
+            LEFT JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS cols(attnum, ordinality)
+                ON true
+            LEFT JOIN pg_attribute a
+                ON a.attrelid = c.conrelid AND a.attnum = cols.attnum
             WHERE n.nspname = :schema
               AND t.relname = :table_name
               AND c.contype = 'c'
+            GROUP BY c.oid, c.conname, c.contype, c.convalidated, c.conbin, c.conrelid
             ORDER BY c.conname
             """
         ),
@@ -260,11 +290,89 @@ def _payment_method_constraint_rows(bind, schema: str) -> list[dict[str, Any]]:
 def _is_equivalent_payment_method_constraint(row: dict[str, Any]) -> bool:
     if _catalog_code(row["contype"]) != "c" or not bool(row["convalidated"]):
         return False
-    constraint_def = _normalize_sql(str(row["constraint_def"] or ""))
-    if "method" not in constraint_def:
+    if _catalog_column_names(row.get("column_names")) != ["method"]:
         return False
-    literal_values = set(re.findall(r"'([^']+)'", constraint_def))
-    return literal_values == set(CANONICAL_METHODS)
+
+    expression = str(row.get("check_expr") or row.get("constraint_def") or "")
+    normalized = _normalize_expression(expression)
+    compact = _compact_sql(expression)
+    if _has_forbidden_boolean_or_negative_semantics(normalized, compact):
+        return False
+    members = _positive_method_members(normalized)
+    return members is not None and len(members) == len(CANONICAL_METHODS) and set(members) == set(CANONICAL_METHODS)
+
+
+def _is_payment_method_constraint_candidate(row: dict[str, Any]) -> bool:
+    columns = _catalog_column_names(row.get("column_names"))
+    literal_values = set(re.findall(r"'([^']+)'", str(row.get("check_expr") or row.get("constraint_def") or "")))
+    return "method" in columns or literal_values == set(CANONICAL_METHODS)
+
+
+def _has_forbidden_boolean_or_negative_semantics(normalized: str, compact: str) -> bool:
+    return bool(
+        re.search(r"\bor\b|\band\b|\bnot\b", normalized)
+        or re.search(r"\bcurrent_user\b|\bcurrent_role\b", normalized)
+        or "<>" in normalized
+        or "!=" in normalized
+        or "||" in normalized
+        or "<>all" in compact
+        or "notin" in compact
+        or "isdistinctfrom" in compact
+    )
+
+
+def _positive_method_members(normalized: str) -> list[str] | None:
+    method_lhs = r"\(?method\)?(?:::[a-z_][a-z0-9_.]*(?:\s+[a-z_][a-z0-9_]*)?)?"
+    in_match = re.fullmatch(method_lhs + r"\s+in\s*\((?P<members>.*)\)", normalized)
+    if in_match:
+        return _direct_string_literal_members(in_match.group("members"))
+
+    any_match = re.fullmatch(
+        method_lhs
+        + r"\s*=\s*any\s*\(\s*array\[(?P<members>.*?)\]"
+        + r"(?:::[a-z_][a-z0-9_.]*(?:\s+[a-z_][a-z0-9_]*)?\[\])?\s*\)",
+        normalized,
+    )
+    if any_match:
+        return _direct_string_literal_members(any_match.group("members"))
+
+    return None
+
+
+def _direct_string_literal_members(member_sql: str) -> list[str] | None:
+    values: list[str] = []
+    for member in _split_top_level_sql_members(member_sql):
+        match = re.fullmatch(
+            r"'([^']+)'(?:::[a-z_][a-z0-9_.]*(?:\s+[a-z_][a-z0-9_]*)?)?",
+            member.strip(),
+        )
+        if not match:
+            return None
+        values.append(match.group(1))
+    return values
+
+
+def _split_top_level_sql_members(member_sql: str) -> list[str]:
+    members: list[str] = []
+    start = 0
+    depth = 0
+    in_quote = False
+    index = 0
+    while index < len(member_sql):
+        char = member_sql[index]
+        if char == "'":
+            in_quote = not in_quote
+        elif not in_quote:
+            if char in "([":
+                depth += 1
+            elif char in ")]" and depth > 0:
+                depth -= 1
+            elif char == "," and depth == 0:
+                members.append(member_sql[start:index].strip())
+                start = index + 1
+        index += 1
+    members.append(member_sql[start:].strip())
+    return members
 
 
 def _constraint_exists(bind, schema: str, table_name: str, constraint_name: str) -> bool:
@@ -314,6 +422,23 @@ def _quote_ident(bind, identifier: str | None) -> str:
 
 def _normalize_sql(sql: str) -> str:
     return "".join(sql.lower().split())
+
+
+def _normalize_expression(sql: str) -> str:
+    return " ".join(sql.lower().split())
+
+
+def _compact_sql(sql: str) -> str:
+    return "".join(sql.lower().split())
+
+
+def _catalog_column_names(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip("{}")
+        return [part.strip().strip('"') for part in stripped.split(",") if part]
+    return [str(part) for part in value]
 
 
 def _catalog_code(value: Any) -> str | None:

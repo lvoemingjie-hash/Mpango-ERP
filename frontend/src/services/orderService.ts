@@ -2,8 +2,10 @@ import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
 import type { Order, WholesalerOrderCreateRequest } from '@/types/order';
 
+export type PaymentMethod = 'cash' | 'transfer' | 'credit';
+
 export interface PayOrderData {
-  method: string;
+  method: PaymentMethod;
   amount: number;
   transaction_id?: string;
   notes?: string;

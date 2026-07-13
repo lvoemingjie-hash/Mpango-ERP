@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -32,6 +33,8 @@ IX_RETAILER_PRICES_SKU = "ix_retailer_prices_sku_id"
 MV_SALES_DAILY = "mv_sales_daily"
 IX_MV_SALES_DAILY = "idx_mv_sales_daily_u1"
 REPORTING_ROLE = "reporting_role"
+CK_PAYMENTS_METHOD = "ck_payments_method_canonical"
+CANONICAL_PAYMENT_METHODS = ("cash", "transfer", "credit")
 
 RETAILER_PRICE_COLUMNS = {
     "id": ("uuid", True),
@@ -103,6 +106,40 @@ async def _constraint_exists(db, schema: str, table: str, constraint_name: str) 
         "AND c.conname = :constraint_name AND c.contype = 'c'"
     ), {"schema": schema, "table": table, "constraint_name": constraint_name})
     return result.first() is not None
+
+
+async def _check_constraint_rows(db, schema: str, table: str) -> list[dict]:
+    from sqlalchemy import text
+
+    rows = (await db.execute(
+        text(
+            """
+            SELECT c.conname,
+                   c.contype,
+                   c.convalidated,
+                   pg_get_constraintdef(c.oid, true) AS constraint_def
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE n.nspname = :schema
+              AND t.relname = :table
+              AND c.contype = 'c'
+            ORDER BY c.conname
+            """
+        ),
+        {"schema": schema, "table": table},
+    )).mappings()
+    return [dict(row) for row in rows]
+
+
+def _is_equivalent_payment_method_constraint(row: dict) -> bool:
+    if _catalog_code(row.get("contype")) != "c" or not bool(row.get("convalidated")):
+        return False
+    constraint_def = _normalize_sql(str(row.get("constraint_def") or ""))
+    if "method" not in constraint_def:
+        return False
+    literal_values = set(re.findall(r"'([^']+)'", constraint_def))
+    return literal_values == set(CANONICAL_PAYMENT_METHODS)
 
 
 def _normalize_sql(sql: str) -> str:
@@ -359,7 +396,8 @@ async def _reconcile_payments(db, ts: str) -> None:
     4. Set retailer_id NOT NULL
     5. Add transaction_id if missing
     6. Create ix_payments_order_id if missing
-    7. Create uq_payments_transaction_id partial unique if missing
+    7. Ensure canonical payments.method check constraint
+    8. Create uq_payments_transaction_id partial unique if missing
     """
     from sqlalchemy import text
 
@@ -401,6 +439,46 @@ async def _reconcile_payments(db, ts: str) -> None:
             f'ALTER TABLE "{ts}".payments ADD COLUMN transaction_id VARCHAR(64)'
         ))
         print(f"[reconcile] {ts}.payments: added transaction_id (nullable)")
+
+    invalid_method_count = (await db.execute(text(
+        f'SELECT COUNT(*) FROM "{ts}".payments '
+        "WHERE method IS NULL OR method NOT IN ('cash', 'transfer', 'credit')"
+    ))).scalar()
+    if invalid_method_count and int(invalid_method_count) > 0:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {invalid_method_count} payments rows have "
+            "non-canonical or NULL method values. Manual data resolution is required."
+        )
+
+    constraints = await _check_constraint_rows(db, ts, "payments")
+    canonical_rows = [row for row in constraints if row["conname"] == CK_PAYMENTS_METHOD]
+    if len(canonical_rows) > 1:
+        raise RuntimeError(f"Bootstrap reconcile: duplicate {ts}.{CK_PAYMENTS_METHOD} constraints")
+    if canonical_rows:
+        if not _is_equivalent_payment_method_constraint(canonical_rows[0]):
+            raise RuntimeError(
+                f"Bootstrap reconcile: existing {ts}.{CK_PAYMENTS_METHOD} "
+                "does not match expected payment method contract."
+            )
+    else:
+        equivalent_legacy = [
+            row for row in constraints if _is_equivalent_payment_method_constraint(row)
+        ]
+        if equivalent_legacy:
+            legacy_name = sorted(row["conname"] for row in equivalent_legacy)[0]
+            quoted_legacy_name = await _quote_ident(db, legacy_name)
+            quoted_constraint_name = await _quote_ident(db, CK_PAYMENTS_METHOD)
+            await db.execute(text(
+                f'ALTER TABLE "{ts}".payments '
+                f'RENAME CONSTRAINT {quoted_legacy_name} TO {quoted_constraint_name}'
+            ))
+        else:
+            await db.execute(text(
+                f'ALTER TABLE "{ts}".payments '
+                f'ADD CONSTRAINT {CK_PAYMENTS_METHOD} '
+                "CHECK (method IN ('cash', 'transfer', 'credit'))"
+            ))
+        print(f"[reconcile] {ts}.payments: ensured {CK_PAYMENTS_METHOD}")
 
     # --- Phase 2: indexes (require both columns to exist) ---
 
@@ -1021,7 +1099,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "idempotency_key VARCHAR(64) UNIQUE,"
             "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-            "created_by UUID, updated_by UUID)",
+            "created_by UUID, updated_by UUID,"
+            "CONSTRAINT ck_payments_method_canonical "
+            "CHECK (method IN ('cash', 'transfer', 'credit')))",
 
             f'CREATE TABLE IF NOT EXISTS "{ts}".ledger_entries ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"

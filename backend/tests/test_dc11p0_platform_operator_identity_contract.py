@@ -1,12 +1,13 @@
-"""DC-11P0-R1 Platform Operator Identity + Credential Lifecycle Contract Tests.
+"""DC-11P0-R2 Platform Operator Identity + Credential Lifecycle Contract Tests.
 
 Static contract tests that verify the current architecture matches the
-assumptions in the DC-11P0-R1 contract document. These tests do NOT implement
+assumptions in the DC-11P0-R2 contract document. These tests do NOT implement
 the new platform operator system; they assert the current state so that
 DC-11P1 implementation changes are detectable.
 
 R1 additions: alembic head check (033), no 034 migration yet, no token
 tables exist yet.
+R2 additions: no recovery credentials model, no auth_version in TokenPayload.
 """
 from __future__ import annotations
 
@@ -213,4 +214,22 @@ class TestMigrationAndTableState:
         mod = importlib.import_module("models")
         assert not hasattr(mod, "PlatformOperatorResetToken"), (
             "PlatformOperatorResetToken model should not exist yet"
+        )
+
+    def test_no_recovery_credentials_model(self):
+        """No platform_operator_recovery_credentials model should exist yet."""
+        mod = importlib.import_module("models")
+        assert not hasattr(mod, "PlatformOperatorRecoveryCredential"), (
+            "PlatformOperatorRecoveryCredential model should not exist yet"
+        )
+
+    def test_token_payload_has_no_auth_version(self):
+        """TokenPayload must NOT have platform_auth_version yet (DC-11P3 adds it)."""
+        from core.security import TokenPayload
+        fields = TokenPayload.model_fields
+        assert "platform_auth_version" not in fields, (
+            "platform_auth_version must not exist on TokenPayload yet"
+        )
+        assert "platform_role" not in fields, (
+            "platform_role must not exist on TokenPayload yet"
         )

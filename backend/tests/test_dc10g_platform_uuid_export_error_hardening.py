@@ -17,6 +17,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 
@@ -72,7 +73,7 @@ class TestPlatformAuditUUIDHardening:
         from api.v1.platform.audit import get_audit_log
         mock_db = _mock_db_returns_none()
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(HTTPException) as exc_info:
             asyncio.run(get_audit_log("not-a-uuid", db=mock_db, _auth=None))
         assert exc_info.value.status_code == 404
         assert mock_db.execute.await_count == 0
@@ -81,7 +82,7 @@ class TestPlatformAuditUUIDHardening:
         from api.v1.platform.audit import get_audit_log
         mock_db = _mock_db_returns_none()
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(HTTPException) as exc_info:
             asyncio.run(
                 get_audit_log("00000000-0000-0000-0000-000000000000", db=mock_db, _auth=None)
             )
@@ -187,22 +188,6 @@ class TestExportEnqueueErrorBoundary:
 
         # Only the exception CLASS NAME may appear in logs.
         assert "ConnectionError" in log_text
-
-    def test_malformed_export_id_returns_400(self):
-        """Regression: DC-6B malformed export job_id still returns 400."""
-        from api.v1.exports import _parse_export_job_id, _invalid_export_id_response
-
-        assert _parse_export_job_id("not-a-uuid") is None
-        assert _parse_export_job_id("00000000-0000-0000-0000-000000000000") is not None
-
-        resp = _invalid_export_id_response()
-        assert resp.status_code == 400
-        body = resp.body.decode() if hasattr(resp, "body") else str(resp)
-        assert "INVALID_EXPORT_ID" in body
-        assert "badly formed" not in body.lower()
-        assert "ValueError" not in body
-        assert "traceback" not in body.lower()
-
 
     def test_malformed_export_id_returns_400(self):
         """Regression: DC-6B malformed export job_id still returns 400."""

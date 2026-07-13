@@ -7,7 +7,8 @@
 | Base | `547b0b294aa387d6179f53eca3ec162532a1e29e` (`release-2026-07-13`) |
 | Branch | `opencode/dc10g-platform-uuid-export-error-hardening-2026-07-13` |
 | R0 commit | `3e1b0653` |
-| R1 commit | (this revision) |
+| R1 commit | `f3dde606707b272dff04726d402948e4bf516476` |
+| R2 commit | (this revision) |
 | Verdict | `PASS_FOR_CTO_DC10G_MERGE_REVIEW` |
 
 ## 1. Problem Statement
@@ -77,15 +78,15 @@ test files (route-auth tests).
 | Field | Value |
 |---|---|
 | Risk level | CRITICAL |
-| Files changed | 5 |
+| Files changed | 6 |
 | Mapped symbols | 56 |
 | Affected flows | 20 |
 
-**Why CRITICAL is appropriate:** the changes touch `find_user_across_tenants`
-(equivalent), `create_export` (the export enqueue entry point), and platform
-route handlers that are on every platform API request path. The blast radius
-of a regression in any of these would affect all platform operations and
-all export operations.
+**Why CRITICAL is appropriate:** the changes touch `create_export` (the export
+enqueue entry point) and platform route handlers (`get_tenant`,
+`get_audit_log`, `get_audit_event`) that are on every platform API request
+path. The blast radius of a regression in any of these would affect all
+platform operations and all export operations.
 
 **Why the semantic edits remain narrow despite the CRITICAL rating:**
 - Each edit adds a UUID parse guard BEFORE an existing DB query; the query
@@ -114,7 +115,8 @@ all export operations.
 | `backend/api/v1/platform/audit.py` | Added `_parse_uuid_param` + guard in `get_audit_log` |
 | `backend/api/v1/platform/p10/services.py` | Added `_coerce_tenant_id` guard in `get_audit_event` |
 | `backend/api/v1/exports.py` | Sanitized `EXPORT_ENQUEUE_FAILED` message |
-| `backend/tests/test_dc10g_platform_uuid_export_error_hardening.py` | 8 tests (R1 rewrite) |
+| `backend/tests/test_dc10g_platform_uuid_export_error_hardening.py` | 8 tests (R2 cleanup: removed duplicate, HTTPException) |
+| `ai-ledger/product-ai/2026-07-13_dc10g_platform_uuid_export_error_hardening.md` | Durable report (this file) |
 
 ## 7. Verdict
 

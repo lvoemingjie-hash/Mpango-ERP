@@ -1,5 +1,5 @@
 """
-S6-4: Export Job Worker — Async File Generation via S4 Job Queue.
+S6-4: Export Job Worker - Async File Generation via S4 Job Queue.
 
 Philosophy: "The export runs where the user isn't waiting."
 
@@ -9,14 +9,14 @@ Context Propagation:
     and reconstructs the SemanticQueryBuilder with the same tenant context.
 
     POST /exports (HTTP, authenticated)
-        → ExportJobPayload.from_request(request, tenant_id, tenant_schema, user_id)
-        → job_queue.enqueue("export_report", payload.model_dump())
-        → [detached worker picks up job]
-        → export_report_worker(payload_dict)
-            → ExportJobPayload(**payload_dict)  # re-validates tenant_id
-            → SemanticQueryBuilder(session, tenant_id, tenant_schema, view_scope)
-            → builder.execute(stmt)  # SET LOCAL search_path enforced
-            → stream rows → write CSV/XLSX to disk
+        -> ExportJobPayload.from_request(request, tenant_id, tenant_schema, user_id)
+        -> job_queue.enqueue("export_report", payload.model_dump())
+        -> [detached worker picks up job]
+        -> export_report_worker(payload_dict)
+            -> ExportJobPayload(**payload_dict)  # re-validates tenant_id
+            -> SemanticQueryBuilder(session, tenant_id, tenant_schema, view_scope)
+            -> builder.execute(stmt)  # SET LOCAL search_path enforced
+            -> stream rows -> write CSV/XLSX to disk
 
 Memory Safety:
     - Uses yield_per(STREAM_BATCH_SIZE) to stream rows from the database.
@@ -63,7 +63,7 @@ EXPORT_DIR = Path(os.environ.get(
     os.path.join(os.path.dirname(os.path.dirname(__file__)), "exports")
 ))
 
-# Streaming batch size — rows fetched per database round-trip.
+# Streaming batch size - rows fetched per database round-trip.
 # Keeps memory bounded: at most STREAM_BATCH_SIZE rows in RAM at once.
 STREAM_BATCH_SIZE = 1000
 
@@ -163,9 +163,11 @@ async def export_report_worker(payload: dict) -> None:
     limit = min(job_payload.limit, MAX_EXPORT_ROWS)
 
     # --- Step 3: Build query via SemanticQueryBuilder ---
-    #[Constraint Check] Rule #1: tenant_id flows from payload → builder constructor
+    #[Constraint Check] Rule #1: tenant_id flows from payload -> builder constructor
     #[Constraint Check] Rule #1: SET LOCAL search_path enforced by builder
     async with ReportingSessionLocal() as session:
+        session.info["tenant_id"] = job_payload.tenant_id
+        session.info["tenant_schema"] = job_payload.tenant_schema
         builder = SemanticQueryBuilder(
             session=session,
             tenant_id=job_payload.tenant_id,
@@ -314,7 +316,7 @@ async def _write_xlsx_streaming(result, columns: list[str], file_path: Path) -> 
 # Metadata Sidecar
 # ---------------------------------------------------------------------------
 
-# S8-SEC: Safe file_id pattern — prevents path traversal in metadata sidecar.
+# S8-SEC: Safe file_id pattern - prevents path traversal in metadata sidecar.
 _SAFE_FILE_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
 
 
@@ -326,7 +328,7 @@ def _validate_file_id(file_id: str) -> str:
     """
     if not _SAFE_FILE_ID_RE.match(file_id):
         raise ValueError(
-            f"Unsafe file_id: {file_id!r} — must match {_SAFE_FILE_ID_RE.pattern}"
+            f"Unsafe file_id: {file_id!r} - must match {_SAFE_FILE_ID_RE.pattern}"
         )
     return file_id
 

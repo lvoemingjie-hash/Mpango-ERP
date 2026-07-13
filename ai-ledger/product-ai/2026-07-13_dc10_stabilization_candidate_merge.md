@@ -145,6 +145,11 @@ critical paths.
 The candidate-only unstaged test correction was `LOW`, with three changed
 files and no affected execution flows.
 
+After the test correction and this evidence file were committed, the final
+compare was `CRITICAL`, with 21 changed files, 248 mapped symbols, and the same
+20 affected flows. The two-file increase is the integrated P10 test correction
+and this evidence file; it does not expand the production-code scope.
+
 ## Promotion Decision
 
 Verdict: `PASS_FOR_PRODUCT_PROMOTION`

@@ -9,6 +9,9 @@ Health and info endpoints remain unauthenticated (see health.py).
 """
 from __future__ import annotations
 
+import uuid
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +20,19 @@ from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
 from models.wholesaler import Wholesaler
 from models.platform_tenant import PlatformTenant
+
+
+def _parse_uuid_param(value: str) -> Optional[uuid.UUID]:
+    """Parse a UUID path parameter; return None on malformed input.
+
+    Prevents the raw string from reaching a UUID column and raising an
+    asyncpg DataError (HTTP 500). Callers should return a controlled
+    404 when this returns None.
+    """
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return None
 
 router = APIRouter(prefix="/api/v1/platform/tenants", tags=["platform-tenants"])
 
@@ -63,8 +79,12 @@ async def get_tenant(
     _auth: None = Depends(require_platform_operator),
 ):
     """Get detailed platform lifecycle info for a single tenant (read-only)."""
+    parsed_id = _parse_uuid_param(wholesaler_id)
+    if parsed_id is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"error": "Tenant not found"})
     result = await db.execute(
-        select(Wholesaler).where(Wholesaler.id == wholesaler_id)
+        select(Wholesaler).where(Wholesaler.id == parsed_id)
     )
     w = result.scalar_one_or_none()
     if w is None:

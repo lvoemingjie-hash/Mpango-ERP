@@ -10,6 +10,7 @@ services/platform_audit_service.py only.
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -18,6 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_platform_db
 from api.v1.platform.p10.guard import require_platform_operator
+
+
+def _parse_uuid_param(value: str) -> Optional[uuid.UUID]:
+    """Parse a UUID path parameter; return None on malformed input."""
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return None
 from api.v1.platform.p10.services import redact_metadata
 from models.platform_audit_log import PlatformAuditLog
 
@@ -205,8 +214,11 @@ async def get_audit_log(
     _auth: None = Depends(require_platform_operator),
 ):
     """Get a single audit log entry (read-only)."""
+    parsed_id = _parse_uuid_param(log_id)
+    if parsed_id is None:
+        raise HTTPException(status_code=404, detail='Audit log entry not found')
     result = await db.execute(
-        select(PlatformAuditLog).where(PlatformAuditLog.id == log_id)
+        select(PlatformAuditLog).where(PlatformAuditLog.id == parsed_id)
     )
     entry = result.scalar_one_or_none()
     if entry is None:

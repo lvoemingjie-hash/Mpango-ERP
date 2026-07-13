@@ -420,8 +420,12 @@ async def get_audit_event(
     """Get a single audit event in P10-A contract shape (placeholder)."""
     from models.platform_audit_log import PlatformAuditLog
 
+    parsed_id = _coerce_tenant_id(event_id)
+    if parsed_id is None:
+        return None
+
     result = await db.execute(
-        select(PlatformAuditLog).where(PlatformAuditLog.id == event_id)
+        select(PlatformAuditLog).where(PlatformAuditLog.id == parsed_id)
     )
     e = result.scalar_one_or_none()
     if e is None:

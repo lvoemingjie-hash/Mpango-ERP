@@ -175,12 +175,15 @@ async def create_export(
         )
     except Exception as e:
         logger.error(
-            f"Failed to enqueue export job: {e}",
-            extra={"tenant_id": tenant_ctx.tenant_id, "error": str(e)}
+            f"Failed to enqueue export job: {type(e).__name__}",
+            extra={"tenant_id": tenant_ctx.tenant_id, "error_class": type(e).__name__}
         )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=make_error("EXPORT_ENQUEUE_FAILED", str(e)),
+            content=make_error(
+                "EXPORT_ENQUEUE_FAILED",
+                "Unable to enqueue export job. Please try again later.",
+            ),
         )
 
     logger.info(

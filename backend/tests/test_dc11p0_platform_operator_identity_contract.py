@@ -1,9 +1,9 @@
 """DC-11P0-R2 Platform Operator Identity + Credential Lifecycle Contract Tests.
 
-Static contract tests that verify the current architecture matches the
-assumptions in the DC-11P0-R2 contract document. These tests do NOT implement
-the new platform operator system; they assert the current state so that
-DC-11P1 implementation changes are detectable.
+Static contract tests that verify the platform auth boundary matches the
+DC-11P0-R2 contract document. DC-11P1 added schema and DC-11P2 added credential
+lifecycle endpoints; dedicated platform login/JWT/guard enforcement remains a
+DC-11P3 boundary and must not appear here.
 
 R1 additions: alembic head check (033), no 034 migration yet, no token
 tables exist yet.
@@ -99,8 +99,8 @@ class TestNoPlatformAuthEndpoints:
             "No platform_operator service references should exist in auth.py yet"
         )
 
-    def test_no_platform_operators_router(self):
-        """No platform operators router file should exist yet."""
+    def test_platform_operators_router_has_no_login_or_jwt_boundary(self):
+        """DC-11P2 router may exist, but must not implement P3 auth/JWT."""
         import pathlib
         platform_dir = (
             pathlib.Path(__file__).resolve().parents[1]
@@ -108,10 +108,14 @@ class TestNoPlatformAuthEndpoints:
         )
         if not platform_dir.exists():
             return
-        route_files = [f.name for f in platform_dir.glob("*.py")]
-        assert not any("operator" in f.lower() for f in route_files), (
-            "No platform operators router should exist yet"
-        )
+        operators_router = platform_dir / "operators.py"
+        if not operators_router.exists():
+            return
+        source = operators_router.read_text(encoding="utf-8").lower()
+        assert "/login" not in source
+        assert "create_identity_token" not in source
+        assert "create_contextual_token" not in source
+        assert "decode_token" not in source
 
 
 # ---------------------------------------------------------------------------

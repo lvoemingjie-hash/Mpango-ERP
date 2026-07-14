@@ -20,11 +20,16 @@ from services.platform_operator_service import (
 
 async def _run(email: str) -> int:
     recovery_credential = getpass.getpass("Recovery credential: ")
+    replacement_credential = getpass.getpass("Replacement recovery credential: ")
+    confirm_replacement_credential = getpass.getpass("Confirm replacement recovery credential: ")
+    if replacement_credential != confirm_replacement_credential:
+        return 1
     async with AsyncSessionLocal() as session:
         service = PlatformOperatorService(session)
         try:
             await service.break_glass_recover(
                 raw_credential=recovery_credential,
+                replacement_credential=replacement_credential,
                 operator_email=email,
             )
             await session.commit()

@@ -42,6 +42,10 @@ class PlatformOperatorResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8)
 
 
+class PlatformOperatorPublicResponseData(BaseModel):
+    """Empty data object for public token lifecycle responses."""
+
+
 class PlatformOperatorActionResponseData(BaseModel):
     operator_id: str | None = None
     status: str | None = None

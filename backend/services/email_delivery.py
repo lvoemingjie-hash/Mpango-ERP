@@ -7,6 +7,7 @@ import ssl
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.message import EmailMessage
+from urllib.parse import quote
 from uuid import UUID
 
 from core.config import Settings
@@ -189,7 +190,7 @@ def record_platform_operator_setup_email(
     """
     if not is_verification_email_delivery_configured(settings=settings):
         raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
-    setup_link = f"/platform/operators/setup-credential?setupToken={token}"
+    setup_link = f"/platform/setup-credential?setupToken={quote(token, safe='')}"
 
     if settings.MPANGO_ENV == "production":
         _send_smtp_email(
@@ -225,7 +226,7 @@ def record_platform_operator_reset_email(
     """Deliver or capture a platform operator reset email."""
     if not is_verification_email_delivery_configured(settings=settings):
         raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
-    reset_link = f"/platform/operators/reset-password?resetToken={token}"
+    reset_link = f"/platform/reset-password?resetToken={quote(token, safe='')}"
 
     if settings.MPANGO_ENV == "production":
         _send_smtp_email(

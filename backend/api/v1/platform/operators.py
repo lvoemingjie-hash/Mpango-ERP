@@ -18,6 +18,7 @@ from schemas.platform_operator import (
     PlatformOperatorData,
     PlatformOperatorForgotPasswordRequest,
     PlatformOperatorInviteRequest,
+    PlatformOperatorPublicResponseData,
     PlatformOperatorResetPasswordRequest,
     PlatformOperatorSetupCredentialRequest,
 )
@@ -65,7 +66,7 @@ def _reject_query_tokens(request: Request, names: set[str]) -> None:
         )
 
 
-@router.post("/setup-credential", response_model=DataResponse[PlatformOperatorActionResponseData])
+@router.post("/setup-credential", response_model=DataResponse[PlatformOperatorPublicResponseData])
 async def setup_platform_operator_credential(
     payload: PlatformOperatorSetupCredentialRequest,
     request: Request,
@@ -74,7 +75,7 @@ async def setup_platform_operator_credential(
     _reject_query_tokens(request, {"setup_token", "setupToken", "password", "token"})
     service = PlatformOperatorService(db)
     try:
-        result = await service.setup_credential(
+        await service.setup_credential(
             setup_token=payload.setup_token,
             password=payload.password,
         )
@@ -88,16 +89,13 @@ async def setup_platform_operator_credential(
             },
         )
     return DataResponse(
-        data=PlatformOperatorActionResponseData(
-            operator_id=str(result.operator_id),
-            status=result.status,
-        ),
+        data=PlatformOperatorPublicResponseData(),
         message=NEUTRAL_PLATFORM_OPERATOR_SETUP_MESSAGE,
         timestamp=datetime.utcnow(),
     )
 
 
-@router.post("/forgot-password", response_model=DataResponse[PlatformOperatorActionResponseData])
+@router.post("/forgot-password", response_model=DataResponse[PlatformOperatorPublicResponseData])
 async def forgot_platform_operator_password(
     payload: PlatformOperatorForgotPasswordRequest,
     db: AsyncSession = Depends(get_platform_db),
@@ -110,13 +108,13 @@ async def forgot_platform_operator_password(
     except Exception:
         await db.rollback()
     return DataResponse(
-        data=PlatformOperatorActionResponseData(),
+        data=PlatformOperatorPublicResponseData(),
         message=NEUTRAL_PLATFORM_OPERATOR_RESET_MESSAGE,
         timestamp=datetime.utcnow(),
     )
 
 
-@router.post("/reset-password", response_model=DataResponse[PlatformOperatorActionResponseData])
+@router.post("/reset-password", response_model=DataResponse[PlatformOperatorPublicResponseData])
 async def reset_platform_operator_password(
     payload: PlatformOperatorResetPasswordRequest,
     request: Request,
@@ -125,7 +123,7 @@ async def reset_platform_operator_password(
     _reject_query_tokens(request, {"reset_token", "resetToken", "new_password", "newPassword", "token"})
     service = PlatformOperatorService(db)
     try:
-        result = await service.reset_password(
+        await service.reset_password(
             reset_token=payload.reset_token,
             new_password=payload.new_password,
         )
@@ -139,10 +137,7 @@ async def reset_platform_operator_password(
             },
         )
     return DataResponse(
-        data=PlatformOperatorActionResponseData(
-            operator_id=str(result.operator_id),
-            status=result.status,
-        ),
+        data=PlatformOperatorPublicResponseData(),
         message=NEUTRAL_PLATFORM_OPERATOR_RESET_MESSAGE,
         timestamp=datetime.utcnow(),
     )

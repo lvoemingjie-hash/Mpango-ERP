@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import func, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Settings, get_settings
@@ -39,7 +40,18 @@ SETUP_TOKEN_TTL = timedelta(hours=24)
 RESET_TOKEN_TTL = timedelta(hours=1)
 LOCKOUT_AFTER_ATTEMPTS = 5
 LOCKOUT_TTL = timedelta(minutes=15)
+RECOVERY_CREDENTIAL_MIN_LENGTH = 24
+RECOVERY_CREDENTIAL_WEAK_SUBSTRINGS = (
+    "password",
+    "secret",
+    "admin",
+    "default",
+    "changeme",
+    "change-me",
+    "123456",
+)
 INVALID_OR_EXPIRED_PLATFORM_OPERATOR_TOKEN = "INVALID_OR_EXPIRED_PLATFORM_OPERATOR_TOKEN"
+INVALID_RECOVERY_CREDENTIAL = "INVALID_RECOVERY_CREDENTIAL"
 NEUTRAL_PLATFORM_OPERATOR_SETUP_MESSAGE = "If this platform credential link is valid, credentials will be updated."
 NEUTRAL_PLATFORM_OPERATOR_RESET_MESSAGE = "If this email can be used, platform password instructions will be sent."
 
@@ -88,6 +100,38 @@ def normalize_operator_email(email: str) -> str:
     return (email or "").strip().lower()
 
 
+def validate_recovery_credential(raw_credential: str | None) -> str:
+    """Validate the operator recovery credential strength boundary.
+
+    Minimum documented policy for DC-11P2-R1:
+    - at least 24 characters
+    - no leading, trailing, or embedded whitespace
+    - contains lowercase, uppercase, digit, and symbol characters
+    - avoids common weak substrings
+    """
+    if raw_credential is None:
+        raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+    credential = raw_credential.strip()
+    if not credential or credential != raw_credential:
+        raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+    if len(credential) < RECOVERY_CREDENTIAL_MIN_LENGTH:
+        raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+    if any(ch.isspace() for ch in credential):
+        raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+    if not any(ch.islower() for ch in credential):
+        raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+    if not any(ch.isupper() for ch in credential):
+        raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+    if not any(ch.isdigit() for ch in credential):
+        raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+    if not any(not ch.isalnum() for ch in credential):
+        raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+    lowered = credential.lower()
+    if any(weak in lowered for weak in RECOVERY_CREDENTIAL_WEAK_SUBSTRINGS):
+        raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+    return credential
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -133,13 +177,17 @@ class PlatformOperatorService:
         self,
         *,
         email: str,
+        recovery_credential: str,
     ) -> PlatformOperatorLifecycleResult:
         """Create the first pending platform admin and email a setup token.
 
-        The raw setup token is returned only through the email delivery channel.
-        CLI callers must not print it or persist it.
+        The raw setup token and recovery credential never leave memory; only
+        hash values are persisted, and the setup token is returned only through
+        the email delivery channel. CLI callers must not print or persist either
+        secret.
         """
         normalized = normalize_operator_email(email)
+        recovery_hash = hash_token(validate_recovery_credential(recovery_credential), self.settings)
         await self.db.execute(text("LOCK TABLE public.platform_operators IN SHARE ROW EXCLUSIVE MODE"))
         count = await self.db.scalar(
             select(func.count(PlatformOperator.id)).where(PlatformOperator.is_deleted.is_(False))
@@ -154,6 +202,14 @@ class PlatformOperatorService:
             password_hash=None,
         )
         self.db.add(operator)
+        await self.db.flush()
+        self.db.add(
+            PlatformOperatorRecoveryCredential(
+                operator_id=operator.id,
+                credential_hash=recovery_hash,
+                status="active",
+            )
+        )
         await self.db.flush()
         raw_token, expires_at = await self._issue_setup_token(operator, _now())
         record_platform_operator_setup_email(
@@ -189,7 +245,11 @@ class PlatformOperatorService:
             invited_by=invited_by,
         )
         self.db.add(operator)
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            await self.db.rollback()
+            raise PlatformOperatorExistsError("PLATFORM_OPERATOR_EXISTS") from None
         raw_token, expires_at = await self._issue_setup_token(operator, _now())
         record_platform_operator_setup_email(
             settings=self.settings,
@@ -289,8 +349,9 @@ class PlatformOperatorService:
             raise PlatformOperatorNotFoundError("PLATFORM_OPERATOR_NOT_FOUND")
         if not operator.password_hash:
             raise PlatformOperatorInvalidStateError("PLATFORM_OPERATOR_PASSWORD_REQUIRED")
+        if operator.revoked_at is not None:
+            raise PlatformOperatorInvalidStateError("PLATFORM_OPERATOR_REVOKED")
         operator.status = "active"
-        operator.revoked_at = None
         operator.failed_login_attempts = 0
         operator.locked_until = None
         _bump_auth_version(operator)
@@ -346,6 +407,7 @@ class PlatformOperatorService:
         operator = await self._operator_by_id(operator_id, for_update=True)
         if operator is None:
             raise PlatformOperatorNotFoundError("PLATFORM_OPERATOR_NOT_FOUND")
+        credential_hash = hash_token(validate_recovery_credential(raw_credential), self.settings)
         now = _now()
         await self.db.execute(
             update(PlatformOperatorRecoveryCredential)
@@ -358,38 +420,77 @@ class PlatformOperatorService:
         self.db.add(
             PlatformOperatorRecoveryCredential(
                 operator_id=operator.id,
-                credential_hash=hash_token(raw_credential.strip(), self.settings),
+                credential_hash=credential_hash,
                 status="active",
             )
         )
         await self.db.flush()
 
+    async def rotate_recovery_credential(
+        self,
+        *,
+        operator_id: UUID,
+        current_credential: str,
+        replacement_credential: str,
+        actor_id: UUID | None = None,
+    ) -> PlatformOperatorLifecycleResult:
+        """Rotate recovery credentials for future platform-admin P3 wiring.
+
+        The caller supplies both the current and replacement credentials through
+        a trusted authenticated channel. This boundary never generates, returns,
+        logs, or persists raw credentials.
+        """
+        credential, operator = await self._active_recovery_credential_with_operator(
+            current_credential,
+            operator_id=operator_id,
+        )
+        replacement_hash = hash_token(
+            validate_recovery_credential(replacement_credential),
+            self.settings,
+        )
+        if replacement_hash == credential.credential_hash:
+            raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+
+        now = _now()
+        credential.status = "revoked"
+        credential.revoked_at = now
+        await self.db.flush()
+        self.db.add(
+            PlatformOperatorRecoveryCredential(
+                operator_id=operator.id,
+                credential_hash=replacement_hash,
+                status="active",
+            )
+        )
+        await self.db.flush()
+        await self._audit(
+            actor_type="platform_operator" if actor_id else "system",
+            actor_id=actor_id,
+            action="platform_operator.recovery_credential.rotate",
+            operator=operator,
+            metadata={"recovery_credential_rotated": True},
+        )
+        return _operator_result(operator)
+
     async def break_glass_recover(
         self,
         *,
         raw_credential: str,
+        replacement_credential: str,
         operator_email: str | None = None,
     ) -> PlatformOperatorLifecycleResult:
-        if not raw_credential or not raw_credential.strip():
-            raise PlatformOperatorRecoveryInvalidError("INVALID_RECOVERY_CREDENTIAL")
-        credential_hash = hash_token(raw_credential.strip(), self.settings)
-        result = await self.db.execute(
-            select(PlatformOperatorRecoveryCredential, PlatformOperator)
-            .join(PlatformOperator, PlatformOperatorRecoveryCredential.operator_id == PlatformOperator.id)
-            .where(PlatformOperatorRecoveryCredential.credential_hash == credential_hash)
-            .where(PlatformOperatorRecoveryCredential.status == "active")
-            .where(PlatformOperatorRecoveryCredential.is_deleted.is_(False))
-            .with_for_update()
-            .execution_options(ignore_tenant=True)
+        replacement_hash = hash_token(
+            validate_recovery_credential(replacement_credential),
+            self.settings,
         )
-        row = result.one_or_none()
-        if row is None:
-            raise PlatformOperatorRecoveryInvalidError("INVALID_RECOVERY_CREDENTIAL")
-        credential, operator = row
-        if operator_email and operator.email != normalize_operator_email(operator_email):
-            raise PlatformOperatorRecoveryInvalidError("INVALID_RECOVERY_CREDENTIAL")
+        credential, operator = await self._active_recovery_credential_with_operator(
+            raw_credential,
+            operator_email=operator_email,
+        )
+        if replacement_hash == credential.credential_hash:
+            raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
         if not operator.password_hash:
-            raise PlatformOperatorRecoveryInvalidError("INVALID_RECOVERY_CREDENTIAL")
+            raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
 
         now = _now()
         original_hash = operator.password_hash
@@ -400,6 +501,15 @@ class PlatformOperatorService:
         _bump_auth_version(operator)
         credential.status = "used"
         credential.used_at = now
+        await self.db.flush()
+        self.db.add(
+            PlatformOperatorRecoveryCredential(
+                operator_id=operator.id,
+                credential_hash=replacement_hash,
+                status="active",
+            )
+        )
+        await self.db.flush()
         raw_reset, expires_at = await self._issue_reset_token(operator, now)
         record_platform_operator_reset_email(
             settings=self.settings,
@@ -410,7 +520,7 @@ class PlatformOperatorService:
             actor_type="system",
             action="platform_operator.break_glass_recovery",
             operator=operator,
-            metadata={"recovery_credential_id": str(credential.id)},
+            metadata={"recovery_credential_rotated": True},
         )
         await self.db.flush()
         if operator.password_hash != original_hash:
@@ -430,6 +540,34 @@ class PlatformOperatorService:
         if operator is None:
             raise PlatformOperatorNotFoundError("PLATFORM_OPERATOR_NOT_FOUND")
         return operator
+
+    async def _active_recovery_credential_with_operator(
+        self,
+        raw_credential: str,
+        *,
+        operator_id: UUID | None = None,
+        operator_email: str | None = None,
+    ) -> tuple[PlatformOperatorRecoveryCredential, PlatformOperator]:
+        credential_hash = hash_token(validate_recovery_credential(raw_credential), self.settings)
+        query = (
+            select(PlatformOperatorRecoveryCredential, PlatformOperator)
+            .join(PlatformOperator, PlatformOperatorRecoveryCredential.operator_id == PlatformOperator.id)
+            .where(PlatformOperatorRecoveryCredential.credential_hash == credential_hash)
+            .where(PlatformOperatorRecoveryCredential.status == "active")
+            .where(PlatformOperatorRecoveryCredential.is_deleted.is_(False))
+            .where(PlatformOperator.is_deleted.is_(False))
+            .with_for_update()
+            .execution_options(ignore_tenant=True)
+        )
+        if operator_id is not None:
+            query = query.where(PlatformOperator.id == operator_id)
+        if operator_email is not None:
+            query = query.where(PlatformOperator.email == normalize_operator_email(operator_email))
+        result = await self.db.execute(query)
+        row = result.one_or_none()
+        if row is None:
+            raise PlatformOperatorRecoveryInvalidError(INVALID_RECOVERY_CREDENTIAL)
+        return row
 
     async def _operator_by_email(self, email: str, *, for_update: bool = False) -> PlatformOperator | None:
         query = select(PlatformOperator).where(PlatformOperator.email == email).where(
@@ -584,6 +722,7 @@ class PlatformOperatorService:
 __all__ = [
     "EmailDeliveryNotConfiguredError",
     "INVALID_OR_EXPIRED_PLATFORM_OPERATOR_TOKEN",
+    "INVALID_RECOVERY_CREDENTIAL",
     "NEUTRAL_PLATFORM_OPERATOR_RESET_MESSAGE",
     "NEUTRAL_PLATFORM_OPERATOR_SETUP_MESSAGE",
     "PlatformOperatorExistsError",
@@ -594,4 +733,5 @@ __all__ = [
     "PlatformOperatorResetRequestResult",
     "PlatformOperatorService",
     "PlatformOperatorTokenInvalidError",
+    "validate_recovery_credential",
 ]

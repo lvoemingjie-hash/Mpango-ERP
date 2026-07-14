@@ -58,23 +58,23 @@ class TestPlatformGuardContract:
 # 2. No platform operator model/table exists yet (confirming the gap)
 # ---------------------------------------------------------------------------
 
-class TestNoPlatformOperatorModel:
-    """Confirm that no PlatformOperator model exists yet (the gap)."""
+class TestPlatformOperatorModelExists:
+    """Confirm PlatformOperator model exists (created by DC-11P1)."""
 
-    def test_no_platform_operator_model_in_models_init(self):
-        """models/__init__.py must NOT export a PlatformOperator class."""
+    def test_platform_operator_model_in_models_init(self):
+        """models/__init__.py must export PlatformOperator."""
         mod = importlib.import_module("models")
-        assert not hasattr(mod, "PlatformOperator"), (
-            "PlatformOperator model should not exist yet (DC-11P1 will create it)"
+        assert hasattr(mod, "PlatformOperator"), (
+            "PlatformOperator model must exist (created by DC-11P1)"
         )
 
-    def test_no_platform_operator_model_file(self):
-        """No platform_operator.py model file should exist yet."""
+    def test_platform_operator_model_file_exists(self):
+        """platform_operator.py model file must exist."""
         import pathlib
         models_dir = pathlib.Path(__file__).resolve().parents[1] / "models"
         model_files = [f.name for f in models_dir.glob("*.py") if f.name != "__init__.py"]
-        assert not any("operator" in f.lower() for f in model_files), (
-            "No platform_operator model file should exist yet"
+        assert any("platform_operator" in f.lower() for f in model_files), (
+            "platform_operator.py model file must exist"
         )
 
 
@@ -171,56 +171,39 @@ class TestFrontendPlatformOperatorSecretContract:
 # ---------------------------------------------------------------------------
 
 class TestMigrationAndTableState:
-    """Verify alembic head and that 034 + platform tables do not exist yet."""
+    """Verify 034 migration exists and platform operator models are registered."""
 
-    def test_alembic_head_is_033(self):
-        """The alembic head must be 033 (034 is the next migration)."""
-        import pathlib
-        versions_dir = (
-            pathlib.Path(__file__).resolve().parents[1]
-            / "alembic" / "versions"
-        )
-        # Find the highest numeric prefix among migration files
-        prefixes = []
-        for f in versions_dir.glob("[0-9][0-9][0-9]_*.py"):
-            prefixes.append(int(f.name[:3]))
-        assert prefixes, "expected at least one alembic migration"
-        assert max(prefixes) == 33, (
-            f"highest migration must be 033 (found {max(prefixes)}); "
-            "034_platform_operators is the DC-11P1 migration"
-        )
-
-    def test_no_034_migration_exists(self):
-        """No 034 migration file should exist yet."""
+    def test_034_migration_exists(self):
+        """034 migration file must exist (created by DC-11P1)."""
         import pathlib
         versions_dir = (
             pathlib.Path(__file__).resolve().parents[1]
             / "alembic" / "versions"
         )
         matches = list(versions_dir.glob("034_*.py"))
-        assert len(matches) == 0, (
-            "034 migration must not exist yet (DC-11P1 creates it)"
+        assert len(matches) >= 1, (
+            "034 migration must exist (created by DC-11P1)"
         )
 
-    def test_no_platform_operator_setup_tokens_model(self):
-        """No platform_operator_setup_tokens model should exist yet."""
+    def test_platform_operator_setup_tokens_model_exists(self):
+        """PlatformOperatorSetupToken model must exist (created by DC-11P1)."""
         mod = importlib.import_module("models")
-        assert not hasattr(mod, "PlatformOperatorSetupToken"), (
-            "PlatformOperatorSetupToken model should not exist yet"
+        assert hasattr(mod, "PlatformOperatorSetupToken"), (
+            "PlatformOperatorSetupToken model must exist"
         )
 
-    def test_no_platform_operator_reset_tokens_model(self):
-        """No platform_operator_reset_tokens model should exist yet."""
+    def test_platform_operator_reset_tokens_model_exists(self):
+        """PlatformOperatorResetToken model must exist (created by DC-11P1)."""
         mod = importlib.import_module("models")
-        assert not hasattr(mod, "PlatformOperatorResetToken"), (
-            "PlatformOperatorResetToken model should not exist yet"
+        assert hasattr(mod, "PlatformOperatorResetToken"), (
+            "PlatformOperatorResetToken model must exist"
         )
 
-    def test_no_recovery_credentials_model(self):
-        """No platform_operator_recovery_credentials model should exist yet."""
+    def test_recovery_credentials_model_exists(self):
+        """PlatformOperatorRecoveryCredential model must exist (created by DC-11P1)."""
         mod = importlib.import_module("models")
-        assert not hasattr(mod, "PlatformOperatorRecoveryCredential"), (
-            "PlatformOperatorRecoveryCredential model should not exist yet"
+        assert hasattr(mod, "PlatformOperatorRecoveryCredential"), (
+            "PlatformOperatorRecoveryCredential model must exist"
         )
 
     def test_token_payload_has_no_auth_version(self):

@@ -8,7 +8,6 @@ export interface PayOrderData {
   method: PaymentMethod;
   amount: number;
   transaction_id?: string;
-  notes?: string;
 }
 
 export interface PayOrderResponse {

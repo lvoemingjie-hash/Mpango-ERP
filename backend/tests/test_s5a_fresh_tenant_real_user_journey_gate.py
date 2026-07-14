@@ -516,6 +516,7 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
                 token=admin_token,
                 db=session,
                 payment_input=PayOrderRequest(method="cash", amount=Decimal("75.00")),
+                x_idempotency_key=f"s5a-real-journey-{uuid.uuid4().hex[:12]}",
             )
             await session.commit()
             assert paid.data["status"] == "paid"

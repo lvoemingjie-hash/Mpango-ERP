@@ -198,6 +198,8 @@ class PayOrderRequest(BaseModel):
     - `amount` must be > 0 when present
     - the route requires both `amount` and canonical `method`
     - `transaction_id` is only meaningful for transfer method
+    - `notes` is currently unsupported by the persistence contract and is
+      rejected by the route with PAYMENT_NOTES_UNSUPPORTED when present
     """
     method: Optional[PaymentMethod] = Field(
         None,
@@ -216,7 +218,7 @@ class PayOrderRequest(BaseModel):
     notes: Optional[str] = Field(
         None,
         max_length=1000,
-        description="Payment notes",
+        description="Unsupported payment notes; rejected by the route",
     )
 
     @field_validator("notes")

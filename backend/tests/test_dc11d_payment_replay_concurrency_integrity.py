@@ -7,6 +7,7 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from api.v1.orders import pay_order
 from database.session import AsyncSessionLocal
@@ -329,7 +330,7 @@ def _assert_single_full_settlement(snapshot) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sequential_exact_replay_creates_one_financial_result(async_session):
+async def test_sequential_same_financial_result_replay_creates_one_financial_result(async_session):
     schema = _tenant_schema(async_session)
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, token = await _seed_confirmed_order(
@@ -355,11 +356,14 @@ async def test_sequential_exact_replay_creates_one_financial_result(async_sessio
         async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
     )
     assert replay.data["payment_id"] == first.data["payment_id"]
+    assert replay.data["payment_amount"] == first.data["payment_amount"] == "100.00"
+    assert replay.data["payment_method"] == first.data["payment_method"] == "cash"
+    assert replay.data["status"] == snapshot["order_status"]
     _assert_single_full_settlement(snapshot)
 
 
 @pytest.mark.asyncio
-async def test_concurrent_exact_replay_creates_one_financial_result(async_session):
+async def test_concurrent_same_financial_result_replay_creates_one_financial_result(async_session):
     schema = _tenant_schema(async_session)
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, _token = await _seed_confirmed_order(
@@ -389,11 +393,43 @@ async def test_concurrent_exact_replay_creates_one_financial_result(async_sessio
     assert not isinstance(first, HTTPException)
     assert not isinstance(second, HTTPException)
     assert first.data["payment_id"] == second.data["payment_id"]
+    assert first.data["payment_amount"] == second.data["payment_amount"] == "100.00"
+    assert first.data["payment_method"] == second.data["payment_method"] == "cash"
     await _set_search_path(async_session, schema)
     snapshot = await _snapshot(
         async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
     )
+    assert first.data["status"] == second.data["status"] == snapshot["order_status"]
     _assert_single_full_settlement(snapshot)
+
+
+@pytest.mark.asyncio
+async def test_payment_notes_are_rejected_without_side_effects(async_session):
+    tenant_id = _tenant_id(async_session)
+    order_id, retailer_id, token = await _seed_confirmed_order(
+        async_session, tenant_id=tenant_id, total=Decimal("100.00")
+    )
+    before = await _snapshot(
+        async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await pay_order(
+            order_id=str(order_id),
+            token=token,
+            db=async_session,
+            payment_input=PayOrderRequest(
+                amount=Decimal("100.00"), method="cash", notes="unsupported"
+            ),
+            x_idempotency_key="dc11d-notes-unsupported",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "PAYMENT_NOTES_UNSUPPORTED"
+    after = await _snapshot(
+        async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
+    )
+    assert after == before
 
 
 @pytest.mark.asyncio
@@ -528,6 +564,49 @@ async def test_duplicate_transfer_reference_returns_sanitized_409(async_session)
         "code": "DUPLICATE_TRANSFER_REFERENCE",
         "message": "Transfer transaction_id has already been recorded",
     }
+
+
+@pytest.mark.asyncio
+async def test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_back(async_session):
+    tenant_id = _tenant_id(async_session)
+    order_id, retailer_id, token = await _seed_confirmed_order(
+        async_session, tenant_id=tenant_id, total=Decimal("100.00")
+    )
+    await async_session.commit()
+    await _set_search_path(async_session, _tenant_schema(async_session))
+    before = await _snapshot(
+        async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
+    )
+
+    async def fail_balance_delta(*_args, **_kwargs):
+        raise IntegrityError("dc11d-r1-downstream", {}, RuntimeError("forced integrity failure"))
+
+    from services.payment_service import PaymentService
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            PaymentService,
+            "_apply_outstanding_balance_delta",
+            fail_balance_delta,
+        )
+        async with AsyncSessionLocal() as failure_session:
+            failure_session.info["tenant_schema"] = _tenant_schema(async_session)
+            failure_session.info["tenant_id"] = str(tenant_id)
+            await _set_search_path(failure_session, _tenant_schema(async_session))
+            with pytest.raises(IntegrityError):
+                await pay_order(
+                    order_id=str(order_id),
+                    token=token,
+                    db=failure_session,
+                    payment_input=PayOrderRequest(amount=Decimal("100.00"), method="cash"),
+                    x_idempotency_key="dc11d-r1-unknown-integrity",
+                )
+
+    await _set_search_path(async_session, _tenant_schema(async_session))
+    after = await _snapshot(
+        async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
+    )
+    assert after == before
 
 
 @pytest.mark.asyncio

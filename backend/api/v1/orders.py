@@ -17,7 +17,7 @@ from typing import Annotated, Mapping, Optional
 from uuid import UUID
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
@@ -123,6 +123,15 @@ def _payment_method_value(payment_input: PayOrderRequest) -> str:
     return payment_method
 
 
+def _validate_payment_notes_unsupported(payment_input: PayOrderRequest) -> None:
+    if payment_input.notes is not None:
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "PAYMENT_NOTES_UNSUPPORTED",
+            "Payment notes are not supported for payment recording",
+        )
+
+
 def _same_payment_request(
     existing_payment,
     *,
@@ -207,6 +216,13 @@ def _duplicate_transfer_reference() -> HTTPException:
         "DUPLICATE_TRANSFER_REFERENCE",
         "Transfer transaction_id has already been recorded",
     )
+
+
+async def _restore_tenant_search_path_after_rollback(db: AsyncSession) -> None:
+    tenant_schema = db.info.get("tenant_schema")
+    if tenant_schema:
+        safe_schema = str(tenant_schema).replace('"', '""')
+        await db.execute(text(f'SET LOCAL search_path TO "{safe_schema}", public'))
 
 
 def order_to_schema(order, retailer_name: str | None = None) -> OrderSchema:
@@ -567,6 +583,7 @@ async def pay_order(
             "PAYMENT_BODY_REQUIRED",
             "Payment body with method and positive amount is required",
         )
+    _validate_payment_notes_unsupported(payment_input)
     if payment_input.amount is None:
         raise _payment_error(
             status.HTTP_400_BAD_REQUEST,
@@ -749,22 +766,26 @@ async def pay_order(
             )
     except IntegrityError:
         await db.rollback()
+        await _restore_tenant_search_path_after_rollback(db)
         existing_payment = await payment_repo.get_by_idempotency_key(
             db,
             idempotency_key=idempotency_key,
         )
         existing_payment = _payment_mapping_or_none(existing_payment)
-        if existing_payment and _same_payment_request(
-            existing_payment,
-            order_id=order_id,
-            amount=pay_amount,
-            method=payment_method,
-            transaction_id=payment_input.transaction_id,
-        ):
-            return await _idempotency_replay_response(
-                db,
-                payment_record=existing_payment,
-            )
+        if existing_payment:
+            if _same_payment_request(
+                existing_payment,
+                order_id=order_id,
+                amount=pay_amount,
+                method=payment_method,
+                transaction_id=payment_input.transaction_id,
+            ):
+                return await _idempotency_replay_response(
+                    db,
+                    payment_record=existing_payment,
+                )
+            raise _idempotency_conflict()
+
         if payment_method == "transfer" and payment_input.transaction_id:
             existing_transfer = await payment_repo.get_by_transaction_id(
                 db,
@@ -773,7 +794,7 @@ async def pay_order(
             existing_transfer = _payment_mapping_or_none(existing_transfer)
             if existing_transfer:
                 raise _duplicate_transfer_reference()
-        raise _idempotency_conflict()
+        raise
     except (InvalidStateTransitionError, DomainInvalidStateTransitionError, OrderInvariantViolation):
         await db.rollback()
         raise _payment_error(

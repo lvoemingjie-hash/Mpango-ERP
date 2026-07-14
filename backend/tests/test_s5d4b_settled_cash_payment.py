@@ -10,7 +10,7 @@ Scope (matches the implementation contract):
 - Transfer -> stays completed (created completed, settle is a no-op)
 - Credit -> stays pending (never touched)
 - Overpayment / failed transition -> no status mutation
-- Legacy empty-body pay -> no settle call (backward compat)
+- Empty-body pay -> controlled rejection with no financial side effects
 - Partial payment -> no premature settlement
 """
 import pytest
@@ -165,6 +165,18 @@ def _make_mock_db():
     return mock_db
 
 
+def _payment_key(name: str) -> str:
+    return f"s5d4b-{name}-{uuid.uuid4().hex[:12]}"
+
+
+def _patch_payment_route(mock_order):
+    return patch(
+        "api.v1.orders._get_order_by_id_for_update",
+        new_callable=AsyncMock,
+        return_value=mock_order,
+    )
+
+
 @pytest.mark.asyncio
 async def test_api_full_cash_settles_payment_to_completed():
     """Full cash -> PAID -> update_cash_transfer_to_completed called."""
@@ -176,6 +188,7 @@ async def test_api_full_cash_settles_payment_to_completed():
     pay_req = PayOrderRequest(amount=5000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -198,6 +211,7 @@ async def test_api_full_cash_settles_payment_to_completed():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key=_payment_key("full-cash"),
         )
 
     assert resp.success is True
@@ -218,6 +232,7 @@ async def test_api_proposed_paid_but_returned_non_paid_does_not_settle():
     pay_req = PayOrderRequest(amount=5000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -242,6 +257,7 @@ async def test_api_proposed_paid_but_returned_non_paid_does_not_settle():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key=_payment_key("returned-non-paid"),
         )
 
     assert resp.data["status"] == "partially_paid"
@@ -263,6 +279,7 @@ async def test_api_partial_cash_does_not_settle():
     pay_req = PayOrderRequest(amount=2000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -285,6 +302,7 @@ async def test_api_partial_cash_does_not_settle():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key=_payment_key("partial-cash"),
         )
 
     assert resp.data["status"] == "partially_paid"
@@ -307,6 +325,7 @@ async def test_api_second_partial_completes_and_settles():
     pay_req = PayOrderRequest(amount=3000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -330,6 +349,7 @@ async def test_api_second_partial_completes_and_settles():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key=_payment_key("second-partial"),
         )
 
     assert resp.data["status"] == "paid"
@@ -352,6 +372,7 @@ async def test_api_transfer_full_payment_settle_called():
     pay_req = PayOrderRequest(amount=5000, method="transfer", transaction_id="TXN-001")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -374,6 +395,7 @@ async def test_api_transfer_full_payment_settle_called():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key=_payment_key("transfer-full"),
         )
 
     assert resp.data["status"] == "paid"
@@ -396,6 +418,7 @@ async def test_api_credit_paid_settle_targets_cash_transfer_only():
     pay_req = PayOrderRequest(amount=5000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -420,6 +443,7 @@ async def test_api_credit_paid_settle_targets_cash_transfer_only():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key=_payment_key("credit-full"),
         )
 
     assert resp.data["status"] == "paid"
@@ -446,6 +470,7 @@ async def test_api_failed_transition_no_settle():
     pay_req = PayOrderRequest(amount=5000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -469,6 +494,7 @@ async def test_api_failed_transition_no_settle():
                 token=_FakeToken(),
                 db=mock_db,
                 payment_input=pay_req,
+                x_idempotency_key=_payment_key("failed-transition"),
             )
 
     assert exc_info.value.status_code == 409
@@ -477,37 +503,38 @@ async def test_api_failed_transition_no_settle():
 
 
 # ---------------------------------------------------------------------------
-# 8. API: legacy empty-body pay does NOT settle (backward compat)
+# 8. API: empty-body pay is controlled 400 with no side effects
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_api_legacy_pay_no_settle():
-    """Legacy empty-body path -> no PaymentRepository, no settle call."""
+    """Empty-body path -> no payment/order/balance/ledger side effects."""
     from api.v1.orders import pay_order
+    from fastapi import HTTPException
 
     mock_order = _make_mock_order(order_status="confirmed")
     mock_db = _make_mock_db()
 
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock) as get_order_mock, \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock) as lock_mock, \
+         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "Retailer A"}):
+         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock) as balance_mock:
+        with pytest.raises(HTTPException) as exc_info:
+            await pay_order(
+                order_id=str(mock_order.id),
+                token=_FakeToken(),
+                db=mock_db,
+                payment_input=None,
+            )
 
-        svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
-            id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
-        MockOS.return_value = svc_instance
-
-        resp = await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=None,
-        )
-
-    assert resp.success is True
-    assert resp.data["status"] == "paid"
-    assert resp.message == "Order marked as paid"
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "PAYMENT_BODY_REQUIRED"
+    get_order_mock.assert_not_awaited()
+    lock_mock.assert_not_awaited()
+    MockRepo.assert_not_called()
+    MockOS.assert_not_called()
+    balance_mock.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -669,7 +696,10 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
         ) as client:
             response = await client.post(
                 f"/api/v1/orders/{order_id}/pay",
-                headers={"Authorization": "Bearer test-token"},
+                headers={
+                    "Authorization": "Bearer test-token",
+                    "X-Idempotency-Key": _payment_key("route-rollback"),
+                },
                 json={"amount": 60, "method": "cash"},
             )
 

@@ -196,12 +196,12 @@ def _base_only(snap):
 
 def test_additions_only_from_base_to_head(alembic_cfg, conn):
     """Upgrade base(020) -> 021 adds ONLY backup tables / indexes / constraints / enums."""
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)         # ensure at 021
+    from tests.conftest import run_alembic_upgrade  # (was: from alembic import command)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)         # ensure at 021
     command.downgrade(alembic_cfg, BASE_REV)       # -> 020
     cur = conn.cursor()
     before = _snapshot(cur)
-    command.upgrade(alembic_cfg, HEAD_REV)         # -> 021
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)         # -> 021
     after = _snapshot(cur)
 
     assert before["schemas"] == after["schemas"], (
@@ -229,8 +229,8 @@ def test_additions_only_from_base_to_head(alembic_cfg, conn):
 
 def test_downgrade_drops_only_p17dc_objects(alembic_cfg, conn):
     """downgrade 021 -> 020 removes only the two tables + enums + their indexes/constraints."""
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)         # -> 021
+    from tests.conftest import run_alembic_upgrade  # (was: from alembic import command)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)         # -> 021
     cur = conn.cursor()
     at_head = _snapshot(cur)
     command.downgrade(alembic_cfg, BASE_REV)       # -> 020
@@ -249,9 +249,9 @@ def test_downgrade_drops_only_p17dc_objects(alembic_cfg, conn):
 
 
 def test_reupgrade_recreates_tables(alembic_cfg, conn):
-    from alembic import command
+    from tests.conftest import run_alembic_upgrade  # (was: from alembic import command)
     command.downgrade(alembic_cfg, BASE_REV)       # -> 020
-    command.upgrade(alembic_cfg, HEAD_REV)         # -> 021 again
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)         # -> 021 again
     cur = conn.cursor()
     cur.execute("""
         SELECT table_name FROM information_schema.tables
@@ -262,8 +262,8 @@ def test_reupgrade_recreates_tables(alembic_cfg, conn):
 
 
 def test_no_backup_objects_in_tenant_schemas(alembic_cfg, conn):
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)
+    from tests.conftest import run_alembic_upgrade  # (was: from alembic import command)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("""
         SELECT table_schema, table_name FROM information_schema.tables
@@ -279,11 +279,11 @@ def test_no_backup_objects_in_tenant_schemas(alembic_cfg, conn):
 
 
 def test_upgrade_does_not_create_tenant_schema(alembic_cfg, conn):
-    from alembic import command
+    from tests.conftest import run_alembic_upgrade  # (was: from alembic import command)
     command.downgrade(alembic_cfg, BASE_REV)       # -> 020
     cur = conn.cursor()
     before = _snapshot(cur)["schemas"]
-    command.upgrade(alembic_cfg, HEAD_REV)         # -> 021
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)         # -> 021
     after = _snapshot(cur)["schemas"]
     assert before == after, (
         f"public-mode upgrade changed the schema set: before={before} after={after}"
@@ -291,7 +291,7 @@ def test_upgrade_does_not_create_tenant_schema(alembic_cfg, conn):
 
 
 def test_base_revision_is_020_before_upgrade(alembic_cfg, conn):
-    from alembic import command
+    from tests.conftest import run_alembic_upgrade  # (was: from alembic import command)
     command.downgrade(alembic_cfg, BASE_REV)       # -> 020
     cur = conn.cursor()
     cur.execute("SELECT version_num FROM public.alembic_version")
@@ -308,9 +308,9 @@ def _insert(cur, sql, params=None):
 
 
 def test_check_constraints_enforce_honesty(alembic_cfg, conn):
-    from alembic import command
+    from tests.conftest import run_alembic_upgrade  # (was: from alembic import command)
     import psycopg2
-    command.upgrade(alembic_cfg, HEAD_REV)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("DELETE FROM public.platform_backup_outcome")
     conn.commit()
@@ -387,9 +387,9 @@ def test_check_constraints_enforce_honesty(alembic_cfg, conn):
 
 
 def test_policy_uniqueness(alembic_cfg, conn):
-    from alembic import command
+    from tests.conftest import run_alembic_upgrade  # (was: from alembic import command)
     import psycopg2
-    command.upgrade(alembic_cfg, HEAD_REV)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("DELETE FROM public.platform_backup_policy")
     conn.commit()
@@ -427,8 +427,8 @@ def test_policy_uniqueness(alembic_cfg, conn):
 
 
 def test_latest_completed_excludes_in_progress(alembic_cfg, conn):
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)
+    from tests.conftest import run_alembic_upgrade  # (was: from alembic import command)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("DELETE FROM public.platform_backup_outcome")
     conn.commit()

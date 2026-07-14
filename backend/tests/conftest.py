@@ -99,6 +99,28 @@ os.environ.setdefault("MPANGO_ENV", "test")
 os.environ.setdefault("REDIS_URL", f"redis://{os.environ.get('REDIS_HOST', 'redis')}:6379/0")
 
 
+def run_alembic_upgrade(cfg, revision: str = "head") -> None:
+    """Run an Alembic upgrade while preserving the pytest-asyncio event loop.
+
+    Alembic env.py uses asyncio.run() which creates and closes a temporary
+    event loop, corrupting the session-scoped pytest-asyncio loop on Python 3.12.
+    This wrapper saves and restores the event loop state around the upgrade.
+    """
+    import asyncio as _aio
+    policy = _aio.get_event_loop_policy()
+    try:
+        existing = policy.get_event_loop()
+    except RuntimeError:
+        existing = None
+    try:
+        from alembic import command
+        command.upgrade(cfg, revision)
+    finally:
+        # Restore the session-scoped loop if it was set
+        if existing is not None and not existing.is_closed():
+            policy.set_event_loop(existing)
+
+
 import asyncio
 from typing import AsyncGenerator
 from sqlalchemy import text, event

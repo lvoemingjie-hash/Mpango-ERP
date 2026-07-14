@@ -107,12 +107,13 @@ def _boot():
 def db(_boot):
     """Bootstrap the ephemeral DB, upgrade to head, and yield a sync connection."""
     import psycopg2  # noqa: delayed import so module collection never needs a live DB
-    from alembic import command
+    # from alembic import command  (replaced by conftest helper)
     from alembic.config import Config
 
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    command.upgrade(cfg, "head")
+    from tests.conftest import run_alembic_upgrade
+    run_alembic_upgrade(cfg, "head")
 
     conn = psycopg2.connect(_psql(_boot))
     try:

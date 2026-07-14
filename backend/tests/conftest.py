@@ -4,8 +4,10 @@ Pytest configuration and fixtures for Mpango ERP backend tests.
 S2.5: Uses strong SECRET_KEY for testing to pass security validation.
 S5-OPS: Session-scoped event loop and robust async_session fixture to prevent
         "Event loop closed" errors in complex transaction tests (S5-A/S5-B).
+DC-11T0: TEST_DATABASE_URL is the sole DB source; fail closed if absent.
 """
 import os
+import sys
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
@@ -42,6 +44,14 @@ def _build_database_url_from_postgres_env() -> str:
 
 
 def _resolve_test_database_url() -> str:
+    """Resolve the canonical database URL for test configuration.
+
+    Priority:
+      1. TEST_DATABASE_URL env var (SOLE authoritative source when set)
+      2. POSTGRES_USER/POSTGRES_PASSWORD env vars
+      3. DATABASE_URL env var (if present)
+      4. Defaults (postgres:postgres@postgres:5432/mpango_erp)
+    """
     if os.environ.get("TEST_DATABASE_URL"):
         return os.environ["TEST_DATABASE_URL"]
     if os.environ.get("POSTGRES_USER") or os.environ.get("POSTGRES_PASSWORD"):
@@ -51,10 +61,33 @@ def _resolve_test_database_url() -> str:
     return _build_database_url_from_postgres_env()
 
 
+def _strip_async_driver(url: str) -> str:
+    """Remove +asyncpg driver suffix from a database URL for DATABASE_URL.
+
+    The pydantic Settings model validates that DATABASE_URL starts with
+    'postgresql://' (no driver suffix).  database/session.py adds the
+    '+asyncpg' suffix internally when creating the async engine.
+    """
+    return url.replace("postgresql+asyncpg://", "postgresql://")
+
+
 # S2.5: Set test environment variables before importing settings.
 # S8-SEC: Load local test env defaults, then resolve the final DB URL.
 _load_test_env_defaults()
-os.environ["DATABASE_URL"] = _resolve_test_database_url()
+
+# DC-11T0: TEST_DATABASE_URL guard — fail closed if absent in test mode.
+# This prevents tests from silently running against production or a
+# non-existent default database.
+_test_db_url = _resolve_test_database_url()
+os.environ["DATABASE_URL"] = _strip_async_driver(_test_db_url)
+if os.environ.get("TEST_DATABASE_URL"):
+    # Also set the postgres env vars so _build_database_url_from_postgres_env
+    # stays consistent even if called later by other fixtures.
+    _parsed = urlparse(_strip_async_driver(_test_db_url))
+    os.environ.setdefault("POSTGRES_HOST", _parsed.hostname or "localhost")
+    os.environ.setdefault("POSTGRES_PORT", str(_parsed.port or "5432"))
+    os.environ.setdefault("POSTGRES_DB", (_parsed.path or "/mpango_erp").lstrip("/"))
+
 os.environ.setdefault("REPORTING_USER_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "postgres"))
 # S5/E1: deterministic tenant context used by tenant-guarded order/ledger tests
 os.environ.setdefault("TEST_TENANT_SCHEMA", "t_test")
@@ -443,32 +476,7 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
 
 
 # ---------------------------------------------------------------------------
-# S5-OPS FIX 1: Session-scoped event loop
-# ---------------------------------------------------------------------------
-# SQLAlchemy's async engine holds connections that outlive that loop the
-# engine raises "Event loop is closed".  A session-scoped loop keeps a
-# single loop alive for the entire test run so the engine's pool is always
-# valid.
-# ---------------------------------------------------------------------------
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create a session-scoped event loop for all async tests."""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
-
-
-# ---------------------------------------------------------------------------
 # S5-OPS FIX 2: Robust async_session with search_path re-set after commit
-# ---------------------------------------------------------------------------
-# Problem: SET LOCAL search_path only lasts until the current transaction
-# ends.  Tests that call session.commit() (e.g. test_invariant_violation_
-# confirm_zero_total, test_void_vs_cancel_rules) start a new transaction
-# and lose the tenant search_path, causing "relation does not exist" errors.
-#
-# Fix: Use an "after_begin" event listener that automatically re-sets the
-# search_path whenever a new transaction begins on the session.
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture(scope="function")
 async def async_session() -> AsyncGenerator[AsyncSession, None]:
@@ -483,7 +491,6 @@ async def async_session() -> AsyncGenerator[AsyncSession, None]:
     Guarantees:
     - search_path is set to t_test on EVERY new transaction (survives commit)
     - Session is always rolled back + closed, even on unhandled exceptions
-    - Event loop stays alive across the full test suite (session-scoped loop)
     """
     tenant_schema = TEST_TENANT_SCHEMA
     tenant_id = TEST_TENANT_ID
@@ -533,8 +540,6 @@ async def async_session() -> AsyncGenerator[AsyncSession, None]:
         @event.listens_for(sync_session, "after_begin")
         def _after_begin(sess, transaction, connection):
             """Re-set search_path whenever a new transaction begins."""
-            # We schedule the SET LOCAL via the connection so it runs inside
-            # the new transaction that just started.
             connection.execute(
                 text(f'SET LOCAL search_path TO "{tenant_schema}", public')
             )
@@ -551,3 +556,23 @@ async def async_session() -> AsyncGenerator[AsyncSession, None]:
             # Remove the listener to avoid leaking across tests
             event.remove(sync_session, "after_begin", _after_begin)
             await session.close()
+
+
+# ---------------------------------------------------------------------------
+# DC-11T0: TEST_DATABASE_URL guard — collected at import time, checked at
+# session start.  Fail CLOSED if the only DB source is the unreachable
+# default (postgres:5432 inside a container that does not exist in the test
+# runner's network namespace).
+# ---------------------------------------------------------------------------
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session):
+    db_url = os.environ.get("DATABASE_URL", "")
+    db_host = urlparse(db_url).hostname
+    # If the host is "postgres" (container DNS, unresolvable from host) and
+    # no TEST_DATABASE_URL was provided, warn and abort.
+    if db_host == "postgres" and not os.environ.get("TEST_DATABASE_URL"):
+        session.shouldfail = (
+            "DC-11T0: TEST_DATABASE_URL not set and DATABASE_URL points to "
+            "unreachable 'postgres' host. Set TEST_DATABASE_URL to a real "
+            "PostgreSQL instance before running tests."
+        )

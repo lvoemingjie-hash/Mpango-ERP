@@ -10,6 +10,7 @@ Contract-backed tests covering:
   - Counterexamples (unknown != healthy, null != 0, no raw payloads)
   - Route-level identity (guard active on all endpoints)
 """
+import sys, os; sys.path.insert(0, os.path.dirname(__file__)); from conftest import run_coroutine
 import os
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -854,7 +855,7 @@ class TestP14DatabaseHealthAdapter:
         from api.v1.platform.p13.services import _database_health
 
         db = _mock_db()
-        health = asyncio.run(_database_health(db))
+        health = run_coroutine(_database_health(db))
         # The mock execute resolves without error -> measured healthy with latency.
         assert health.status == "healthy"
         assert isinstance(health.latency_ms, int) and health.latency_ms >= 0
@@ -870,7 +871,7 @@ class TestP14DatabaseHealthAdapter:
 
         db = _mock_db()
         db.execute = AsyncMock(side_effect=RuntimeError("connection refused"))
-        health = asyncio.run(_database_health(db))
+        health = run_coroutine(_database_health(db))
         assert health.status == "unhealthy"
         assert health.latency_ms is None  # null, never fabricated 0
 

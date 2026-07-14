@@ -11,6 +11,7 @@ Contract-backed, read-only snapshot API. Covers:
   - GET-only (no mutation routes)
   - Counterexamples from PLATFORM_PRODUCT_P15_INCIDENT_TRIAGE_CONTRACT.md
 """
+import sys, os; sys.path.insert(0, os.path.dirname(__file__)); from conftest import run_coroutine
 import os
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -320,7 +321,7 @@ class TestRedaction:
         from api.v1.platform.p15.services import build_handoff_summary, build_triage_snapshot
         import asyncio
         db = _mock_db()
-        snap = asyncio.run(build_triage_snapshot(db))
+        snap = run_coroutine(build_triage_snapshot(db))
         from api.v1.platform.p15.schemas import IncidentClassification
         handoff = build_handoff_summary(
             snap,
@@ -387,7 +388,7 @@ class TestGracefulDegraded:
             "api.v1.platform.p15.services.list_tenant_summaries",
             new=AsyncMock(return_value=ok_tenants),
         ):
-            snap = asyncio.run(build_triage_snapshot(db))
+            snap = run_coroutine(build_triage_snapshot(db))
 
         assert snap.graceful_degraded is True
         assert snap.unavailable_reason and "database probe" in snap.unavailable_reason.lower()

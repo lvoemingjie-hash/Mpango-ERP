@@ -25,6 +25,7 @@ Run:
 """
 from __future__ import annotations
 
+import sys, os; sys.path.insert(0, os.path.dirname(__file__)); from conftest import run_coroutine
 import os
 from pathlib import Path
 
@@ -223,7 +224,7 @@ def _can_connect_t_dev() -> bool:
                     ))
                     return result.first() is not None
 
-            found = asyncio.run(_check())
+            found = run_coroutine(_check())
             return found
         except Exception:
             continue
@@ -466,7 +467,7 @@ def _can_connect_db() -> bool:
                     await conn.execute(text("SELECT 1"))
                     return True
 
-            return asyncio.run(_check())
+            return run_coroutine(_check())
         except Exception:
             continue
     return False

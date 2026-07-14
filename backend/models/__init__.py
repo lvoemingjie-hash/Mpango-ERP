@@ -29,6 +29,12 @@ from models.tenant_onboarding import (
     PasswordResetToken,
     TenantRegistration,
 )
+from models.platform_operator import (
+    PlatformOperator,
+    PlatformOperatorSetupToken,
+    PlatformOperatorResetToken,
+    PlatformOperatorRecoveryCredential,
+)
 
 __all__ = [
     # Base classes
@@ -81,6 +87,12 @@ __all__ = [
 
     # Platform P0: Tenant lifecycle journal
     "PlatformTenant",
+
+    # DC-11P1: Platform operator identity (public schema)
+    "PlatformOperator",
+    "PlatformOperatorSetupToken",
+    "PlatformOperatorResetToken",
+    "PlatformOperatorRecoveryCredential",
 
     # S4-B: Persistent job tracking (public schema)
     "Job",

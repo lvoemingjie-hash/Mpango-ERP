@@ -95,12 +95,12 @@ export function OrderListPage() {
   };
 
   // Phase 5: structured payment recording via modal
-  const handlePaySubmit = async (data: PayOrderData) => {
+  const handlePaySubmit = async (data: PayOrderData, idempotencyKey: string) => {
     if (!payModalOrder) return;
     const orderId = payModalOrder.id;
     setActionLoading(orderId);
     try {
-      const res = await orderService.pay(orderId, data);
+      const res = await orderService.pay(orderId, data, idempotencyKey);
       const resp = res.data.data;
       useToastStore.getState().addToast({
         type: 'success',

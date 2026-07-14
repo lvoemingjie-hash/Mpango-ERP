@@ -6,6 +6,12 @@ Create Date: 2026-07-14
 
 Creates four additive public-schema tables for platform operator identity
 and credential lifecycle. No existing tables are modified.
+
+R1 corrections:
+- Every create_table / create_index / drop uses schema="public".
+- FKs reference public.platform_operators.id.
+- Email normalization CHECK replaces the redundant lower(trim(email)) index.
+- No runtime model/service imports (self-contained migration).
 """
 from __future__ import annotations
 
@@ -17,6 +23,13 @@ revision = "034_platform_operators"
 down_revision = "033_order_status_enum_reconciliation"
 branch_labels = None
 depends_on = None
+
+SCHEMA = "public"
+
+TABLE_OPERATORS = f"{SCHEMA}.platform_operators"
+TABLE_SETUP = f"{SCHEMA}.platform_operator_setup_tokens"
+TABLE_RESET = f"{SCHEMA}.platform_operator_reset_tokens"
+TABLE_RECOVERY = f"{SCHEMA}.platform_operator_recovery_credentials"
 
 
 def upgrade() -> None:
@@ -39,7 +52,7 @@ def upgrade() -> None:
         sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("invited_by", UUID(as_uuid=True),
-                  sa.ForeignKey("platform_operators.id", ondelete="SET NULL"),
+                  sa.ForeignKey(f"{TABLE_OPERATORS}.id", ondelete="SET NULL"),
                   nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
                   server_default=sa.func.now()),
@@ -48,6 +61,10 @@ def upgrade() -> None:
         sa.Column("is_deleted", sa.Boolean, nullable=False,
                   server_default=sa.text("false")),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.CheckConstraint(
+            "email = lower(btrim(email)) AND length(btrim(email)) > 0",
+            name="ck_platform_operators_email_normalized",
+        ),
         sa.CheckConstraint(
             "status IN ('pending_setup', 'active', 'disabled')",
             name="ck_platform_operators_status",
@@ -73,13 +90,7 @@ def upgrade() -> None:
             name="ck_platform_operators_active_not_revoked",
         ),
         sa.UniqueConstraint("email", name="uq_platform_operators_email"),
-    )
-
-    op.create_index(
-        "ix_platform_operators_email",
-        "platform_operators",
-        [sa.text("lower(trim(email))")],
-        unique=True,
+        schema=SCHEMA,
     )
 
     # 2. platform_operator_setup_tokens
@@ -102,7 +113,7 @@ def upgrade() -> None:
                   server_default=sa.text("false")),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
-            ["operator_id"], ["platform_operators.id"],
+            ["operator_id"], [f"{TABLE_OPERATORS}.id"],
             ondelete="CASCADE",
             name="fk_setup_tokens_operator",
         ),
@@ -115,6 +126,7 @@ def upgrade() -> None:
             name="ck_setup_tokens_not_used_and_revoked",
         ),
         sa.UniqueConstraint("token_hash", name="uq_setup_tokens_token_hash"),
+        schema=SCHEMA,
     )
 
     op.create_index(
@@ -125,6 +137,7 @@ def upgrade() -> None:
         postgresql_where=sa.text(
             "used_at IS NULL AND revoked_at IS NULL AND is_deleted = false"
         ),
+        schema=SCHEMA,
     )
 
     # 3. platform_operator_reset_tokens
@@ -147,7 +160,7 @@ def upgrade() -> None:
                   server_default=sa.text("false")),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
-            ["operator_id"], ["platform_operators.id"],
+            ["operator_id"], [f"{TABLE_OPERATORS}.id"],
             ondelete="CASCADE",
             name="fk_reset_tokens_operator",
         ),
@@ -160,6 +173,7 @@ def upgrade() -> None:
             name="ck_reset_tokens_not_used_and_revoked",
         ),
         sa.UniqueConstraint("token_hash", name="uq_reset_tokens_token_hash"),
+        schema=SCHEMA,
     )
 
     op.create_index(
@@ -170,6 +184,7 @@ def upgrade() -> None:
         postgresql_where=sa.text(
             "used_at IS NULL AND revoked_at IS NULL AND is_deleted = false"
         ),
+        schema=SCHEMA,
     )
 
     # 4. platform_operator_recovery_credentials
@@ -191,7 +206,7 @@ def upgrade() -> None:
                   server_default=sa.text("false")),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
-            ["operator_id"], ["platform_operators.id"],
+            ["operator_id"], [f"{TABLE_OPERATORS}.id"],
             ondelete="CASCADE",
             name="fk_recovery_credentials_operator",
         ),
@@ -208,6 +223,7 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "credential_hash", name="uq_recovery_credentials_hash"
         ),
+        schema=SCHEMA,
     )
 
     op.create_index(
@@ -218,12 +234,18 @@ def upgrade() -> None:
         postgresql_where=sa.text(
             "status = 'active' AND is_deleted = false"
         ),
+        schema=SCHEMA,
     )
 
 
 def downgrade() -> None:
-    op.drop_table("platform_operator_recovery_credentials")
-    op.drop_table("platform_operator_reset_tokens")
-    op.drop_table("platform_operator_setup_tokens")
-    op.drop_index("ix_platform_operators_email", table_name="platform_operators")
-    op.drop_table("platform_operators")
+    op.drop_index("ux_recovery_credentials_operator_active", schema=SCHEMA,
+                  table_name="platform_operator_recovery_credentials")
+    op.drop_table("platform_operator_recovery_credentials", schema=SCHEMA)
+    op.drop_index("ux_reset_tokens_operator_active", schema=SCHEMA,
+                  table_name="platform_operator_reset_tokens")
+    op.drop_table("platform_operator_reset_tokens", schema=SCHEMA)
+    op.drop_index("ux_setup_tokens_operator_active", schema=SCHEMA,
+                  table_name="platform_operator_setup_tokens")
+    op.drop_table("platform_operator_setup_tokens", schema=SCHEMA)
+    op.drop_table("platform_operators", schema=SCHEMA)

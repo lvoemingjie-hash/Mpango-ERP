@@ -3,6 +3,12 @@
 Four public-schema tables for platform operator authentication, independent
 of tenant-local RBAC. No raw tokens or plaintext passwords are stored; only
 hashes.
+
+R1 corrections:
+- Every model table includes {"schema": "public"}.
+- Every FK references public.platform_operators.id.
+- Email normalization CHECK constraint.
+- ORM Index definitions match DDL partial unique indexes.
 """
 from __future__ import annotations
 
@@ -10,7 +16,10 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID as UUIDType
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, text
+from sqlalchemy import (
+    BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey,
+    Index, Integer, String, text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,10 +27,14 @@ from models.base import PublicBaseModel
 
 
 class PlatformOperator(PublicBaseModel):
-    """A platform operator with independent authentication (not tenant-scoped)."""
+    """A platform operator with independent authentication."""
 
     __tablename__ = "platform_operators"
     __table_args__ = (
+        CheckConstraint(
+            "email = lower(btrim(email)) AND length(btrim(email)) > 0",
+            name="ck_platform_operators_email_normalized",
+        ),
         CheckConstraint(
             "status IN ('pending_setup', 'active', 'disabled')",
             name="ck_platform_operators_status",
@@ -46,6 +59,7 @@ class PlatformOperator(PublicBaseModel):
             "status != 'active' OR revoked_at IS NULL",
             name="ck_platform_operators_active_not_revoked",
         ),
+        {"schema": "public"},
     )
 
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
@@ -67,7 +81,7 @@ class PlatformOperator(PublicBaseModel):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     invited_by: Mapped[Optional[UUIDType]] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("platform_operators.id", ondelete="SET NULL"),
+        ForeignKey("public.platform_operators.id", ondelete="SET NULL"),
         nullable=True,
     )
 
@@ -82,11 +96,20 @@ class PlatformOperatorSetupToken(PublicBaseModel):
             "used_at IS NULL OR revoked_at IS NULL",
             name="ck_setup_tokens_not_used_and_revoked",
         ),
+        Index(
+            "ux_setup_tokens_operator_active",
+            "operator_id",
+            unique=True,
+            postgresql_where=text(
+                "used_at IS NULL AND revoked_at IS NULL AND is_deleted = false"
+            ),
+        ),
+        {"schema": "public"},
     )
 
     operator_id: Mapped[UUIDType] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("platform_operators.id", ondelete="CASCADE"),
+        ForeignKey("public.platform_operators.id", ondelete="CASCADE"),
         nullable=False,
     )
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
@@ -108,11 +131,20 @@ class PlatformOperatorResetToken(PublicBaseModel):
             "used_at IS NULL OR revoked_at IS NULL",
             name="ck_reset_tokens_not_used_and_revoked",
         ),
+        Index(
+            "ux_reset_tokens_operator_active",
+            "operator_id",
+            unique=True,
+            postgresql_where=text(
+                "used_at IS NULL AND revoked_at IS NULL AND is_deleted = false"
+            ),
+        ),
+        {"schema": "public"},
     )
 
     operator_id: Mapped[UUIDType] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("platform_operators.id", ondelete="CASCADE"),
+        ForeignKey("public.platform_operators.id", ondelete="CASCADE"),
         nullable=False,
     )
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
@@ -139,11 +171,20 @@ class PlatformOperatorRecoveryCredential(PublicBaseModel):
             "(status = 'revoked' AND revoked_at IS NOT NULL AND used_at IS NULL)",
             name="ck_recovery_credentials_state_consistency",
         ),
+        Index(
+            "ux_recovery_credentials_operator_active",
+            "operator_id",
+            unique=True,
+            postgresql_where=text(
+                "status = 'active' AND is_deleted = false"
+            ),
+        ),
+        {"schema": "public"},
     )
 
     operator_id: Mapped[UUIDType] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("platform_operators.id", ondelete="CASCADE"),
+        ForeignKey("public.platform_operators.id", ondelete="CASCADE"),
         nullable=False,
     )
     credential_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)

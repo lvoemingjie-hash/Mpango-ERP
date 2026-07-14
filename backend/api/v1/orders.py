@@ -13,10 +13,14 @@ State Machine:
 """
 from datetime import datetime
 from math import ceil
-from typing import Optional
+from typing import Annotated, Mapping, Optional
+from uuid import UUID
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from api.dependencies import get_tenant_db_session
 from api.dependencies import get_current_user_context
@@ -26,6 +30,7 @@ from core.domain.order_state import (
     InvalidStateTransitionError as DomainInvalidStateTransitionError,
     OrderInvariantViolation,
 )
+from models.order import Order as OrderModel
 from crud.order import (
     get_order_by_id,
     get_orders_paginated,
@@ -53,6 +58,171 @@ from schemas.common import Pagination
 from schemas.payment import PaymentMethod
 
 router = APIRouter()
+
+IDEMPOTENCY_KEY_MIN_LENGTH = 8
+IDEMPOTENCY_KEY_MAX_LENGTH = 64
+IDEMPOTENCY_KEY_ALLOWED_CHARS = set(
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    ".:-_"
+)
+
+
+def _payment_error(status_code: int, code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={"code": code, "message": message},
+    )
+
+
+def _validate_idempotency_key(value: str | None) -> str:
+    key = (value or "").strip()
+    if not key:
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "MISSING_IDEMPOTENCY_KEY",
+            "X-Idempotency-Key is required for payment requests",
+        )
+    if not (
+        IDEMPOTENCY_KEY_MIN_LENGTH <= len(key) <= IDEMPOTENCY_KEY_MAX_LENGTH
+    ):
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_IDEMPOTENCY_KEY",
+            "X-Idempotency-Key must be 8 to 64 visible ASCII characters",
+        )
+    if any(char not in IDEMPOTENCY_KEY_ALLOWED_CHARS for char in key):
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_IDEMPOTENCY_KEY",
+            "X-Idempotency-Key contains invalid characters",
+        )
+    return key
+
+
+def _payment_method_value(payment_input: PayOrderRequest) -> str:
+    if not payment_input.method:
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "PAYMENT_METHOD_REQUIRED",
+            "method is required for payment requests",
+        )
+    payment_method = (
+        payment_input.method.value
+        if isinstance(payment_input.method, PaymentMethod)
+        else str(payment_input.method)
+    )
+    allowed_methods = {method.value for method in PaymentMethod}
+    if payment_method not in allowed_methods:
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_PAYMENT_METHOD",
+            "Payment method must be one of: cash, transfer, credit",
+        )
+    return payment_method
+
+
+def _validate_payment_notes_unsupported(payment_input: PayOrderRequest) -> None:
+    if payment_input.notes is not None:
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "PAYMENT_NOTES_UNSUPPORTED",
+            "Payment notes are not supported for payment recording",
+        )
+
+
+def _same_payment_request(
+    existing_payment,
+    *,
+    order_id: str,
+    amount: Decimal,
+    method: str,
+    transaction_id: str | None,
+) -> bool:
+    return (
+        str(existing_payment["order_id"]) == str(order_id)
+        and Decimal(str(existing_payment["amount"])) == amount
+        and str(existing_payment["method"]) == method
+        and (existing_payment.get("transaction_id") or None) == (transaction_id or None)
+    )
+
+
+def _payment_mapping_or_none(candidate):
+    return candidate if isinstance(candidate, Mapping) else None
+
+
+def _payment_response_data(order, payment_record) -> dict:
+    order_status = getattr(order.status, "value", order.status)
+    return {
+        "order_id": str(order.id),
+        "status": str(order_status),
+        "payment_id": str(payment_record["id"]),
+        "payment_amount": str(payment_record["amount"]),
+        "payment_method": payment_record["method"],
+    }
+
+
+async def _idempotency_replay_response(
+    db: AsyncSession,
+    *,
+    payment_record,
+) -> OrderActionResponse:
+    order = await get_order_by_id(db, str(payment_record["order_id"]))
+    if not order:
+        raise _payment_error(
+            status.HTTP_404_NOT_FOUND,
+            "ORDER_NOT_FOUND",
+            "Order for idempotent payment was not found",
+        )
+    return OrderActionResponse(
+        success=True,
+        data=_payment_response_data(order, payment_record),
+        message="Payment replayed",
+        timestamp=datetime.utcnow(),
+    )
+
+
+async def _get_order_by_id_for_update(
+    db: AsyncSession,
+    order_id: str,
+) -> OrderModel | None:
+    try:
+        order_uuid = UUID(order_id)
+    except ValueError:
+        return None
+
+    result = await db.execute(
+        select(OrderModel)
+        .where(OrderModel.id == order_uuid)
+        .where(OrderModel.is_deleted == False)
+        .options(selectinload(OrderModel.items))
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
+def _idempotency_conflict() -> HTTPException:
+    return _payment_error(
+        status.HTTP_409_CONFLICT,
+        "IDEMPOTENCY_KEY_CONFLICT",
+        "X-Idempotency-Key was already used with a different payment request",
+    )
+
+
+def _duplicate_transfer_reference() -> HTTPException:
+    return _payment_error(
+        status.HTTP_409_CONFLICT,
+        "DUPLICATE_TRANSFER_REFERENCE",
+        "Transfer transaction_id has already been recorded",
+    )
+
+
+async def _restore_tenant_search_path_after_rollback(db: AsyncSession) -> None:
+    tenant_schema = db.info.get("tenant_schema")
+    if tenant_schema:
+        safe_schema = str(tenant_schema).replace('"', '""')
+        await db.execute(text(f'SET LOCAL search_path TO "{safe_schema}", public'))
 
 
 def order_to_schema(order, retailer_name: str | None = None) -> OrderSchema:
@@ -391,25 +561,66 @@ async def pay_order(
     token: TokenPayload = Depends(RequirePermission("payments:create")),
     db: AsyncSession = Depends(get_tenant_db_session),
     payment_input: Optional[PayOrderRequest] = None,
+    x_idempotency_key: Annotated[
+        Optional[str], Header(alias="X-Idempotency-Key")
+    ] = None,
 ):
     """
     Record a payment against an order and transition state.
 
-    Phase 5: Extended to support optional structured payment recording.
-
-    Backward compatible:
-    - No body -> state-only transition (confirmed -> paid), same as before
-    - With body (method + amount) -> creates Payment record + transitions state
-
-    Transactional safety (P0 repair):
-    - Both payment creation and order state transition execute inside
-      a single `async with db.begin()` block.
-    - If either step fails, the entire transaction rolls back: no
-      orphaned payment, no stale order state.
+    DC-11D: only structured payment requests are accepted. Each request must
+    include a validated X-Idempotency-Key, and all financial reads/writes are
+    performed after acquiring the order row lock in the same tenant session.
     """
+    if payment_input is None or (
+        payment_input.amount is None
+        and payment_input.method is None
+        and payment_input.transaction_id is None
+        and payment_input.notes is None
+    ):
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "PAYMENT_BODY_REQUIRED",
+            "Payment body with method and positive amount is required",
+        )
+    _validate_payment_notes_unsupported(payment_input)
+    if payment_input.amount is None:
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "PAYMENT_AMOUNT_REQUIRED",
+            "amount is required for payment requests",
+        )
 
-    # -- Validate order exists (outside transaction for cheap read) --
-    order = await get_order_by_id(db, order_id)
+    payment_method = _payment_method_value(payment_input)
+    pay_amount = Decimal(str(payment_input.amount))
+    idempotency_key = _validate_idempotency_key(x_idempotency_key)
+
+    from repositories.payment_repository import PaymentRepository
+
+    payment_repo = PaymentRepository()
+
+    existing_payment = await payment_repo.get_by_idempotency_key(
+        db,
+        idempotency_key=idempotency_key,
+    )
+    existing_payment = _payment_mapping_or_none(existing_payment)
+    if existing_payment:
+        if _same_payment_request(
+            existing_payment,
+            order_id=order_id,
+            amount=pay_amount,
+            method=payment_method,
+            transaction_id=payment_input.transaction_id,
+        ):
+            return await _idempotency_replay_response(
+                db,
+                payment_record=existing_payment,
+            )
+        raise _idempotency_conflict()
+
+    # Acquire the order row lock before reading prior payments or deciding the
+    # target state. This serializes competing payments for the same order.
+    order = await _get_order_by_id_for_update(db, order_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -419,270 +630,189 @@ async def pay_order(
             },
         )
 
-    # -- Determine what we need to do --
     from core.domain.order_state import OrderState
 
-    if payment_input and payment_input.amount is not None:
-        # Structured payment path
-        if not payment_input.method:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": "PAYMENT_METHOD_REQUIRED",
-                    "message": "method is required when amount is provided",
-                },
+    existing_payment = await payment_repo.get_by_idempotency_key(
+        db,
+        idempotency_key=idempotency_key,
+    )
+    existing_payment = _payment_mapping_or_none(existing_payment)
+    if existing_payment:
+        if _same_payment_request(
+            existing_payment,
+            order_id=str(order.id),
+            amount=pay_amount,
+            method=payment_method,
+            transaction_id=payment_input.transaction_id,
+        ):
+            return await _idempotency_replay_response(
+                db,
+                payment_record=existing_payment,
             )
+        raise _idempotency_conflict()
 
-        payment_method = (
-            payment_input.method.value
-            if isinstance(payment_input.method, PaymentMethod)
-            else str(payment_input.method)
-        )
-        allowed_methods = {method.value for method in PaymentMethod}
-        if payment_method not in allowed_methods:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": "INVALID_PAYMENT_METHOD",
-                    "message": "Payment method must be one of: cash, transfer, credit",
-                },
-            )
+    order_total = order.total_amount
+    prior_paid = await payment_repo.get_order_paid_total(db, order_id=order.id)
+    remaining_balance = order_total - prior_paid
 
-        pay_amount = Decimal(str(payment_input.amount))
-        order_total = order.total_amount
-
-        # Phase 5 repair: compute TRUE outstanding balance from prior payments
-        from repositories.payment_repository import PaymentRepository
-        payment_repo = PaymentRepository()
-        prior_paid = await payment_repo.get_order_paid_total(db, order_id=order.id)
-        remaining_balance = order_total - prior_paid
-
-        if pay_amount > remaining_balance:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": "PAYMENT_EXCEEDS_REMAINING",
-                    "message": (
-                        f"Payment amount ({pay_amount}) exceeds "
-                        f"remaining balance ({remaining_balance}). "
-                        f"Order total: {order_total}, already paid: {prior_paid}."
-                    ),
-                },
-            )
-
-        current_state = OrderState(order.status.value)
-        if current_state not in (OrderState.CONFIRMED, OrderState.PARTIALLY_PAID):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "INVALID_STATE_TRANSITION",
-                    "message": (
-                        f"Cannot record payment on order in "
-                        f"'{order.status.value}' state. "
-                        f"Order must be 'confirmed' or 'partially_paid'."
-                    ),
-                },
-            )
-
-        # Determine target state from CUMULATIVE settlement.
-        # Credit closes the order lifecycle (PAID) but does NOT inflate
-        # paid_total (which counts only cash/transfer for financial reporting).
-        # MVP constraint: credit is full-credit sale only - amount must equal
-        # remaining balance.  No partial credit or split tender in this slice.
-        if payment_method == "credit":
-            # Guard 1: No duplicate credit on the same order.
-            credit_count = await payment_repo.count_order_payments(
-                db, order_id=order.id, method="credit",
-            )
-            if credit_count > 0:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail={
-                        "code": "DUPLICATE_CREDIT_PAYMENT",
-                        "message": (
-                            "A credit payment already exists for this order. "
-                            "Only one credit payment is allowed per order."
-                        ),
-                    },
-                )
-            # Guard 2: No split tender - credit is only allowed on a clean
-            # order with zero prior cash/transfer settlement.
-            if prior_paid > 0:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={
-                        "code": "CREDIT_SPLIT_TENDER_UNSUPPORTED",
-                        "message": (
-                            f"Phase 6 MVP does not support split tender. "
-                            f"This order already has {prior_paid} in "
-                            f"cash/transfer payments. Credit is allowed only "
-                            f"on a clean order with no prior settlement."
-                        ),
-                    },
-                )
-            # Guard 3: Full-credit sale only - amount must equal order total.
-            if pay_amount != order_total:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={
-                        "code": "CREDIT_AMOUNT_MISMATCH",
-                        "message": (
-                            f"Phase 6 MVP supports full-credit sale only. "
-                            f"Credit amount ({pay_amount}) must equal "
-                            f"order total ({order_total}). "
-                            f"Partial credit is not supported."
-                        ),
-                    },
-                )
-
-        cumulative_after_payment = prior_paid + pay_amount
-        target_state = (
-            OrderState.PAID
-            if cumulative_after_payment >= order_total
-            else OrderState.PARTIALLY_PAID
+    if pay_amount > remaining_balance:
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "PAYMENT_EXCEEDS_REMAINING",
+            "Payment amount exceeds remaining balance",
         )
 
-    else:
-        # Legacy empty-body path: confirmed -> paid, no payment record
-        target_state = OrderState.PAID
-        prior_paid = None
-        remaining_balance = None
-        payment_repo = None
+    current_state = OrderState(order.status.value)
+    if current_state not in (OrderState.CONFIRMED, OrderState.PARTIALLY_PAID):
+        raise _payment_error(
+            status.HTTP_409_CONFLICT,
+            "INVALID_STATE_TRANSITION",
+            "Order must be confirmed or partially_paid before payment",
+        )
 
-    # -- Single atomic transaction: payment + state transition --
+    if payment_method == "transfer" and payment_input.transaction_id:
+        existing_transfer = await payment_repo.get_by_transaction_id(
+            db,
+            transaction_id=payment_input.transaction_id,
+        )
+        existing_transfer = _payment_mapping_or_none(existing_transfer)
+        if existing_transfer:
+            raise _duplicate_transfer_reference()
+
+    # Credit closes the order lifecycle (PAID) but does NOT inflate paid_total
+    # (which counts only cash/transfer for financial reporting).
+    if payment_method == "credit":
+        credit_count = await payment_repo.count_order_payments(
+            db, order_id=order.id, method="credit",
+        )
+        if credit_count > 0:
+            raise _payment_error(
+                status.HTTP_409_CONFLICT,
+                "DUPLICATE_CREDIT_PAYMENT",
+                "Only one credit payment is allowed per order",
+            )
+        if prior_paid > 0:
+            raise _payment_error(
+                status.HTTP_400_BAD_REQUEST,
+                "CREDIT_SPLIT_TENDER_UNSUPPORTED",
+                "Credit is allowed only on an order with no prior cash or transfer settlement",
+            )
+        if pay_amount != order_total:
+            raise _payment_error(
+                status.HTTP_400_BAD_REQUEST,
+                "CREDIT_AMOUNT_MISMATCH",
+                "Credit amount must equal order total",
+            )
+
+    cumulative_after_payment = prior_paid + pay_amount
+    target_state = (
+        OrderState.PAID
+        if cumulative_after_payment >= order_total
+        else OrderState.PARTIALLY_PAID
+    )
+
     from services.order_service import OrderService
 
     order_service = OrderService(db)
 
-    if payment_input and payment_input.amount is not None:
-        # Structured path: payment + state transition
-        # Transaction is managed by get_tenant_db_session dependency
-        try:
-            payment_record = await payment_repo.create(
-                db,
-                order_id=order.id,
-                retailer_id=order.retailer_id,
-                transaction_id=payment_input.transaction_id,
-                idempotency_key=None,
+    try:
+        payment_record = await payment_repo.create(
+            db,
+            order_id=order.id,
+            retailer_id=order.retailer_id,
+            transaction_id=payment_input.transaction_id,
+            idempotency_key=idempotency_key,
+            amount=pay_amount,
+            method=payment_method,
+            status=(
+                "completed"
+                if (
+                    payment_method == "transfer"
+                    and target_state == OrderState.PAID
+                )
+                else "pending"
+            ),
+            created_by=token.user_id if token.user_id else None,
+        )
+
+        # Apply outstanding balance delta (method-dependent):
+        #   cash/transfer: -amount (receivable decreases)
+        #   credit:        +amount (new receivable created)
+        from services.payment_service import PaymentService
+
+        payment_svc = PaymentService()
+        balance_delta = pay_amount if payment_method == "credit" else -pay_amount
+        await payment_svc._apply_outstanding_balance_delta(
+            db,
+            wholesaler_id=order.wholesaler_id,
+            retailer_id=order.retailer_id,
+            delta=balance_delta,
+        )
+
+        order = await order_service.transition(
+            order_id=order.id,
+            target_state=target_state,
+            reason="Payment recorded",
+            updated_by=token.user_id,
+            payment_method=payment_method,
+        )
+
+        # S5-D4B: Settle only after the transition returns an actual PAID
+        # order, not merely because the proposed target was PAID.
+        order_status = getattr(order.status, "value", order.status)
+        if order_status == OrderState.PAID.value:
+            await payment_repo.update_cash_transfer_to_completed(
+                db, order_id=order.id,
+            )
+    except IntegrityError:
+        await db.rollback()
+        await _restore_tenant_search_path_after_rollback(db)
+        existing_payment = await payment_repo.get_by_idempotency_key(
+            db,
+            idempotency_key=idempotency_key,
+        )
+        existing_payment = _payment_mapping_or_none(existing_payment)
+        if existing_payment:
+            if _same_payment_request(
+                existing_payment,
+                order_id=order_id,
                 amount=pay_amount,
                 method=payment_method,
-                status=(
-                    "completed"
-                    if (
-                        payment_method == "transfer"
-                        and target_state == OrderState.PAID
-                    )
-                    else "pending"
-                ),
-                created_by=(
-                    token.user_id
-                    if token.user_id
-                    else None
-                ),
-            )
+                transaction_id=payment_input.transaction_id,
+            ):
+                return await _idempotency_replay_response(
+                    db,
+                    payment_record=existing_payment,
+                )
+            raise _idempotency_conflict()
 
-            # Apply outstanding balance delta (method-dependent):
-            #   cash/transfer: -amount (receivable decreases)
-            #   credit:        +amount (new receivable created)
-            from services.payment_service import PaymentService
-            payment_svc = PaymentService()
-            balance_delta = (
-                pay_amount
-                if payment_method == "credit"
-                else -pay_amount
-            )
-            await payment_svc._apply_outstanding_balance_delta(
+        if payment_method == "transfer" and payment_input.transaction_id:
+            existing_transfer = await payment_repo.get_by_transaction_id(
                 db,
-                wholesaler_id=order.wholesaler_id,
-                retailer_id=order.retailer_id,
-                delta=balance_delta,
+                transaction_id=payment_input.transaction_id,
             )
-
-            order = await order_service.transition(
-                order_id=order.id,
-                target_state=target_state,
-                reason=(
-                    f"Payment recorded: {payment_method} "
-                    f"{payment_input.amount}"
-                ),
-                updated_by=token.user_id,
-                payment_method=payment_method,
-            )
-
-            # S5-D4B: Settle only after the transition returns an actual PAID
-            # order, not merely because the proposed target was PAID.
-            order_status = getattr(order.status, "value", order.status)
-            if order_status == OrderState.PAID.value:
-                await payment_repo.update_cash_transfer_to_completed(
-                    db, order_id=order.id,
-                )
-        except InvalidStateTransitionError as e:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "INVALID_STATE_TRANSITION",
-                    "message": str(e),
-                },
-            )
-        except Exception as e:
-            if "Invalid state transition" in str(e) or "invariant" in str(e).lower():
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail={
-                        "code": "INVALID_STATE_TRANSITION",
-                        "message": str(e),
-                    },
-                )
-            raise
-
-    else:
-        # Legacy path: state transition only (no new transaction needed;
-        # FastAPI session commit handles it)
-        try:
-            order = await order_service.transition(
-                order_id=order.id,
-                target_state=target_state,
-                reason="Payment confirmed",
-                updated_by=token.user_id,
-            )
-        except InvalidStateTransitionError as e:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "INVALID_STATE_TRANSITION",
-                    "message": str(e),
-                },
-            )
-        except Exception as e:
-            if "Invalid state transition" in str(e) or "invariant" in str(e).lower():
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail={
-                        "code": "INVALID_STATE_TRANSITION",
-                        "message": str(e),
-                    },
-                )
-            raise
-        payment_record = None
-
-    # -- Build response --
-    response_data = {
-        "order_id": str(order.id),
-        "status": order.status.value,
-    }
-    if payment_record:
-        response_data["payment_id"] = str(payment_record["id"])
-        response_data["payment_amount"] = str(payment_record["amount"])
-        response_data["payment_method"] = payment_record["method"]
+            existing_transfer = _payment_mapping_or_none(existing_transfer)
+            if existing_transfer:
+                raise _duplicate_transfer_reference()
+        raise
+    except (InvalidStateTransitionError, DomainInvalidStateTransitionError, OrderInvariantViolation):
+        await db.rollback()
+        raise _payment_error(
+            status.HTTP_409_CONFLICT,
+            "INVALID_STATE_TRANSITION",
+            "Payment cannot transition the order from its current state",
+        )
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        raise
 
     return OrderActionResponse(
         success=True,
-        data=response_data,
-        message=(
-            "Payment recorded and order updated"
-            if payment_record
-            else "Order marked as paid"
-        ),
+        data=_payment_response_data(order, payment_record),
+        message="Payment recorded and order updated",
         timestamp=datetime.utcnow(),
     )
 

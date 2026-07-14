@@ -5,7 +5,7 @@ import type { PayOrderData, PaymentMethod } from '@/services/orderService';
 interface PaymentRecordModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: PayOrderData) => Promise<void>;
+  onSubmit: (data: PayOrderData, idempotencyKey: string) => Promise<void>;
   orderId: string;
   orderTotal: number;
   /** Remaining unpaid amount (orderTotal minus previous payments) */
@@ -19,6 +19,13 @@ const METHODS = [
   { value: 'credit', label: 'Credit Sale' },
 ] as const satisfies readonly { value: PaymentMethod; label: string }[];
 
+function createPaymentIdempotencyKey() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `pay-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 export function PaymentRecordModal({
   open,
   onClose,
@@ -31,8 +38,10 @@ export function PaymentRecordModal({
   const [method, setMethod] = useState<PaymentMethod | ''>('');
   const [amount, setAmount] = useState('');
   const [transactionId, setTransactionId] = useState('');
-  const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState(createPaymentIdempotencyKey);
+
+  const resetIdempotencyKey = () => setIdempotencyKey(createPaymentIdempotencyKey());
 
   const creditUnavailable = remainingAmount !== orderTotal;
   const isValid = method && amount && Number(amount) > 0
@@ -70,13 +79,12 @@ export function PaymentRecordModal({
         method,
         amount: numAmount,
         transaction_id: transactionId || undefined,
-        notes: notes.trim() || undefined,
-      });
+      }, idempotencyKey);
       // Reset form on success
       setMethod('');
       setAmount('');
       setTransactionId('');
-      setNotes('');
+      resetIdempotencyKey();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Payment failed';
       setError(msg);
@@ -88,8 +96,8 @@ export function PaymentRecordModal({
     setMethod('');
     setAmount('');
     setTransactionId('');
-    setNotes('');
     setError(null);
+    resetIdempotencyKey();
     onClose();
   };
 
@@ -123,6 +131,7 @@ export function PaymentRecordModal({
             onChange={(e) => {
               const next = e.target.value as PaymentMethod | '';
               setError(null);
+              resetIdempotencyKey();
               if (next === 'credit' && creditUnavailable) {
                 setMethod('');
                 setAmount('');
@@ -165,7 +174,10 @@ export function PaymentRecordModal({
             max={remainingAmount}
             step="0.01"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => {
+              setAmount(e.target.value);
+              resetIdempotencyKey();
+            }}
             readOnly={method === 'credit'}
             placeholder={method === 'credit' ? 'Full order total (auto-filled)' : `Max: KES ${remainingAmount.toLocaleString()}`}
             className={`mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500${method === 'credit' ? ' bg-gray-100 cursor-not-allowed' : ''}`}
@@ -181,30 +193,15 @@ export function PaymentRecordModal({
               id="pay-txn-id"
               type="text"
               value={transactionId}
-              onChange={(e) => setTransactionId(e.target.value)}
+              onChange={(e) => {
+                setTransactionId(e.target.value);
+                resetIdempotencyKey();
+              }}
               placeholder="e.g. QWE12345"
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
         )}
-
-        <div>
-          <label htmlFor="pay-notes" className="block text-sm font-medium text-gray-700">
-            Collection note
-          </label>
-          <textarea
-            id="pay-notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            maxLength={1000}
-            rows={2}
-            placeholder="Optional note for this repayment"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            Add context such as collector, receipt reference, or repayment promise.
-          </p>
-        </div>
 
         {method === 'credit' && (
           <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">

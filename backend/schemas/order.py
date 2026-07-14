@@ -188,16 +188,18 @@ class WholesalerOrderCreateRequest(BaseModel):
 
 class PayOrderRequest(BaseModel):
     """
-    Optional structured payment input for POST /orders/{order_id}/pay.
+    Structured payment input for POST /orders/{order_id}/pay.
 
-    Phase 5: All fields are optional. When provided, a Payment record is
-    created alongside the order state transition. When omitted, the endpoint
-    behaves exactly as before (state-only transition, backward compatible).
+    DC-11D: the route rejects missing/empty bodies and requires a validated
+    X-Idempotency-Key header. Fields remain optional at schema level so the
+    route can return controlled 4xx errors instead of validation tracebacks.
 
     Validation rules:
-    - If `amount` is provided, it must be > 0
-    - If `amount` is provided, `method` must also be provided
+    - `amount` must be > 0 when present
+    - the route requires both `amount` and canonical `method`
     - `transaction_id` is only meaningful for transfer method
+    - `notes` is currently unsupported by the persistence contract and is
+      rejected by the route with PAYMENT_NOTES_UNSUPPORTED when present
     """
     method: Optional[PaymentMethod] = Field(
         None,
@@ -216,7 +218,7 @@ class PayOrderRequest(BaseModel):
     notes: Optional[str] = Field(
         None,
         max_length=1000,
-        description="Payment notes",
+        description="Unsupported payment notes; rejected by the route",
     )
 
     @field_validator("notes")

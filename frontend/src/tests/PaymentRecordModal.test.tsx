@@ -33,7 +33,6 @@ describe('PaymentRecordModal payment methods', () => {
       method: 'transfer',
       amount: 1250,
       transaction_id: 'MM-12345',
-      notes: undefined,
-    });
+    }, expect.stringMatching(/^[A-Za-z0-9._:-]{8,64}$/));
   });
 });

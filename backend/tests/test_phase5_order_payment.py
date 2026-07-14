@@ -397,33 +397,27 @@ def _make_mock_db():
 
 @pytest.mark.asyncio
 async def test_api_legacy_pay_empty_body():
-    """Request-level: POST /orders/{id}/pay with no body returns paid."""
+    """Request-level: POST /orders/{id}/pay with no body is rejected."""
     from api.v1.orders import pay_order
-    from core.domain.order_state import OrderState
+    from fastapi import HTTPException
 
     mock_order = _make_mock_order(order_status="confirmed")
     mock_db = _make_mock_db()
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("services.order_service.OrderService") as MockOS, \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "Retailer A"}):
-
-        svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
-            id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
-        MockOS.return_value = svc_instance
-
-        resp = await pay_order(
+         pytest.raises(HTTPException) as exc_info:
+        await pay_order(
             order_id=str(mock_order.id),
             token=_FakeToken(),
             db=mock_db,
             payment_input=None,
         )
 
-    assert resp.success is True
-    assert resp.data["status"] == "paid"
-    assert resp.message == "Order marked as paid"
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "PAYMENT_BODY_REQUIRED"
+    MockOS.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -440,6 +434,7 @@ async def test_api_structured_full_payment():
     pay_req = PayOrderRequest(amount=5000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -461,6 +456,7 @@ async def test_api_structured_full_payment():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-full-key",
         )
 
     assert resp.success is True
@@ -484,6 +480,7 @@ async def test_api_structured_partial_payment():
     pay_req = PayOrderRequest(amount=2000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -505,6 +502,7 @@ async def test_api_structured_partial_payment():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-partial-key",
         )
 
     assert resp.success is True
@@ -527,6 +525,7 @@ async def test_api_reject_overpayment():
     pay_req = PayOrderRequest(amount=3000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          pytest.raises(HTTPException) as exc_info:
@@ -540,6 +539,7 @@ async def test_api_reject_overpayment():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-overpay-key",
         )
 
     assert exc_info.value.status_code == 400
@@ -662,10 +662,9 @@ class TestRouteLevelOrderPaymentMonkeypatch:
         from main import app
         return TestClient(app, raise_server_exceptions=False)
 
-    def test_route_legacy_pay_empty_body_returns_200(self):
+    def test_route_legacy_pay_empty_body_returns_400(self):
         """
-        Route-level: POST /api/v1/orders/{id}/pay with no body (legacy flow)
-        returns 200 with status=paid.
+        Route-level: POST /api/v1/orders/{id}/pay with no body is rejected.
         """
         pytest.importorskip("httpx", reason="httpx required for TestClient")
 
@@ -702,6 +701,7 @@ class TestRouteLevelOrderPaymentMonkeypatch:
 
         try:
             with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+                 patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
                  patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={order_id: "Retailer A"}):
 
                 paid_order = _make_route_test_order_row(order_id, "paid", Decimal("5000"))
@@ -724,12 +724,10 @@ class TestRouteLevelOrderPaymentMonkeypatch:
             app.dependency_overrides.pop(get_tenant_db_session, None)
             app.dependency_overrides.pop(get_current_user_context, None)
 
-        assert response.status_code == 200, (
-            f"Expected 200, got {response.status_code}: {response.text}"
+        assert response.status_code == 400, (
+            f"Expected 400, got {response.status_code}: {response.text}"
         )
-        data = response.json()
-        assert data.get("success") is True
-        assert data["data"]["status"] == "paid"
+        assert "PAYMENT_BODY_REQUIRED" in response.text
 
     def test_route_structured_full_payment_returns_200(self):
         """
@@ -773,6 +771,7 @@ class TestRouteLevelOrderPaymentMonkeypatch:
 
         try:
             with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+                 patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
                  patch("services.order_service.OrderService") as MockOrderService, \
                  patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
                  patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
@@ -795,6 +794,7 @@ class TestRouteLevelOrderPaymentMonkeypatch:
                 response = client.post(
                     f"/api/v1/orders/{order_id}/pay?request=test",
                     json={"amount": 5000, "method": "cash"},
+                    headers={"X-Idempotency-Key": "route-full-key"},
                 )
         finally:
             rbac_module.get_auth_context = orig_auth
@@ -852,6 +852,7 @@ class TestRouteLevelOrderPaymentMonkeypatch:
 
         try:
             with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+                 patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
                  patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
                  patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
                  patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={order_id: "Retailer A"}):
@@ -878,6 +879,7 @@ class TestRouteLevelOrderPaymentMonkeypatch:
                     response = client.post(
                         f"/api/v1/orders/{order_id}/pay?request=test",
                         json={"amount": 3000, "method": "transfer"},
+                        headers={"X-Idempotency-Key": "route-partial-key"},
                     )
         finally:
             rbac_module.get_auth_context = orig_auth
@@ -932,6 +934,7 @@ class TestRouteLevelOrderPaymentMonkeypatch:
 
         try:
             with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+                 patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
                  patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
                  patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
@@ -950,6 +953,7 @@ class TestRouteLevelOrderPaymentMonkeypatch:
                     response = client.post(
                         f"/api/v1/orders/{order_id}/pay?request=test",
                         json={"amount": 5000, "method": "cash"},
+                        headers={"X-Idempotency-Key": "route-overpay-key"},
                     )
         finally:
             rbac_module.get_auth_context = orig_auth
@@ -1000,6 +1004,7 @@ async def test_credit_payment_applies_positive_balance_delta():
         delta_captured["delta"] = delta
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
@@ -1023,6 +1028,7 @@ async def test_credit_payment_applies_positive_balance_delta():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-credit-delta",
         )
 
     assert delta_captured["delta"] == Decimal("5000"), \
@@ -1049,6 +1055,7 @@ async def test_cash_payment_applies_negative_balance_delta():
         delta_captured["delta"] = delta
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
@@ -1071,6 +1078,7 @@ async def test_cash_payment_applies_negative_balance_delta():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-cash-delta",
         )
 
     assert delta_captured["delta"] == Decimal("-5000"), \
@@ -1097,6 +1105,7 @@ async def test_transfer_payment_applies_negative_balance_delta():
         delta_captured["delta"] = delta
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
@@ -1119,6 +1128,7 @@ async def test_transfer_payment_applies_negative_balance_delta():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-transfer-delta",
         )
 
     assert delta_captured["delta"] == Decimal("-5000"), \
@@ -1199,6 +1209,7 @@ async def test_credit_payment_status_is_pending():
     pay_req = PayOrderRequest(amount=5000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
@@ -1222,6 +1233,7 @@ async def test_credit_payment_status_is_pending():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-credit-status",
         )
 
     assert create_captured["status"] == "pending", \
@@ -1259,6 +1271,7 @@ async def test_credit_partial_amount_rejected():
     pay_req = PayOrderRequest(amount=5000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          pytest.raises(HTTPException) as exc_info:
 
@@ -1272,6 +1285,7 @@ async def test_credit_partial_amount_rejected():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-credit-partial",
         )
 
     assert exc_info.value.status_code == 400
@@ -1298,6 +1312,7 @@ async def test_credit_rejected_when_prior_cash_exists():
     pay_req = PayOrderRequest(amount=Decimal("5000"), method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          pytest.raises(HTTPException) as exc_info:
 
@@ -1311,6 +1326,7 @@ async def test_credit_rejected_when_prior_cash_exists():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-credit-split",
         )
 
     assert exc_info.value.status_code == 400
@@ -1333,6 +1349,7 @@ async def test_credit_rejected_when_amount_exceeds_remaining():
     pay_req = PayOrderRequest(amount=6000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          pytest.raises(HTTPException) as exc_info:
 
@@ -1346,6 +1363,7 @@ async def test_credit_rejected_when_amount_exceeds_remaining():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-credit-overpay",
         )
 
     assert exc_info.value.status_code == 400
@@ -1492,6 +1510,7 @@ async def test_duplicate_credit_payment_rejected():
     pay_req = PayOrderRequest(amount=5000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          pytest.raises(HTTPException) as exc_info:
 
@@ -1506,6 +1525,7 @@ async def test_duplicate_credit_payment_rejected():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-duplicate-credit",
         )
 
     assert exc_info.value.status_code == 409
@@ -1531,6 +1551,7 @@ async def test_first_credit_payment_allowed():
         delta_captured["delta"] = delta
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
@@ -1554,6 +1575,7 @@ async def test_first_credit_payment_allowed():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-first-credit",
         )
 
     assert resp.success is True
@@ -1593,6 +1615,7 @@ async def test_credit_payment_passes_method_to_transition():
         )
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
@@ -1613,6 +1636,7 @@ async def test_credit_payment_passes_method_to_transition():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-credit-transition",
         )
 
     assert transition_kwargs.get("payment_method") == "credit", \
@@ -1643,6 +1667,7 @@ async def test_cash_payment_passes_method_to_transition():
         )
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_service.OrderService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
@@ -1662,6 +1687,7 @@ async def test_cash_payment_passes_method_to_transition():
             token=_FakeToken(),
             db=mock_db,
             payment_input=pay_req,
+            x_idempotency_key="phase5-cash-transition",
         )
 
     assert transition_kwargs.get("payment_method") == "cash", \
@@ -1669,42 +1695,28 @@ async def test_cash_payment_passes_method_to_transition():
 
 
 @pytest.mark.asyncio
-async def test_legacy_pay_passes_no_payment_method_to_transition():
-    """Legacy empty-body pay must NOT pass payment_method to transition
-    (preserves default None → existing cash-settlement ledger behavior)."""
+async def test_legacy_pay_rejected_before_transition():
+    """Empty-body pay is rejected before payment/order side effects."""
     from api.v1.orders import pay_order
-    from core.domain.order_state import OrderState
+    from fastapi import HTTPException
 
     mock_order = _make_mock_order(order_status="confirmed")
     mock_db = _make_mock_db()
 
-    transition_kwargs = {}
-
-    async def capture_transition(**kwargs):
-        transition_kwargs.update(kwargs)
-        return MagicMock(
-            id=mock_order.id, status=OrderState.PAID,
-            total_amount=mock_order.total_amount,
-        )
-
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
+         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("services.order_service.OrderService") as MockOS, \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "Retailer A"}):
-
-        svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(side_effect=capture_transition)
-        MockOS.return_value = svc_instance
-
-        resp = await pay_order(
+         pytest.raises(HTTPException) as exc_info:
+        await pay_order(
             order_id=str(mock_order.id),
             token=_FakeToken(),
             db=mock_db,
             payment_input=None,
         )
 
-    assert resp.success is True
-    assert "payment_method" not in transition_kwargs or transition_kwargs.get("payment_method") is None, \
-        f"Legacy path should not pass payment_method, got {transition_kwargs.get('payment_method')}"
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "PAYMENT_BODY_REQUIRED"
+    MockOS.assert_not_called()
 
 
 # ============================================================================

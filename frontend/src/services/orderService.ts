@@ -8,7 +8,6 @@ export interface PayOrderData {
   method: PaymentMethod;
   amount: number;
   transaction_id?: string;
-  notes?: string;
 }
 
 export interface PayOrderResponse {
@@ -37,11 +36,12 @@ export const orderService = {
   cancel: (id: string) =>
     api.post<ApiResponse<{ order_id: string; status: string }>>(`/orders/${id}/cancel`),
 
-  /** Phase 5: pay with optional structured payment data */
-  pay: (id: string, paymentData?: PayOrderData) =>
+  /** DC-11D: structured payment data with explicit idempotency header. */
+  pay: (id: string, paymentData: PayOrderData, idempotencyKey: string) =>
     api.post<ApiResponse<PayOrderResponse>>(
       `/orders/${id}/pay`,
-      paymentData ?? {}
+      paymentData,
+      { headers: { 'X-Idempotency-Key': idempotencyKey } },
     ),
 
   fulfill: (id: string) =>

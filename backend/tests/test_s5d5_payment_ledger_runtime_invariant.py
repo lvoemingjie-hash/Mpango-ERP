@@ -84,6 +84,7 @@ async def _pay(async_session, *, order_id: uuid.UUID, token: _Token, amount: Dec
         token=token,
         db=async_session,
         payment_input=PayOrderRequest(amount=amount, method=method),
+        x_idempotency_key=f"s5d5-{uuid.uuid4()}",
     )
 
 

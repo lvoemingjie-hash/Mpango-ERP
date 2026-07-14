@@ -121,6 +121,23 @@ def run_alembic_upgrade(cfg, revision: str = "head") -> None:
             policy.set_event_loop(existing)
 
 
+
+
+def run_coroutine(coro):
+    """Run an async coroutine using the *existing* pytest-asyncio event loop.
+
+    ``asyncio.run()`` creates a temporary loop and closes it afterwards,
+    which destroys the session-scoped event loop that pytest-asyncio 0.26+
+    manages.  Use this helper in synchronous test functions that need to
+    call async code, so the session loop stays alive for later async tests.
+    """
+    import asyncio
+    loop = asyncio.get_event_loop()
+    if loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
 import asyncio
 from typing import AsyncGenerator
 from sqlalchemy import text, event

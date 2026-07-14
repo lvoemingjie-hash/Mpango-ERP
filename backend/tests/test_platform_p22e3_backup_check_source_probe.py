@@ -30,6 +30,8 @@ the probe through a guarded READ-ONLY route (``GET /backup-check/source`` in
 keep the read non-executing. That route is NOT an execution entry point. Approval
 is not execution; a read is not execution.
 """
+# DC-11T0: use run_coroutine to preserve session-scoped event loop
+import sys, os; sys.path.insert(0, os.path.dirname(__file__)); from conftest import run_coroutine
 import ast
 import os
 from datetime import datetime, timedelta, timezone
@@ -424,7 +426,7 @@ class TestDryRunAndRequestNeverExecute:
             idempotency_key="probe-key-1",
             execution_mode="sync",
         )
-        resp = asyncio.run(
+        resp = run_coroutine(
             evaluate_dry_run(
                 request,
                 actor="exec-1",
@@ -459,7 +461,7 @@ class TestDryRunAndRequestNeverExecute:
             idempotency_key="probe-key-2",
             execution_mode="sync",
         )
-        dry = asyncio.run(
+        dry = run_coroutine(
             evaluate_dry_run(
                 dry_request,
                 actor="exec-1",
@@ -477,7 +479,7 @@ class TestDryRunAndRequestNeverExecute:
             execution_ack=True,
             execution_mode="sync",
         )
-        resp = asyncio.run(
+        resp = run_coroutine(
             record_execution_request(
                 req,
                 actor="exec-1",

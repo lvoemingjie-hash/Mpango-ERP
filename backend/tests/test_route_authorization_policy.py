@@ -170,14 +170,17 @@ INTERNAL_PATH_PREFIXES: Tuple[str, ...] = (
     "/api/v1/test/",
 )
 
-# G2-R2: Platform endpoints that are intentionally public (non-sensitive).
-# These expose only platform status/metadata -- no tenant data, no audit data,
-# no operational metrics. They are documented in P11-C0 as unauthenticated by
-# design. Sensitive platform routes (tenants/audit/stats) remain guarded by
+# Platform endpoints that are intentionally public. Health/info expose only
+# non-sensitive status (P11-C0). DC-11P2 credential endpoints are pre-auth
+# token-exchange/reset surfaces and must not expose tenant data, audit data, or
+# operational metrics. Sensitive platform routes remain guarded by
 # require_platform_operator and are NOT in this list.
 PLATFORM_PUBLIC_ALLOWLIST: Set[str] = {
     "/api/v1/platform/health",
     "/api/v1/platform/info",
+    "/api/v1/platform/operators/setup-credential",
+    "/api/v1/platform/operators/forgot-password",
+    "/api/v1/platform/operators/reset-password",
 }
 
 
@@ -443,8 +446,9 @@ class TestHarnessIntegrity:
         """
         # Platform routes now use RequirePlatformAdmin (S2-R1) or
         # require_platform_operator (G2-R2 merge from platform-dev).
-        # G2-R2: Intentionally-public platform endpoints (health/info) have
-        # no auth deps by design (P11-C0) and are exempt from this check.
+        # Intentionally-public platform endpoints (health/info and DC-11P2
+        # credential token endpoints) have no auth deps by design and are
+        # exempt from this check.
         for c in PLATFORM_ROUTES:
             if c.path in PLATFORM_PUBLIC_ALLOWLIST:
                 continue
@@ -545,7 +549,7 @@ class TestPlatformRoutePolicy:
     def test_all_platform_routes_require_platform_permission(self):
         """
         Every /api/v1/platform/** route MUST have platform_permission or
-        be an intentionally-public platform endpoint (health/info).
+        be an intentionally-public platform endpoint.
 
         S2 RESOLVED (was: all 8 platform routes had NO auth at all):
           - GET  /api/v1/platform/tenants/
@@ -564,6 +568,7 @@ class TestPlatformRoutePolicy:
         require_platform_operator (P10 identity-only guard) which is now
         recognized by the harness as platform_permission. /health and /info
         remain intentionally public (P11-C0: non-sensitive status only).
+        DC-11P2 setup/reset endpoints are public token exchanges only.
         """
         violations = [
             c for c in PLATFORM_ROUTES
@@ -577,8 +582,9 @@ class TestPlatformRoutePolicy:
     def test_platform_routes_have_auth_dependency(self):
         """Protected platform routes must have at least one auth dependency.
 
-        G2-R2: Intentionally-public platform endpoints (health/info) are
-        exempt -- they expose only non-sensitive status (P11-C0).
+        Intentionally-public platform endpoints are exempt -- health/info expose
+        only non-sensitive status, and DC-11P2 credential endpoints are token
+        exchange/reset surfaces.
         """
         no_auth = [
             c for c in PLATFORM_ROUTES
@@ -781,8 +787,9 @@ class TestPlatformAdminBoundary:
         wrappers (require_platform_operator_with_pXX_audit). Product-side
         platform routes may still use RequirePlatformAdmin. Both are accepted.
 
-        Intentionally-public platform endpoints (health/info) are exempt --
-        they have no auth deps by design (P11-C0: non-sensitive status).
+        Intentionally-public platform endpoints are exempt -- health/info have
+        no auth deps by design (P11-C0: non-sensitive status), and DC-11P2
+        credential endpoints are pre-auth token lifecycle surfaces.
         """
         for c in PLATFORM_ROUTES:
             if c.path in PLATFORM_PUBLIC_ALLOWLIST:
@@ -959,6 +966,27 @@ class TestPublicAllowlistIntegrity:
             if c.path in PUBLIC_ALLOWLIST:
                 assert c.policy == "public", (
                     f"{c.path} is in allowlist but classified as {c.policy}"
+                )
+
+    def test_platform_public_allowlist_is_minimal(self):
+        """Platform public allowlist must stay limited to status + token lifecycle."""
+        assert PLATFORM_PUBLIC_ALLOWLIST == {
+            "/api/v1/platform/health",
+            "/api/v1/platform/info",
+            "/api/v1/platform/operators/setup-credential",
+            "/api/v1/platform/operators/forgot-password",
+            "/api/v1/platform/operators/reset-password",
+        }, (
+            "PLATFORM_PUBLIC_ALLOWLIST was modified. Any addition requires CTO sign-off. "
+            "Current: " + str(PLATFORM_PUBLIC_ALLOWLIST)
+        )
+
+    def test_platform_allowlisted_routes_are_classified_public(self):
+        """Platform public allowlist routes must classify as public."""
+        for c in ALL_CLASSIFICATIONS:
+            if c.path in PLATFORM_PUBLIC_ALLOWLIST:
+                assert c.policy == "public", (
+                    f"{c.path} is in platform allowlist but classified as {c.policy}"
                 )
 
 

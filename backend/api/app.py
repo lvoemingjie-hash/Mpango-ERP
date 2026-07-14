@@ -179,6 +179,11 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(platform_p10_router)
     logger.info("Platform P10 router registered (read-only, contract-compliant)")
 
+    # DC-11P2 -- Dedicated platform operator credential lifecycle.
+    from api.v1.platform.operators import router as platform_operators_router
+    app.include_router(platform_operators_router)
+    logger.info("Platform operator lifecycle router registered (DC-11P2)")
+
     # Platform Track P12 -- Support Console API (request-scoped diagnostics)
     from api.v1.platform.p12.routes import router as platform_p12_router
     app.include_router(platform_p12_router)

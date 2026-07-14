@@ -41,6 +41,20 @@ class PasswordResetEmailDelivery:
 _DEV_RESET_EMAIL_DELIVERIES: list[PasswordResetEmailDelivery] = []
 
 
+@dataclass(frozen=True)
+class PlatformOperatorEmailDelivery:
+    """Captured platform-operator credential delivery for non-production tests."""
+
+    to_email: str
+    link: str
+    token: str
+    created_at: datetime
+    purpose: str
+
+
+_DEV_PLATFORM_OPERATOR_EMAIL_DELIVERIES: list[PlatformOperatorEmailDelivery] = []
+
+
 class EmailDeliveryNotConfiguredError(RuntimeError):
     """Raised when signup email delivery cannot run safely."""
 
@@ -162,6 +176,82 @@ def record_password_reset_email(
     )
 
 
+def record_platform_operator_setup_email(
+    *,
+    settings: Settings,
+    to_email: str,
+    token: str,
+) -> None:
+    """Deliver or capture a platform operator setup email.
+
+    The raw token exists only in memory and the delivery channel. It is never
+    persisted or logged by this helper.
+    """
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+    setup_link = f"/platform/operators/setup-credential?setupToken={token}"
+
+    if settings.MPANGO_ENV == "production":
+        _send_smtp_email(
+            settings=settings,
+            to_email=to_email,
+            subject="Set up your Mpango ERP platform operator account",
+            body=(
+                "Your Mpango ERP platform operator account is ready.\n\n"
+                "Use this link to set your platform operator password:\n"
+                f"{setup_link}\n\n"
+                "If you did not expect this platform access, ignore this email."
+            ),
+        )
+        return
+
+    _DEV_PLATFORM_OPERATOR_EMAIL_DELIVERIES.append(
+        PlatformOperatorEmailDelivery(
+            to_email=to_email.strip().lower(),
+            link=setup_link,
+            token=token,
+            created_at=datetime.now(timezone.utc),
+            purpose="platform_operator_setup",
+        )
+    )
+
+
+def record_platform_operator_reset_email(
+    *,
+    settings: Settings,
+    to_email: str,
+    token: str,
+) -> None:
+    """Deliver or capture a platform operator reset email."""
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+    reset_link = f"/platform/operators/reset-password?resetToken={token}"
+
+    if settings.MPANGO_ENV == "production":
+        _send_smtp_email(
+            settings=settings,
+            to_email=to_email,
+            subject="Reset your Mpango ERP platform operator password",
+            body=(
+                "We received a request to reset your platform operator password.\n\n"
+                "Use this link to choose a new password:\n"
+                f"{reset_link}\n\n"
+                "If you did not request this reset, ignore this email."
+            ),
+        )
+        return
+
+    _DEV_PLATFORM_OPERATOR_EMAIL_DELIVERIES.append(
+        PlatformOperatorEmailDelivery(
+            to_email=to_email.strip().lower(),
+            link=reset_link,
+            token=token,
+            created_at=datetime.now(timezone.utc),
+            purpose="platform_operator_reset",
+        )
+    )
+
+
 def get_dev_email_deliveries(email: str | None = None) -> list[VerificationEmailDelivery]:
     """Return captured non-production verification deliveries for tests."""
     if email is None:
@@ -178,10 +268,25 @@ def get_dev_reset_email_deliveries(email: str | None = None) -> list[PasswordRes
     return [delivery for delivery in _DEV_RESET_EMAIL_DELIVERIES if delivery.to_email == normalized]
 
 
+def get_dev_platform_operator_email_deliveries(
+    email: str | None = None,
+) -> list[PlatformOperatorEmailDelivery]:
+    """Return captured non-production platform operator deliveries for tests."""
+    if email is None:
+        return list(_DEV_PLATFORM_OPERATOR_EMAIL_DELIVERIES)
+    normalized = email.strip().lower()
+    return [
+        delivery
+        for delivery in _DEV_PLATFORM_OPERATOR_EMAIL_DELIVERIES
+        if delivery.to_email == normalized
+    ]
+
+
 def clear_dev_email_deliveries() -> None:
     """Clear captured deliveries between tests."""
     _DEV_EMAIL_DELIVERIES.clear()
     _DEV_RESET_EMAIL_DELIVERIES.clear()
+    _DEV_PLATFORM_OPERATOR_EMAIL_DELIVERIES.clear()
 
 
 def _smtp_config_complete(settings: Settings) -> bool:

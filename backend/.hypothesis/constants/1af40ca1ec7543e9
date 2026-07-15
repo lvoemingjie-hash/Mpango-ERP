@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\v1\skus.py
-# hypothesis_version: 6.150.2
-
-[100, '/{sku_code}', 'Items per page', 'N/A', 'Page number', 'UNKNOWN', 'action', 'code', 'create_sku', 'create_sku_completed', 'create_sku_failed', 'create_sku_started', 'error', 'error_code', 'error_type', 'get_sku', 'get_sku_completed', 'get_sku_failed', 'get_sku_started', 'is_active', 'items', 'list_skus', 'list_skus_completed', 'list_skus_failed', 'list_skus_started', 'name', 'page', 'pages', 'pagination', 'request_id', 'search_query', 'size', 'sku_code', 'sku_id', 'skus:create', 'skus:read', 'skus:update', 'status_code', 'success', 'tenant_id', 'total_items', 'update_sku', 'update_sku_completed', 'update_sku_failed', 'update_sku_started', 'user_id']

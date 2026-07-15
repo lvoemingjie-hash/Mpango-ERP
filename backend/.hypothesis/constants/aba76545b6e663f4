@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\v1\payments.py
-# hypothesis_version: 6.150.2
-
-['Idempotency-Key', 'Payment created', 'X-Idempotency-Key', 'amount', 'code', 'created_at', 'id', 'message', 'method', 'order_id', 'payments:create', 'retailer_id', 'status', 'transaction_id', 'transfer', 'updated_at']

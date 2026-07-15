@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\core\security.py
-# hypothesis_version: 6.150.1
-
-['Token has expired', 'access', 'auto', 'bcrypt', 'exp', 'refresh', 'tenant_id', 'tenant_schema', 'type', 'user_id']

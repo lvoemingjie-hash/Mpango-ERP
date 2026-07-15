@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\schemas\order.py
-# hypothesis_version: 6.150.2
-
-[100, 255, 1000, 10000, '999999.99', '<', '>', 'Action message', 'Creation timestamp', 'Creator user UUID', 'Item quantity', 'Line item subtotal', 'Optional message', 'Order UUID', 'Order data', 'Order item UUID', 'Order items', 'Order notes', 'Order status', 'Order total amount', 'Response timestamp', 'Retailer UUID', 'Retailer name', 'SKU code snapshot', 'Unit price', '^[a-zA-Z0-9\\-_]+$', 'cancelled', 'confirmed', 'draft', 'from_attributes', 'notes', 'product_name', 'script', 'sku_code']

@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\schemas\user.py
-# hypothesis_version: 6.150.1
-
-[100, 'Creation timestamp', 'List of roles', 'Optional message', 'Response timestamp', 'Role UUID', 'Role description', 'Role name', 'User UUID', 'User active status', 'User data', 'User email', 'User full name', 'User password', 'User roles', 'from_attributes']

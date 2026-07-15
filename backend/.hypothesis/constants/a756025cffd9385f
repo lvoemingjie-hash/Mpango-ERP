@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\models\user.py
-# hypothesis_version: 6.150.1
-
-[100, 255, 'Permission', 'Role', 'User', 'code', 'email', 'ix_permissions_code', 'ix_roles_name', 'ix_users_email', 'name', 'permissions', 'role_permissions', 'roles', 'selectin', 'user_roles', 'users']

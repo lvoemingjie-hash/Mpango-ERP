@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\db\sql_safety.py
-# hypothesis_version: 6.150.2
-
-['SAFE_IDENTIFIER_RE', 'identifier', 'validate_identifier']

@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\v1\wholesalers.py
-# hypothesis_version: 6.150.2
-
-[100, '/{wholesaler_id}', 'INVALID_ID', 'Items per page', 'WHOLESALER_NOT_FOUND', 'Wholesaler deleted', 'Wholesaler not found', 'code', 'items', 'message', 'pagination', 'wholesalers:read', 'wholesalers:write']

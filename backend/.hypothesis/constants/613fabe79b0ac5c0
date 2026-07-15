@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\v1\inventory.py
-# hypothesis_version: 6.150.2
-
-[100, '/stocks', '/stocks/{sku_code}', 'Filter by sku_code', 'Items per page', 'N/A', 'Page number', 'UNKNOWN', 'action', 'code', 'error', 'error_code', 'error_type', 'get_stock_by_sku', 'inventory:read', 'is_active', 'item_count', 'items', 'list_stock', 'list_stock_completed', 'list_stock_failed', 'list_stock_started', 'order_id', 'page', 'pages', 'pagination', 'quantity_on_hand', 'quantity_reserved', 'request_id', 'size', 'sku_code', 'sku_id', 'status_code', 'stock_view_for_order', 'success', 'tenant_id', 'total_items', 'user_id']

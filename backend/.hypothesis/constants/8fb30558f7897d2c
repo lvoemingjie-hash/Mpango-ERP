@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\schemas\common.py
-# hypothesis_version: 6.150.1
-
-[100, 'Error message', 'Error timestamp', 'Items per page', 'Optional message', 'Response data', 'Response message', 'Response timestamp', 'T', 'from_attributes']

@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\v1\users.py
-# hypothesis_version: 6.150.2
-
-[100, '/{user_id}', '/{user_id}/roles', 'CANNOT_DELETE_SELF', 'EMAIL_EXISTS', 'INVALID_ROLE', 'Items per page', 'Page number', 'USER_NOT_FOUND', 'code', 'items', 'message', 'pagination', 'roles:assign', 'users:create', 'users:deactivate', 'users:read', 'users:update']

@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\middleware\metrics.py
-# hypothesis_version: 6.150.2
-
-[0.0, 100, 400, 500, 1000, '/', '/api/v1/', 'endpoints', 'error_rate', 'errors', 'overall_error_rate', 'request_counts', 'sample_size', 'state', 'summary', 'total', 'total_errors', 'total_requests']

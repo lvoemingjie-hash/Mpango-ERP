@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\db\tenant_filter.py
-# hypothesis_version: 6.150.2
-
-['do_orm_execute', 'ignore_tenant', 'info', 'mpango_tenant_id', 'tenant_id', 'tenant_schema']

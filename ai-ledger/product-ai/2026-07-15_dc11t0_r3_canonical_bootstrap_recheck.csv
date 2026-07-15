@@ -1,0 +1,8 @@
+scope,node_count,result,classification_evidence
+R2 failed/error ledger,97,hash matched,"Recomputed status,nodeid SHA256 from the committed R2 remaining-node ledger: 3a348ff648f3765e65a179adbd45c869f10006034669201c896ea11b547472a8."
+Comparator regression,5,passed,"Fresh disposable PostgreSQL 16 and Redis 7 gate; all comparator tests passed and cleanup was complete."
+Retailer prices live contract,13,passed,"After canonical bootstrap of t_dev, all thirteen previously failing live retailer_prices nodes passed. The bare Alembic database had not prepared t_dev."
+Reporting views and constraints,9,passed,"After canonical bootstrap of t_test, two S6-2 object checks, four S6-3 query-builder checks, and three reporting-role checks passed."
+Materialized-view staleness,1,stale test cleanup,"The materialized-view assertions reached cleanup; the test then tried to DELETE a ledger row and the product immutability trigger correctly rejected it."
+Reporting-user direct connection,1,test infrastructure,"The test constructs a fixed host-port/database connection instead of consistently using the disposable database environment."
+U1R1 dashboard smoke,1,stale test context,"The failure log showed tenant_schema=t_dev although the fixture bootstrapped t_u1r1_test; the test override does not replace the dashboard request-state tenant extraction path."

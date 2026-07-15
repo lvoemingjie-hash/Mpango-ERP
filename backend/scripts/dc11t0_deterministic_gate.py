@@ -33,7 +33,7 @@ POSTGRES_IMAGE = "postgres:16-alpine"
 REDIS_IMAGE = "redis:7-alpine"
 POSTGRES_USER = "gate_runner"
 POSTGRES_DB = "dc11t0_test_gate"
-POSTGRES_PASSWORD = "dc11t0_gate_password"
+POSTGRES_PASSWORD = "dc11t0_gate_password"  # pragma: allowlist secret
 SECRET_KEY = hashlib.sha256(b"dc11t0-r2-deterministic-gate-secret").hexdigest()
 
 
@@ -174,6 +174,8 @@ def run(
         cwd=str(cwd),
         env=env,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         timeout=timeout,
@@ -407,7 +409,7 @@ def _hash_lines(lines: list[str]) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def failure_ledger_lines(summary: dict[str, Any]) -> list[str]:
+def failed_error_ledger_lines(summary: dict[str, Any]) -> list[str]:
     """Return deterministic ledger lines for release-blocking nodes only."""
     rows = [
         *(f"failed,{nodeid}" for nodeid in summary.get("failed_nodes", [])),
@@ -416,8 +418,8 @@ def failure_ledger_lines(summary: dict[str, Any]) -> list[str]:
     return sorted(rows)
 
 
-def failure_ledger_sha256(summary: dict[str, Any]) -> str:
-    return _hash_lines(failure_ledger_lines(summary))
+def failed_error_ledger_sha256(summary: dict[str, Any]) -> str:
+    return _hash_lines(failed_error_ledger_lines(summary))
 
 
 def summarize_ledger(ledger_path: Path, collected_path: Path, pytest_exit_code: int) -> dict[str, Any]:
@@ -473,7 +475,7 @@ def summarize_ledger(ledger_path: Path, collected_path: Path, pytest_exit_code: 
         "xfailed_nodes": sorted(xfailed_nodes),
         "normalized_node_ledger_sha256": ledger_hash,
     }
-    summary["failure_ledger_sha256"] = failure_ledger_sha256(summary)
+    summary["failed_error_ledger_sha256"] = failed_error_ledger_sha256(summary)
     return summary
 
 
@@ -603,6 +605,7 @@ def command_run(args: argparse.Namespace) -> int:
             "skipped",
             "xfailed",
             "accounting_gap",
+            "failed_error_ledger_sha256",
             "normalized_node_ledger_sha256",
         )
         if key in summary
@@ -623,31 +626,46 @@ def command_run(args: argparse.Namespace) -> int:
 def compare_summaries(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     """Compare release-gating failure ledgers.
 
-    Passed/skipped/xfailed totals and all-node ledger hashes are reported as
-    diagnostics only. R3 intentionally gates determinism on exact FAILED and
-    ERROR node IDs.
+    Status totals and exact FAILED/ERROR node IDs are release gates. The
+    all-status ledger hash is diagnostic only because PASSED parametrized node
+    IDs may contain volatile generated values.
     """
-    left_failure_hash = failure_ledger_sha256(left)
-    right_failure_hash = failure_ledger_sha256(right)
+    left_failure_hash = failed_error_ledger_sha256(left)
+    right_failure_hash = failed_error_ledger_sha256(right)
     mismatches: list[str] = []
-    if left_failure_hash != right_failure_hash:
-        mismatches.append("failure_ledger_sha256 differs")
 
-    diagnostic_keys = ["collected", "passed", "failed", "errors", "skipped", "xfailed", "accounting_gap"]
+    total_keys = [
+        "collected",
+        "passed",
+        "failed",
+        "errors",
+        "skipped",
+        "xfailed",
+        "notrun",
+        "accounting_gap",
+    ]
+    for key in total_keys:
+        if left.get(key, 0) != right.get(key, 0):
+            mismatches.append(f"{key}: {left.get(key, 0)} != {right.get(key, 0)}")
+
+    if sorted(left.get("failed_nodes", [])) != sorted(right.get("failed_nodes", [])):
+        mismatches.append("failed node set differs")
+    if sorted(left.get("error_nodes", [])) != sorted(right.get("error_nodes", [])):
+        mismatches.append("error node set differs")
+    if left_failure_hash != right_failure_hash:
+        mismatches.append("failed_error_ledger_sha256 differs")
+
     diagnostic_mismatches: list[str] = []
-    for key in diagnostic_keys:
-        if left.get(key) != right.get(key):
-            diagnostic_mismatches.append(f"{key}: {left.get(key)} != {right.get(key)}")
     if left.get("normalized_node_ledger_sha256") != right.get("normalized_node_ledger_sha256"):
         diagnostic_mismatches.append("normalized_node_ledger_sha256 differs")
 
     return {
         "match": not mismatches,
         "mismatches": mismatches,
-        "left_failure_ledger_sha256": left_failure_hash,
-        "right_failure_ledger_sha256": right_failure_hash,
-        "left_failure_node_count": len(left.get("failed_nodes", [])) + len(left.get("error_nodes", [])),
-        "right_failure_node_count": len(right.get("failed_nodes", [])) + len(right.get("error_nodes", [])),
+        "left_failed_error_ledger_sha256": left_failure_hash,
+        "right_failed_error_ledger_sha256": right_failure_hash,
+        "left_failed_error_node_count": len(left.get("failed_nodes", [])) + len(left.get("error_nodes", [])),
+        "right_failed_error_node_count": len(right.get("failed_nodes", [])) + len(right.get("error_nodes", [])),
         "diagnostic_mismatches": diagnostic_mismatches,
         "left_normalized_node_ledger_sha256": left.get("normalized_node_ledger_sha256"),
         "right_normalized_node_ledger_sha256": right.get("normalized_node_ledger_sha256"),

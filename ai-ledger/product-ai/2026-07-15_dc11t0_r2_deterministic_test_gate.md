@@ -2,11 +2,12 @@
 
 Date: 2026-07-15
 
-Current R3 Verdict: **STOP_AND_REPORT_CTO**
+Current R3 Verdict: **PASS_DC11T0_R3_DETERMINISTIC_FAILURE_GATE**
 
-R3 reason: the deterministic failure-gate comparator now matches the two R2
-full runs on exact FAILED/ERROR node IDs, but independent file reruns confirmed
-25 release-blocking product-defect nodes. The branch is not delivery-ready.
+R3 reason: the deterministic failure-gate comparator matches the two R2 full
+runs on exact FAILED/ERROR totals, node sets, and ledger SHA256. All 97 nodes
+are classified with gap zero, and canonical-bootstrap rechecks confirmed zero
+current product defects.
 
 R2 historical verdict: **STOP_AND_REPORT_CTO**
 
@@ -27,22 +28,26 @@ Changed R3 files:
 - Added `ai-ledger/product-ai/2026-07-15_dc11t0_r3_remaining_node_classification.csv`
 - Added `ai-ledger/product-ai/2026-07-15_dc11t0_r3_product_defect_nodes.csv`
 - Added `ai-ledger/product-ai/2026-07-15_dc11t0_r3_durable_approval_decision_reproduction.csv`
+- Added `ai-ledger/product-ai/2026-07-15_dc11t0_r3_canonical_bootstrap_recheck.csv`
 
 Comparator regression tests:
 
 - `poetry run pytest tests/test_dc11t0_deterministic_gate.py -q`
-- Result: `4 passed`
+- Result: `5 passed`
 
-R3 failure-ledger comparison from R2 artifacts:
+R3 failed/error ledger comparison from R2 artifacts:
 
-| Run | Failure Nodes | Failure-Ledger SHA256 | All-Node SHA256 |
+| Run | Failed/Error Nodes | Failed/Error Ledger SHA256 | All-Node SHA256 |
 | --- | ---: | --- | --- |
 | full-run-1 | 97 | `3a348ff648f3765e65a179adbd45c869f10006034669201c896ea11b547472a8` | `5e0e9f053c9c60391ea3d5ad2bcbd1150a84016425113cd3b1791d358e881ba1` |
 | full-run-2 | 97 | `3a348ff648f3765e65a179adbd45c869f10006034669201c896ea11b547472a8` | `a74b710105e716b6e18252c98788715490895ce0c1ec5d9e9cdbd170ede38478` |
 
 R3 comparator result:
 
-- Failure-ledger match: yes
+- Failed/error totals match: yes
+- Failed node set match: yes
+- Error node set match: yes
+- Failed/error ledger SHA256 match: yes
 - Gating mismatches: none
 - Diagnostic mismatches: `normalized_node_ledger_sha256 differs`
 
@@ -56,62 +61,45 @@ R2 remaining-node status in isolated file reruns:
 - Passed: 13
 - Accounting gap: 0
 
-R3 classifications:
+R3 classifications using the required four-category vocabulary:
 
-- Confirmed product defect: 25
-- Prepared-live-DB precondition not met: 19
-- Stale migration revision contract: 16
-- Independent isolated rerun passed: 13
-- Stale DC-11D payment-body contract: 8
-- Stale phase contract: 8
-- Branch-diff or stale-head contract: 5
-- Time-control test gap: 2
-- Test-infrastructure reporting-user credentials: 1
+- `TEST_INFRASTRUCTURE`: 24
+- `STALE_TEST_CONTRACT`: 41
+- `CURRENT_PRODUCT_DEFECT`: 0
+- `ENVIRONMENT_GATED`: 32
+- Total: 97
+- Accounting gap: 0
 
 Exact classification evidence is in
 `ai-ledger/product-ai/2026-07-15_dc11t0_r3_remaining_node_classification.csv`.
 
-### R3 Product Defect Nodes
+### R3 Classification Correction
 
-Exact product-defect evidence is in
-`ai-ledger/product-ai/2026-07-15_dc11t0_r3_product_defect_nodes.csv`.
+The first R3 pass overclassified 25 nodes as product defects because isolated
+file reruns did not recreate each file's required tenant bootstrap context.
+The correction used a fresh PostgreSQL 16 database at Alembic head 034 and ran
+the canonical tenant bootstrap before repeating the disputed assertions.
 
-Confirmed product defects:
+Correction evidence is in
+`ai-ledger/product-ai/2026-07-15_dc11t0_r3_canonical_bootstrap_recheck.csv`.
+The product-defect CSV is intentionally header-only because no current product
+defect remained after the corrected reproduction.
 
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_created_at_not_null`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_check_constraint`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_price`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_retailer_id`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_retailer_id_index`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_sku_id`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_sku_id_index`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_unique_constraint`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_is_deleted_not_null`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_price_not_null`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_retailer_id_not_null`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_sku_id_not_null`
-- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_updated_at_not_null`
-- `tests/test_s6_2_materialized_views.py::test_mv_sales_daily_has_unique_index`
-- `tests/test_s6_2_materialized_views.py::test_mv_sales_daily_staleness_then_refresh`
-- `tests/test_s6_2_materialized_views.py::test_receivables_summary_is_realtime`
-- `tests/test_s6_3_dashboard_api.py::test_query_builder_empty_mv_returns_zeros`
-- `tests/test_s6_3_dashboard_api.py::test_query_builder_fetch_all_receivables`
-- `tests/test_s6_3_dashboard_api.py::test_query_builder_fetch_kpi_summary`
-- `tests/test_s6_3_dashboard_api.py::test_query_builder_fetch_time_series`
-- `tests/test_s6_3_dashboard_api.py::test_query_builder_reporting_user_access`
-- `tests/test_s6_p_reporting_constraints.py::test_reporting_user_can_select`
-- `tests/test_s6_p_reporting_constraints.py::test_reporting_user_cannot_delete`
-- `tests/test_s6_p_reporting_constraints.py::test_reporting_user_cannot_update`
-- `tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmoke::test_sidebar_endpoint_returns_200[GET-/api/v1/dashboards/kpi/summary-Dashboard]`
+Corrected findings:
 
-Product-defect summary:
-
-- Fresh canonical DB exposes reachable `t_dev`, but live
-  `t_dev.retailer_prices` lacks required columns, constraints and indexes.
-- Fresh tenant reporting schema lacks required `mv_sales_daily`,
-  `rpt_receivables_summary`, and `ledger_entries` objects.
-- `GET /api/v1/dashboards/kpi/summary` returns 500 and exposes raw
-  SQL/UndefinedTable detail when `mv_sales_daily` is absent.
+- All 13 `t_dev.retailer_prices` nodes passed after canonical `t_dev`
+  bootstrap. A bare Alembic database does not provision an unregistered tenant
+  schema, so these nodes are `ENVIRONMENT_GATED`.
+- Nine reporting object/query/permission assertions passed after canonical
+  `t_test` bootstrap and are `TEST_INFRASTRUCTURE` in the bare fixture.
+- The materialized-view staleness test reached cleanup and then attempted a
+  forbidden ledger DELETE. The immutability trigger correctly rejected it, so
+  the cleanup expectation is a `STALE_TEST_CONTRACT`.
+- The direct reporting-user connection uses fixed connection components rather
+  than the disposable test port consistently; it is `TEST_INFRASTRUCTURE`.
+- The U1R1 dashboard smoke logged `tenant_schema=t_dev` while its fixture had
+  bootstrapped `t_u1r1_test`. Its override does not replace the dashboard's
+  request-state tenant extraction, so it is a `STALE_TEST_CONTRACT`.
 
 DurableApprovalDecision reproduction:
 
@@ -119,9 +107,16 @@ DurableApprovalDecision reproduction:
 - `tests/test_platform_p21_durable_approval_models.py`: 26 collected, 26 passed, accounting gap 0.
 - No DurableApprovalDecision implementation/model failure was reproduced.
 
-R3 final verdict: **STOP_AND_REPORT_CTO**
+Windows portability check:
 
-## Scope
+- The gate subprocess reader now decodes UTF-8 explicitly with replacement for
+  invalid bytes, avoiding host-codepage failures before cleanup.
+- A fresh Windows disposable gate run passed all five comparator tests and
+  removed its PostgreSQL/Redis containers, volumes, and network.
+
+R3 final verdict: **PASS_DC11T0_R3_DETERMINISTIC_FAILURE_GATE**
+
+## R2 Historical Scope
 
 - Source branch reviewed: `origin/opencode/dc11t0-r1-test-infrastructure-2026-07-15`
 - Exact source tip verified: `4c7814f3799f11abc0e1c49447d99e6fbdbe2fc5`
@@ -230,6 +225,6 @@ Counts:
 
 I did not independently rerun each remaining failed/error file or DurableApprovalDecision candidates after the two-run comparison failed. The task says to stop and report if results differ, so the deterministic mismatch is the controlling failure. These remaining nodes are not classified as product defects in this report.
 
-## Final Verdict
+## R2 Historical Final Verdict
 
 **STOP_AND_REPORT_CTO**

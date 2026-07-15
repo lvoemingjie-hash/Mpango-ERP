@@ -1,0 +1,15 @@
+{
+  "diagnostic_mismatches": [
+    "normalized_node_ledger_sha256 differs"
+  ],
+  "left_failure_ledger_sha256": "3a348ff648f3765e65a179adbd45c869f10006034669201c896ea11b547472a8",
+  "left_failure_node_count": 97,
+  "left_normalized_node_ledger_sha256": "5e0e9f053c9c60391ea3d5ad2bcbd1150a84016425113cd3b1791d358e881ba1",
+  "left_summary": "dc11t0-r2-artifacts/full-run-1-valid/summary.json",
+  "match": true,
+  "mismatches": [],
+  "right_failure_ledger_sha256": "3a348ff648f3765e65a179adbd45c869f10006034669201c896ea11b547472a8",
+  "right_failure_node_count": 97,
+  "right_normalized_node_ledger_sha256": "a74b710105e716b6e18252c98788715490895ce0c1ec5d9e9cdbd170ede38478",
+  "right_summary": "dc11t0-r2-artifacts/full-run-2-valid/summary.json"
+}

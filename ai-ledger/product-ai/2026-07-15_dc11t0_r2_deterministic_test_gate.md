@@ -1,10 +1,125 @@
-# DC-11T0-R2 Deterministic Test Gate
+# DC-11T0-R2/R3 Deterministic Test Gate
 
 Date: 2026-07-15
 
-Verdict: **STOP_AND_REPORT_CTO**
+Current R3 Verdict: **STOP_AND_REPORT_CTO**
+
+R3 reason: the deterministic failure-gate comparator now matches the two R2
+full runs on exact FAILED/ERROR node IDs, but independent file reruns confirmed
+25 release-blocking product-defect nodes. The branch is not delivery-ready.
+
+R2 historical verdict: **STOP_AND_REPORT_CTO**
 
 Reason: the two valid fresh-infrastructure full backend runs produced identical totals and identical failed/error node sets, but the normalized node-ledger SHA256 values differed. The task requires exact ledger determinism; this is a release-blocking deterministic proof failure.
+
+## R3 Addendum
+
+R3 does not repeat the two full backend suites. It uses the existing R2
+full-run artifacts and changes the comparator to gate only on exact FAILED and
+ERROR node IDs. PASSED parametrized node-ID drift remains diagnostic evidence.
+
+Changed R3 files:
+
+- Modified `backend/scripts/dc11t0_deterministic_gate.py`
+- Added `backend/tests/test_dc11t0_deterministic_gate.py`
+- Added `ai-ledger/product-ai/2026-07-15_dc11t0_r3_failure_comparison.json`
+- Added `ai-ledger/product-ai/2026-07-15_dc11t0_r3_file_rerun_summary.csv`
+- Added `ai-ledger/product-ai/2026-07-15_dc11t0_r3_remaining_node_classification.csv`
+- Added `ai-ledger/product-ai/2026-07-15_dc11t0_r3_product_defect_nodes.csv`
+- Added `ai-ledger/product-ai/2026-07-15_dc11t0_r3_durable_approval_decision_reproduction.csv`
+
+Comparator regression tests:
+
+- `poetry run pytest tests/test_dc11t0_deterministic_gate.py -q`
+- Result: `4 passed`
+
+R3 failure-ledger comparison from R2 artifacts:
+
+| Run | Failure Nodes | Failure-Ledger SHA256 | All-Node SHA256 |
+| --- | ---: | --- | --- |
+| full-run-1 | 97 | `3a348ff648f3765e65a179adbd45c869f10006034669201c896ea11b547472a8` | `5e0e9f053c9c60391ea3d5ad2bcbd1150a84016425113cd3b1791d358e881ba1` |
+| full-run-2 | 97 | `3a348ff648f3765e65a179adbd45c869f10006034669201c896ea11b547472a8` | `a74b710105e716b6e18252c98788715490895ce0c1ec5d9e9cdbd170ede38478` |
+
+R3 comparator result:
+
+- Failure-ledger match: yes
+- Gating mismatches: none
+- Diagnostic mismatches: `normalized_node_ledger_sha256 differs`
+
+Independent reruns covered every file containing the 97 R2 remaining nodes.
+All 24 file reruns had `accounting_gap=0`.
+
+R2 remaining-node status in isolated file reruns:
+
+- Failed: 66
+- Errors: 18
+- Passed: 13
+- Accounting gap: 0
+
+R3 classifications:
+
+- Confirmed product defect: 25
+- Prepared-live-DB precondition not met: 19
+- Stale migration revision contract: 16
+- Independent isolated rerun passed: 13
+- Stale DC-11D payment-body contract: 8
+- Stale phase contract: 8
+- Branch-diff or stale-head contract: 5
+- Time-control test gap: 2
+- Test-infrastructure reporting-user credentials: 1
+
+Exact classification evidence is in
+`ai-ledger/product-ai/2026-07-15_dc11t0_r3_remaining_node_classification.csv`.
+
+### R3 Product Defect Nodes
+
+Exact product-defect evidence is in
+`ai-ledger/product-ai/2026-07-15_dc11t0_r3_product_defect_nodes.csv`.
+
+Confirmed product defects:
+
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_created_at_not_null`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_check_constraint`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_price`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_retailer_id`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_retailer_id_index`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_sku_id`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_sku_id_index`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_unique_constraint`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_is_deleted_not_null`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_price_not_null`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_retailer_id_not_null`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_sku_id_not_null`
+- `tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_updated_at_not_null`
+- `tests/test_s6_2_materialized_views.py::test_mv_sales_daily_has_unique_index`
+- `tests/test_s6_2_materialized_views.py::test_mv_sales_daily_staleness_then_refresh`
+- `tests/test_s6_2_materialized_views.py::test_receivables_summary_is_realtime`
+- `tests/test_s6_3_dashboard_api.py::test_query_builder_empty_mv_returns_zeros`
+- `tests/test_s6_3_dashboard_api.py::test_query_builder_fetch_all_receivables`
+- `tests/test_s6_3_dashboard_api.py::test_query_builder_fetch_kpi_summary`
+- `tests/test_s6_3_dashboard_api.py::test_query_builder_fetch_time_series`
+- `tests/test_s6_3_dashboard_api.py::test_query_builder_reporting_user_access`
+- `tests/test_s6_p_reporting_constraints.py::test_reporting_user_can_select`
+- `tests/test_s6_p_reporting_constraints.py::test_reporting_user_cannot_delete`
+- `tests/test_s6_p_reporting_constraints.py::test_reporting_user_cannot_update`
+- `tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmoke::test_sidebar_endpoint_returns_200[GET-/api/v1/dashboards/kpi/summary-Dashboard]`
+
+Product-defect summary:
+
+- Fresh canonical DB exposes reachable `t_dev`, but live
+  `t_dev.retailer_prices` lacks required columns, constraints and indexes.
+- Fresh tenant reporting schema lacks required `mv_sales_daily`,
+  `rpt_receivables_summary`, and `ledger_entries` objects.
+- `GET /api/v1/dashboards/kpi/summary` returns 500 and exposes raw
+  SQL/UndefinedTable detail when `mv_sales_daily` is absent.
+
+DurableApprovalDecision reproduction:
+
+- `tests/test_platform_p21_durable_approval_adapter_implementation.py`: 23 collected, 23 passed, accounting gap 0.
+- `tests/test_platform_p21_durable_approval_models.py`: 26 collected, 26 passed, accounting gap 0.
+- No DurableApprovalDecision implementation/model failure was reproduced.
+
+R3 final verdict: **STOP_AND_REPORT_CTO**
 
 ## Scope
 

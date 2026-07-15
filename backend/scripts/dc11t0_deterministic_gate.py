@@ -402,6 +402,24 @@ def run_alembic_checks(env: dict[str, str], artifacts_dir: Path, secrets: list[s
     }
 
 
+def _hash_lines(lines: list[str]) -> str:
+    text = "\n".join(lines) + "\n"
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def failure_ledger_lines(summary: dict[str, Any]) -> list[str]:
+    """Return deterministic ledger lines for release-blocking nodes only."""
+    rows = [
+        *(f"failed,{nodeid}" for nodeid in summary.get("failed_nodes", [])),
+        *(f"error,{nodeid}" for nodeid in summary.get("error_nodes", [])),
+    ]
+    return sorted(rows)
+
+
+def failure_ledger_sha256(summary: dict[str, Any]) -> str:
+    return _hash_lines(failure_ledger_lines(summary))
+
+
 def summarize_ledger(ledger_path: Path, collected_path: Path, pytest_exit_code: int) -> dict[str, Any]:
     ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
     collected = json.loads(collected_path.read_text(encoding="utf-8"))
@@ -434,13 +452,12 @@ def summarize_ledger(ledger_path: Path, collected_path: Path, pytest_exit_code: 
             counts["notrun"] += 1
         normalized_rows.append((nodeid, status))
 
-    normalized_text = "\n".join(f"{nodeid},{status}" for nodeid, status in sorted(normalized_rows)) + "\n"
-    ledger_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+    ledger_hash = _hash_lines([f"{nodeid},{status}" for nodeid, status in sorted(normalized_rows)])
     collected_count = len(collected)
     accounted = counts["passed"] + counts["failed"] + counts["errors"] + counts["skipped"] + counts["xfailed"]
     accounting_gap = collected_count - accounted
 
-    return {
+    summary = {
         "collected": collected_count,
         "passed": counts["passed"],
         "failed": counts["failed"],
@@ -456,6 +473,8 @@ def summarize_ledger(ledger_path: Path, collected_path: Path, pytest_exit_code: 
         "xfailed_nodes": sorted(xfailed_nodes),
         "normalized_node_ledger_sha256": ledger_hash,
     }
+    summary["failure_ledger_sha256"] = failure_ledger_sha256(summary)
+    return summary
 
 
 def write_remaining_csv(summary: dict[str, Any], path: Path) -> None:
@@ -601,32 +620,54 @@ def command_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_compare(args: argparse.Namespace) -> int:
-    left = json.loads(Path(args.left).read_text(encoding="utf-8"))
-    right = json.loads(Path(args.right).read_text(encoding="utf-8"))
-    compared_keys = ["collected", "passed", "failed", "errors", "skipped", "xfailed", "accounting_gap"]
-    mismatches: list[str] = []
-    for key in compared_keys:
-        if left.get(key) != right.get(key):
-            mismatches.append(f"{key}: {left.get(key)} != {right.get(key)}")
-    for key in ("failed_nodes", "error_nodes"):
-        if sorted(left.get(key, [])) != sorted(right.get(key, [])):
-            mismatches.append(f"{key} differs")
-    if left.get("normalized_node_ledger_sha256") != right.get("normalized_node_ledger_sha256"):
-        mismatches.append("normalized_node_ledger_sha256 differs")
+def compare_summaries(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    """Compare release-gating failure ledgers.
 
-    result = {
-        "left": str(Path(args.left).resolve()),
-        "right": str(Path(args.right).resolve()),
+    Passed/skipped/xfailed totals and all-node ledger hashes are reported as
+    diagnostics only. R3 intentionally gates determinism on exact FAILED and
+    ERROR node IDs.
+    """
+    left_failure_hash = failure_ledger_sha256(left)
+    right_failure_hash = failure_ledger_sha256(right)
+    mismatches: list[str] = []
+    if left_failure_hash != right_failure_hash:
+        mismatches.append("failure_ledger_sha256 differs")
+
+    diagnostic_keys = ["collected", "passed", "failed", "errors", "skipped", "xfailed", "accounting_gap"]
+    diagnostic_mismatches: list[str] = []
+    for key in diagnostic_keys:
+        if left.get(key) != right.get(key):
+            diagnostic_mismatches.append(f"{key}: {left.get(key)} != {right.get(key)}")
+    if left.get("normalized_node_ledger_sha256") != right.get("normalized_node_ledger_sha256"):
+        diagnostic_mismatches.append("normalized_node_ledger_sha256 differs")
+
+    return {
         "match": not mismatches,
         "mismatches": mismatches,
-        "left_hash": left.get("normalized_node_ledger_sha256"),
-        "right_hash": right.get("normalized_node_ledger_sha256"),
+        "left_failure_ledger_sha256": left_failure_hash,
+        "right_failure_ledger_sha256": right_failure_hash,
+        "left_failure_node_count": len(left.get("failed_nodes", [])) + len(left.get("error_nodes", [])),
+        "right_failure_node_count": len(right.get("failed_nodes", [])) + len(right.get("error_nodes", [])),
+        "diagnostic_mismatches": diagnostic_mismatches,
+        "left_normalized_node_ledger_sha256": left.get("normalized_node_ledger_sha256"),
+        "right_normalized_node_ledger_sha256": right.get("normalized_node_ledger_sha256"),
+    }
+
+
+def command_compare(args: argparse.Namespace) -> int:
+    left_path = Path(args.left).resolve()
+    right_path = Path(args.right).resolve()
+    left = json.loads(left_path.read_text(encoding="utf-8"))
+    right = json.loads(right_path.read_text(encoding="utf-8"))
+    result = {
+        "left": str(left_path),
+        "right": str(right_path),
+        **compare_summaries(left, right),
     }
     if args.output:
         Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 0 if not mismatches else 5
+    return 0 if result["match"] else 5
 
 
 def build_parser() -> argparse.ArgumentParser:

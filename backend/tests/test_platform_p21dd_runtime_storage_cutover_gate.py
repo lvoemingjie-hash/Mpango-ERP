@@ -252,12 +252,13 @@ def durable_urls():
         # Run migration 020 (head) on the migrated database only.
         os.environ["DATABASE_URL"] = mig_async
         os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
-        from alembic import command
+        # from alembic import command  (replaced by conftest helper)
         from alembic.config import Config
 
         cfg = Config(str(BACKEND_DIR / "alembic.ini"))
         cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-        command.upgrade(cfg, "head")
+        from tests.conftest import run_alembic_upgrade
+        run_alembic_upgrade(cfg, "head")
         yield {
             "mig_async": mig_async,
             "mig_sync": mig_sync,

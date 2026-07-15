@@ -244,7 +244,7 @@ async def test_consume_valid_owner_setup_token_returns_admin_creation_inputs_wit
 
 @pytest.mark.parametrize(
     "raw_token",
-    [None, "", "   ", f"u6i3-missing-{uuid.uuid4().hex}"],
+    [None, "", "   ", "u6i3-missing-not-persisted"],
 )
 async def test_invalid_or_missing_raw_token_fails_neutrally(raw_token: str | None):
     await _assert_neutral_failure(raw_token)

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import uuid
 
 import pytest
+from tests.conftest import run_coroutine
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine, text
@@ -242,7 +243,7 @@ def test_fresh_bootstrap_payments_table_has_canonical_method_constraint():
             _ensure_public_prerequisites(connection)
             _cleanup(connection, [schema])
 
-        asyncio.run(bootstrap(schema, os.environ["DATABASE_URL"]))
+        run_coroutine(bootstrap(schema, os.environ["DATABASE_URL"]))
 
         with engine.begin() as connection:
             _assert_canonical_constraint(connection, schema)
@@ -288,7 +289,7 @@ def test_bootstrap_reconcile_wrong_same_name_payment_constraint_fails_closed():
             )
 
         with pytest.raises(RuntimeError, match="does not match expected payment method contract"):
-            asyncio.run(bootstrap(schema, os.environ["DATABASE_URL"]))
+            run_coroutine(bootstrap(schema, os.environ["DATABASE_URL"]))
 
         with engine.begin() as connection:
             constraint_def = _constraint_def(connection, schema)
@@ -382,7 +383,7 @@ def test_null_member_payment_method_checks_allow_banana_but_bootstrap_rejects_th
             )
 
         with pytest.raises(RuntimeError, match="incompatible .*payments method constraints"):
-            asyncio.run(bootstrap(schema, os.environ["DATABASE_URL"]))
+            run_coroutine(bootstrap(schema, os.environ["DATABASE_URL"]))
 
         with engine.begin() as connection:
             names = _constraint_names(connection, schema)

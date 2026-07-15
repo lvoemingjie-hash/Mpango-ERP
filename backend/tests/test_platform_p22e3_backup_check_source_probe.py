@@ -34,6 +34,8 @@ import ast
 import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
+
+from tests.conftest import run_coroutine
 from uuid import UUID
 
 import pytest
@@ -424,7 +426,7 @@ class TestDryRunAndRequestNeverExecute:
             idempotency_key="probe-key-1",
             execution_mode="sync",
         )
-        resp = asyncio.run(
+        resp = run_coroutine(
             evaluate_dry_run(
                 request,
                 actor="exec-1",
@@ -459,7 +461,7 @@ class TestDryRunAndRequestNeverExecute:
             idempotency_key="probe-key-2",
             execution_mode="sync",
         )
-        dry = asyncio.run(
+        dry = run_coroutine(
             evaluate_dry_run(
                 dry_request,
                 actor="exec-1",
@@ -477,7 +479,7 @@ class TestDryRunAndRequestNeverExecute:
             execution_ack=True,
             execution_mode="sync",
         )
-        resp = asyncio.run(
+        resp = run_coroutine(
             record_execution_request(
                 req,
                 actor="exec-1",

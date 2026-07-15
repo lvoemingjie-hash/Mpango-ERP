@@ -9,6 +9,7 @@ from pathlib import Path
 import uuid
 
 import pytest
+from tests.conftest import run_coroutine
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine, text
@@ -305,7 +306,7 @@ def test_fresh_bootstrap_creates_canonical_retailer_prices_and_reporting():
             _ensure_public_prerequisites(connection)
             _cleanup(connection, [schema])
 
-        asyncio.run(bootstrap(schema, os.environ["DATABASE_URL"]))
+        run_coroutine(bootstrap(schema, os.environ["DATABASE_URL"]))
 
         with engine.begin() as connection:
             _assert_retailer_prices_canonical(connection, schema)

@@ -198,12 +198,13 @@ def durable_db_url():
         _bootstrap(sync_url)
         os.environ["DATABASE_URL"] = async_url
         os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
-        from alembic import command
+        # from alembic import command  (replaced by conftest helper)
         from alembic.config import Config
 
         cfg = Config(str(BACKEND_DIR / "alembic.ini"))
         cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-        command.upgrade(cfg, "head")  # public-mode; creates the durable tables
+        from tests.conftest import run_alembic_upgrade
+        run_alembic_upgrade(cfg, "head")  # public-mode; creates the durable tables
         yield {"async_url": async_url, "sync_url": sync_url, "container": container}
     finally:
         subprocess.run(["docker", "rm", "-f", container], capture_output=True)

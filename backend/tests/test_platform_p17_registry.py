@@ -22,6 +22,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from tests.conftest import run_coroutine
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -864,7 +866,6 @@ def _mock_db_failing():
     Includes begin_nested() as a no-op SAVEPOINT so the savepoint containment
     code path can be exercised.
     """
-    import asyncio
 
     db = MagicMock()
 
@@ -911,7 +912,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_backup_status_map
 
         db = _mock_db_failing()
-        result = asyncio.run(
+        result = run_coroutine(
             _load_backup_status_map(db, [self.VALID_V4], datetime.now(timezone.utc))
         )
         assert result is None  # read failure -> unavailable for all tenants
@@ -924,7 +925,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_backup_status_map
 
         db = _mock_db_failing()
-        asyncio.run(
+        run_coroutine(
             _load_backup_status_map(db, [self.VALID_V4], datetime.now(timezone.utc))
         )
         # begin_nested was called (savepoint created + rolled back on error)
@@ -937,7 +938,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_backup_status_map
 
         db = _mock_db()  # execute returns empty result, no error
-        result = asyncio.run(
+        result = run_coroutine(
             _load_backup_status_map(db, [self.VALID_V4], datetime.now(timezone.utc))
         )
         assert result is not None
@@ -953,7 +954,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_provisioning_map
 
         db = _mock_db_failing()
-        result = asyncio.run(_load_provisioning_map(db, [self.VALID_V4]))
+        result = run_coroutine(_load_provisioning_map(db, [self.VALID_V4]))
         assert result == {}
 
     def test_provisioning_loader_works_normally_on_success(self):
@@ -963,7 +964,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_provisioning_map
 
         db = _mock_db()  # execute returns empty result, no error
-        result = asyncio.run(_load_provisioning_map(db, [self.VALID_V4]))
+        result = run_coroutine(_load_provisioning_map(db, [self.VALID_V4]))
         assert result == {}  # no platform_tenants rows -> empty map
 
     # -- Route-level: registry returns 200 (not 500) when backup source fails --

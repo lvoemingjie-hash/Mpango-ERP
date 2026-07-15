@@ -29,6 +29,7 @@ import os
 from pathlib import Path
 
 import pytest
+from tests.conftest import run_coroutine
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +195,9 @@ def _get_db_urls() -> list[str]:
     env_url = os.environ.get("DATABASE_URL", "")
     if env_url:
         candidates.append(env_url)
-    candidates.append("postgresql://mpango:mpango@127.0.0.1:5432/mpango_erp")
+    candidates.append(
+        "postgresql://mpango:mpango@127.0.0.1:5432/mpango_erp"  # pragma: allowlist secret
+    )
     return candidates
 
 
@@ -223,7 +226,7 @@ def _can_connect_t_dev() -> bool:
                     ))
                     return result.first() is not None
 
-            found = asyncio.run(_check())
+            found = run_coroutine(_check())
             return found
         except Exception:
             continue
@@ -466,7 +469,7 @@ def _can_connect_db() -> bool:
                     await conn.execute(text("SELECT 1"))
                     return True
 
-            return asyncio.run(_check())
+            return run_coroutine(_check())
         except Exception:
             continue
     return False

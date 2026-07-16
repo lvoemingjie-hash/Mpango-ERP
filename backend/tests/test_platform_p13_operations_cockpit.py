@@ -18,6 +18,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.async_test_utils import run_coroutine
+
 
 os.environ.setdefault("MPANGO_ENV", "test")
 os.environ.setdefault("PLATFORM_TEST_OVERRIDE_SECRET", "test-platform-override-secret")
@@ -854,7 +856,7 @@ class TestP14DatabaseHealthAdapter:
         from api.v1.platform.p13.services import _database_health
 
         db = _mock_db()
-        health = asyncio.run(_database_health(db))
+        health = run_coroutine(_database_health(db))
         # The mock execute resolves without error -> measured healthy with latency.
         assert health.status == "healthy"
         assert isinstance(health.latency_ms, int) and health.latency_ms >= 0
@@ -870,7 +872,7 @@ class TestP14DatabaseHealthAdapter:
 
         db = _mock_db()
         db.execute = AsyncMock(side_effect=RuntimeError("connection refused"))
-        health = asyncio.run(_database_health(db))
+        health = run_coroutine(_database_health(db))
         assert health.status == "unhealthy"
         assert health.latency_ms is None  # null, never fabricated 0
 

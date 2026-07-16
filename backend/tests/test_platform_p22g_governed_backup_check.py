@@ -15,6 +15,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from tests.async_test_utils import run_coroutine
+
 os.environ.setdefault("MPANGO_ENV", "test")
 os.environ.setdefault("PLATFORM_TEST_OVERRIDE_SECRET", "test-platform-override-secret")
 os.environ.setdefault("PLATFORM_OPERATOR_SECRET", "test-operator-secret")
@@ -177,7 +179,7 @@ class TestNonExecutingInvariants:
 
         services.set_approval_resolver(_resolver)
         _seed_approval(action_type="backup.check", action_class="read")
-        resp = asyncio.run(
+        resp = run_coroutine(
             services.evaluate_dry_run(
                 ExecutionDryRunRequest(
                     durable_approval_id="ap-g",
@@ -524,7 +526,7 @@ class TestRoute:
         import asyncio
 
         _enable_auth(monkeypatch)
-        record = asyncio.run(_record_request(actor="super-exec"))
+        record = run_coroutine(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(
             return_value=_source_read(source_status="known", source_summary="fresh_success")))
         monkeypatch.setattr("api.v1.platform.p22.routes._write_outcome_audit", AsyncMock(return_value=None))
@@ -548,7 +550,7 @@ class TestRoute:
             "api.context.auth.get_auth_context",
             MagicMock(return_value=None),
         )
-        record = asyncio.run(_record_request(actor="super-exec"))
+        record = run_coroutine(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(return_value=_source_read()))
         payload = _governed_request(record).model_dump()
         with TestClient(_route_app()) as c:
@@ -559,7 +561,7 @@ class TestRoute:
         import asyncio
 
         _enable_auth(monkeypatch)
-        record = asyncio.run(_record_request(actor="super-exec"))
+        record = run_coroutine(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(return_value=_source_read()))
         monkeypatch.setattr("api.v1.platform.p22.routes._write_outcome_audit", AsyncMock(return_value=None))
         payload = _governed_request(record).model_dump()
@@ -576,7 +578,7 @@ class TestRoute:
         import asyncio
 
         _enable_auth(monkeypatch)
-        record = asyncio.run(_record_request(actor="super-exec"))
+        record = run_coroutine(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(return_value=_source_read()))
         monkeypatch.setattr("api.v1.platform.p22.routes._write_outcome_audit", AsyncMock(return_value=None))
         payload = _governed_request(record).model_dump()
@@ -592,7 +594,7 @@ class TestRoute:
         import asyncio
 
         _enable_auth(monkeypatch)
-        record = asyncio.run(_record_request(actor="super-exec"))
+        record = run_coroutine(_record_request(actor="super-exec"))
         monkeypatch.setattr(gov, "read_backup_check_source", AsyncMock(
             return_value=_source_read(source_status="known", source_summary="fresh_success")))
         monkeypatch.setattr("api.v1.platform.p22.routes._write_outcome_audit", AsyncMock(return_value=None))

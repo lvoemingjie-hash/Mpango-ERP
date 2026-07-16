@@ -26,6 +26,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.async_test_utils import run_coroutine
+
 
 os.environ.setdefault("MPANGO_ENV", "test")
 os.environ.setdefault("PLATFORM_TEST_OVERRIDE_SECRET", "test-platform-override-secret")
@@ -911,7 +913,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_backup_status_map
 
         db = _mock_db_failing()
-        result = asyncio.run(
+        result = run_coroutine(
             _load_backup_status_map(db, [self.VALID_V4], datetime.now(timezone.utc))
         )
         assert result is None  # read failure -> unavailable for all tenants
@@ -924,7 +926,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_backup_status_map
 
         db = _mock_db_failing()
-        asyncio.run(
+        run_coroutine(
             _load_backup_status_map(db, [self.VALID_V4], datetime.now(timezone.utc))
         )
         # begin_nested was called (savepoint created + rolled back on error)
@@ -937,7 +939,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_backup_status_map
 
         db = _mock_db()  # execute returns empty result, no error
-        result = asyncio.run(
+        result = run_coroutine(
             _load_backup_status_map(db, [self.VALID_V4], datetime.now(timezone.utc))
         )
         assert result is not None
@@ -953,7 +955,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_provisioning_map
 
         db = _mock_db_failing()
-        result = asyncio.run(_load_provisioning_map(db, [self.VALID_V4]))
+        result = run_coroutine(_load_provisioning_map(db, [self.VALID_V4]))
         assert result == {}
 
     def test_provisioning_loader_works_normally_on_success(self):
@@ -963,7 +965,7 @@ class TestP25EJTransactionPoisoningFix:
         from api.v1.platform.p17.services import _load_provisioning_map
 
         db = _mock_db()  # execute returns empty result, no error
-        result = asyncio.run(_load_provisioning_map(db, [self.VALID_V4]))
+        result = run_coroutine(_load_provisioning_map(db, [self.VALID_V4]))
         assert result == {}  # no platform_tenants rows -> empty map
 
     # -- Route-level: registry returns 200 (not 500) when backup source fails --

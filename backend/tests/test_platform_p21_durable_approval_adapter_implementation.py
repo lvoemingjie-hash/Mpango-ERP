@@ -51,6 +51,8 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from tests.async_test_utils import run_alembic_upgrade
+
 from api.v1.platform.p21 import adapter as p21a
 from api.v1.platform.p21.models import (
     DurableApprovalAuditEvent,
@@ -198,12 +200,11 @@ def durable_db_url():
         _bootstrap(sync_url)
         os.environ["DATABASE_URL"] = async_url
         os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
-        from alembic import command
         from alembic.config import Config
 
         cfg = Config(str(BACKEND_DIR / "alembic.ini"))
         cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-        command.upgrade(cfg, "head")  # public-mode; creates the durable tables
+        run_alembic_upgrade(cfg, "head")  # public-mode; creates durable tables
         yield {"async_url": async_url, "sync_url": sync_url, "container": container}
     finally:
         subprocess.run(["docker", "rm", "-f", container], capture_output=True)

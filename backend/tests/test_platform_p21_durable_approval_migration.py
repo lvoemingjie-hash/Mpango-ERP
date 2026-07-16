@@ -2,8 +2,8 @@
 P21-C1 G2: Durable Approval Store migration tests (real ephemeral PostgreSQL).
 
 Group G2 from the accepted P21-B plan (section 9). Drives the real Alembic migration
-020_durable_approval_store against an ephemeral PostgreSQL database and proves:
-  - the migration is ADDITIVE-ONLY: upgrading from the base revision (019) to head (020)
+029_durable_approval_store against an ephemeral PostgreSQL database and proves:
+  - the migration is ADDITIVE-ONLY: upgrading from the base revision (028) to head (029)
     adds ONLY the five durable tables, their indexes / constraints, and the durable enum
     types in public; no existing object is altered or removed, and NO new schema is created;
   - the DOWNGRADE drops only P21-C1 objects (five tables + enum types + their indexes /
@@ -23,16 +23,22 @@ from pathlib import Path
 
 import pytest
 
+from tests.async_test_utils import (
+    run_alembic_downgrade,
+    run_alembic_upgrade,
+    temporary_database_url,
+)
+
 pytestmark = pytest.mark.integration
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-BASE_REV = "019_platform_audit_logs"
-# Pinned upper bound: this test exercises 019 <-> 020 ONLY. It must not follow a
-# bare 'head', because a later additive migration (e.g. 021_platform_backup_status_source)
+BASE_REV = "028_owner_credential_setup_tokens"
+# Pinned upper bound: this test exercises 028 <-> 029 ONLY. It must not follow a
+# bare 'head', because a later additive migration (e.g. 030_platform_backup_status_source)
 # would change 'head' and make the "additions are exactly the durable tables"
 # assertion see that later migration's tables too. Each migration test pins to
 # the revision it actually tests.
-HEAD_REV = "020_durable_approval_store"
+HEAD_REV = "029_durable_approval_store"
 PUBLIC = "public"
 
 DURABLE_TABLES = {
@@ -113,11 +119,19 @@ def _bootstrap_ephemeral(url):
 @pytest.fixture(scope="module")
 def _boot():
     """Resolve the ephemeral URL, set env, and run test-only DB initialization once."""
-    url = _ephemeral_url()
-    os.environ["DATABASE_URL"] = url
-    os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
-    _bootstrap_ephemeral(url)
-    return url
+    source_url = _ephemeral_url()
+    original_url = os.environ.get("DATABASE_URL")
+    with temporary_database_url(source_url, "dc11t2_p21") as url:
+        os.environ["DATABASE_URL"] = url
+        os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
+        _bootstrap_ephemeral(url)
+        try:
+            yield url
+        finally:
+            if original_url is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = original_url
 
 
 @pytest.fixture(scope="module")
@@ -211,13 +225,12 @@ def _base_only(snap):
 
 
 def test_additions_only_from_base_to_head(alembic_cfg, conn):
-    """Upgrade base(019) -> 020 adds ONLY durable tables / indexes / constraints / enums."""
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)        # ensure at least at 020
-    command.downgrade(alembic_cfg, BASE_REV)      # -> 019
+    """Upgrade base(028) -> 029 adds only durable tables, indexes, constraints, and enums."""
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)    # ensure at 029
+    run_alembic_downgrade(alembic_cfg, BASE_REV)  # -> 028
     cur = conn.cursor()
     before = _snapshot(cur)
-    command.upgrade(alembic_cfg, HEAD_REV)        # -> 020
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)    # -> 029
     after = _snapshot(cur)
 
     # 1. No schema created by the upgrade (public-mode only).
@@ -252,12 +265,11 @@ def test_additions_only_from_base_to_head(alembic_cfg, conn):
 
 
 def test_downgrade_drops_only_p21_objects(alembic_cfg, conn):
-    """downgrade -1 from head removes only the five tables + enums + their indexes/constraints."""
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)          # -> 020
+    """Downgrade 029 -> 028 removes only durable-approval database objects."""
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)      # -> 029
     cur = conn.cursor()
     at_head = _snapshot(cur)
-    command.downgrade(alembic_cfg, BASE_REV)      # -> 019
+    run_alembic_downgrade(alembic_cfg, BASE_REV)  # -> 028
     after_down = _snapshot(cur)
 
     # 1. Every durable object is gone.
@@ -277,9 +289,8 @@ def test_downgrade_drops_only_p21_objects(alembic_cfg, conn):
 
 def test_reupgrade_recreates_tables(alembic_cfg, conn):
     """After downgrade, re-running upgrade recreates all five tables cleanly."""
-    from alembic import command
-    command.downgrade(alembic_cfg, BASE_REV)      # -> 019
-    command.upgrade(alembic_cfg, HEAD_REV)          # -> 020 again
+    run_alembic_downgrade(alembic_cfg, BASE_REV)  # -> 028
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)     # -> 029 again
     cur = conn.cursor()
     cur.execute("""
         SELECT table_name FROM information_schema.tables
@@ -291,8 +302,7 @@ def test_reupgrade_recreates_tables(alembic_cfg, conn):
 
 def test_no_durable_objects_in_tenant_schemas(alembic_cfg, conn):
     """Catalog proof: no durable_approval_* table/type exists outside the public schema."""
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("""
         SELECT table_schema, table_name FROM information_schema.tables
@@ -311,11 +321,10 @@ def test_no_durable_objects_in_tenant_schemas(alembic_cfg, conn):
 
 def test_upgrade_does_not_create_tenant_schema(alembic_cfg, conn):
     """Public-mode upgrade must not create any tenant schema (env.py side-effect avoidance)."""
-    from alembic import command
-    command.downgrade(alembic_cfg, BASE_REV)      # -> 019
+    run_alembic_downgrade(alembic_cfg, BASE_REV)  # -> 028
     cur = conn.cursor()
     before = _snapshot(cur)["schemas"]
-    command.upgrade(alembic_cfg, HEAD_REV)          # -> 020
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)      # -> 029
     after = _snapshot(cur)["schemas"]
     assert before == after, (
         f"public-mode upgrade changed the schema set: before={before} after={after}"
@@ -323,9 +332,8 @@ def test_upgrade_does_not_create_tenant_schema(alembic_cfg, conn):
 
 
 def test_base_revision_is_019_before_upgrade(alembic_cfg, conn):
-    """Preflight: before applying 020, the public head is the 019 base revision."""
-    from alembic import command
-    command.downgrade(alembic_cfg, BASE_REV)      # -> 019
+    """Preflight: before applying 029, the public head is revision 028."""
+    run_alembic_downgrade(alembic_cfg, BASE_REV)  # -> 028
     cur = conn.cursor()
     cur.execute("SELECT version_num FROM public.alembic_version")
     rev = cur.fetchone()[0]

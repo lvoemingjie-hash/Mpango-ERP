@@ -19,6 +19,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.async_test_utils import run_coroutine
+
 
 os.environ.setdefault("MPANGO_ENV", "test")
 os.environ.setdefault("PLATFORM_TEST_OVERRIDE_SECRET", "test-platform-override-secret")
@@ -320,7 +322,7 @@ class TestRedaction:
         from api.v1.platform.p15.services import build_handoff_summary, build_triage_snapshot
         import asyncio
         db = _mock_db()
-        snap = asyncio.run(build_triage_snapshot(db))
+        snap = run_coroutine(build_triage_snapshot(db))
         from api.v1.platform.p15.schemas import IncidentClassification
         handoff = build_handoff_summary(
             snap,
@@ -387,7 +389,7 @@ class TestGracefulDegraded:
             "api.v1.platform.p15.services.list_tenant_summaries",
             new=AsyncMock(return_value=ok_tenants),
         ):
-            snap = asyncio.run(build_triage_snapshot(db))
+            snap = run_coroutine(build_triage_snapshot(db))
 
         assert snap.graceful_degraded is True
         assert snap.unavailable_reason and "database probe" in snap.unavailable_reason.lower()

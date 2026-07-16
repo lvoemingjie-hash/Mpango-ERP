@@ -2,8 +2,7 @@
 Pytest configuration and fixtures for Mpango ERP backend tests.
 
 S2.5: Uses strong SECRET_KEY for testing to pass security validation.
-S5-OPS: Session-scoped event loop and robust async_session fixture to prevent
-        "Event loop closed" errors in complex transaction tests (S5-A/S5-B).
+S5-OPS: Robust async_session fixture for complex transaction tests (S5-A/S5-B).
 """
 import os
 from pathlib import Path
@@ -51,11 +50,31 @@ def _resolve_test_database_url() -> str:
     return _build_database_url_from_postgres_env()
 
 
+def _build_test_reporting_database_url(database_url: str) -> str:
+    parsed = urlparse(
+        database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    )
+    host = parsed.hostname or "postgres"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    if parsed.port is not None:
+        host = f"{host}:{parsed.port}"
+    password = quote_plus(os.environ["REPORTING_USER_PASSWORD"])
+    return parsed._replace(
+        scheme="postgresql+asyncpg",
+        netloc=f"reporting_user:{password}@{host}",
+    ).geturl()
+
+
 # S2.5: Set test environment variables before importing settings.
 # S8-SEC: Load local test env defaults, then resolve the final DB URL.
 _load_test_env_defaults()
 os.environ["DATABASE_URL"] = _resolve_test_database_url()
 os.environ.setdefault("REPORTING_USER_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "postgres"))
+os.environ["REPORTING_DATABASE_URL"] = os.environ.get(
+    "TEST_REPORTING_DATABASE_URL",
+    _build_test_reporting_database_url(os.environ["DATABASE_URL"]),
+)
 # S5/E1: deterministic tenant context used by tenant-guarded order/ledger tests
 os.environ.setdefault("TEST_TENANT_SCHEMA", "t_test")
 # Generate a deterministic but non-real test SECRET_KEY (passes 32-char + no-weak-substring validation)
@@ -66,7 +85,6 @@ os.environ.setdefault("MPANGO_ENV", "test")
 os.environ.setdefault("REDIS_URL", f"redis://{os.environ.get('REDIS_HOST', 'redis')}:6379/0")
 
 
-import asyncio
 from typing import AsyncGenerator
 from sqlalchemy import text, event
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -431,6 +449,10 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
     """))
 
     await session.execute(text(f"""
+        DROP TRIGGER IF EXISTS prevent_ledger_mod
+        ON "{tenant_schema}".ledger_entries
+    """))
+    await session.execute(text(f"""
         DROP TRIGGER IF EXISTS prevent_ledger_modification_trigger
         ON "{tenant_schema}".ledger_entries
     """))
@@ -443,24 +465,7 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
 
 
 # ---------------------------------------------------------------------------
-# S5-OPS FIX 1: Session-scoped event loop
-# ---------------------------------------------------------------------------
-# SQLAlchemy's async engine holds connections that outlive that loop the
-# engine raises "Event loop is closed".  A session-scoped loop keeps a
-# single loop alive for the entire test run so the engine's pool is always
-# valid.
-# ---------------------------------------------------------------------------
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create a session-scoped event loop for all async tests."""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
-
-
-# ---------------------------------------------------------------------------
-# S5-OPS FIX 2: Robust async_session with search_path re-set after commit
+# S5-OPS: Robust async_session with search_path re-set after commit
 # ---------------------------------------------------------------------------
 # Problem: SET LOCAL search_path only lasts until the current transaction
 # ends.  Tests that call session.commit() (e.g. test_invariant_violation_

@@ -19,7 +19,9 @@ from hypothesis import given, settings, strategies as st
 from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import UUID
 
-# Import all models to test
+# Import the package first so collection order cannot decide which concrete
+# standard models happen to be registered before this file runs.
+import models as _models  # noqa: F401
 from models.base import Base, BaseModel, PublicBaseModel
 
 
@@ -33,12 +35,20 @@ _FROZEN_APPEND_ONLY_MODELS = {"SysAuditLog"}
 
 
 def get_all_model_classes() -> list[Type]:
-    """Get all concrete (non-abstract) model classes."""
+    """Get concrete models governed by the standard entity base contract.
+
+    Platform subsystems also register contract-specific models directly on
+    ``Base`` (for example append-only outcomes and durable decision rows).
+    Their approved primary keys and audit semantics are verified by their own
+    schema suites and must not be retrofitted to the product entity contract.
+    """
     models = []
     for mapper in Base.registry.mappers:
         cls = mapper.class_
-        # Skip abstract base classes
-        if hasattr(cls, '__abstract__') and cls.__abstract__:
+        # registry.mappers contains concrete mappings only. ``__abstract__`` is
+        # inherited from our mixin bases, so checking that attribute here would
+        # incorrectly discard every standard entity model.
+        if not issubclass(cls, (BaseModel, PublicBaseModel)):
             continue
         # Skip materialized view models (no standard PK / audit columns)
         if cls.__name__ in _VIEW_MODELS:

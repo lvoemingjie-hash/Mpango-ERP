@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib.util
 import os
 from pathlib import Path
@@ -19,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from models.tenant_onboarding import TenantRegistration
 from models.wholesaler import Wholesaler
 from services.receivables_service import ReceivablesService
+from tests.async_test_utils import run_coroutine
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -248,7 +248,7 @@ def _list_receivable_orders(schema: str, wholesaler_id: uuid.UUID):
         finally:
             await engine.dispose()
 
-    return asyncio.run(_run())
+    return run_coroutine(_run())
 
 
 def test_migration_is_self_contained_and_normalizes_catalog_bytes():
@@ -393,7 +393,7 @@ def test_fresh_bootstrap_creates_complete_order_status_enum():
             _ensure_public_prerequisites(connection)
             _cleanup(connection, [schema])
 
-        asyncio.run(bootstrap(schema, os.environ["DATABASE_URL"]))
+        run_coroutine(bootstrap(schema, os.environ["DATABASE_URL"]))
 
         with engine.begin() as connection:
             assert set(_enum_labels(connection, schema)) == set(
@@ -416,7 +416,7 @@ def test_bootstrap_reconciles_existing_legacy_order_status_enum():
             _cleanup(connection, [schema])
             _create_orders_table(connection, schema)
 
-        asyncio.run(bootstrap(schema, os.environ["DATABASE_URL"]))
+        run_coroutine(bootstrap(schema, os.environ["DATABASE_URL"]))
 
         with engine.begin() as connection:
             assert set(_enum_labels(connection, schema)) == set(
@@ -460,7 +460,7 @@ def test_bootstrap_rejects_wrong_order_status_type_without_creating_enum():
             )
 
         with pytest.raises(RuntimeError, match="schema-local order_status enum"):
-            asyncio.run(bootstrap(schema, os.environ["DATABASE_URL"]))
+            run_coroutine(bootstrap(schema, os.environ["DATABASE_URL"]))
 
         with engine.begin() as connection:
             assert _enum_labels(connection, schema) == ()

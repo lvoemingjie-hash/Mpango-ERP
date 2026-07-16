@@ -30,6 +30,12 @@ from pathlib import Path
 
 import pytest
 
+from scripts.bootstrap_tenant_schema import bootstrap
+from tests.async_test_utils import run_coroutine
+
+
+LIVE_TENANT_SCHEMA = os.environ.get("TEST_TENANT_SCHEMA", "t_test")
+
 
 # ---------------------------------------------------------------------------
 # 1. Static DDL analysis — always runs, no DB needed
@@ -204,8 +210,30 @@ def _to_async_url(url: str) -> str:
     return url
 
 
+def _database_is_reachable() -> bool:
+    for url in _get_db_urls():
+        try:
+            from sqlalchemy import text
+            from sqlalchemy.ext.asyncio import create_async_engine
+
+            engine = create_async_engine(_to_async_url(url), pool_pre_ping=True)
+
+            async def _check():
+                try:
+                    async with engine.connect() as conn:
+                        await conn.execute(text("SELECT 1"))
+                    return True
+                finally:
+                    await engine.dispose()
+
+            return run_coroutine(_check())
+        except Exception:
+            continue
+    return False
+
+
 def _can_connect_t_dev() -> bool:
-    """Check if we can reach the t_dev.payments table in the Docker DB."""
+    """Check if the configured live tenant payments table is reachable."""
     for url in _get_db_urls():
         async_url = _to_async_url(url)
         try:
@@ -219,11 +247,11 @@ def _can_connect_t_dev() -> bool:
                 async with engine.connect() as conn:
                     result = await conn.execute(text(
                         "SELECT 1 FROM information_schema.tables "
-                        "WHERE table_schema='t_dev' AND table_name='payments' LIMIT 1"
-                    ))
+                        "WHERE table_schema=:schema AND table_name='payments' LIMIT 1"
+                    ), {"schema": LIVE_TENANT_SCHEMA})
                     return result.first() is not None
 
-            found = asyncio.run(_check())
+            found = run_coroutine(_check())
             return found
         except Exception:
             continue
@@ -231,11 +259,12 @@ def _can_connect_t_dev() -> bool:
 
 
 @pytest.mark.skipif(
-    not _can_connect_t_dev(),
+    not _database_is_reachable(),
     reason="t_dev not reachable — run with Docker DB for live verification",
 )
+@pytest.mark.usefixtures("live_tenant_schema")
 class TestLiveSchemaContract:
-    """Verify running t_dev.payments satisfies the contract."""
+    """Verify the configured live tenant payments table satisfies the contract."""
 
     @pytest.fixture()
     async def payment_columns(self):
@@ -249,9 +278,9 @@ class TestLiveSchemaContract:
             result = await conn.execute(text(
                 "SELECT column_name, is_nullable, data_type "
                 "FROM information_schema.columns "
-                "WHERE table_schema='t_dev' AND table_name='payments' "
+                "WHERE table_schema=:schema AND table_name='payments' "
                 "ORDER BY ordinal_position"
-            ))
+            ), {"schema": LIVE_TENANT_SCHEMA})
             cols = {row[0]: {"nullable": row[1], "type": row[2]} for row in result}
         await engine.dispose()
         return cols
@@ -267,8 +296,8 @@ class TestLiveSchemaContract:
         async with engine.connect() as conn:
             result = await conn.execute(text(
                 "SELECT indexname, indexdef FROM pg_indexes "
-                "WHERE schemaname='t_dev' AND tablename='payments'"
-            ))
+                "WHERE schemaname=:schema AND tablename='payments'"
+            ), {"schema": LIVE_TENANT_SCHEMA})
             idxs = {row[0]: row[1] for row in result}
         await engine.dispose()
         return idxs
@@ -452,32 +481,25 @@ def _can_connect_db() -> bool:
     If the DB is reachable but a specific table is missing, tests must FAIL -
     the missing table is exactly the drift they are designed to catch.
     """
-    for url in _get_db_urls():
-        async_url = _to_async_url(url)
-        try:
-            import asyncio
-            from sqlalchemy import text
-            from sqlalchemy.ext.asyncio import create_async_engine
+    return _database_is_reachable()
 
-            engine = create_async_engine(async_url, pool_pre_ping=True)
 
-            async def _check():
-                async with engine.connect() as conn:
-                    await conn.execute(text("SELECT 1"))
-                    return True
-
-            return asyncio.run(_check())
-        except Exception:
-            continue
-    return False
+@pytest.fixture(scope="module")
+def live_tenant_schema():
+    """Bootstrap one explicit test tenant before live schema assertions."""
+    if not _can_connect_db():
+        pytest.skip("Database server not reachable - live schema proof unavailable")
+    run_coroutine(bootstrap(LIVE_TENANT_SCHEMA, _get_db_urls()[0]))
+    return LIVE_TENANT_SCHEMA
 
 
 @pytest.mark.skipif(
     not _can_connect_db(),
     reason="Database server not reachable - run with Docker DB for live verification",
 )
+@pytest.mark.usefixtures("live_tenant_schema")
 class TestLiveRetailerPricesContract:
-    """Verify running t_dev.retailer_prices satisfies migration 017 contract."""
+    """Verify the configured live tenant retailer_prices migration contract."""
 
     @pytest.fixture()
     async def rp_columns(self):
@@ -491,9 +513,9 @@ class TestLiveRetailerPricesContract:
             result = await conn.execute(text(
                 "SELECT column_name, is_nullable, data_type "
                 "FROM information_schema.columns "
-                "WHERE table_schema='t_dev' AND table_name='retailer_prices' "
+                "WHERE table_schema=:schema AND table_name='retailer_prices' "
                 "ORDER BY ordinal_position"
-            ))
+            ), {"schema": LIVE_TENANT_SCHEMA})
             cols = {row[0]: {"nullable": row[1], "type": row[2]} for row in result}
         await engine.dispose()
         return cols
@@ -509,8 +531,8 @@ class TestLiveRetailerPricesContract:
         async with engine.connect() as conn:
             result = await conn.execute(text(
                 "SELECT indexname, indexdef FROM pg_indexes "
-                "WHERE schemaname='t_dev' AND tablename='retailer_prices'"
-            ))
+                "WHERE schemaname=:schema AND tablename='retailer_prices'"
+            ), {"schema": LIVE_TENANT_SCHEMA})
             idxs = {row[0]: row[1] for row in result}
         await engine.dispose()
         return idxs
@@ -526,9 +548,12 @@ class TestLiveRetailerPricesContract:
         async with engine.connect() as conn:
             result = await conn.execute(text(
                 "SELECT conname, contype FROM pg_constraint "
-                "WHERE connamespace = (SELECT oid FROM pg_namespace WHERE nspname = 't_dev') "
-                "AND conrelid = to_regclass('t_dev.retailer_prices')"
-            ))
+                "WHERE connamespace = (SELECT oid FROM pg_namespace WHERE nspname = :schema) "
+                "AND conrelid = to_regclass(:qualified_table)"
+            ), {
+                "schema": LIVE_TENANT_SCHEMA,
+                "qualified_table": f"{LIVE_TENANT_SCHEMA}.retailer_prices",
+            })
             constraints = {row[0]: row[1] for row in result}
         await engine.dispose()
         return constraints

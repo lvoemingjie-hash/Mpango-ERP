@@ -150,6 +150,16 @@ def _dev_token(email: str) -> str:
     return deliveries[0].token
 
 
+def _dev_setup_token(email: str) -> str:
+    deliveries = [
+        delivery
+        for delivery in get_dev_email_deliveries(email)
+        if delivery.purpose == "owner_setup"
+    ]
+    assert len(deliveries) == 1
+    return deliveries[0].token
+
+
 async def _registration_row(email: str):
     async with AsyncSessionLocal() as session:
         return (
@@ -329,41 +339,16 @@ async def test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_a
     public_responses.extend([verify, status_after_verify])
 
     assert verify.status_code == 200, verify.text
-    verified = await _registration_row(email)
-    assert verified["status"] == "email_verified"
-    assert verified["email_verified_at"] is not None
+    active = await _registration_row(email)
+    assert active["status"] == "active"
+    assert active["email_verified_at"] is not None
     used_verification_token = (await _verification_token_rows(registration_id))[0]
     assert used_verification_token.used_at is not None
     assert status_after_verify.status_code == 200, status_after_verify.text
-    assert status_after_verify.json()["data"] == {"status": "email_verified"}
+    assert status_after_verify.json()["data"] == {"status": "active"}
 
-    async with AsyncSessionLocal() as session:
-        await session.execute(text("SET search_path TO public"))
-        claimed = await TenantProvisioningService(
-            session,
-            database_url=get_settings().DATABASE_URL,
-        ).claim_registration_for_provisioning(registration_id)
-        await session.commit()
-
-    assert claimed.action == "claimed"
-    assert claimed.status == "provisioning"
-
-    async with AsyncSessionLocal() as session:
-        await session.execute(text("SET search_path TO public"))
-        provisioned = await TenantProvisioningService(
-            session,
-            database_url=get_settings().DATABASE_URL,
-        ).provision_wholesaler_and_schema(registration_id)
-        await session.commit()
-
-    assert provisioned.action == "provisioned"
-    assert provisioned.status == "active"
-    assert provisioned.wholesaler_id is not None
-    assert provisioned.tenant_schema is not None
-    active = await _registration_row(email)
     tenant_schema = active["tenant_schema"]
     wholesaler_id = active["wholesaler_id"]
-    assert active["status"] == "active"
     assert active["provisioning_started_at"] is not None
     assert active["provisioning_completed_at"] is not None
     assert active["password_hash"] is None
@@ -387,13 +372,7 @@ async def test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_a
     assert existing.tenant_schema == tenant_schema
     assert existing.wholesaler_id == wholesaler_id
 
-    async with AsyncSessionLocal() as session:
-        await session.execute(text("SET search_path TO public"))
-        issued = await OwnerCredentialSetupService(session).issue_setup_token(registration_id)
-        await session.commit()
-    assert issued.action == "issued"
-    assert issued.raw_token is not None
-    setup_token = issued.raw_token
+    setup_token = _dev_setup_token(email)
     setup_tokens = await _setup_token_rows(registration_id)
     assert len(setup_tokens) == 1
     assert setup_tokens[0].token_hash == hash_token(setup_token)
@@ -460,8 +439,13 @@ async def test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_a
     )
     public_responses.append(post_query)
     assert post_query.status_code == 401, post_query.text
-    query_path_row = (await _setup_token_rows(registration_id))[-1]
-    assert query_path_row.token_hash == hash_token(query_path_token)
+    query_path_hash = hash_token(query_path_token)
+    query_path_row = next(
+        row
+        for row in await _setup_token_rows(registration_id)
+        if row.token_hash == query_path_hash
+    )
+    assert query_path_row.token_hash == query_path_hash
     assert query_path_row.used_at is None
     assert (await _owner_admin_row(tenant_schema, email))["password_hash"] == password_hash_after_setup
 

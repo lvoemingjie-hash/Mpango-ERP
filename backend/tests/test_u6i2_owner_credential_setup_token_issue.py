@@ -333,13 +333,14 @@ async def test_issue_service_creates_no_admin_rbac_or_business_data():
     assert await _token_count(registration_id) == 1
 
 
-async def test_no_public_endpoint_or_query_string_token_support():
+async def test_setup_credential_endpoint_rejects_query_string_tokens():
     service_source = OWNER_CREDENTIAL_SERVICE_PATH.read_text(encoding="utf-8")
     assert "?token=" not in service_source
     assert "query" not in service_source.lower()
     assert "build_verification_link" not in service_source
-    for path in (AUTH_ROUTE_PATH, ONBOARDING_SERVICE_PATH):
-        source = path.read_text(encoding="utf-8")
-        assert "OwnerCredentialSetupService" not in source
-        assert "owner_credential_service" not in source
-        assert "owner_credential_setup" not in source
+    auth_source = AUTH_ROUTE_PATH.read_text(encoding="utf-8")
+    onboarding_source = ONBOARDING_SERVICE_PATH.read_text(encoding="utf-8")
+    assert '"/onboarding/setup-credential"' in auth_source
+    assert "OwnerCredentialSetupService" in auth_source
+    assert "http_request.query_params" in auth_source
+    assert "OwnerCredentialSetupService" in onboarding_source

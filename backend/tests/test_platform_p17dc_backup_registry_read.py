@@ -466,7 +466,9 @@ def _app_with_backup_map(backup_map):
 class TestRegistryAssembly:
     def test_fresh_success_attached_to_registry(self):
         row = _outcome(
-            status="success", completed_at=NOW - timedelta(hours=2), bytes_written=2048
+            status="success",
+            completed_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            bytes_written=2048,
         )
         backup_map = {TENANT_ID: _read_available(backup_row=row)}
         client = TestClient(_app_with_backup_map(backup_map))
@@ -507,7 +509,7 @@ class TestRegistryAssembly:
         tenant_row = _outcome(
             tenant_id=TID_UUID,
             status="success",
-            completed_at=NOW - timedelta(hours=10),
+            completed_at=datetime.now(timezone.utc) - timedelta(hours=10),
             bytes_written=512,
         )
         backup_map = {TENANT_ID: _read_available(backup_row=tenant_row)}

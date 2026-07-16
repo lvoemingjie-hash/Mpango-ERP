@@ -41,6 +41,8 @@ EXPECTED_PUBLIC_ALLOWLIST = {
     "/api/v1/auth/verify-email",
     "/api/v1/auth/onboarding/status",
     "/api/v1/auth/onboarding/setup-credential",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password",
     "/api/v1/auth/refresh",
     "/api/v1/invitations/{code}",
     "/api/v1/retailers/register",
@@ -532,23 +534,26 @@ async def test_closeout_provisions_tenant_but_defers_admin_rbac_until_setup_cred
     assert await _table_count(registration["tenant_schema"], "role_permissions") == 0
 
 
-async def test_route_policy_keeps_only_expected_onboarding_auth_routes_public():
+async def test_route_policy_keeps_current_onboarding_and_recovery_routes_public():
     assert PUBLIC_ALLOWLIST == EXPECTED_PUBLIC_ALLOWLIST
 
     public_by_path = {c.path: c.policy for c in ALL_CLASSIFICATIONS if c.path in PUBLIC_ALLOWLIST}
     assert public_by_path["/api/v1/auth/signup"] == "public"
     assert public_by_path["/api/v1/auth/verify-email"] == "public"
     assert public_by_path["/api/v1/auth/onboarding/status"] == "public"
+    assert public_by_path["/api/v1/auth/onboarding/setup-credential"] == "public"
+    assert public_by_path["/api/v1/auth/forgot-password"] == "public"  # pragma: allowlist secret
+    assert public_by_path["/api/v1/auth/reset-password"] == "public"  # pragma: allowlist secret
     assert not (PUBLIC_ALLOWLIST - EXPECTED_PUBLIC_ALLOWLIST)
 
 
-async def test_migration_schema_sanity_for_u6f_closeout_gate():
+async def test_migration_schema_sanity_uses_current_single_head():
     backend_dir = Path(__file__).resolve().parents[1]
     alembic_cfg = Config(str(backend_dir / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
     script = ScriptDirectory.from_config(alembic_cfg)
-    assert script.get_heads() == ["028_owner_credential_setup_tokens"]
-    assert script.get_current_head() == "028_owner_credential_setup_tokens"
+    assert script.get_heads() == ["034_platform_operators"]
+    assert script.get_current_head() == "034_platform_operators"
 
     assert TenantRegistration.__tablename__ == "tenant_registrations"
     assert EmailVerificationToken.__tablename__ == "email_verification_tokens"

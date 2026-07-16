@@ -22,6 +22,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.async_test_utils import run_alembic_upgrade
+
 pytestmark = pytest.mark.integration
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -107,12 +109,11 @@ def _boot():
 def db(_boot):
     """Bootstrap the ephemeral DB, upgrade to head, and yield a sync connection."""
     import psycopg2  # noqa: delayed import so module collection never needs a live DB
-    from alembic import command
     from alembic.config import Config
 
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    command.upgrade(cfg, "head")
+    run_alembic_upgrade(cfg, "head")
 
     conn = psycopg2.connect(_psql(_boot))
     try:

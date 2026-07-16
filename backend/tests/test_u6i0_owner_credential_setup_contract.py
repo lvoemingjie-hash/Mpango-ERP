@@ -127,7 +127,7 @@ def test_contract_preserves_registration_credential_cleanup():
     assert "registration credential hash after provisioning completion" in lower_text
 
 
-def test_contract_locks_public_endpoint_disclosure_boundary():
+def test_contract_and_runtime_lock_public_endpoint_disclosure_boundary():
     text = _contract()
 
     for term in (
@@ -139,18 +139,28 @@ def test_contract_locks_public_endpoint_disclosure_boundary():
     ):
         assert term in text
 
-    for path in PUBLIC_BOUNDARY_PATHS:
-        source = path.read_text(encoding="utf-8")
-        assert "owner credential setup" not in source.lower()
-        assert "setup token" not in source.lower()
-        assert "raw setup token" not in source.lower()
+    auth_source = PUBLIC_BOUNDARY_PATHS[0].read_text(encoding="utf-8")
+    onboarding_source = PUBLIC_BOUNDARY_PATHS[1].read_text(encoding="utf-8")
+    provisioning_source = PUBLIC_BOUNDARY_PATHS[2].read_text(encoding="utf-8")
+
+    assert '"/onboarding/setup-credential"' in auth_source
+    assert "OwnerCredentialSetupService" in auth_source
+    assert "OwnerCredentialSetupService" in onboarding_source
+    assert "OwnerCredentialSetupService" not in provisioning_source
+    assert "owner_credential_service" not in provisioning_source
 
 
-def test_branch_changes_only_contract_doc_and_static_test():
-    assert _changed_paths() == ALLOWED_CHANGED_PATHS
+def test_integrated_baseline_retains_contract_and_runtime_artifacts():
+    assert CONTRACT_PATH.is_file()
+    assert all(path.is_file() for path in PUBLIC_BOUNDARY_PATHS)
+    assert (ROOT / "backend" / "services" / "owner_credential_service.py").is_file()
 
 
-def test_no_runtime_code_files_changed_in_contract_branch():
-    changed_backend_files = {path for path in _changed_paths() if path.startswith("backend/")}
+def test_integrated_baseline_retains_owner_credential_runtime_foundation():
+    migration = ROOT / "backend" / "alembic" / "versions" / "028_owner_credential_setup_tokens.py"
+    model = ROOT / "backend" / "models" / "tenant_onboarding.py"
+    service = ROOT / "backend" / "services" / "owner_credential_service.py"
 
-    assert changed_backend_files == {"backend/tests/test_u6i0_owner_credential_setup_contract.py"}
+    assert migration.is_file()
+    assert model.is_file()
+    assert service.is_file()

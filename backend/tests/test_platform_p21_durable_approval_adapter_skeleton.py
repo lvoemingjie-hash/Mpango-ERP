@@ -299,35 +299,34 @@ def test_p21_package_has_no_router():
 
 
 def test_no_new_alembic_migration_chained_on_020():
-    """Only allowlisted, separately-approved phase migrations descend from 020.
+    """Only allowlisted, separately-approved phase migrations descend from 029.
 
-    Originally (P21-D) this asserted 020 was the head with no descendants. Once a
+    Migration 029 is the durable approval store. Once a
     later, separately-approved phase legitimately chains an ADDITIVE migration onto
-    020, that migration file is added to ALLOWED_DESCENDANTS. Any migration that
-    descends from 020 and is NOT in the allowlist fails this gate -- it catches
+    029, that migration file is added to ALLOWED_DESCENDANTS. Any migration that
+    descends from 029 and is NOT in the allowlist fails this gate -- it catches
     unauthorized chaining while accepting the approved follow-on revisions.
     """
-    # P17-D-C: 021_platform_backup_status_source (additive, public-schema-only).
-    ALLOWED_DESCENDANTS = {"021_platform_backup_status_source.py"}
+    # P17-D-C: 030_platform_backup_status_source (additive, public-schema-only).
+    ALLOWED_DESCENDANTS = {"030_platform_backup_status_source.py"}
     versions = BACKEND / "alembic" / "versions"
-    assert (versions / "020_durable_approval_store.py").is_file()
+    assert (versions / "029_durable_approval_store.py").is_file()
     descendants = []
     for f in versions.glob("*.py"):
         text = f.read_text(encoding="utf-8")
-        if "down_revision" in text and "020_durable_approval_store" in text:
-            # 020 itself names 019 as down_revision; a NEW migration would name 020.
+        if "down_revision" in text and "029_durable_approval_store" in text:
+            # 029 itself names 028 as down_revision; a NEW migration would name 029.
             for line in text.splitlines():
                 stripped = line.strip()
-                if stripped.startswith("down_revision") and "020_durable_approval_store" in stripped:
+                if stripped.startswith("down_revision") and "029_durable_approval_store" in stripped:
                     descendants.append(f.name)
-    # Only an acceptable match is 020's own downgrade docstring / references; a
-    # real new migration would add a NEW file with down_revision == '020_...'.
+    # A real new migration adds a file with down_revision == '029_...'.
     new_migrations = [
         name for name in descendants
-        if not name.startswith("020_")
+        if not name.startswith("029_")
     ]
     unexpected = [name for name in new_migrations if name not in ALLOWED_DESCENDANTS]
-    assert unexpected == [], f"unexpected new migration(s) chained on 020: {unexpected}"
+    assert unexpected == [], f"unexpected new migration(s) chained on 029: {unexpected}"
 
 
 def test_alembic_env_does_not_reference_p21():

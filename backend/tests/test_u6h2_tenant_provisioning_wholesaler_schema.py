@@ -365,12 +365,14 @@ async def test_no_user_role_rbac_or_admin_rows_are_seeded_by_slice():
         assert await _table_count(result.tenant_schema, table) == 0
 
 
-async def test_public_auth_routes_still_do_not_call_tenant_provisioning_service():
-    for path in (AUTH_ROUTE_PATH, ONBOARDING_SERVICE_PATH):
-        source = path.read_text(encoding="utf-8")
-        assert "TenantProvisioningService" not in source
-        assert "tenant_provisioning_service" not in source
-        assert "provision_wholesaler_and_schema" not in source
+async def test_public_auth_routes_delegate_tenant_provisioning_to_onboarding_service():
+    auth_source = AUTH_ROUTE_PATH.read_text(encoding="utf-8")
+    onboarding_source = ONBOARDING_SERVICE_PATH.read_text(encoding="utf-8")
+
+    assert "TenantProvisioningService" not in auth_source
+    assert "tenant_provisioning_service" not in auth_source
+    assert "TenantProvisioningService" in onboarding_source
+    assert "provision_wholesaler_and_schema" in onboarding_source
 
 
 async def test_active_existing_with_missing_schema_is_not_treated_as_idempotent():

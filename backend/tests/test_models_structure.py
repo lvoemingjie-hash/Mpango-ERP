@@ -57,6 +57,16 @@ def get_all_model_classes() -> list[Type]:
     return models
 
 
+def get_public_model_classes() -> list[Type]:
+    """Return only concrete models governed by PublicBaseModel."""
+    return [
+        mapper.class_
+        for mapper in Base.registry.mappers
+        if issubclass(mapper.class_, PublicBaseModel)
+        and mapper.class_.__name__ not in _VIEW_MODELS
+    ]
+
+
 def is_snake_case_plural(name: str) -> bool:
     """Check if name is snake_case and plural (ends with 's' or 'es')."""
     # Must be lowercase with underscores only
@@ -167,46 +177,28 @@ class TestPublicBaseModel:
     def test_public_base_model_has_audit_columns(self):
         """PublicBaseModel must have audit columns but not user tracking."""
         required = {'created_at', 'updated_at', 'is_deleted', 'deleted_at'}
-        # PublicBaseModel is abstract; verify via first concrete public subclass
-        # Skip frozen append-only models — they have CTO exemptions from audit columns
-        models = get_all_model_classes()
-        pub_model = next(
-            (m for m in models if m.__name__ not in _FROZEN_APPEND_ONLY_MODELS
-             and (getattr(m.__table__, 'schema', None) == 'public'
-                  or getattr(m, '__tablename__', '') in
-                  ('wholesalers', 'retailers', 'invitations', 'wholesaler_retailer_bindings',
-                   'sys_audit_logs', 'sys_reports', 'sys_jobs'))),
-            None
-        )
-        if pub_model is None:
+        models = [
+            model for model in get_public_model_classes()
+            if model.__name__ not in _FROZEN_APPEND_ONLY_MODELS
+        ]
+        if not models:
             pytest.skip("No concrete public model registered in ORM")
-        columns = {col.name for col in pub_model.__table__.c}
-
-        missing = required - columns
-        assert not missing, f"PublicBaseModel missing audit columns: {missing}"
+        for model in models:
+            columns = {col.name for col in model.__table__.c}
+            missing = required - columns
+            assert not missing, f"{model.__name__} missing audit columns: {missing}"
 
     def test_public_base_model_no_user_tracking(self):
         """PublicBaseModel should not have user tracking columns."""
-        # PublicBaseModel is abstract; verify via first concrete public subclass
-        # Skip frozen append-only models — they have CTO exemptions from audit columns
-        models = get_all_model_classes()
-        pub_model = next(
-            (m for m in models if m.__name__ not in _FROZEN_APPEND_ONLY_MODELS
-             and (getattr(m.__table__, 'schema', None) == 'public'
-                  or getattr(m, '__tablename__', '') in
-                  ('wholesalers', 'retailers', 'invitations', 'wholesaler_retailer_bindings',
-                   'sys_audit_logs', 'sys_reports', 'sys_jobs'))),
-            None
-        )
-        if pub_model is None:
+        models = get_public_model_classes()
+        if not models:
             pytest.skip("No concrete public model registered in ORM")
-        columns = {col.name for col in pub_model.__table__.c}
-
-        # User tracking columns should NOT be present
-        assert 'created_by' not in columns, \
-            "PublicBaseModel should not have created_by"
-        assert 'updated_by' not in columns, \
-            "PublicBaseModel should not have updated_by"
+        for model in models:
+            columns = {col.name for col in model.__table__.c}
+            assert 'created_by' not in columns, \
+                f"{model.__name__} should not have created_by"
+            assert 'updated_by' not in columns, \
+                f"{model.__name__} should not have updated_by"
 
 
 # Property-based test using Hypothesis

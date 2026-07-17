@@ -710,6 +710,7 @@ class _U1R1NoPermMockUser:
         self.roles = []
 
 
+@pytest.mark.usefixtures("ensure_reporting_user_password")
 class TestSidebarApiSmoke:
     """Verify sidebar API endpoints return 200 (not 403/500) on empty tenant.
 

@@ -4,7 +4,7 @@ Date: 2026-07-17
 
 ## Verdict
 
-PASS_FOR_CTO_DC11T2_MERGE_REVIEW
+PASS_FOR_INDEPENDENT_DC11T3_R1_REREVIEW
 
 The delivery baseline is no longer blocked by the unstable local full-suite
 signal. A fresh PostgreSQL 16 database and a clean Redis 7 state produced a
@@ -189,3 +189,107 @@ the backend full suite on clean Linux PostgreSQL/Redis infrastructure. If that
 cross-environment run remains zero-failure, promote through the existing
 candidate process and then execute a credentialed VPS smoke. Do not start
 DC-11P3/P4/P5 as part of this repair branch.
+
+## DC-11T2-R1 Third-Party Review Corrections
+
+An independent DC-11T3 review stopped the branch before merge at local review
+commit `94a457b4ef677203b0ff984691ca47c413e8dc57`. The reviewer identified two P1
+test-infrastructure findings. Both findings were accepted; neither was
+downgraded or waived.
+
+### P1: live schema assertions repaired their own target
+
+The payments and retailer-prices live contract used the production bootstrap
+helper before reading the schema. That could hide the exact drift the test was
+intended to detect.
+
+R1 correction:
+
+- removed the bootstrap import and all bootstrap calls from
+  `test_payments_schema_contract.py`;
+- made the live gate opt-in with `PAYMENTS_SCHEMA_REQUIRE_LIVE=1`;
+- restricted it to `TEST_DATABASE_URL`;
+- separated its read-only target through
+  `PAYMENTS_SCHEMA_LIVE_TENANT_SCHEMA`;
+- made missing tables and unreachable databases fail closed;
+- kept schema preparation outside the pytest process.
+
+Proof:
+
+- a never-prepared schema produced the expected hard failure:
+  `t_dc11t2_missing.payments is missing; live schema gates never bootstrap or
+  repair the validation target`;
+- after external preparation, `test_payments_schema_contract.py` passed
+  `40/40` with the live gate enabled;
+- source scans found no bootstrap import or invocation in that test file.
+
+### P1: temporary database creation lacked positive authorization
+
+The previous helper rejected only a small database-name denylist. R1 now
+requires all of the following before any create/drop operation:
+
+- `MPANGO_ENV` is `test` or `testing`;
+- `MPANGO_ALLOW_TEMP_DB_CREATE=1`;
+- the source exactly matches `TEST_DATABASE_URL`;
+- the source is PostgreSQL;
+- host and port are explicitly allowed;
+- the source database has a `test_`, `pytest_`, or `ci_` name;
+- the source user is not a production application identity;
+- the generated database prefix is validated.
+
+Proof:
+
+- `test_dc11t2_async_test_utils.py`: `14 passed`;
+- P17/P21 real create/drop migration tests: `15 passed`;
+- direct context-manager tests prove missing authorization and an unsafe prefix
+  are rejected before a database is created.
+
+### Additional deterministic infrastructure corrections
+
+Removing the hidden live-schema bootstrap exposed two older ordering
+dependencies and one mapper-order assertion defect:
+
+1. DC-10E export-worker tests used the cluster-wide `reporting_user` without
+   declaring the password-alignment fixture. Four real reporting tests now
+   request `ensure_reporting_user_password` explicitly.
+2. The U1-R1 sidebar Dashboard smoke had the same undeclared reporting
+   prerequisite. `TestSidebarApiSmoke` now declares the fixture and passes as
+   an independent file (`18 passed, 5 xfailed`).
+3. `TestPublicBaseModel` selected the first matching mapper from an unordered
+   registry and could inspect a `BaseModel` subclass instead of a
+   `PublicBaseModel` subclass. It now checks every concrete
+   `PublicBaseModel` subclass. The model-structure file passed in 10 separate
+   pytest processes after the correction.
+
+These are test-infrastructure corrections only. No ORM model, migration,
+business service, route, frontend source, configuration, dependency, or
+lockfile was changed in R1.
+
+### Honest full-suite chronology
+
+- First R1 full run: `2741 passed, 16 failed, 29 skipped, 15 xfailed`.
+  Removing the hidden bootstrap exposed missing explicit reporting setup.
+  After external `t_test` preparation, the S6 files passed; the remaining four
+  DC-10E failures were the undeclared reporting-password fixture.
+- Reporting-focused rerun after correction: `48 passed`.
+- One intermediate full run produced 13 U6 failures. The exact 13 tests passed
+  together on the same database, and all U6 files passed `188/188` in one
+  process. No stable product defect was reproduced from that signal.
+- A fail-fast run then exposed the unordered PublicBaseModel mapper selection.
+  The exact test passed alone before correction, confirming order dependence;
+  the deterministic all-subclass assertion replaced it.
+- Final fresh branch-tip gate: `2801 collected`; `2757 passed`, `29 skipped`,
+  `15 xfailed`, `0 failed`, `0 errors`; duration `429.56 seconds`.
+
+The final gate used a new PostgreSQL 16 database, Alembic head
+`034_platform_operators`, externally prepared `t_test` and isolated live
+contract schemas, and a flushed Redis 7 instance. The 29 skips remain explicit
+external/prepared-environment gates and are not claimed as passed coverage.
+
+### R1 recommendation
+
+Do not merge directly from this Windows result. Send the branch back to an
+independent reviewer for a focused DC-11T3-R1 check of the two original P1
+findings, then run the same full gate on clean Linux PostgreSQL 16 and Redis 7.
+Any live test that repairs its own target, any unsafe temporary-database path,
+or any current product defect remains a stop condition.

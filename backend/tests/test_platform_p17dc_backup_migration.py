@@ -54,12 +54,12 @@ BACKUP_ENUMS = {"platform_backup_job_kind", "platform_backup_outcome_status"}
 
 
 def _ephemeral_url():
-    u = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
-    if not u:
-        pytest.skip("no TEST_DATABASE_URL/DATABASE_URL set; refusing without an explicit ephemeral DB")
-    if "mpango_erp" in u.lower():
-        pytest.skip("refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB")
-    return u
+    if os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1":
+        pytest.skip("set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests")
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is required for disposable database tests")
+    return url
 
 
 def _psql(url):

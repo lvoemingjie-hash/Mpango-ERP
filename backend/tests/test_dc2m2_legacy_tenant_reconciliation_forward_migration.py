@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib.util
 import os
 from pathlib import Path
@@ -15,6 +14,7 @@ from sqlalchemy import create_engine, text
 
 from models.tenant_onboarding import TenantRegistration
 from models.wholesaler import Wholesaler
+from tests.async_test_utils import run_coroutine
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -305,7 +305,7 @@ def test_fresh_bootstrap_creates_canonical_retailer_prices_and_reporting():
             _ensure_public_prerequisites(connection)
             _cleanup(connection, [schema])
 
-        asyncio.run(bootstrap(schema, os.environ["DATABASE_URL"]))
+        run_coroutine(bootstrap(schema, os.environ["DATABASE_URL"]))
 
         with engine.begin() as connection:
             _assert_retailer_prices_canonical(connection, schema)

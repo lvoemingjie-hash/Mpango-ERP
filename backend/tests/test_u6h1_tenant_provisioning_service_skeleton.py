@@ -261,12 +261,14 @@ async def test_rollback_leaves_claimed_registration_state_unchanged():
     assert snapshot["tenant_schema"] is None
 
 
-async def test_public_auth_routes_do_not_call_tenant_provisioning():
-    for path in (AUTH_ROUTE_PATH, ONBOARDING_SERVICE_PATH):
-        source = path.read_text(encoding="utf-8")
-        assert "TenantProvisioningService" not in source
-        assert "tenant_provisioning_service" not in source
-        assert "claim_registration_for_provisioning" not in source
+async def test_public_auth_routes_delegate_tenant_provisioning_to_onboarding_service():
+    auth_source = AUTH_ROUTE_PATH.read_text(encoding="utf-8")
+    onboarding_source = ONBOARDING_SERVICE_PATH.read_text(encoding="utf-8")
+
+    assert "TenantProvisioningService" not in auth_source
+    assert "tenant_provisioning_service" not in auth_source
+    assert "TenantProvisioningService" in onboarding_source
+    assert "provision_wholesaler_and_schema" in onboarding_source
 
 
 async def test_claim_has_no_schema_user_role_rbac_or_wholesaler_side_effects():

@@ -51,6 +51,8 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from tests.async_test_utils import run_coroutine
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -936,7 +938,7 @@ def test_default_resolver_returns_none_without_db_session():
     async def _go():
         return await p22._default_resolve_approval("ap-1", db=None)
 
-    assert asyncio.run(_go()) is None
+    assert run_coroutine(_go()) is None
 
 
 def test_default_resolver_returns_none_without_approval_id():
@@ -948,7 +950,7 @@ def test_default_resolver_returns_none_without_approval_id():
     async def _go():
         return await p22._default_resolve_approval(None, db=_mock_db())
 
-    assert asyncio.run(_go()) is None
+    assert run_coroutine(_go()) is None
 
 
 def test_default_resolver_fails_closed_when_storage_not_ready_no_memory_fallback():
@@ -999,7 +1001,7 @@ def test_default_resolver_fails_closed_when_storage_not_ready_no_memory_fallback
                 )
                 return rec.approval_id
 
-        approval_id = asyncio.run(_seed_memory())
+        approval_id = run_coroutine(_seed_memory())
 
         # Durable readiness returns NOT ready -> resolver must return None even
         # though the in-memory store holds the approval (NO memory fallback).
@@ -1016,7 +1018,7 @@ def test_default_resolver_fails_closed_when_storage_not_ready_no_memory_fallback
                 async def _go():
                     return await p22._default_resolve_approval(approval_id, db=db)
 
-                snap = asyncio.run(_go())
+                snap = run_coroutine(_go())
             # read_durable_approval was NEVER called (readiness gate stopped it).
             assert _read_mock.await_count == 0
         assert snap is None  # blocked -- no memory fallback
@@ -1061,7 +1063,7 @@ def test_default_resolver_reads_durable_path_when_ready():
             async def _go():
                 return await p22._default_resolve_approval("ap-durable-1", db=db)
 
-            snap = asyncio.run(_go())
+            snap = run_coroutine(_go())
     assert snap is not None
     assert snap.approval_id == "ap-durable-1"
     assert snap.state == "approved_execution_blocked"
@@ -1092,7 +1094,7 @@ def test_default_resolver_returns_none_when_durable_read_missing():
             async def _go():
                 return await p22._default_resolve_approval("ghost", db=db)
 
-            assert asyncio.run(_go()) is None
+            assert run_coroutine(_go()) is None
 
 
 def test_default_resolver_returns_none_when_durable_read_raises():
@@ -1114,7 +1116,7 @@ def test_default_resolver_returns_none_when_durable_read_raises():
             async def _go():
                 return await p22._default_resolve_approval("ap-1", db=db)
 
-            assert asyncio.run(_go()) is None
+            assert run_coroutine(_go()) is None
 
 
 # ============================================================================

@@ -350,12 +350,9 @@ async def test_query_builder_reporting_user_access(ensure_reporting_user_passwor
     """
     Verify the reporting_user can execute queries through the builder.
     """
-    import os
-    _rpt_pw = os.environ.get("REPORTING_USER_PASSWORD", "CHANGE_ME")
-    _db_host = os.environ.get("POSTGRES_HOST", "postgres")
-    engine = create_async_engine(
-        f"postgresql+asyncpg://reporting_user:{_rpt_pw}@{_db_host}:5432/mpango_erp"
-    )
+    from database.reporting_session import _build_reporting_url
+
+    engine = create_async_engine(_build_reporting_url())
     factory = async_sessionmaker(engine, class_=AsyncSession)
 
     async with factory() as session:

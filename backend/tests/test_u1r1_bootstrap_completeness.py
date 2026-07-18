@@ -710,6 +710,7 @@ class _U1R1NoPermMockUser:
         self.roles = []
 
 
+@pytest.mark.usefixtures("ensure_reporting_user_password")
 class TestSidebarApiSmoke:
     """Verify sidebar API endpoints return 200 (not 403/500) on empty tenant.
 
@@ -740,6 +741,7 @@ class TestSidebarApiSmoke:
         from httpx import ASGITransport, AsyncClient
         from main import app
         from api.middleware import rbac as rbac_module
+        from api.v1 import dashboards as dashboards_module
         from api.dependencies import get_tenant_db_session, get_current_user_context
         from api.context.tenant import TenantContext
         from database.session import AsyncSessionLocal
@@ -777,8 +779,10 @@ class TestSidebarApiSmoke:
         # ---- Apply patches ----
         orig_auth = rbac_module.get_auth_context
         orig_tenant = rbac_module.get_tenant_context
+        orig_dashboard_tenant = dashboards_module.get_tenant_context
         rbac_module.get_auth_context = _fake_auth_context
         rbac_module.get_tenant_context = _fake_tenant_context
+        dashboards_module.get_tenant_context = _fake_tenant_context
 
         app.dependency_overrides[get_tenant_db_session] = _session_override
         app.dependency_overrides[get_current_user_context] = _token_override
@@ -808,6 +812,7 @@ class TestSidebarApiSmoke:
             # Clean up patches
             rbac_module.get_auth_context = orig_auth
             rbac_module.get_tenant_context = orig_tenant
+            dashboards_module.get_tenant_context = orig_dashboard_tenant
             app.dependency_overrides.pop(get_tenant_db_session, None)
             app.dependency_overrides.pop(get_current_user_context, None)
 

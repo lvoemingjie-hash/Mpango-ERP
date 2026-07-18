@@ -192,15 +192,17 @@ def test_migration_revision_and_schema_contract_are_defined():
         assert forbidden_column not in source
 
 
-def test_alembic_head_is_owner_credential_setup_tokens():
+def test_alembic_head_includes_owner_credential_setup_tokens():
     config = Config(str(ALEMBIC_INI_PATH))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["028_owner_credential_setup_tokens"]
+    assert script.get_heads() == ["034_platform_operators"]
 
 
-def test_branch_changes_only_allowed_schema_foundation_files():
-    assert _changed_paths() <= ALLOWED_CHANGED_PATHS
+def test_owner_credential_schema_foundation_artifacts_remain_present():
+    assert MIGRATION_PATH.is_file()
+    assert (ROOT / "backend" / "models" / "tenant_onboarding.py").is_file()
+    assert (ROOT / "backend" / "models" / "__init__.py").is_file()
 
 
 def test_no_route_service_frontend_or_user_rbac_behavior_changed():

@@ -150,7 +150,9 @@ class _AssertingReportingSession:
 
 
 @pytest.mark.asyncio
-async def test_worker_real_reporting_session_has_required_tenant_context(tmp_path, monkeypatch):
+async def test_worker_real_reporting_session_has_required_tenant_context(
+    tmp_path, monkeypatch, ensure_reporting_user_password
+):
     from jobs import export_jobs
     from jobs.export_jobs import export_report_worker
 
@@ -178,7 +180,9 @@ async def test_worker_sets_tenant_context_before_first_sql(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_valid_tenant_export_creates_metadata_and_downloads(tmp_path, monkeypatch):
+async def test_valid_tenant_export_creates_metadata_and_downloads(
+    tmp_path, monkeypatch, ensure_reporting_user_password
+):
     from api.v1.exports import download_export, get_export_status
     from jobs import export_jobs
     from jobs.export_jobs import export_report_worker
@@ -220,7 +224,9 @@ async def test_valid_tenant_export_creates_metadata_and_downloads(tmp_path, monk
 
 
 @pytest.mark.asyncio
-async def test_tenant_a_export_does_not_include_tenant_b_rows(tmp_path, monkeypatch):
+async def test_tenant_a_export_does_not_include_tenant_b_rows(
+    tmp_path, monkeypatch, ensure_reporting_user_password
+):
     from jobs import export_jobs
     from jobs.export_jobs import export_report_worker
 
@@ -255,7 +261,9 @@ async def test_missing_or_invalid_tenant_context_fails_closed(tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_retry_does_not_lose_tenant_context(tmp_path, monkeypatch):
+async def test_retry_does_not_lose_tenant_context(
+    tmp_path, monkeypatch, ensure_reporting_user_password
+):
     from jobs import export_jobs
     from jobs.export_jobs import export_report_worker
 

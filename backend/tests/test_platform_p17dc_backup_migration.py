@@ -1,10 +1,10 @@
 """
 P17-D-C: Backup / Status Source migration tests (real ephemeral PostgreSQL).
 
-Drives the real Alembic migration 021_platform_backup_status_source against an
+Drives the real Alembic migration 030_platform_backup_status_source against an
 ephemeral PostgreSQL database and proves:
-  - the migration is ADDITIVE-ONLY: upgrading from the base revision (020) to this
-    revision (021) adds ONLY the two backup tables, their indexes / constraints,
+  - the migration is ADDITIVE-ONLY: upgrading from the base revision (029) to this
+    revision (030) adds ONLY the two backup tables, their indexes / constraints,
     and the two backup enum types in public; no existing object is altered or
     removed, and NO new schema is created;
   - the DOWNGRADE drops only P17-D-C objects (two tables + enum types + their
@@ -27,20 +27,26 @@ session bootstrap fixture applies the test-only DB prerequisites (pgcrypto,
 widened public.alembic_version, t_dev) so the tests reproduce from a clean
 throwaway container with only the DB URL set.
 
-The upgrade/downgrade upper bound is PINNED to this revision (021) instead of the
+The upgrade/downgrade upper bound is PINNED to this revision (030) instead of the
 bare 'head', so adding a later migration does not change what this test exercises
-(020 <-> 021 only).
+(029 <-> 030 only).
 """
 import os
 from pathlib import Path
 
 import pytest
 
+from tests.async_test_utils import (
+    run_alembic_downgrade,
+    run_alembic_upgrade,
+    temporary_database_url,
+)
+
 pytestmark = pytest.mark.integration
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-BASE_REV = "020_durable_approval_store"
-HEAD_REV = "021_platform_backup_status_source"  # pinned (not bare 'head')
+BASE_REV = "029_durable_approval_store"
+HEAD_REV = "030_platform_backup_status_source"  # pinned (not bare 'head')
 PUBLIC = "public"
 
 BACKUP_TABLES = {"platform_backup_outcome", "platform_backup_policy"}
@@ -48,12 +54,12 @@ BACKUP_ENUMS = {"platform_backup_job_kind", "platform_backup_outcome_status"}
 
 
 def _ephemeral_url():
-    u = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
-    if not u:
-        pytest.skip("no TEST_DATABASE_URL/DATABASE_URL set; refusing without an explicit ephemeral DB")
-    if "mpango_erp" in u.lower():
-        pytest.skip("refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB")
-    return u
+    if os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1":
+        pytest.skip("set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests")
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is required for disposable database tests")
+    return url
 
 
 def _psql(url):
@@ -103,11 +109,19 @@ def _bootstrap_ephemeral(url):
 
 @pytest.fixture(scope="module")
 def _boot():
-    url = _ephemeral_url()
-    os.environ["DATABASE_URL"] = url
-    os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
-    _bootstrap_ephemeral(url)
-    return url
+    source_url = _ephemeral_url()
+    original_url = os.environ.get("DATABASE_URL")
+    with temporary_database_url(source_url, "dc11t2_p17") as url:
+        os.environ["DATABASE_URL"] = url
+        os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
+        _bootstrap_ephemeral(url)
+        try:
+            yield url
+        finally:
+            if original_url is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = original_url
 
 
 @pytest.fixture(scope="module")
@@ -195,13 +209,12 @@ def _base_only(snap):
 
 
 def test_additions_only_from_base_to_head(alembic_cfg, conn):
-    """Upgrade base(020) -> 021 adds ONLY backup tables / indexes / constraints / enums."""
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)         # ensure at 021
-    command.downgrade(alembic_cfg, BASE_REV)       # -> 020
+    """Upgrade base(029) -> 030 adds only backup tables, indexes, constraints, and enums."""
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)     # ensure at 030
+    run_alembic_downgrade(alembic_cfg, BASE_REV)   # -> 029
     cur = conn.cursor()
     before = _snapshot(cur)
-    command.upgrade(alembic_cfg, HEAD_REV)         # -> 021
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)     # -> 030
     after = _snapshot(cur)
 
     assert before["schemas"] == after["schemas"], (
@@ -228,12 +241,11 @@ def test_additions_only_from_base_to_head(alembic_cfg, conn):
 
 
 def test_downgrade_drops_only_p17dc_objects(alembic_cfg, conn):
-    """downgrade 021 -> 020 removes only the two tables + enums + their indexes/constraints."""
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)         # -> 021
+    """Downgrade 030 -> 029 removes only backup-owned database objects."""
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)     # -> 030
     cur = conn.cursor()
     at_head = _snapshot(cur)
-    command.downgrade(alembic_cfg, BASE_REV)       # -> 020
+    run_alembic_downgrade(alembic_cfg, BASE_REV)   # -> 029
     after_down = _snapshot(cur)
 
     bak = _backup_in(after_down)
@@ -249,9 +261,8 @@ def test_downgrade_drops_only_p17dc_objects(alembic_cfg, conn):
 
 
 def test_reupgrade_recreates_tables(alembic_cfg, conn):
-    from alembic import command
-    command.downgrade(alembic_cfg, BASE_REV)       # -> 020
-    command.upgrade(alembic_cfg, HEAD_REV)         # -> 021 again
+    run_alembic_downgrade(alembic_cfg, BASE_REV)   # -> 029
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)     # -> 030 again
     cur = conn.cursor()
     cur.execute("""
         SELECT table_name FROM information_schema.tables
@@ -262,8 +273,7 @@ def test_reupgrade_recreates_tables(alembic_cfg, conn):
 
 
 def test_no_backup_objects_in_tenant_schemas(alembic_cfg, conn):
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("""
         SELECT table_schema, table_name FROM information_schema.tables
@@ -279,11 +289,10 @@ def test_no_backup_objects_in_tenant_schemas(alembic_cfg, conn):
 
 
 def test_upgrade_does_not_create_tenant_schema(alembic_cfg, conn):
-    from alembic import command
-    command.downgrade(alembic_cfg, BASE_REV)       # -> 020
+    run_alembic_downgrade(alembic_cfg, BASE_REV)   # -> 029
     cur = conn.cursor()
     before = _snapshot(cur)["schemas"]
-    command.upgrade(alembic_cfg, HEAD_REV)         # -> 021
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)     # -> 030
     after = _snapshot(cur)["schemas"]
     assert before == after, (
         f"public-mode upgrade changed the schema set: before={before} after={after}"
@@ -291,8 +300,7 @@ def test_upgrade_does_not_create_tenant_schema(alembic_cfg, conn):
 
 
 def test_base_revision_is_020_before_upgrade(alembic_cfg, conn):
-    from alembic import command
-    command.downgrade(alembic_cfg, BASE_REV)       # -> 020
+    run_alembic_downgrade(alembic_cfg, BASE_REV)   # -> 029
     cur = conn.cursor()
     cur.execute("SELECT version_num FROM public.alembic_version")
     assert cur.fetchone()[0] == BASE_REV
@@ -308,9 +316,9 @@ def _insert(cur, sql, params=None):
 
 
 def test_check_constraints_enforce_honesty(alembic_cfg, conn):
-    from alembic import command
+
     import psycopg2
-    command.upgrade(alembic_cfg, HEAD_REV)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("DELETE FROM public.platform_backup_outcome")
     conn.commit()
@@ -387,9 +395,9 @@ def test_check_constraints_enforce_honesty(alembic_cfg, conn):
 
 
 def test_policy_uniqueness(alembic_cfg, conn):
-    from alembic import command
+
     import psycopg2
-    command.upgrade(alembic_cfg, HEAD_REV)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("DELETE FROM public.platform_backup_policy")
     conn.commit()
@@ -427,8 +435,7 @@ def test_policy_uniqueness(alembic_cfg, conn):
 
 
 def test_latest_completed_excludes_in_progress(alembic_cfg, conn):
-    from alembic import command
-    command.upgrade(alembic_cfg, HEAD_REV)
+    run_alembic_upgrade(alembic_cfg, HEAD_REV)
     cur = conn.cursor()
     cur.execute("DELETE FROM public.platform_backup_outcome")
     conn.commit()

@@ -58,6 +58,13 @@ async def test_receivables_summary_is_scoped_to_current_wholesaler(async_session
 
     await async_session.execute(
         text(
+            "DELETE FROM public.wholesaler_retailer_bindings "
+            "WHERE wholesaler_id IN (:current_id, :other_id)"
+        ),
+        {"current_id": current_wholesaler_id, "other_id": other_wholesaler_id},
+    )
+    await async_session.execute(
+        text(
             """
             INSERT INTO public.wholesalers (id, code, name)
             VALUES

@@ -30,6 +30,15 @@ from pathlib import Path
 
 import pytest
 
+from tests.async_test_utils import run_coroutine
+
+
+LIVE_TENANT_SCHEMA = os.environ.get(
+    "PAYMENTS_SCHEMA_LIVE_TENANT_SCHEMA",
+    os.environ.get("TEST_TENANT_SCHEMA", "t_test"),
+)
+LIVE_SCHEMA_GATE_ENABLED = os.environ.get("PAYMENTS_SCHEMA_REQUIRE_LIVE") == "1"
+
 
 # ---------------------------------------------------------------------------
 # 1. Static DDL analysis — always runs, no DB needed
@@ -189,13 +198,9 @@ class TestBootstrapDDLContract:
 # ---------------------------------------------------------------------------
 
 def _get_db_urls() -> list[str]:
-    """Get candidate database URLs from env and defaults."""
-    candidates: list[str] = []
-    env_url = os.environ.get("DATABASE_URL", "")
-    if env_url:
-        candidates.append(env_url)
-    candidates.append("postgresql://mpango:mpango@127.0.0.1:5432/mpango_erp")
-    return candidates
+    """Use only the explicitly authorized test database."""
+    test_url = os.environ.get("TEST_DATABASE_URL", "")
+    return [test_url] if test_url else []
 
 
 def _to_async_url(url: str) -> str:
@@ -204,38 +209,61 @@ def _to_async_url(url: str) -> str:
     return url
 
 
-def _can_connect_t_dev() -> bool:
-    """Check if we can reach the t_dev.payments table in the Docker DB."""
-    for url in _get_db_urls():
-        async_url = _to_async_url(url)
+def _require_live_table(table_name: str) -> None:
+    """Fail closed when an explicitly requested live contract is unavailable."""
+    urls = _get_db_urls()
+    if not urls:
+        pytest.fail("live schema gate requires TEST_DATABASE_URL")
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    engine = create_async_engine(_to_async_url(urls[0]), pool_pre_ping=True)
+
+    async def _check() -> bool:
         try:
-            import asyncio
-            from sqlalchemy import text
-            from sqlalchemy.ext.asyncio import create_async_engine
-
-            engine = create_async_engine(async_url, pool_pre_ping=True)
-
-            async def _check():
-                async with engine.connect() as conn:
-                    result = await conn.execute(text(
+            async with engine.connect() as conn:
+                result = await conn.execute(
+                    text(
                         "SELECT 1 FROM information_schema.tables "
-                        "WHERE table_schema='t_dev' AND table_name='payments' LIMIT 1"
-                    ))
-                    return result.first() is not None
+                        "WHERE table_schema=:schema AND table_name=:table LIMIT 1"
+                    ),
+                    {"schema": LIVE_TENANT_SCHEMA, "table": table_name},
+                )
+                return result.first() is not None
+        finally:
+            await engine.dispose()
 
-            found = asyncio.run(_check())
-            return found
-        except Exception:
-            continue
-    return False
+    try:
+        present = run_coroutine(_check())
+    except Exception as exc:
+        pytest.fail(f"live schema gate database is unavailable ({type(exc).__name__})")
+    if not present:
+        pytest.fail(
+            f"{LIVE_TENANT_SCHEMA}.{table_name} is missing; "
+            "live schema gates never bootstrap or repair the validation target"
+        )
+
+
+@pytest.fixture(scope="module")
+def live_payments_table() -> str:
+    _require_live_table("payments")
+    return LIVE_TENANT_SCHEMA
+
+
+@pytest.fixture(scope="module")
+def live_retailer_prices_table() -> str:
+    _require_live_table("retailer_prices")
+    return LIVE_TENANT_SCHEMA
 
 
 @pytest.mark.skipif(
-    not _can_connect_t_dev(),
-    reason="t_dev not reachable — run with Docker DB for live verification",
+    not LIVE_SCHEMA_GATE_ENABLED,
+    reason="set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification",
 )
+@pytest.mark.usefixtures("live_payments_table")
 class TestLiveSchemaContract:
-    """Verify running t_dev.payments satisfies the contract."""
+    """Verify the configured live tenant payments table satisfies the contract."""
 
     @pytest.fixture()
     async def payment_columns(self):
@@ -249,9 +277,9 @@ class TestLiveSchemaContract:
             result = await conn.execute(text(
                 "SELECT column_name, is_nullable, data_type "
                 "FROM information_schema.columns "
-                "WHERE table_schema='t_dev' AND table_name='payments' "
+                "WHERE table_schema=:schema AND table_name='payments' "
                 "ORDER BY ordinal_position"
-            ))
+            ), {"schema": LIVE_TENANT_SCHEMA})
             cols = {row[0]: {"nullable": row[1], "type": row[2]} for row in result}
         await engine.dispose()
         return cols
@@ -267,8 +295,8 @@ class TestLiveSchemaContract:
         async with engine.connect() as conn:
             result = await conn.execute(text(
                 "SELECT indexname, indexdef FROM pg_indexes "
-                "WHERE schemaname='t_dev' AND tablename='payments'"
-            ))
+                "WHERE schemaname=:schema AND tablename='payments'"
+            ), {"schema": LIVE_TENANT_SCHEMA})
             idxs = {row[0]: row[1] for row in result}
         await engine.dispose()
         return idxs
@@ -442,42 +470,15 @@ class TestRetailerPricesDDLContract:
 
 
 # ---------------------------------------------------------------------------
-# 4. Live retailer_prices contract guard - runs against Docker t_dev if reachable
+# 4. Explicit read-only retailer_prices contract guard
 # ---------------------------------------------------------------------------
-
-def _can_connect_db() -> bool:
-    """Check if the database server is reachable (does NOT check for any specific table).
-
-    Live guard tests should only be skipped when the DB is completely unreachable.
-    If the DB is reachable but a specific table is missing, tests must FAIL -
-    the missing table is exactly the drift they are designed to catch.
-    """
-    for url in _get_db_urls():
-        async_url = _to_async_url(url)
-        try:
-            import asyncio
-            from sqlalchemy import text
-            from sqlalchemy.ext.asyncio import create_async_engine
-
-            engine = create_async_engine(async_url, pool_pre_ping=True)
-
-            async def _check():
-                async with engine.connect() as conn:
-                    await conn.execute(text("SELECT 1"))
-                    return True
-
-            return asyncio.run(_check())
-        except Exception:
-            continue
-    return False
-
-
 @pytest.mark.skipif(
-    not _can_connect_db(),
-    reason="Database server not reachable - run with Docker DB for live verification",
+    not LIVE_SCHEMA_GATE_ENABLED,
+    reason="set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification",
 )
+@pytest.mark.usefixtures("live_retailer_prices_table")
 class TestLiveRetailerPricesContract:
-    """Verify running t_dev.retailer_prices satisfies migration 017 contract."""
+    """Verify the configured live tenant retailer_prices migration contract."""
 
     @pytest.fixture()
     async def rp_columns(self):
@@ -491,9 +492,9 @@ class TestLiveRetailerPricesContract:
             result = await conn.execute(text(
                 "SELECT column_name, is_nullable, data_type "
                 "FROM information_schema.columns "
-                "WHERE table_schema='t_dev' AND table_name='retailer_prices' "
+                "WHERE table_schema=:schema AND table_name='retailer_prices' "
                 "ORDER BY ordinal_position"
-            ))
+            ), {"schema": LIVE_TENANT_SCHEMA})
             cols = {row[0]: {"nullable": row[1], "type": row[2]} for row in result}
         await engine.dispose()
         return cols
@@ -509,8 +510,8 @@ class TestLiveRetailerPricesContract:
         async with engine.connect() as conn:
             result = await conn.execute(text(
                 "SELECT indexname, indexdef FROM pg_indexes "
-                "WHERE schemaname='t_dev' AND tablename='retailer_prices'"
-            ))
+                "WHERE schemaname=:schema AND tablename='retailer_prices'"
+            ), {"schema": LIVE_TENANT_SCHEMA})
             idxs = {row[0]: row[1] for row in result}
         await engine.dispose()
         return idxs
@@ -526,9 +527,12 @@ class TestLiveRetailerPricesContract:
         async with engine.connect() as conn:
             result = await conn.execute(text(
                 "SELECT conname, contype FROM pg_constraint "
-                "WHERE connamespace = (SELECT oid FROM pg_namespace WHERE nspname = 't_dev') "
-                "AND conrelid = to_regclass('t_dev.retailer_prices')"
-            ))
+                "WHERE connamespace = (SELECT oid FROM pg_namespace WHERE nspname = :schema) "
+                "AND conrelid = to_regclass(:qualified_table)"
+            ), {
+                "schema": LIVE_TENANT_SCHEMA,
+                "qualified_table": f"{LIVE_TENANT_SCHEMA}.retailer_prices",
+            })
             constraints = {row[0]: row[1] for row in result}
         await engine.dispose()
         return constraints

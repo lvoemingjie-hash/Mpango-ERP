@@ -113,15 +113,19 @@ async def _enumerate_active_tenant_users(
     for ws in wholesalers:
         schema = ws.get_tenant_schema()
         try:
-            res = await db.execute(
-                text(
-                    f'SELECT lower(email) AS email, id FROM "{schema}".users '
-                    "WHERE is_active = true AND is_deleted = false"
-                ),
-            )
-            for email, uid in res.all():
-                rows.append((str(email), schema, uid))
+            async with db.begin_nested():
+                res = await db.execute(
+                    text(
+                        f'SELECT lower(email) AS email, id FROM "{schema}".users '
+                        "WHERE is_active = true AND is_deleted = false"
+                    ),
+                )
+                for email, uid in res.all():
+                    rows.append((str(email), schema, uid))
         except Exception:
+            # Roll back only this tenant's SAVEPOINT. Without it, a missing or
+            # damaged schema aborts the outer transaction and blocks every
+            # healthy tenant that follows in the scan.
             continue
     return rows
 

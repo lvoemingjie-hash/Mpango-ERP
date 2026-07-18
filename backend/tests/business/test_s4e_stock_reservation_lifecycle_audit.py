@@ -26,6 +26,7 @@ from models.inventory_reservation import InventoryReservation
 from models.inventory_stock import InventoryStock
 from models.order import Order, OrderItem, OrderStatus
 from models.sku import SKU
+from schemas.order import PayOrderRequest
 
 
 def _tenant_id(async_session: AsyncSession) -> uuid.UUID:
@@ -92,9 +93,37 @@ async def _create_order(
     updated_by: uuid.UUID | None = None,
 ) -> Order:
     total = sum(Decimal(quantity) * unit_price for _, quantity, unit_price in items)
+    retailer_id = uuid.uuid4()
+    await async_session.execute(
+        text(
+            "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
+            "VALUES (:id, 'BUSINESSTEST', 'Business Test Wholesaler', "
+            "'active', false) ON CONFLICT DO NOTHING"
+        ),
+        {"id": _tenant_id(async_session)},
+    )
+    await async_session.execute(
+        text(
+            "INSERT INTO public.retailers (id, phone, name, is_deleted) "
+            "VALUES (:id, :phone, 'S4E Retailer', false)"
+        ),
+        {"id": retailer_id, "phone": f"+254{str(retailer_id.int)[:10]}"},
+    )
+    await async_session.execute(
+        text(
+            "INSERT INTO public.wholesaler_retailer_bindings "
+            "(wholesaler_id, retailer_id, status, outstanding_balance, is_deleted) "
+            "VALUES (:wholesaler_id, :retailer_id, 'active', :total, false)"
+        ),
+        {
+            "wholesaler_id": _tenant_id(async_session),
+            "retailer_id": retailer_id,
+            "total": total,
+        },
+    )
     order = Order(
         wholesaler_id=_tenant_id(async_session),
-        retailer_id=uuid.uuid4(),
+        retailer_id=retailer_id,
         status=status,
         total_amount=total,
         notes="S4-E3 reservation ownership invariant",
@@ -230,7 +259,13 @@ async def _reset_reader(async_session: AsyncSession) -> None:
 async def _confirm_pay_fulfill(async_session: AsyncSession, order: Order) -> None:
     await confirm_order(str(order.id), token=_token(async_session), db=async_session)
     await async_session.commit()
-    await pay_order(str(order.id), token=_token(async_session), db=async_session)
+    await pay_order(
+        str(order.id),
+        token=_token(async_session),
+        db=async_session,
+        payment_input=PayOrderRequest(amount=order.total_amount, method="cash"),
+        x_idempotency_key=f"s4e-{order.id}",
+    )
     await async_session.commit()
     await fulfill_order(str(order.id), token=_token(async_session), db=async_session)
     await async_session.commit()
@@ -437,7 +472,13 @@ async def test_fulfillment_consumes_only_this_order_reservation_and_deducts_on_h
     await async_session.commit()
     await confirm_order(str(other_order.id), token=_token(async_session), db=async_session)
     await async_session.commit()
-    await pay_order(str(fulfilled_order.id), token=_token(async_session), db=async_session)
+    await pay_order(
+        str(fulfilled_order.id),
+        token=_token(async_session),
+        db=async_session,
+        payment_input=PayOrderRequest(amount=fulfilled_order.total_amount, method="cash"),
+        x_idempotency_key=f"s4e-{fulfilled_order.id}",
+    )
     await async_session.commit()
 
     await fulfill_order(str(fulfilled_order.id), token=_token(async_session), db=async_session)
@@ -526,7 +567,13 @@ async def test_concurrent_fulfill_consumes_reservation_once_and_writes_one_movem
     )
     await confirm_order(str(order.id), token=_token(async_session), db=async_session)
     await async_session.commit()
-    await pay_order(str(order.id), token=_token(async_session), db=async_session)
+    await pay_order(
+        str(order.id),
+        token=_token(async_session),
+        db=async_session,
+        payment_input=PayOrderRequest(amount=order.total_amount, method="cash"),
+        x_idempotency_key=f"s4e-{order.id}",
+    )
     await async_session.commit()
 
     results = await asyncio.gather(
@@ -609,7 +656,15 @@ async def test_reserve_release_and_consume_movement_boundaries(async_session):
 
     await confirm_order(str(fulfill_order_owner.id), token=_token(async_session), db=async_session)
     await async_session.commit()
-    await pay_order(str(fulfill_order_owner.id), token=_token(async_session), db=async_session)
+    await pay_order(
+        str(fulfill_order_owner.id),
+        token=_token(async_session),
+        db=async_session,
+        payment_input=PayOrderRequest(
+            amount=fulfill_order_owner.total_amount, method="cash"
+        ),
+        x_idempotency_key=f"s4e-{fulfill_order_owner.id}",
+    )
     await async_session.commit()
     await fulfill_order(str(fulfill_order_owner.id), token=_token(async_session), db=async_session)
     await async_session.commit()

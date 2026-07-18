@@ -38,6 +38,8 @@ from uuid import UUID
 
 import pytest
 
+from tests.async_test_utils import run_coroutine
+
 os.environ.setdefault("MPANGO_ENV", "test")
 os.environ.setdefault("PLATFORM_TEST_OVERRIDE_SECRET", "test-platform-override-secret")
 os.environ.setdefault("PLATFORM_OPERATOR_SECRET", "test-operator-secret")
@@ -424,7 +426,7 @@ class TestDryRunAndRequestNeverExecute:
             idempotency_key="probe-key-1",
             execution_mode="sync",
         )
-        resp = asyncio.run(
+        resp = run_coroutine(
             evaluate_dry_run(
                 request,
                 actor="exec-1",
@@ -459,7 +461,7 @@ class TestDryRunAndRequestNeverExecute:
             idempotency_key="probe-key-2",
             execution_mode="sync",
         )
-        dry = asyncio.run(
+        dry = run_coroutine(
             evaluate_dry_run(
                 dry_request,
                 actor="exec-1",
@@ -477,7 +479,7 @@ class TestDryRunAndRequestNeverExecute:
             execution_ack=True,
             execution_mode="sync",
         )
-        resp = asyncio.run(
+        resp = run_coroutine(
             record_execution_request(
                 req,
                 actor="exec-1",

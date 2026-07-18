@@ -252,6 +252,24 @@ async def _make_tenant(
     return schema_name, owner_email
 
 
+async def _make_broken_tenant_anchor() -> str:
+    """Create an active wholesaler whose derived schema has no users table."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        ws = Wholesaler(
+            code=f"DC3BBROKEN{uuid.uuid4().hex[:6].upper()}",
+            name="DC3B Broken Tenant Anchor",
+            contact="broken-anchor@example.com",
+            status="active",
+            provisioned_at=datetime.now(timezone.utc),
+        )
+        session.add(ws)
+        await session.flush()
+        schema_name = ws.get_tenant_schema()
+        await session.commit()
+    return schema_name
+
+
 async def _add_user_to_tenant_schema(schema_name: str, email: str, password: str) -> None:
     """Insert an active user row into an existing tenant schema.
 
@@ -330,6 +348,24 @@ async def test_forgot_password_neutral_for_existing_and_nonexistent_email():
     # But only the existing email produced a reset delivery (test-only check).
     assert len(get_dev_reset_email_deliveries(email)) == 1
     assert len(get_dev_reset_email_deliveries(f"nobody@example.com")) == 0
+
+
+async def test_broken_tenant_schema_does_not_block_healthy_password_reset():
+    broken_schema = await _make_broken_tenant_anchor()
+    email = f"dc3b_{uuid.uuid4().hex}@example.com"
+    healthy_schema, _ = await _make_tenant(owner_email=email, password=TEST_OLD_PW)
+
+    async with await _client() as c:
+        response = await c.post(FORGOT_URL, json={"email": email})
+
+    assert response.status_code == 200
+    assert broken_schema != healthy_schema
+    assert len(get_dev_reset_email_deliveries(email)) == 1
+    async with AsyncSessionLocal() as session:
+        token_count = (
+            await session.execute(text("SELECT count(*) FROM public.password_reset_tokens"))
+        ).scalar_one()
+    assert token_count == 1
 
 
 # ---------------------------------------------------------------------------

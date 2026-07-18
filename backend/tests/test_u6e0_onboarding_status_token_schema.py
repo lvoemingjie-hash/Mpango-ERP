@@ -152,8 +152,8 @@ def test_u6b_existing_token_tables_remain_unchanged():
     assert "ux_password_reset_tokens_token_hash" in _index_names(PasswordResetToken)
 
 
-def test_no_onboarding_status_endpoint_or_runtime_route_added():
-    route_paths = {route.path for route in auth_router.routes}
+def test_onboarding_status_route_is_post_only():
+    status_routes = [route for route in auth_router.routes if route.path == "/onboarding/status"]
 
-    assert "/onboarding/status" not in route_paths
-    assert "/api/v1/auth/onboarding/status" not in route_paths
+    assert len(status_routes) == 1
+    assert status_routes[0].methods == {"POST"}

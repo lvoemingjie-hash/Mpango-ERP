@@ -130,15 +130,35 @@ async def live_engine():
         pytest.skip(message)
 
     engine = create_async_engine(LIVE_DB_URL, pool_pre_ping=True, pool_size=2)
+    preflight_message: Optional[str] = None
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
+            table_rows = await conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = :schema"
+                ),
+                {"schema": LIVE_TENANT_SCHEMA},
+            )
+            present_tables = {row[0] for row in table_rows.fetchall()}
+            missing_tables = sorted(REQUIRED_TABLES - present_tables)
+            if missing_tables:
+                preflight_message = (
+                    "S3-B prepared tenant prerequisites are missing for "
+                    f"{LIVE_TENANT_SCHEMA!r}: {missing_tables}"
+                )
     except Exception as exc:
         await engine.dispose()
         error_type = type(exc).__name__
         if require_db:
             pytest.fail(f"S3-B live DB REQUIRED but not reachable ({error_type}).")
         pytest.skip(f"S3-B live DB not reachable ({error_type}).")
+    if preflight_message:
+        await engine.dispose()
+        if require_db:
+            pytest.fail(preflight_message)
+        pytest.skip(preflight_message)
     yield engine
     await engine.dispose()
 

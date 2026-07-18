@@ -27,6 +27,7 @@ from models.inventory_stock import InventoryStock
 from models.ledger import AccountType, LedgerEntry
 from models.order import Order, OrderItem, OrderStatus
 from models.sku import SKU
+from schemas.order import PayOrderRequest
 from scripts.bootstrap_tenant_schema import bootstrap
 
 
@@ -96,9 +97,37 @@ async def _create_order(
     items: list[tuple[str, int, Decimal]],
 ) -> Order:
     total = sum(Decimal(quantity) * unit_price for _, quantity, unit_price in items)
+    retailer_id = uuid.uuid4()
+    await async_session.execute(
+        text(
+            "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
+            "VALUES (:id, 'BUSINESSTEST', 'Business Test Wholesaler', "
+            "'active', false) ON CONFLICT DO NOTHING"
+        ),
+        {"id": _tenant_id(async_session)},
+    )
+    await async_session.execute(
+        text(
+            "INSERT INTO public.retailers (id, phone, name, is_deleted) "
+            "VALUES (:id, :phone, 'S4F Retailer', false)"
+        ),
+        {"id": retailer_id, "phone": f"+255{str(retailer_id.int)[:10]}"},
+    )
+    await async_session.execute(
+        text(
+            "INSERT INTO public.wholesaler_retailer_bindings "
+            "(wholesaler_id, retailer_id, status, outstanding_balance, is_deleted) "
+            "VALUES (:wholesaler_id, :retailer_id, 'active', :total, false)"
+        ),
+        {
+            "wholesaler_id": _tenant_id(async_session),
+            "retailer_id": retailer_id,
+            "total": total,
+        },
+    )
     order = Order(
         wholesaler_id=_tenant_id(async_session),
-        retailer_id=uuid.uuid4(),
+        retailer_id=retailer_id,
         status=status,
         total_amount=total,
         notes="S4-F business invariant closeout",
@@ -372,7 +401,13 @@ async def test_pay_preserves_inventory_reservation_and_existing_phase5_ledger_se
     before_stock = await _stock_snapshot(async_session, sku.id)
     before_reservations = await _reservations_for_order(async_session, order.id)
 
-    await pay_order(str(order.id), token=_token(async_session), db=async_session)
+    await pay_order(
+        str(order.id),
+        token=_token(async_session),
+        db=async_session,
+        payment_input=PayOrderRequest(amount=order.total_amount, method="cash"),
+        x_idempotency_key=f"s4f-{order.id}",
+    )
     await async_session.commit()
 
     after_reservations = await _reservations_for_order(async_session, order.id)
@@ -425,7 +460,13 @@ async def test_fulfill_consumes_owned_reservation_writes_movement_and_duplicate_
     )
     await confirm_order(str(order.id), token=_token(async_session), db=async_session)
     await async_session.commit()
-    await pay_order(str(order.id), token=_token(async_session), db=async_session)
+    await pay_order(
+        str(order.id),
+        token=_token(async_session),
+        db=async_session,
+        payment_input=PayOrderRequest(amount=order.total_amount, method="cash"),
+        x_idempotency_key=f"s4f-{order.id}",
+    )
     await async_session.commit()
     ledger_before_fulfill = await _ledger_signature(async_session)
 
@@ -468,7 +509,13 @@ async def test_return_restores_on_hand_without_re_reserving_and_duplicate_is_sta
     )
     await confirm_order(str(order.id), token=_token(async_session), db=async_session)
     await async_session.commit()
-    await pay_order(str(order.id), token=_token(async_session), db=async_session)
+    await pay_order(
+        str(order.id),
+        token=_token(async_session),
+        db=async_session,
+        payment_input=PayOrderRequest(amount=order.total_amount, method="cash"),
+        x_idempotency_key=f"s4f-{order.id}",
+    )
     await async_session.commit()
     await fulfill_order(str(order.id), token=_token(async_session), db=async_session)
     await async_session.commit()
@@ -542,7 +589,13 @@ async def test_cancel_confirmed_releases_reservation_and_paid_or_fulfilled_cance
     )
     await confirm_order(str(paid_order.id), token=_token(async_session), db=async_session)
     await async_session.commit()
-    await pay_order(str(paid_order.id), token=_token(async_session), db=async_session)
+    await pay_order(
+        str(paid_order.id),
+        token=_token(async_session),
+        db=async_session,
+        payment_input=PayOrderRequest(amount=paid_order.total_amount, method="cash"),
+        x_idempotency_key=f"s4f-{paid_order.id}",
+    )
     await async_session.commit()
     paid_stock_before = await _stock_snapshot(async_session, paid_sku.id)
     paid_ledger_before = await _ledger_signature(async_session)

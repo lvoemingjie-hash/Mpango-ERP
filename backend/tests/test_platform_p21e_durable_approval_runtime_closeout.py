@@ -59,6 +59,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+from tests.async_test_utils import run_alembic_upgrade
 from sqlalchemy.pool import NullPool
 
 from api.v1.platform.p20 import services as p20svc
@@ -237,12 +239,11 @@ def durable_urls():
         # Run migration 020 (head) on the migrated database only.
         os.environ["DATABASE_URL"] = mig_async
         os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
-        from alembic import command
         from alembic.config import Config
 
         cfg = Config(str(BACKEND_DIR / "alembic.ini"))
         cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-        command.upgrade(cfg, "head")
+        run_alembic_upgrade(cfg, "head")
         yield {
             "mig_async": mig_async,
             "mig_sync": mig_sync,

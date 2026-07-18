@@ -36,7 +36,13 @@ async def test_mv_sales_daily_staleness_then_refresh(async_session: AsyncSession
     5. Assert mv_sales_daily NOW reflects the new entry
     6. Cleanup: rollback
     """
-    # Step 1: Baseline count
+    # Step 1: Synchronize the shared fixture's materialized view before taking
+    # the baseline. The fixture truncates ledger_entries between tests, but a
+    # materialized view remains stale until explicitly refreshed.
+    await async_session.execute(
+        text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_sales_daily")
+    )
+    await async_session.commit()
     result = await async_session.execute(
         text("SELECT COALESCE(SUM(transaction_count), 0) FROM mv_sales_daily")
     )
@@ -241,12 +247,9 @@ async def test_mv_sales_daily_accessible_by_reporting_user(ensure_reporting_user
     """
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-    import os
-    _rpt_pw = os.environ.get("REPORTING_USER_PASSWORD", "CHANGE_ME")
-    _db_host = os.environ.get("POSTGRES_HOST", "postgres")
-    engine = create_async_engine(
-        f"postgresql+asyncpg://reporting_user:{_rpt_pw}@{_db_host}:5432/mpango_erp"
-    )
+    from database.reporting_session import _build_reporting_url
+
+    engine = create_async_engine(_build_reporting_url())
     factory = async_sessionmaker(engine, class_=AsyncSession)
 
     async with factory() as session:

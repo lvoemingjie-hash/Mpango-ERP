@@ -13,10 +13,11 @@ Test Cases:
 import pytest
 import uuid
 from decimal import Decimal
-from datetime import datetime, timezone
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+pytest_plugins = ("tests.reporting_bootstrap_contract_helpers",)
 
 
 # ============================================================================
@@ -24,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_mv_sales_daily_staleness_then_refresh(async_session: AsyncSession):
+async def test_mv_sales_daily_staleness_then_refresh(reporting_tenant_session: AsyncSession):
     """
     S6-2 Core Test: Prove materialized view is stale, then refresh fixes it.
 
@@ -39,11 +40,11 @@ async def test_mv_sales_daily_staleness_then_refresh(async_session: AsyncSession
     # Step 1: Synchronize the shared fixture's materialized view before taking
     # the baseline. The fixture truncates ledger_entries between tests, but a
     # materialized view remains stale until explicitly refreshed.
-    await async_session.execute(
+    await reporting_tenant_session.execute(
         text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_sales_daily")
     )
-    await async_session.commit()
-    result = await async_session.execute(
+    await reporting_tenant_session.commit()
+    result = await reporting_tenant_session.execute(
         text("SELECT COALESCE(SUM(transaction_count), 0) FROM mv_sales_daily")
     )
     baseline_count = int(result.scalar())
@@ -51,7 +52,7 @@ async def test_mv_sales_daily_staleness_then_refresh(async_session: AsyncSession
     # Step 2: Insert a new revenue entry (negative amount = credit = revenue)
     test_id = uuid.uuid4()
     test_ref = uuid.uuid4()
-    await async_session.execute(
+    await reporting_tenant_session.execute(
         text("""
             INSERT INTO ledger_entries
             (id, transaction_date, account_type, amount, reference_type,
@@ -63,10 +64,10 @@ async def test_mv_sales_daily_staleness_then_refresh(async_session: AsyncSession
         """),
         {"id": test_id, "ref_id": test_ref}
     )
-    await async_session.commit()
+    await reporting_tenant_session.commit()
 
     # Step 3: Assert mv_sales_daily is STALE (has NOT changed)
-    result = await async_session.execute(
+    result = await reporting_tenant_session.execute(
         text("SELECT COALESCE(SUM(transaction_count), 0) FROM mv_sales_daily")
     )
     stale_count = int(result.scalar())
@@ -75,13 +76,13 @@ async def test_mv_sales_daily_staleness_then_refresh(async_session: AsyncSession
     )
 
     # Step 4: Refresh the materialized view
-    await async_session.execute(
+    await reporting_tenant_session.execute(
         text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_sales_daily")
     )
-    await async_session.commit()
+    await reporting_tenant_session.commit()
 
     # Step 5: Assert mv_sales_daily NOW reflects the new entry
-    result = await async_session.execute(
+    result = await reporting_tenant_session.execute(
         text("SELECT COALESCE(SUM(transaction_count), 0) FROM mv_sales_daily")
     )
     refreshed_count = int(result.scalar())
@@ -91,7 +92,7 @@ async def test_mv_sales_daily_staleness_then_refresh(async_session: AsyncSession
     )
 
     # Verify the actual revenue amount is correct
-    result = await async_session.execute(
+    result = await reporting_tenant_session.execute(
         text("""
             SELECT daily_revenue, reporting_currency_code
             FROM mv_sales_daily
@@ -103,27 +104,6 @@ async def test_mv_sales_daily_staleness_then_refresh(async_session: AsyncSession
     assert row.reporting_currency_code == "USD"
     # daily_revenue should include our 250.00 (ABS of -250)
     assert row.daily_revenue >= Decimal("250.0000")
-
-    # Cleanup: delete the test entry so other tests aren't affected
-    # (The immutability trigger blocks UPDATE/DELETE, but we're the owner user,
-    #  not reporting_user. We need to temporarily disable the trigger.)
-    await async_session.execute(
-        text("ALTER TABLE ledger_entries DISABLE TRIGGER prevent_ledger_modification_trigger")
-    )
-    await async_session.execute(
-        text("DELETE FROM ledger_entries WHERE id = :id"),
-        {"id": test_id}
-    )
-    await async_session.execute(
-        text("ALTER TABLE ledger_entries ENABLE TRIGGER prevent_ledger_modification_trigger")
-    )
-    await async_session.commit()
-
-    # Refresh again to clean up the MV
-    await async_session.execute(
-        text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_sales_daily")
-    )
-    await async_session.commit()
 
 
 # ============================================================================
@@ -165,19 +145,23 @@ async def test_advisory_lock_prevents_double_refresh(async_session: AsyncSession
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_mv_sales_daily_has_unique_index(async_session: AsyncSession):
+async def test_mv_sales_daily_has_unique_index(
+    reporting_tenant_session: AsyncSession,
+    provisioned_reporting_tenant,
+):
     """
     S6-2: Verify the unique index exists.
 
     Without this index, REFRESH CONCURRENTLY will fail.
     """
-    result = await async_session.execute(
+    result = await reporting_tenant_session.execute(
         text("""
             SELECT indexname, indexdef
             FROM pg_indexes
             WHERE tablename = 'mv_sales_daily'
-              AND schemaname = 't_test'
-        """)
+              AND schemaname = :tenant_schema
+        """),
+        {"tenant_schema": provisioned_reporting_tenant.tenant_schema},
     )
     indexes = {row[0]: row[1] for row in result}
 
@@ -195,14 +179,14 @@ async def test_mv_sales_daily_has_unique_index(async_session: AsyncSession):
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_receivables_summary_is_realtime(async_session: AsyncSession):
+async def test_receivables_summary_is_realtime(reporting_tenant_session: AsyncSession):
     """
     S6-2: Verify rpt_receivables_summary (standard view) reflects data immediately.
 
     Unlike mv_sales_daily, this view should show new data without refresh.
     """
     # Baseline
-    result = await async_session.execute(
+    result = await reporting_tenant_session.execute(
         text("SELECT COUNT(*) FROM rpt_receivables_summary")
     )
     baseline = int(result.scalar())
@@ -210,7 +194,7 @@ async def test_receivables_summary_is_realtime(async_session: AsyncSession):
     # Insert a receivable entry
     test_id = uuid.uuid4()
     test_ref = uuid.uuid4()
-    await async_session.execute(
+    await reporting_tenant_session.execute(
         text("""
             INSERT INTO ledger_entries
             (id, transaction_date, account_type, amount, reference_type,
@@ -223,10 +207,10 @@ async def test_receivables_summary_is_realtime(async_session: AsyncSession):
         {"id": test_id, "ref_id": test_ref}
     )
     # Flush but don't commit — the view should still see it in the same transaction
-    await async_session.flush()
+    await reporting_tenant_session.flush()
 
     # Check immediately — should reflect the new entry
-    result = await async_session.execute(
+    result = await reporting_tenant_session.execute(
         text("SELECT COUNT(*) FROM rpt_receivables_summary")
     )
     after_insert = int(result.scalar())
@@ -241,25 +225,14 @@ async def test_receivables_summary_is_realtime(async_session: AsyncSession):
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_mv_sales_daily_accessible_by_reporting_user(ensure_reporting_user_password):
+async def test_mv_sales_daily_accessible_by_reporting_user(
+    reporting_user_tenant_session: AsyncSession,
+):
     """
     S6-2: Verify reporting_user can SELECT from mv_sales_daily.
     """
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-
-    from database.reporting_session import _build_reporting_url
-
-    engine = create_async_engine(_build_reporting_url())
-    factory = async_sessionmaker(engine, class_=AsyncSession)
-
-    async with factory() as session:
-        await session.execute(
-            text('SET LOCAL search_path TO "t_test", public')
-        )
-        result = await session.execute(
-            text("SELECT COUNT(*) FROM mv_sales_daily")
-        )
-        count = result.scalar()
-        assert count >= 0
-
-    await engine.dispose()
+    result = await reporting_user_tenant_session.execute(
+        text("SELECT COUNT(*) FROM mv_sales_daily")
+    )
+    count = result.scalar()
+    assert count >= 0

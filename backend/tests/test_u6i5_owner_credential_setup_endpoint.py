@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,6 +31,7 @@ OWNER_CREDENTIAL_SERVICE_PATH = ROOT / "backend" / "services" / "owner_credentia
 SETUP_CREDENTIAL_URL = "/api/v1/auth/onboarding/setup-credential"
 NEUTRAL_SETUP_MESSAGE = "Credential setup result is not disclosed through this endpoint."
 TEST_SETUP_PW = "0wnerCredSetup_01!"  # pragma: allowlist secret
+U6I5_SCHEMA_RE = re.compile(r"^t_u6i5_[0-9a-f]{20}$")
 
 
 @pytest.fixture(autouse=True)
@@ -52,25 +54,79 @@ async def _ensure_tables() -> None:
 
 
 async def _clear_u6i5_rows() -> None:
+    """Teardown: drop U6I5 schemas, then delete registrations and wholesalers.
+
+    Derives candidate schemas only from this test's exact email namespace,
+    validates every ownership anchor before mutation, and uses safe quoting.
+    Never drops a non-U6I5 schema. Idempotent: safe to call repeatedly.
+    """
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
-        rows = (
+
+        # Match the exact generated email namespace; SQL LIKE would treat the
+        # underscore in "u6i5_" as a wildcard.
+        reg_rows = (
             await session.execute(
                 text(
-                    "SELECT wholesaler_id FROM public.tenant_registrations "
-                    "WHERE owner_email LIKE 'u6i5_%@example.com'"
+                    "SELECT id, tenant_schema, wholesaler_id "
+                    "FROM public.tenant_registrations "
+                    "WHERE owner_email ~ '^u6i5_[0-9a-f]{32}@example[.]com$'"
                 )
             )
         ).mappings().all()
-        wholesaler_ids = [row["wholesaler_id"] for row in rows if row["wholesaler_id"] is not None]
-        await session.execute(
-            text("DELETE FROM public.tenant_registrations WHERE owner_email LIKE 'u6i5_%@example.com'")
-        )
+
+        registration_ids: list[uuid.UUID] = []
+        wholesaler_ids: list[uuid.UUID] = []
+        safe_schemas: list[str] = []
+        for row in reg_rows:
+            registration_id = row["id"]
+            wholesaler_id = row["wholesaler_id"]
+            schema_name = row["tenant_schema"]
+            if (
+                registration_id is None
+                or wholesaler_id is None
+                or not isinstance(schema_name, str)
+                or U6I5_SCHEMA_RE.fullmatch(schema_name) is None
+            ):
+                raise RuntimeError("Invalid U6I5 teardown ownership anchor")
+            registration_ids.append(registration_id)
+            wholesaler_ids.append(wholesaler_id)
+            safe_schemas.append(schema_name)
+
+        if len(safe_schemas) != len(set(safe_schemas)):
+            raise RuntimeError("Duplicate U6I5 teardown schema anchor")
+
+        # Delete dependent rows explicitly before their registration anchors.
+        # The FK also cascades, but this ordering makes the cleanup contract
+        # independently observable and avoids a dead post-delete subquery.
+        if registration_ids:
+            await session.execute(
+                text(
+                    "DELETE FROM public.owner_credential_setup_tokens "
+                    "WHERE registration_id = ANY(:registration_ids)"
+                ),
+                {"registration_ids": registration_ids},
+            )
+
+        for schema_name in safe_schemas:
+            await session.execute(
+                text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
+            )
+
+        if registration_ids:
+            await session.execute(
+                text(
+                    "DELETE FROM public.tenant_registrations "
+                    "WHERE id = ANY(:registration_ids)"
+                ),
+                {"registration_ids": registration_ids},
+            )
         if wholesaler_ids:
             await session.execute(
                 text("DELETE FROM public.wholesalers WHERE id = ANY(:wholesaler_ids)"),
                 {"wholesaler_ids": wholesaler_ids},
             )
+
         await session.commit()
 
 
@@ -477,3 +533,151 @@ async def test_no_query_string_token_support():
         assert response.status_code == 401
 
     assert await _table_count(schema, "users") == 0
+
+
+# ---------------------------------------------------------------------------
+# DC-11T4E: teardown regression test
+# ---------------------------------------------------------------------------
+
+async def test_dc11t4e_teardown_removes_u6i5_schemas_and_preserves_others():
+    """Prove _clear_u6i5_rows drops U6I5 schemas and leaves others intact."""
+    _u6i5_email, u6i5_schema = await _setup_provisioned_tenant()
+    assert U6I5_SCHEMA_RE.fullmatch(u6i5_schema)
+    sentinel_schema = f"t_dc11t4e_sentinel_{uuid.uuid4().hex[:8]}"
+    async with async_engine.begin() as conn:
+        await conn.execute(text(f'CREATE SCHEMA "{sentinel_schema}"'))
+
+    try:
+        await _clear_u6i5_rows()
+
+        async with AsyncSessionLocal() as session:
+            u6i5_after = (
+                await session.execute(
+                    text(
+                        "SELECT 1 FROM information_schema.schemata "
+                        "WHERE schema_name = :schema_name"
+                    ),
+                    {"schema_name": u6i5_schema},
+                )
+            ).scalar()
+            sentinel_after = (
+                await session.execute(
+                    text(
+                        "SELECT 1 FROM information_schema.schemata "
+                        "WHERE schema_name = :schema_name"
+                    ),
+                    {"schema_name": sentinel_schema},
+                )
+            ).scalar()
+            registration_count = (
+                await session.execute(
+                    text(
+                        "SELECT count(*) FROM public.tenant_registrations "
+                        "WHERE owner_email ~ '^u6i5_[0-9a-f]{32}@example[.]com$'"
+                    )
+                )
+            ).scalar_one()
+
+        assert u6i5_after is None
+        assert sentinel_after is not None
+        assert registration_count == 0
+    finally:
+        async with async_engine.begin() as conn:
+            await conn.execute(
+                text(f'DROP SCHEMA IF EXISTS "{sentinel_schema}" CASCADE')
+            )
+
+
+async def test_dc11t4e_teardown_is_idempotent():
+    """Running teardown twice must not error."""
+    await _setup_provisioned_tenant()
+    await _clear_u6i5_rows()
+    await _clear_u6i5_rows()  # second call must be a clean no-op
+    # No exception raised = pass
+
+
+async def test_dc11t4e_teardown_fails_closed_on_invalid_schema_anchor():
+    """An invalid registration anchor must not trigger any DROP or DELETE."""
+    owner_email, owned_schema = await _setup_provisioned_tenant()
+    invalid_schema = f"t_dc11t4e_invalid_{uuid.uuid4().hex[:8]}"
+    async with async_engine.begin() as conn:
+        await conn.execute(text(f'CREATE SCHEMA "{invalid_schema}"'))
+
+    wholesaler_id = None
+    try:
+        async with AsyncSessionLocal() as session:
+            wholesaler_id = (
+                await session.execute(
+                    text(
+                        "UPDATE public.tenant_registrations "
+                        "SET tenant_schema = :invalid_schema "
+                        "WHERE owner_email = :owner_email "
+                        "RETURNING wholesaler_id"
+                    ),
+                    {
+                        "invalid_schema": invalid_schema,
+                        "owner_email": owner_email,
+                    },
+                )
+            ).scalar_one()
+            await session.commit()
+
+        with pytest.raises(RuntimeError, match="Invalid U6I5 teardown ownership anchor"):
+            await _clear_u6i5_rows()
+
+        async with AsyncSessionLocal() as session:
+            registration_count = (
+                await session.execute(
+                    text(
+                        "SELECT count(*) FROM public.tenant_registrations "
+                        "WHERE owner_email = :owner_email"
+                    ),
+                    {"owner_email": owner_email},
+                )
+            ).scalar_one()
+            wholesaler_count = (
+                await session.execute(
+                    text(
+                        "SELECT count(*) FROM public.wholesalers WHERE id = :id"
+                    ),
+                    {"id": wholesaler_id},
+                )
+            ).scalar_one()
+            schema_count = (
+                await session.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.schemata "
+                        "WHERE schema_name IN (:owned_schema, :invalid_schema)"
+                    ),
+                    {
+                        "owned_schema": owned_schema,
+                        "invalid_schema": invalid_schema,
+                    },
+                )
+            ).scalar_one()
+
+        assert registration_count == 1
+        assert wholesaler_count == 1
+        assert schema_count == 2
+    finally:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text(
+                    "DELETE FROM public.tenant_registrations "
+                    "WHERE owner_email = :owner_email"
+                ),
+                {"owner_email": owner_email},
+            )
+            if wholesaler_id is not None:
+                await session.execute(
+                    text("DELETE FROM public.wholesalers WHERE id = :id"),
+                    {"id": wholesaler_id},
+                )
+            await session.commit()
+        async with async_engine.begin() as conn:
+            await conn.execute(
+                text(f'DROP SCHEMA IF EXISTS "{owned_schema}" CASCADE')
+            )
+            await conn.execute(
+                text(f'DROP SCHEMA IF EXISTS "{invalid_schema}" CASCADE')
+            )

@@ -11,12 +11,9 @@ Test Cases:
 5. Cross-view metric rejection — Metric valid globally but not on chosen view
 """
 import pytest
-import uuid
-from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import ValidationError
 
 from services.reporting.semantic_layer import (
@@ -33,6 +30,7 @@ from services.reporting.semantic_layer import (
 )
 from services.reporting.query_builder import SemanticQueryBuilder
 from api.schemas.dashboard import SemanticQueryRequest
+pytest_plugins = ("tests.reporting_bootstrap_contract_helpers",)
 
 
 # ============================================================================
@@ -234,7 +232,10 @@ class TestPydanticValidation:
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_query_builder_fetch_kpi_summary(async_session: AsyncSession):
+async def test_query_builder_fetch_kpi_summary(
+    reporting_tenant_session: AsyncSession,
+    provisioned_reporting_tenant,
+):
     """
     SemanticQueryBuilder.fetch_kpi_summary returns zeros for empty MV.
 
@@ -242,9 +243,9 @@ async def test_query_builder_fetch_kpi_summary(async_session: AsyncSession):
     data for the current tenant, all metrics return 0 (not null/error).
     """
     builder = SemanticQueryBuilder(
-        session=async_session,
-        tenant_id="test-tenant-id",
-        tenant_schema="t_test",
+        session=reporting_tenant_session,
+        tenant_id=provisioned_reporting_tenant.tenant_id,
+        tenant_schema=provisioned_reporting_tenant.tenant_schema,
         view_scope=ViewScope.SALES_DAILY,
     )
     result = await builder.fetch_kpi_summary()
@@ -257,14 +258,17 @@ async def test_query_builder_fetch_kpi_summary(async_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_query_builder_fetch_all_receivables(async_session: AsyncSession):
+async def test_query_builder_fetch_all_receivables(
+    reporting_tenant_session: AsyncSession,
+    provisioned_reporting_tenant,
+):
     """
     SemanticQueryBuilder.fetch_all returns rows from rpt_receivables_summary.
     """
     builder = SemanticQueryBuilder(
-        session=async_session,
-        tenant_id="test-tenant-id",
-        tenant_schema="t_test",
+        session=reporting_tenant_session,
+        tenant_id=provisioned_reporting_tenant.tenant_id,
+        tenant_schema=provisioned_reporting_tenant.tenant_schema,
         view_scope=ViewScope.RECEIVABLES_SUMMARY,
     )
     rows = await builder.fetch_all(
@@ -282,14 +286,17 @@ async def test_query_builder_fetch_all_receivables(async_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_query_builder_fetch_time_series(async_session: AsyncSession):
+async def test_query_builder_fetch_time_series(
+    reporting_tenant_session: AsyncSession,
+    provisioned_reporting_tenant,
+):
     """
     SemanticQueryBuilder.fetch_time_series returns date-ordered data.
     """
     builder = SemanticQueryBuilder(
-        session=async_session,
-        tenant_id="test-tenant-id",
-        tenant_schema="t_test",
+        session=reporting_tenant_session,
+        tenant_id=provisioned_reporting_tenant.tenant_id,
+        tenant_schema=provisioned_reporting_tenant.tenant_schema,
         view_scope=ViewScope.CASH_FLOW_DAILY,
     )
     data = await builder.fetch_time_series(
@@ -307,7 +314,10 @@ async def test_query_builder_fetch_time_series(async_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_query_builder_empty_mv_returns_zeros(async_session: AsyncSession):
+async def test_query_builder_empty_mv_returns_zeros(
+    reporting_tenant_session: AsyncSession,
+    provisioned_reporting_tenant,
+):
     """
     When mv_sales_daily has no data, fetch_kpi_summary returns 0s.
 
@@ -315,9 +325,9 @@ async def test_query_builder_empty_mv_returns_zeros(async_session: AsyncSession)
     """
     # Use a schema that likely has no revenue data
     builder = SemanticQueryBuilder(
-        session=async_session,
-        tenant_id="test-tenant-id",
-        tenant_schema="t_test",
+        session=reporting_tenant_session,
+        tenant_id=provisioned_reporting_tenant.tenant_id,
+        tenant_schema=provisioned_reporting_tenant.tenant_schema,
         view_scope=ViewScope.SALES_DAILY,
     )
     result = await builder.fetch_kpi_summary()
@@ -328,15 +338,18 @@ async def test_query_builder_empty_mv_returns_zeros(async_session: AsyncSession)
 
 
 @pytest.mark.asyncio
-async def test_query_builder_cross_view_metric_raises(async_session: AsyncSession):
+async def test_query_builder_cross_view_metric_raises(
+    reporting_tenant_session: AsyncSession,
+    provisioned_reporting_tenant,
+):
     """
     Requesting a metric that exists globally but not on the chosen view
     must raise ValueError.
     """
     builder = SemanticQueryBuilder(
-        session=async_session,
-        tenant_id="test-tenant-id",
-        tenant_schema="t_test",
+        session=reporting_tenant_session,
+        tenant_id=provisioned_reporting_tenant.tenant_id,
+        tenant_schema=provisioned_reporting_tenant.tenant_schema,
         view_scope=ViewScope.SALES_DAILY,
     )
     with pytest.raises(ValueError, match="not available"):
@@ -346,29 +359,21 @@ async def test_query_builder_cross_view_metric_raises(async_session: AsyncSessio
 
 
 @pytest.mark.asyncio
-async def test_query_builder_reporting_user_access(ensure_reporting_user_password):
+async def test_query_builder_reporting_user_access(
+    reporting_user_tenant_session: AsyncSession,
+    provisioned_reporting_tenant,
+):
     """
     Verify the reporting_user can execute queries through the builder.
     """
-    from database.reporting_session import _build_reporting_url
-
-    engine = create_async_engine(_build_reporting_url())
-    factory = async_sessionmaker(engine, class_=AsyncSession)
-
-    async with factory() as session:
-        # Must set tenant_schema in session.info to satisfy global tenant filter
-        session.info["tenant_schema"] = "t_test"
-
-        builder = SemanticQueryBuilder(
-            session=session,
-            tenant_id="test-tenant-id",
-            tenant_schema="t_test",
-            view_scope=ViewScope.RECEIVABLES_SUMMARY,
-        )
-        rows = await builder.fetch_all(
-            metrics=[ReportMetric.OUTSTANDING_BALANCE],
-            dimensions=[ReportDimension.ENTITY_ID],
-        )
-        assert isinstance(rows, list)
-
-    await engine.dispose()
+    builder = SemanticQueryBuilder(
+        session=reporting_user_tenant_session,
+        tenant_id=provisioned_reporting_tenant.tenant_id,
+        tenant_schema=provisioned_reporting_tenant.tenant_schema,
+        view_scope=ViewScope.RECEIVABLES_SUMMARY,
+    )
+    rows = await builder.fetch_all(
+        metrics=[ReportMetric.OUTSTANDING_BALANCE],
+        dimensions=[ReportDimension.ENTITY_ID],
+    )
+    assert isinstance(rows, list)

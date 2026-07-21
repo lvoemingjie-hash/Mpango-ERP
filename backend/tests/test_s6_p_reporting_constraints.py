@@ -16,9 +16,7 @@ Test Cases:
 """
 import pytest
 import pytest_asyncio
-import uuid
 import os
-from decimal import Decimal
 from urllib.parse import quote_plus
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -26,6 +24,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from database.reporting_session import (
     REPORTING_CURRENCY_CODE,
 )
+pytest_plugins = ("tests.reporting_bootstrap_contract_helpers",)
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +57,7 @@ async def reporting_engine(ensure_reporting_user_password):
 
 
 @pytest.fixture
-async def reporting_session(reporting_engine):
+async def reporting_session(reporting_engine, provisioned_reporting_tenant):
     """Provide a reporting session connected as reporting_user."""
     factory = async_sessionmaker(
         reporting_engine,
@@ -68,9 +67,12 @@ async def reporting_session(reporting_engine):
         autoflush=False,
     )
     async with factory() as session:
-        # Set search_path to t_test for tenant-scoped queries
+        # Set search_path to a tenant created through supported provisioning.
         await session.execute(
-            text('SET LOCAL search_path TO "t_test", public')
+            text(
+                f'SET LOCAL search_path TO '
+                f'"{provisioned_reporting_tenant.tenant_schema}", public'
+            )
         )
         try:
             yield session

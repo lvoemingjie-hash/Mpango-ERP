@@ -52,17 +52,50 @@ async def _ensure_tables() -> None:
 
 
 async def _clear_u6i5_rows() -> None:
+    """Teardown: drop U6I5 schemas, then delete registrations and wholesalers.
+
+    Derives candidate schemas ONLY from this test's own registrations
+    (owner_email LIKE 'u6i5_%'), validates each against the exact
+    t_u6i5_<hex> pattern, and uses safe quoting. Never drops a non-U6I5
+    schema. Idempotent: safe to call repeatedly.
+    """
+    import re
+    _SCHEMA_RE = re.compile(r"^t_u6i5_[0-9a-f]{20}$")
+
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
-        rows = (
+
+        # 1. Derive candidate schemas from U6I5 registrations only.
+        reg_rows = (
             await session.execute(
                 text(
-                    "SELECT wholesaler_id FROM public.tenant_registrations "
+                    "SELECT tenant_schema, wholesaler_id FROM public.tenant_registrations "
                     "WHERE owner_email LIKE 'u6i5_%@example.com'"
                 )
             )
         ).mappings().all()
-        wholesaler_ids = [row["wholesaler_id"] for row in rows if row["wholesaler_id"] is not None]
+
+        wholesaler_ids = [
+            row["wholesaler_id"] for row in reg_rows
+            if row["wholesaler_id"] is not None
+        ]
+        candidate_schemas = [
+            row["tenant_schema"] for row in reg_rows
+            if row["tenant_schema"]
+        ]
+
+        # 2. Validate every schema name against the exact pattern before DROP.
+        safe_schemas = []
+        for s in candidate_schemas:
+            if isinstance(s, str) and _SCHEMA_RE.match(s):
+                safe_schemas.append(s)
+            # else: skip silently (not our schema; defensive)
+
+        # 3. Drop validated schemas (CASCADE removes all objects within).
+        for s in safe_schemas:
+            await session.execute(text(f'DROP SCHEMA IF EXISTS "{s}" CASCADE'))
+
+        # 4. Delete U6I5 registrations and wholesalers.
         await session.execute(
             text("DELETE FROM public.tenant_registrations WHERE owner_email LIKE 'u6i5_%@example.com'")
         )
@@ -71,6 +104,18 @@ async def _clear_u6i5_rows() -> None:
                 text("DELETE FROM public.wholesalers WHERE id = ANY(:wholesaler_ids)"),
                 {"wholesaler_ids": wholesaler_ids},
             )
+
+        # 5. Also clean up any orphaned U6I5 owner-credential setup tokens.
+        await session.execute(
+            text(
+                "DELETE FROM public.owner_credential_setup_tokens "
+                "WHERE registration_id IN ("
+                "  SELECT id FROM public.tenant_registrations "
+                "  WHERE owner_email LIKE 'u6i5_%@example.com'"
+                ")"
+            )
+        )
+
         await session.commit()
 
 
@@ -477,3 +522,101 @@ async def test_no_query_string_token_support():
         assert response.status_code == 401
 
     assert await _table_count(schema, "users") == 0
+
+
+# ---------------------------------------------------------------------------
+# DC-11T4E: teardown regression test
+# ---------------------------------------------------------------------------
+
+async def test_dc11t4e_teardown_removes_u6i5_schemas_and_preserves_others():
+    """Prove _clear_u6i5_rows drops U6I5 schemas and leaves others intact."""
+    import re
+    _SCHEMA_RE = re.compile(r"^t_u6i5_[0-9a-f]{20}$")
+
+    # 1. Create a U6I5 tenant schema (the fixture creates one for this test too,
+    #    but we create an explicit one for clarity).
+    u6i5_email, u6i5_schema = await _setup_provisioned_tenant()
+    assert _SCHEMA_RE.match(u6i5_schema), f"schema must match pattern: {u6i5_schema}"
+
+    # 2. Create a non-U6I5 sentinel schema to prove it survives teardown.
+    sentinel_schema = f"t_dc11t4e_sentinel_{uuid.uuid4().hex[:8]}"
+    async with async_engine.begin() as conn:
+        await conn.execute(text(f'CREATE SCHEMA "{sentinel_schema}"'))
+
+    # 3. Verify both schemas exist.
+    async with AsyncSessionLocal() as session:
+        u6i5_exists = (
+            await session.execute(text(
+                "SELECT 1 FROM information_schema.schemata "
+                "WHERE schema_name = :s"
+            ), {"s": u6i5_schema})
+        ).scalar()
+        assert u6i5_exists, "U6I5 schema must exist before teardown"
+
+        sentinel_exists = (
+            await session.execute(text(
+                "SELECT 1 FROM information_schema.schemata "
+                "WHERE schema_name = :s"
+            ), {"s": sentinel_schema})
+        ).scalar()
+        assert sentinel_exists, "sentinel schema must exist before teardown"
+
+    # 4. Run teardown.
+    await _clear_u6i5_rows()
+
+    # 5. Assert U6I5 schema is gone.
+    async with AsyncSessionLocal() as session:
+        u6i5_after = (
+            await session.execute(text(
+                "SELECT 1 FROM information_schema.schemata "
+                "WHERE schema_name = :s"
+            ), {"s": u6i5_schema})
+        ).scalar()
+        assert u6i5_after is None, f"U6I5 schema must be dropped: {u6i5_schema}"
+
+        # 6. Assert sentinel schema is untouched.
+        sentinel_after = (
+            await session.execute(text(
+                "SELECT 1 FROM information_schema.schemata "
+                "WHERE schema_name = :s"
+            ), {"s": sentinel_schema})
+        ).scalar()
+        assert sentinel_after is not None, "sentinel schema must survive teardown"
+
+        # 7. Assert no U6I5 registration remains.
+        reg_count = (
+            await session.execute(text(
+                "SELECT count(*) FROM public.tenant_registrations "
+                "WHERE owner_email LIKE 'u6i5_%@example.com'"
+            ))
+        ).scalar()
+        assert reg_count == 0, "U6I5 registrations must be deleted"
+
+        # 8. Assert no U6I5 wholesaler remains.
+        ws_count = (
+            await session.execute(text(
+                "SELECT count(*) FROM public.wholesalers WHERE code LIKE 'U6I5%'"
+            ))
+        ).scalar()
+        assert ws_count == 0, "U6I5 wholesalers must be deleted"
+
+        # 9. Assert zero t_u6i5_* schemas remain in pg_namespace.
+        leftover = (
+            await session.execute(text(
+                "SELECT count(*) FROM pg_namespace "
+                "WHERE nspname LIKE 't_u6i5_%'"
+            ))
+        ).scalar()
+        assert leftover == 0, f"t_u6i5_* schemas must be zero after teardown: {leftover}"
+
+    # 10. Cleanup sentinel.
+    async with async_engine.begin() as conn:
+        await conn.execute(text(f'DROP SCHEMA IF EXISTS "{sentinel_schema}" CASCADE'))
+
+
+async def test_dc11t4e_teardown_is_idempotent():
+    """Running teardown twice must not error."""
+    await _setup_provisioned_tenant()
+    await _clear_u6i5_rows()
+    await _clear_u6i5_rows()  # second call must be a clean no-op
+    # No exception raised = pass

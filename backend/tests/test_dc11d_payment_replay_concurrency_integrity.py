@@ -74,6 +74,8 @@ async def _ensure_public_tables(session) -> None:
                 outstanding_balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
                 is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
                 updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT ck_wrb_outstanding_balance_non_negative
+                    CHECK (outstanding_balance >= 0),
                 UNIQUE (wholesaler_id, retailer_id)
             )
             """
@@ -210,6 +212,7 @@ async def _seed_confirmed_order(
     *,
     tenant_id: uuid.UUID,
     total: Decimal,
+    initial_outstanding: Decimal = Decimal("0.00"),
 ):
     await _ensure_public_tables(session)
     order_id = uuid.uuid4()
@@ -242,15 +245,19 @@ async def _seed_confirmed_order(
             INSERT INTO public.wholesaler_retailer_bindings (
                 wholesaler_id, retailer_id, status, outstanding_balance, is_deleted
             )
-            VALUES (:tenant_id, :retailer_id, 'active', :total, FALSE)
+            VALUES (:tenant_id, :retailer_id, 'active', :initial_outstanding, FALSE)
             ON CONFLICT (wholesaler_id, retailer_id) DO UPDATE
             SET status = 'active',
-                outstanding_balance = :total,
+                outstanding_balance = :initial_outstanding,
                 is_deleted = FALSE,
                 updated_at = now()
             """
         ),
-        {"tenant_id": tenant_id, "retailer_id": retailer_id, "total": total},
+        {
+            "tenant_id": tenant_id,
+            "retailer_id": retailer_id,
+            "initial_outstanding": initial_outstanding,
+        },
     )
     await session.execute(
         text(
@@ -464,8 +471,8 @@ async def test_concurrent_different_keys_cannot_overpay(async_session):
     failures = [result for result in results if isinstance(result, HTTPException)]
     assert len(successes) == 1
     assert len(failures) == 1
-    assert failures[0].status_code == 400
-    assert failures[0].detail["code"] == "PAYMENT_EXCEEDS_REMAINING"
+    assert failures[0].status_code == 409
+    assert failures[0].detail["code"] == "ORDER_ALREADY_PAID"
     await _set_search_path(async_session, schema)
     snapshot = await _snapshot(
         async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
@@ -598,7 +605,7 @@ async def test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_b
                     order_id=str(order_id),
                     token=token,
                     db=failure_session,
-                    payment_input=PayOrderRequest(amount=Decimal("100.00"), method="cash"),
+                    payment_input=PayOrderRequest(amount=Decimal("100.00"), method="credit"),
                     x_idempotency_key="dc11d-r1-unknown-integrity",
                 )
 

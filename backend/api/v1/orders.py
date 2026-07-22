@@ -651,23 +651,82 @@ async def pay_order(
             )
         raise _idempotency_conflict()
 
+    current_state = OrderState(order.status.value)
     order_total = order.total_amount
     prior_paid = await payment_repo.get_order_paid_total(db, order_id=order.id)
-    remaining_balance = order_total - prior_paid
+    credit_collection_exposure = Decimal("0")
+    is_credit_collection = False
 
-    if pay_amount > remaining_balance:
-        raise _payment_error(
-            status.HTTP_400_BAD_REQUEST,
-            "PAYMENT_EXCEEDS_REMAINING",
-            "Payment amount exceeds remaining balance",
+    if current_state == OrderState.PAID:
+        if payment_method not in {"cash", "transfer"}:
+            raise _payment_error(
+                status.HTTP_409_CONFLICT,
+                "ORDER_ALREADY_PAID",
+                "Paid credit orders accept only cash or transfer collections",
+            )
+        credit_collection_exposure = await payment_repo.get_order_credit_exposure(
+            db, order_id=order.id,
         )
+        if credit_collection_exposure <= 0:
+            raise _payment_error(
+                status.HTTP_409_CONFLICT,
+                "ORDER_ALREADY_PAID",
+                "Order has no remaining credit exposure to collect",
+            )
+        if pay_amount > credit_collection_exposure:
+            raise _payment_error(
+                status.HTTP_400_BAD_REQUEST,
+                "PAYMENT_EXCEEDS_REMAINING",
+                "Payment amount exceeds remaining credit exposure",
+            )
+        target_state = OrderState.PAID
+        is_credit_collection = True
+    else:
+        remaining_balance = order_total - prior_paid
+        if pay_amount > remaining_balance:
+            raise _payment_error(
+                status.HTTP_400_BAD_REQUEST,
+                "PAYMENT_EXCEEDS_REMAINING",
+                "Payment amount exceeds remaining balance",
+            )
 
-    current_state = OrderState(order.status.value)
-    if current_state not in (OrderState.CONFIRMED, OrderState.PARTIALLY_PAID):
-        raise _payment_error(
-            status.HTTP_409_CONFLICT,
-            "INVALID_STATE_TRANSITION",
-            "Order must be confirmed or partially_paid before payment",
+        if current_state not in (OrderState.CONFIRMED, OrderState.PARTIALLY_PAID):
+            raise _payment_error(
+                status.HTTP_409_CONFLICT,
+                "INVALID_STATE_TRANSITION",
+                "Order must be confirmed or partially_paid before payment",
+            )
+
+        # Credit closes the order lifecycle (PAID) but does NOT inflate paid_total
+        # (which counts only cash/transfer for financial reporting).
+        if payment_method == "credit":
+            credit_count = await payment_repo.count_order_payments(
+                db, order_id=order.id, method="credit",
+            )
+            if credit_count > 0:
+                raise _payment_error(
+                    status.HTTP_409_CONFLICT,
+                    "DUPLICATE_CREDIT_PAYMENT",
+                    "Only one credit payment is allowed per order",
+                )
+            if prior_paid > 0:
+                raise _payment_error(
+                    status.HTTP_400_BAD_REQUEST,
+                    "CREDIT_SPLIT_TENDER_UNSUPPORTED",
+                    "Credit is allowed only on an order with no prior cash or transfer settlement",
+                )
+            if pay_amount != order_total:
+                raise _payment_error(
+                    status.HTTP_400_BAD_REQUEST,
+                    "CREDIT_AMOUNT_MISMATCH",
+                    "Credit amount must equal order total",
+                )
+
+        cumulative_after_payment = prior_paid + pay_amount
+        target_state = (
+            OrderState.PAID
+            if cumulative_after_payment >= order_total
+            else OrderState.PARTIALLY_PAID
         )
 
     if payment_method == "transfer" and payment_input.transaction_id:
@@ -678,38 +737,6 @@ async def pay_order(
         existing_transfer = _payment_mapping_or_none(existing_transfer)
         if existing_transfer:
             raise _duplicate_transfer_reference()
-
-    # Credit closes the order lifecycle (PAID) but does NOT inflate paid_total
-    # (which counts only cash/transfer for financial reporting).
-    if payment_method == "credit":
-        credit_count = await payment_repo.count_order_payments(
-            db, order_id=order.id, method="credit",
-        )
-        if credit_count > 0:
-            raise _payment_error(
-                status.HTTP_409_CONFLICT,
-                "DUPLICATE_CREDIT_PAYMENT",
-                "Only one credit payment is allowed per order",
-            )
-        if prior_paid > 0:
-            raise _payment_error(
-                status.HTTP_400_BAD_REQUEST,
-                "CREDIT_SPLIT_TENDER_UNSUPPORTED",
-                "Credit is allowed only on an order with no prior cash or transfer settlement",
-            )
-        if pay_amount != order_total:
-            raise _payment_error(
-                status.HTTP_400_BAD_REQUEST,
-                "CREDIT_AMOUNT_MISMATCH",
-                "Credit amount must equal order total",
-            )
-
-    cumulative_after_payment = prior_paid + pay_amount
-    target_state = (
-        OrderState.PAID
-        if cumulative_after_payment >= order_total
-        else OrderState.PARTIALLY_PAID
-    )
 
     from services.order_service import OrderService
 
@@ -727,7 +754,8 @@ async def pay_order(
             status=(
                 "completed"
                 if (
-                    payment_method == "transfer"
+                    is_credit_collection
+                    or payment_method == "transfer"
                     and target_state == OrderState.PAID
                 )
                 else "pending"
@@ -735,35 +763,51 @@ async def pay_order(
             created_by=token.user_id if token.user_id else None,
         )
 
-        # Apply outstanding balance delta (method-dependent):
-        #   cash/transfer: -amount (receivable decreases)
-        #   credit:        +amount (new receivable created)
         from services.payment_service import PaymentService
 
         payment_svc = PaymentService()
-        balance_delta = pay_amount if payment_method == "credit" else -pay_amount
-        await payment_svc._apply_outstanding_balance_delta(
-            db,
-            wholesaler_id=order.wholesaler_id,
-            retailer_id=order.retailer_id,
-            delta=balance_delta,
-        )
-
-        order = await order_service.transition(
-            order_id=order.id,
-            target_state=target_state,
-            reason="Payment recorded",
-            updated_by=token.user_id,
-            payment_method=payment_method,
-        )
-
-        # S5-D4B: Settle only after the transition returns an actual PAID
-        # order, not merely because the proposed target was PAID.
-        order_status = getattr(order.status, "value", order.status)
-        if order_status == OrderState.PAID.value:
-            await payment_repo.update_cash_transfer_to_completed(
-                db, order_id=order.id,
+        if is_credit_collection:
+            await payment_svc._apply_outstanding_balance_delta(
+                db,
+                wholesaler_id=order.wholesaler_id,
+                retailer_id=order.retailer_id,
+                delta=-pay_amount,
             )
+            from services.ledger_service import LedgerService
+
+            await LedgerService(db).post_payment_received(
+                order_id=order.id,
+                amount=pay_amount,
+                description=(
+                    f"Credit collection for order {order.id} - "
+                    f"Amount: {pay_amount}"
+                ),
+            )
+            await db.refresh(order)
+        else:
+            if payment_method == "credit":
+                await payment_svc._apply_outstanding_balance_delta(
+                    db,
+                    wholesaler_id=order.wholesaler_id,
+                    retailer_id=order.retailer_id,
+                    delta=pay_amount,
+                )
+
+            order = await order_service.transition(
+                order_id=order.id,
+                target_state=target_state,
+                reason="Payment recorded",
+                updated_by=token.user_id,
+                payment_method=payment_method,
+            )
+
+            # S5-D4B: Settle only after the transition returns an actual PAID
+            # order, not merely because the proposed target was PAID.
+            order_status = getattr(order.status, "value", order.status)
+            if order_status == OrderState.PAID.value:
+                await payment_repo.update_cash_transfer_to_completed(
+                    db, order_id=order.id,
+                )
     except IntegrityError:
         await db.rollback()
         await _restore_tenant_search_path_after_rollback(db)

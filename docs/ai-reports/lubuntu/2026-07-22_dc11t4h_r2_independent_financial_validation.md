@@ -232,13 +232,29 @@ Because `gitnexus analyze` and `gitnexus status` are explicitly required quality
 
 ## Cleanup And Push Proof
 
-Pending final report-branch push and post-push teardown steps:
+Push proof:
 
-- Remove disposable PostgreSQL and Redis containers
-- Remove disposable volumes
-- Remove backend `.venv`
-- Remove temporary state files
-- Confirm report branch push only
-- Confirm validation worktree clean after report commit
+- `git push --porcelain origin refs/heads/reports/dc11t4h-r2-independent-financial-validation-2026-07-22`
+  returned only:
+  `refs/heads/reports/dc11t4h-r2-independent-financial-validation-2026-07-22 -> refs/heads/reports/dc11t4h-r2-independent-financial-validation-2026-07-22 [new branch]`
+- Remote heads after push:
+  - `origin/platform-dev` = `12c5ee557876498240b1a36cc850d030d7bd8293`
+  - `origin/product-dev-recovered` = `303dc179e94527668f4f1d2145fab74be0f48751`
+  - `origin/reports/dc11t4h-r2-independent-financial-validation-2026-07-22` = `50632799aaf8f839038d785b6b081517cdfb6b03`
+- No push command targeted `product-dev-recovered`, `platform-dev`, or any tag ref
 
-This section will be updated in the final pushed report commit with concrete command results.
+Cleanup proof:
+
+- Validation worktree was clean immediately after the first report commit: `git status --short` returned no output
+- Disposable containers removed:
+  - `docker rm -f dc11t4h_r2_postgres dc11t4h_r2_redis`
+  - output: `dc11t4h_r2_postgres`, `dc11t4h_r2_redis`
+- Disposable volumes removed:
+  - `docker volume rm dc11t4h_r2_pgdata dc11t4h_r2_redisdata`
+  - output: `dc11t4h_r2_pgdata`, `dc11t4h_r2_redisdata`
+- Post-cleanup verification:
+  - `docker ps -a --filter name=dc11t4h_r2_postgres --filter name=dc11t4h_r2_redis` returned no containers
+  - `docker volume ls | grep '^dc11t4h_r2_'` returned no volumes
+  - backend `.venv` and `/tmp/dc11t4h_r2_state` were removed: `cleanup_targets_absent`
+
+Final report-branch commit and final worktree removal are performed after this update.

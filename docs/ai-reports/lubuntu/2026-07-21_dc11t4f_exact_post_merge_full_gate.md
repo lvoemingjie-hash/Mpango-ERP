@@ -91,6 +91,7 @@ Warnings differed (`1697` vs `1690`), but the gate-required totals matched exact
 | --- | --- |
 | `refs/heads/product-dev-recovered` | `303dc179e94527668f4f1d2145fab74be0f48751` |
 | `refs/heads/platform-dev` | `12c5ee557876498240b1a36cc850d030d7bd8293` |
+| `refs/heads/reports/dc11t4f-exact-post-merge-full-gate-2026-07-21` | `f063ae7af22d2a8506938f1195b46cc152211eb1` |
 | `refs/tags/release-2026-07-13` | `7ff1ab3a665592c4f9b8088c0b0c141eba2911ff` |
 | `refs/tags/release-2026-07-13^{}` | `547b0b294aa387d6179f53eca3ec162532a1e29e` |
 
@@ -106,9 +107,25 @@ Cleanup completed before this report was prepared:
 - Backend `.venv` removed with the disposable test worktree
 - Frontend preview server stopped
 
+## 7. Remote Push Proof
+
+Report branch push completed:
+
+- Push result: `f063ae7..003e796  reports/dc11t4f-exact-post-merge-full-gate-2026-07-21 -> reports/dc11t4f-exact-post-merge-full-gate-2026-07-21`
+- Remote report branch after push: `003e79666cf0d30519eaa4fe75253975e75d177c`
+
+Protected refs remained unchanged after the push:
+
+| Remote ref | SHA after push |
+| --- | --- |
+| `refs/heads/product-dev-recovered` | `303dc179e94527668f4f1d2145fab74be0f48751` |
+| `refs/heads/platform-dev` | `12c5ee557876498240b1a36cc850d030d7bd8293` |
+| `refs/tags/release-2026-07-13` | `7ff1ab3a665592c4f9b8088c0b0c141eba2911ff` |
+| `refs/tags/release-2026-07-13^{}` | `547b0b294aa387d6179f53eca3ec162532a1e29e` |
+
 No protected branches or release tags were pushed or changed during gate execution.
 
-## 7. Final Verdict
+## 8. Final Verdict
 
 ### PASS_DC11T4F_EXACT_POST_MERGE_FULL_GATE
 

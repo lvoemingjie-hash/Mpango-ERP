@@ -106,23 +106,55 @@
 | cash | 11 | 2,250.00 |
 | **Balance** | **22** | **0.00** |
 
-**rpt_receivables_summary:**
+> **Correction applied in DC-11T4I-R1B (2026-07-22):** The financial interpretation
+> originally published here treated the negative receivable aggregate as a valid
+> settled balance. That interpretation is **stale and retracted**. See the
+> corrected analysis below. TEST001 classification is unchanged:
+> `CONFIRMED_LEGACY_TEST_FIXTURE_CONTAMINATION`.
 
-| Entity Type | Orders | Total Outstanding |
-|-------------|--------|-------------------|
+**rpt_receivables_summary (LEGACY / CONTAMINATED — not canonical):**
+
+| Entity Type | Orders | Reported Outstanding |
+|-------------|--------|----------------------|
 | order | 11 | -2,250.00 |
 
-**Exposure Calculation:**
-- Total credit (orders): 3,450.00
-- Total completed collections: 2,325.00
-- Expected outstanding: +1,125.00
-- rpt_receivables_summary reports: -2,250.00
-- **Discrepancy:** The report shows negative outstanding (overpayment), but raw order/payment totals suggest +1,125.00 outstanding. This discrepancy is because:
-  1. 2 draft orders (300.00) have no payments and no ledger entries — they are excluded from the report
-  2. 4 partially_paid orders (900.00 total) have partial payments — the report may be computing differently
-  3. 11 paid orders (2,250.00) should have zero outstanding, but the report shows -2,250.00
+> This value is produced by the legacy `rpt_receivables_summary` path and is
+> **contaminated/stale evidence**. It must NOT be treated as canonical
+> post-DC-11T4H receivables semantics.
 
-**Root Cause of Negative Outstanding:** The `ledger_entries` table records each paid order as a **negative receivable** (amount = -total_amount) and a **positive cash** entry. The `rpt_receivables_summary` reads the `receivable` account entries, which are all negative for paid orders. This is **correct double-entry bookkeeping** — the negative receivable means the debt has been settled. The -2,250.00 represents the sum of all settled receivables (i.e., all paid orders have been zeroed out).
+**Corrected Financial Semantics (canonical post-DC-11T4H):**
+
+- Negative receivable ledger postings are **accounting movements**
+  (debit/credit entries on the `receivable` account), **not** a valid negative
+  customer outstanding balance. A ledger movement of `-2,250.00` on
+  `receivable` is the mechanical offset booked when a payment clears; it is not
+  itself a balance.
+- Paid orders should contribute **zero remaining receivable exposure** after the
+  corresponding collections. A settled order's remaining exposure is
+  `max(credit_total - collection_total, 0) = 0`, never negative.
+- The authoritative post-DC-11T4H write path (migration 035 function
+  `_reconstruct_binding_balances`) computes `wholesaler_retailer_bindings`
+  outstanding as `GREATEST(credit_total - collection_total, 0)`, which is always
+  non-negative. Accordingly, a binding carrying a stored `outstanding_balance`
+  of `-2,325.00` is a **stale/contaminated stored value**, not real negative debt.
+  The live probe confirms `count(bindings WHERE outstanding_balance > 0) = 0`
+  for TEST001 — i.e., zero real remaining exposure.
+- The legacy `rpt_receivables_summary` aggregate of `-2,250.00` is therefore
+  contaminated/stale evidence and must not be treated as canonical post-DC-11T4H
+  semantics. It reflects a pre-fix calculation path, not the corrected one.
+- **DC-11T4H at `1be053e0` fixes the calculation/write path**, but **production
+  runtime closure remains pending** — the fix is merged but the live TEST001
+  fixture has not yet been cleared and recomputed, so stale values still persist
+  in this fixture.
+
+**Exposure Reconciliation (corrected):**
+- Total order credit (17 orders): 3,450.00
+- Completed collections (cash + transfer): 2,325.00
+- Remaining exposure under canonical semantics (sum of per-order
+  `max(credit - collection, 0)`): non-negative by construction.
+- The legacy report's negative figure is an artifact of summing signed
+  `receivable` ledger movements without the `max(..., 0)` guard; it is not a
+  customer balance and must not be carried forward.
 
 ### E9: Synthetic UUID Family
 
@@ -231,9 +263,17 @@ The `CONFIRMED_LEGACY_TEST_FIXTURE_CONTAMINATION` classification explains why mi
 ## Recommendations
 
 1. **Do not apply migration 035 to test fixture data** — the data is synthetic and should not be migrated
-2. **Clean up test fixture** (optional): Remove or mark the `TEST001` wholesaler and its derived schema as test data
+2. **Clean up test fixture** (controlled): the exact, evidence-backed cleanup plan
+   for TEST001 is specified in
+   `ai-ledger/ops/2026-07-22_dc11t4i_r2a_test001_cleanup_design.md`
+   (DC-11T4I-R2A). Both TEST001-bound retailers are exclusive to TEST001 (no
+   shared retailers); the derived schema and public fixture rows are safe to
+   remove in the documented transaction order. Production data is not modified
+   in R2A; the plan is proven on a disposable restored copy only.
 3. **Proceed with migration 035** on schemas with real customer data only
 4. **The backup is intact** and can be used for rollback if needed
+5. **Financial wording corrected in R1B**: the negative receivable aggregate is
+   an accounting movement, not a settled balance; see E7-8 above.
 
 ---
 

@@ -81,3 +81,44 @@ Executed through `BEGIN READ ONLY` / `ROLLBACK` after deployment:
 ## Required CTO Decision
 
 Provide an approved existing secure credential channel for no-mutation smoke verification, or authorize the next operational action for the maintenance/write-block state. Without that, the R2E closeout cannot truthfully claim `PASS_DC11T4I_R2E_EXACT_FULL_STACK_RUNTIME_CLOSED`.
+
+## R1 Availability Restoration
+
+### Interim Verdict
+
+PASS_DC11T4I_R2E_R1_WRITES_REOPENED
+
+### Scope
+
+- Objective: remove the temporary R2E gateway write block without changing application code, database data, credentials, or backend/frontend/postgres/redis containers.
+- Method: from `/opt/mpango-erp`, ran canonical gateway-only recreation with `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-deps --force-recreate gateway`.
+- No password, token, user, database row, backend container, frontend container, postgres container, or redis container was modified or restarted.
+
+### Preconditions
+
+- Host HEAD: `1be053e0ad362df66b2e153e8317d6a559eed61a`
+- Host tracked status: clean
+- Backend health before gateway recreation: healthy
+- Frontend health before gateway recreation: healthy
+- Postgres health before gateway recreation: healthy
+- Redis health before gateway recreation: healthy
+
+### Gateway Recreation
+
+- Gateway recreation start: `2026-07-22T21:14:40Z`
+- Recreated gateway container created: `2026-07-22T21:14:40.331060121Z`
+- Gateway health after recreation: healthy
+- Backend container creation remained `2026-07-22T14:56:08.044076532Z`
+- Frontend container creation remained `2026-07-22T14:56:08.042712586Z`
+- Postgres container creation remained `2026-07-13T01:00:09.753834266Z`
+- Redis container creation remained `2026-07-13T01:00:09.68017272Z`
+
+### Canonical Gateway Proof
+
+- `nginx -T` inside the recreated gateway contained no `/tmp/r2e_gateway_maintenance.conf` include.
+- `nginx -T` inside the recreated gateway contained no `return 423` maintenance rule.
+- Unauthenticated POST write probe to `/api/v1/orders` returned controlled `401`.
+- `GET /health/live` returned `200`.
+- `GET /health/ready` returned `200`.
+- Final container health: `5/5`.
+- Forbidden log-pattern scan from the gateway recreation window returned `0` for backend, frontend, gateway, postgres, and redis.

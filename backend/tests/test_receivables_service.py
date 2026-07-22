@@ -40,18 +40,18 @@ def receivables_service():
 
 @pytest.mark.asyncio
 async def test_retailer_summary_aggregates_totals(mock_db_session, receivables_service):
-    """Retailer summary correctly aggregates totals across retailers."""
+    """Summary combines credit exposure and ordinary unpaid order balances."""
     # Mock binding query result
     mock_binding_result = MagicMock()
     mock_binding_result.mappings.return_value.all.return_value = [
         {
             "retailer_id": uuid.UUID("11111111-1111-1111-1111-111111111111"),
-            "outstanding_balance": Decimal("5000.00"),
+            "outstanding_balance": Decimal("500.00"),
             "retailer_name": "Retailer A",
         },
         {
             "retailer_id": uuid.UUID("22222222-2222-2222-2222-222222222222"),
-            "outstanding_balance": Decimal("3000.00"),
+            "outstanding_balance": Decimal("0.00"),
             "retailer_name": "Retailer B",
         },
     ]
@@ -65,14 +65,14 @@ async def test_retailer_summary_aggregates_totals(mock_db_session, receivables_s
     mock_order_a = MagicMock()
     mock_order_a.retailer_id = retailer_a_id
     mock_order_a.id = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-    mock_order_a.status = "confirmed"
-    mock_order_a.total_amount = Decimal("2000.00")
+    mock_order_a.status = "paid"
+    mock_order_a.total_amount = Decimal("1000.00")
     mock_order_a.created_at = datetime.utcnow()
 
     mock_order_b = MagicMock()
     mock_order_b.retailer_id = retailer_b_id
     mock_order_b.id = uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
-    mock_order_b.status = "paid"
+    mock_order_b.status = "confirmed"
     mock_order_b.total_amount = Decimal("1500.00")
     mock_order_b.created_at = datetime.utcnow()
 
@@ -82,14 +82,12 @@ async def test_retailer_summary_aggregates_totals(mock_db_session, receivables_s
     mock_credit_result = MagicMock()
     mock_credit_result.mappings.return_value.all.return_value = [
         {"order_id": mock_order_a.id, "credit_total": Decimal("1000.00")},
-        {"order_id": mock_order_b.id, "credit_total": Decimal("500.00")},
     ]
 
     # Mock cash totals
     mock_cash_result = MagicMock()
     mock_cash_result.mappings.return_value.all.return_value = [
         {"order_id": mock_order_a.id, "cash_total": Decimal("500.00")},
-        {"order_id": mock_order_b.id, "cash_total": Decimal("1500.00")},
     ]
 
     # Setup execute to return different results based on query
@@ -121,10 +119,12 @@ async def test_retailer_summary_aggregates_totals(mock_db_session, receivables_s
     assert "by_retailer" in result
 
     # Verify totals
-    assert result["total_outstanding"] == 8000.00  # 5000 + 3000
+    assert result["total_outstanding"] == 2000.00  # 500 credit + 1500 unpaid
     assert result["retailer_count"] == 2
     assert result["order_count"] == 2
-    assert result["credit_receivables"] == 1500.00  # 1000 + 500
+    assert result["credit_receivables"] == 500.00
+    assert result["unpaid_order_balance"] == 1500.00
+    assert result["by_retailer"][1]["outstanding_balance"] == 1500.00
 
 
 @pytest.mark.asyncio
@@ -268,6 +268,7 @@ async def test_order_list_classifies_credit_receivable(mock_db_session, receivab
     order = result["items"][0]
     assert order["classification"] == "credit_receivable"
     assert order["credit_amount"] == 800.00
+    assert order["balance_due"] == 600.00
     assert order["status"] == "paid"
 
 
@@ -579,11 +580,12 @@ async def test_classification_pagination_across_db_pages(mock_db_session, receiv
         for order_id in credit_orders
     ]
 
-    # Mock cash payments for all orders
+    # Mock cash payments only for non-credit orders so credit rows retain exposure.
     mock_cash_result = MagicMock()
     mock_cash_result.mappings.return_value.all.return_value = [
         {"order_id": order.id, "cash_total": Decimal("500.00")}
         for order in mock_orders
+        if order.id not in credit_orders
     ]
 
     mock_retailer_result = MagicMock()
@@ -660,11 +662,12 @@ async def test_classification_pagination_page_beyond_first_db_page(mock_db_sessi
         for order_id in credit_orders
     ]
 
-    # Mock cash payments for all orders
+    # Mock cash payments only for non-credit orders so credit rows retain exposure.
     mock_cash_result = MagicMock()
     mock_cash_result.mappings.return_value.all.return_value = [
         {"order_id": order.id, "cash_total": Decimal("500.00")}
         for order in mock_orders
+        if order.id not in credit_orders
     ]
 
     mock_retailer_result = MagicMock()

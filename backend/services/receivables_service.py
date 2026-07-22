@@ -39,6 +39,14 @@ def calculate_age_days(created_at: datetime | None) -> int:
     return max((datetime.now(timezone.utc) - normalized).days, 0)
 
 
+def _non_negative_amount(amount: Decimal) -> Decimal:
+    return amount if amount > Decimal("0") else Decimal("0")
+
+
+def _credit_exposure(credit_amount: Decimal, collection_amount: Decimal) -> Decimal:
+    return _non_negative_amount(credit_amount - collection_amount)
+
+
 class ReceivablesService:
     """Read-only receivables visibility service."""
 
@@ -80,7 +88,6 @@ class ReceivablesService:
                 JOIN public.retailers r ON r.id = wrb.retailer_id
                 WHERE wrb.wholesaler_id = :wholesaler_id
                   AND wrb.is_deleted IS FALSE
-                  AND wrb.outstanding_balance != 0
                 ORDER BY wrb.outstanding_balance DESC
                 """
             ),
@@ -113,6 +120,11 @@ class ReceivablesService:
             .where(Order.wholesaler_id == current_wholesaler_id)
             .where(Order.retailer_id.in_(retailer_ids))
             .where(Order.is_deleted.is_(False))
+            .where(Order.status.in_([
+                OrderStatus.CONFIRMED,
+                OrderStatus.PARTIALLY_PAID,
+                OrderStatus.PAID,
+            ]))
             .order_by(Order.retailer_id, Order.created_at.desc())
         )
         order_rows = orders_result.all()
@@ -171,34 +183,45 @@ class ReceivablesService:
 
             retailer_credit = Decimal("0")
             retailer_unpaid = Decimal("0")
+            retailer_order_count = 0
 
             for order in retailer_orders:
                 order_id = order.id
                 credit_amt = credit_totals.get(order_id, Decimal("0"))
                 cash_amt = cash_totals.get(order_id, Decimal("0"))
-                balance_due = order.total_amount - cash_amt
+                credit_balance = _credit_exposure(credit_amt, cash_amt)
+                balance_due = _non_negative_amount(order.total_amount - cash_amt)
 
                 # Credit receivable: orders with credit payment exposure
-                if credit_amt > 0:
-                    retailer_credit += credit_amt
+                if credit_balance > 0:
+                    retailer_credit += credit_balance
+                    retailer_order_count += 1
 
                 # Unpaid order: confirmed/partially_paid with remaining balance
-                if order.status in [OrderStatus.CONFIRMED, OrderStatus.PARTIALLY_PAID] and balance_due > 0:
+                elif order.status in [OrderStatus.CONFIRMED, OrderStatus.PARTIALLY_PAID] and balance_due > 0:
                     retailer_unpaid += balance_due
+                    retailer_order_count += 1
+
+            binding_credit = _non_negative_amount(
+                Decimal(str(binding_info["outstanding_balance"]))
+            )
+            retailer_outstanding = binding_credit + retailer_unpaid
+            if retailer_outstanding <= 0:
+                continue
 
             by_retailer.append({
                 "retailer_id": str(binding_info["retailer_id"]),
                 "retailer_name": binding_info["retailer_name"] or "Unknown",
-                "outstanding_balance": float(binding_info["outstanding_balance"]),
+                "outstanding_balance": float(retailer_outstanding),
                 "credit_receivables": float(retailer_credit),
                 "unpaid_order_balance": float(retailer_unpaid),
-                "order_count": len(retailer_orders),
+                "order_count": retailer_order_count,
             })
 
-            total_outstanding += binding_info["outstanding_balance"]
+            total_outstanding += retailer_outstanding
             total_credit_receivables += retailer_credit
             total_unpaid_balance += retailer_unpaid
-            total_order_count += len(retailer_orders)
+            total_order_count += retailer_order_count
 
         return {
             "total_outstanding": float(total_outstanding),
@@ -383,11 +406,12 @@ class ReceivablesService:
             order_id = order.id
             credit_amt = credit_totals.get(order_id, Decimal("0"))
             cash_amt = cash_totals.get(order_id, Decimal("0"))
-            balance_due = order.total_amount - cash_amt
+            credit_balance = _credit_exposure(credit_amt, cash_amt)
+            balance_due = _non_negative_amount(order.total_amount - cash_amt)
 
             # Determine classification
             order_classification = None
-            if credit_amt > 0:
+            if credit_balance > 0:
                 order_classification = "credit_receivable"
             elif balance_due > 0 and order.status in [OrderStatus.CONFIRMED, OrderStatus.PARTIALLY_PAID]:
                 order_classification = "unpaid_order"
@@ -418,7 +442,7 @@ class ReceivablesService:
                 "total_amount": float(order.total_amount),
                 "cash_paid": float(cash_amt),
                 "credit_amount": float(credit_amt),
-                "balance_due": float(balance_due),
+                "balance_due": float(credit_balance if credit_amt > 0 else balance_due),
                 "created_at": order.created_at.isoformat() if order.created_at else None,
                 "age_days": age_days,
             })

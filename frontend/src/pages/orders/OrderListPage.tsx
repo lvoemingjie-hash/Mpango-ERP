@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
+import type { PaymentData } from '@/services/paymentService';
 
 function buildFinanceCollectionReturnPath(returnPath: string, orderId: string): string {
   const [path, query = ''] = returnPath.split('?');
@@ -24,6 +25,32 @@ function buildFinanceCollectionReturnPath(returnPath: string, orderId: string): 
   params.set('collectedOrder', orderId);
   const search = params.toString();
   return search ? `${path}?${search}` : path;
+}
+
+export function calculatePaymentModalState(order: Order, payments: PaymentData[]) {
+  const creditTotal = payments
+    .filter((payment) => payment.method === 'credit')
+    .reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const collectionTotal = payments
+    .filter((payment) => payment.method === 'cash' || payment.method === 'transfer')
+    .reduce((sum, payment) => sum + Number(payment.amount), 0);
+
+  if (creditTotal > 0) {
+    return {
+      remainingAmount: Math.max(creditTotal - collectionTotal, 0),
+      allowCreditSale: false,
+    };
+  }
+
+  return {
+    remainingAmount: Math.max(order.total_amount - collectionTotal, 0),
+    allowCreditSale: collectionTotal === 0 && order.status !== 'paid',
+  };
+}
+
+export function isOrderListPaymentActionVisible(status: OrderStatus) {
+  return status !== 'paid'
+    && (ALLOWED_TRANSITIONS[status]?.includes('paid') || status === 'partially_paid');
 }
 
 export function OrderListPage() {
@@ -166,9 +193,9 @@ export function OrderListPage() {
   const canCancelOrder = (status: OrderStatus) =>
     ALLOWED_TRANSITIONS[status]?.includes('cancelled');
 
-  /** Phase 5: can pay from confirmed or partially_paid */
+  /** Phase 5: can record settlement, or collect exposure on paid credit orders. */
   const canPay = (status: OrderStatus) =>
-    ALLOWED_TRANSITIONS[status]?.includes('paid') || status === 'partially_paid';
+    ALLOWED_TRANSITIONS[status]?.includes('paid') || status === 'partially_paid' || status === 'paid';
 
   const canFulfill = (status: OrderStatus) =>
     ALLOWED_TRANSITIONS[status]?.includes('fulfilled');
@@ -177,18 +204,31 @@ export function OrderListPage() {
     ALLOWED_TRANSITIONS[status]?.includes('returned');
 
   const [payRemaining, setPayRemaining] = useState<number | null>(null);
+  const [payAllowCreditSale, setPayAllowCreditSale] = useState(false);
 
   const handleOpenPayModal = async (order: Order) => {
-    setPayModalOrder(order);
-    // Fetch prior payments to compute true remaining balance
+    // Fetch prior payments to compute true remaining settlement/exposure.
     try {
       const res = await paymentService.getByOrder(order.id);
       const items = res.data.data.items;
-      const totalPaid = items.reduce((sum, p) => sum + Number(p.amount), 0);
-      setPayRemaining(order.total_amount - totalPaid);
+      const modalState = calculatePaymentModalState(order, items);
+      if (modalState.remainingAmount <= 0) {
+        useToastStore.getState().addToast({
+          type: 'error',
+          title: 'Nothing to Collect',
+          message: `Order ${order.id.slice(0, 8)}... has no remaining balance.`,
+        });
+        return;
+      }
+      setPayRemaining(modalState.remainingAmount);
+      setPayAllowCreditSale(modalState.allowCreditSale);
+      setPayModalOrder(order);
     } catch {
-      // Fallback to full order total if payments can't be fetched
-      setPayRemaining(order.total_amount);
+      useToastStore.getState().addToast({
+        type: 'error',
+        title: 'Payment History Unavailable',
+        message: 'Could not verify the remaining balance. Retry before recording payment.',
+      });
     }
   };
 
@@ -394,7 +434,7 @@ export function OrderListPage() {
                           Confirm
                         </button>
                       )}
-                      {canPay(o.status) && (
+                      {isOrderListPaymentActionVisible(o.status) && (
                         <button
                           onClick={() => handleOpenPayModal(o)}
                           disabled={!hasUpdatePermission}
@@ -456,11 +496,15 @@ export function OrderListPage() {
       {payModalOrder && (
         <PaymentRecordModal
           open={!!payModalOrder}
-          onClose={() => setPayModalOrder(null)}
+          onClose={() => {
+            setPayModalOrder(null);
+            setPayAllowCreditSale(false);
+          }}
           onSubmit={handlePaySubmit}
           orderId={payModalOrder.id}
           orderTotal={payModalOrder.total_amount}
           remainingAmount={payRemaining ?? payModalOrder.total_amount}
+          allowCreditSale={payAllowCreditSale}
           loading={actionLoading === payModalOrder.id}
         />
       )}

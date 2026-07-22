@@ -128,8 +128,8 @@ async def test_create_payment_does_not_open_nested_transaction():
     assert result["amount"] == Decimal("50.00")
     # begin() must NOT have been called — transaction is managed externally
     assert txn.entered == 0
-    # Outstanding balance delta applied for cash payment
-    assert balance_deltas == [Decimal("-50.00")]
+    # Ordinary cash settlement must not decrement credit exposure.
+    assert balance_deltas == []
 
 
 @pytest.mark.asyncio
@@ -172,10 +172,10 @@ async def test_create_payment_propagates_balance_update_failure():
         "id": uuid.uuid4(),
         "order_id": order.id,
         "retailer_id": order.retailer_id,
-        "transaction_id": "TX-FAIL",
+        "transaction_id": None,
         "amount": Decimal("10.00"),
-        "method": "transfer",
-        "status": "completed",
+        "method": "credit",
+        "status": "pending",
         "created_at": None,
         "updated_at": None,
     }
@@ -199,8 +199,8 @@ async def test_create_payment_propagates_balance_update_failure():
             tenant_db=tenant_db,
             order_id=str(order.id),
             amount=Decimal("10.00"),
-            method="transfer",
-            transaction_id="TX-FAIL",
+            method="credit",
+            transaction_id=None,
             idempotency_key="IK-FAIL",
             created_by=str(uuid.uuid4()),
         )

@@ -8,8 +8,9 @@ interface PaymentRecordModalProps {
   onSubmit: (data: PayOrderData, idempotencyKey: string) => Promise<void>;
   orderId: string;
   orderTotal: number;
-  /** Remaining unpaid amount (orderTotal minus previous payments) */
+  /** Remaining amount available for ordinary settlement or credit collection. */
   remainingAmount: number;
+  allowCreditSale?: boolean;
   loading?: boolean;
 }
 
@@ -33,6 +34,7 @@ export function PaymentRecordModal({
   orderId,
   orderTotal,
   remainingAmount,
+  allowCreditSale = remainingAmount === orderTotal,
   loading = false,
 }: PaymentRecordModalProps) {
   const [method, setMethod] = useState<PaymentMethod | ''>('');
@@ -43,9 +45,9 @@ export function PaymentRecordModal({
 
   const resetIdempotencyKey = () => setIdempotencyKey(createPaymentIdempotencyKey());
 
-  const creditUnavailable = remainingAmount !== orderTotal;
+  const creditUnavailable = !allowCreditSale;
   const isValid = method && amount && Number(amount) > 0
-    && (method === 'credit' ? Number(amount) === orderTotal && remainingAmount === orderTotal : Number(amount) <= remainingAmount);
+    && (method === 'credit' ? Number(amount) === orderTotal && allowCreditSale : Number(amount) <= remainingAmount);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +63,7 @@ export function PaymentRecordModal({
       return;
     }
     if (method === 'credit') {
-      if (remainingAmount !== orderTotal) {
+      if (!allowCreditSale) {
         setError('Credit is only allowed on orders with no prior payments (no split tender).');
         return;
       }
@@ -135,7 +137,7 @@ export function PaymentRecordModal({
               if (next === 'credit' && creditUnavailable) {
                 setMethod('');
                 setAmount('');
-                setError('Credit Sale is only available before any payment has been recorded. Use a repayment method for partially paid orders.');
+                setError('Credit Sale is only available before any payment has been recorded. Use a repayment method for outstanding exposure.');
                 return;
               }
               setMethod(next);
@@ -158,7 +160,7 @@ export function PaymentRecordModal({
           </select>
           {creditUnavailable && (
             <p className="mt-1 text-xs text-gray-500">
-              Credit Sale is disabled because this order already has a recorded payment. Use Cash, Bank Transfer, or Mobile Money to collect the remaining balance.
+              Credit Sale is disabled because this order already has a recorded payment or credit collection context. Use Cash, Bank Transfer, or Mobile Money to collect the remaining balance.
             </p>
           )}
         </div>

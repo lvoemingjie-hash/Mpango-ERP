@@ -34,6 +34,10 @@ MV_SALES_DAILY = "mv_sales_daily"
 IX_MV_SALES_DAILY = "idx_mv_sales_daily_u1"
 REPORTING_ROLE = "reporting_role"
 CK_PAYMENTS_METHOD = "ck_payments_method_canonical"
+PUBLIC_BINDINGS = "wholesaler_retailer_bindings"
+CK_BINDINGS_OUTSTANDING_NON_NEGATIVE = (
+    "ck_wrb_outstanding_balance_non_negative"
+)
 CANONICAL_PAYMENT_METHODS = ("cash", "transfer", "credit")
 CANONICAL_ORDER_STATUSES = (
     "draft",
@@ -175,6 +179,28 @@ def _is_payment_method_constraint_candidate(row: dict) -> bool:
     return "method" in columns or literal_values == set(CANONICAL_PAYMENT_METHODS)
 
 
+def _is_outstanding_balance_non_negative_constraint(row: dict) -> bool:
+    if _catalog_code(row.get("contype")) != "c" or not bool(row.get("convalidated")):
+        return False
+    if _catalog_column_names(row.get("column_names")) != ["outstanding_balance"]:
+        return False
+    expression = _compact_sql(
+        str(row.get("check_expr") or row.get("constraint_def") or "")
+    ).replace("(0)::numeric", "0").replace("0::numeric", "0")
+    return expression in {
+        "outstanding_balance>=0",
+        "(outstanding_balance>=0)",
+        "check(outstanding_balance>=0)",
+        "check((outstanding_balance>=0))",
+    }
+
+
+def _is_outstanding_balance_constraint_candidate(row: dict) -> bool:
+    columns = _catalog_column_names(row.get("column_names"))
+    expression = str(row.get("check_expr") or row.get("constraint_def") or "")
+    return "outstanding_balance" in columns or "outstanding_balance" in expression
+
+
 def _has_forbidden_payment_method_semantics(normalized: str, compact: str) -> bool:
     return bool(
         re.search(r"\bor\b|\band\b|\bnot\b", normalized)
@@ -281,6 +307,71 @@ async def _ensure_index(
         return
 
     await db.execute(text(create_sql))
+
+
+async def _ensure_public_binding_balance_constraint(db) -> None:
+    from sqlalchemy import text
+
+    if not await _table_exists(db, "public", PUBLIC_BINDINGS):
+        return
+    if not await _column_exists(db, "public", PUBLIC_BINDINGS, "outstanding_balance"):
+        raise RuntimeError(
+            "Bootstrap reconcile: public.wholesaler_retailer_bindings is missing "
+            "outstanding_balance"
+        )
+
+    rows = await _check_constraint_rows(db, "public", PUBLIC_BINDINGS)
+    canonical_rows = [
+        row for row in rows
+        if row["conname"] == CK_BINDINGS_OUTSTANDING_NON_NEGATIVE
+    ]
+    if len(canonical_rows) > 1:
+        raise RuntimeError(
+            "Bootstrap reconcile: duplicate public binding outstanding balance constraints"
+        )
+    if canonical_rows:
+        if not _is_outstanding_balance_non_negative_constraint(canonical_rows[0]):
+            raise RuntimeError(
+                "Bootstrap reconcile: public binding outstanding balance check "
+                "constraint is incompatible"
+            )
+        return
+
+    equivalent_rows = [
+        row for row in rows if _is_outstanding_balance_non_negative_constraint(row)
+    ]
+    incompatible_rows = [
+        row
+        for row in rows
+        if _is_outstanding_balance_constraint_candidate(row)
+        and not _is_outstanding_balance_non_negative_constraint(row)
+    ]
+    if incompatible_rows:
+        names = ", ".join(row["conname"] for row in incompatible_rows)
+        raise RuntimeError(
+            "Bootstrap reconcile: incompatible public binding outstanding balance "
+            f"constraints: {names}"
+        )
+    if len(equivalent_rows) > 1:
+        raise RuntimeError(
+            "Bootstrap reconcile: multiple equivalent public binding outstanding "
+            "balance constraints"
+        )
+
+    qualified_table = await _qualified_identifier(db, "public", PUBLIC_BINDINGS)
+    quoted_constraint = await _quote_ident(db, CK_BINDINGS_OUTSTANDING_NON_NEGATIVE)
+    if equivalent_rows:
+        legacy_name = await _quote_ident(db, equivalent_rows[0]["conname"])
+        await db.execute(text(
+            f"ALTER TABLE {qualified_table} RENAME CONSTRAINT {legacy_name} "
+            f"TO {quoted_constraint}"
+        ))
+        return
+
+    await db.execute(text(
+        f"ALTER TABLE {qualified_table} ADD CONSTRAINT {quoted_constraint} "
+        "CHECK (outstanding_balance >= 0)"
+    ))
 
 
 async def _quote_ident(db, identifier: str) -> str:
@@ -1155,6 +1246,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
     async with async_session() as db:
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
+        await _ensure_public_binding_balance_constraint(db)
 
         # Enums (idempotent)
         for enum_ddl in [

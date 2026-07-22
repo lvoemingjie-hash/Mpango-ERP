@@ -552,8 +552,8 @@ async def test_migration_schema_sanity_uses_current_single_head():
     alembic_cfg = Config(str(backend_dir / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
     script = ScriptDirectory.from_config(alembic_cfg)
-    assert script.get_heads() == ["034_platform_operators"]
-    assert script.get_current_head() == "034_platform_operators"
+    assert script.get_heads() == ["035_receivable_collection_integrity"]
+    assert script.get_current_head() == "035_receivable_collection_integrity"
 
     assert TenantRegistration.__tablename__ == "tenant_registrations"
     assert EmailVerificationToken.__tablename__ == "email_verification_tokens"

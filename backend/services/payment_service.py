@@ -156,28 +156,12 @@ class PaymentService:
                 },
             )
 
-        if method == "transfer":
-            await self._apply_outstanding_balance_delta(
-                tenant_db,
-                wholesaler_id=order.wholesaler_id,
-                retailer_id=retailer_id,
-                delta=-amount,
-            )
-
         if method == "credit":
             await self._apply_outstanding_balance_delta(
                 tenant_db,
                 wholesaler_id=order.wholesaler_id,
                 retailer_id=retailer_id,
                 delta=amount,
-            )
-
-        if method == "cash":
-            await self._apply_outstanding_balance_delta(
-                tenant_db,
-                wholesaler_id=order.wholesaler_id,
-                retailer_id=retailer_id,
-                delta=-amount,
             )
 
         return payment
@@ -199,11 +183,33 @@ class PaymentService:
                 WHERE wholesaler_id = :wholesaler_id
                   AND retailer_id = :retailer_id
                   AND is_deleted IS FALSE
+                  AND outstanding_balance + :delta >= 0
                 """
             ),
             {"delta": delta, "wholesaler_id": wholesaler_id, "retailer_id": retailer_id},
         )
         if result.rowcount == 0:
+            binding_exists = await tenant_db.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM public.wholesaler_retailer_bindings
+                    WHERE wholesaler_id = :wholesaler_id
+                      AND retailer_id = :retailer_id
+                      AND is_deleted IS FALSE
+                    LIMIT 1
+                    """
+                ),
+                {"wholesaler_id": wholesaler_id, "retailer_id": retailer_id},
+            )
+            if binding_exists.first():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "RECEIVABLE_BALANCE_UNDERFLOW",
+                        "message": "Payment would reduce outstanding balance below zero",
+                    },
+                )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"code": "BINDINGNOTFOUND", "message": "Retailer not bound to wholesaler"},

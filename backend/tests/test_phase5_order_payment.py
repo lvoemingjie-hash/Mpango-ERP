@@ -1036,9 +1036,8 @@ async def test_credit_payment_applies_positive_balance_delta():
 
 
 @pytest.mark.asyncio
-async def test_cash_payment_applies_negative_balance_delta():
-    """Cash via pay_order() must call _apply_outstanding_balance_delta
-    with delta=-amount (receivable decreases)."""
+async def test_cash_payment_does_not_apply_balance_delta_for_ordinary_settlement():
+    """Ordinary cash via pay_order() must not decrement credit exposure."""
     from api.v1.orders import pay_order
     from schemas.order import PayOrderRequest
     from core.domain.order_state import OrderState
@@ -1081,14 +1080,12 @@ async def test_cash_payment_applies_negative_balance_delta():
             x_idempotency_key="phase5-cash-delta",
         )
 
-    assert delta_captured["delta"] == Decimal("-5000"), \
-        f"Expected delta=-5000 for cash, got {delta_captured['delta']}"
+    assert delta_captured == {}
 
 
 @pytest.mark.asyncio
-async def test_transfer_payment_applies_negative_balance_delta():
-    """Transfer via pay_order() must call _apply_outstanding_balance_delta
-    with delta=-amount (receivable decreases)."""
+async def test_transfer_payment_does_not_apply_balance_delta_for_ordinary_settlement():
+    """Ordinary transfer via pay_order() must not decrement credit exposure."""
     from api.v1.orders import pay_order
     from schemas.order import PayOrderRequest
     from core.domain.order_state import OrderState
@@ -1131,8 +1128,7 @@ async def test_transfer_payment_applies_negative_balance_delta():
             x_idempotency_key="phase5-transfer-delta",
         )
 
-    assert delta_captured["delta"] == Decimal("-5000"), \
-        f"Expected delta=-5000 for transfer, got {delta_captured['delta']}"
+    assert delta_captured == {}
 
 
 # ---------------------------------------------------------------------------
@@ -1425,9 +1421,8 @@ async def test_payment_service_credit_applies_positive_delta():
 
 
 @pytest.mark.asyncio
-async def test_payment_service_cash_applies_negative_delta():
-    """PaymentService.create_payment with method='cash' must apply
-    delta=-amount to outstanding balance."""
+async def test_payment_service_cash_does_not_apply_balance_delta():
+    """PaymentService.create_payment with method='cash' leaves credit exposure unchanged."""
     from services.payment_service import PaymentService
     from decimal import Decimal
 
@@ -1466,8 +1461,7 @@ async def test_payment_service_cash_applies_negative_delta():
             created_by=None,
         )
 
-    assert delta_captured["delta"] == Decimal("-7000"), \
-        f"PaymentService cash delta should be -7000, got {delta_captured['delta']}"
+    assert delta_captured == {}
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Mapping
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -151,6 +151,47 @@ class PaymentRepository:
             {"order_id": order_id},
         )
         return Decimal(str(result.scalar() or 0))
+
+    async def get_order_method_total(
+        self,
+        db: AsyncSession,
+        *,
+        order_id: uuid.UUID,
+        methods: tuple[str, ...],
+    ) -> Decimal:
+        """Return the sum of non-deleted payments for an order and methods."""
+        if not methods:
+            return Decimal("0")
+
+        stmt = text(
+            "SELECT COALESCE(SUM(amount), 0) "
+            "FROM payments "
+            "WHERE order_id = :order_id AND is_deleted IS FALSE "
+            "AND method IN :methods"
+        ).bindparams(
+            bindparam("methods", expanding=True),
+        )
+        result = await db.execute(
+            stmt,
+            {"order_id": order_id, "methods": list(methods)},
+        )
+        return Decimal(str(result.scalar() or 0))
+
+    async def get_order_credit_exposure(
+        self,
+        db: AsyncSession,
+        *,
+        order_id: uuid.UUID,
+    ) -> Decimal:
+        """Return credit payments less cash/transfer collections, never negative."""
+        credit_total = await self.get_order_method_total(
+            db, order_id=order_id, methods=("credit",),
+        )
+        collection_total = await self.get_order_method_total(
+            db, order_id=order_id, methods=("cash", "transfer"),
+        )
+        exposure = credit_total - collection_total
+        return exposure if exposure > Decimal("0") else Decimal("0")
 
     async def update_cash_transfer_to_completed(
         self,

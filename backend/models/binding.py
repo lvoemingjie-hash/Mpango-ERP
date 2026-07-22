@@ -3,7 +3,7 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import String, Index, ForeignKey, Numeric, UniqueConstraint
+from sqlalchemy import CheckConstraint, String, Index, ForeignKey, Numeric, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,6 +16,10 @@ class WholesalerRetailerBinding(PublicBaseModel):
     __tablename__ = "wholesaler_retailer_bindings"
     __table_args__ = (
         UniqueConstraint("wholesaler_id", "retailer_id", name="uq_wholesaler_retailer"),
+        CheckConstraint(
+            "outstanding_balance >= 0",
+            name="ck_wrb_outstanding_balance_non_negative",
+        ),
         Index("ix_bindings_wholesaler_id", "wholesaler_id"),
         Index("ix_bindings_retailer_id", "retailer_id"),
         {"schema": "public"},

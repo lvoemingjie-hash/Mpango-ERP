@@ -249,4 +249,4 @@ async def test_cash_does_not_update_outstanding_balance():
     )
 
     assert payment["id"] == created["id"]
-    assert apply_called["count"] == 1
+    assert apply_called["count"] == 0

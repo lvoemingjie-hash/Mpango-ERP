@@ -1,85 +1,88 @@
-# DC-12A-R2 Clickable Credential Email Links + Verify Email UX
+# DC-12A-R3 Clickable Credential Email Links + Verify Email UX
 
 | Field | Value |
 |---|---|
 | Date | 2026-07-23 |
-| Task ID | DC-12A-R2 (Clickable Credential Email Links + Verify Email UX) |
+| Task ID | DC-12A-R3 (Credential Link Merge Blocker Correction) |
 | Classification | P1 DELIVERY BLOCKER |
 | Base | `origin/product-dev-recovered @ 21df3b50f045f618fc932bae46bfb469c2cda099` |
 | Branch | `opencode/dc12a-r2-clickable-credential-email-links-2026-07-23` |
-| Verdict | `PASS_FOR_CTO_DC12A_R2_MERGE_REVIEW` |
+| R2 commit | `0ba0b29a` |
+| Verdict | `PASS_FOR_CTO_DC12A_R3_MERGE_REVIEW` |
 
-## 1. Problem
+## R3 Corrections
 
-Three credential email link builders generated relative paths
-(`/verify-email?token=...` etc.) that email clients cannot resolve. The
-frontend had no `/verify-email` page. Query-string tokens appeared in
-reverse proxy access logs.
+### 1. Fixed self.settings NameError in module-level function
 
-## 2. Changes
+`complete_email_verified_onboarding` is a module-level function. It was
+calling `build_owner_setup_link(issued.raw_token, self.settings)` but `self`
+does not exist in module scope. Fixed to use the function-local `settings`
+parameter. A regression test (`test_dc12a_r3_orchestration_link_regression.py`)
+statically inspects the source to prove the fix and prevent regression.
 
-### 2.1 Backend
+### 2. Removed query-token fallback from all 3 frontend pages
+
+All three credential pages (VerifyEmailPage, SetupCredentialPage,
+ResetPasswordPage) previously had a backwards-compatibility query-string
+fallback. R3 removes this: query-string tokens are rejected with a
+controlled "Invalid Link" state and are NEVER submitted to any API.
+
+### 3. Query rejection behavior
+
+When a query-string token is present:
+- URL is scrubbed via `history.replaceState`
+- Controlled "Invalid Link" / "Invalid Link" state is shown
+- `authService` is never called (zero API calls)
+
+### 4. Updated CredentialLifecyclePages tests
+
+Tests now use fragment tokens (`#setupToken=...`, `#resetToken=...`)
+instead of query params. Added negative tests proving query tokens cause
+zero API calls on setup and reset pages.
+
+### 5. Added VerifyEmailPage tests
+
+7 tests covering: processing state, fragment success, no-token state,
+invalid token, query rejection (zero API calls), URL scrubbing,
+no localStorage/sessionStorage storage.
+
+### 6. Updated U6L orchestration test
+
+`_setup_token_from_smtp_message` now reads the token from the URL fragment
+(consistent with R3 link builders) instead of the query string.
+
+### 7. Removed inaccurate compatibility claim
+
+The R2 ledger claimed "query fallback for backwards compatibility." R3
+removes this claim and the fallback entirely. Old email links with query
+tokens will show a controlled invalid-link message.
+
+## Changed Files (R3 delta from R2)
 
 | File | Change |
 |---|---|
-| `backend/core/config.py` | Added `PUBLIC_FRONTEND_URL` field + validator (rejects credentials/query/fragment/path; strips trailing slash; production requires HTTPS) |
-| `backend/services/onboarding_service.py` | All 3 link builders now generate absolute URLs with fragment tokens (e.g. `https://app.mpango.io/verify-email#token=...`) |
-| `backend/services/password_reset_service.py` | Updated caller to pass `self.settings` to `build_password_reset_link` |
-| `backend/tests/test_dc12a_r2_credential_email_links.py` | 14 tests: link builders, Settings validation, fragment vs query |
+| `backend/services/onboarding_service.py` | Fixed `self.settings` -> `settings` |
+| `backend/tests/test_dc12a_r3_orchestration_link_regression.py` | New: 3 regression tests |
+| `backend/tests/test_u6l_email_verified_onboarding_orchestration.py` | Updated: fragment token parsing |
+| `frontend/src/pages/auth/VerifyEmailPage.tsx` | Removed query fallback; added query-rejected state |
+| `frontend/src/pages/auth/SetupCredentialPage.tsx` | Removed query fallback; added queryRejected state |
+| `frontend/src/pages/auth/ResetPasswordPage.tsx` | Removed query fallback; added queryRejected state |
+| `frontend/src/tests/CredentialLifecyclePages.test.tsx` | Updated: fragment tokens; query rejection tests |
+| `frontend/src/tests/VerifyEmailPage.test.tsx` | Updated: TS fixes, no-token assertion fix |
+| `ai-ledger/product-ai/2026-07-23_dc12a_r2_clickable_credential_email_links.md` | This ledger |
 
-### 2.2 Frontend
-
-| File | Change |
-|---|---|
-| `frontend/src/pages/auth/VerifyEmailPage.tsx` | New page: reads token from fragment, POSTs to `/auth/verify-email`, clears URL, shows processing/success/invalid/no-token states |
-| `frontend/src/router/AppRouter.tsx` | Added `/verify-email` route + import |
-| `frontend/src/services/authService.ts` | Added `verifyEmail` method |
-| `frontend/src/pages/auth/SetupCredentialPage.tsx` | Reads `setupToken` from fragment (falls back to query); clears URL immediately |
-| `frontend/src/pages/auth/ResetPasswordPage.tsx` | Reads `resetToken` from fragment (falls back to query); clears URL immediately |
-
-### 2.3 Infrastructure
-
-| File | Change |
-|---|---|
-| `docker-compose.prod.yml` | Added `PUBLIC_FRONTEND_URL=${PUBLIC_FRONTEND_URL:?...}` (fail-closed) |
-| `.env.example` | Documented `PUBLIC_FRONTEND_URL` |
-
-## 3. Absolute Link Examples (tokens fully redacted)
-
-- Verification: `https://[REDACTED_ORIGIN]/verify-email#token=[REDACTED]`
-- Setup: `https://[REDACTED_ORIGIN]/setup-credential#setupToken=[REDACTED]`
-- Reset: `https://[REDACTED_ORIGIN]/reset-password#resetToken=[REDACTED]`
-
-All tokens are in the URL fragment (`#`), never in the query string (`?`).
-Fragments are not sent to the server/proxy, preventing access-log leakage.
-
-## 4. Security Proof
-
-- Token in fragment, not query: prevents proxy/gateway access-log exposure.
-- URL cleared immediately via `history.replaceState` on all 3 pages.
-- Token submitted via JSON body only (not query string).
-- Backend API query-string token rejection unchanged (setup/reset endpoints).
-- No token stored in localStorage/sessionStorage.
-- Production requires HTTPS `PUBLIC_FRONTEND_URL` (fail-closed).
-- No credentials/query/fragment/path in `PUBLIC_FRONTEND_URL` value.
-
-## 5. Test Results
+## Test Results
 
 | Suite | Count |
 |---|---|
 | `test_dc12a_r2_credential_email_links.py` | 14 passed |
-| `test_auth_regressions.py` + `test_route_authorization_policy.py` + `test_u6c` + `test_u6d` | 37 passed |
+| `test_dc12a_r3_orchestration_link_regression.py` | 3 passed |
+| `test_u6l` + `test_u6i6` | 8 passed |
 | `test_dc3b_credential_recovery_backend.py` | 16 passed |
-| Frontend vitest | 91 passed |
+| auth + route + u6c + u6d regression | 37 passed |
+| Frontend vitest | 100 passed |
 | `pnpm build` | SUCCESS |
 
-## 6. Compliance
+## Verdict
 
-- No migration, no DB writes, no deploy.
-- No weakening of token expiry, single-use, hash-only, or API query rejection.
-- No real secrets/emails/tokens/URLs in this report.
-- `product-dev-recovered` and `platform-dev` not pushed.
-
-## 7. Verdict
-
-**PASS_FOR_CTO_DC12A_R2_MERGE_REVIEW**
+**PASS_FOR_CTO_DC12A_R3_MERGE_REVIEW**

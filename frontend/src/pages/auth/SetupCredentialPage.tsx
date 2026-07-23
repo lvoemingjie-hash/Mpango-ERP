@@ -16,27 +16,25 @@ export function SetupCredentialPage() {
   const [setupToken, setSetupToken] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  const [queryRejected, setQueryRejected] = useState(false);
 
   useEffect(() => {
-    // DC-12A-R2: Read token from URL fragment (not query string).
-    // Fragment is never sent to server/proxy, preventing token
-    // leakage in access logs.
+    // DC-12A-R3: Read token from URL fragment ONLY.
     const hash = location.hash;
     const fragmentParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-    let token = fragmentParams.get('setupToken');
+    const token = fragmentParams.get('setupToken');
 
-    // Fallback: query string (for backwards compat with old email links).
-    // Query tokens are NOT consumed by the backend API; this is frontend-only
-    // migration support.
-    if (!token) {
-      const queryParams = new URLSearchParams(location.search);
-      token = queryParams.get('setupToken');
+    // DC-12A-R3: Query-string tokens are rejected.
+    // Scrub URL, show controlled invalid-link state, never submit.
+    const queryToken = new URLSearchParams(location.search).get('setupToken');
+    if (queryToken && !token) {
+      window.history.replaceState(window.history.state, document.title, location.pathname);
+      setQueryRejected(true);
+      return;
     }
 
     setSetupToken(token);
     if (token) {
-      // Clear BOTH query and fragment so the token is not visible
-      // in the address bar, history, or screenshots.
       window.history.replaceState(window.history.state, document.title, location.pathname);
     }
   }, [location.hash, location.pathname, location.search]);
@@ -64,6 +62,29 @@ export function SetupCredentialPage() {
       setServerError('This setup link is invalid or expired. Please request a new link.');
     }
   };
+
+  if (queryRejected) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-sm">
+          <div className="space-y-5 rounded-xl bg-white p-6 shadow-sm">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              <h2 className="mt-4 text-xl font-bold text-gray-900">Invalid Link</h2>
+              <p className="mt-2 text-sm text-gray-600">
+                This setup link is no longer valid. Please use the latest link from your email.
+              </p>
+              <Link to="/login" className="btn-primary mt-4 inline-flex justify-center px-4 py-2">
+                Go to login
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">

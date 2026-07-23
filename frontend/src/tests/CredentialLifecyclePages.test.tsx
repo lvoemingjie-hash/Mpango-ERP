@@ -36,14 +36,15 @@ describe('credential lifecycle frontend', () => {
     vi.restoreAllMocks();
   });
 
-  it('setup page sends setupToken in JSON body only and clears it from the visible URL', async () => {
+  // DC-12A-R3: Tests use fragment tokens (not query)
+  it('setup page sends fragment setupToken in JSON body only and clears URL', async () => {
     mockPost.mockResolvedValue({ data: { success: true } });
     const storageSetItem = vi.spyOn(Storage.prototype, 'setItem');
 
-    renderAt('/setup-credential?setupToken=setup-token-123&next=login', <SetupCredentialPage />);
+    renderAt('/setup-credential#setupToken=setup-token-123', <SetupCredentialPage />);
 
     await waitFor(() => {
-      expect(window.location.search).not.toContain('setupToken');
+      expect(window.location.hash).toBe('');
     });
 
     await userEvent.type(screen.getByLabelText(/new password/i), 'StrongPass123');
@@ -61,6 +62,15 @@ describe('credential lifecycle frontend', () => {
     expect(await screen.findByRole('link', { name: /go to login/i })).toHaveAttribute('href', '/login');
   });
 
+  it('setup page rejects query-string token without calling API', async () => {
+    renderAt('/setup-credential?setupToken=query-token', <SetupCredentialPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Invalid Link')).toBeDefined();
+    });
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
   it('forgot password page always shows neutral success copy', async () => {
     mockPost.mockRejectedValue(new Error('network unavailable'));
 
@@ -73,14 +83,15 @@ describe('credential lifecycle frontend', () => {
     expect(mockPost).toHaveBeenCalledWith('/auth/forgot-password', { email: 'person@example.com' });
   });
 
-  it('reset page sends resetToken in JSON body only and clears it from the visible URL', async () => {
+  // DC-12A-R3: Tests use fragment tokens (not query)
+  it('reset page sends fragment resetToken in JSON body only and clears URL', async () => {
     mockPost.mockResolvedValue({ data: { success: true } });
     const storageSetItem = vi.spyOn(Storage.prototype, 'setItem');
 
-    renderAt('/reset-password?resetToken=reset-token-456&source=email', <ResetPasswordPage />);
+    renderAt('/reset-password#resetToken=reset-token-456', <ResetPasswordPage />);
 
     await waitFor(() => {
-      expect(window.location.search).not.toContain('resetToken');
+      expect(window.location.hash).toBe('');
     });
 
     await userEvent.type(screen.getByLabelText(/new password/i), 'NewStrongPass123');
@@ -96,6 +107,15 @@ describe('credential lifecycle frontend', () => {
     expect(mockPost.mock.calls[0][0]).not.toContain('resetToken');
     expect(storageSetItem).not.toHaveBeenCalled();
     expect(await screen.findByRole('link', { name: /go to login/i })).toHaveAttribute('href', '/login');
+  });
+
+  it('reset page rejects query-string token without calling API', async () => {
+    renderAt('/reset-password?resetToken=query-token', <ResetPasswordPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Invalid Link')).toBeDefined();
+    });
+    expect(mockPost).not.toHaveBeenCalled();
   });
 
   it('login page links to forgot password', () => {

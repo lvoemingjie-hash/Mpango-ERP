@@ -222,7 +222,7 @@ async def complete_email_verified_onboarding(
             registration_id=registration_id,
             to_email=registration.owner_email,
             token=issued.raw_token,
-            setup_link=build_owner_setup_link(issued.raw_token, self.settings),
+            setup_link=build_owner_setup_link(issued.raw_token, settings),
         )
 
 

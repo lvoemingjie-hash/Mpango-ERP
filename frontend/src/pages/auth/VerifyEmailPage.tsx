@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '@/services/authService';
 
-type VerifyState = 'processing' | 'success' | 'invalid' | 'no-token';
+type VerifyState = 'processing' | 'success' | 'invalid' | 'no-token' | 'query-rejected';
 
 export function VerifyEmailPage() {
   const [state, setState] = useState<VerifyState>('processing');
@@ -14,29 +14,33 @@ export function VerifyEmailPage() {
     if (submitted.current) return;
     submitted.current = true;
 
-    // DC-12A-R2: Read token from URL fragment, not query string.
+    // DC-12A-R3: Read token from URL fragment ONLY.
     // Fragment is never sent to the server/proxy, so the token
     // does not appear in access logs.
     const hash = window.location.hash;
     const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
     const token = params.get('token');
 
-    // Also check query string as fallback for backwards compatibility,
-    // but only in non-production (email links now use fragment).
+    // DC-12A-R3: Query-string tokens are rejected.
+    // Scrub URL, show controlled invalid-link state, never submit.
     const queryToken = new URLSearchParams(window.location.search).get('token');
-    const effectiveToken = token || queryToken;
+    if (queryToken && !token) {
+      window.history.replaceState(null, '', window.location.pathname);
+      setState('query-rejected');
+      return;
+    }
 
     // Immediately clear the URL so the token is not visible in
     // the address bar, history, or screenshots.
     window.history.replaceState(null, '', window.location.pathname);
 
-    if (!effectiveToken) {
+    if (!token) {
       setState('no-token');
       return;
     }
 
     authService
-      .verifyEmail({ token: effectiveToken })
+      .verifyEmail({ token })
       .then(() => {
         setState('success');
       })
@@ -75,6 +79,31 @@ export function VerifyEmailPage() {
             <p className="mt-2 text-gray-600">
               Your email has been verified successfully. Your tenant is being
               provisioned. You will receive an owner setup email shortly.
+            </p>
+            <button
+              onClick={() => navigate('/login')}
+              className="mt-6 w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+            >
+              Go to Login
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === 'query-rejected') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
+          <div className="text-center">
+            <svg className="mx-auto h-12 w-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <h2 className="mt-4 text-xl font-bold text-gray-900">Invalid Link</h2>
+            <p className="mt-2 text-gray-600">
+              This verification link is no longer valid. Please use the
+              latest link from your signup email.
             </p>
             <button
               onClick={() => navigate('/login')}

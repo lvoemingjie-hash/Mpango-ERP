@@ -322,9 +322,11 @@ def _assert_public_response_safe(response, *, forbidden_values: tuple[Any, ...] 
 def _setup_token_from_smtp_message(message) -> str:
     body = message.get_content()
     setup_line = next(line for line in body.splitlines() if "setupToken=" in line)
-    query = parse_qs(urlparse(setup_line).query)
-    assert "setupToken" in query
-    return query["setupToken"][0]
+    parsed = urlparse(setup_line)
+    # DC-12A-R3: token is in the URL fragment, not query string
+    fragment_params = parse_qs(parsed.fragment)
+    assert "setupToken" in fragment_params, f"setupToken not in fragment: {parsed}"
+    return fragment_params["setupToken"][0]
 
 
 async def test_verify_email_provisions_tenant_issues_setup_token_and_sends_owner_email():

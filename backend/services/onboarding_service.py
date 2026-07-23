@@ -222,7 +222,7 @@ async def complete_email_verified_onboarding(
             registration_id=registration_id,
             to_email=registration.owner_email,
             token=issued.raw_token,
-            setup_link=build_owner_setup_link(issued.raw_token),
+            setup_link=build_owner_setup_link(issued.raw_token, settings),
         )
 
 
@@ -345,7 +345,7 @@ async def create_signup_registration(
             registration_id=registration.id,
             to_email=owner_email,
             token=raw_token,
-            verification_link=build_verification_link(raw_token),
+            verification_link=build_verification_link(raw_token, settings),
         )
     except IntegrityError:
         await db.rollback()
@@ -369,24 +369,50 @@ def hash_token(token: str, settings: Settings | None = None) -> str:
     return _hmac_sha256(token, settings)
 
 
-def build_verification_link(token: str) -> str:
-    """Build the frontend verification link stored by the dev/test sink."""
-    return f"/verify-email?token={quote(token, safe='')}"
+def build_verification_link(token: str, settings: Settings | None = None) -> str:
+    """Build the frontend verification link.
 
-
-def build_owner_setup_link(token: str) -> str:
-    """Build the owner credential setup link for email delivery only."""
-    return f"/setup-credential?setupToken={quote(token, safe='')}"
-
-
-def build_password_reset_link(token: str) -> str:
-    """Build the password reset link for email delivery only.
-
-    The consuming /auth/reset-password endpoint rejects query-string tokens, so
-    (like the owner setup link) this link is informational only: a dedicated
-    frontend page must POST the token in the body.
+    DC-12A-R2: generates an absolute URL using PUBLIC_FRONTEND_URL.
+    Token is in the URL fragment (not query) to avoid proxy access logs.
+    Falls back to a relative fragment link if no base URL is configured (test/dev).
     """
-    return f"/reset-password?resetToken={quote(token, safe='')}"
+    settings = settings or get_settings()
+    encoded = quote(token, safe='')
+    path = f"/verify-email#token={encoded}"
+    base = getattr(settings, "PUBLIC_FRONTEND_URL", None)
+    if base:
+        return f"{base}{path}"
+    return path
+
+
+def build_owner_setup_link(token: str, settings: Settings | None = None) -> str:
+    """Build the owner credential setup link for email delivery.
+
+    DC-12A-R2: generates an absolute URL using PUBLIC_FRONTEND_URL.
+    Token is in the URL fragment (not query) to avoid proxy access logs.
+    """
+    settings = settings or get_settings()
+    encoded = quote(token, safe='')
+    path = f"/setup-credential#setupToken={encoded}"
+    base = getattr(settings, "PUBLIC_FRONTEND_URL", None)
+    if base:
+        return f"{base}{path}"
+    return path
+
+
+def build_password_reset_link(token: str, settings: Settings | None = None) -> str:
+    """Build the password reset link for email delivery.
+
+    DC-12A-R2: generates an absolute URL using PUBLIC_FRONTEND_URL.
+    Token is in the URL fragment (not query) to avoid proxy access logs.
+    """
+    settings = settings or get_settings()
+    encoded = quote(token, safe='')
+    path = f"/reset-password#resetToken={encoded}"
+    base = getattr(settings, "PUBLIC_FRONTEND_URL", None)
+    if base:
+        return f"{base}{path}"
+    return path
 
 
 def _public_onboarding_status(status: str) -> str:

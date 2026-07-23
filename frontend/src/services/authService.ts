@@ -38,4 +38,7 @@ export const authService = {
 
   resetPassword: (payload: { resetToken: string; newPassword: string }) =>
     api.post('/auth/reset-password', payload),
+
+  verifyEmail: (payload: { token: string }) =>
+    api.post('/auth/verify-email', payload),
 };

@@ -80,6 +80,8 @@ services:
       - EMAIL_FROM=${EMAIL_FROM:?EMAIL_FROM must be set}
       - SMTP_STARTTLS=${SMTP_STARTTLS:?SMTP_STARTTLS must be set}
       - SMTP_USE_TLS=${SMTP_USE_TLS:?SMTP_USE_TLS must be set}
+      # DC-12A-R2: Public frontend URL for credential email links (REQUIRED)
+      - PUBLIC_FRONTEND_URL=${PUBLIC_FRONTEND_URL:?PUBLIC_FRONTEND_URL must be set}
       # Application
       - APP_NAME=${APP_NAME:-Mpango ERP}
       - DEBUG=false

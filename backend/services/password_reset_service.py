@@ -185,7 +185,7 @@ class PasswordResetService:
             settings=self.settings,
             to_email=normalized,
             token=raw_token,
-            reset_link=build_password_reset_link(raw_token),
+            reset_link=build_password_reset_link(raw_token, self.settings),
         )
         return PasswordResetRequestResult(issued=True, email=normalized)
 

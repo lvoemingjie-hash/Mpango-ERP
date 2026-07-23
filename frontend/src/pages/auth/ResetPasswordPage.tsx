@@ -11,12 +11,17 @@ const resetPasswordSchema = z.object({
 
 type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
-function scrubTokenFromUrl(search: string, tokenName: string, pathname: string, hash: string) {
-  const params = new URLSearchParams(search);
-  params.delete(tokenName);
-  const nextSearch = params.toString();
-  const nextUrl = `${pathname}${nextSearch ? `?${nextSearch}` : ''}${hash}`;
-  window.history.replaceState(window.history.state, document.title, nextUrl);
+const SENSITIVE_RESET_QUERY_PARAMS = [
+  'resetToken',
+  'reset_token',
+  'token',
+  'newPassword',
+  'new_password',
+];
+
+function hasSensitiveQueryParam(search: string, paramNames: readonly string[]) {
+  const queryParams = new URLSearchParams(search);
+  return paramNames.some((paramName) => queryParams.has(paramName));
 }
 
 export function ResetPasswordPage() {
@@ -24,13 +29,23 @@ export function ResetPasswordPage() {
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  const [queryRejected, setQueryRejected] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const token = params.get('resetToken');
+    if (hasSensitiveQueryParam(location.search, SENSITIVE_RESET_QUERY_PARAMS)) {
+      window.history.replaceState(window.history.state, document.title, location.pathname);
+      setQueryRejected(true);
+      return;
+    }
+
+    // DC-12A-R3: Read token from URL fragment ONLY.
+    const hash = location.hash;
+    const fragmentParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+    const token = fragmentParams.get('resetToken');
+
     setResetToken(token);
     if (token) {
-      scrubTokenFromUrl(location.search, 'resetToken', location.pathname, location.hash);
+      window.history.replaceState(window.history.state, document.title, location.pathname);
     }
   }, [location.hash, location.pathname, location.search]);
 
@@ -57,6 +72,29 @@ export function ResetPasswordPage() {
       setServerError('This reset link is invalid or expired. Please request a new link.');
     }
   };
+
+  if (queryRejected) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-sm">
+          <div className="space-y-5 rounded-xl bg-white p-6 shadow-sm">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              <h2 className="mt-4 text-xl font-bold text-gray-900">Invalid Link</h2>
+              <p className="mt-2 text-sm text-gray-600">
+                This reset link is no longer valid. Please request a new password reset.
+              </p>
+              <Link to="/forgot-password" className="btn-primary mt-4 inline-flex justify-center px-4 py-2">
+                Request new link
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">

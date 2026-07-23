@@ -1,11 +1,22 @@
 # DC-12R1-D Retailer MVP Identity, Invitation and Supplier-Privacy Design Gate
 
-> **Revision R1 (2026-07-23).** This revision corrects the identity model to an explicit
-> `wholesaler_retailer_bindings.tenant_user_id` mapping (authoritative), defines unified retailer
-> credential semantics across mapped tenant-user copies, corrects email delivery to a fail-closed
-> SMTP-before-commit pattern, hardens retailer login with explicit preconditions, fixes the migration
-> contract to revision `036_retailer_mvp_identity` (down_revision `035`), specifies an exact
-> BrowserRouter-compatible setup link, and extends the test matrix. Email is **never** used to infer
+> **Revision R2 (2026-07-23).** This revision tightens the trust model so a wholesaler can **never**
+> change a retailer's canonical password or verified email: wholesaler-initiated password reset is
+> **removed**; a wholesaler may only suspend **its own** binding. Setup-token reissue is restricted to
+> the no-established-password window and the canonical verified email. The retailer now owns a
+> **canonical verified email** (`public.retailers` normalized email + `email_verified_at`) that setup
+> consumption verifies and wholesalers cannot alter after verification. Credential tokens are bound to
+> the **public identity** (`retailer_id`, and `binding_id` for setup); reset tokens are retailer-scoped.
+> Retailer self-service forgot/reset endpoints are added. Migration `036` is updated for the
+> verified-email column and the retailer-bound setup/reset token structure. Supersedes R1's
+> wholesaler-reissue/reset language.
+>
+> **Revision R1 (2026-07-23).** Corrected the identity model to an explicit
+> `wholesaler_retailer_bindings.tenant_user_id` mapping (authoritative), defined unified retailer
+> credential semantics across mapped tenant-user copies, corrected email delivery to a fail-closed
+> SMTP-before-commit pattern, hardened retailer login with explicit preconditions, fixed the migration
+> contract to revision `036_retailer_mvp_identity` (down_revision `035`), specified an exact
+> BrowserRouter-compatible setup link, and extended the test matrix. Email is **never** used to infer
 > `retailer_id` after authentication.
 
 ## AI Role
@@ -69,13 +80,16 @@ authentication.**
 | Concept | Value | Storage | Role |
 |---|---|---|---|
 | **Canonical retailer business identity** | `public.retailers.id` (UUID) | `public.retailers` | The stable, immutable business entity. Already the PK; referenced by `wholesaler_retailer_bindings.retailer_id`. Never reused, never merged. |
+| **Canonical verified email (retailer-owned)** | normalized email + `email_verified_at` (new — §1.6) | `public.retailers` | The retailer's owned, verified contact email. Credential setup/reset tokens are delivered **only** here. Once verified, **wholesalers cannot change it** (§1.6). This is the single source of truth for "where do credential emails go." |
 | **Authoritative identity mapping** | `wholesaler_retailer_bindings.tenant_user_id` (UUID, **nullable**, new column — §1.2) | `public.wholesaler_retailer_bindings` | The single source of truth linking a binding to exactly one tenant-local `users` row. Client identity resolution reads `token.user_id → binding.tenant_user_id`. |
-| **Authentication credential** | normalized email + password | `tenant_schema.users` (`email`, `password_hash`) | Used **only** at login to authenticate the tenant-local user. After login, the contextual JWT carries `user_id`, and the binding is resolved by `tenant_user_id`, never by email. |
+| **Tenant-local auth copy** | normalized email + password | `tenant_schema.users` (`email`, `password_hash`) | Used **only** at login to authenticate the tenant-local user (email match + `verify_password`). The tenant `users.email` mirrors the canonical verified email at provisioning; it is a credential, **not** an identity authority. After login, the contextual JWT carries `user_id`, and the binding is resolved by `tenant_user_id`, never by email. |
 | **Phone** | contact + invitation-match data | `public.retailers.phone` | The unique business contact key and the **invitation-match field** (`invitation.retailer_phone`). Not the authentication root, not used post-auth. |
 
 This **replaces the earlier "email as locator" idea**: email authenticates the user, but the
 retailer↔user link is the stored `tenant_user_id` on the binding. There is no runtime email→retailer
-lookup in any authenticated path.
+lookup in any authenticated path. `retailer_id` is **never** inferred from email, schema name, or
+`users.*` strings — only from credential tokens bound to the public identity (§2.5) or from
+`binding.tenant_user_id` (§1.3).
 
 ### 1.2 The `tenant_user_id` mapping column
 
@@ -157,6 +171,28 @@ and the contextual JWT carries that `user_id`; the binding is then resolved by `
 `available_tenants` is **never produced for retailer login** (§3.2), so R never learns of B from A's
 entry.
 
+### 1.6 Canonical verified email (retailer-owned)
+
+The canonical email lives on `public.retailers` as **normalized email + `email_verified_at`** (new column,
+§2.9 migration). Ownership and change rules:
+
+- **Retailer-owned.** The canonical email is the retailer's credential-delivery address. It is set during
+  the first credential setup (the retailer confirms it by consuming the setup token, §2.5) and recorded
+  with `email_verified_at = now`. Until then it is unverified.
+- **Setup consumption verifies it.** Consuming a setup token sets/affirms the canonical email and stamps
+  `email_verified_at`. Setup/reset emails are delivered **only** to this verified canonical email (never
+  to a wholesaler-supplied address).
+- **Wholesalers cannot change it after verification.** A wholesaler may invite a retailer (the invitation
+  carries `retailer_phone`, not a mutable canonical email) and may suspend **its own** binding (§4.6), but
+  has **no endpoint** to change the retailer's canonical email or `email_verified_at`. Only the retailer,
+  via an authenticated self-service email-change + re-verification flow (post-MVP), can change it.
+- **Mirror at provisioning.** When a new relationship is provisioned (§2.1), the tenant-local
+  `users.email` is set to the canonical verified email. The tenant copy is a credential mirror, not an
+  authority — the authority is `public.retailers.email` / `email_verified_at`.
+
+This places the retailer's credential email fully outside wholesaler control, consistent with §2.6
+(wholesaler cannot reset password) and §2.4 (reissue restricted to the canonical email).
+
 ---
 
 ## 2. Login-Capable Provisioning & Unified Credentials
@@ -177,11 +213,14 @@ transaction** (SMTP-before-commit, §2.4). The steps, in order:
    mapping; respects the `(wholesaler_id, tenant_user_id)` uniqueness).
 5. **retailer role grant** — attach the `retailer_operator` role (§5.1) to the user row.
 6. **credential setup token** (only when §2.2 requires one) — `public.retailer_credential_setup_tokens`
-   row bound to `(user_tenant_schema, user_id)`, with `token_hash`, finite `expires_at`, `used_at=NULL`,
-   `revoked_at=NULL`.
+   row **bound to the public identity** `(retailer_id, binding_id)` (§2.5b), with `token_hash`, finite
+   `expires_at`, `used_at=NULL`, `revoked_at=NULL`. The token carries no tenant-user-identifying string
+   beyond what is needed to route redemption; `retailer_id` is read from the token row, never inferred
+   from email/schema.
 7. **send setup email (fail-closed)** — perform SMTP delivery of the clickable setup link (§4.5)
-   **before commit**. SMTP failure rolls back the entire transaction (§2.4). If no setup token was
-   issued (§2.2 copy-hash case), no setup email is sent.
+   **before commit**, addressed to the **canonical email** (`public.retailers.email`, §1.6). SMTP failure
+   rolls back the entire transaction (§2.4). If no setup token was issued (§2.2 copy-hash case), no
+   setup email is sent.
 
 ### 2.2 Unified retailer credential semantics
 
@@ -194,14 +233,14 @@ user sharing the email):
 |---|---|---|
 | **No mapped copy has a password** (first relationship, or all copies `password_hash IS NULL`) | Issue a setup token. | New tenant user gets `password_hash = NULL`; a setup token + setup email are produced (§2.1 step 6-7). |
 | **Existing mapped hashes are identical** (the retailer already set up credentials via another wholesaler) | **Copy the existing hash** into the new tenant user. **No forced reset.** | New tenant user gets `password_hash = <existing identical hash>`; no setup token, no setup email. The retailer logs in with the password they already know. |
-| **Conflicting hashes** (mapped copies for the same `retailer_id` have different `password_hash` values) | **Fail closed.** | `RETAILER_CREDENTIAL_CONFLICT` (409). No new tenant user/binding created. Requires controlled recovery (wholesaler-initiated reset that re-unifies the copies, §2.5). |
+| **Conflicting hashes** (mapped copies for the same `retailer_id` have different `password_hash` values) | **Fail closed.** | `RETAILER_CREDENTIAL_CONFLICT` (409). No new tenant user/binding created. Requires controlled recovery: the **retailer** completes a self-service password reset (§2.5b), which re-unifies all mapped copies under one new hash. A wholesaler **cannot** resolve this (§2.6). |
 
 **Scope of setup/reset updates.** When a retailer sets or resets a password (§2.5), the new hash is
 written to **every tenant user mapped to the same `retailer_id`** via
 `wholesaler_retailer_bindings.tenant_user_id` — i.e., all copies of *this canonical retailer*. It is
 **not** written to unrelated users who happen to share the email but map to a different `retailer_id`.
 This is the critical difference from email-scoped updates: the update is keyed on the authoritative
-`retailer_id` mapping, not on `users.email`.
+`retailer_id` mapping (read from the credential token bound to the public identity), not on `users.email`.
 
 **Existing wholesaler-owner DC-3B behavior remains unchanged.** The owner credential propagation
 (`backend/services/owner_credential_service.py`, DC-3B-R1) keys on email across owner accounts and is
@@ -221,57 +260,98 @@ For MVP, email delivery uses the **existing fail-closed pattern** (the same shap
 wholesaler-owner credential setup):
 
 - **Raw token remains memory-only.** Only `token_hash` is persisted
-  (`public.retailer_credential_setup_tokens.token_hash`); the raw token exists only in process memory
-  long enough to build the setup link and hand it to SMTP.
-- **SMTP delivery occurs before transaction commit.** The email send is step 7 of the §2.1 transaction,
-  performed while the DB transaction is still open.
-- **SMTP failure rolls back provisioning.** If SMTP raises, the transaction is rolled back — no
-  retailer/binding/user/role/token row survives. The acceptance returns a controlled error (e.g., 503
-  `SETUP_EMAIL_DELIVERY_FAILED`); the invitation is **not** consumed (its conditional-update can be
-  retried by the retailer, §4.3).
+  (`public.retailer_credential_setup_tokens.token_hash` / `retailer_password_reset_tokens.token_hash`);
+  the raw token exists only in process memory long enough to build the link and hand it to SMTP.
+- **SMTP delivery occurs before transaction commit.** The email send is performed while the DB
+  transaction is still open.
+- **SMTP failure rolls back.** If SMTP raises, the transaction is rolled back — for provisioning (§2.1),
+  no retailer/binding/user/role/token row survives and the invitation is **not** consumed (503
+  `SETUP_EMAIL_DELIVERY_FAILED`, retriable per §4.3).
 - **No automatic out-of-band retry is claimed.** The design intentionally does **not** promise a
-  background retry queue for the setup email. (A future R2 may add a durable outbox; MVP does not.)
+  background retry queue. (A future post-MVP revision may add a durable outbox; MVP does not.)
 
-**Reissue endpoint (authenticated wholesaler).** Because there is no automatic retry, an authenticated
-wholesaler admin can reissue via `POST /api/v1/retailers/{retailer_id}/reissue-credential`
-(permission `retailers:write` or a dedicated `retailers:reissue_credential`). Reissue:
+**Setup reissue — restricted (authenticated wholesaler, narrow window).** A wholesaler admin may
+**reissue a setup token only while the canonical retailer has no established password** (i.e., no mapped
+copy has a non-NULL `password_hash`). `POST /api/v1/retailers/{retailer_id}/reissue-setup`
+(permission `retailers:write`):
 
-1. Revokes the previous active setup token for that `(user_tenant_schema, user_id)`
-   (`UPDATE ... SET revoked_at=now WHERE used_at IS NULL AND revoked_at IS NULL`).
-2. Creates a new setup token (new `token_hash`, new `expires_at`).
-3. Sends a new setup email — fail-closed within the reissue transaction (SMTP failure aborts the
-   reissue, leaving the old token revoked-or-not atomically with the new one's creation).
+1. If any mapped copy for `retailer_id` already has a `password_hash`, return **409
+   `CREDENTIAL_ALREADY_ESTABLISHED`** — the retailer owns their credential now; the wholesaler cannot
+   reset or reissue it (§2.6).
+2. Otherwise revoke the previous active setup token for that `retailer_id`
+   (`UPDATE ... SET revoked_at=now WHERE used_at IS NULL AND revoked_at IS NULL`), create a new setup
+   token (new `token_hash`, new `expires_at`), and send a new setup email **addressed only to the
+   canonical email** (`public.retailers.email`, §1.6) — fail-closed within the reissue transaction.
+
+Once the retailer has established a password, the only recovery path is the retailer's own self-service
+reset (§2.5b). This prevents a wholesaler from using "reissue" to take over a retailer's credential.
 
 **Rare send-success / commit-failure case.** If SMTP returns success but the subsequent DB commit fails
 (e.g., connection drop between send and commit), the retailer receives an email containing a link whose
-token hash was never committed. Clicking it yields `SETUP_TOKEN_INVALID` (§2.5) because the row does not
-exist. This is an **invalid link** resolved by the wholesaler reissuing (above). The design treats this
-as a rare, explicitly-documented anomaly — not a data-integrity breach (no partial committed state), and
-not silently retryable. The reissue endpoint is the controlled recovery.
+token hash was never committed. Clicking it yields `SETUP_TOKEN_INVALID` / `RESET_TOKEN_INVALID` (§2.5)
+because the row does not exist. This is an **invalid link** — not a data-integrity breach (no partial
+committed state) — resolved by the retailer requesting a new self-service reset (§2.5b) or, in the
+pre-password window only, a wholesaler reissue (above).
 
-### 2.5 Credential setup / reset redemption
+### 2.5 Credential setup / reset — token binding & redemption
 
-`POST /api/v1/retailers/setup-credential` (public; body-only token — §4.5) and the authenticated
-`POST /api/v1/retailers/reset-credential` (wholesaler-initiated) both:
+**2.5a Tokens are bound to the public identity, not to tenant-user strings.**
 
-1. Validate the token by `token_hash` (constant-time lookup via unique index); reject if not found,
-   `used_at IS NOT NULL`, `revoked_at IS NOT NULL`, or `expires_at < now` → `SETUP_TOKEN_INVALID`.
-2. Resolve the `retailer_id` from the token's bound `(user_tenant_schema, user_id)` →
-   `binding.tenant_user_id` → `binding.retailer_id` (authoritative mapping; no email).
-3. Atomically consume the token: conditional `UPDATE ... SET used_at=now WHERE used_at IS NULL AND
-   revoked_at IS NULL` (rowcount==0 → `SETUP_TOKEN_INVALID`).
-4. Compute `new_hash = hash_password(new_password)` (bcrypt, 72-byte truncate —
-   `backend/core/security.py:238-268`).
-5. **Write `new_hash` to every tenant user mapped to the same `retailer_id`** (§2.2 scope): a single
-   transactional update across all `t_<schema>.users` rows whose id is a `tenant_user_id` on a binding
-   with that `retailer_id`. After this, all mapped copies share the identical `new_hash` again.
-6. Commit. The retailer can now log in with `new_password` at any of their wholesalers.
+- **Setup tokens** (`public.retailer_credential_setup_tokens`) carry `retailer_id` **plus `binding_id`**
+  for setup purpose (a setup token is tied to the specific relationship that triggered it). Redemption
+  resolves `retailer_id` directly from the token row.
+- **Reset tokens** (`public.retailer_password_reset_tokens`, new — §2.5b) are **retailer-scoped** (carry
+  `retailer_id`, no `wholesaler_id`/`binding_id`), because a reset applies to the unified credential
+  across all of the retailer's wholesalers.
+- **`retailer_id` is never inferred from email, schema name, or `users.*` strings.** It is read only
+  from the token row (setup/reset) or from `binding.tenant_user_id` (authenticated session, §1.3).
 
-This mirrors the proven `OwnerCredentialSetupToken.consume_setup_token`
+**2.5b Retailer self-service forgot/reset (new endpoints).**
+
+`POST /api/v1/client/auth/forgot-password` and `POST /api/v1/client/auth/reset-password` (both public;
+JSON body only — §4.5):
+
+- **Forgot-password** — accepts `{ email, wholesaler_code }`. Lookup is **neutral**: regardless of
+  whether a verified retailer with that canonical email exists for that wholesaler, the response is the
+  same 200 neutral acknowledgement (no enumeration). If a match exists and has an established password, a
+  `retailer_password_reset_tokens` row is created (`token_hash`, finite `expires_at`, single-use
+  `used_at=NULL`, `revoked_at=NULL`, scoped to `retailer_id`) and a reset email is sent to the **canonical
+  email only**, fail-closed before commit. If no match, no row, no email, same neutral response.
+- **Reset-password** — accepts `{ reset_token, new_password }` in the body. It (1) validates the token by
+  `token_hash` (reject not-found / `used_at IS NOT NULL` / `revoked_at IS NOT NULL` / `expires_at < now`
+  → `RESET_TOKEN_INVALID`); (2) resolves `retailer_id` from the token row (no email); (3) atomically
+  consumes it (conditional `UPDATE ... SET used_at=now WHERE used_at IS NULL AND revoked_at IS NULL`,
+  rowcount==0 → `RESET_TOKEN_INVALID`); (4) computes `new_hash = hash_password(new_password)` (bcrypt,
+  72-byte truncate, `backend/core/security.py:238-268`); (5) **writes `new_hash` to every tenant user
+  mapped to the same `retailer_id`** (§2.2 scope); (6) commits.
+
+**2.5c Setup redemption.** `POST /api/v1/retailers/setup-credential` (public; body-only token — §4.5)
+follows the same shape as reset: validate by `token_hash` → resolve `retailer_id` from the token row →
+consume conditionally → compute `new_hash` → write to every mapped copy for that `retailer_id` →
+**additionally set the canonical `public.retailers.email_verified_at = now`** (§1.6 setup-verifies-email)
+→ commit. Used/expired/revoked/unknown tokens all return `SETUP_TOKEN_INVALID`.
+
+Both setup and reset mirror the proven `OwnerCredentialSetupToken.consume_setup_token`
 (`backend/services/owner_credential_service.py:185-218`) for hash-only storage and single-active
-semantics, but extends the write to **all mapped copies for the retailer_id**.
+semantics, but extend the write to **all mapped copies for the `retailer_id`** and bind the token to the
+public identity rather than a tenant-user string.
 
-### 2.6 Rollback behavior (zero partial state)
+### 2.6 Wholesaler authority boundary (no credential / no email control)
+
+A wholesaler's authority over a retailer relationship is **strictly limited to its own binding**:
+
+- **May:** create invitations (§4), suspend/terminate **its own** `wholesaler_retailer_bindings` row
+  (§4.6), reissue a setup token **only while the retailer has no established password** (§2.4), read the
+  retailer's business data within the relationship.
+- **Must never:** change the retailer's canonical password, change the retailer's verified canonical
+  email or `email_verified_at`, reset an established credential, or touch **another wholesaler's**
+  binding. There is **no wholesaler endpoint** for password reset or email change; the only reset path is
+  the retailer's self-service `forgot/reset-password` (§2.5b).
+
+This is the D-R2 trust inversion: credentials and the verified email are **retailer-owned**; the
+wholesaler controls only the relationship's commercial status.
+
+### 2.7 Rollback behavior (zero partial state)
 
 The entire §2.1 sequence (including the SMTP send) runs inside **one DB transaction**. Because SMTP is
 performed before commit (§2.4), any failure — DB or SMTP — rolls back every row. Failure semantics:
@@ -290,9 +370,10 @@ performed before commit (§2.4), any failure — DB or SMTP — rolls back every
 **Invariant:** after any failed acceptance, either **all artifacts are committed** or **none of
 {retailer (newly created), binding (newly created), tenant user, `tenant_user_id` mapping, role grant,
 setup token} exist**. The rare send-success/commit-failure case (§2.4) leaves no committed rows; its
-only artifact is an undeliverable link, recovered by reissue.
+only artifact is an undeliverable link, recovered by the retailer's self-service reset (§2.5b) or, in
+the pre-password window, a restricted wholesaler reissue (§2.4).
 
-### 2.7 Per-tenant email uniqueness
+### 2.8 Per-tenant email uniqueness
 
 A partial unique index enforces one-login-per-email-per-tenant (supports the §1.4 collision rule):
 
@@ -302,7 +383,7 @@ CREATE UNIQUE INDEX ux_users_email_active
   WHERE is_deleted IS FALSE;
 ```
 
-### 2.8 Migration contract — `036_retailer_mvp_identity`
+### 2.9 Migration contract — `036_retailer_mvp_identity`
 
 **Revision:** `036_retailer_mvp_identity`. **down_revision:** `035_receivable_collection_integrity`
 (the current single head — preserves the Finance Preservation Gate). This is the **only** migration R1
@@ -319,17 +400,28 @@ requires.
 - **Mutations (only after a clean preflight):**
   - `ALTER TABLE public.wholesaler_retailer_bindings ADD COLUMN tenant_user_id UUID;` + the partial
     unique index `(wholesaler_id, tenant_user_id)` (§1.2).
+  - `ALTER TABLE public.retailers ADD COLUMN email_verified_at TIMESTAMPTZ;` (§1.6 canonical verified
+    email). Existing rows get `email_verified_at = NULL` (unverified until the retailer completes setup,
+    §2.5c); no email is rewritten.
   - `ALTER TABLE public.invitations` — `expires_at` becomes **NOT NULL** with server default
     `now() + interval '7 days'`; existing NULL rows backfilled to `created_at + 7 days`. Add
     `revoked_at`, `revoked_by` (nullable) (§4.2-4.3).
-  - `CREATE TABLE public.retailer_credential_setup_tokens` (mirrors
-    `public.owner_credential_setup_tokens`, `backend/models/tenant_onboarding.py:307+`): `id`,
-    `user_tenant_schema`, `user_id` (plain UUID, no cross-schema FK), `token_hash` (unique), `purpose`
+  - `CREATE TABLE public.retailer_credential_setup_tokens` — **bound to the public identity**
+    (`retailer_id`, `binding_id`) per §2.5a: `id`, `retailer_id` (UUID FK → `public.retailers.id`),
+    `binding_id` (UUID FK → `public.wholesaler_retailer_bindings.id`), `token_hash` (unique), `purpose`
+    (check-constrained constant), `expires_at` NOT NULL, `used_at`, `revoked_at`, `is_deleted`,
+    timestamps; CheckConstraint `used_at IS NULL OR revoked_at IS NULL`; one-active unique index on
+    `retailer_id WHERE used_at IS NULL AND revoked_at IS NULL AND is_deleted=false`. (No
+    `user_tenant_schema`/`user_id` columns — the token does not carry tenant-user strings; `retailer_id`
+    is the identity, §2.5a.)
+  - `CREATE TABLE public.retailer_password_reset_tokens` — **retailer-scoped** per §2.5a/§2.5b:
+    `id`, `retailer_id` (UUID FK → `public.retailers.id`), `token_hash` (unique), `purpose`
     (check-constrained), `expires_at` NOT NULL, `used_at`, `revoked_at`, `is_deleted`, timestamps;
-    CheckConstraints `used_at IS NULL OR revoked_at IS NULL`; one-active unique index on
-    `(user_tenant_schema, user_id) WHERE used_at IS NULL AND revoked_at IS NULL AND is_deleted=false`.
+    CheckConstraint `used_at IS NULL OR revoked_at IS NULL`; one-active unique index on
+    `retailer_id WHERE used_at IS NULL AND revoked_at IS NULL AND is_deleted=false`. No `wholesaler_id`
+    / `binding_id` — a reset is retailer-scoped, not wholesaler-scoped.
   - Per live-registry tenant: seed the `retailer_operator` role + its permission grants (§5.1,
-    idempotent `INSERT ... ON CONFLICT DO NOTHING`); add `ux_users_email_active` (§2.7).
+    idempotent `INSERT ... ON CONFLICT DO NOTHING`); add `ux_users_email_active` (§2.8).
 - **Forward-only.** Rollback is **application-level rollback** (the migration runs inside a transaction;
   any error rolls it back) **plus a verified DB restore** for disaster recovery. There is **no
   destructive downgrade** — no down-revision that drops columns/tables is provided as an operational
@@ -363,8 +455,10 @@ supplier:
    code. Missing/unknown → `INVALID_CREDENTIALS` (neutral; do **not** confirm whether the wholesaler
    exists).
 2. **Successful password verification** — in **that one tenant schema only**, look up `users` by
-   normalized email; `verify_password(password, user.password_hash)` must succeed. Any failure (no user,
-   NULL hash, wrong password) → `INVALID_CREDENTIALS` (neutral).
+   normalized email (the tenant copy mirrors the canonical verified email, §1.6);
+   `verify_password(password, user.password_hash)` must succeed. Any failure (no user, NULL hash, wrong
+   password) → `INVALID_CREDENTIALS` (neutral). Email is used **only** here, to find the auth copy; it is
+   not used to infer `retailer_id` (§1.1).
 3. **Binding found by `tenant_user_id`** — `public.wholesaler_retailer_bindings` must have a row with
    `wholesaler_id = <resolved wholesaler>` AND `tenant_user_id = <user.id>` AND `is_deleted IS FALSE`.
    Missing → `INVALID_CREDENTIALS` (neutral; the user authenticated but is not a retailer of *this*
@@ -418,7 +512,7 @@ unchanged (§2.2).
 
 ### 4.1 Mandatory finite expiry + default TTL
 
-- `expires_at` becomes **NOT NULL** (§2.8). Default TTL = **7 days** (server default
+- `expires_at` becomes **NOT NULL** (§2.9). Default TTL = **7 days** (server default
   `now() + interval '7 days'`).
 - The create-invitation endpoint accepts an optional `ttl_hours` (clamped to `[1, 720]` — 1 hour to 30
   days). Out-of-range → 422.
@@ -485,18 +579,32 @@ All error responses are **neutral** and reveal no other wholesaler's data.
     (`history.replaceState(null, '', location.pathname)`), and submits the token to
     `POST /api/v1/retailers/setup-credential` in the **JSON body** (`{"setup_token": "..."}`) — never as
     a query/path parameter.
-- The redemption endpoint takes the token in the **body** only.
+- **Exact reset link contract (BrowserRouter-compatible), parallel to setup:**
+
+  ```
+  https://<origin>/retailer/reset-password#resetToken=<token>
+  ```
+
+  Same fragment handling: `ResetPasswordPage` reads `location.hash`, clears it immediately, and submits
+  to `POST /api/v1/client/auth/reset-password` in the **JSON body** (`{"reset_token": "...",
+  "new_password": "..."}`). `POST /api/v1/client/auth/forgot-password` takes only `{ email,
+  wholesaler_code }` in the body and returns a neutral 200.
+- All redemption endpoints take the token in the **body** only.
 - The existing public `GET /api/v1/invitations/{code}` pre-flight lookup (F-08) is **deprecated** in R1
   (replaced by a body-POST pre-flight `POST /api/v1/invitations/lookup`) and removed in R2. During R1 it
   must be excluded from request-body logging and must not echo the code beyond what the caller supplied.
 
-### 4.6 Termination (F-07) — scoped to R2
+### 4.6 Termination & suspension (F-07)
 
-First-class relationship termination (dedicated endpoint, audit hook, retention tests) is **deferred to
-R2** and is not on the retailer MVP critical path. The existing `status='active'` gate
-(`backend/api/v1/orders.py:343-348`, `backend/api/v1/client/dependencies.py`) already blocks new business
-for a non-active binding, and history is retained (soft-delete). The MVP needs only "active"; full
-lifecycle is R2.
+**MVP suspend (in scope):** a wholesaler may suspend **its own** binding by flipping
+`wholesaler_retailer_bindings.status` to `inactive` (the authority boundary, §2.6, permits this and only
+this relationship-status action). Suspension blocks new business for that relationship via the existing
+`status='active'` gate (`backend/api/v1/orders.py:343-348`, `backend/api/v1/client/dependencies.py`) and
+the login precondition `binding.status == 'active'` (§3.2). Critically (T20), suspending the A binding
+does **not** affect the B binding or the shared retailer credential — A's authority ends at A's own row.
+
+**First-class termination (R2):** a dedicated terminate endpoint, audit hook, retention tests, and
+reactivation are **deferred to R2**. The MVP needs only active/inactive; full lifecycle is R2.
 
 ---
 
@@ -504,7 +612,7 @@ lifecycle is R2.
 
 ### 5.1 `retailer_operator` role + minimum permissions
 
-A new tenant-local role **`retailer_operator`** (seeded by the §2.8 migration, idempotent) is granted
+A new tenant-local role **`retailer_operator`** (seeded by the §2.9 migration, idempotent) is granted
 exactly this minimum permission set — scoped to **client/self-service** actions only:
 
 | Permission code | Allows | Source endpoint |
@@ -614,21 +722,25 @@ wholesalers, no charts comparing suppliers. The `ClientLayout` bottom nav gains 
 
 ### 7.1 Inventory of existing state
 
-At migration time (§2.8), the existing `public.retailers`, `public.wholesaler_retailer_bindings`, and
+At migration time (§2.9), the existing `public.retailers`, `public.wholesaler_retailer_bindings`, and
 per-tenant `users` rows are **inventoried, not modified destructively**. The migration (after a clean
-preflight): adds `tenant_user_id` (NULL for all existing bindings), backfills invitation expiry, adds
-invitation revoke columns, creates `retailer_credential_setup_tokens`, seeds `retailer_operator` +
-permissions per live-registry tenant, and adds `ux_users_email_active`.
+preflight): adds `tenant_user_id` (NULL for all existing bindings), adds `public.retailers.email_verified_at`
+(NULL for all existing rows), backfills invitation expiry, adds invitation revoke columns, creates
+`retailer_credential_setup_tokens` and `retailer_password_reset_tokens` (bound to the public identity per
+§2.5a), seeds `retailer_operator` + permissions per live-registry tenant, and adds `ux_users_email_active`.
 
 ### 7.2 Existing retailers without a login identity
 
-Existing `public.retailers` / binding rows created before this change have `tenant_user_id = NULL` (the
-F-01 gap). These are **not** silently given credentials or a mapping. Instead:
+Existing `public.retailers` / binding rows created before this change have `tenant_user_id = NULL` and
+`email_verified_at = NULL` (the F-01 gap). These are **not** silently given credentials, a mapping, or a
+verified email. Instead:
 
 - They remain valid business entities with their bindings and historical orders intact.
-- A wholesaler admin may **re-issue a credential setup invitation** to such a retailer. Acceptance
-  creates the missing tenant user, writes back `binding.tenant_user_id` (§2.1 step 4), and issues a setup
-  token — respecting the §1.4 collision rules and the §2.8 preflight.
+- A wholesaler admin may **re-issue a credential setup invitation** to such a retailer (setup reissue is
+  allowed precisely because the retailer has no established password, §2.4). Acceptance creates the
+  missing tenant user, writes back `binding.tenant_user_id` (§2.1 step 4), and issues a setup token bound
+  to `(retailer_id, binding_id)` — respecting the §1.4 collision rules and the §2.9 preflight. The
+  canonical email is verified when the retailer consumes the setup token (§2.5c).
 - Until then, they simply cannot log in — which is the safe, current state.
 
 ### 7.3 Forward-only, fail-closed on ambiguity
@@ -637,7 +749,7 @@ F-01 gap). These are **not** silently given credentials or a mapping. Instead:
   distinct identities (§1.4). The migration does not collapse them.
 - **No destructive cleanup:** no retailer/binding/user/order/payment row is deleted or rewritten by the
   migration.
-- **Fail closed on ambiguous email/mapping:** the §2.8 preflight detects duplicate emails, conflicting
+- **Fail closed on ambiguous email/mapping:** the §2.9 preflight detects duplicate emails, conflicting
   `tenant_user_id` mappings/hashes, and incompatible catalog objects **before mutation**. On any
   ambiguity, the migration **does not guess** — it writes a reconciliation report and aborts, surfacing
   the case for manual OPS resolution.
@@ -655,18 +767,23 @@ Each slice is reviewable on its own and leaves the system in a working state.
 
 ### R1-S1 — Identity mapping / provisioning / unified credentials / invitation atomicity (F-01, F-02, F-04)
 
-- Migration `036_retailer_mvp_identity` (§2.8): `tenant_user_id` column + uniqueness, invitation
-  expiry/revoke columns, `retailer_credential_setup_tokens`, `retailer_operator` seed,
-  `ux_users_email_active`; live-registry enumeration + read-only preflight.
+- Migration `036_retailer_mvp_identity` (§2.9): `tenant_user_id` column + uniqueness,
+  `public.retailers.email_verified_at`, invitation expiry/revoke columns,
+  `retailer_credential_setup_tokens` + `retailer_password_reset_tokens` (bound to public identity per
+  §2.5a), `retailer_operator` seed, `ux_users_email_active`; live-registry enumeration + read-only
+  preflight.
 - Rewrite `register_with_invitation` as the §2.1 atomic transaction (with `tenant_user_id` write-back,
-  unified-credential resolution §2.2, fail-closed SMTP §2.4, rollback §2.6, conditional-update
-  single-use §4.3).
+  unified-credential resolution §2.2, fail-closed SMTP to canonical email §2.4, rollback §2.7,
+  conditional-update single-use §4.3).
 - `resolve_client_identity` → `token.user_id → binding.tenant_user_id` (§1.3, no email).
-- `POST /api/v1/retailers/setup-credential` + `POST /api/v1/retailers/reset-credential`
-  (write to all mapped copies, §2.5).
+- `POST /api/v1/retailers/setup-credential` (§2.5c; verifies canonical email, writes all mapped copies).
+- **Retailer self-service** `POST /api/v1/client/auth/forgot-password` + `POST /api/v1/client/auth/reset-password`
+  (neutral, hash-only, finite/single-use, JSON body; reset writes all mapped copies for the `retailer_id`,
+  §2.5b). **No wholesaler password-reset endpoint.**
 - `POST /api/v1/invitations/{id}/revoke` + `invitations:revoke` (§4.2).
-- `POST /api/v1/retailers/{retailer_id}/reissue-credential` (§2.4).
-- **Reviewable proof:** T1, T4a–T4e, T5a–T6, T7, T10, T11–T17 (§9).
+- `POST /api/v1/retailers/{retailer_id}/reissue-setup` — restricted to the no-established-password window,
+  canonical email only, else `CREDENTIAL_ALREADY_ESTABLISHED` (§2.4).
+- **Reviewable proof:** T1, T4a–T4e, T5a–T6, T7, T10, T11–T24 (§9).
 
 ### R1-S2 — Supplier-scoped login / privacy (F-03, F-09)
 
@@ -693,7 +810,7 @@ Each slice is reviewable on its own and leaves the system in a working state.
   the parent-venv bcrypt 5.0.0 broke `test_dc3b`).
 - Full end-to-end journey test (T1) and the entire test matrix run in that env.
 - Close F-10/F-11 if time permits, else R2.
-- **Reviewable proof:** green T1–T17 in a clean environment with provenance.
+- **Reviewable proof:** green T1–T24 in a clean environment with provenance.
 
 ### Sequencing
 
@@ -720,17 +837,24 @@ deterministic assertion; no flaky or environment-attributable failure is accepte
 | **T5a** | Duplicate email, same wholesaler | `RETAILER_EMAIL_ALREADY_BOUND` (409); no second user | R1-S1 |
 | **T5b** | Phone-change case | Phone update does not affect login/mapping; match only at acceptance | R1-S1 |
 | **T6** | Duplicate email, different wholesaler (unified identity) | Distinct tenant users in A and B; both bindings carry their own `tenant_user_id`; one effective password (§2.2) | R1-S1/S2 |
-| **T7** | Transaction rollback with zero partial state | Force failure at each of §2.6 steps (incl. SMTP); no newly-created retailer/binding/user/mapping/token survives | R1-S1 |
+| **T7** | Transaction rollback with zero partial state | Force failure at each of §2.7 steps (incl. SMTP); no newly-created retailer/binding/user/mapping/token survives | R1-S1 |
 | **T8** | Retailer denied wholesaler + platform routes | `retailer_operator` token → 403 on every wholesaler-management + `/platform/**` route | R1-S3 |
 | **T9** | Wholesaler-owner login behavior unchanged | Owner `/auth/login` → identity JWT → `available_tenants` → `/select-tenant` exactly as before | R1-S2 |
 | **T10** | Setup-before-login fails closed | `password_hash IS NULL` → `INVALID_CREDENTIALS`; no enumeration | R1-S1 |
 | **T11** | `token.user_id` maps to exact retailer binding without email lookup | Authenticated client request resolves `retailer_id` via `binding.tenant_user_id`; no `users.email`/`retailers.email` read in the resolution path (asserted by query inspection/mock) | R1-S1 |
 | **T12** | Unrelated users sharing email are never linked or password-updated | A second `retailer_id` whose tenant user coincidentally shares the email is **not** linked to the first retailer's binding, and a password reset for retailer R1 does **not** change R2's tenant-user hash (update keyed on `retailer_id`, not email) | R1-S1 |
-| **T13** | A+B credential setup and reset preserve one effective password | After R sets a password via A, the B copy has the identical hash (copied per §2.2); a reset updates **both** mapped copies; both logins accept the same password | R1-S1 |
+| **T13** | A+B credential setup and reset preserve one effective password | After R sets a password via A, the B copy has the identical hash (copied per §2.2); a retailer self-service reset updates **both** mapped copies; both logins accept the same password | R1-S1 |
 | **T14** | Inactive / missing / wrong-wholesaler binding denies login | Each of the six §3.2 precondition failures returns neutral `INVALID_CREDENTIALS` (or controlled 403) with no other-supplier disclosure | R1-S2 |
 | **T15** | User without `retailer_operator` cannot use client login | A wholesaler-staff tenant user authenticating at `/client/auth/login` → `INVALID_CREDENTIALS` (neutral) | R1-S2/S3 |
 | **T16** | SMTP failure rolls back every provisioning row | SMTP raised during §2.1 → 503 `SETUP_EMAIL_DELIVERY_FAILED`; zero committed rows; invitation **not** consumed (retriable) | R1-S1 |
-| **T17** | Reissue revokes the previous token | `POST /retailers/{id}/reissue-credential` → prior active setup token has `revoked_at` set; new token issued; old link → `SETUP_TOKEN_INVALID` | R1-S1 |
+| **T17** | Setup reissue (pre-password) revokes the previous token | `POST /retailers/{id}/reissue-setup` while no password established → prior active setup token `revoked_at` set; new token issued; old link → `SETUP_TOKEN_INVALID`; email sent only to canonical email | R1-S1 |
+| **T18** | Wholesaler cannot reset retailer password | No wholesaler password-reset endpoint exists; any attempt (incl. via `reissue-setup` after a password is established) → `CREDENTIAL_ALREADY_ESTABLISHED` (409); retailer hash unchanged | R1-S1 |
+| **T19** | Wholesaler cannot change verified canonical email | After `email_verified_at` is set, no wholesaler endpoint can alter `public.retailers.email`/`email_verified_at`; the column is immutable via wholesaler paths (asserted by route absence + service-layer guard) | R1-S1 |
+| **T20** | A suspension leaves B login working | Wholesaler A suspends **its own** binding (`status=inactive`); R's login via B's portal still succeeds and returns B context; A's suspension did not touch B's binding or the shared credential | R1-S1/S2 |
+| **T21** | Retailer reset updates A+B copies | A retailer self-service reset (via A's portal) writes the new hash to **both** the A and B tenant-user copies (same `retailer_id`); both logins accept the new password | R1-S1 |
+| **T22** | Unrelated same-email user unchanged by reset | A reset for retailer R does not change an unrelated retailer Q's tenant-user hash even if Q's tenant user shares the email (reset keyed on `retailer_id`, §2.5a) | R1-S1 |
+| **T23** | No supplier names disclosed in credential flows | `forgot-password`, `reset-password`, setup, and reissue responses never include another wholesaler's name/code/id; neutral acknowledgements only | R1-S1/S2 |
+| **T24** | Used / expired / revoked reset tokens rejected | Each → `RESET_TOKEN_INVALID`; no password change; the one-active constraint prevents a second concurrent reset token for the same `retailer_id` | R1-S1 |
 
 Additionally, the existing DC-12R0 validation suites must remain green (auth regressions, route
 authorization policy, tenant isolation, global tenant filter, dc1g, pricing, orders, payments, finance
@@ -767,12 +891,16 @@ Exact proof is recorded in the commit and the push output.
 ## 12. Unresolved Architectural Decisions
 
 **None.** Every required decision is resolved: the identity mapping is explicit and authoritative
-(`binding.tenant_user_id`); credentials are unified across mapped copies with explicit conflict handling;
-email delivery is fail-closed with a reissue recovery path; retailer login has six explicit preconditions;
-the migration contract is fixed (`036`, down_revision `035`, live-registry enumeration, read-only
-preflight, forward-only); the link contract is exact and BrowserRouter-compatible. The design requires
-exactly one forward-only migration and introduces no backward-incompatible change to wholesaler-owner or
-DC-3B behavior. No STOP condition applies.
+(`binding.tenant_user_id`); credentials are unified across mapped copies with explicit conflict handling
+recovered **only** by the retailer; email delivery is fail-closed; retailer login has six explicit
+preconditions; the migration contract is fixed (`036`, down_revision `035`, live-registry enumeration,
+read-only preflight, forward-only); the link contract is exact and BrowserRouter-compatible. D-R2
+additionally resolves the **trust boundary**: the canonical verified email and the password are
+**retailer-owned** — wholesalers can neither reset a password nor alter a verified email nor reissue
+setup once a password exists (§2.4, §2.5, §2.6); credential tokens are bound to the public identity
+(`retailer_id`/`binding_id`), never inferred from email or schema strings (§2.5a); retailer self-service
+forgot/reset is provided (§2.5b). The design requires exactly one forward-only migration and introduces
+no backward-incompatible change to wholesaler-owner or DC-3B behavior. No STOP condition applies.
 
 ---
 
@@ -781,7 +909,9 @@ DC-3B behavior. No STOP condition applies.
 **PASS_FOR_CTO_DC12R1_S1_IMPLEMENTATION**
 
 The design is complete, internally consistent, grounded in the audited source, and resolves all
-DC-12R0/R1 findings on the retailer MVP critical path. The R1 corrections make the retailer identity
-mapping explicit (`tenant_user_id`), unify credentials, and remove every email-based inference after
-authentication. It is ready to be split into the R1-S1 … R1-S4 implementation slices, each independently
-reviewable against the §9 test matrix (T1–T17).
+DC-12R0/R1 findings on the retailer MVP critical path. R1 made the retailer identity mapping explicit
+(`tenant_user_id`) and unified credentials; D-R2 tightened the trust model so credentials and the
+verified email are retailer-owned, removed wholesaler password reset, restricted setup reissue to the
+pre-password window, bound credential tokens to the public identity, and added retailer self-service
+recovery. It is ready to be split into the R1-S1 … R1-S4 implementation slices, each independently
+reviewable against the §9 test matrix (T1–T24).

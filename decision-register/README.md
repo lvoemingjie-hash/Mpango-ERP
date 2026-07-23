@@ -42,6 +42,11 @@ YYYY-MM-DD_<short-description>.md
 | DR-2025-01-09-001 | Frontend Port Allocation: 5173 | ✅ Approved | User Requirement | Frontend, Ops |
 | DR-2025-01-09-002 | Async Database Session with Tenant Isolation | ✅ Approved | L0 Multi-Tenancy Spec | Backend, Ops, All APIs |
 
+### Product Decisions (2026-07-23)
+| ID | Title | Status | Authority | Impact |
+|----|-------|--------|-----------|--------|
+| [DR-2026-07-23-001](2026-07-23_wholesaler-private-channel-positioning.md) | Wholesaler-Centric Private Channel Positioning | ✅ Approved | Product Owner + L0 Multi-Tenancy Spec | Product, Auth, Frontend, Tenant Onboarding, Ops |
+
 ## Decision Categories
 
 ### 🏗️ Architecture (架构决策)
@@ -62,6 +67,9 @@ YYYY-MM-DD_<short-description>.md
 ### 🔌 API (接口决策)
 - (待补充)
 
+### 🧭 Product (产品决策)
+- DR-2026-07-23-001: Wholesaler-Centric Private Channel Positioning
+
 ## Review Process
 1. **提出决策**: 任何AI角色发现需要决策的事项时，创建决策文档草稿（Status: Proposed）
 2. **讨论**: 在决策文档中记录讨论过程和备选方案
@@ -77,4 +85,4 @@ YYYY-MM-DD_<short-description>.md
 ---
 
 **Maintained by:** Architect AI
-**Last Updated:** 2025-01-09
+**Last Updated:** 2026-07-23

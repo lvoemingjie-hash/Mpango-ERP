@@ -117,6 +117,22 @@ Any future retailer procurement product requires a separate product decision,
 commercial model, consent boundary, threat model, and release gate. It must not
 emerge as an implicit extension of the wholesaler MVP.
 
+## AI-Native Future Direction
+
+Mpango may add a governed AI operating layer after the MVP delivery gates are
+stable. AI must operate above the existing ERP through typed, allowlisted tools;
+it must not bypass tenant context, RBAC, financial invariants, human approval,
+or audit controls.
+
+This future direction does not change the wholesaler-centric value boundary.
+AI memory, recommendations, and tool calls must remain tenant-partitioned and
+must not expose or infer cross-wholesaler relationships, prices, or commercial
+activity. The separate Procurement Workspace and `ai.mpango.xyz` remain
+isolated experiments until explicit integration gates are approved.
+
+The phased architecture, safety requirements, and activation conditions are
+defined in `docs/MPANGO_AI_NATIVE_OPERATING_LAYER_ROADMAP.md`.
+
 ## Tenant Identity and Co-Branding Direction
 
 Real-customer MVP onboarding must establish a verified business identity before

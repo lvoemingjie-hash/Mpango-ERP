@@ -11,14 +11,6 @@ const setupCredentialSchema = z.object({
 
 type SetupCredentialFormData = z.infer<typeof setupCredentialSchema>;
 
-function scrubTokenFromUrl(search: string, tokenName: string, pathname: string, hash: string) {
-  const params = new URLSearchParams(search);
-  params.delete(tokenName);
-  const nextSearch = params.toString();
-  const nextUrl = `${pathname}${nextSearch ? `?${nextSearch}` : ''}${hash}`;
-  window.history.replaceState(window.history.state, document.title, nextUrl);
-}
-
 export function SetupCredentialPage() {
   const location = useLocation();
   const [setupToken, setSetupToken] = useState<string | null>(null);
@@ -26,11 +18,26 @@ export function SetupCredentialPage() {
   const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const token = params.get('setupToken');
+    // DC-12A-R2: Read token from URL fragment (not query string).
+    // Fragment is never sent to server/proxy, preventing token
+    // leakage in access logs.
+    const hash = location.hash;
+    const fragmentParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+    let token = fragmentParams.get('setupToken');
+
+    // Fallback: query string (for backwards compat with old email links).
+    // Query tokens are NOT consumed by the backend API; this is frontend-only
+    // migration support.
+    if (!token) {
+      const queryParams = new URLSearchParams(location.search);
+      token = queryParams.get('setupToken');
+    }
+
     setSetupToken(token);
     if (token) {
-      scrubTokenFromUrl(location.search, 'setupToken', location.pathname, location.hash);
+      // Clear BOTH query and fragment so the token is not visible
+      // in the address bar, history, or screenshots.
+      window.history.replaceState(window.history.state, document.title, location.pathname);
     }
   }, [location.hash, location.pathname, location.search]);
 

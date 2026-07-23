@@ -11,14 +11,6 @@ const resetPasswordSchema = z.object({
 
 type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
-function scrubTokenFromUrl(search: string, tokenName: string, pathname: string, hash: string) {
-  const params = new URLSearchParams(search);
-  params.delete(tokenName);
-  const nextSearch = params.toString();
-  const nextUrl = `${pathname}${nextSearch ? `?${nextSearch}` : ''}${hash}`;
-  window.history.replaceState(window.history.state, document.title, nextUrl);
-}
-
 export function ResetPasswordPage() {
   const location = useLocation();
   const [resetToken, setResetToken] = useState<string | null>(null);
@@ -26,11 +18,20 @@ export function ResetPasswordPage() {
   const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const token = params.get('resetToken');
+    // DC-12A-R2: Read token from URL fragment (not query string).
+    const hash = location.hash;
+    const fragmentParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+    let token = fragmentParams.get('resetToken');
+
+    // Fallback: query string (for backwards compat with old email links).
+    if (!token) {
+      const queryParams = new URLSearchParams(location.search);
+      token = queryParams.get('resetToken');
+    }
+
     setResetToken(token);
     if (token) {
-      scrubTokenFromUrl(location.search, 'resetToken', location.pathname, location.hash);
+      window.history.replaceState(window.history.state, document.title, location.pathname);
     }
   }, [location.hash, location.pathname, location.search]);
 

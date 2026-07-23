@@ -149,6 +149,12 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = Field(default=False, description="Use implicit TLS for SMTP")
     SMTP_STARTTLS: bool = Field(default=True, description="Upgrade SMTP connection with STARTTLS")
 
+    # DC-12A-R2: Public frontend URL for absolute credential email links
+    PUBLIC_FRONTEND_URL: str | None = Field(
+        default=None,
+        description="Absolute HTTPS origin for credential email links (e.g. https://app.mpango.io)",
+    )
+
     @field_validator("MPANGO_ENV")
     @classmethod
     def validate_environment(cls, v: str) -> str:
@@ -158,6 +164,35 @@ class Settings(BaseSettings):
                 f"MPANGO_ENV must be 'production', 'staging', or 'test', got '{v}'"
             )
         return v
+
+    @field_validator("PUBLIC_FRONTEND_URL")
+    @classmethod
+    def validate_public_frontend_url(cls, v: str | None) -> str | None:
+        """Validate PUBLIC_FRONTEND_URL if provided.
+
+        Rules:
+        - Must be an absolute origin (scheme + host [+ port]).
+        - No credentials, query, or fragment allowed.
+        - Trailing slash stripped.
+        - Production validation (HTTPS) is enforced in the model_validator.
+        """
+        if v is None or v == "":
+            return None
+        from urllib.parse import urlparse
+        parsed = urlparse(v)
+        if not parsed.scheme or not parsed.netloc:
+            raise ValueError(
+                "PUBLIC_FRONTEND_URL must be an absolute URL with scheme and host"
+            )
+        if parsed.username or parsed.password:
+            raise ValueError("PUBLIC_FRONTEND_URL must not contain credentials")
+        if parsed.query or parsed.fragment:
+            raise ValueError("PUBLIC_FRONTEND_URL must not contain query or fragment")
+        if parsed.path and parsed.path != "/":
+            raise ValueError("PUBLIC_FRONTEND_URL must be an origin only (no path)")
+        # Strip trailing slash
+        result = v.rstrip("/")
+        return result
 
     @field_validator("DATABASE_URL")
     @classmethod
@@ -219,6 +254,17 @@ class Settings(BaseSettings):
         This prevents accidental deployment with insecure defaults.
         """
         if self.MPANGO_ENV == "production":
+            # DC-12A-R2: PUBLIC_FRONTEND_URL is required in production
+            if not self.PUBLIC_FRONTEND_URL:
+                raise ValueError(
+                    "Production mode requires PUBLIC_FRONTEND_URL to be set "
+                    "(absolute HTTPS origin for credential email links)."
+                )
+            if not self.PUBLIC_FRONTEND_URL.startswith("https://"):
+                raise ValueError(
+                    "Production PUBLIC_FRONTEND_URL must use HTTPS."
+                )
+
             # Check for default DATABASE_URL
             if "postgres:postgres@localhost" in self.DATABASE_URL:
                 print("❌ FATAL: Production mode detected with default DATABASE_URL", file=sys.stderr)

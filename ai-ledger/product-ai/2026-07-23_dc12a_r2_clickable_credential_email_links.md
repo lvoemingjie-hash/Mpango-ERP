@@ -83,6 +83,56 @@ tokens will show a controlled invalid-link message.
 | Frontend vitest | 100 passed |
 | `pnpm build` | SUCCESS |
 
+## R4 Addendum: Strict Sensitive-Query Rejection
+
+| Field | Value |
+|---|---|
+| Task ID | DC-12A-R4 Strict Sensitive-Query Rejection |
+| Branch | `opencode/dc12a-r2-clickable-credential-email-links-2026-07-23` |
+| Starting tip | `94ab98cdf2b05c0ae2f77ce1a133b1f836770e0a` |
+| Delivery note | R4 changes exactly three frontend production credential pages, frontend/backend tests, and the ledger. No backend production code, migration, deploy, protected-branch, or secret/config value changes. |
+
+### R4 Corrections
+
+All three credential pages now reject sensitive query parameters before parsing
+URL fragments. The rejection path scrubs the URL, shows the controlled Invalid
+Link state, returns immediately, and makes zero API calls.
+
+Sensitive query coverage:
+- verify: `token`, `verificationToken`, `verification_token`
+- setup: `setupToken`, `setup_token`, `password`
+- reset: `resetToken`, `reset_token`, `token`, `newPassword`, `new_password`
+
+Added mixed attack coverage:
+- `/verify-email?token=query#token=fragment`
+- `/setup-credential?setupToken=query#setupToken=fragment`
+- `/reset-password?resetToken=query#resetToken=fragment`
+
+Each mixed attack test proves the page displays Invalid Link, removes search and
+hash from the browser URL, and makes zero API calls.
+
+### R4 No-Token Contract
+
+The VerifyEmailPage no-token test now waits for and asserts the specific
+controlled no-token Invalid Link copy. The transient processing state is no
+longer accepted as a passing result.
+
+### R4 Static Source Guard Label
+
+`test_dc12a_r3_orchestration_link_regression.py` is now explicitly labeled as a
+static source guard. It protects the static link-construction regression only.
+The actual orchestration runtime proof remains the U6L suite.
+
+### R4 Validation Evidence
+
+| Suite | Result |
+|---|---|
+| `pnpm vitest run src/tests/VerifyEmailPage.test.tsx src/tests/CredentialLifecyclePages.test.tsx` | 28 passed |
+| `poetry run pytest tests/test_dc12a_r2_credential_email_links.py tests/test_dc12a_r3_orchestration_link_regression.py -q` | 17 passed |
+| `poetry run pytest tests/test_u6l_email_verified_onboarding_orchestration.py tests/test_u6i6_onboarding_e2e_closeout.py -q` | 8 passed |
+| `pnpm vitest run` | 114 passed |
+| `pnpm build` | SUCCESS |
+
 ## Verdict
 
-**PASS_FOR_CTO_DC12A_R3_MERGE_REVIEW**
+**PASS_FOR_CTO_DC12A_R4_MERGE_REVIEW**

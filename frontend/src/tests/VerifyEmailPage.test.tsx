@@ -49,12 +49,9 @@ describe('VerifyEmailPage', () => {
 
   it('shows no-token state when no fragment and no query', async () => {
     renderWithHash('');
-    // With empty hash and no query, component transitions to no-token
-    await waitFor(() => {
-      // In jsdom the state may resolve as 'no-token' or remain 'processing'
-      // Either way, API must not be called
-      expect(authService.verifyEmail).not.toHaveBeenCalled();
-    });
+    expect(await screen.findByText(/No verification token was found/i)).toBeDefined();
+    expect(screen.queryByText('Verifying your email...')).toBeNull();
+    expect(authService.verifyEmail).not.toHaveBeenCalled();
   });
 
   it('shows invalid state when verifyEmail rejects', async () => {
@@ -70,6 +67,28 @@ describe('VerifyEmailPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Invalid Link')).toBeDefined();
     });
+    expect(authService.verifyEmail).not.toHaveBeenCalled();
+  });
+
+  it.each(['token', 'verificationToken', 'verification_token'])(
+    'rejects sensitive query parameter %s without calling API',
+    async (paramName) => {
+      renderWithHash('#token=fragment-token', `?${paramName}=query-token`);
+
+      expect(await screen.findByText('Invalid Link')).toBeDefined();
+      expect(window.location.search).toBe('');
+      expect(window.location.hash).toBe('');
+      expect(authService.verifyEmail).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects mixed query and fragment verification tokens without calling API', async () => {
+    renderWithHash('#token=fragment', '?token=query');
+
+    expect(await screen.findByText('Invalid Link')).toBeDefined();
+    expect(screen.getByText(/latest link from your signup email/i)).toBeDefined();
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
     expect(authService.verifyEmail).not.toHaveBeenCalled();
   });
 

@@ -4,6 +4,17 @@ import { authService } from '@/services/authService';
 
 type VerifyState = 'processing' | 'success' | 'invalid' | 'no-token' | 'query-rejected';
 
+const SENSITIVE_VERIFY_QUERY_PARAMS = [
+  'token',
+  'verificationToken',
+  'verification_token',
+];
+
+function hasSensitiveQueryParam(search: string, paramNames: readonly string[]) {
+  const queryParams = new URLSearchParams(search);
+  return paramNames.some((paramName) => queryParams.has(paramName));
+}
+
 export function VerifyEmailPage() {
   const [state, setState] = useState<VerifyState>('processing');
   const [errorMsg, setErrorMsg] = useState('');
@@ -14,21 +25,18 @@ export function VerifyEmailPage() {
     if (submitted.current) return;
     submitted.current = true;
 
+    if (hasSensitiveQueryParam(window.location.search, SENSITIVE_VERIFY_QUERY_PARAMS)) {
+      window.history.replaceState(null, '', window.location.pathname);
+      setState('query-rejected');
+      return;
+    }
+
     // DC-12A-R3: Read token from URL fragment ONLY.
     // Fragment is never sent to the server/proxy, so the token
     // does not appear in access logs.
     const hash = window.location.hash;
     const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
     const token = params.get('token');
-
-    // DC-12A-R3: Query-string tokens are rejected.
-    // Scrub URL, show controlled invalid-link state, never submit.
-    const queryToken = new URLSearchParams(window.location.search).get('token');
-    if (queryToken && !token) {
-      window.history.replaceState(null, '', window.location.pathname);
-      setState('query-rejected');
-      return;
-    }
 
     // Immediately clear the URL so the token is not visible in
     // the address bar, history, or screenshots.

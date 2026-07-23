@@ -11,6 +11,17 @@ const setupCredentialSchema = z.object({
 
 type SetupCredentialFormData = z.infer<typeof setupCredentialSchema>;
 
+const SENSITIVE_SETUP_QUERY_PARAMS = [
+  'setupToken',
+  'setup_token',
+  'password',
+];
+
+function hasSensitiveQueryParam(search: string, paramNames: readonly string[]) {
+  const queryParams = new URLSearchParams(search);
+  return paramNames.some((paramName) => queryParams.has(paramName));
+}
+
 export function SetupCredentialPage() {
   const location = useLocation();
   const [setupToken, setSetupToken] = useState<string | null>(null);
@@ -19,19 +30,16 @@ export function SetupCredentialPage() {
   const [queryRejected, setQueryRejected] = useState(false);
 
   useEffect(() => {
-    // DC-12A-R3: Read token from URL fragment ONLY.
-    const hash = location.hash;
-    const fragmentParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-    const token = fragmentParams.get('setupToken');
-
-    // DC-12A-R3: Query-string tokens are rejected.
-    // Scrub URL, show controlled invalid-link state, never submit.
-    const queryToken = new URLSearchParams(location.search).get('setupToken');
-    if (queryToken && !token) {
+    if (hasSensitiveQueryParam(location.search, SENSITIVE_SETUP_QUERY_PARAMS)) {
       window.history.replaceState(window.history.state, document.title, location.pathname);
       setQueryRejected(true);
       return;
     }
+
+    // DC-12A-R3: Read token from URL fragment ONLY.
+    const hash = location.hash;
+    const fragmentParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+    const token = fragmentParams.get('setupToken');
 
     setSetupToken(token);
     if (token) {

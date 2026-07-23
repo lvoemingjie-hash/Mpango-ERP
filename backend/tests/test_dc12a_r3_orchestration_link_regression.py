@@ -1,8 +1,7 @@
-"""DC-12A-R3 Orchestration link regression test.
+"""DC-12A-R3 static source guard for orchestration link construction.
 
-Proves that complete_email_verified_onboarding generates an absolute
-owner setup link using the function-local settings object (not self.settings,
-which would cause NameError in a module-level function).
+This is a static source guard. The actual orchestration runtime proof remains
+the U6L email-verified onboarding orchestration suite.
 """
 from __future__ import annotations
 
@@ -10,9 +9,10 @@ import pytest
 
 
 class TestOrchestrationLinkRegression:
+    """Static source guard for credential-link builder call sites."""
 
     def test_build_owner_setup_link_uses_local_settings(self):
-        """The module-level function complete_email_verified_onboarding
+        """Static source guard: complete_email_verified_onboarding
         must pass its local 'settings' parameter to build_owner_setup_link,
         not 'self.settings' (which would be a NameError)."""
         import inspect
@@ -27,7 +27,7 @@ class TestOrchestrationLinkRegression:
         )
 
     def test_build_verification_link_uses_local_settings(self):
-        """The module-level function create_signup_registration must pass
+        """Static source guard: create_signup_registration must pass
         its local 'settings' parameter to build_verification_link."""
         import inspect
         from services.onboarding_service import create_signup_registration
@@ -38,7 +38,7 @@ class TestOrchestrationLinkRegression:
         )
 
     def test_link_builders_accept_settings_kwarg(self):
-        """All 3 link builders accept a settings keyword argument."""
+        """Static source guard: all 3 link builders accept a settings keyword argument."""
         from services.onboarding_service import (
             build_verification_link,
             build_owner_setup_link,

@@ -11,6 +11,19 @@ const resetPasswordSchema = z.object({
 
 type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
+const SENSITIVE_RESET_QUERY_PARAMS = [
+  'resetToken',
+  'reset_token',
+  'token',
+  'newPassword',
+  'new_password',
+];
+
+function hasSensitiveQueryParam(search: string, paramNames: readonly string[]) {
+  const queryParams = new URLSearchParams(search);
+  return paramNames.some((paramName) => queryParams.has(paramName));
+}
+
 export function ResetPasswordPage() {
   const location = useLocation();
   const [resetToken, setResetToken] = useState<string | null>(null);
@@ -19,18 +32,16 @@ export function ResetPasswordPage() {
   const [queryRejected, setQueryRejected] = useState(false);
 
   useEffect(() => {
-    // DC-12A-R3: Read token from URL fragment ONLY.
-    const hash = location.hash;
-    const fragmentParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-    const token = fragmentParams.get('resetToken');
-
-    // DC-12A-R3: Query-string tokens are rejected.
-    const queryToken = new URLSearchParams(location.search).get('resetToken');
-    if (queryToken && !token) {
+    if (hasSensitiveQueryParam(location.search, SENSITIVE_RESET_QUERY_PARAMS)) {
       window.history.replaceState(window.history.state, document.title, location.pathname);
       setQueryRejected(true);
       return;
     }
+
+    // DC-12A-R3: Read token from URL fragment ONLY.
+    const hash = location.hash;
+    const fragmentParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+    const token = fragmentParams.get('resetToken');
 
     setResetToken(token);
     if (token) {

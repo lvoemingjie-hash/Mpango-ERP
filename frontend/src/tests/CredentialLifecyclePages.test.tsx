@@ -71,6 +71,28 @@ describe('credential lifecycle frontend', () => {
     expect(mockPost).not.toHaveBeenCalled();
   });
 
+  it.each(['setupToken', 'setup_token', 'password'])(
+    'setup page rejects sensitive query parameter %s without calling API',
+    async (paramName) => {
+      renderAt(`/setup-credential?${paramName}=query#setupToken=fragment`, <SetupCredentialPage />);
+
+      expect(await screen.findByText('Invalid Link')).toBeDefined();
+      expect(window.location.search).toBe('');
+      expect(window.location.hash).toBe('');
+      expect(mockPost).not.toHaveBeenCalled();
+    },
+  );
+
+  it('setup page rejects mixed query and fragment setup tokens without calling API', async () => {
+    renderAt('/setup-credential?setupToken=query#setupToken=fragment', <SetupCredentialPage />);
+
+    expect(await screen.findByText('Invalid Link')).toBeDefined();
+    expect(screen.getByText(/latest link from your email/i)).toBeDefined();
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
   it('forgot password page always shows neutral success copy', async () => {
     mockPost.mockRejectedValue(new Error('network unavailable'));
 
@@ -115,6 +137,28 @@ describe('credential lifecycle frontend', () => {
     await waitFor(() => {
       expect(screen.getByText('Invalid Link')).toBeDefined();
     });
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it.each(['resetToken', 'reset_token', 'token', 'newPassword', 'new_password'])(
+    'reset page rejects sensitive query parameter %s without calling API',
+    async (paramName) => {
+      renderAt(`/reset-password?${paramName}=query#resetToken=fragment`, <ResetPasswordPage />);
+
+      expect(await screen.findByText('Invalid Link')).toBeDefined();
+      expect(window.location.search).toBe('');
+      expect(window.location.hash).toBe('');
+      expect(mockPost).not.toHaveBeenCalled();
+    },
+  );
+
+  it('reset page rejects mixed query and fragment reset tokens without calling API', async () => {
+    renderAt('/reset-password?resetToken=query#resetToken=fragment', <ResetPasswordPage />);
+
+    expect(await screen.findByText('Invalid Link')).toBeDefined();
+    expect(screen.getByText(/request a new password reset/i)).toBeDefined();
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
     expect(mockPost).not.toHaveBeenCalled();
   });
 

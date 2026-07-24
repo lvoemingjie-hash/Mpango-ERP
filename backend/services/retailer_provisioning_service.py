@@ -927,28 +927,24 @@ class RetailerProvisioningService:
     ) -> int:
         """Write the new hash to every tenant user mapped to retailer_id (all-or-nothing).
 
-        DC-12R1-S1-R1: NO per-tenant SAVEPOINT / broad except / continue. The full
-        authoritative mapping is resolved first; every copy MUST update exactly one
-        row (rowcount == 1). Any missing wholesaler/schema/user, any exception, or
-        any rowcount != 1 raises immediately so the caller rolls back the entire
-        transaction — no partial A/B divergence, and the setup/reset token is NOT
-        consumed (consumption happens only after this returns successfully).
+        DC-12R1-S1-R3: strictly two phases.
+        Phase 1 — resolve + validate EVERY copy (existence, schema) with zero writes.
+        Phase 2 — update EVERY copy only after phase 1 succeeds for all.
+        Any failure in either phase raises immediately so the caller rolls back
+        the entire transaction. No partial A/B divergence; the setup/reset token
+        is NOT consumed (consumption happens only after this returns).
 
-        Never touches unrelated same-email users — the update is keyed on the
-        binding's tenant_user_id, not on users.email.
+        Never touches unrelated same-email users — keyed on tenant_user_id, not email.
         """
+        # Phase 1: resolve + validate all copies (no writes).
         mappings = await self._mapped_tenant_users(retailer_id)
         if not mappings:
-            # No mapped copies at all — fail closed; nothing to update.
             raise RetailerProvisioningError(
                 "RETAILER_NO_MAPPED_COPIES", http_status=409
             )
-        updated = 0
+        validated: list[tuple[str, uuid.UUID]] = []
         for _binding_id, schema, user_id in mappings:
             validate_identifier(schema, "tenant schema")
-            # DC-12R1-S1-R2: pre-write existence check. A stale mapping (binding
-            # references a tenant_user_id whose users row is gone) must fail
-            # closed BEFORE any password write, not surface as a rowcount!=1.
             exists = (
                 await self.db.execute(
                     text(
@@ -961,7 +957,11 @@ class RetailerProvisioningService:
                 raise RetailerProvisioningError(
                     "RETAILER_MAPPED_COPY_MISSING", http_status=500
                 )
-            # No try/except: any DB error propagates and aborts the outer txn.
+            validated.append((schema, user_id))
+
+        # Phase 2: update all validated copies (only after ALL passed validation).
+        updated = 0
+        for schema, user_id in validated:
             res = await self.db.execute(
                 text(
                     f'UPDATE "{schema}".users '
@@ -972,7 +972,6 @@ class RetailerProvisioningService:
                 {"h": new_hash, "active": activate, "uid": user_id},
             )
             if res.rowcount != 1:
-                # Mapped copy is missing/stale — all-or-nothing: abort.
                 raise RetailerProvisioningError(
                     "RETAILER_MAPPED_COPY_UPDATE_FAILED", http_status=500
                 )

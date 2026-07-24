@@ -250,7 +250,8 @@ def _preflight_no_conflicting_mappings_or_hashes(bind, rows: list[dict[str, Any]
 
 def _check_conflicting_active_hashes(bind, rows: list[dict[str, Any]]) -> list[str]:
     """For each retailer, collect the password_hash of each active mapped copy
-    and flag any disagreement."""
+    and flag any disagreement. DC-12R1-S1-R3: no continue paths — missing
+    registry/schema/table/user is a fail-closed integrity break."""
     schema_by_wholesaler = {row["wholesaler_id"]: row["tenant_schema"] for row in rows}
     mappings = bind.execute(sa.text(
         """
@@ -260,19 +261,31 @@ def _check_conflicting_active_hashes(bind, rows: list[dict[str, Any]]) -> list[s
         """
     )).fetchall()
     by_retailer: dict[str, list[tuple[str, str]]] = {}
+    failures: list[str] = []
     for retailer_id, wholesaler_id, tuid in mappings:
         schema = schema_by_wholesaler.get(wholesaler_id)
-        if schema is None or not _schema_exists(bind, schema):
+        if schema is None:
+            failures.append(
+                f"binding references wholesaler {wholesaler_id} with no live registration"
+            )
+            continue
+        if not _schema_exists(bind, schema):
+            failures.append(f"{schema}: registered tenant schema is missing")
             continue
         if not _table_exists(bind, schema, USERS):
+            failures.append(f"{schema}.{USERS}: users table is missing")
             continue
         row = bind.execute(sa.text(
             f'SELECT password_hash FROM "{schema}".users '
-            "WHERE id = :uid AND is_active = true AND is_deleted = false"
+            "WHERE id = :uid AND is_deleted = false"
         ), {"uid": tuid}).first()
-        if row and row[0]:
+        if row is None:
+            failures.append(
+                f"{schema}.{USERS}: mapped tenant_user_id {tuid} has no users row"
+            )
+            continue
+        if row[0]:
             by_retailer.setdefault(retailer_id, []).append((schema, str(row[0])))
-    failures: list[str] = []
     for retailer_id, copies in by_retailer.items():
         unique = {h for _schema, h in copies}
         if len(unique) > 1:
@@ -458,72 +471,170 @@ def _create_retailer_reset_token_table(bind) -> None:
 # rather than silently skipping an incompatible object.
 # ---------------------------------------------------------------------------
 
-_REQUIRED_TOKEN_COLUMNS = {
-    "id", "retailer_id", "token_hash", "purpose", "expires_at",
-    "used_at", "revoked_at", "is_deleted", "created_at", "updated_at",
+# DC-12R1-S1-R3: required columns with exact type + nullability.
+# (column_name, expected_data_type, expected_nullable)
+_REQUIRED_RESET_COL_SPECS = {
+    "id": ("uuid", False),
+    "retailer_id": ("uuid", False),
+    "token_hash": ("character varying", False),
+    "purpose": ("character varying", False),
+    "expires_at": ("timestamp with time zone", False),
+    "used_at": ("timestamp with time zone", True),
+    "revoked_at": ("timestamp with time zone", True),
+    "is_deleted": ("boolean", False),
+    "deleted_at": ("timestamp with time zone", True),
+    "created_at": ("timestamp with time zone", False),
+    "updated_at": ("timestamp with time zone", False),
 }
-_REQUIRED_SETUP_COLUMNS = _REQUIRED_TOKEN_COLUMNS | {"binding_id"}
+_REQUIRED_SETUP_COL_SPECS = dict(_REQUIRED_RESET_COL_SPECS)
+_REQUIRED_SETUP_COL_SPECS["binding_id"] = ("uuid", False)
+_REQUIRED_SETUP_COL_SPECS["issued_by_wholesaler_id"] = ("uuid", True)
+
+_PURPOSE_BY_TABLE = {
+    "retailer_credential_setup_tokens": "retailer_credential_setup",
+    "retailer_password_reset_tokens": "retailer_password_reset",  # pragma: allowlist secret
+}
 
 
 def _validate_setup_token_table_contract(bind) -> None:
-    _validate_token_table_contract(
-        bind, "retailer_credential_setup_tokens", _REQUIRED_SETUP_COLUMNS
+    _validate_token_table_contract_semantic(
+        bind, "retailer_credential_setup_tokens", _REQUIRED_SETUP_COL_SPECS
     )
-    # The one-active partial unique index must exist.
-    if not _index_exists(bind, PUBLIC_SCHEMA, "retailer_credential_setup_tokens",
-                         "ux_retailer_credential_setup_tokens_retailer_active"):
-        raise PreflightFailure(
-            "retailer_credential_setup_tokens: missing one-active partial unique index"
-        )
+    _validate_one_active_index(
+        bind, "retailer_credential_setup_tokens",
+        "ux_retailer_credential_setup_tokens_retailer_active",
+    )
 
 
 def _validate_reset_token_table_contract(bind) -> None:
-    _validate_token_table_contract(
-        bind, "retailer_password_reset_tokens", _REQUIRED_TOKEN_COLUMNS
+    _validate_token_table_contract_semantic(
+        bind, "retailer_password_reset_tokens", _REQUIRED_RESET_COL_SPECS
     )
-    if not _index_exists(bind, PUBLIC_SCHEMA, "retailer_password_reset_tokens",
-                         "ux_retailer_password_reset_tokens_retailer_active"):
-        raise PreflightFailure(
-            "retailer_password_reset_tokens: missing one-active partial unique index"
-        )
+    _validate_one_active_index(
+        bind, "retailer_password_reset_tokens",
+        "ux_retailer_password_reset_tokens_retailer_active",
+    )
 
 
-def _validate_token_table_contract(bind, table_name: str, required_cols: set[str]) -> None:
-    """DC-12R1-S1-R2: semantic validation of a pre-existing token table.
+def _validate_token_table_contract_semantic(
+    bind, table_name: str, col_specs: dict[str, tuple[str, bool]]
+) -> None:
+    """DC-12R1-S1-R3: fully semantic validation of a pre-existing token table.
 
-    Checks: column presence, NOT NULL on critical columns, purpose CHECK,
-    used/revoked CHECK, token_hash unique constraint. Not a name-only check.
+    Validates: column presence, exact data_type, exact nullability,
+    CHECK constraints by contype + normalized pg_get_constraintdef,
+    UNIQUE constraint on token_hash, required FKs with ON DELETE CASCADE.
     """
+    # --- columns: exact type + nullability ---
     rows = bind.execute(sa.text(
         "SELECT column_name, is_nullable, data_type FROM information_schema.columns "
         "WHERE table_schema = :schema AND table_name = :table_name"
     ), {"schema": PUBLIC_SCHEMA, "table_name": table_name}).fetchall()
-    col_map = {r[0]: (r[1], r[2]) for r in rows}
-    missing = required_cols - set(col_map)
+    actual = {r[0]: (r[1], r[2]) for r in rows}
+    missing = set(col_specs) - set(actual)
     if missing:
         raise PreflightFailure(
-            f"{table_name}: incompatible existing table; missing columns: {sorted(missing)}"
+            f"{table_name}: missing columns: {sorted(missing)}"
         )
-    # Critical NOT NULL columns.
-    not_null_cols = {"id", "retailer_id", "token_hash", "purpose", "expires_at",
-                     "is_deleted", "created_at", "updated_at"}
+    for col, (exp_type, exp_nullable) in col_specs.items():
+        act_nullable, act_type = actual[col]
+        if act_type != exp_type:
+            raise PreflightFailure(
+                f"{table_name}.{col}: wrong type {act_type!r}, expected {exp_type!r}"
+            )
+        if (act_nullable == "YES") != exp_nullable:
+            raise PreflightFailure(
+                f"{table_name}.{col}: wrong nullability (nullable={act_nullable})"
+            )
+
+    # --- constraints: contype + normalized definition ---
+    purpose = _PURPOSE_BY_TABLE[table_name]
+    ck_defs = _constraint_defs(bind, table_name, contype="c")
+    # purpose CHECK: match the purpose literal robustly across PG's casting.
+    purpose_found = any(
+        f"'{purpose}'" in d and "purpose" in d and "= " in d
+        for d in ck_defs
+    )
+    if not purpose_found:
+        raise PreflightFailure(
+            f"{table_name}: missing purpose CHECK (purpose = '{purpose}')"
+        )
+    # used/revoked CHECK: match the OR pattern robustly.
+    ur_found = any(
+        "used_at is null" in d and "revoked_at is null" in d and " or " in d
+        for d in ck_defs
+    )
+    if not ur_found:
+        raise PreflightFailure(
+            f"{table_name}: missing used/revoked mutual-exclusion CHECK"
+        )
+
+    # --- token_hash UNIQUE constraint ---
+    uq_defs = _constraint_defs(bind, table_name, contype="u")
+    th_unique = any("token_hash" in d for d in uq_defs)
+    if not th_unique:
+        raise PreflightFailure(f"{table_name}: missing UNIQUE(token_hash)")
+
+    # --- FKs with ON DELETE CASCADE ---
+    fk_defs = _constraint_defs(bind, table_name, contype="f")
+    for ref_table in ("retailers",):
+        if not any(f"references {ref_table}" in d and "on delete cascade" in d for d in fk_defs):
+            raise PreflightFailure(
+                f"{table_name}: missing FK to {ref_table} with ON DELETE CASCADE"
+            )
     if table_name == "retailer_credential_setup_tokens":
-        not_null_cols.add("binding_id")
-    for col in not_null_cols:
-        if col_map.get(col, ("YES",))[0] != "NO":
-            raise PreflightFailure(f"{table_name}.{col}: must be NOT NULL")
-    # purpose CHECK constraint must exist.
-    purpose_ck = f"ck_{table_name}_purpose"
-    if not _constraint_exists(bind, PUBLIC_SCHEMA, table_name, purpose_ck):
-        raise PreflightFailure(f"{table_name}: missing purpose CHECK constraint ({purpose_ck})")
-    # used/revoked mutual-exclusion CHECK must exist.
-    used_revoked_ck = f"ck_{table_name}_not_used_and_revoked"
-    if not _constraint_exists(bind, PUBLIC_SCHEMA, table_name, used_revoked_ck):
-        raise PreflightFailure(f"{table_name}: missing used/revoked CHECK constraint ({used_revoked_ck})")
-    # token_hash uniqueness must be enforced.
-    if not _constraint_exists(bind, PUBLIC_SCHEMA, table_name,
-                              f"uq_{table_name}_token_hash"):
-        raise PreflightFailure(f"{table_name}: missing token_hash unique constraint")
+        if not any("references wholesaler_retailer_bindings" in d and "on delete cascade" in d for d in fk_defs):
+            raise PreflightFailure(
+                f"{table_name}: missing FK to wholesaler_retailer_bindings with ON DELETE CASCADE"
+            )
+
+
+def _validate_one_active_index(bind, table_name: str, index_name: str) -> None:
+    """Validate the one-active partial unique index via pg_index/pg_get_indexdef."""
+    row = bind.execute(sa.text(
+        "SELECT i.indisunique, pg_get_indexdef(i.indexrelid) "
+        "FROM pg_index i "
+        "JOIN pg_class c ON c.oid = i.indrelid "
+        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "JOIN pg_class ic ON ic.oid = i.indexrelid "
+        "WHERE n.nspname = :schema AND c.relname = :table AND ic.relname = :idx"
+    ), {"schema": PUBLIC_SCHEMA, "table": table_name, "idx": index_name}).first()
+    if row is None:
+        raise PreflightFailure(f"{table_name}: missing one-active index {index_name}")
+    is_unique, indexdef = row[0], row[1]
+    if not is_unique:
+        raise PreflightFailure(f"{table_name}.{index_name}: must be UNIQUE")
+    norm = _normalize_constraint_def(indexdef)
+    if "retailer_id" not in norm:
+        raise PreflightFailure(f"{table_name}.{index_name}: key must be (retailer_id)")
+    # Predicate must contain all three conditions (AND, not OR) with no ` or `.
+    has_pred = (
+        "used_at is null" in norm
+        and "revoked_at is null" in norm
+        and "is_deleted = false" in norm
+        and " or " not in norm.split("where")[-1]  # no OR in the predicate part
+    )
+    if not has_pred:
+        raise PreflightFailure(
+            f"{table_name}.{index_name}: wrong predicate, expected "
+            "WHERE used_at IS NULL AND revoked_at IS NULL AND is_deleted = false"
+        )
+
+
+def _constraint_defs(bind, table_name: str, *, contype: str) -> list[str]:
+    """Return normalized pg_get_constraintdef strings for constraints of a contype."""
+    rows = bind.execute(sa.text(
+        "SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c "
+        "JOIN pg_class t ON t.oid = c.conrelid "
+        "JOIN pg_namespace n ON n.oid = t.relnamespace "
+        "WHERE n.nspname = :schema AND t.relname = :table AND c.contype = :ct"
+    ), {"schema": PUBLIC_SCHEMA, "table": table_name, "ct": contype}).fetchall()
+    return [_normalize_constraint_def(r[0]) for r in rows]
+
+
+def _normalize_constraint_def(definition: str) -> str:
+    """Lowercase + collapse whitespace for robust comparison."""
+    return " ".join(definition.lower().replace("(", " ( ").replace(")", " ) ").split())
 
 
 # ---------------------------------------------------------------------------

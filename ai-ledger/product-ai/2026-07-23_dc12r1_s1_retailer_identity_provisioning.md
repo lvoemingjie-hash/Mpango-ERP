@@ -1,5 +1,14 @@
 # DC-12R1-S1 Retailer Identity, Credential and Invitation Foundation
 
+> **R3 Revision (2026-07-24).** Migration semantic contract + evidence truth gate.
+> Token-table validation now checks column types/nullability (including
+> setup.issued_by_wholesaler_id + deleted_at), validates constraints by contype +
+> normalized pg_get_constraintdef (purpose CHECK, used/revoked CHECK, token_hash
+> UNIQUE, FKs + ON DELETE CASCADE), validates the one-active index via
+> pg_index/pg_get_indexdef (unique, key, predicate). Hash preflight has no continue
+> paths. Credential writes are split into resolve+validate phase then update phase.
+> 11 RED/GREEN real-PG tests cover every malformed variant. Mojibake cleaned.
+
 > **R2 Revision (2026-07-24).** Strict mapping + migration contract closure.
 > Removes every silent skip from authoritative retailer mapping; adds pre-write
 > existence checks; defines the missing `_constraint_exists`; validates token-table

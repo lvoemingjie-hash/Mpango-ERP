@@ -74,7 +74,7 @@ async def _seed_admin_rbac(
     admin_email: str,
     admin_password: str,
     admin_full_name: str,
-    permission_codes: list[tuple[str, str]],
+    permission_codes: list[tuple[str, str]] | tuple[tuple[str, str], ...],
 ) -> None:
     from sqlalchemy import text
 
@@ -83,6 +83,13 @@ async def _seed_admin_rbac(
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
     password_hash = hash_password(admin_password[:72])
+
+    requested_codes = [code for code, _description in permission_codes]
+    duplicate_codes = sorted(
+        code for code in set(requested_codes) if requested_codes.count(code) > 1
+    )
+    if duplicate_codes:
+        raise RuntimeError(f"Duplicate requested admin permission(s): {duplicate_codes}")
 
     await db.execute(
         text(
@@ -138,8 +145,25 @@ async def _seed_admin_rbac(
         {"user_id": user_id, "role_id": role_id},
     )
 
-    perm_rows = (await db.execute(text("SELECT id FROM permissions"))).fetchall()
-    for (perm_id,) in perm_rows:
+    resolved_permission_ids: list[str] = []
+    missing_permissions: list[str] = []
+    for code in requested_codes:
+        perm_id = (
+            await db.execute(
+                text("SELECT id FROM permissions WHERE code = :code"), {"code": code}
+            )
+        ).scalar()
+        if perm_id is None:
+            missing_permissions.append(code)
+        else:
+            resolved_permission_ids.append(str(perm_id))
+
+    if missing_permissions:
+        raise RuntimeError(
+            f"Missing requested admin permission(s): {sorted(missing_permissions)}"
+        )
+
+    for perm_id in resolved_permission_ids:
         await db.execute(
             text(
                 """
@@ -198,6 +222,7 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     _add_backend_to_path()
 
     from core.config import get_settings
+    from core.permission_registry import ADMIN_PERMISSIONS
     from database.session import AsyncSessionLocal
     from models.wholesaler import Wholesaler
 
@@ -217,67 +242,7 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     admin_password = "testpassword"
     admin_full_name = "Test Admin"
 
-    # U1: Complete permission list matching onboard_tenant.py
-    permission_codes = [
-        # ── User management ──
-        ("users:read", "Read users"),
-        ("users:create", "Create users"),
-        ("users:update", "Update users"),
-        ("users:deactivate", "Deactivate users"),
-        # ── Wholesaler ──
-        ("wholesalers:read", "Read wholesalers"),
-        ("wholesalers:write", "Create/update/delete wholesalers"),
-        # ── Role management ──
-        ("roles:read", "Read roles"),
-        ("roles:create", "Create roles"),
-        ("roles:update", "Update roles"),
-        ("roles:delete", "Delete roles"),
-        ("roles:assign", "Assign roles to users"),
-        # ── Order management ──
-        ("orders:read", "Read orders"),
-        ("orders:create", "Create orders"),
-        ("orders:update", "Update orders"),
-        ("orders:confirm", "Confirm orders"),
-        ("orders:ship", "Ship orders"),
-        ("orders:cancel", "Cancel orders"),
-        # ── SKU / Product management ──
-        ("skus:read", "Read SKUs"),
-        ("skus:create", "Create SKUs"),
-        ("skus:update", "Update SKUs"),
-        ("skus:import", "Import SKUs via preview/validate/apply contract"),
-        # -- Data Intake (U4 foundation: U4-C exposes workspace routes) --
-        ("intake:read", "Read data intake batches"),
-        ("intake:create", "Create data intake batches"),
-        ("intake:update", "Update data intake batches"),
-        ("intake:approve", "Approve data intake batches for ERP import"),
-        ("intake:export", "Export data intake batches"),
-        ("intake:import_to_erp", "Import approved data intake into ERP"),
-        # ── Inventory management ──
-        ("inventory:read", "Read inventory"),
-        ("inventory:write", "Write inventory (legacy alias)"),
-        ("inventory:update", "Update inventory (adjustments)"),
-        # ── Payment management ──
-        ("payments:read", "Read payments"),
-        ("payments:create", "Create payments"),
-        # ── Retailer management ──
-        ("retailers:read", "Read retailers"),
-        # ── Invitations ──
-        ("invitations:create", "Create invitations"),
-        # ── Pricing ──
-        ("pricing:read", "Read pricing"),
-        ("pricing:write", "Write pricing"),
-        # ── Finance ──
-        ("finance:read", "View invoices, receivables, financial summary"),
-        # ── Dashboards & Reports ──
-        ("dashboards:read", "View dashboard KPIs and charts"),
-        ("reports:read", "Read reports"),
-        ("reports:analyze", "Analyze reports"),
-        # ── Exports ──
-        ("exports:create", "Request data exports"),
-        # ── System ──
-        ("system:admin", "Full system administration (job queues, debug endpoints)"),
-        ("metrics:admin", "Reset application metrics"),
-    ]
+    permission_codes = ADMIN_PERMISSIONS
 
     async with AsyncSessionLocal() as db:
         await _ensure_public_wholesaler(

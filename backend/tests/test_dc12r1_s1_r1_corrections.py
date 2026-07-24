@@ -303,10 +303,16 @@ async def test_migration_seeds_reissue_permission_for_admin(r1_db):
 
 async def test_bootstrap_seeds_reissue_permission_for_admin_not_retailer(r1_db):
     import pathlib
+    from core.permission_registry import (
+        ADMIN_MANAGEMENT_PERMISSION_CODES,
+        RETAILER_OPERATOR_PERMISSION_CODES,
+    )
+
     src = pathlib.Path("scripts/bootstrap_tenant_schema.py").read_text()
-    assert "retailers:reissue_credential" in src
-    # retailer_operator must NOT get it.
-    # (The _grant call for admin is separate from the retailer_operator grant.)
+    assert "ADMIN_MANAGEMENT_PERMISSIONS" in src
+    assert "RETAILER_OPERATOR_PERMISSIONS" in src
+    assert "retailers:reissue_credential" in ADMIN_MANAGEMENT_PERMISSION_CODES
+    assert "retailers:reissue_credential" not in RETAILER_OPERATOR_PERMISSION_CODES
 
 
 # ---------------------------------------------------------------------------

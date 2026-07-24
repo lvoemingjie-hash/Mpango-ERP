@@ -1233,26 +1233,6 @@ async def _reconcile_intake_tables(db, ts: str) -> None:
 # DC-12R1-S1: retailer_operator RBAC + active-email index parity (mirrors 036)
 # ---------------------------------------------------------------------------
 
-# retailer_operator receives ONLY the client:* permission namespace.
-# invitations:revoke is granted to admin only. See migration 036 for the
-# authoritative seed list and the DC-12R1-D/R2 design for the rationale.
-_S1_RETAILER_OPERATOR_PERMISSIONS = (
-    ("client:catalog:read", "Retailer: browse wholesaler catalog"),
-    ("client:orders:read", "Retailer: read own orders"),
-    ("client:orders:create", "Retailer: create own orders"),
-    ("client:payments:read", "Retailer: read own payments"),
-    ("client:payments:create", "Retailer: pay own orders"),
-    ("client:finance:read", "Retailer: read own outstanding balance"),
-)
-_S1_ADMIN_EXTRA_PERMISSIONS = (
-    ("invitations:revoke", "Revoke an outstanding retailer invitation"),
-    # DC-12R1-S1-R1: restricted setup-token reissue (admin only, tenant-scoped).
-    ("retailers:reissue_credential", "Reissue a retailer credential setup token"),
-)
-_S1_RETAILER_OPERATOR_ROLE = "retailer_operator"
-_S1_ADMIN_ROLE = "admin"
-
-
 async def _reconcile_rbac_s1(db, ts: str) -> None:
     """Ensure fresh and existing tenants carry the S1 RBAC + email-index contract.
 
@@ -1262,6 +1242,17 @@ async def _reconcile_rbac_s1(db, ts: str) -> None:
     NOT alter users.password_hash nullability (kept NOT NULL per CTO D).
     """
     from sqlalchemy import text
+    from core.permission_registry import (
+        ADMIN_MANAGEMENT_PERMISSIONS,
+        ADMIN_ROLE,
+        RETAILER_OPERATOR_PERMISSIONS,
+        RETAILER_OPERATOR_ROLE,
+    )
+
+    required_tables = ("roles", "permissions", "role_permissions")
+    for table_name in required_tables:
+        if not await _table_exists(db, ts, table_name):
+            return
 
     if not await _table_exists(db, ts, "roles"):
         return
@@ -1272,7 +1263,7 @@ async def _reconcile_rbac_s1(db, ts: str) -> None:
     role_perms_t = f'"{quoted_ts}".role_permissions'
     users_t = f'"{quoted_ts}".users'
 
-    for code, description in _S1_RETAILER_OPERATOR_PERMISSIONS + _S1_ADMIN_EXTRA_PERMISSIONS:
+    for code, description in RETAILER_OPERATOR_PERMISSIONS + ADMIN_MANAGEMENT_PERMISSIONS:
         await db.execute(text(
             f"INSERT INTO {perms_t} (code, description) VALUES (:code, :description) "
             "ON CONFLICT (code) DO NOTHING"
@@ -1282,7 +1273,7 @@ async def _reconcile_rbac_s1(db, ts: str) -> None:
         f"INSERT INTO {roles_t} (name, description) "
         "VALUES (:name, :description) ON CONFLICT (name) DO NOTHING"
     ), {
-        "name": _S1_RETAILER_OPERATOR_ROLE,
+        "name": RETAILER_OPERATOR_ROLE,
         "description": "Retailer self-service operator (MVP)",
     })
 
@@ -1305,9 +1296,9 @@ async def _reconcile_rbac_s1(db, ts: str) -> None:
                 """
             ), {"role_name": role_name, "code": code})
 
-    await _grant(_S1_RETAILER_OPERATOR_ROLE,
-                 tuple(c for c, _ in _S1_RETAILER_OPERATOR_PERMISSIONS))
-    await _grant(_S1_ADMIN_ROLE, tuple(c for c, _ in _S1_ADMIN_EXTRA_PERMISSIONS))
+    await _grant(RETAILER_OPERATOR_ROLE,
+                 tuple(c for c, _ in RETAILER_OPERATOR_PERMISSIONS))
+    await _grant(ADMIN_ROLE, tuple(c for c, _ in ADMIN_MANAGEMENT_PERMISSIONS))
 
     if await _table_exists(db, ts, "users"):
         await _ensure_index(

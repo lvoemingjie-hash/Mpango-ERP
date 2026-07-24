@@ -48,6 +48,7 @@ from database.session import AsyncSessionLocal
 from models.wholesaler import Wholesaler
 from models.user import User, Role, Permission
 from core.security import hash_password
+from core.permission_registry import ADMIN_PERMISSIONS, ADMIN_ROLE
 from db.sql_safety import validate_identifier as _validate_identifier
 
 
@@ -164,69 +165,7 @@ async def setup_admin(
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
     # --- Create permissions ---
-    # U1: Complete permission list covering all API-enforced RequirePermission checks.
-    # Every permission here is required by at least one API endpoint.
-    # Admin role receives ALL permissions during onboarding.
-    permissions_data = [
-        # ── User management ──
-        ("users:read", "Read users"),
-        ("users:create", "Create users"),
-        ("users:update", "Update users"),
-        ("users:deactivate", "Deactivate users"),
-        # ── Wholesaler ──
-        ("wholesalers:read", "Read wholesalers"),
-        ("wholesalers:write", "Create/update/delete wholesalers"),
-        # ── Role management ──
-        ("roles:read", "Read roles"),
-        ("roles:create", "Create roles"),
-        ("roles:update", "Update roles"),
-        ("roles:delete", "Delete roles"),
-        ("roles:assign", "Assign roles to users"),
-        # ── Order management ──
-        ("orders:read", "Read orders"),
-        ("orders:create", "Create orders"),
-        ("orders:update", "Update orders"),
-        ("orders:confirm", "Confirm orders"),
-        ("orders:ship", "Ship orders"),
-        ("orders:cancel", "Cancel orders"),
-        # ── SKU / Product management ──
-        ("skus:read", "Read SKUs"),
-        ("skus:create", "Create SKUs"),
-        ("skus:update", "Update SKUs"),
-        ("skus:import", "Import SKUs via preview/validate/apply contract"),
-        # -- Data Intake (U4 foundation: U4-C exposes workspace routes) --
-        ("intake:read", "Read data intake batches"),
-        ("intake:create", "Create data intake batches"),
-        ("intake:update", "Update data intake batches"),
-        ("intake:approve", "Approve data intake batches for ERP import"),
-        ("intake:export", "Export data intake batches"),
-        ("intake:import_to_erp", "Import approved data intake into ERP"),
-        # ── Inventory management ──
-        ("inventory:read", "Read inventory"),
-        ("inventory:write", "Write inventory (legacy alias)"),
-        ("inventory:update", "Update inventory (adjustments)"),
-        # ── Payment management ──
-        ("payments:read", "Read payments"),
-        ("payments:create", "Create payments"),
-        # ── Retailer management ──
-        ("retailers:read", "Read retailers"),
-        # ── Invitations ──
-        ("invitations:create", "Create invitations"),
-        # ── Pricing ──
-        ("pricing:read", "Read pricing"),
-        ("pricing:write", "Write pricing"),
-        # ── Finance ──
-        ("finance:read", "View invoices, receivables, financial summary"),
-        # ── Dashboards & Reports ──
-        ("dashboards:read", "View dashboard KPIs and charts"),
-        ("reports:read", "Read reports"),
-        ("reports:analyze", "Analyze reports"),
-        # ── Exports ──
-        ("exports:create", "Request data exports"),
-        # ── System ──
-        ("system:admin", "Full system administration (job queues, debug endpoints)"),
-        ("metrics:admin", "Reset application metrics"),
-    ]
+    permissions_data = ADMIN_PERMISSIONS
 
     perm_ids = []
     for code, description in permissions_data:
@@ -248,13 +187,13 @@ async def setup_admin(
     # --- Create admin role ---
     result = await db.execute(
         text('SELECT id FROM roles WHERE name = :name'),
-        {"name": "admin"}
+        {"name": ADMIN_ROLE}
     )
     role_row = result.fetchone()
     if role_row:
         role_id = role_row[0]
     else:
-        admin_role = Role(name="admin", description="Administrator with full access")
+        admin_role = Role(name=ADMIN_ROLE, description="Administrator with full access")
         db.add(admin_role)
         await db.flush()
         role_id = admin_role.id

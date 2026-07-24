@@ -16,7 +16,7 @@ from models.tenant_onboarding import OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE
 
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE_REF = "origin/product-dev-recovered"
+BASE_REF = "6a8ddcf348e9b1bdcc902929011e6212cc675cf8"  # pragma: allowlist secret
 MIGRATION_PATH = ROOT / "backend" / "alembic" / "versions" / "028_owner_credential_setup_tokens.py"
 ALEMBIC_INI_PATH = ROOT / "backend" / "alembic.ini"
 ALLOWED_CHANGED_PATHS = {
@@ -196,7 +196,7 @@ def test_alembic_head_includes_owner_credential_setup_tokens():
     config = Config(str(ALEMBIC_INI_PATH))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["035_receivable_collection_integrity"]
+    assert script.get_heads() == ["036_retailer_mvp_identity"]
 
 
 def test_owner_credential_schema_foundation_artifacts_remain_present():

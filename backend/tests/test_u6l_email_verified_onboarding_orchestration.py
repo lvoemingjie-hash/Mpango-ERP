@@ -15,6 +15,10 @@ from sqlalchemy import text
 
 from api.app import app
 from api.dependencies import get_db_session
+from core.permission_registry import (
+    RETAILER_OPERATOR_PERMISSION_CODES,
+    RETAILER_OPERATOR_ROLE,
+)
 from database.session import AsyncSessionLocal, async_engine
 from models.tenant_onboarding import (
     EmailVerificationToken,
@@ -299,6 +303,23 @@ async def _admin_permission_codes(schema: str) -> set[str]:
         return set(rows)
 
 
+async def _role_permission_codes(schema: str, role_name: str) -> set[str]:
+    async with AsyncSessionLocal() as session:
+        return set(
+            (
+                await session.execute(
+                    text(
+                        f'SELECT p.code FROM "{schema}".permissions p '
+                        f'JOIN "{schema}".role_permissions rp ON rp.permission_id = p.id '
+                        f'JOIN "{schema}".roles r ON r.id = rp.role_id '
+                        "WHERE r.name = :role_name"
+                    ),
+                    {"role_name": role_name},
+                )
+            ).scalars()
+        )
+
+
 def _assert_public_response_safe(response, *, forbidden_values: tuple[Any, ...] = ()) -> None:
     body = response.text.lower()
     for term in (
@@ -386,9 +407,12 @@ async def test_emailed_setup_token_can_create_first_admin_rbac_and_status_is_pub
     assert setup_response.status_code == 200, setup_response.text
     _assert_public_response_safe(setup_response, forbidden_values=(setup_token, registration["tenant_schema"]))
     assert await _table_count(registration["tenant_schema"], "users") == 1
-    assert await _table_count(registration["tenant_schema"], "roles") == 1
+    assert await _table_count(registration["tenant_schema"], "roles") == 2
     assert await _owner_role_count(registration["tenant_schema"], email) == 1
     assert await _admin_permission_codes(registration["tenant_schema"]) == CANONICAL_ADMIN_PERMISSION_CODES
+    assert await _role_permission_codes(registration["tenant_schema"], RETAILER_OPERATOR_ROLE) == set(
+        RETAILER_OPERATOR_PERMISSION_CODES
+    )
 
 
 async def test_repeated_internal_orchestration_does_not_duplicate_tenant_token_or_admin_rows():
@@ -421,7 +445,7 @@ async def test_repeated_internal_orchestration_does_not_duplicate_tenant_token_o
     assert first_setup.status_code == 200, first_setup.text
     assert replay_setup.status_code == 401, replay_setup.text
     assert await _table_count(registration["tenant_schema"], "users") == 1
-    assert await _table_count(registration["tenant_schema"], "roles") == 1
+    assert await _table_count(registration["tenant_schema"], "roles") == 2
     assert await _owner_role_count(registration["tenant_schema"], email) == 1
 
 

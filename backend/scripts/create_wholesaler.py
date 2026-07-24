@@ -33,6 +33,7 @@ from models.wholesaler import Wholesaler
 from models.user import User, Role, Permission
 from models.associations import user_roles, role_permissions
 from core.security import hash_password
+from core.permission_registry import ADMIN_PERMISSION_CODES, ADMIN_PERMISSIONS, ADMIN_ROLE
 from db.sql_safety import validate_identifier as _validate_identifier
 
 
@@ -125,7 +126,7 @@ async def create_admin_role(
     # Check if admin role exists (uses search_path, no schema prefix needed)
     result = await db.execute(
         text('SELECT * FROM roles WHERE name = :name'),
-        {"name": "admin"}
+        {"name": ADMIN_ROLE}
     )
     existing_role = result.fetchone()
 
@@ -135,7 +136,7 @@ async def create_admin_role(
 
     # Create admin role
     admin_role = Role(
-        name="admin",
+        name=ADMIN_ROLE,
         description="Administrator with full access"
     )
     db.add(admin_role)
@@ -154,80 +155,14 @@ async def create_admin_role(
 
 
 async def create_permissions(db: AsyncSession, tenant_schema: str):
-    """Create all permissions for the system."""
+    """Create canonical admin permissions for the system."""
     # S8-SEC: Validate schema name before SQL interpolation
     _validate_identifier(tenant_schema, "tenant_schema")
 
     # Set search path
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
-    # U1: Complete permission list covering all API-enforced RequirePermission checks.
-    permissions_data = [
-        # ── User management ──
-        ("users:read", "Read users"),
-        ("users:create", "Create users"),
-        ("users:update", "Update users"),
-        ("users:deactivate", "Deactivate users"),
-        # ── Wholesaler ──
-        ("wholesalers:read", "Read wholesalers"),
-        ("wholesalers:write", "Create/update/delete wholesalers"),
-        # ── Role management ──
-        ("roles:read", "Read roles"),
-        ("roles:create", "Create roles"),
-        ("roles:update", "Update roles"),
-        ("roles:delete", "Delete roles"),
-        ("roles:assign", "Assign roles to users"),
-        # ── Order management ──
-        ("orders:read", "Read orders"),
-        ("orders:create", "Create orders"),
-        ("orders:update", "Update orders"),
-        ("orders:confirm", "Confirm orders"),
-        ("orders:ship", "Ship orders"),
-        ("orders:cancel", "Cancel orders"),
-        # ── SKU / Product management ──
-        ("skus:read", "Read SKUs"),
-        ("skus:create", "Create SKUs"),
-        ("skus:update", "Update SKUs"),
-        ("skus:import", "Import SKUs via preview/validate/apply contract"),
-        # -- Data Intake (U4 foundation: U4-C exposes workspace routes) --
-        ("intake:read", "Read data intake batches"),
-        ("intake:create", "Create data intake batches"),
-        ("intake:update", "Update data intake batches"),
-        ("intake:approve", "Approve data intake batches for ERP import"),
-        ("intake:export", "Export data intake batches"),
-        ("intake:import_to_erp", "Import approved data intake into ERP"),
-        # ── Inventory management ──
-        ("inventory:read", "Read inventory"),
-        ("inventory:write", "Write inventory (legacy alias)"),
-        ("inventory:update", "Update inventory (adjustments)"),
-        # ── Payment management ──
-        ("payments:read", "Read payments"),
-        ("payments:create", "Create payments"),
-        # ── Retailer management ──
-        ("retailers:read", "Read retailers"),
-        # DC-12R1-S1: restricted setup-token reissue (admin only, tenant-scoped)
-        ("retailers:reissue_credential", "Reissue a retailer credential setup token"),
-        # ── Invitations ──
-        ("invitations:create", "Create invitations"),
-        # DC-12R1-S1: revoke an outstanding retailer invitation (admin only)
-        ("invitations:revoke", "Revoke an outstanding retailer invitation"),
-        # ── Pricing ──
-        ("pricing:read", "Read pricing"),
-        ("pricing:write", "Write pricing"),
-        # ── Finance ──
-        ("finance:read", "View invoices, receivables, financial summary"),
-        # ── Dashboards & Reports ──
-        ("dashboards:read", "View dashboard KPIs and charts"),
-        ("reports:read", "Read reports"),
-        ("reports:analyze", "Analyze reports"),
-        # ── Exports ──
-        ("exports:create", "Request data exports"),
-        # ── System ──
-        ("system:admin", "Full system administration (job queues, debug endpoints)"),
-        ("metrics:admin", "Reset application metrics"),
-    ]
-
-    for code, description in permissions_data:
+    for code, description in ADMIN_PERMISSIONS:
         result = await db.execute(
             text('SELECT * FROM permissions WHERE code = :code'),
             {"code": code}
@@ -235,13 +170,13 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
         if not result.fetchone():
             perm = Permission(code=code, description=description)
             db.add(perm)
-            print(f"✓ Created permission: {code}")
+            print(f"??Created permission: {code}")
 
     await db.commit()
 
 
 async def assign_all_permissions_to_admin(db: AsyncSession, tenant_schema: str):
-    """Assign all permissions to admin role."""
+    """Assign only canonical admin permissions to the admin role."""
     # S8-SEC: Validate schema name before SQL interpolation
     _validate_identifier(tenant_schema, "tenant_schema")
 
@@ -251,22 +186,36 @@ async def assign_all_permissions_to_admin(db: AsyncSession, tenant_schema: str):
     # Get admin role (uses search_path, no schema prefix needed)
     result = await db.execute(
         text('SELECT id FROM roles WHERE name = :name'),
-        {"name": "admin"}
+        {"name": ADMIN_ROLE}
     )
     role = result.fetchone()
 
     if not role:
-        print("⚠ Admin role not found, skipping permission assignment")
+        print("??Admin role not found, skipping permission assignment")
         return
 
     role_id = role[0]
 
-    # Get all permissions (uses search_path, no schema prefix needed)
-    result = await db.execute(text('SELECT id FROM permissions'))
-    permissions = result.fetchall()
+    resolved_permissions: list[tuple[str, str]] = []
+    missing_permissions: list[str] = []
+    for code in sorted(ADMIN_PERMISSION_CODES):
+        result = await db.execute(
+            text('SELECT id FROM permissions WHERE code = :code'),
+            {"code": code},
+        )
+        perm_id = result.scalar()
+        if perm_id is None:
+            missing_permissions.append(code)
+        else:
+            resolved_permissions.append((code, str(perm_id)))
 
-    # Assign all permissions to admin role
-    for (perm_id,) in permissions:
+    if missing_permissions:
+        raise RuntimeError(
+            f"Missing canonical admin permission(s): {sorted(missing_permissions)}"
+        )
+
+    # Assign only canonical admin permissions, never client:* permissions.
+    for _code, perm_id in resolved_permissions:
         # Check if already assigned
         check = await db.execute(
             text('SELECT * FROM role_permissions WHERE role_id = :role_id AND permission_id = :perm_id'),
@@ -277,7 +226,7 @@ async def assign_all_permissions_to_admin(db: AsyncSession, tenant_schema: str):
                 text('INSERT INTO role_permissions (role_id, permission_id) VALUES (:role_id, :perm_id)'),
                 {"role_id": str(role_id), "perm_id": str(perm_id)}
             )
-            print(f"✓ Assigned permission to admin role")
+            print(f"??Assigned permission to admin role")
 
     await db.commit()
 

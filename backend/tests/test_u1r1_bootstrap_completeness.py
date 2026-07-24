@@ -17,6 +17,14 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
+from core.permission_registry import (
+    ADMIN_PERMISSION_CODES,
+    ADMIN_PERMISSIONS,
+    ADMIN_ROLE,
+    RETAILER_OPERATOR_PERMISSION_CODES,
+    RETAILER_OPERATOR_ROLE,
+)
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -46,67 +54,7 @@ EXPECTED_MVP_TABLES = {
     "import_runs",
 }
 
-# Complete permission set (mirrors seed_test_tenant.py)
-U1R1_PERMISSION_CODES: list[tuple[str, str]] = [
-    # ── User management ──
-    ("users:read", "Read users"),
-    ("users:create", "Create users"),
-    ("users:update", "Update users"),
-    ("users:deactivate", "Deactivate users"),
-    # ── Wholesaler ──
-    ("wholesalers:read", "Read wholesalers"),
-    ("wholesalers:write", "Create/update/delete wholesalers"),
-    # ── Role management ──
-    ("roles:read", "Read roles"),
-    ("roles:create", "Create roles"),
-    ("roles:update", "Update roles"),
-    ("roles:delete", "Delete roles"),
-    ("roles:assign", "Assign roles to users"),
-    # ── Order management ──
-    ("orders:read", "Read orders"),
-    ("orders:create", "Create orders"),
-    ("orders:update", "Update orders"),
-    ("orders:confirm", "Confirm orders"),
-    ("orders:ship", "Ship orders"),
-    ("orders:cancel", "Cancel orders"),
-    # ── SKU / Product management ──
-    ("skus:read", "Read SKUs"),
-    ("skus:create", "Create SKUs"),
-    ("skus:update", "Update SKUs"),
-    ("skus:import", "Import SKUs via preview/validate/apply contract"),
-    # -- Data Intake (U4 foundation: U4-C exposes workspace routes) --
-    ("intake:read", "Read data intake batches"),
-    ("intake:create", "Create data intake batches"),
-    ("intake:update", "Update data intake batches"),
-    ("intake:approve", "Approve data intake batches for ERP import"),
-    ("intake:export", "Export data intake batches"),
-    ("intake:import_to_erp", "Import approved data intake into ERP"),
-    # ── Inventory management ──
-    ("inventory:read", "Read inventory"),
-    ("inventory:write", "Write inventory (legacy alias)"),
-    ("inventory:update", "Update inventory (adjustments)"),
-    # ── Payment management ──
-    ("payments:read", "Read payments"),
-    ("payments:create", "Create payments"),
-    # ── Retailer management ──
-    ("retailers:read", "Read retailers"),
-    # ── Invitations ──
-    ("invitations:create", "Create invitations"),
-    # ── Pricing ──
-    ("pricing:read", "Read pricing"),
-    ("pricing:write", "Write pricing"),
-    # ── Finance ──
-    ("finance:read", "View invoices, receivables, financial summary"),
-    # ── Dashboards & Reports ──
-    ("dashboards:read", "View dashboard KPIs and charts"),
-    ("reports:read", "Read reports"),
-    ("reports:analyze", "Analyze reports"),
-    # ── Exports ──
-    ("exports:create", "Request data exports"),
-    # ── System ──
-    ("system:admin", "Full system administration (job queues, debug endpoints)"),
-    ("metrics:admin", "Reset application metrics"),
-]
+U1R1_PERMISSION_CODES = ADMIN_PERMISSIONS
 
 
 # ---------------------------------------------------------------------------
@@ -467,12 +415,11 @@ class TestBootstrapImportPreviewValidate:
 # ---------------------------------------------------------------------------
 
 class TestAdminPermissionCompleteness:
-    """Verify admin role has every API-enforced permission."""
+    """Verify bootstrap assigns exact canonical permissions."""
 
     @pytest.mark.asyncio
     async def test_admin_has_all_desired_permissions(self, _u1r1_bootstrap):
-        """All 36 permissions from U1R1_PERMISSION_CODES must be assigned
-        to the admin role via role_permissions."""
+        """All canonical admin permissions must be assigned to admin only."""
         from database.session import AsyncSessionLocal
 
         async with AsyncSessionLocal() as db:
@@ -481,7 +428,8 @@ class TestAdminPermissionCompleteness:
             )
 
             role_result = await db.execute(
-                text("SELECT id FROM roles WHERE name = 'admin'")
+                text("SELECT id FROM roles WHERE name = :role_name"),
+                {"role_name": ADMIN_ROLE},
             )
             role_id = role_result.scalar()
             assert role_id is not None, "admin role must exist"
@@ -496,7 +444,7 @@ class TestAdminPermissionCompleteness:
             )
             assigned_codes = {row[0] for row in perm_result.fetchall()}
 
-        expected_codes = {code for code, _desc in U1R1_PERMISSION_CODES}
+        expected_codes = set(ADMIN_PERMISSION_CODES)
         missing = expected_codes - assigned_codes
         assert not missing, (
             f"Admin role missing {len(missing)} permission(s): {sorted(missing)}"
@@ -506,6 +454,30 @@ class TestAdminPermissionCompleteness:
         assert not extra, (
             f"Admin role has {len(extra)} unexpected permission(s): {sorted(extra)}"
         )
+        assert not {code for code in assigned_codes if code.startswith("client:")}
+
+    @pytest.mark.asyncio
+    async def test_retailer_operator_has_exact_client_permissions(self, _u1r1_bootstrap):
+        """Bootstrap seeds retailer_operator with exactly six client permissions."""
+        from database.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                text(f'SET LOCAL search_path TO "{TEST_U1R1_SCHEMA}", public')
+            )
+
+            perm_result = await db.execute(
+                text(
+                    "SELECT p.code FROM permissions p "
+                    "JOIN role_permissions rp ON p.id = rp.permission_id "
+                    "JOIN roles r ON r.id = rp.role_id "
+                    "WHERE r.name = :role_name"
+                ),
+                {"role_name": RETAILER_OPERATOR_ROLE},
+            )
+            assigned_codes = {row[0] for row in perm_result.fetchall()}
+
+        assert assigned_codes == set(RETAILER_OPERATOR_PERMISSION_CODES)
 
     @pytest.mark.asyncio
     async def test_admin_user_has_admin_role(self, _u1r1_bootstrap):
@@ -522,13 +494,57 @@ class TestAdminPermissionCompleteness:
                     "SELECT 1 FROM user_roles ur "
                     "JOIN users u ON ur.user_id = u.id "
                     "JOIN roles r ON ur.role_id = r.id "
-                    "WHERE u.email = :email AND r.name = 'admin'"
+                    "WHERE u.email = :email AND r.name = :role_name"
                 ),
-                {"email": TEST_U1R1_ADMIN_EMAIL},
+                {"email": TEST_U1R1_ADMIN_EMAIL, "role_name": ADMIN_ROLE},
             )
             assert result.first() is not None, (
                 f"Admin user {TEST_U1R1_ADMIN_EMAIL} must have admin role"
             )
+
+    @pytest.mark.asyncio
+    async def test_seed_admin_rbac_grants_only_requested_codes(self):
+        """Seed helper must not grant every permission row to admin."""
+        from core.config import get_settings
+        from database.session import AsyncSessionLocal
+        from scripts.bootstrap_tenant_schema import bootstrap as bootstrap_schema
+        from scripts.seed_test_tenant import _seed_admin_rbac
+
+        schema = f"t_u1r1_seed_{uuid.uuid4().hex[:16]}"
+        requested_permissions = [("users:read", "Read users")]
+
+        await bootstrap_schema(schema, get_settings().DATABASE_URL)
+        try:
+            async with AsyncSessionLocal() as db:
+                await _seed_admin_rbac(
+                    db,
+                    tenant_schema=schema,
+                    admin_email=f"admin_{uuid.uuid4().hex}@u1r1.test",
+                    admin_password=TEST_U1R1_ADMIN_PASSWORD,
+                    admin_full_name="Scoped Admin",
+                    permission_codes=requested_permissions,
+                )
+                await db.commit()
+
+            async with AsyncSessionLocal() as db:
+                await db.execute(text(f'SET LOCAL search_path TO "{schema}", public'))
+                result = await db.execute(
+                    text(
+                        "SELECT p.code FROM permissions p "
+                        "JOIN role_permissions rp ON p.id = rp.permission_id "
+                        "JOIN roles r ON r.id = rp.role_id "
+                        "WHERE r.name = :role_name"
+                    ),
+                    {"role_name": ADMIN_ROLE},
+                )
+                admin_codes = {row[0] for row in result.fetchall()}
+
+            assert admin_codes == {"users:read"}
+            assert not (admin_codes & set(RETAILER_OPERATOR_PERMISSION_CODES))
+        finally:
+            async with AsyncSessionLocal() as db:
+                await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                await db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -687,7 +703,7 @@ def _build_admin_role_with_permissions() -> _MockRole:
 
 
 class _U1R1AdminMockUser:
-    """Mock user whose admin role holds all seed permissions.
+    """Mock user whose admin role holds all canonical admin permissions.
 
     Used with is_super_admin=False to prove the admin role can pass
     RequirePermission checks without super-admin bypass.
@@ -931,7 +947,7 @@ class TestSidebarApiSmokeNonSuperAdmin:
     2. **Direct RBAC-path proof** (test_admin_with_perms_passes_requirement):
        Instantiates RequirePermission("retailers:read") directly, provides
        a non-super-admin token + mock user whose admin role holds all
-       seed permissions, and calls __call__().  The call returns the token
+       canonical permissions, and calls __call__().  The call returns the token
        (no HTTPException).  This proves the full permission-check path
        (lines 55-75 of rbac.py) works WITHOUT the super-admin bypass on
        line 56.  No FastAPI TestClient, no event-loop issues.
@@ -1003,7 +1019,7 @@ class TestSidebarApiSmokeNonSuperAdmin:
         Exercises lines 55-75 of api/middleware/rbac.py:
           - is_super_admin=False → does NOT bypass on line 56
           - get_tenant_context returns TenantContext with admin user
-          - user.roles[0].permissions contains all 36 codes
+          - user.roles[0].permissions contains all canonical admin codes
           - self.permission ("retailers:read") IS in user_permissions
           - returns token (no HTTPException raised)
         """

@@ -1,5 +1,16 @@
 # DC-12R1-S1 Retailer Identity, Credential and Invitation Foundation
 
+> **R4 Revision (2026-07-24).** Exact catalog equivalence final closure.
+> NO substring matching remains. UNIQUE validated through pg_constraint.conkey
+> (exactly one local column, token_hash). FKs validated through conkey/confkey/
+> confrelid/confdeltype (local col, ref table, ref col, CASCADE). CHECK expressions
+> validated with strict direct semantics (exact purpose literal; exactly used_at IS
+> NULL OR revoked_at IS NULL; reject OR TRUE, AND extras, wrappers, negation). Index
+> validated through pg_index (indisunique, indnkeyatts=1, key=retailer_id, no
+> expression keys, predicate via pg_get_expr with exact three conditions, no extra
+> narrowing/widening). VARCHAR lengths checked (token_hash=128, purpose=64). Both
+> setup and reset tables covered. 8 adversarial real-PG tests added.
+
 > **R3 Revision (2026-07-24).** Migration semantic contract + evidence truth gate.
 > Token-table validation now checks column types/nullability (including
 > setup.issued_by_wholesaler_id + deleted_at), validates constraints by contype +

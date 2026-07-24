@@ -465,79 +465,79 @@ def _create_retailer_reset_token_table(bind) -> None:
 
 
 # ---------------------------------------------------------------------------
-# DC-12R1-S1-R1: strict catalog validation for pre-existing token tables.
-# When a same-name table already exists, verify the required columns and
-# constraints are present; fail closed (PreflightFailure) before any mutation
-# rather than silently skipping an incompatible object.
+# DC-12R1-S1-R4: exact catalog equivalence validation.
+# NO substring matching. Every constraint validated through pg_catalog columns
+# (conkey, confkey, confrelid, confdeltype, indnkeyatts, indisunique) and
+# pg_get_constraintdef/pg_get_indexdef with strict equality semantics.
 # ---------------------------------------------------------------------------
 
-# DC-12R1-S1-R3: required columns with exact type + nullability.
-# (column_name, expected_data_type, expected_nullable)
-_REQUIRED_RESET_COL_SPECS = {
-    "id": ("uuid", False),
-    "retailer_id": ("uuid", False),
-    "token_hash": ("character varying", False),
-    "purpose": ("character varying", False),
-    "expires_at": ("timestamp with time zone", False),
-    "used_at": ("timestamp with time zone", True),
-    "revoked_at": ("timestamp with time zone", True),
-    "is_deleted": ("boolean", False),
-    "deleted_at": ("timestamp with time zone", True),
-    "created_at": ("timestamp with time zone", False),
-    "updated_at": ("timestamp with time zone", False),
+# Required columns: (expected_data_type, expected_nullable, expected_varchar_len or None)
+_REQUIRED_RESET_COL_SPECS: dict[str, tuple[str, bool, int | None]] = {
+    "id": ("uuid", False, None),
+    "retailer_id": ("uuid", False, None),
+    "token_hash": ("character varying", False, 128),
+    "purpose": ("character varying", False, 64),
+    "expires_at": ("timestamp with time zone", False, None),
+    "used_at": ("timestamp with time zone", True, None),
+    "revoked_at": ("timestamp with time zone", True, None),
+    "is_deleted": ("boolean", False, None),
+    "deleted_at": ("timestamp with time zone", True, None),
+    "created_at": ("timestamp with time zone", False, None),
+    "updated_at": ("timestamp with time zone", False, None),
 }
 _REQUIRED_SETUP_COL_SPECS = dict(_REQUIRED_RESET_COL_SPECS)
-_REQUIRED_SETUP_COL_SPECS["binding_id"] = ("uuid", False)
-_REQUIRED_SETUP_COL_SPECS["issued_by_wholesaler_id"] = ("uuid", True)
+_REQUIRED_SETUP_COL_SPECS["binding_id"] = ("uuid", False, None)
+_REQUIRED_SETUP_COL_SPECS["issued_by_wholesaler_id"] = ("uuid", True, None)
 
 _PURPOSE_BY_TABLE = {
     "retailer_credential_setup_tokens": "retailer_credential_setup",
     "retailer_password_reset_tokens": "retailer_password_reset",  # pragma: allowlist secret
 }
 
+# Required FK specs: (local_col, ref_table, ref_col)
+_FK_RETAILER = ("retailer_id", "retailers", "id")
+_FK_BINDING = ("binding_id", "wholesaler_retailer_bindings", "id")
+
 
 def _validate_setup_token_table_contract(bind) -> None:
-    _validate_token_table_contract_semantic(
-        bind, "retailer_credential_setup_tokens", _REQUIRED_SETUP_COL_SPECS
-    )
-    _validate_one_active_index(
+    _validate_token_table_exact(bind, "retailer_credential_setup_tokens",
+                               _REQUIRED_SETUP_COL_SPECS,
+                               fk_specs=[_FK_RETAILER, _FK_BINDING])
+    _validate_one_active_index_exact(
         bind, "retailer_credential_setup_tokens",
         "ux_retailer_credential_setup_tokens_retailer_active",
     )
 
 
 def _validate_reset_token_table_contract(bind) -> None:
-    _validate_token_table_contract_semantic(
-        bind, "retailer_password_reset_tokens", _REQUIRED_RESET_COL_SPECS
-    )
-    _validate_one_active_index(
+    _validate_token_table_exact(bind, "retailer_password_reset_tokens",
+                               _REQUIRED_RESET_COL_SPECS,
+                               fk_specs=[_FK_RETAILER])
+    _validate_one_active_index_exact(
         bind, "retailer_password_reset_tokens",
         "ux_retailer_password_reset_tokens_retailer_active",
     )
 
 
-def _validate_token_table_contract_semantic(
-    bind, table_name: str, col_specs: dict[str, tuple[str, bool]]
+def _validate_token_table_exact(
+    bind, table_name: str,
+    col_specs: dict[str, tuple[str, bool, int | None]],
+    fk_specs: list[tuple[str, str, str]],
 ) -> None:
-    """DC-12R1-S1-R3: fully semantic validation of a pre-existing token table.
+    """Exact catalog equivalence — no substring matching."""
 
-    Validates: column presence, exact data_type, exact nullability,
-    CHECK constraints by contype + normalized pg_get_constraintdef,
-    UNIQUE constraint on token_hash, required FKs with ON DELETE CASCADE.
-    """
-    # --- columns: exact type + nullability ---
+    # --- columns: exact type, nullability, varchar length ---
     rows = bind.execute(sa.text(
-        "SELECT column_name, is_nullable, data_type FROM information_schema.columns "
+        "SELECT column_name, is_nullable, data_type, character_maximum_length "
+        "FROM information_schema.columns "
         "WHERE table_schema = :schema AND table_name = :table_name"
     ), {"schema": PUBLIC_SCHEMA, "table_name": table_name}).fetchall()
-    actual = {r[0]: (r[1], r[2]) for r in rows}
+    actual = {r[0]: (r[1], r[2], r[3]) for r in rows}  # (is_nullable, data_type, char_len)
     missing = set(col_specs) - set(actual)
     if missing:
-        raise PreflightFailure(
-            f"{table_name}: missing columns: {sorted(missing)}"
-        )
-    for col, (exp_type, exp_nullable) in col_specs.items():
-        act_nullable, act_type = actual[col]
+        raise PreflightFailure(f"{table_name}: missing columns: {sorted(missing)}")
+    for col, (exp_type, exp_nullable, exp_len) in col_specs.items():
+        act_nullable, act_type, act_len = actual[col]
         if act_type != exp_type:
             raise PreflightFailure(
                 f"{table_name}.{col}: wrong type {act_type!r}, expected {exp_type!r}"
@@ -546,95 +546,195 @@ def _validate_token_table_contract_semantic(
             raise PreflightFailure(
                 f"{table_name}.{col}: wrong nullability (nullable={act_nullable})"
             )
+        if exp_len is not None and act_len != exp_len:
+            raise PreflightFailure(
+                f"{table_name}.{col}: wrong varchar length {act_len}, expected {exp_len}"
+            )
 
-    # --- constraints: contype + normalized definition ---
     purpose = _PURPOSE_BY_TABLE[table_name]
-    ck_defs = _constraint_defs(bind, table_name, contype="c")
-    # purpose CHECK: match the purpose literal robustly across PG's casting.
-    purpose_found = any(
-        f"'{purpose}'" in d and "purpose" in d and "= " in d
-        for d in ck_defs
-    )
-    if not purpose_found:
-        raise PreflightFailure(
-            f"{table_name}: missing purpose CHECK (purpose = '{purpose}')"
-        )
-    # used/revoked CHECK: match the OR pattern robustly.
-    ur_found = any(
-        "used_at is null" in d and "revoked_at is null" in d and " or " in d
-        for d in ck_defs
-    )
-    if not ur_found:
-        raise PreflightFailure(
-            f"{table_name}: missing used/revoked mutual-exclusion CHECK"
-        )
 
-    # --- token_hash UNIQUE constraint ---
-    uq_defs = _constraint_defs(bind, table_name, contype="u")
-    th_unique = any("token_hash" in d for d in uq_defs)
-    if not th_unique:
-        raise PreflightFailure(f"{table_name}: missing UNIQUE(token_hash)")
-
-    # --- FKs with ON DELETE CASCADE ---
-    fk_defs = _constraint_defs(bind, table_name, contype="f")
-    for ref_table in ("retailers",):
-        if not any(f"references {ref_table}" in d and "on delete cascade" in d for d in fk_defs):
-            raise PreflightFailure(
-                f"{table_name}: missing FK to {ref_table} with ON DELETE CASCADE"
-            )
-    if table_name == "retailer_credential_setup_tokens":
-        if not any("references wholesaler_retailer_bindings" in d and "on delete cascade" in d for d in fk_defs):
-            raise PreflightFailure(
-                f"{table_name}: missing FK to wholesaler_retailer_bindings with ON DELETE CASCADE"
-            )
-
-
-def _validate_one_active_index(bind, table_name: str, index_name: str) -> None:
-    """Validate the one-active partial unique index via pg_index/pg_get_indexdef."""
-    row = bind.execute(sa.text(
-        "SELECT i.indisunique, pg_get_indexdef(i.indexrelid) "
-        "FROM pg_index i "
-        "JOIN pg_class c ON c.oid = i.indrelid "
-        "JOIN pg_namespace n ON n.oid = c.relnamespace "
-        "JOIN pg_class ic ON ic.oid = i.indexrelid "
-        "WHERE n.nspname = :schema AND c.relname = :table AND ic.relname = :idx"
-    ), {"schema": PUBLIC_SCHEMA, "table": table_name, "idx": index_name}).first()
-    if row is None:
-        raise PreflightFailure(f"{table_name}: missing one-active index {index_name}")
-    is_unique, indexdef = row[0], row[1]
-    if not is_unique:
-        raise PreflightFailure(f"{table_name}.{index_name}: must be UNIQUE")
-    norm = _normalize_constraint_def(indexdef)
-    if "retailer_id" not in norm:
-        raise PreflightFailure(f"{table_name}.{index_name}: key must be (retailer_id)")
-    # Predicate must contain all three conditions (AND, not OR) with no ` or `.
-    has_pred = (
-        "used_at is null" in norm
-        and "revoked_at is null" in norm
-        and "is_deleted = false" in norm
-        and " or " not in norm.split("where")[-1]  # no OR in the predicate part
-    )
-    if not has_pred:
-        raise PreflightFailure(
-            f"{table_name}.{index_name}: wrong predicate, expected "
-            "WHERE used_at IS NULL AND revoked_at IS NULL AND is_deleted = false"
-        )
-
-
-def _constraint_defs(bind, table_name: str, *, contype: str) -> list[str]:
-    """Return normalized pg_get_constraintdef strings for constraints of a contype."""
-    rows = bind.execute(sa.text(
+    # --- CHECK constraints via pg_get_constraintdef with exact semantics ---
+    ck_rows = bind.execute(sa.text(
         "SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c "
         "JOIN pg_class t ON t.oid = c.conrelid "
         "JOIN pg_namespace n ON n.oid = t.relnamespace "
-        "WHERE n.nspname = :schema AND t.relname = :table AND c.contype = :ct"
-    ), {"schema": PUBLIC_SCHEMA, "table": table_name, "ct": contype}).fetchall()
-    return [_normalize_constraint_def(r[0]) for r in rows]
+        "WHERE n.nspname = :schema AND t.relname = :table AND c.contype = 'c'"
+    ), {"schema": PUBLIC_SCHEMA, "table": table_name}).fetchall()
+    ck_defs = [r[0] for r in ck_rows]
+
+    _assert_purpose_check(table_name, ck_defs, purpose)
+    _assert_used_revoked_check(table_name, ck_defs)
+
+    # --- UNIQUE(token_hash) via conkey ---
+    _assert_unique_single_col(bind, table_name, "token_hash")
+
+    # --- FKs via conkey/confkey/confrelid/confdeltype ---
+    for local_col, ref_table, ref_col in fk_specs:
+        _assert_fk(bind, table_name, local_col, ref_table, ref_col)
 
 
-def _normalize_constraint_def(definition: str) -> str:
-    """Lowercase + collapse whitespace for robust comparison."""
-    return " ".join(definition.lower().replace("(", " ( ").replace(")", " ) ").split())
+def _assert_purpose_check(table_name: str, ck_defs: list[str], purpose: str) -> None:
+    """Purpose CHECK must be exactly `purpose = 'value'` — no OR TRUE, wrappers, extras."""
+    for d in ck_defs:
+        core = _strip_check(d)
+        # Normalize: remove ::text casts, remove ALL parens, collapse whitespace.
+        norm = core.replace("::text", "").replace("(", "").replace(")", "").strip()
+        norm = " ".join(norm.split())
+        if norm == f"purpose = '{purpose}'":
+            return
+    raise PreflightFailure(
+        f"{table_name}: purpose CHECK not exactly `purpose = '{purpose}'`; "
+        f"found: {ck_defs}"
+    )
+
+
+def _assert_used_revoked_check(table_name: str, ck_defs: list[str]) -> None:
+    """Must be exactly `used_at IS NULL OR revoked_at IS NULL` — no extras/negation."""
+    for d in ck_defs:
+        core = _strip_check(d)
+        # Normalize: remove ALL parens, collapse whitespace, lowercase.
+        norm = core.replace("(", "").replace(")", "").strip()
+        norm = " ".join(norm.split()).lower()
+        if norm == "used_at is null or revoked_at is null":
+            return
+    raise PreflightFailure(
+        f"{table_name}: used/revoked CHECK not exactly "
+        f"`used_at IS NULL OR revoked_at IS NULL`; found: {ck_defs}"
+    )
+
+
+def _strip_check(defn: str) -> str:
+    """Remove leading `CHECK ` and return the inner expression."""
+    s = defn.strip()
+    if s.upper().startswith("CHECK "):
+        s = s[6:]
+    return s
+
+
+def _assert_unique_single_col(bind, table_name: str, col_name: str) -> None:
+    """UNIQUE constraint with exactly one local column via pg_constraint.conkey."""
+    rows = bind.execute(sa.text(
+        """
+        SELECT c.conkey, array_agg(a.attname ORDER BY ord.ord), c.conrelid
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        JOIN unnest(c.conkey) WITH ORDINALITY AS ord(attnum, ord) ON true
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ord.attnum
+        WHERE n.nspname = :schema AND t.relname = :table AND c.contype = 'u'
+        GROUP BY c.conkey, c.conrelid
+        """
+    ), {"schema": PUBLIC_SCHEMA, "table": table_name}).fetchall()
+    for _conkey, cols, _oid in rows:
+        if len(cols) == 1 and cols[0] == col_name:
+            return
+    raise PreflightFailure(
+        f"{table_name}: no UNIQUE constraint on exactly ({col_name}); "
+        f"found unique groups: {[[r[1] for r in rows]]}"
+    )
+
+
+def _assert_fk(
+    bind, table_name: str, local_col: str, ref_table: str, ref_col: str
+) -> None:
+    """FK validated via conkey/confkey/confrelid/confdeltype (no substring)."""
+    row = bind.execute(sa.text(
+        """
+        SELECT
+            la.attname AS local_col,
+            ra.attname AS ref_col,
+            rt.relname AS ref_table,
+            c.confdeltype
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        JOIN pg_class rt ON rt.oid = c.confrelid
+        JOIN pg_namespace rn ON rn.oid = rt.relnamespace
+        JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS lk(attnum, ord) ON true
+        JOIN pg_attribute la ON la.attrelid = c.conrelid AND la.attnum = lk.attnum
+        JOIN LATERAL unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = lk.ord
+        JOIN pg_attribute ra ON ra.attrelid = c.confrelid AND ra.attnum = fk.attnum
+        WHERE n.nspname = :schema AND t.relname = :table AND c.contype = 'f'
+          AND la.attname = :local_col
+        LIMIT 1
+        """
+    ), {
+        "schema": PUBLIC_SCHEMA, "table": table_name, "local_col": local_col,
+    }).first()
+    if row is None:
+        raise PreflightFailure(
+            f"{table_name}: missing FK on {local_col} -> {ref_table}.{ref_col}"
+        )
+    actual_local, actual_ref_col, actual_ref_table, deltype = row
+    if actual_ref_table != ref_table:
+        raise PreflightFailure(
+            f"{table_name}: FK {local_col} references {actual_ref_table}, expected {ref_table}"
+        )
+    if actual_ref_col != ref_col:
+        raise PreflightFailure(
+            f"{table_name}: FK {local_col} -> {actual_ref_table}.{actual_ref_col}, "
+            f"expected .{ref_col}"
+        )
+    if deltype != "c":  # 'c' = CASCADE
+        raise PreflightFailure(
+            f"{table_name}: FK {local_col} confdeltype={deltype!r}, expected CASCADE ('c')"
+        )
+
+
+def _validate_one_active_index_exact(bind, table_name: str, index_name: str) -> None:
+    """Validate the one-active partial unique index via pg_index columns + pg_get_expr."""
+    row = bind.execute(sa.text(
+        """
+        SELECT i.indisunique, i.indnkeyatts,
+               pg_get_expr(i.indpred, i.indrelid) AS pred_text,
+               array_agg(a.attname ORDER BY k.ord) AS key_cols
+        FROM pg_index i
+        JOIN pg_class c ON c.oid = i.indrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_class ic ON ic.oid = i.indexrelid
+        JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
+             ON k.attnum > 0 AND k.ord <= i.indnkeyatts
+        JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum
+        WHERE n.nspname = :schema AND c.relname = :table AND ic.relname = :idx
+        GROUP BY i.indisunique, i.indnkeyatts, i.indpred, i.indrelid
+        """
+    ), {"schema": PUBLIC_SCHEMA, "table": table_name, "idx": index_name}).first()
+    if row is None:
+        raise PreflightFailure(f"{table_name}: missing one-active index {index_name}")
+    is_unique, nkeyatts, pred_text, key_cols = row
+    if not is_unique:
+        raise PreflightFailure(f"{table_name}.{index_name}: must be UNIQUE")
+    if nkeyatts != 1:
+        raise PreflightFailure(
+            f"{table_name}.{index_name}: indnkeyatts={nkeyatts}, expected 1"
+        )
+    if list(key_cols) != ["retailer_id"]:
+        raise PreflightFailure(
+            f"{table_name}.{index_name}: key columns {list(key_cols)}, "
+            f"expected ['retailer_id']"
+        )
+    if pred_text is None:
+        raise PreflightFailure(f"{table_name}.{index_name}: must be a partial index")
+    norm = " ".join(str(pred_text).lower().replace("(", "").replace(")", "").split())
+    required_parts = ["used_at is null", "revoked_at is null", "is_deleted = false"]
+    for part in required_parts:
+        if part not in norm:
+            raise PreflightFailure(
+                f"{table_name}.{index_name}: predicate missing `{part}`; "
+                f"got: {pred_text}"
+            )
+    if " or " in norm:
+        raise PreflightFailure(
+            f"{table_name}.{index_name}: predicate must not contain OR"
+        )
+    residual = norm
+    for part in required_parts:
+        residual = residual.replace(part, "", 1)
+    residual = residual.replace(" and ", " ").strip()
+    if residual:
+        raise PreflightFailure(
+            f"{table_name}.{index_name}: extra predicate condition(s): `{residual}`"
+        )
 
 
 # ---------------------------------------------------------------------------

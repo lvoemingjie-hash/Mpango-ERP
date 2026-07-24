@@ -4,7 +4,7 @@ from datetime import datetime
 from math import ceil
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_current_user_context, get_db_session
@@ -20,6 +20,19 @@ from schemas.retailer import (
     BindingListItem,
     RetailerWithBinding,
     RetailerListData,
+)
+from schemas.retailer_credentials import (
+    RetailerCredentialResponse,
+    RetailerCredentialResponseData,
+    RetailerSetupCredentialRequest,
+)
+from services.retailer_provisioning_service import (
+    CREDENTIAL_ALREADY_ESTABLISHED,
+    RETAILER_CREDENTIAL_NEUTRAL,
+    SETUP_TOKEN_INVALID,
+    RetailerCredentialTokenInvalidError,
+    RetailerProvisioningError,
+    RetailerProvisioningService,
 )
 from services.retailer_service import RetailerService
 
@@ -78,6 +91,131 @@ async def register_retailer_with_invitation(
     )
 
     return DataResponse(success=True, data=data, timestamp=datetime.utcnow())
+
+
+# ---------------------------------------------------------------------------
+# POST /retailers/setup-credential  (DC-12R1-S1 retailer credential setup)
+# ---------------------------------------------------------------------------
+
+NEUTRAL_RETAILER_SETUP_MESSAGE = (
+    "Retailer setup result is not disclosed through this endpoint."
+)
+
+
+@router.post(
+    "/retailers/setup-credential",
+    response_model=RetailerCredentialResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def retailer_setup_credential(
+    request: RetailerSetupCredentialRequest,
+    db: AsyncSession = Depends(get_db_session),
+    http_request: Request = None,
+):
+    """Consume a retailer setup token and establish the credential.
+
+    Token arrives ONLY in the body; query-string token/password params are
+    rejected. On success the new password is written to every tenant user
+    mapped to the same retailer_id, the user is activated, and the canonical
+    email is marked verified. retailer_id is resolved from the token row,
+    never from email. Invalid/expired/used/revoked tokens return neutral 401.
+    """
+    if http_request is not None and any(
+        k in http_request.query_params
+        for k in ("setup_token", "setupToken", "password", "new_password")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": SETUP_TOKEN_INVALID,
+                "message": NEUTRAL_RETAILER_SETUP_MESSAGE,
+            },
+        )
+    service = RetailerProvisioningService(db)
+    try:
+        await service.consume_setup_token(request.setup_token, request.new_password)
+        await db.commit()
+    except RetailerCredentialTokenInvalidError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": SETUP_TOKEN_INVALID,
+                "message": NEUTRAL_RETAILER_SETUP_MESSAGE,
+            },
+        )
+    except ValueError:
+        # Password policy violation — neutral 401 (no leak).
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": SETUP_TOKEN_INVALID,
+                "message": NEUTRAL_RETAILER_SETUP_MESSAGE,
+            },
+        )
+    return RetailerCredentialResponse(
+        data=RetailerCredentialResponseData(),
+        message=NEUTRAL_RETAILER_SETUP_MESSAGE,
+        timestamp=datetime.utcnow(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /retailers/{retailer_id}/reissue-setup  (DC-12R1-S1 restricted reissue)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/retailers/{retailer_id}/reissue-setup",
+    response_model=RetailerCredentialResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def retailer_reissue_setup(
+    retailer_id: str,
+    token: TokenPayload = Depends(RequirePermission("retailers:reissue_credential")),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Reissue a retailer setup token (restricted).
+
+    Tenant-scoped: the current token's tenant must own a binding for this
+    retailer (verified in the service). Allowed ONLY while the retailer has no
+    established password; otherwise returns 409 CREDENTIAL_ALREADY_ESTABLISHED.
+    Cross-tenant access returns a neutral 404 (no relationship disclosure).
+    """
+    try:
+        wholesaler_id = uuid.UUID(token.tenant_id)
+        retailer_uuid = uuid.UUID(retailer_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "RETAILER_NOT_FOUND", "message": RETAILER_CREDENTIAL_NEUTRAL},
+        )
+    service = RetailerProvisioningService(db)
+    try:
+        await service.reissue_setup_token(
+            wholesaler_id=wholesaler_id,
+            retailer_id=retailer_uuid,
+            issued_by_user_id=uuid.UUID(token.user_id) if token.user_id else wholesaler_id,
+        )
+        await db.commit()
+    except RetailerProvisioningError as exc:
+        await db.rollback()
+        if exc.code == CREDENTIAL_ALREADY_ESTABLISHED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": exc.code, "message": RETAILER_CREDENTIAL_NEUTRAL},
+            )
+        # RETAILER_NOT_FOUND (cross-tenant) and others -> neutral 404.
+        raise HTTPException(
+            status_code=exc.http_status,
+            detail={"code": exc.code, "message": RETAILER_CREDENTIAL_NEUTRAL},
+        )
+    return RetailerCredentialResponse(
+        data=RetailerCredentialResponseData(),
+        message=NEUTRAL_RETAILER_SETUP_MESSAGE,
+        timestamp=datetime.utcnow(),
+    )
 
 
 @router.get(

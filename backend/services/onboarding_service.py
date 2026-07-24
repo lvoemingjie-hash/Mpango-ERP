@@ -415,6 +415,37 @@ def build_password_reset_link(token: str, settings: Settings | None = None) -> s
     return path
 
 
+def build_retailer_setup_link(token: str, settings: Settings | None = None) -> str:
+    """Build the retailer credential-setup link for email delivery only.
+
+    DC-12R1-S1: absolute URL via PUBLIC_FRONTEND_URL. The token is in the URL
+    fragment so it never reaches the server in a query string, proxy log, or
+    Referer header. The consuming frontend page scrubs the fragment and POSTs
+    the token in a JSON body. No query component is ever produced.
+    """
+    settings = settings or get_settings()
+    encoded = quote(token, safe='')
+    path = f"/retailer/setup-credential#setupToken={encoded}"
+    base = getattr(settings, "PUBLIC_FRONTEND_URL", None)
+    if base:
+        return f"{base}{path}"
+    return path
+
+
+def build_retailer_reset_link(token: str, settings: Settings | None = None) -> str:
+    """Build the retailer password-reset link for email delivery only.
+
+    DC-12R1-S1: absolute URL via PUBLIC_FRONTEND_URL, token in the fragment.
+    """
+    settings = settings or get_settings()
+    encoded = quote(token, safe='')
+    path = f"/retailer/reset-password#resetToken={encoded}"
+    base = getattr(settings, "PUBLIC_FRONTEND_URL", None)
+    if base:
+        return f"{base}{path}"
+    return path
+
+
 def _public_onboarding_status(status: str) -> str:
     if status == "provisioning":
         return "email_verified"

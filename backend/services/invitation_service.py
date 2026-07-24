@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,11 +54,12 @@ class InvitationService:
             if not invitation:
                 return None, False, "INVITATION_NOT_FOUND"
 
-            now = datetime.utcnow()
+            # DC-12R1-S1-R1: use timezone-aware UTC (expires_at is TIMESTAMPTZ).
+            now = datetime.now(timezone.utc)
             if invitation.status != "active":
                 return invitation, False, "INVITATION_NOT_ACTIVE"
 
-            if invitation.expires_at and invitation.expires_at < now:
+            if invitation.expires_at and invitation.expires_at <= now:
                 return invitation, False, "INVITATION_EXPIRED"
 
             return invitation, True, None

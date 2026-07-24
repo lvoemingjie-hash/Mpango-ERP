@@ -10,6 +10,12 @@ from sqlalchemy import text
 
 from api.app import app
 from api.dependencies import get_db_session
+from core.permission_registry import (
+    ADMIN_MANAGEMENT_PERMISSION_CODES,
+    ADMIN_ROLE,
+    RETAILER_OPERATOR_PERMISSION_CODES,
+    RETAILER_OPERATOR_ROLE,
+)
 from database.session import AsyncSessionLocal, async_engine
 from models.tenant_onboarding import (
     EmailVerificationToken,
@@ -223,6 +229,41 @@ async def _table_count(schema: str, table: str) -> int:
         return int(await session.scalar(text(f'SELECT count(*) FROM "{schema}"."{table}"')))
 
 
+async def _role_exists(schema: str, role_name: str) -> bool:
+    async with AsyncSessionLocal() as session:
+        row = await session.execute(
+            text(f'SELECT 1 FROM "{schema}".roles WHERE name = :role_name'),
+            {"role_name": role_name},
+        )
+        return row.first() is not None
+
+
+async def _permission_codes(schema: str) -> set[str]:
+    async with AsyncSessionLocal() as session:
+        return set(
+            (
+                await session.execute(text(f'SELECT code FROM "{schema}".permissions'))
+            ).scalars()
+        )
+
+
+async def _role_permission_codes(schema: str, role_name: str) -> set[str]:
+    async with AsyncSessionLocal() as session:
+        return set(
+            (
+                await session.execute(
+                    text(
+                        f'SELECT p.code FROM "{schema}".permissions p '
+                        f'JOIN "{schema}".role_permissions rp ON rp.permission_id = p.id '
+                        f'JOIN "{schema}".roles r ON r.id = rp.role_id '
+                        "WHERE r.name = :role_name"
+                    ),
+                    {"role_name": role_name},
+                )
+            ).scalars()
+        )
+
+
 def _assert_neutral_failure(response):
     assert response.status_code == 400, response.text
     body = response.json()
@@ -356,5 +397,12 @@ async def test_verify_email_provisions_tenant_schema_without_admin_rbac_side_eff
     assert await _tenant_schema_names() == schemas_before | {registration["tenant_schema"]}
     assert registration["tenant_schema"] is not None
     assert registration["wholesaler_id"] is not None
-    for table in ("users", "roles", "permissions", "user_roles", "role_permissions"):
-        assert await _table_count(registration["tenant_schema"], table) == 0
+    assert await _table_count(registration["tenant_schema"], "users") == 0
+    assert await _table_count(registration["tenant_schema"], "user_roles") == 0
+    assert await _role_permission_codes(registration["tenant_schema"], RETAILER_OPERATOR_ROLE) == set(
+        RETAILER_OPERATOR_PERMISSION_CODES
+    )
+    assert ADMIN_MANAGEMENT_PERMISSION_CODES <= await _permission_codes(
+        registration["tenant_schema"]
+    )
+    assert not await _role_exists(registration["tenant_schema"], ADMIN_ROLE)

@@ -240,8 +240,11 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     # Client API — Retailer-facing endpoints (v0.3.0)
     from api.v1.client.products import router as client_products_router
     from api.v1.client.orders import router as client_orders_router
+    from api.v1.client.auth import router as client_auth_router
     app.include_router(client_products_router, prefix="/api/v1/client/products", tags=["client-products"])
     app.include_router(client_orders_router, prefix="/api/v1/client/orders", tags=["client-orders"])
+    # DC-12R1-S1: retailer self-service credential recovery (forgot/reset). Public.
+    app.include_router(client_auth_router, prefix="/api/v1/client/auth", tags=["client-auth"])
 
     logger.info("All routers registered")
 

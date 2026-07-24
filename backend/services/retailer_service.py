@@ -32,57 +32,34 @@ class RetailerService:
         email: str | None = None,
         address: str | None = None,
     ):
-        # Public endpoint flow: registration by invitation code is intentionally
-        # system-scoped and cannot rely on authenticated tenant context.
-        with run_as_system(reason="public_retailer_registration_by_invitation"):
-            invitation = await self._invitation_repo.get_by_code(db, code=invitation_code)
-            if not invitation:
-                return None, None, None, "INVITATION_NOT_FOUND"
+        """Accept an invitation atomically (DC-12R1-S1, CTO order B).
 
-            now = datetime.utcnow()
+        Delegates to RetailerProvisioningService which runs the full provisioning
+        transaction (retailer -> binding -> tenant user -> tenant_user_id mapping
+        -> retailer_operator grant -> optional setup token -> SMTP before commit
+        -> mark used). Returns the legacy 4-tuple
+        (invitation, retailer, binding, error_code); on a controlled failure the
+        first three are None and error_code is set. The caller (API) is expected
+        to commit/rollback the transaction.
+        """
+        # Local import avoids a circular dependency at module import time.
+        from services.retailer_provisioning_service import (
+            RetailerProvisioningError,
+            RetailerProvisioningService,
+        )
 
-            if invitation.status != "active":
-                return invitation, None, None, "INVITATION_NOT_ACTIVE"
-
-            if invitation.expires_at and invitation.expires_at < now:
-                return invitation, None, None, "INVITATION_EXPIRED"
-
-            if invitation.retailer_phone and invitation.retailer_phone != phone:
-                return invitation, None, None, "INVITATION_PHONE_MISMATCH"
-
-            retailer = await self._retailer_repo.get_by_phone(db, phone=phone)
-            if not retailer:
-                retailer = await self._retailer_repo.create(
-                    db,
-                    phone=phone,
-                    name=name,
-                    email=email,
-                    address=address,
-                )
-
-            existing = await self._binding_repo.get_binding(
-                db,
-                wholesaler_id=invitation.wholesaler_id,
-                retailer_id=retailer.id,
+        service = RetailerProvisioningService(db)
+        try:
+            result = await service.register_with_invitation(
+                invitation_code=invitation_code,
+                phone=phone,
+                name=name,
+                email=email,
+                address=address,
             )
-            if not existing:
-                binding = await self._binding_repo.create(
-                    db,
-                    wholesaler_id=invitation.wholesaler_id,
-                    retailer_id=retailer.id,
-                    status="active",
-                )
-            else:
-                binding = existing
-
-            await self._invitation_repo.mark_used(
-                db,
-                invitation_id=invitation.id,
-                retailer_id=retailer.id,
-                used_at=now,
-            )
-
-            return invitation, retailer, binding, None
+            return result.invitation, result.retailer, result.binding, None
+        except RetailerProvisioningError as exc:
+            return None, None, None, exc.code
 
     async def list_bindings_for_wholesaler(
         self,

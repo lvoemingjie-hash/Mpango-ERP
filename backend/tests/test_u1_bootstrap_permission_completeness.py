@@ -2,7 +2,7 @@
 U1 — Tenant Bootstrap Permission Completeness.
 
 Validates that every permission enforced by RequirePermission in the API
-is present in the permissions_data / permission_codes of all bootstrap scripts.
+is present in the canonical runtime permission registry consumed by bootstrap.
 
 This is a static analysis test — no database or server required.
 """
@@ -13,6 +13,12 @@ import ast
 from pathlib import Path
 
 import pytest
+
+from core.permission_registry import (
+    ADMIN_PERMISSION_CODES,
+    ADMIN_PERMISSIONS,
+    RETAILER_OPERATOR_PERMISSION_CODES,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -41,62 +47,8 @@ def _extract_require_permission_calls(api_dir: Path) -> set[str]:
     return found
 
 
-def _extract_permissions_from_script(script_path: Path) -> set[str]:
-    """Extract the permission codes from permissions_data / permission_codes
-    list literal in a bootstrap script using AST.
-
-    Uses AST to find the exact list variable (permissions_data or
-    permission_codes) and extracts only its string-tuple elements.
-    This avoids false positives from unrelated string tuples elsewhere
-    in the file (e.g. demo data SKU definitions).
-    """
-    tree = ast.parse(script_path.read_text(encoding="utf-8"))
-
-    codes: set[str] = set()
-
-    # ---- Step 1: Find the target variable name ----
-    # Look for assignments like:  permissions_data = [...]  OR  permission_codes = [...]
-    target_names = {"permissions_data", "permission_codes"}
-    target_node: ast.List | None = None
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
-            if isinstance(target, ast.Name) and target.id in target_names:
-                if isinstance(node.value, ast.List):
-                    target_node = node.value
-                    break
-        if target_node is not None:
-            break
-
-    if target_node is None:
-        raise RuntimeError(
-            f"Could not find permissions_data or permission_codes list in {script_path}"
-        )
-
-    # ---- Step 2: Extract ("code", "description") tuples ----
-    for element in target_node.elts:
-        if not isinstance(element, ast.Tuple):
-            continue
-        elts = element.elts
-        # Must be a 2-element tuple of string literals
-        if len(elts) != 2:
-            continue
-        if not isinstance(elts[0], ast.Constant) or not isinstance(
-            elts[0].value, str
-        ):
-            continue
-        if not isinstance(elts[1], ast.Constant) or not isinstance(
-            elts[1].value, str
-        ):
-            continue
-        code = elts[0].value
-        # Only permissions look like "resource:action"
-        if ":" in code:
-            codes.add(code)
-
-    return codes
+def _script_source(script_name: str) -> str:
+    return (SCRIPTS_DIR / script_name).read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -117,18 +69,13 @@ def api_permissions() -> set[str]:
 
 
 @pytest.fixture(scope="module")
-def onboard_permissions() -> set[str]:
-    return _extract_permissions_from_script(SCRIPTS_DIR / "onboard_tenant.py")
+def canonical_admin_permissions() -> set[str]:
+    return set(ADMIN_PERMISSION_CODES)
 
 
 @pytest.fixture(scope="module")
-def create_wholesaler_permissions() -> set[str]:
-    return _extract_permissions_from_script(SCRIPTS_DIR / "create_wholesaler.py")
-
-
-@pytest.fixture(scope="module")
-def seed_test_permissions() -> set[str]:
-    return _extract_permissions_from_script(SCRIPTS_DIR / "seed_test_tenant.py")
+def canonical_permission_specs() -> tuple[tuple[str, str], ...]:
+    return ADMIN_PERMISSIONS
 
 
 # ---------------------------------------------------------------------------
@@ -136,28 +83,27 @@ def seed_test_permissions() -> set[str]:
 # ---------------------------------------------------------------------------
 
 class TestOnboardTenantPermissionCompleteness:
-    """onboard_tenant.py must cover every API-enforced permission."""
+    """The canonical admin registry must cover every API-enforced permission."""
 
     def test_all_api_perms_in_onboard(
-        self, api_permissions: set[str], onboard_permissions: set[str]
+        self, api_permissions: set[str], canonical_admin_permissions: set[str]
     ):
-        missing = api_permissions - onboard_permissions
+        missing = api_permissions - canonical_admin_permissions
         assert not missing, (
-            f"onboard_tenant.py is missing {len(missing)} permissions "
+            f"canonical admin registry is missing {len(missing)} permissions "
             f"required by API endpoints: {sorted(missing)}"
         )
 
     def test_onboard_has_no_extra_unknown_perms(
-        self, api_permissions: set[str], onboard_permissions: set[str]
+        self, api_permissions: set[str], canonical_admin_permissions: set[str]
     ):
-        """Permissions in onboard that are NOT in the API are either legacy
+        """Permissions in admin registry that are NOT in the API are either legacy
         aliases, bootstrap-only permissions, or valid future-use permissions.
-        We document them but don't fail.
 
         U1-R2 CTO directive: orders:confirm/ship/cancel and role CRUD
         permissions are valid bootstrap permissions."
         """
-        extra = onboard_permissions - api_permissions
+        extra = canonical_admin_permissions - api_permissions
         # inventory:write is a known legacy alias kept for backward compat
         # orders:confirm/ship/cancel are bootstrap-only (used in seed/validation logic)
         # roles:create/update/delete are bootstrap-only (admin seed, not yet in API decorators)
@@ -180,57 +126,57 @@ class TestOnboardTenantPermissionCompleteness:
             "intake:approve",
             "intake:export",
             "intake:import_to_erp",
+            # DC-12R1-S1 admin-only retailer credential controls.
+            "invitations:revoke",
+            "retailers:reissue_credential",
         }
         unexpected = extra - known_valid_extras
         assert not unexpected, (
-            f"Unexpected permissions in onboard_tenant.py not enforced by "
-            f"any API endpoint and not in known-valid-extra list: {sorted(unexpected)}"
+            f"Unexpected canonical admin extras not enforced by any API endpoint: "
+            f"{sorted(unexpected)}"
         )
+        assert {"invitations:revoke", "retailers:reissue_credential"} <= canonical_admin_permissions
 
 
 class TestCreateWholesalerPermissionCompleteness:
-    """create_wholesaler.py must also cover every API-enforced permission."""
+    """Bootstrap scripts must consume the canonical admin registry."""
 
-    def test_all_api_perms_in_create_wholesaler(
-        self, api_permissions: set[str], create_wholesaler_permissions: set[str]
-    ):
-        missing = api_permissions - create_wholesaler_permissions
-        assert not missing, (
-            f"create_wholesaler.py is missing {len(missing)} permissions "
-            f"required by API endpoints: {sorted(missing)}"
-        )
+    @pytest.mark.parametrize(
+        "script_name",
+        ("onboard_tenant.py", "create_wholesaler.py", "seed_test_tenant.py"),
+    )
+    def test_admin_bootstrap_scripts_use_canonical_registry(self, script_name: str):
+        source = _script_source(script_name)
+        assert "from core.permission_registry import" in source
+        assert "ADMIN_PERMISSIONS" in source
 
 
 class TestSeedTestTenantPermissionCompleteness:
-    """seed_test_tenant.py should also cover every API-enforced permission."""
+    """The retailer operator registry must stay in the approved client namespace."""
 
-    def test_all_api_perms_in_seed_test(
-        self, api_permissions: set[str], seed_test_permissions: set[str]
-    ):
-        missing = api_permissions - seed_test_permissions
-        assert not missing, (
-            f"seed_test_tenant.py is missing {len(missing)} permissions "
-            f"required by API endpoints: {sorted(missing)}"
-        )
+    def test_retailer_operator_has_exact_six_client_permissions(self):
+        assert RETAILER_OPERATOR_PERMISSION_CODES == {
+            "client:catalog:read",
+            "client:orders:read",
+            "client:orders:create",
+            "client:payments:read",
+            "client:payments:create",
+            "client:finance:read",
+        }
+        assert all(code.startswith("client:") for code in RETAILER_OPERATOR_PERMISSION_CODES)
 
 
 class TestScriptPermissionConsistency:
-    """All three scripts must agree on the permission set."""
+    """The registry protects admin from generic client:* grant-all behavior."""
 
-    def test_onboard_matches_create_wholesaler(
-        self, onboard_permissions: set[str], create_wholesaler_permissions: set[str]
-    ):
-        assert onboard_permissions == create_wholesaler_permissions, (
-            f"Permission mismatch between onboard_tenant.py and "
-            f"create_wholesaler.py: "
-            f"only in onboard: {sorted(onboard_permissions - create_wholesaler_permissions)}, "
-            f"only in create_wholesaler: {sorted(create_wholesaler_permissions - onboard_permissions)}"
-        )
+    def test_admin_registry_has_no_client_permissions(self):
+        assert not {code for code in ADMIN_PERMISSION_CODES if code.startswith("client:")}
 
-    def test_onboard_matches_seed_test(
-        self, onboard_permissions: set[str], seed_test_permissions: set[str]
-    ):
-        assert onboard_permissions == seed_test_permissions, (
-            f"Permission mismatch between onboard_tenant.py and "
-            f"seed_test_tenant.py"
-        )
+    def test_canonical_permission_specs_are_unique(self, canonical_permission_specs):
+        codes = [code for code, _description in canonical_permission_specs]
+        assert len(codes) == len(set(codes))
+
+    def test_bootstrap_tenant_schema_uses_registry_for_s1_rbac(self):
+        source = _script_source("bootstrap_tenant_schema.py")
+        assert "RETAILER_OPERATOR_PERMISSIONS" in source
+        assert "ADMIN_MANAGEMENT_PERMISSIONS" in source

@@ -12,6 +12,10 @@ from sqlalchemy import select, text
 from api.app import app
 from api.dependencies import get_db_session
 from core.config import get_settings
+from core.permission_registry import (
+    RETAILER_OPERATOR_PERMISSION_CODES,
+    RETAILER_OPERATOR_ROLE,
+)
 from core.security import verify_password
 from database.session import AsyncSessionLocal, async_engine
 from models.tenant_onboarding import (
@@ -41,6 +45,9 @@ OWNER_PASSWORD = "U6I6OwnerCred_01!"  # pragma: allowlist secret
 REPLAY_PASSWORD = "U6I6ReplayCred_01!"  # pragma: allowlist secret
 QUERY_PASSWORD = "U6I6QueryCred_01!"  # pragma: allowlist secret
 CANONICAL_ADMIN_PERMISSION_CODES = {code for code, _description in OWNER_ADMIN_PERMISSION_REGISTRY}
+CANONICAL_TENANT_PERMISSION_CODES = CANONICAL_ADMIN_PERMISSION_CODES | set(
+    RETAILER_OPERATOR_PERMISSION_CODES
+)
 FORBIDDEN_TOKEN_COLUMNS = {"raw_token", "token_plaintext", "plaintext_token"}
 FORBIDDEN_PUBLIC_FIELD_NAMES = (
     "token_hash",
@@ -264,6 +271,23 @@ async def _admin_permission_rows(schema: str):
         ).mappings().all()
 
 
+async def _role_permission_codes(schema: str, role_name: str) -> set[str]:
+    async with AsyncSessionLocal() as session:
+        return set(
+            (
+                await session.execute(
+                    text(
+                        f'SELECT p.code FROM "{schema}".permissions p '
+                        f'JOIN "{schema}".role_permissions rp ON rp.permission_id = p.id '
+                        f'JOIN "{schema}".roles r ON r.id = rp.role_id '
+                        "WHERE r.name = :role_name"
+                    ),
+                    {"role_name": role_name},
+                )
+            ).scalars()
+        )
+
+
 async def _setup_response(
     setup_token: str,
     password: str,
@@ -403,11 +427,17 @@ async def test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_a
     assert verify_password(OWNER_PASSWORD, owner_admin["password_hash"])
     assert OWNER_PASSWORD not in owner_admin["password_hash"]
     assert {row["code"] for row in admin_permissions} == CANONICAL_ADMIN_PERMISSION_CODES
+    assert not {row["code"] for row in admin_permissions if row["code"].startswith("client:")}
+    assert await _role_permission_codes(tenant_schema, RETAILER_OPERATOR_ROLE) == set(
+        RETAILER_OPERATOR_PERMISSION_CODES
+    )
     assert await _table_count(tenant_schema, "users") == 1
-    assert await _table_count(tenant_schema, "roles") == 1
-    assert await _table_count(tenant_schema, "permissions") == len(CANONICAL_ADMIN_PERMISSION_CODES)
+    assert await _table_count(tenant_schema, "roles") == 2
+    assert await _table_count(tenant_schema, "permissions") == len(CANONICAL_TENANT_PERMISSION_CODES)
     assert await _table_count(tenant_schema, "user_roles") == 1
-    assert await _table_count(tenant_schema, "role_permissions") == len(CANONICAL_ADMIN_PERMISSION_CODES)
+    assert await _table_count(tenant_schema, "role_permissions") == (
+        len(CANONICAL_ADMIN_PERMISSION_CODES) + len(RETAILER_OPERATOR_PERMISSION_CODES)
+    )
 
     password_hash_after_setup = owner_admin["password_hash"]
     replay = await _setup_response(setup_token, REPLAY_PASSWORD)

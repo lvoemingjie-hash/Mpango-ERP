@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import Settings, get_settings
+from core.permission_registry import ADMIN_PERMISSIONS, ADMIN_ROLE
 from core.security import hash_password
 from db.sql_safety import validate_identifier
 from db.tenant_filter import mark_session_as_system, run_as_system
@@ -26,51 +27,7 @@ from services.onboarding_service import generate_verification_token, hash_token
 OWNER_CREDENTIAL_SETUP_TOKEN_TTL = timedelta(hours=24)
 INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN = "INVALID_OR_EXPIRED_OWNER_CREDENTIAL_SETUP_TOKEN"
 OWNER_ADMIN_RBAC_CREATION_FAILED = "OWNER_ADMIN_RBAC_CREATION_FAILED"
-OWNER_ADMIN_PERMISSION_REGISTRY = (
-    ("users:read", "Read users"),
-    ("users:create", "Create users"),
-    ("users:update", "Update users"),
-    ("users:deactivate", "Deactivate users"),
-    ("wholesalers:read", "Read wholesalers"),
-    ("wholesalers:write", "Create/update/delete wholesalers"),
-    ("roles:read", "Read roles"),
-    ("roles:create", "Create roles"),
-    ("roles:update", "Update roles"),
-    ("roles:delete", "Delete roles"),
-    ("roles:assign", "Assign roles to users"),
-    ("ord" "ers:read", "Read ord" "ers"),
-    ("ord" "ers:create", "Create ord" "ers"),
-    ("ord" "ers:update", "Update ord" "ers"),
-    ("ord" "ers:confirm", "Confirm ord" "ers"),
-    ("ord" "ers:ship", "Ship ord" "ers"),
-    ("ord" "ers:cancel", "Cancel ord" "ers"),
-    ("sk" "us:read", "Read SKUs"),
-    ("sk" "us:create", "Create SKUs"),
-    ("sk" "us:update", "Update SKUs"),
-    ("sk" "us:import", "Import SKUs via preview/validate/apply contract"),
-    ("intake:read", "Read data intake batches"),
-    ("intake:create", "Create data intake batches"),
-    ("intake:update", "Update data intake batches"),
-    ("intake:approve", "Approve data intake batches for ERP import"),
-    ("intake:export", "Export data intake batches"),
-    ("intake:import_to_erp", "Import approved data intake into ERP"),
-    ("inventory:read", "Read inventory"),
-    ("inventory:write", "Write inventory (legacy alias)"),
-    ("inventory:update", "Update inventory (adjustments)"),
-    ("pay" "ments:read", "Read pay" "ments"),
-    ("pay" "ments:create", "Create pay" "ments"),
-    ("retailers:read", "Read retailers"),
-    ("invitations:create", "Create invitations"),
-    ("pricing:read", "Read pricing"),
-    ("pricing:write", "Write pricing"),
-    ("finance:read", "View invoices, receivables, financial summary"),
-    ("dashboards:read", "View dashboard KPIs and charts"),
-    ("reports:read", "Read reports"),
-    ("reports:analyze", "Analyze reports"),
-    ("exports:create", "Request data exports"),
-    ("system:admin", "Full system administration (job queues, debug endpoints)"),
-    ("metrics:admin", "Reset application metrics"),
-)
+OWNER_ADMIN_PERMISSION_REGISTRY = ADMIN_PERMISSIONS
 _TENANT_AUTH_TABLES = (
     "users",
     "roles",
@@ -399,7 +356,7 @@ class OwnerCredentialSetupService:
                 "deleted_at = NULL, updated_at = now() "
                 "RETURNING id"
             ),
-            {"name": "admin", "description": "Administrator with full access"},
+            {"name": ADMIN_ROLE, "description": "Administrator with full access"},
         )
         return role_id
 

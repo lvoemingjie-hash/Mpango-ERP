@@ -2,8 +2,9 @@
 
 import uuid
 from decimal import Decimal
+from typing import Optional
 
-from sqlalchemy import CheckConstraint, String, Index, ForeignKey, Numeric, UniqueConstraint
+from sqlalchemy import CheckConstraint, String, Index, ForeignKey, Numeric, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,6 +23,20 @@ class WholesalerRetailerBinding(PublicBaseModel):
         ),
         Index("ix_bindings_wholesaler_id", "wholesaler_id"),
         Index("ix_bindings_retailer_id", "retailer_id"),
+        # DC-12R1-S1: authoritative retailer↔tenant-user mapping. A tenant-local
+        # user maps to at most one retailer binding within a wholesaler. NULL
+        # (pre-R1 bindings) and soft-deleted rows are excluded so legacy rows
+        # do not collide. Plain UUID, no cross-schema FK (matches the existing
+        # invitation convention; the referenced users row lives in t_<ws>).
+        Index(
+            "ux_bindings_wholesaler_tenant_user",
+            "wholesaler_id",
+            "tenant_user_id",
+            unique=True,
+            postgresql_where=text(
+                "tenant_user_id IS NOT NULL AND is_deleted IS FALSE"
+            ),
+        ),
         {"schema": "public"},
     )
 
@@ -37,6 +52,16 @@ class WholesalerRetailerBinding(PublicBaseModel):
         ForeignKey("public.retailers.id"),
         nullable=False,
         comment="Retailer id",
+    )
+
+    tenant_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        comment=(
+            "DC-12R1-S1: authoritative mapping to the tenant-local users.id for "
+            "this binding. Client identity resolves token.user_id -> this column "
+            "-> retailer_id. NULL for pre-R1 bindings (no login identity)."
+        ),
     )
 
     status: Mapped[str] = mapped_column(

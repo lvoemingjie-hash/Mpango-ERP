@@ -13,6 +13,12 @@ from sqlalchemy import text
 
 from api.app import app
 from api.dependencies import get_db_session
+from core.permission_registry import (
+    ADMIN_MANAGEMENT_PERMISSION_CODES,
+    ADMIN_ROLE,
+    RETAILER_OPERATOR_PERMISSION_CODES,
+    RETAILER_OPERATOR_ROLE,
+)
 from database.session import AsyncSessionLocal, async_engine
 from models.tenant_onboarding import (
     EmailVerificationToken,
@@ -46,6 +52,10 @@ EXPECTED_PUBLIC_ALLOWLIST = {
     "/api/v1/auth/refresh",
     "/api/v1/invitations/{code}",
     "/api/v1/retailers/register",
+    "/api/v1/retailers/setup-credential",
+    "/api/v1/client/auth/forgot-password",
+    "/api/v1/client/auth/reset-password",
+    "/api/v1/invitations/lookup",
 }
 SENSITIVE_RESPONSE_TERMS = (
     "tenant",
@@ -315,6 +325,53 @@ async def _table_count(schema: str, table: str) -> int:
         return int(await session.scalar(text(f'SELECT count(*) FROM "{schema}"."{table}"')))
 
 
+async def _role_exists(schema: str, role_name: str) -> bool:
+    async with AsyncSessionLocal() as session:
+        row = await session.execute(
+            text(f'SELECT 1 FROM "{schema}".roles WHERE name = :role_name'),
+            {"role_name": role_name},
+        )
+        return row.first() is not None
+
+
+async def _permission_codes(schema: str) -> set[str]:
+    async with AsyncSessionLocal() as session:
+        return set(
+            (
+                await session.execute(
+                    text(f'SELECT code FROM "{schema}".permissions')
+                )
+            ).scalars()
+        )
+
+
+async def _role_permission_codes(schema: str, role_name: str) -> set[str]:
+    async with AsyncSessionLocal() as session:
+        return set(
+            (
+                await session.execute(
+                    text(
+                        f'SELECT p.code FROM "{schema}".permissions p '
+                        f'JOIN "{schema}".role_permissions rp ON rp.permission_id = p.id '
+                        f'JOIN "{schema}".roles r ON r.id = rp.role_id '
+                        "WHERE r.name = :role_name"
+                    ),
+                    {"role_name": role_name},
+                )
+            ).scalars()
+        )
+
+
+async def _assert_current_bootstrap_rbac(schema: str) -> None:
+    assert await _table_count(schema, "users") == 0
+    assert await _table_count(schema, "user_roles") == 0
+    assert await _role_permission_codes(schema, RETAILER_OPERATOR_ROLE) == set(
+        RETAILER_OPERATOR_PERMISSION_CODES
+    )
+    assert ADMIN_MANAGEMENT_PERMISSION_CODES <= await _permission_codes(schema)
+    assert not await _role_exists(schema, ADMIN_ROLE)
+
+
 async def _signup(email: str, *, payload: dict[str, str] | None = None, headers=None):
     async with await _client() as client:
         return await client.post(
@@ -410,10 +467,7 @@ async def test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisi
     assert registration["tenant_schema"] in ((await _tenant_schema_names()) - schemas_before)
     assert len(await _setup_token_rows(email)) == 1
     assert await _side_effect_table_inventory() != side_effect_tables_before
-    assert await _table_count(registration["tenant_schema"], "users") == 0
-    assert await _table_count(registration["tenant_schema"], "roles") == 0
-    assert await _table_count(registration["tenant_schema"], "user_roles") == 0
-    assert await _table_count(registration["tenant_schema"], "role_permissions") == 0
+    await _assert_current_bootstrap_rbac(registration["tenant_schema"])
 
 
 async def test_duplicate_email_neutrality_creates_no_second_live_registration_or_status_token():
@@ -528,10 +582,7 @@ async def test_closeout_provisions_tenant_but_defers_admin_rbac_until_setup_cred
     assert registration["wholesaler_id"] is not None
     assert registration["tenant_schema"] in ((await _tenant_schema_names()) - schemas_before)
     assert len(await _setup_token_rows(email)) == 1
-    assert await _table_count(registration["tenant_schema"], "users") == 0
-    assert await _table_count(registration["tenant_schema"], "roles") == 0
-    assert await _table_count(registration["tenant_schema"], "user_roles") == 0
-    assert await _table_count(registration["tenant_schema"], "role_permissions") == 0
+    await _assert_current_bootstrap_rbac(registration["tenant_schema"])
 
 
 async def test_route_policy_keeps_current_onboarding_and_recovery_routes_public():
@@ -544,6 +595,10 @@ async def test_route_policy_keeps_current_onboarding_and_recovery_routes_public(
     assert public_by_path["/api/v1/auth/onboarding/setup-credential"] == "public"
     assert public_by_path["/api/v1/auth/forgot-password"] == "public"  # pragma: allowlist secret
     assert public_by_path["/api/v1/auth/reset-password"] == "public"  # pragma: allowlist secret
+    assert public_by_path["/api/v1/retailers/setup-credential"] == "public"
+    assert public_by_path["/api/v1/client/auth/forgot-password"] == "public"  # pragma: allowlist secret
+    assert public_by_path["/api/v1/client/auth/reset-password"] == "public"  # pragma: allowlist secret
+    assert public_by_path["/api/v1/invitations/lookup"] == "public"
     assert not (PUBLIC_ALLOWLIST - EXPECTED_PUBLIC_ALLOWLIST)
 
 
@@ -552,8 +607,8 @@ async def test_migration_schema_sanity_uses_current_single_head():
     alembic_cfg = Config(str(backend_dir / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
     script = ScriptDirectory.from_config(alembic_cfg)
-    assert script.get_heads() == ["035_receivable_collection_integrity"]
-    assert script.get_current_head() == "035_receivable_collection_integrity"
+    assert script.get_heads() == ["036_retailer_mvp_identity"]
+    assert script.get_current_head() == "036_retailer_mvp_identity"
 
     assert TenantRegistration.__tablename__ == "tenant_registrations"
     assert EmailVerificationToken.__tablename__ == "email_verification_tokens"

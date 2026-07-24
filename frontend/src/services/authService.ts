@@ -41,4 +41,24 @@ export const authService = {
 
   verifyEmail: (payload: { token: string }) =>
     api.post('/auth/verify-email', payload),
+
+  // DC-12R1-S1: retailer-owned credential flows (fragment-only token transport).
+  // Redeem endpoints accept the token in the JSON body only.
+  retailerSetupCredential: (payload: { setupToken: string; newPassword: string }) =>
+    api.post('/retailers/setup-credential', {
+      setup_token: payload.setupToken,
+      new_password: payload.newPassword,
+    }),
+
+  retailerForgotPassword: (payload: { email: string; wholesalerCode: string }) =>
+    api.post('/client/auth/forgot-password', {
+      email: payload.email,
+      wholesaler_code: payload.wholesalerCode,
+    }),
+
+  retailerResetPassword: (payload: { resetToken: string; newPassword: string }) =>
+    api.post('/client/auth/reset-password', {
+      reset_token: payload.resetToken,
+      new_password: payload.newPassword,
+    }),
 };

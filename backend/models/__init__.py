@@ -35,6 +35,12 @@ from models.platform_operator import (
     PlatformOperatorResetToken,
     PlatformOperatorRecoveryCredential,
 )
+from models.retailer_credentials import (
+    RETAILER_CREDENTIAL_SETUP_TOKEN_PURPOSE,
+    RETAILER_PASSWORD_RESET_TOKEN_PURPOSE,
+    RetailerCredentialSetupToken,
+    RetailerPasswordResetToken,
+)
 
 __all__ = [
     # Base classes
@@ -54,6 +60,12 @@ __all__ = [
     "PasswordResetToken",
     "OnboardingStatusToken",
     "OwnerCredentialSetupToken",
+
+    # DC-12R1-S1: Retailer credential lifecycle (public schema)
+    "RetailerCredentialSetupToken",
+    "RetailerPasswordResetToken",
+    "RETAILER_CREDENTIAL_SETUP_TOKEN_PURPOSE",
+    "RETAILER_PASSWORD_RESET_TOKEN_PURPOSE",
 
     # Tenant schema models
     "User",

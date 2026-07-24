@@ -30,6 +30,9 @@ import { ProductDetailPage } from '@/pages/client/ProductDetailPage';
 import { CreateOrderPage as ClientCreateOrderPage } from '@/pages/client/CreateOrderPage';
 import { ClientOrderListPage } from '@/pages/client/OrderListPage';
 import { OrderDetailPage } from '@/pages/client/OrderDetailPage';
+// DC-12R1-S1: retailer credential setup/reset pages (fragment-only token transport)
+import { RetailerSetupCredentialPage } from '@/pages/retailer/RetailerSetupCredentialPage';
+import { RetailerResetPasswordPage } from '@/pages/retailer/RetailerResetPasswordPage';
 // Platform Admin Cockpit pages (P11)
 import { PlatformOverviewPage } from '@/pages/platform/PlatformOverviewPage';
 import { PlatformTenantDirectoryPage } from '@/pages/platform/PlatformTenantDirectoryPage';
@@ -61,6 +64,9 @@ const router = createBrowserRouter([
       { path: '/reset-password', element: <ResetPasswordPage /> },
       { path: '/setup-credential', element: <SetupCredentialPage /> },
       { path: '/verify-email', element: <VerifyEmailPage /> },
+      // DC-12R1-S1: retailer credential setup/reset (fragment-only token)
+      { path: '/retailer/setup-credential', element: <RetailerSetupCredentialPage /> },
+      { path: '/retailer/reset-password', element: <RetailerResetPasswordPage /> },
     ],
   },
   // Client login -- separate from wholesaler login

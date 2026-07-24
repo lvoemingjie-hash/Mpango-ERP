@@ -41,6 +41,20 @@ class PasswordResetEmailDelivery:
 _DEV_RESET_EMAIL_DELIVERIES: list[PasswordResetEmailDelivery] = []
 
 
+@dataclass(frozen=True)
+class RetailerCredentialEmailDelivery:
+    """Captured retailer setup/reset delivery for non-production tests."""
+
+    to_email: str
+    link: str
+    token: str
+    created_at: datetime
+    purpose: str = "retailer_credential_setup"
+
+
+_DEV_RETAILER_EMAIL_DELIVERIES: list[RetailerCredentialEmailDelivery] = []
+
+
 class EmailDeliveryNotConfiguredError(RuntimeError):
     """Raised when signup email delivery cannot run safely."""
 
@@ -178,10 +192,99 @@ def get_dev_reset_email_deliveries(email: str | None = None) -> list[PasswordRes
     return [delivery for delivery in _DEV_RESET_EMAIL_DELIVERIES if delivery.to_email == normalized]
 
 
+def record_retailer_setup_email(
+    *,
+    settings: Settings,
+    to_email: str,
+    token: str,
+    setup_link: str,
+) -> None:
+    """Deliver retailer credential-setup email or capture it in non-production sink.
+
+    Production fails closed (raises EmailDeliveryNotConfiguredError) which the
+    provisioning transaction treats as rollback. The raw token is memory-only;
+    it is never logged. SMTP uses a controlled timeout (see _send_smtp_email).
+    """
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+
+    if settings.MPANGO_ENV == "production":
+        _send_smtp_email(
+            settings=settings,
+            to_email=to_email,
+            subject="Set up your Mpango retailer account",
+            body=(
+                "You have been invited to a Mpango wholesaler.\n\n"
+                "Use this link to set your retailer account password:\n"
+                f"{setup_link}\n\n"
+                "If you do not recognise this invitation, ignore this email."
+            ),
+        )
+        return
+
+    _DEV_RETAILER_EMAIL_DELIVERIES.append(
+        RetailerCredentialEmailDelivery(
+            to_email=to_email.strip().lower(),
+            link=setup_link,
+            token=token,
+            created_at=datetime.now(timezone.utc),
+            purpose="retailer_credential_setup",
+        )
+    )
+
+
+def record_retailer_reset_email(
+    *,
+    settings: Settings,
+    to_email: str,
+    token: str,
+    reset_link: str,
+) -> None:
+    """Deliver retailer password-reset email or capture it in non-production sink."""
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+
+    if settings.MPANGO_ENV == "production":
+        _send_smtp_email(
+            settings=settings,
+            to_email=to_email,
+            subject="Reset your Mpango retailer password",
+            body=(
+                "We received a request to reset your Mpango retailer password.\n\n"
+                "Use this link to choose a new password:\n"
+                f"{reset_link}\n\n"
+                "If you did not request a password reset, ignore this email "
+                "and your password will stay unchanged."
+            ),
+        )
+        return
+
+    _DEV_RETAILER_EMAIL_DELIVERIES.append(
+        RetailerCredentialEmailDelivery(
+            to_email=to_email.strip().lower(),
+            link=reset_link,
+            token=token,
+            created_at=datetime.now(timezone.utc),
+            purpose="retailer_password_reset",
+        )
+    )
+
+
+def get_dev_retailer_email_deliveries(
+    email: str | None = None,
+) -> list[RetailerCredentialEmailDelivery]:
+    """Return captured non-production retailer credential deliveries for tests."""
+    if email is None:
+        return list(_DEV_RETAILER_EMAIL_DELIVERIES)
+    normalized = email.strip().lower()
+    return [delivery for delivery in _DEV_RETAILER_EMAIL_DELIVERIES if delivery.to_email == normalized]
+
+
 def clear_dev_email_deliveries() -> None:
     """Clear captured deliveries between tests."""
     _DEV_EMAIL_DELIVERIES.clear()
     _DEV_RESET_EMAIL_DELIVERIES.clear()
+    _DEV_RETAILER_EMAIL_DELIVERIES.clear()
 
 
 def _smtp_config_complete(settings: Settings) -> bool:

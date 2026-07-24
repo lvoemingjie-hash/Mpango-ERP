@@ -9,6 +9,12 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select, text
 
+from core.permission_registry import (
+    ADMIN_MANAGEMENT_PERMISSION_CODES,
+    ADMIN_ROLE,
+    RETAILER_OPERATOR_PERMISSION_CODES,
+    RETAILER_OPERATOR_ROLE,
+)
 from core.config import get_settings
 from database.session import AsyncSessionLocal, async_engine
 from models.tenant_onboarding import TenantRegistration
@@ -21,7 +27,7 @@ pytestmark = pytest.mark.asyncio
 ROOT = Path(__file__).resolve().parents[2]
 AUTH_ROUTE_PATH = ROOT / "backend" / "api" / "v1" / "auth.py"
 ONBOARDING_SERVICE_PATH = ROOT / "backend" / "services" / "onboarding_service.py"
-BASE_REF = "origin/product-dev-recovered"
+BASE_REF = "6a8ddcf348e9b1bdcc902929011e6212cc675cf8"  # pragma: allowlist secret
 FORBIDDEN_EDIT_PATHS = {
     "backend/models/wholesaler.py",
     "backend/api/v1/wholesalers.py",
@@ -29,7 +35,6 @@ FORBIDDEN_EDIT_PATHS = {
     "backend/repositories/wholesaler_repository.py",
     "backend/api/v1/platform/tenants.py",
     "backend/api/v1/platform/stats.py",
-    "backend/scripts/bootstrap_tenant_schema.py",
 }
 SENSITIVE_PLACEHOLDER = "hashed-registration-password"  # pragma: allowlist secret
 EXPECTED_BASELINE_TABLES = {
@@ -51,9 +56,6 @@ EXPECTED_BASELINE_TABLES = {
     "intake_product_rows",
     "intake_validation_issues",
 }
-EMPTY_RBAC_TABLES = ("users", "roles", "permissions", "user_roles", "role_permissions")
-
-
 @pytest.fixture(autouse=True)
 async def _u6h2_public_schema():
     await _ensure_tables()
@@ -189,6 +191,51 @@ async def _tenant_tables(schema: str) -> set[str]:
 async def _table_count(schema: str, table: str) -> int:
     async with AsyncSessionLocal() as session:
         return int((await session.execute(text(f'SELECT COUNT(*) FROM "{schema}".{table}'))).scalar())
+
+
+async def _role_exists(schema: str, role_name: str) -> bool:
+    async with AsyncSessionLocal() as session:
+        row = await session.execute(
+            text(f'SELECT 1 FROM "{schema}".roles WHERE name = :role_name'),
+            {"role_name": role_name},
+        )
+        return row.first() is not None
+
+
+async def _permission_codes(schema: str) -> set[str]:
+    async with AsyncSessionLocal() as session:
+        return set(
+            (
+                await session.execute(text(f'SELECT code FROM "{schema}".permissions'))
+            ).scalars()
+        )
+
+
+async def _role_permission_codes(schema: str, role_name: str) -> set[str]:
+    async with AsyncSessionLocal() as session:
+        return set(
+            (
+                await session.execute(
+                    text(
+                        f'SELECT p.code FROM "{schema}".permissions p '
+                        f'JOIN "{schema}".role_permissions rp ON rp.permission_id = p.id '
+                        f'JOIN "{schema}".roles r ON r.id = rp.role_id '
+                        "WHERE r.name = :role_name"
+                    ),
+                    {"role_name": role_name},
+                )
+            ).scalars()
+        )
+
+
+async def _assert_current_bootstrap_rbac(schema: str) -> None:
+    assert await _table_count(schema, "users") == 0
+    assert await _table_count(schema, "user_roles") == 0
+    assert await _role_permission_codes(schema, RETAILER_OPERATOR_ROLE) == set(
+        RETAILER_OPERATOR_PERMISSION_CODES
+    )
+    assert ADMIN_MANAGEMENT_PERMISSION_CODES <= await _permission_codes(schema)
+    assert not await _role_exists(schema, ADMIN_ROLE)
 
 
 async def _drop_schema(schema: str) -> None:
@@ -350,7 +397,7 @@ async def test_bootstrap_failure_message_does_not_persist_dsn_or_fake_password()
     assert "token abc123" not in snapshot["failure_message"]
 
 
-async def test_no_user_role_rbac_or_admin_rows_are_seeded_by_slice():
+async def test_bootstrap_seeds_current_retailer_rbac_without_admin_grant_all():
     registration_id = await _insert_registration(status="provisioning")
 
     async with AsyncSessionLocal() as session:
@@ -361,8 +408,7 @@ async def test_no_user_role_rbac_or_admin_rows_are_seeded_by_slice():
         await session.commit()
 
     assert result.action == "provisioned"
-    for table in EMPTY_RBAC_TABLES:
-        assert await _table_count(result.tenant_schema, table) == 0
+    await _assert_current_bootstrap_rbac(result.tenant_schema)
 
 
 async def test_public_auth_routes_delegate_tenant_provisioning_to_onboarding_service():

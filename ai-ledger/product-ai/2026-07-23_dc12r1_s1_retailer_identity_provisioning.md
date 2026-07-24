@@ -1,5 +1,12 @@
 # DC-12R1-S1 Retailer Identity, Credential and Invitation Foundation
 
+> **R2 Revision (2026-07-24).** Strict mapping + migration contract closure.
+> Removes every silent skip from authoritative retailer mapping; adds pre-write
+> existence checks; defines the missing `_constraint_exists`; validates token-table
+> contracts semantically (columns/types/nullability/CHECK/FK/index); replaces
+> `pytest.raises(Exception)` with exact types; replaces source-string RBAC tests
+> with real PostgreSQL catalog assertions. RED (1 failing) → GREEN (4 R2 pass).
+
 > **R1 Revision (2026-07-24).** The initial S1 PASS at `450e372d` is **REVOKED**
 > (CTO `STOP_BEFORE_MERGE` — 312 changed symbols / 43 affected flows rated CRITICAL).
 > R1 fixes the 5 merge-blockers below with RED→GREEN evidence. The unified

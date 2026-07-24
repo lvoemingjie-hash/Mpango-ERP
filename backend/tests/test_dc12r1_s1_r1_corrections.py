@@ -210,7 +210,7 @@ async def test_partial_update_failure_leaves_all_copies_unchanged_and_token_unco
     await r1_db.commit()
 
     # The reset must fail (token not consumed); A's hash unchanged.
-    with pytest.raises(Exception):
+    with pytest.raises(RetailerProvisioningError):
         await svc.consume_password_reset(raw_reset, "BrandAtomic1")
     await r1_db.rollback()
 
@@ -240,8 +240,9 @@ async def test_missing_retailer_operator_role_rolls_back(r1_db):
     code = await _create_invitation(r1_db, wholesaler_id=ws_id, phone=phone)
     svc = RetailerProvisioningService(r1_db)
     # Provisioning must fail closed (role missing). Whole txn rolls back.
-    with pytest.raises(Exception):
+    with pytest.raises(RetailerProvisioningError) as exc:
         await svc.register_with_invitation(invitation_code=code, phone=phone, email=email)
+    assert exc.value.code == "RETAILER_OPERATOR_ROLE_MISSING"
     await r1_db.rollback()
     # No retailer / binding / user committed.
     assert (await r1_db.execute(

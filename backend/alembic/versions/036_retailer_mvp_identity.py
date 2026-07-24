@@ -489,17 +489,38 @@ def _validate_reset_token_table_contract(bind) -> None:
 
 
 def _validate_token_table_contract(bind, table_name: str, required_cols: set[str]) -> None:
+    """DC-12R1-S1-R2: semantic validation of a pre-existing token table.
+
+    Checks: column presence, NOT NULL on critical columns, purpose CHECK,
+    used/revoked CHECK, token_hash unique constraint. Not a name-only check.
+    """
     rows = bind.execute(sa.text(
-        "SELECT column_name FROM information_schema.columns "
+        "SELECT column_name, is_nullable, data_type FROM information_schema.columns "
         "WHERE table_schema = :schema AND table_name = :table_name"
     ), {"schema": PUBLIC_SCHEMA, "table_name": table_name}).fetchall()
-    present = {r[0] for r in rows}
-    missing = required_cols - present
+    col_map = {r[0]: (r[1], r[2]) for r in rows}
+    missing = required_cols - set(col_map)
     if missing:
         raise PreflightFailure(
             f"{table_name}: incompatible existing table; missing columns: {sorted(missing)}"
         )
-    # token_hash uniqueness + used/revoked mutual exclusion must be enforced.
+    # Critical NOT NULL columns.
+    not_null_cols = {"id", "retailer_id", "token_hash", "purpose", "expires_at",
+                     "is_deleted", "created_at", "updated_at"}
+    if table_name == "retailer_credential_setup_tokens":
+        not_null_cols.add("binding_id")
+    for col in not_null_cols:
+        if col_map.get(col, ("YES",))[0] != "NO":
+            raise PreflightFailure(f"{table_name}.{col}: must be NOT NULL")
+    # purpose CHECK constraint must exist.
+    purpose_ck = f"ck_{table_name}_purpose"
+    if not _constraint_exists(bind, PUBLIC_SCHEMA, table_name, purpose_ck):
+        raise PreflightFailure(f"{table_name}: missing purpose CHECK constraint ({purpose_ck})")
+    # used/revoked mutual-exclusion CHECK must exist.
+    used_revoked_ck = f"ck_{table_name}_not_used_and_revoked"
+    if not _constraint_exists(bind, PUBLIC_SCHEMA, table_name, used_revoked_ck):
+        raise PreflightFailure(f"{table_name}: missing used/revoked CHECK constraint ({used_revoked_ck})")
+    # token_hash uniqueness must be enforced.
     if not _constraint_exists(bind, PUBLIC_SCHEMA, table_name,
                               f"uq_{table_name}_token_hash"):
         raise PreflightFailure(f"{table_name}: missing token_hash unique constraint")
@@ -603,6 +624,20 @@ def _table_exists(bind, schema: str, table_name: str) -> bool:
             "WHERE table_schema = :schema AND table_name = :table_name"
         ),
         {"schema": schema, "table_name": table_name},
+    ).first())
+
+
+def _constraint_exists(bind, schema: str, table_name: str, constraint_name: str) -> bool:
+    """DC-12R1-S1-R2: check a CHECK/UNIQUE constraint exists on a table."""
+    return bool(bind.execute(
+        sa.text(
+            "SELECT 1 FROM pg_constraint c "
+            "JOIN pg_class t ON t.oid = c.conrelid "
+            "JOIN pg_namespace n ON n.oid = t.relnamespace "
+            "WHERE n.nspname = :schema AND t.relname = :table_name "
+            "AND c.conname = :constraint_name"
+        ),
+        {"schema": schema, "table_name": table_name, "constraint_name": constraint_name},
     ).first())
 
 

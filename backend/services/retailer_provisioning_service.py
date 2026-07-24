@@ -582,8 +582,12 @@ class RetailerProvisioningService:
                     select(Wholesaler).where(Wholesaler.id == wholesaler_id)
                 )
             ).scalar_one_or_none()
+            # DC-12R1-S1-R2: no silent skip. A binding whose wholesaler is
+            # missing is a data-integrity break; fail closed.
             if ws is None:
-                continue
+                raise RetailerProvisioningError(
+                    "RETAILER_MAPPING_WHOLESALER_MISSING", http_status=500
+                )
             schema = _tenant_schema_for(ws)
             out.append((binding_id, schema, uuid.UUID(str(tuid))))
         return out
@@ -942,6 +946,21 @@ class RetailerProvisioningService:
         updated = 0
         for _binding_id, schema, user_id in mappings:
             validate_identifier(schema, "tenant schema")
+            # DC-12R1-S1-R2: pre-write existence check. A stale mapping (binding
+            # references a tenant_user_id whose users row is gone) must fail
+            # closed BEFORE any password write, not surface as a rowcount!=1.
+            exists = (
+                await self.db.execute(
+                    text(
+                        f'SELECT 1 FROM "{schema}".users WHERE id = :uid AND is_deleted = false'
+                    ),
+                    {"uid": user_id},
+                )
+            ).first()
+            if exists is None:
+                raise RetailerProvisioningError(
+                    "RETAILER_MAPPED_COPY_MISSING", http_status=500
+                )
             # No try/except: any DB error propagates and aborts the outer txn.
             res = await self.db.execute(
                 text(

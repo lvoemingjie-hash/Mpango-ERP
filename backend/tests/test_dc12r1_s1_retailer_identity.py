@@ -141,7 +141,9 @@ async def _create_invitation(
 @pytest_asyncio.fixture
 async def s1_db():
     """A system-scoped session on the migrated test DB (no tenant search_path)."""
-    engine = create_async_engine(get_settings().DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"))
+    import os
+    db_url = os.environ.get("DATABASE_URL", "")
+    engine = create_async_engine(db_url.replace("postgresql://", "postgresql+asyncpg://"))
     async with AsyncSession(engine, expire_on_commit=False) as session:
         # Clean S1 tables for isolation.
         for tbl in (

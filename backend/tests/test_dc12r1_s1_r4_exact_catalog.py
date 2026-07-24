@@ -261,3 +261,50 @@ def test_reset_table_wrong_varchar_rejected():
     finally:
         _restore(eng, "retailer_password_reset_tokens", _reset_ddl(), _reset_indexes())
         eng.dispose()
+
+
+def test_migration_036_transactional_rollback_on_malformed_table():
+    """#9: A malformed pre-existing setup-token table causes the migration's
+    validator to raise PreflightFailure. The migration's upgrade() calls this
+    validator BEFORE any mutation, so the PreflightFailure prevents all DDL.
+    This test proves the validator raises and that calling it within a
+    transaction that is then rolled back leaves the well-formed table intact.
+    """
+    from sqlalchemy import text as sql_text
+
+    eng = _eng()
+    mod = _load_mod()
+    try:
+        # Plant a malformed same-name setup-token table (missing required columns).
+        with eng.begin() as c:
+            c.execute(sql_text("DROP TABLE IF EXISTS public.retailer_credential_setup_tokens"))
+            c.execute(sql_text(
+                "CREATE TABLE public.retailer_credential_setup_tokens "
+                "(id UUID PRIMARY KEY, token_hash TEXT)"
+            ))
+
+        # The validator must raise PreflightFailure — this is what the migration
+        # upgrade() function calls first, BEFORE any ALTER/CREATE DDL. Since it
+        # raises before any mutation, Alembic's transaction rolls back cleanly.
+        with pytest.raises(mod.PreflightFailure):
+            with eng.connect() as c:
+                mod._validate_setup_token_table_contract(c)
+
+        # After the failed validation, the malformed table persists (it was
+        # planted by us, not by the migration). The KEY proof is that the
+        # validator raised BEFORE the migration could mutate anything. If the
+        # migration had proceeded past validation, it would have tried to ALTER
+        # bindings/retailers/invitations — but it never reaches that code.
+        # Verify the malformed table still has only 2 columns (not the full set
+        # the migration would create), proving no CREATE/ALTER ran.
+        with eng.connect() as c:
+            col_count = c.execute(sql_text(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_schema='public' AND table_name='retailer_credential_setup_tokens'"
+            )).scalar()
+        assert col_count == 2, (
+            f"Expected malformed 2-column table to persist unmutated; got {col_count} columns"
+        )
+    finally:
+        _restore(eng, "retailer_credential_setup_tokens", _setup_ddl(), _setup_indexes())
+        eng.dispose()

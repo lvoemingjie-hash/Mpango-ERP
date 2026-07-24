@@ -277,7 +277,7 @@ def _check_conflicting_active_hashes(bind, rows: list[dict[str, Any]]) -> list[s
             continue
         row = bind.execute(sa.text(
             f'SELECT password_hash FROM "{schema}".users '
-            "WHERE id = :uid AND is_deleted = false"
+            "WHERE id = :uid AND is_active = true AND is_deleted = false"
         ), {"uid": tuid}).first()
         if row is None:
             failures.append(

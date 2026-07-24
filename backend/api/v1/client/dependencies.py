@@ -1,18 +1,20 @@
 """Client API dependencies — secure retailer identity resolution.
 
-CTO P0 Mandate: retailer_id MUST be derived server-side from the
-authenticated user's identity. It is NEVER accepted from request body
-or query parameters.
+CTO P0 Mandate: retailer_id MUST be derived server-side from the authenticated
+user's identity. It is NEVER accepted from request body or query parameters.
 
-Resolution strategy:
-1. Get authenticated user from tenant context (JWT → user_id → User)
-2. Look up public.retailers by matching User.email → Retailer.email
-3. Verify an active wholesaler_retailer_binding exists for this tenant
-4. Return the verified retailer_id
+DC-12R1-S1 authoritative resolution (replaces the email lookup):
+1. Require a contextual (non-identity-only) token with a tenant.
+2. Require the retailer_operator role on the tenant user.
+3. Resolve retailer_id via the authoritative mapping:
+       token.user_id  ->  binding.tenant_user_id  ->  binding.retailer_id
+   Email is NEVER used to infer retailer_id after authentication.
+4. Require binding.wholesaler_id == token.tenant_id and status == 'active'.
 
 This prevents:
 - Cross-retailer order injection (user cannot forge retailer_id)
 - Tenant boundary bypass (binding must exist in current tenant)
+- Email-based identity confusion (resolution no longer keys on email)
 """
 from __future__ import annotations
 
@@ -27,9 +29,13 @@ from api.context import get_auth_context, get_tenant_context
 from core.security import TokenPayload
 
 
+RETAILER_OPERATOR_ROLE = "retailer_operator"
+
+
 @dataclass
 class ClientIdentity:
     """Resolved client (retailer) identity for the current request."""
+
     user_id: str
     retailer_id: str
     tenant_id: str
@@ -38,11 +44,13 @@ class ClientIdentity:
 
 async def resolve_client_identity(request: Request) -> ClientIdentity:
     """
-    Resolve the authenticated retailer identity from JWT + DB lookup.
+    Resolve the authenticated retailer identity via the authoritative mapping.
 
     Raises HTTP 403 if:
-    - User has no linked retailer record
-    - No active binding exists for this tenant
+    - Token is identity-only (no tenant context)
+    - The tenant user lacks the retailer_operator role
+    - No binding maps token.user_id (via tenant_user_id) for this tenant
+    - The binding is not active
     """
     auth_ctx = get_auth_context(request)
     token = auth_ctx.token
@@ -59,53 +67,51 @@ async def resolve_client_identity(request: Request) -> ClientIdentity:
     tenant_ctx = get_tenant_context(request)
     user = tenant_ctx.user
     tenant_id = token.tenant_id
+    user_id = token.user_id
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "NO_RETAILER_LINK", "message": "Unauthenticated"},
+        )
 
-    # Resolve retailer_id from user email via public.retailers + binding
-    session = tenant_ctx.session
-    user_email = getattr(user, "email", None)
-    if not user_email:
+    # Require the retailer_operator role on the tenant user.
+    if not _has_retailer_operator_role(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "code": "NO_RETAILER_LINK",
-                "message": "User account has no email — cannot resolve retailer identity",
+                "code": "NOT_RETAILER_OPERATOR",
+                "message": "This account is not a retailer operator",
             },
         )
 
-    # Step 1: Find retailer by email in public schema
+    session = tenant_ctx.session
+
+    # Authoritative resolution: token.user_id -> binding.tenant_user_id -> retailer_id.
+    # No email lookup. Wholesaler match enforced in the same query.
     result = await session.execute(
         text(
-            "SELECT id FROM public.retailers "
-            "WHERE email = :email AND is_deleted IS NOT TRUE "
-            "LIMIT 1"
+            """
+            SELECT retailer_id, status
+            FROM public.wholesaler_retailer_bindings
+            WHERE wholesaler_id = :tenant_id
+              AND tenant_user_id = :user_id
+              AND is_deleted IS FALSE
+            LIMIT 1
+            """
         ),
-        {"email": user_email},
+        {"tenant_id": tenant_id, "user_id": user_id},
     )
     row = result.fetchone()
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "code": "RETAILER_NOT_FOUND",
-                "message": "No retailer profile linked to this account",
+                "code": "BINDING_NOT_FOUND",
+                "message": "No retailer relationship mapped to this account",
             },
         )
 
-    retailer_id = str(row.id)
-
-    # Step 2: Verify active binding between this retailer and the current tenant
-    binding_result = await session.execute(
-        text(
-            "SELECT id FROM public.wholesaler_retailer_bindings "
-            "WHERE wholesaler_id = :tenant_id "
-            "  AND retailer_id = :retailer_id "
-            "  AND status = 'active' "
-            "LIMIT 1"
-        ),
-        {"tenant_id": tenant_id, "retailer_id": retailer_id},
-    )
-    binding_row = binding_result.fetchone()
-    if binding_row is None:
+    if row.status != "active":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -115,8 +121,23 @@ async def resolve_client_identity(request: Request) -> ClientIdentity:
         )
 
     return ClientIdentity(
-        user_id=token.user_id,
-        retailer_id=retailer_id,
+        user_id=user_id,
+        retailer_id=str(row.retailer_id),
         tenant_id=tenant_id,
         token=token,
     )
+
+
+def _has_retailer_operator_role(user) -> bool:
+    """True if the tenant user carries the retailer_operator role.
+
+    The user object is loaded by the tenant context with its roles relationship.
+    Falls back gracefully if roles are not loaded.
+    """
+    roles = getattr(user, "roles", None)
+    if not roles:
+        return False
+    try:
+        return any(getattr(r, "name", None) == RETAILER_OPERATOR_ROLE for r in roles)
+    except TypeError:
+        return False

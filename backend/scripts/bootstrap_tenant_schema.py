@@ -1229,6 +1229,95 @@ async def _reconcile_intake_tables(db, ts: str) -> None:
     print(f"[reconcile] {ts}: ensured U4 intake apply audit contract")
 
 
+# ---------------------------------------------------------------------------
+# DC-12R1-S1: retailer_operator RBAC + active-email index parity (mirrors 036)
+# ---------------------------------------------------------------------------
+
+# retailer_operator receives ONLY the client:* permission namespace.
+# invitations:revoke is granted to admin only. See migration 036 for the
+# authoritative seed list and the DC-12R1-D/R2 design for the rationale.
+_S1_RETAILER_OPERATOR_PERMISSIONS = (
+    ("client:catalog:read", "Retailer: browse wholesaler catalog"),
+    ("client:orders:read", "Retailer: read own orders"),
+    ("client:orders:create", "Retailer: create own orders"),
+    ("client:payments:read", "Retailer: read own payments"),
+    ("client:payments:create", "Retailer: pay own orders"),
+    ("client:finance:read", "Retailer: read own outstanding balance"),
+)
+_S1_ADMIN_EXTRA_PERMISSIONS = (
+    ("invitations:revoke", "Revoke an outstanding retailer invitation"),
+)
+_S1_RETAILER_OPERATOR_ROLE = "retailer_operator"
+_S1_ADMIN_ROLE = "admin"
+
+
+async def _reconcile_rbac_s1(db, ts: str) -> None:
+    """Ensure fresh and existing tenants carry the S1 RBAC + email-index contract.
+
+    Idempotent: seeds the client:* permissions, the retailer_operator role
+    (granted ONLY client:* codes), grants invitations:revoke to admin if it
+    exists, and creates the partial unique ux_users_email_active index. Does
+    NOT alter users.password_hash nullability (kept NOT NULL per CTO D).
+    """
+    from sqlalchemy import text
+
+    if not await _table_exists(db, ts, "roles"):
+        return
+
+    quoted_ts = ts.replace('"', '""')
+    perms_t = f'"{quoted_ts}".permissions'
+    roles_t = f'"{quoted_ts}".roles'
+    role_perms_t = f'"{quoted_ts}".role_permissions'
+    users_t = f'"{quoted_ts}".users'
+
+    for code, description in _S1_RETAILER_OPERATOR_PERMISSIONS + _S1_ADMIN_EXTRA_PERMISSIONS:
+        await db.execute(text(
+            f"INSERT INTO {perms_t} (code, description) VALUES (:code, :description) "
+            "ON CONFLICT (code) DO NOTHING"
+        ), {"code": code, "description": description})
+
+    await db.execute(text(
+        f"INSERT INTO {roles_t} (name, description) "
+        "VALUES (:name, :description) ON CONFLICT (name) DO NOTHING"
+    ), {
+        "name": _S1_RETAILER_OPERATOR_ROLE,
+        "description": "Retailer self-service operator (MVP)",
+    })
+
+    async def _grant(role_name: str, codes: tuple[str, ...]) -> None:
+        role_exists = await db.execute(
+            text(f"SELECT 1 FROM {roles_t} WHERE name = :name"), {"name": role_name}
+        )
+        if not role_exists.first():
+            return
+        for code in codes:
+            await db.execute(text(
+                f"""
+                INSERT INTO {role_perms_t} (role_id, permission_id)
+                SELECT r.id, p.id FROM {roles_t} r, {perms_t} p
+                WHERE r.name = :role_name AND p.code = :code
+                  AND NOT EXISTS (
+                    SELECT 1 FROM {role_perms_t} rp
+                    WHERE rp.role_id = r.id AND rp.permission_id = p.id
+                  )
+                """
+            ), {"role_name": role_name, "code": code})
+
+    await _grant(_S1_RETAILER_OPERATOR_ROLE,
+                 tuple(c for c, _ in _S1_RETAILER_OPERATOR_PERMISSIONS))
+    await _grant(_S1_ADMIN_ROLE, tuple(c for c, _ in _S1_ADMIN_EXTRA_PERMISSIONS))
+
+    if await _table_exists(db, ts, "users"):
+        await _ensure_index(
+            db, ts, "ux_users_email_active",
+            f'CREATE UNIQUE INDEX ux_users_email_active ON {users_t} (email) '
+            "WHERE is_deleted IS FALSE",
+            ("users", "(email)", "is_deleted IS FALSE"),
+        )
+
+    print(f"[reconcile] {ts}: ensured DC-12R1-S1 retailer_operator RBAC + email index")
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -1597,6 +1686,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- U4-C intake skeleton: reconcile indexes (mirrors 024) ---
         await _reconcile_intake_tables(db, ts)
+
+        # --- DC-12R1-S1: retailer_operator RBAC + active-email index (mirrors 036) ---
+        await _reconcile_rbac_s1(db, ts)
 
         await db.commit()
 

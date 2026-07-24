@@ -161,6 +161,12 @@ PUBLIC_ALLOWLIST: Set[str] = {
     "/api/v1/auth/refresh",
     "/api/v1/invitations/{code}",
     "/api/v1/retailers/register",
+    # DC-12R1-S1: pre-auth retailer credential recovery + invitation lookup.
+    # All redemption is JSON-body only; tokens never travel in query/path.
+    "/api/v1/retailers/setup-credential",
+    "/api/v1/client/auth/forgot-password",
+    "/api/v1/client/auth/reset-password",
+    "/api/v1/invitations/lookup",
 }
 
 # Internal-only test/diagnostic endpoints. These MUST still be gated by
@@ -941,6 +947,12 @@ class TestPublicAllowlistIntegrity:
             "/api/v1/auth/refresh",
             "/api/v1/invitations/{code}",
             "/api/v1/retailers/register",
+            # DC-12R1-S1 (CTO-approved): pre-auth retailer credential recovery
+            # and JSON-body invitation lookup. All token redemption is body-only.
+            "/api/v1/retailers/setup-credential",
+            "/api/v1/client/auth/forgot-password",
+            "/api/v1/client/auth/reset-password",
+            "/api/v1/invitations/lookup",
         }, (
             "PUBLIC_ALLOWLIST was modified. Any addition requires CTO sign-off. "
             "Current: " + str(PUBLIC_ALLOWLIST)

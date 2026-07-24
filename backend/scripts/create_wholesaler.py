@@ -205,8 +205,12 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
         ("payments:create", "Create payments"),
         # ── Retailer management ──
         ("retailers:read", "Read retailers"),
+        # DC-12R1-S1: restricted setup-token reissue (admin only, tenant-scoped)
+        ("retailers:reissue_credential", "Reissue a retailer credential setup token"),
         # ── Invitations ──
         ("invitations:create", "Create invitations"),
+        # DC-12R1-S1: revoke an outstanding retailer invitation (admin only)
+        ("invitations:revoke", "Revoke an outstanding retailer invitation"),
         # ── Pricing ──
         ("pricing:read", "Read pricing"),
         ("pricing:write", "Write pricing"),

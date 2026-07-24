@@ -88,6 +88,7 @@ def upgrade() -> None:
     _preflight_no_duplicate_tenant_emails(bind, rows)
     _preflight_no_conflicting_mappings_or_hashes(bind, rows)
     _preflight_bindings_have_retailers(bind)
+    _preflight_existing_token_tables_compatible(bind)
     # Public-schema mutations.
     _add_binding_tenant_user_id(bind)
     _add_retailer_email_verified_at(bind)
@@ -249,9 +250,7 @@ def _preflight_no_conflicting_mappings_or_hashes(bind, rows: list[dict[str, Any]
 
 
 def _check_conflicting_active_hashes(bind, rows: list[dict[str, Any]]) -> list[str]:
-    """For each retailer, collect the password_hash of each active mapped copy
-    and flag any disagreement. DC-12R1-S1-R3: no continue paths — missing
-    registry/schema/table/user is a fail-closed integrity break."""
+    """Compare active mapped hashes while inactive placeholder rows prove existence."""
     schema_by_wholesaler = {row["wholesaler_id"]: row["tenant_schema"] for row in rows}
     mappings = bind.execute(sa.text(
         """
@@ -275,17 +274,20 @@ def _check_conflicting_active_hashes(bind, rows: list[dict[str, Any]]) -> list[s
         if not _table_exists(bind, schema, USERS):
             failures.append(f"{schema}.{USERS}: users table is missing")
             continue
-        row = bind.execute(sa.text(
-            f'SELECT password_hash FROM "{schema}".users '
-            "WHERE id = :uid AND is_active = true AND is_deleted = false"
+        user_row = bind.execute(sa.text(
+            f'SELECT password_hash, is_active FROM "{schema}".users '
+            "WHERE id = :uid AND is_deleted = false"
         ), {"uid": tuid}).first()
-        if row is None:
+        if user_row is None:
             failures.append(
-                f"{schema}.{USERS}: mapped tenant_user_id {tuid} has no users row"
+                f"{schema}.{USERS}: RETAILER_MAPPING_USER_MISSING for tenant_user_id {tuid}"
             )
             continue
-        if row[0]:
-            by_retailer.setdefault(retailer_id, []).append((schema, str(row[0])))
+        password_hash, is_active = user_row
+        if is_active is True:
+            by_retailer.setdefault(retailer_id, []).append(
+                (schema, "<NULL>" if password_hash is None else str(password_hash))
+            )
     for retailer_id, copies in by_retailer.items():
         unique = {h for _schema, h in copies}
         if len(unique) > 1:
@@ -312,6 +314,14 @@ def _preflight_bindings_have_retailers(bind) -> None:
             "036 preflight (incompatible catalog) failed: bindings reference missing retailers: "
             + ", ".join(bid for (bid,) in orphans)
         )
+
+
+def _preflight_existing_token_tables_compatible(bind) -> None:
+    """Validate existing same-name token tables before any migration DDL."""
+    if _table_exists(bind, PUBLIC_SCHEMA, "retailer_credential_setup_tokens"):
+        _validate_setup_token_table_contract(bind)
+    if _table_exists(bind, PUBLIC_SCHEMA, "retailer_password_reset_tokens"):
+        _validate_reset_token_table_contract(bind)
 
 
 # ---------------------------------------------------------------------------
@@ -553,6 +563,10 @@ def _validate_token_table_exact(
 
     purpose = _PURPOSE_BY_TABLE[table_name]
 
+    # --- PRIMARY KEY + required server defaults via pg_catalog ---
+    _assert_primary_key_exact(bind, table_name, ["id"])
+    _assert_required_defaults(bind, table_name, purpose)
+
     # --- CHECK constraints via pg_get_constraintdef with exact semantics ---
     ck_rows = bind.execute(sa.text(
         "SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c "
@@ -634,17 +648,127 @@ def _assert_unique_single_col(bind, table_name: str, col_name: str) -> None:
     )
 
 
+def _assert_primary_key_exact(bind, table_name: str, expected_cols: list[str]) -> None:
+    rows = bind.execute(sa.text(
+        """
+        SELECT array_agg(a.attname ORDER BY ord.ord) AS key_cols
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        JOIN unnest(c.conkey) WITH ORDINALITY AS ord(attnum, ord) ON true
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ord.attnum
+        WHERE n.nspname = :schema AND t.relname = :table AND c.contype = 'p'
+        GROUP BY c.oid
+        """
+    ), {"schema": PUBLIC_SCHEMA, "table": table_name}).fetchall()
+    actual = [list(row[0]) for row in rows]
+    if actual == [expected_cols]:
+        return
+    raise PreflightFailure(
+        f"{table_name}: PRIMARY KEY must be exactly ({', '.join(expected_cols)}); "
+        f"found: {actual}"
+    )
+
+
+_CAST_RE = re.compile(r"::[a-zA-Z_ ]+(?:\(\d+\))?")
+
+
+def _normalized_default(default_expr: str | None) -> str | None:
+    if default_expr is None:
+        return None
+    without_casts = _CAST_RE.sub("", str(default_expr)).strip().lower()
+    without_parens = without_casts.replace("(", "").replace(")", "").strip()
+    return " ".join(without_parens.split())
+
+
+def _assert_required_defaults(bind, table_name: str, purpose: str) -> None:
+    rows = bind.execute(sa.text(
+        """
+        SELECT a.attname, pg_get_expr(d.adbin, d.adrelid) AS default_expr
+        FROM pg_attribute a
+        JOIN pg_class t ON t.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE n.nspname = :schema
+          AND t.relname = :table
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        """
+    ), {"schema": PUBLIC_SCHEMA, "table": table_name}).fetchall()
+    defaults = {column: default_expr for column, default_expr in rows}
+    _assert_uuid_default(table_name, "id", defaults.get("id"))
+    _assert_literal_default(table_name, "purpose", defaults.get("purpose"), purpose)
+    _assert_current_timestamp_default(table_name, "created_at", defaults.get("created_at"))
+    _assert_current_timestamp_default(table_name, "updated_at", defaults.get("updated_at"))
+    _assert_false_default(table_name, "is_deleted", defaults.get("is_deleted"))
+
+
+def _assert_uuid_default(table_name: str, column_name: str, default_expr: str | None) -> None:
+    norm = _normalized_default(default_expr)
+    if norm in {"gen_random_uuid", "uuid_generate_v4"}:
+        return
+    raise PreflightFailure(
+        f"{table_name}.{column_name}: default must generate UUID; found {default_expr!r}"
+    )
+
+
+def _assert_literal_default(
+    table_name: str, column_name: str, default_expr: str | None, expected: str
+) -> None:
+    norm = _normalized_default(default_expr)
+    if norm == f"'{expected}'":
+        return
+    raise PreflightFailure(
+        f"{table_name}.{column_name}: default must be {expected!r}; found {default_expr!r}"
+    )
+
+
+def _assert_current_timestamp_default(
+    table_name: str, column_name: str, default_expr: str | None
+) -> None:
+    norm = _normalized_default(default_expr)
+    if norm in {"now", "current_timestamp", "transaction_timestamp"}:
+        return
+    raise PreflightFailure(
+        f"{table_name}.{column_name}: default must generate current timestamp; "
+        f"found {default_expr!r}"
+    )
+
+
+def _assert_false_default(table_name: str, column_name: str, default_expr: str | None) -> None:
+    norm = _normalized_default(default_expr)
+    if norm == "false":
+        return
+    raise PreflightFailure(
+        f"{table_name}.{column_name}: default must be false; found {default_expr!r}"
+    )
+
+
 def _assert_fk(
     bind, table_name: str, local_col: str, ref_table: str, ref_col: str
 ) -> None:
-    """FK validated via conkey/confkey/confrelid/confdeltype (no substring)."""
-    row = bind.execute(sa.text(
+    """FK validated via exact public confrelid/conkey/confkey/confdeltype."""
+    expected_ref_oid = bind.execute(sa.text(
+        """
+        SELECT t.oid
+        FROM pg_class t
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = :schema AND t.relname = :table
+        """
+    ), {"schema": PUBLIC_SCHEMA, "table": ref_table}).scalar_one_or_none()
+    if expected_ref_oid is None:
+        raise PreflightFailure(f"public.{ref_table}: referenced table is missing")
+
+    rows = bind.execute(sa.text(
         """
         SELECT
-            la.attname AS local_col,
-            ra.attname AS ref_col,
+            c.conname,
+            c.confrelid,
+            rn.nspname AS ref_schema,
             rt.relname AS ref_table,
-            c.confdeltype
+            c.confdeltype,
+            array_agg(la.attname ORDER BY lk.ord) AS local_cols,
+            array_agg(ra.attname ORDER BY lk.ord) AS ref_cols
         FROM pg_constraint c
         JOIN pg_class t ON t.oid = c.conrelid
         JOIN pg_namespace n ON n.oid = t.relnamespace
@@ -655,30 +779,45 @@ def _assert_fk(
         JOIN LATERAL unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = lk.ord
         JOIN pg_attribute ra ON ra.attrelid = c.confrelid AND ra.attnum = fk.attnum
         WHERE n.nspname = :schema AND t.relname = :table AND c.contype = 'f'
-          AND la.attname = :local_col
-        LIMIT 1
+        GROUP BY c.oid, c.conname, c.confrelid, rn.nspname, rt.relname, c.confdeltype
         """
     ), {
-        "schema": PUBLIC_SCHEMA, "table": table_name, "local_col": local_col,
-    }).first()
-    if row is None:
+        "schema": PUBLIC_SCHEMA, "table": table_name,
+    }).mappings().fetchall()
+
+    candidates = [
+        row for row in rows
+        if local_col in list(row["local_cols"] or [])
+    ]
+    exact_local = [
+        row for row in candidates
+        if list(row["local_cols"] or []) == [local_col]
+    ]
+    if not exact_local:
         raise PreflightFailure(
-            f"{table_name}: missing FK on {local_col} -> {ref_table}.{ref_col}"
+            f"{table_name}: missing exact single-column FK on "
+            f"{local_col} -> public.{ref_table}.{ref_col}"
         )
-    actual_local, actual_ref_col, actual_ref_table, deltype = row
-    if actual_ref_table != ref_table:
-        raise PreflightFailure(
-            f"{table_name}: FK {local_col} references {actual_ref_table}, expected {ref_table}"
+    failures: list[str] = []
+    for row in exact_local:
+        actual_ref_cols = list(row["ref_cols"] or [])
+        if (
+            row["ref_schema"] == PUBLIC_SCHEMA
+            and row["ref_table"] == ref_table
+            and row["confrelid"] == expected_ref_oid
+            and actual_ref_cols == [ref_col]
+            and row["confdeltype"] == "c"
+        ):
+            return
+        failures.append(
+            f"{row['conname']}: local={list(row['local_cols'] or [])} "
+            f"ref={row['ref_schema']}.{row['ref_table']}({actual_ref_cols}) "
+            f"confrelid={row['confrelid']} on_delete={row['confdeltype']!r}"
         )
-    if actual_ref_col != ref_col:
-        raise PreflightFailure(
-            f"{table_name}: FK {local_col} -> {actual_ref_table}.{actual_ref_col}, "
-            f"expected .{ref_col}"
-        )
-    if deltype != "c":  # 'c' = CASCADE
-        raise PreflightFailure(
-            f"{table_name}: FK {local_col} confdeltype={deltype!r}, expected CASCADE ('c')"
-        )
+    raise PreflightFailure(
+        f"{table_name}: FK {local_col} must reference exactly "
+        f"public.{ref_table}({ref_col}) ON DELETE CASCADE; found: {failures}"
+    )
 
 
 def _validate_one_active_index_exact(bind, table_name: str, index_name: str) -> None:

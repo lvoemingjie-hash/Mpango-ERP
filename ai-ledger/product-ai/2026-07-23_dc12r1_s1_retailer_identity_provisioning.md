@@ -1,7 +1,7 @@
 # DC-12R1-S1 Retailer Identity, Credential and Invitation Foundation
 
-> **FINAL REPORT — R4 (2026-07-24).** This document is the authoritative
-> deliverable for the DC-12R1-S1 implementation. It supersedes all prior
+> **R4 REPORT (2026-07-24).** This document is the R4 delivery record for
+> the DC-12R1-S1 implementation. It supersedes all prior
 > revisions. The initial S1 PASS (`450e372d`) was REVOKED by CTO
 > `STOP_BEFORE_MERGE` and corrected through four review rounds (R1→R4).
 
@@ -10,7 +10,8 @@
 **PASS_FOR_CTO_DC12R1_S1_R4_MERGE_REVIEW**
 
 Branch: `opencode/dc12r1-s1-retailer-identity-provisioning-2026-07-23`
-Final tip: `00aba91b` (fast-forward from `19351c91` ← `197d09ca` ← `e6ab4c86` ← `450e372d`)
+R4 implementation tip: `00aba91b` (fast-forward from `19351c91` to `197d09ca` to `e6ab4c86` to `450e372d`)
+R4 report publication tip: `6a8ddcf348e9b1bdcc902929011e6212cc675cf8`
 Base: `78c40563` (descends from `product-dev-recovered` @ `757aef26`)
 
 ---
@@ -47,7 +48,7 @@ Base: `78c40563` (descends from `product-dev-recovered` @ `757aef26`)
 - **Index**: `indisunique=true`, `indnkeyatts=1`, key=`[retailer_id]` (no expression keys), `pg_get_expr(indpred)` exact three AND conditions (no OR, no extra, no missing)
 - **VARCHAR lengths**: `character_maximum_length` — token_hash=128, purpose=64
 - **Both tables**: setup and reset validated with identical exact catalog logic
-- **Transaction rollback proof**: validator raises PreflightFailure before any DDL; malformed table stays unchanged
+- **Transaction rollback proof**: R4 used a helper-level validator proof. R5 supersedes this with an actual Alembic 035-to-036 rollback proof that validates malformed pre-existing token tables before migration mutations.
 
 ### Atomic invitation lifecycle (CTO order B)
 SELECT FOR UPDATE → validate → retailer → binding + tenant user + tenant_user_id mapping + retailer_operator grant → optional setup token → SMTP before commit → mark used → commit. Any failure rolls back everything.

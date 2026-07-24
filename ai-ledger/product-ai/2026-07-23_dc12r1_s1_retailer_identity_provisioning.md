@@ -1,8 +1,76 @@
 # DC-12R1-S1 Retailer Identity, Credential and Invitation Foundation
 
+> **R1 Revision (2026-07-24).** The initial S1 PASS at `450e372d` is **REVOKED**
+> (CTO `STOP_BEFORE_MERGE` — 312 changed symbols / 43 affected flows rated CRITICAL).
+> R1 fixes the 5 merge-blockers below with RED→GREEN evidence. The unified
+> credential update is now strictly all-or-nothing; invitation expiry/timezone,
+> pending A+B semantics, reissue permission parity, and strict migration proof are
+> corrected. New verdict at bottom.
+
 ## Verdict
 
-**PASS_FOR_CTO_DC12R1_S1_REVIEW**
+**PASS_FOR_CTO_DC12R1_S1_R1_MERGE_REVIEW**
+
+R1 resolves all 5 CTO P1/P2 findings. 8 new R1 tests (RED→GREEN) + 14 S1 + 9
+frontend Vitest pass; regression green; single Alembic head `036`. The unified
+credential update is all-or-nothing.
+
+## CTO Findings (450e372d) and R1 Fixes
+
+| # | Finding (P-level) | R1 fix |
+|---|---|---|
+| 1 | Multi-supplier password update not atomic (per-tenant SAVEPOINT + broad except + continue; token consumed even on partial failure) | `_write_hash_to_mapped_copies` is now all-or-nothing: full mapping resolved first (empty → fail-closed), each UPDATE requires `rowcount==1`, no try/except/continue; any failure raises → outer txn rolls back, token NOT consumed, `email_verified_at` NOT updated. |
+| 2 | Placeholder hash mistaken for established credential (`_resolve_unified_credential` ignored `is_active`) | `_resolve_unified_credential` reads `password_hash AND is_active`; only active copies count. "A pending → accept B": B stays inactive, NO new token/email (existing retailer-scoped token reused via `_has_actionable_setup_token`); consuming it activates A+B together. |
+| 3 | Migration 036 broke default invitation create/lookup (`expires_at` NOT NULL but repo wrote None; naive-UTC vs TIMESTAMPTZ) | ORM `expires_at` NOT NULL; repo defaults `now(utc)+7d` when omitted; service uses `datetime.now(timezone.utc)`; lookup returns controlled codes (no 500) for valid/expired/revoked. |
+| 4 | `retailers:reissue_credential` missing from migration 036 admin seed + bootstrap | Added to `ADMIN_EXTRA_PERMISSIONS` (036) and `_S1_ADMIN_EXTRA_PERMISSIONS` (bootstrap); `create_wholesaler` already had it. All three sources now consistent; retailer_operator never receives it. |
+| 5 | Migration fail-closed insufficient (token tables returned on name-match only; preflight didn't compare hashes) | Added `_validate_setup_token_table_contract`/`_validate_reset_token_table_contract` (required columns + unique constraint + one-active partial index verified); `_check_conflicting_active_hashes` now compares active mapped copies' hashes per retailer. |
+| 5b | Provisioning fail-closed gaps | `_set_binding_tenant_user` requires `rowcount==1`; `_grant_retailer_operator` verifies role exists + membership present; reissue requires active binding; setup redemption verifies `token.binding_id.retailer_id == token.retailer_id`. |
+
+## RED → GREEN Evidence
+
+- **RED**: `test_dc12r1_s1_r1_corrections.py` — 8 tests, all FAILED at `450e372d`
+  (pending-copy activated, partial update left A changed, missing-role didn't roll
+  back, NULL expiry, naive-tz lookup, reissue perm absent, tampered token accepted).
+- **GREEN**: after R1 fixes — 8/8 pass.
+- A-pending→B: both inactive, single shared setup token activates both.
+- Partial-update failure: A hash unchanged, token unconsumed, `email_verified_at` unchanged.
+- Missing `retailer_operator` role: full rollback (no retailer committed).
+- No-expiry create: HTTP path yields finite 7-day aware-UTC expiry.
+- Tampered setup token (`binding_id`→wrong retailer): rejected.
+
+## Unified credential update is all-or-nothing
+
+`_write_hash_to_mapped_copies` (the single shared write path for setup + reset):
+1. resolves the **full** authoritative mapping first; empty → `RETAILER_NO_MAPPED_COPIES` (fail-closed);
+2. each tenant-user UPDATE must return `rowcount == 1` (else `RETAILER_MAPPED_COPY_UPDATE_FAILED`);
+3. **no** SAVEPOINT, **no** broad `except`, **no** `continue` — any DB error propagates and aborts the outer transaction;
+4. token consumption (`_consume_setup_token_row` / reset UPDATE) happens **only after** all copies succeed;
+5. `email_verified_at` updated only after success.
+Therefore A and B can never diverge; a failed copy leaves every hash unchanged and the token reusable.
+
+## Test Results (worktree-local Poetry env, PG16 + Redis7, migrated to 036)
+
+| Suite | Result |
+|---|---|
+| `test_dc12r1_s1_r1_corrections.py` (new, RED→GREEN) | 8 passed |
+| `test_dc12r1_s1_retailer_identity.py` | 14 passed |
+| `test_dc1g` + `test_dc3b` + auth + route-policy + orders + payments + finance | 76 passed |
+| Frontend Vitest + `pnpm build` | 9 passed; build OK |
+| `alembic heads`/`current` | single `036`; second upgrade no-op |
+
+## Changed files (R1)
+
+`backend/services/retailer_provisioning_service.py`, `backend/services/invitation_service.py`,
+`backend/repositories/invitation_repository.py`, `backend/models/invitation.py`,
+`backend/alembic/versions/036_retailer_mvp_identity.py`, `backend/scripts/bootstrap_tenant_schema.py`,
+`backend/tests/test_dc12r1_s1_r1_corrections.py` (new),
+`ai-ledger/product-ai/2026-07-23_dc12r1_s1_retailer_identity_provisioning.md`.
+
+---
+
+## Original S1 record (450e372d — PASS REVOKED)
+
+**PASS_FOR_CTO_DC12R1_S1_REVIEW** (REVOKED by R1)
 
 S1 implements the authoritative retailer-user mapping, migration 036, the atomic
 invitation lifecycle (CTO order B), retailer-owned setup/reset credentials, and

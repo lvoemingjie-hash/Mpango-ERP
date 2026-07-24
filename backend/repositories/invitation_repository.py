@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.invitation import Invitation
+
+# DC-12R1-S1-R1: mandatory finite invitation lifetime (migration 036 made
+# expires_at NOT NULL). When the caller omits expires_at, default to 7 days.
+DEFAULT_INVITATION_TTL = timedelta(days=7)
 
 
 class InvitationRepository:
@@ -20,6 +24,9 @@ class InvitationRepository:
         retailer_phone: Optional[str] = None,
         expires_at: Optional[datetime] = None,
     ) -> Invitation:
+        # Never write NULL — the column is NOT NULL (migration 036).
+        if expires_at is None:
+            expires_at = datetime.now(timezone.utc) + DEFAULT_INVITATION_TTL
         invitation = Invitation(
             code=code,
             wholesaler_id=wholesaler_id,

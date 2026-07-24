@@ -318,8 +318,12 @@ class RetailerProvisioningService:
         # Grant retailer_operator role in the tenant.
         await self._grant_retailer_operator(tenant_schema=tenant_schema, user_id=user_id)
 
-        # Issue a setup token only when the retailer has no established password.
-        if cred_state.identical_hash is None:
+        # Issue a setup token only when the retailer has no established password
+        # AND no actionable setup token already exists. This covers the
+        # "A pending, then accept B" case: B gets a pending user but NO new
+        # token/email — the existing retailer-scoped setup token remains the
+        # single actionable token and will activate A+B together when consumed.
+        if cred_state.identical_hash is None and not await self._has_actionable_setup_token(retailer.id):
             setup_token_raw = generate_verification_token()
             self.db.add(
                 RetailerCredentialSetupToken(
@@ -334,6 +338,20 @@ class RetailerProvisioningService:
             await self.db.flush()
 
         return binding, setup_token_raw
+
+    async def _has_actionable_setup_token(self, retailer_id: uuid.UUID) -> bool:
+        """True if an unused, unrevoked, unexpired setup token already exists."""
+        now = _now()
+        result = await self.db.execute(
+            text(
+                "SELECT 1 FROM public.retailer_credential_setup_tokens "
+                "WHERE retailer_id = :rid AND used_at IS NULL AND revoked_at IS NULL "
+                "AND expires_at > :now AND is_deleted = false LIMIT 1"
+            ),
+            {"rid": retailer_id, "now": now},
+            execution_options={"ignore_tenant": True},
+        )
+        return result.first() is not None
 
     async def _get_or_create_binding(
         self, *, wholesaler_id: uuid.UUID, retailer_id: uuid.UUID
@@ -363,7 +381,8 @@ class RetailerProvisioningService:
     async def _set_binding_tenant_user(
         self, binding_id: uuid.UUID, tenant_user_id: uuid.UUID
     ) -> None:
-        await self.db.execute(
+        # DC-12R1-S1-R1: verify exactly one row updated (binding must exist).
+        result = await self.db.execute(
             text(
                 "UPDATE public.wholesaler_retailer_bindings "
                 "SET tenant_user_id = :tuid, updated_at = now() WHERE id = :bid"
@@ -371,6 +390,10 @@ class RetailerProvisioningService:
             {"tuid": tenant_user_id, "bid": binding_id},
             execution_options={"ignore_tenant": True},
         )
+        if result.rowcount != 1:
+            raise RetailerProvisioningError(
+                "RETAILER_BINDING_MAP_FAILED", http_status=500
+            )
 
     async def _create_tenant_user(
         self,
@@ -404,7 +427,21 @@ class RetailerProvisioningService:
     async def _grant_retailer_operator(
         self, *, tenant_schema: str, user_id: uuid.UUID
     ) -> None:
+        # DC-12R1-S1-R1: verify the role exists and the membership is ultimately
+        # present; do not continue after an INSERT of 0 rows (e.g. missing role).
         validate_identifier(tenant_schema, "tenant schema")
+        role_exists = (
+            await self.db.execute(
+                text(
+                    f'SELECT 1 FROM "{tenant_schema}".roles WHERE name = :role_name'
+                ),
+                {"role_name": RETAILER_OPERATOR_ROLE},
+            )
+        ).first()
+        if role_exists is None:
+            raise RetailerProvisioningError(
+                "RETAILER_OPERATOR_ROLE_MISSING", http_status=500
+            )
         await self.db.execute(
             text(
                 f'INSERT INTO "{tenant_schema}".user_roles (user_id, role_id) '
@@ -416,6 +453,21 @@ class RetailerProvisioningService:
             ),
             {"user_id": user_id, "role_name": RETAILER_OPERATOR_ROLE},
         )
+        # Verify the membership is now present (idempotent insert still leaves it).
+        membership = (
+            await self.db.execute(
+                text(
+                    f'SELECT 1 FROM "{tenant_schema}".user_roles ur '
+                    f'JOIN "{tenant_schema}".roles r ON r.id = ur.role_id '
+                    "WHERE ur.user_id = :user_id AND r.name = :role_name"
+                ),
+                {"user_id": user_id, "role_name": RETAILER_OPERATOR_ROLE},
+            )
+        ).first()
+        if membership is None:
+            raise RetailerProvisioningError(
+                "RETAILER_OPERATOR_GRANT_FAILED", http_status=500
+            )
 
     async def _mark_invitation_used(
         self, invitation: Invitation, retailer_id: uuid.UUID
@@ -460,34 +512,40 @@ class RetailerProvisioningService:
 
     @dataclass
     class _CredentialState:
+        # The hash to copy into a newly provisioned copy, or None to issue a
+        # setup token. Only set when an ESTABLISHED (is_active=true) copy exists.
         identical_hash: Optional[str]
         conflict: bool
 
     async def _resolve_unified_credential(
         self, retailer_id: uuid.UUID
     ) -> "_CredentialState":
-        """Inspect mapped tenant-user copies for the retailer (§2.2).
+        """Inspect mapped tenant-user copies for the retailer (§2.2, R1-corrected).
 
-        None-with-password -> issue setup token (identical_hash=None).
-        Identical hashes   -> copy (identical_hash set, no setup token).
-        Conflicting hashes -> fail closed RETAILER_CREDENTIAL_CONFLICT.
+        Only is_active=true copies count as an ESTABLISHED credential. A pending
+        copy (is_active=false, random placeholder hash) is NOT copied, NOT treated
+        as a conflict source, and does NOT suppress a setup token. Scenarios:
+
+        - No active copy with a password -> issue setup token (identical_hash=None).
+        - Active copies with identical hashes -> copy (identical_hash set).
+        - Active copies with conflicting hashes -> fail closed.
         """
         mappings = await self._mapped_tenant_users(retailer_id)
-        hashes: list[str] = []
+        active_hashes: list[str] = []
         for _binding_id, schema, user_id in mappings:
             validate_identifier(schema, "tenant schema")
             row = (
                 await self.db.execute(
                     text(
-                        f'SELECT password_hash FROM "{schema}".users '
+                        f'SELECT password_hash, is_active FROM "{schema}".users '
                         "WHERE id = :uid AND is_deleted = false"
                     ),
                     {"uid": user_id},
                 )
             ).first()
-            if row is not None and row[0]:
-                hashes.append(str(row[0]))
-        unique = set(hashes)
+            if row is not None and row[0] and row[1]:  # has hash AND is_active
+                active_hashes.append(str(row[0]))
+        unique = set(active_hashes)
         if len(unique) > 1:
             return self._CredentialState(identical_hash=None, conflict=True)
         if len(unique) == 1:
@@ -562,11 +620,24 @@ class RetailerProvisioningService:
         validate_password_policy(new_password)
         token_row = await self._actionable_setup_token(raw_token)
         retailer_id = token_row.retailer_id
+        # Fail-closed: the token's binding must reference the same retailer.
+        binding_row = (
+            await self.db.execute(
+                text(
+                    "SELECT retailer_id FROM public.wholesaler_retailer_bindings "
+                    "WHERE id = :bid AND is_deleted = false"
+                ),
+                {"bid": token_row.binding_id},
+                execution_options={"ignore_tenant": True},
+            )
+        ).first()
+        if binding_row is None or str(binding_row[0]) != str(retailer_id):
+            raise RetailerCredentialTokenInvalidError(SETUP_TOKEN_INVALID)
         new_hash = hash_password(new_password)
         updated = await self._write_hash_to_mapped_copies(
             retailer_id=retailer_id, new_hash=new_hash, activate=True
         )
-        # Mark canonical email verified.
+        # Mark canonical email verified (only after all copies succeeded).
         await self.db.execute(
             text(
                 "UPDATE public.retailers SET email_verified_at = now(), "
@@ -693,6 +764,9 @@ class RetailerProvisioningService:
         binding = result.scalar_one_or_none()
         if binding is None:
             # Neutral 404 — do not disclose the relationship exists (CTO #2).
+            raise RetailerProvisioningError("RETAILER_NOT_FOUND", http_status=404)
+        # DC-12R1-S1-R1: reissue requires an ACTIVE binding.
+        if binding.status != "active":
             raise RetailerProvisioningError("RETAILER_NOT_FOUND", http_status=404)
         return binding
 
@@ -847,30 +921,43 @@ class RetailerProvisioningService:
     async def _write_hash_to_mapped_copies(
         self, *, retailer_id: uuid.UUID, new_hash: str, activate: bool
     ) -> int:
-        """Write the new hash to every tenant user mapped to retailer_id.
+        """Write the new hash to every tenant user mapped to retailer_id (all-or-nothing).
+
+        DC-12R1-S1-R1: NO per-tenant SAVEPOINT / broad except / continue. The full
+        authoritative mapping is resolved first; every copy MUST update exactly one
+        row (rowcount == 1). Any missing wholesaler/schema/user, any exception, or
+        any rowcount != 1 raises immediately so the caller rolls back the entire
+        transaction — no partial A/B divergence, and the setup/reset token is NOT
+        consumed (consumption happens only after this returns successfully).
 
         Never touches unrelated same-email users — the update is keyed on the
-        binding's tenant_user_id, not on users.email (CTO correction D-R2 #2/#4).
+        binding's tenant_user_id, not on users.email.
         """
+        mappings = await self._mapped_tenant_users(retailer_id)
+        if not mappings:
+            # No mapped copies at all — fail closed; nothing to update.
+            raise RetailerProvisioningError(
+                "RETAILER_NO_MAPPED_COPIES", http_status=409
+            )
         updated = 0
-        for _binding_id, schema, user_id in await self._mapped_tenant_users(retailer_id):
+        for _binding_id, schema, user_id in mappings:
             validate_identifier(schema, "tenant schema")
-            try:
-                async with self.db.begin_nested():
-                    res = await self.db.execute(
-                        text(
-                            f'UPDATE "{schema}".users '
-                            "SET password_hash = :h, is_active = true, "
-                            "is_deleted = false, deleted_at = NULL, updated_at = now() "
-                            "WHERE id = :uid"
-                        ),
-                        {"h": new_hash, "uid": user_id},
-                    )
-                    updated += res.rowcount
-            except Exception:
-                # Isolate per-tenant failures via SAVEPOINT rollback (mirrors
-                # password_reset_service). Do not abort the whole reset.
-                continue
+            # No try/except: any DB error propagates and aborts the outer txn.
+            res = await self.db.execute(
+                text(
+                    f'UPDATE "{schema}".users '
+                    "SET password_hash = :h, is_active = :active, "
+                    "is_deleted = false, deleted_at = NULL, updated_at = now() "
+                    "WHERE id = :uid"
+                ),
+                {"h": new_hash, "active": activate, "uid": user_id},
+            )
+            if res.rowcount != 1:
+                # Mapped copy is missing/stale — all-or-nothing: abort.
+                raise RetailerProvisioningError(
+                    "RETAILER_MAPPED_COPY_UPDATE_FAILED", http_status=500
+                )
+            updated += 1
         return updated
 
     @staticmethod

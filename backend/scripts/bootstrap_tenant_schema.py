@@ -1246,6 +1246,8 @@ _S1_RETAILER_OPERATOR_PERMISSIONS = (
 )
 _S1_ADMIN_EXTRA_PERMISSIONS = (
     ("invitations:revoke", "Revoke an outstanding retailer invitation"),
+    # DC-12R1-S1-R1: restricted setup-token reissue (admin only, tenant-scoped).
+    ("retailers:reissue_credential", "Reissue a retailer credential setup token"),
 )
 _S1_RETAILER_OPERATOR_ROLE = "retailer_operator"
 _S1_ADMIN_ROLE = "admin"

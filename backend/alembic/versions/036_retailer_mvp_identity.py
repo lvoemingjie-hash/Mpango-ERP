@@ -62,6 +62,8 @@ RETAILER_OPERATOR_PERMISSIONS = (
 )
 ADMIN_EXTRA_PERMISSIONS = (
     ("invitations:revoke", "Revoke an outstanding retailer invitation"),
+    # DC-12R1-S1-R1: restricted setup-token reissue (admin only, tenant-scoped).
+    ("retailers:reissue_credential", "Reissue a retailer credential setup token"),
 )
 ALL_NEW_PERMISSIONS = RETAILER_OPERATOR_PERMISSIONS + ADMIN_EXTRA_PERMISSIONS
 RETAILER_OPERATOR_ROLE = "retailer_operator"
@@ -234,10 +236,50 @@ def _preflight_no_conflicting_mappings_or_hashes(bind, rows: list[dict[str, Any]
     ).fetchall()
     for ws, tuid, _cnt in ambiguous:
         failures.append(f"wholesaler {ws}: tenant_user_id {tuid} maps to multiple retailers")
+    # DC-12R1-S1-R1: also compare ACTIVE mapped copies' password hashes per
+    # retailer. A retailer whose mapped tenant-user copies already disagree on
+    # the established password is an ambiguous state that must fail closed
+    # (matches the runtime RETAILER_CREDENTIAL_CONFLICT rule).
+    hash_failures = _check_conflicting_active_hashes(bind, rows)
+    failures.extend(hash_failures)
     if failures:
         raise PreflightFailure(
             "036 preflight (conflicting mappings) failed: " + "; ".join(failures)
         )
+
+
+def _check_conflicting_active_hashes(bind, rows: list[dict[str, Any]]) -> list[str]:
+    """For each retailer, collect the password_hash of each active mapped copy
+    and flag any disagreement."""
+    schema_by_wholesaler = {row["wholesaler_id"]: row["tenant_schema"] for row in rows}
+    mappings = bind.execute(sa.text(
+        """
+        SELECT retailer_id::text, wholesaler_id::text, tenant_user_id::text
+        FROM public.wholesaler_retailer_bindings
+        WHERE tenant_user_id IS NOT NULL AND is_deleted IS FALSE
+        """
+    )).fetchall()
+    by_retailer: dict[str, list[tuple[str, str]]] = {}
+    for retailer_id, wholesaler_id, tuid in mappings:
+        schema = schema_by_wholesaler.get(wholesaler_id)
+        if schema is None or not _schema_exists(bind, schema):
+            continue
+        if not _table_exists(bind, schema, USERS):
+            continue
+        row = bind.execute(sa.text(
+            f'SELECT password_hash FROM "{schema}".users '
+            "WHERE id = :uid AND is_active = true AND is_deleted = false"
+        ), {"uid": tuid}).first()
+        if row and row[0]:
+            by_retailer.setdefault(retailer_id, []).append((schema, str(row[0])))
+    failures: list[str] = []
+    for retailer_id, copies in by_retailer.items():
+        unique = {h for _schema, h in copies}
+        if len(unique) > 1:
+            failures.append(
+                f"retailer {retailer_id}: active mapped copies have conflicting password hashes"
+            )
+    return failures
 
 
 def _preflight_bindings_have_retailers(bind) -> None:
@@ -307,6 +349,9 @@ def _harden_invitations(bind) -> None:
 
 def _create_retailer_setup_token_table(bind) -> None:
     if _table_exists(bind, PUBLIC_SCHEMA, "retailer_credential_setup_tokens"):
+        # DC-12R1-S1-R1: strict validation — do not silently skip an
+        # incompatible same-name table. Verify required columns + constraints.
+        _validate_setup_token_table_contract(bind)
         return
     bind.execute(sa.text(
         """
@@ -360,6 +405,8 @@ def _create_retailer_setup_token_table(bind) -> None:
 
 def _create_retailer_reset_token_table(bind) -> None:
     if _table_exists(bind, PUBLIC_SCHEMA, "retailer_password_reset_tokens"):
+        # DC-12R1-S1-R1: strict validation of an existing same-name table.
+        _validate_reset_token_table_contract(bind)
         return
     bind.execute(sa.text(
         """
@@ -402,6 +449,60 @@ def _create_retailer_reset_token_table(bind) -> None:
         "ON public.retailer_password_reset_tokens (retailer_id) "
         "WHERE used_at IS NULL AND revoked_at IS NULL AND is_deleted = false"
     ))
+
+
+# ---------------------------------------------------------------------------
+# DC-12R1-S1-R1: strict catalog validation for pre-existing token tables.
+# When a same-name table already exists, verify the required columns and
+# constraints are present; fail closed (PreflightFailure) before any mutation
+# rather than silently skipping an incompatible object.
+# ---------------------------------------------------------------------------
+
+_REQUIRED_TOKEN_COLUMNS = {
+    "id", "retailer_id", "token_hash", "purpose", "expires_at",
+    "used_at", "revoked_at", "is_deleted", "created_at", "updated_at",
+}
+_REQUIRED_SETUP_COLUMNS = _REQUIRED_TOKEN_COLUMNS | {"binding_id"}
+
+
+def _validate_setup_token_table_contract(bind) -> None:
+    _validate_token_table_contract(
+        bind, "retailer_credential_setup_tokens", _REQUIRED_SETUP_COLUMNS
+    )
+    # The one-active partial unique index must exist.
+    if not _index_exists(bind, PUBLIC_SCHEMA, "retailer_credential_setup_tokens",
+                         "ux_retailer_credential_setup_tokens_retailer_active"):
+        raise PreflightFailure(
+            "retailer_credential_setup_tokens: missing one-active partial unique index"
+        )
+
+
+def _validate_reset_token_table_contract(bind) -> None:
+    _validate_token_table_contract(
+        bind, "retailer_password_reset_tokens", _REQUIRED_TOKEN_COLUMNS
+    )
+    if not _index_exists(bind, PUBLIC_SCHEMA, "retailer_password_reset_tokens",
+                         "ux_retailer_password_reset_tokens_retailer_active"):
+        raise PreflightFailure(
+            "retailer_password_reset_tokens: missing one-active partial unique index"
+        )
+
+
+def _validate_token_table_contract(bind, table_name: str, required_cols: set[str]) -> None:
+    rows = bind.execute(sa.text(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = :schema AND table_name = :table_name"
+    ), {"schema": PUBLIC_SCHEMA, "table_name": table_name}).fetchall()
+    present = {r[0] for r in rows}
+    missing = required_cols - present
+    if missing:
+        raise PreflightFailure(
+            f"{table_name}: incompatible existing table; missing columns: {sorted(missing)}"
+        )
+    # token_hash uniqueness + used/revoked mutual exclusion must be enforced.
+    if not _constraint_exists(bind, PUBLIC_SCHEMA, table_name,
+                              f"uq_{table_name}_token_hash"):
+        raise PreflightFailure(f"{table_name}: missing token_hash unique constraint")
 
 
 # ---------------------------------------------------------------------------

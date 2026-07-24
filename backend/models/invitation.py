@@ -51,10 +51,10 @@ class Invitation(PublicBaseModel):
         comment="Optional target retailer phone",
     )
 
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
+    expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        nullable=True,
-        comment="Optional expiration timestamp",
+        nullable=False,
+        comment="DC-12R1-S1-R1: mandatory finite expiration (NOT NULL, aware UTC).",
     )
 
     used_at: Mapped[Optional[datetime]] = mapped_column(

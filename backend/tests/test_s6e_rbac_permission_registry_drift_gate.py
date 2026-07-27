@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import os
 import re
+import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -335,6 +336,25 @@ def extract_seed_permissions(script_path: Path) -> set[str]:
     if script_path.name == "seed_demo_data.py":
         return _extract_seed_demo_permissions(script_path)
     raise AssertionError(f"Unsupported provisioning permission script: {script_path}")
+
+
+def test_seed_demo_data_cli_help_runs_without_pythonpath():
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env["MPANGO_ENV"] = "test"
+
+    result = subprocess.run(
+        [sys.executable, "scripts/seed_demo_data.py", "--help"],
+        cwd=BACKEND_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    combined_output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    assert result.returncode == 0, combined_output or "seed_demo_data.py --help exited non-zero"
+    assert "Traceback" not in combined_output, combined_output
 
 
 def extract_frontend_permissions() -> set[str]:

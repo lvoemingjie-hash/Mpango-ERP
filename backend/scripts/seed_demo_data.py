@@ -21,6 +21,8 @@ import uuid
 from decimal import Decimal
 from pathlib import Path
 
+from core.permission_registry import ADMIN_PERMISSIONS
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -36,37 +38,9 @@ ADMIN_EMAIL = "admin@mpango.demo"
 ADMIN_PASSWORD = "DemoAdmin2026!"  # pragma: allowlist secret (demo credential)
 ADMIN_FULL_NAME = "Demo Administrator"
 
-PERMISSION_CODES = [
-    ("users:read", "Read users"), ("users:create", "Create users"),
-    ("users:update", "Update users"), ("users:delete", "Delete users"),
-    ("users:deactivate", "Deactivate users"),
-    ("wholesalers:read", "Read wholesalers"),
-    ("wholesalers:write", "Create/update/delete wholesalers"),
-    ("roles:read", "Read roles"), ("roles:assign", "Assign roles to users"),
-    ("orders:read", "Read orders"), ("orders:create", "Create orders"),
-    ("orders:write", "Write/update orders"), ("orders:delete", "Delete orders"),
-    ("orders:update", "Update orders"),
-    ("payments:read", "Read payments"), ("payments:create", "Create payments"),
-    ("skus:read", "Read SKUs"), ("skus:create", "Create SKUs"),
-    ("skus:update", "Update SKUs"), ("skus:import", "Import SKUs via preview/validate/apply contract"),
-    ("intake:read", "Read data intake batches"),
-    ("intake:create", "Create data intake batches"),
-    ("intake:update", "Update data intake batches"),
-    ("intake:approve", "Approve data intake batches for ERP import"),
-    ("intake:export", "Export data intake batches"),
-    ("intake:import_to_erp", "Import approved data intake into ERP"),
-    ("inventory:read", "Read inventory"),
-    ("inventory:update", "Update inventory"), ("reports:read", "Read reports"),
-    ("retailers:read", "Read retailers"),
-    ("pricing:read", "Read pricing"), ("pricing:write", "Write pricing"),
-    ("finance:read", "View invoices, receivables, financial summary"),
-    ("dashboards:read", "Read dashboard KPIs and charts"),
-    ("reports:analyze", "Execute ad-hoc semantic analysis queries"),
-    ("exports:create", "Request data exports"),
-    ("system:admin", "Full system administration (job queues, debug endpoints)"),
-    ("metrics:admin", "Reset application metrics"),
-    ("invitations:create", "Create invitations"),
-]
+# Preserve the public name used by legacy callers while sourcing from the
+# canonical runtime registry.
+PERMISSION_CODES = ADMIN_PERMISSIONS
 
 ROLES = [
     ("admin", "Administrator with full access"),

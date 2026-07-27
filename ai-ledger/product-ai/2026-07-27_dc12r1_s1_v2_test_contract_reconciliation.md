@@ -1,185 +1,213 @@
-# DC-12R1-S1-V2 Test Contract Reconciliation Evidence
+# DC-12R1-S1-V2-R1 Permission Drift Gate Restoration Evidence
 
 ## Verdict
 
-**PASS_DC12R1_S1_V2_TEST_CONTRACT_RECONCILIATION**
+**PASS_FOR_CTO_DC12R1_S1_V2_R1_MERGE_REVIEW**
 
-All 20 reproduced RED nodes were reconciled as stale test-contract drift within
-the allowed scope of five affected backend test files. No product code,
-migrations, or non-allowed tests were edited.
-
-## Scope And Branch
+## Scope
 
 - Date: Monday, July 27, 2026
-- Target baseline: `origin/product-dev-recovered @ f35346aa98e3098322dbff59599230800548008b`
-- Disposable worktree: `/home/ivy/MPANGO/dc12r1-s1-v2-disposable`
-- Report branch: `reports/dc12r1-s1-v2-test-contract-reconciliation-2026-07-27`
-- Allowed edits only:
-  - `backend/tests/test_s3c_self_contained_fresh_tenant_live_proof.py`
-  - `backend/tests/test_s4g_migration_infrastructure_hardening.py`
-  - `backend/tests/test_s6_p_reporting_constraints.py`
+- Branch: `reports/dc12r1-s1-v2-test-contract-reconciliation-2026-07-27`
+- Branch tip at start of this R1 correction pass: `72374389f7c18856dd5f30f367a35239dfa0e487`
+- Disposable worktree: `/home/ivy/MPANGO/dc12r1-s1-v2-r1-disposable`
+- Allowed code/report edits used in this pass:
+  - `backend/scripts/seed_demo_data.py`
   - `backend/tests/test_s6e_rbac_permission_registry_drift_gate.py`
-  - `backend/tests/test_u3b1_contract_foundation.py`
   - this report
+
+No skip, xfail, deselection, exclusion, assertion weakening, migration edits, or
+unrelated product/test edits were introduced. S2 was not started.
 
 ## Test-Safe Environment
 
-- PostgreSQL 16 container: `dc12r1-s1-v2-pg16` on `127.0.0.1:56433`
-- Redis 7 container: `dc12r1-s1-v2-redis7` on `127.0.0.1:57380`
-- `MPANGO_ENV=test`
-- `MPANGO_ALLOW_TEMP_DB_CREATE=1`
-- `MPANGO_TEMP_DB_ALLOWED_HOSTS=127.0.0.1,localhost`
-- `MPANGO_TEMP_DB_ALLOWED_PORTS=56433`
-- `REDIS_URL=redis://127.0.0.1:57380/0`
-- `TEST_DATABASE_URL` and `DATABASE_URL` used only loopback, non-production test
-  database names, and non-production test users
-- `TEST_REPORTING_DATABASE_URL` used explicit reporting-user DSNs with
-  `postgresql+asyncpg://reporting_user:...@127.0.0.1:56433/<test_db>`
+- PostgreSQL 16 container: `dc12r1-s1-v2-r1-pg16`
+- Redis 7 container: `dc12r1-s1-v2-r1-redis7`
+- PostgreSQL loopback DSN host/port: `127.0.0.1:56433`
+- Redis loopback URL: `redis://127.0.0.1:57380/0`
+- Environment:
+  - `MPANGO_ENV=test`
+  - `MPANGO_ALLOW_TEMP_DB_CREATE=1`
+  - `MPANGO_TEMP_DB_ALLOWED_HOSTS=127.0.0.1,localhost`
+  - `MPANGO_TEMP_DB_ALLOWED_PORTS=56433`
+  - `REPORTING_USER_PASSWORD` set to a disposable test value
+  - all `TEST_DATABASE_URL` / `DATABASE_URL` values used non-production names,
+    loopback hosts, and disposable test credentials only
+  - all reporting DSNs used explicit test reporting credentials only
 
-## RED Baseline
+## RED Proof
 
-Comparable RED evidence was taken only after preheating a fresh disposable
-database to Alembic `head`.
+Current `seed_demo_data.py` permission drift was reproduced before the fix with
+an authoritative registry compare.
 
-- Database: `test_backend_v2_red_head`
-- Log: `/tmp/dc12r1-s1-v2/backend_full_red_head.log`
-- JUnit: `/tmp/dc12r1-s1-v2/backend_full_red_head.xml`
-- Result:
-  - `15 failed, 2850 passed, 48 skipped, 15 xfailed, 1740 warnings, 5 errors in 645.18s`
+- Log: `/tmp/dc12r1-s1-v2-r1_seed_demo_red.log`
+- Result: exit `1`
+- Observed counts:
+  - `seed_demo_data permission count: 39`
+  - `canonical admin permission count: 45`
+- Missing canonical admin permissions:
+  - `inventory:write`
+  - `invitations:revoke`
+  - `orders:cancel`
+  - `orders:confirm`
+  - `orders:ship`
+  - `retailers:reissue_credential`
+  - `roles:create`
+  - `roles:delete`
+  - `roles:update`
+- Legacy extras still present:
+  - `orders:delete`
+  - `orders:write`
+  - `users:delete`
 
-The exact 20 RED nodes reproduced were:
+This established a real permission-set drift in `backend/scripts/seed_demo_data.py`.
 
-1. `tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestPermissionConsistencyWithOnboard::test_s3c_seed_permissions_match_onboard_exactly`
-2. `tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestPermissionConsistencyWithOnboard::test_s3c_seed_permission_count`
-3. `tests/test_s4g_migration_infrastructure_hardening.py::test_alembic_upgrade_head_creates_wide_version_table_on_fresh_database`
-4. `tests/test_s4g_migration_infrastructure_hardening.py::test_alembic_upgrade_head_widens_existing_varchar32_version_table`
-5. `tests/test_s4g_migration_infrastructure_hardening.py::test_migration_017_creates_retailer_prices_on_fresh_tenant_schema`
-6. `tests/test_s4g_migration_infrastructure_hardening.py::test_migration_017_reconciles_compatible_preexisting_retailer_prices`
-7. `tests/test_s4g_migration_infrastructure_hardening.py::test_migration_017_fails_closed_for_incompatible_retailer_prices`
-8. `tests/test_s6_p_reporting_constraints.py::test_reporting_query_timeout`
-9. `tests/test_s6_p_reporting_constraints.py::test_reporting_user_can_read_public_tables`
-10. `tests/test_s6e_rbac_permission_registry_drift_gate.py::test_api_route_permissions_are_seeded_in_all_tenant_provisioning_paths`
-11. `tests/test_s6e_rbac_permission_registry_drift_gate.py::test_provisioning_paths_seed_required_data_intake_permissions`
-12. `tests/test_s6e_rbac_permission_registry_drift_gate.py::test_frontend_permission_references_are_seeded`
-13. `tests/test_u3b1_contract_foundation.py::TestSkusImportPermission::test_create_wholesaler_has_skus_import`
-14. `tests/test_u3b1_contract_foundation.py::TestSkusImportPermission::test_onboard_tenant_has_skus_import`
-15. `tests/test_u3b1_contract_foundation.py::TestSkusImportPermission::test_seed_test_tenant_has_skus_import`
-16. `tests/test_s6_p_reporting_constraints.py::test_reporting_user_cannot_insert`
-17. `tests/test_s6_p_reporting_constraints.py::test_reporting_user_cannot_update`
-18. `tests/test_s6_p_reporting_constraints.py::test_reporting_user_cannot_delete`
-19. `tests/test_s6_p_reporting_constraints.py::test_reporting_user_can_select`
-20. `tests/test_s6_p_reporting_constraints.py::test_reporting_role_has_timeout`
+## Corrections Applied
 
-Accounting: 20 reproduced, 20 resolved, gap 0.
+- Restored `seed_demo_data.py` into `PROVISIONING_PERMISSION_SCRIPTS`.
+- Removed filename-based `ADMIN_PERMISSION_CODES` short-circuit behavior from
+  `test_s6e_rbac_permission_registry_drift_gate.py`.
+- Reworked the S6-E gate to prove actual canonical registry consumption through
+  runtime extraction helpers that load each provisioning script and execute its
+  real permission-seeding path instead of matching source literals.
+- Updated `backend/scripts/seed_demo_data.py` to import `ADMIN_PERMISSIONS` from
+  `core.permission_registry` and preserve the public consumer name
+  `PERMISSION_CODES = ADMIN_PERMISSIONS`.
+- Tightened the gate to assert exact permission-set equality, including no
+  legacy extras.
+- Removed the old report EOF whitespace and corrected the earlier inaccurate
+  "no assertion weakening" wording.
 
-## Reconciliation Changes
+## Canonical Registry Consumption Proof
 
-- `test_s3c_self_contained_fresh_tenant_live_proof.py`
-  - Replaced source-literal parsing with the authoritative permission registry.
-- `test_s4g_migration_infrastructure_hardening.py`
-  - Replaced ad hoc database setup with `TEST_DATABASE_URL` plus
-    `temporary_database_url(...)` and `run_alembic_upgrade(...)`.
-- `test_s6_p_reporting_constraints.py`
-  - Switched reporting DSN construction to the supported reporting-session path
-    and explicit test reporting credentials.
-- `test_s6e_rbac_permission_registry_drift_gate.py`
-  - Replaced source-literal parsing with authoritative registry checks for the
-    real tenant-provisioning paths.
-- `test_u3b1_contract_foundation.py`
-  - Replaced static permission-string expectations with authoritative registry
-    and runtime object identity checks.
+The authoritative S6-E gate now proves:
 
-Classification of all 20 original RED nodes:
-
-- `STALE_TEST_CONTRACT`: 20
-- `CURRENT_PRODUCT_DEFECT`: 0
-- `TEST_INFRASTRUCTURE`: 0
-- `ENVIRONMENT_GATED`: 0
+- `onboard_tenant.py` consumes the canonical admin registry via its runtime
+  role-permission create path
+- `create_wholesaler.py` consumes the canonical admin registry via its runtime
+  role-permission create path
+- `seed_test_tenant.py` consumes the canonical admin registry via its runtime
+  role-permission create path
+- `seed_demo_data.py` consumes the canonical admin registry via
+  `PERMISSION_CODES = ADMIN_PERMISSIONS`
+- all four provisioning paths resolve to exact canonical admin-permission set
+  equality, with neither omissions nor legacy extras
 
 ## Focused GREEN Proof
 
-Focused reruns after reconciliation:
-
-- `tests/test_s3c_self_contained_fresh_tenant_live_proof.py`
-  - PASS: `17 passed`
-  - Log: `/tmp/dc12r1-s1-v2/targeted_s3c.log`
-- `tests/test_s4g_migration_infrastructure_hardening.py`
-  - PASS: `5 passed`
-  - Log: `/tmp/dc12r1-s1-v2/targeted_s4g.log`
-- `tests/test_s6_p_reporting_constraints.py`
-  - PASS: `8 passed`
-  - Log: `/tmp/dc12r1-s1-v2/targeted_s6p.log`
 - `tests/test_s6e_rbac_permission_registry_drift_gate.py`
-  - first rerun exposed legacy `seed_demo_data.py` scope drift
-  - final PASS: `4 passed`
-  - Logs:
-    - `/tmp/dc12r1-s1-v2/targeted_s6e.log`
-    - `/tmp/dc12r1-s1-v2/targeted_s6e_rerun.log`
-- `tests/test_u3b1_contract_foundation.py`
-  - PASS: `27 passed`
-  - Log: `/tmp/dc12r1-s1-v2/targeted_u3b1.log`
+  - PASS: `5 passed`
+  - Log context: post-fix targeted rerun
+- Targeted regression bundle:
+  - `tests/test_s6e_rbac_permission_registry_drift_gate.py`
+  - `tests/test_u3b1_contract_foundation.py`
+  - `tests/test_u1_bootstrap_permission_completeness.py`
+  - `tests/test_u1r1_bootstrap_completeness.py`
+  - `tests/test_dc12r1_s1_r5a_permission_registry_parity.py`
+  - `tests/test_route_authorization_policy.py`
+  - `tests/test_rbac_enforcement.py`
+  - PASS: `123 passed, 5 xfailed`
+  - Log: `/tmp/dc12r1-s1-v2-r1_targeted.log`
+
+## Independent S4 Failure Review
+
+The first post-fix full backend attempt on Monday, July 27, 2026 produced one
+non-acceptance failure:
+
+- Full-run failure node:
+  - `tests/test_s4_jobs_persistence.py::test_job_persistence_happy_path`
+- Failure detail:
+  - phase: call
+  - exception: `AssertionError`
+  - observed mismatch: `job.status` was `'running'`, expected `'completed'`
+- Gate1 log: `/tmp/dc12r1-s1-v2-r1_backend_gate1.log`
+- Gate1 JUnit: `/tmp/dc12r1-s1-v2-r1_backend_gate1.xml`
+- Gate1 summary:
+  - `1 failed, 2870 passed, 48 skipped, 15 xfailed`
+
+That node was then rechecked independently on fresh PostgreSQL 16 databases in
+fresh pytest processes:
+
+- `tests/test_s4_jobs_persistence.py`
+  - PASS: `5 passed`
+  - Log: `/tmp/dc12r1-s1-v2-r1_s4_alone2.log`
+- `tests/test_s4_jobs_local.py tests/test_s4_jobs_persistence.py`
+  - PASS: `16 passed`
+  - Log: `/tmp/dc12r1-s1-v2-r1_s4_orig2.log`
+- `tests/test_s4_jobs_persistence.py tests/test_s4_jobs_local.py`
+  - PASS: `16 passed`
+  - Log: `/tmp/dc12r1-s1-v2-r1_s4_rev2.log`
+
+Because the node did not reproduce independently, in original order, or in
+reverse order, it was not used as acceptance evidence and was not attributed to
+infrastructure by assumption.
 
 ## Full Backend Gate
 
-Full backend suite was run twice consecutively against two separate fresh
-databases, each preheated serially to Alembic `head`.
+Accepted full backend evidence used two fresh Alembic-`head` PostgreSQL 16
+databases and zero exclusions.
 
-- Run 1
-  - Database: `test_backend_v2_green2`
-  - Log: `/tmp/dc12r1-s1-v2/backend_full_green1.log`
-  - JUnit: `/tmp/dc12r1-s1-v2/backend_full_green1.xml`
-  - Result: `2870 passed, 48 skipped, 15 xfailed, 1743 warnings in 673.50s`
-- Run 2
-  - Database: `test_backend_v2_green_run2`
-  - Log: `/tmp/dc12r1-s1-v2/backend_full_green2.log`
-  - JUnit: `/tmp/dc12r1-s1-v2/backend_full_green2.xml`
-  - Result: `2870 passed, 48 skipped, 15 xfailed, 1744 warnings in 645.68s`
+- Gate 2
+  - Database: `test_backend_v2_r1_gate2`
+  - Log: `/tmp/dc12r1-s1-v2-r1_backend_gate2.log`
+  - JUnit: `/tmp/dc12r1-s1-v2-r1_backend_gate2.xml`
+  - Result: `2871 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors in 675.46s`
+- Gate 3
+  - Database: `test_backend_v2_r1_gate3`
+  - Log: `/tmp/dc12r1-s1-v2-r1_backend_gate3.log`
+  - JUnit: `/tmp/dc12r1-s1-v2-r1_backend_gate3.xml`
+  - Result: `2871 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors in 683.73s`
 
-Note: a discarded parallel migration preheat attempt against two databases at
-once hit PostgreSQL role-catalog contention on migration `011_s6_p_reporting_role`
-(`ALTER ROLE reporting_role ... tuple concurrently updated`). The accepted gate
-evidence uses serialized database preheats only.
+This satisfied the required consecutive two-run backend zero-failure,
+zero-error gate.
 
 ## Frontend Gate
 
+- `pnpm vitest run`
+  - PASS: `14 passed` test files, `123 passed` tests
+  - Log: `/tmp/dc12r1-s1-v2-r1_frontend_vitest.log`
 - `pnpm build`
   - PASS
-- `pnpm vitest run`
-  - first attempt was discarded because it was incorrectly run in parallel with
-    `pnpm build` and hit one 5s timeout in `S5BRealUserSmoke`
-  - accepted serial rerun PASS: `14 passed`, `123 passed`
+  - Log: `/tmp/dc12r1-s1-v2-r1_frontend_build.log`
 
-Non-failing warnings observed:
+Observed warnings only:
 
-- duplicate `jsdom` key warning from `package.json`
-- Vite bundle-size warning for a chunk larger than 500 kB
-- React Router future-flag warnings
-- React `act(...)` warnings in existing frontend tests
+- duplicate `jsdom` key warning in `frontend/package.json`
+- React Router future-flag warnings in existing tests
+- existing React `act(...)` warnings in frontend tests
+- Vite chunk-size warning for `dist/assets/index-DvBLCYaG.js`
 
-## Independent Review
+## Repo Hygiene And Tooling
 
-Independent fresh-process review was run after the main gate on a new review
-source database `test_backend_v2_review_source`.
+- `git diff --check`
+  - PASS
+- `pre-commit run --files ...`
+  - PASS
+  - Log: `/tmp/dc12r1-s1-v2-r1_precommit.log`
+- standalone `detect-secrets` CLI was not installed in this environment
+- equivalent explicit repo-configured secrets scan:
+  - `pre-commit run detect-secrets --files ...`
+  - PASS
+- `GitNexus`
+  - initial parallel `npx` attempts were discarded due npm cache contention
+    (`ENOTEMPTY`) and a skipped native install
+  - repaired by following the tool's own native-binary install guidance for
+    `@ladybugdb/core`
+  - `npm_config_ignore_scripts=true npx --yes gitnexus analyze .`
+    - PASS
+    - `30,361 nodes | 50,577 edges | 735 clusters | 300 flows`
+    - Log: `/tmp/dc12r1-s1-v2-r1_gitnexus_analyze.log`
+  - `npm_config_ignore_scripts=true npx --yes gitnexus status`
+    - PASS
+    - indexed commit `7237438`
+    - current commit `7237438`
+    - status `up-to-date`
+    - Log: `/tmp/dc12r1-s1-v2-r1_gitnexus_status.log`
 
-- `tests/test_dc12r1_s1_r4_exact_catalog.py`
-  - PASS: `8 passed`
-  - Log: `/tmp/dc12r1-s1-v2/independent_r4.log`
-- `tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py`
-  - PASS: `41 passed, 6 warnings`
-  - Log: `/tmp/dc12r1-s1-v2/independent_r5.log`
+## Final Statement
 
-This independent review re-proved the exact-catalog/RBAC gate and the actual
-035->036 fail-closed rollback-and-repair migration proof on fresh disposable
-databases created from `TEST_DATABASE_URL`.
-
-## Guardrails Satisfied
-
-- No product code edits
-- No migration edits
-- No skip additions
-- No xfail additions
-- No deselection
-- No assertion weakening
-- No backend test-file exclusions
-- No unresolved current product defect
-
+The required V2-R1 permission-drift restoration is complete. `seed_demo_data.py`
+now sources its admin permission set from the canonical registry, the S6-E gate
+proves real canonical registry consumption instead of filename shortcuts or
+source-literal parsing, focused regressions are green, frontend gates are green,
+and the backend full suite passed twice consecutively on separate fresh
+PostgreSQL 16 / Redis 7 test environments with zero failures and zero errors.

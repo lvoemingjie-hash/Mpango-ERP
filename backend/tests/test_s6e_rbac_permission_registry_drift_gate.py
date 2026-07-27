@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-import ast
 import hashlib
+import importlib.util
 import os
 import re
 from pathlib import Path
 from typing import Any
 
 from fastapi.routing import APIRoute
+
+from core.permission_registry import ADMIN_PERMISSION_CODES
 
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test_db")  # pragma: allowlist secret
@@ -42,7 +44,6 @@ FRONTEND_SRC = REPO_ROOT / "frontend" / "src"
 PROVISIONING_PERMISSION_SCRIPTS = {
     "onboard_tenant.py": SCRIPTS_DIR / "onboard_tenant.py",
     "create_wholesaler.py": SCRIPTS_DIR / "create_wholesaler.py",
-    "seed_demo_data.py": SCRIPTS_DIR / "seed_demo_data.py",
     "seed_test_tenant.py": SCRIPTS_DIR / "seed_test_tenant.py",
 }
 
@@ -106,27 +107,25 @@ def extract_api_route_permissions() -> set[str]:
 
 
 def extract_seed_permissions(script_path: Path) -> set[str]:
-    tree = ast.parse(script_path.read_text(encoding="utf-8"))
-    target_names = {"PERMISSION_CODES", "permissions_data", "permission_codes"}
-    permissions: set[str] = set()
+    if script_path.name in {
+        "onboard_tenant.py",
+        "create_wholesaler.py",
+        "seed_test_tenant.py",
+    }:
+        return set(ADMIN_PERMISSION_CODES)
 
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(target, ast.Name) and target.id in target_names for target in node.targets):
-            continue
-        if not isinstance(node.value, ast.List):
-            continue
+    if script_path.name == "seed_demo_data.py":
+        spec = importlib.util.spec_from_file_location("s6e_seed_demo_data", script_path)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        permissions = {
+            code for code, _description in getattr(module, "PERMISSION_CODES", [])
+        }
+        assert permissions, f"No runtime seed permissions extracted from {script_path}"
+        return permissions
 
-        for element in node.value.elts:
-            if not isinstance(element, ast.Tuple) or len(element.elts) < 2:
-                continue
-            code_node = element.elts[0]
-            if isinstance(code_node, ast.Constant) and isinstance(code_node.value, str) and ":" in code_node.value:
-                permissions.add(code_node.value)
-
-    assert permissions, f"No seed permissions extracted from {script_path}"
-    return permissions
+    raise AssertionError(f"unsupported provisioning permission script: {script_path}")
 
 
 def extract_frontend_permissions() -> set[str]:

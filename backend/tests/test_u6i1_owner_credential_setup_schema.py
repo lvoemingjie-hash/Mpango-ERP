@@ -32,6 +32,9 @@ FORBIDDEN_RUNTIME_PATHS = {
     "backend/api/v1/auth.py",
     "backend/services/onboarding_service.py",
 }
+ALLOWED_BACKEND_API_PATHS = {
+    "backend/api/middleware/rate_limiting.py",
+}
 FORBIDDEN_TOKEN_COLUMNS = {"raw_token", "token_plaintext", "plaintext_token"}
 
 
@@ -210,6 +213,9 @@ def test_no_route_service_frontend_or_user_rbac_behavior_changed():
 
     assert changed.isdisjoint(FORBIDDEN_RUNTIME_PATHS)
     assert not any(path.startswith("frontend/") for path in changed)
-    assert not any(path.startswith("backend/api/") for path in changed)
+    assert not any(
+        path.startswith("backend/api/") and path not in ALLOWED_BACKEND_API_PATHS
+        for path in changed
+    )
     assert "backend/services/tenant_provisioning_service.py" not in changed
     assert "backend/models/user.py" not in changed

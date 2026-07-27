@@ -4,8 +4,9 @@ Date: Monday, July 27, 2026
 
 - Branch: `opencode/dc12r1-s1-h1-verification-token-terminal-state-2026-07-27`
 - Started from exact target: `c78101186f1fb4811a886e3e55f96708ea960c0a` (`origin/product-dev-recovered`)
-- Final commit: branch tip `opencode/dc12r1-s1-h1-verification-token-terminal-state-2026-07-27`
-  (product fix `9420476bc4d6f8bc0803b339a8c4671d9202d4e2`; this report is the follow-up tip commit)
+- Product fix commit: `9420476bc4d6f8bc0803b339a8c4671d9202d4e2`
+- Final branch tip: provided in the `Final Branch Tip` section below (recorded
+  after the fast-forward push; not self-referenced here).
 - Base SHA verified preflight: `origin/product-dev-recovered` == `c78101186f1fb4811a886e3e55f96708ea960c0a` -- exact match, no `STOP_AND_REPORT_CTO`.
 
 ## Verdict
@@ -305,7 +306,9 @@ setup/reset/retailer credential semantics are untouched.
 - disposable PostgreSQL 16 container `dc12r1_s1_h1_pg16` removed
 - disposable Redis 7 container `dc12r1_s1_h1_redis7` removed
 - `docker ps -a | grep dc12r1_s1_h1` -> none (`CONTAINERS_REMOVED`)
-- final worktree `git status` -> clean (only local untracked helper scripts)
+- H1 local helper artifacts (`_h1_test_env.sh`, `_mojibake_scan.py`) removed in
+  R1; after removal `git status --porcelain | wc -l` == 0 (zero tracked and
+  zero untracked), so the worktree is genuinely clean.
 
 ## No Protected-Branch Push Confirmation
 
@@ -314,9 +317,10 @@ setup/reset/retailer credential semantics are untouched.
 - `origin/product-dev-recovered` == `c78101186f1fb4811a886e3e55f96708ea960c0a`
   (unchanged).
 - `origin/main` == `134ea59e02204842e55ebe36f721f44df5a33737` (unchanged).
-- H1 branch remote head == local head (force-pushed with lease; final tip is
-  the report follow-up commit on top of product fix
-  `9420476bc4d6f8bc0803b339a8c4671d9202d4e2`).
+- product fix commit on the branch: `9420476bc4d6f8bc0803b339a8c4671d9202d4e2`.
+- No force-push in R1: the R1 report correction is added as a fast-forward
+  commit on top of the existing tip; the final branch tip is recorded in the
+  `Final Branch Tip` section after the push.
 
 ## Scope Discipline
 
@@ -429,12 +433,15 @@ case, never for terminal tokens, never for the normal valid first-use path.
 ### G. Throwaway artifact hygiene
 
 - The two ad-hoc audit scripts (`_audit_dependent_query.py`,
-  `_audit_dependent_query_retry.py`) were removed; final
-  `git status --short` shows only the pre-existing local untracked helper
+  `_audit_dependent_query_retry.py`) were removed; at audit time
+  `git status --short` showed only the two pre-existing local untracked helper
   scripts (`_h1_test_env.sh`, `_mojibake_scan.py`); no tracked changes and no
-  audit scripts committed.
+  audit scripts were committed.
 - Audit disposable containers `dc12r1_s1_h1_audit_pg16` and
   `dc12r1_s1_h1_audit_redis7` removed (`AUDIT_CONTAINERS_REMOVED`).
+- R1 follow-up subsequently removed the two remaining helper artifacts
+  (`_h1_test_env.sh`, `_mojibake_scan.py`), bringing the untracked count to
+  zero; see `R1 Hygiene Correction` below.
 
 ### H. Findings / anomalies discovered in the audit
 
@@ -449,3 +456,86 @@ case, never for terminal tokens, never for the normal valid first-use path.
 ### Audit verdict
 
 `PASS_FOR_CTO_DC12R1_S1_H1_REVIEW` (independently re-confirmed).
+
+---
+
+## R1 Hygiene Correction (docs/hygiene only)
+
+R1 is a documentation and hygiene follow-up. No product code or tests were
+modified. No force-push was performed; the R1 change is a fast-forward commit
+on top of the prior tip.
+
+### R1 changes applied
+
+- Removed the two confirmed H1 helper artifacts from the worktree:
+  `_h1_test_env.sh` and `_mojibake_scan.py`. After removal
+  `git status --porcelain | wc -l` == 0 (zero tracked, zero untracked).
+- Corrected this report:
+  - product fix commit stated explicitly as
+    `9420476bc4d6f8bc0803b339a8c4671d9202d4e2`;
+  - removed the stale / nonexistent report-commit reference `18c3a2c8` (no such
+    reference remained; verified by grep before editing);
+  - removed the self-referential final-commit claim (the report no longer cites
+    its own tip SHA inline; the final tip is recorded post-push in the
+    `Final Branch Tip` section below);
+  - final changed-file scope restated below as exactly three files;
+  - worktree-clean is now stated only after the untracked count is confirmed
+    zero.
+
+### R1 final changed-file scope (exactly 3 files)
+
+`git diff --name-status c78101186f1fb4811a886e3e55f96708ea960c0a..HEAD`:
+
+```
+A  ai-ledger/product-ai/2026-07-27_dc12r1_s1_h1_verification_token_terminal_state.md
+M  backend/services/onboarding_service.py
+A  backend/tests/test_dc12r1_s1_h1_verification_token_terminal_state.py
+```
+
+No migration, model/schema, frontend, config, lockfile, or deploy files.
+
+### R1 quality gates
+
+- `git diff --check` -> clean (no whitespace errors).
+- scoped `pre-commit run --files` on the report -> trailing-whitespace,
+  end-of-file-fixer, check-added-large-files, detect-secrets all Passed.
+- scoped `detect-secrets scan --baseline .secrets.baseline` on the report ->
+  exit 0 (no new secrets).
+
+### R1 full-suite single-failure baseline (retained reproduction evidence)
+
+Retained verbatim from the H1 full-suite run (no change in R1, which touched no
+code/tests):
+
+- full backend suite: `2886 passed, 48 skipped, 15 xfailed`, `1 failed`.
+- the single failure is
+  `tests/test_u6i1_owner_credential_setup_schema.py::test_no_route_service_frontend_or_user_rbac_behavior_changed`,
+  a stale U6-I1 task-scope guard. Reproduction of its pre-existence:
+  `git diff --name-only 6a8ddcf348e9b1bdcc902929011e6212cc675cf8 c78101186f1fb4811a886e3e55f96708ea960c0a`
+  already shows
+  `backend/api/middleware/rate_limiting.py` and
+  `backend/services/owner_credential_service.py` changed between the U6-I1 base
+  and the H1 target baseline (before any H1 edit), so the guard was already
+  structurally failing. It is outside H1's required regression suite, and H1
+  did not introduce or worsen it.
+
+## Final Branch Tip
+
+Recorded after the fast-forward push of the isolated branch:
+
+- branch: `opencode/dc12r1-s1-h1-verification-token-terminal-state-2026-07-27`
+- product fix commit: `9420476bc4d6f8bc0803b339a8c4671d9202d4e2`
+- final branch tip (R1 report correction): filled in the `R1 Push Proof`
+  section immediately after the push completed.
+
+## R1 Push Proof
+
+- local HEAD after R1 commit: _RECORDED_BELOW_
+- `git ls-remote origin <branch>` HEAD: _RECORDED_BELOW_
+- equality: local HEAD == `git ls-remote` HEAD (recorded below).
+- push method: fast-forward (no `--force`); protected branches untouched.
+
+## R1 Verdict
+
+`PASS_FOR_CTO_DC12R1_S1_H1_R1_INDEPENDENT_VALIDATION` (pending the push-proof
+SHAs recorded below).

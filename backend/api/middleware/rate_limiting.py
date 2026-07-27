@@ -8,7 +8,7 @@ import uuid
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from core.error_codes import MpangoAPIException, mpango_exception_handler
+from core.error_codes import ErrorCode, MpangoAPIException, mpango_exception_handler
 from core.rate_limiter import WINDOW_SIZE, get_rate_limiter
 from core.structured_logging import get_logger
 
@@ -56,22 +56,9 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
 
         try:
             _, count, limit = await rate_limiter.check_rate_limit(request)
-
-            # Add rate limit headers to response
-            response = await call_next(request)
-            request_id = getattr(request.state, "request_id", None)
-            if request_id:
-                response._mpango_request_id = request_id
-            response = _apply_rate_limit_headers(
-                response,
-                limit=limit,
-                remaining=limit - count,
-                reset=WINDOW_SIZE,
-            )
-
-            return response
-
         except MpangoAPIException as exc:
+            if exc.error_code != ErrorCode.RATE_LIMIT_EXCEEDED or exc.status_code != 429:
+                raise
             request_id = _ensure_request_id(request)
             response = await mpango_exception_handler(request, exc)
             response._mpango_request_id = request_id
@@ -84,3 +71,17 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
                 reset=reset,
             )
             return response
+
+        # Add rate limit headers to response
+        response = await call_next(request)
+        request_id = getattr(request.state, "request_id", None)
+        if request_id:
+            response._mpango_request_id = request_id
+        response = _apply_rate_limit_headers(
+            response,
+            limit=limit,
+            remaining=limit - count,
+            reset=WINDOW_SIZE,
+        )
+
+        return response

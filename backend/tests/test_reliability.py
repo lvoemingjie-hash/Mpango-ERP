@@ -279,6 +279,16 @@ def _build_rate_limit_boundary_app(*, authenticated: bool = False) -> FastAPI:
     return app
 
 
+def _build_dispatch_request(*, path: str = "/probe", request_id: str = "dispatch-request") -> Request:
+    request = Mock(spec=Request)
+    request.state = Mock()
+    request.state.request_id = request_id
+    request.headers = {"X-Request-ID": request_id}
+    request.url = Mock()
+    request.url.path = path
+    return request
+
+
 class TestRateLimitingMiddlewareBoundary:
     @pytest.mark.asyncio
     async def test_anonymous_limit_exceeded_returns_controlled_429(self):
@@ -365,6 +375,100 @@ class TestRateLimitingMiddlewareBoundary:
         assert final_response is not None
         assert final_response.json()["code"] == ErrorCode.RATE_LIMIT_EXCEEDED.value
         assert final_response.headers["Retry-After"] == "9"
+
+    @pytest.mark.asyncio
+    async def test_successful_response_retains_rate_limit_headers(self):
+        limiter = Mock()
+        limiter.check_rate_limit = AsyncMock(return_value=(True, 4, 100))
+
+        app = _build_rate_limit_boundary_app()
+        with patch("api.middleware.rate_limiting.get_rate_limiter", return_value=limiter):
+            transport = ASGITransport(app=app, raise_app_exceptions=False)
+            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+                response = await client.get("/probe", headers={"X-Request-ID": "success-headers"})
+
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+        assert response.headers["X-RateLimit-Limit"] == "100"
+        assert response.headers["X-RateLimit-Remaining"] == "96"
+        assert response.headers["X-RateLimit-Reset"] == "60"
+        assert response.headers["X-Request-ID"] == "success-headers"
+        assert "Retry-After" not in response.headers
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error_code", "status_code"),
+        [
+            (ErrorCode.VALIDATION_ERROR, 429),
+            (ErrorCode.RATE_LIMIT_EXCEEDED, 503),
+        ],
+    )
+    async def test_limiter_mpango_exception_outside_429_contract_is_reraised_unchanged(
+        self, error_code, status_code
+    ):
+        from api.middleware.rate_limiting import RateLimitingMiddleware
+
+        sentinel = MpangoAPIException(
+            error_code=error_code,
+            message="must bubble unchanged",
+            status_code=status_code,
+            details={"limit": 7, "window_size": 60, "retry_after": 13},
+        )
+        limiter = Mock()
+        limiter.check_rate_limit = AsyncMock(side_effect=sentinel)
+        middleware = RateLimitingMiddleware(app=FastAPI())
+        request = _build_dispatch_request(request_id=f"limiter-{error_code.value}-{status_code}")
+        call_next = AsyncMock()
+
+        with patch("api.middleware.rate_limiting.get_rate_limiter", return_value=limiter):
+            with pytest.raises(MpangoAPIException) as exc_info:
+                await middleware.dispatch(request, call_next)
+
+        assert exc_info.value is sentinel
+        call_next.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_call_next_mpango_exception_is_reraised_unchanged(self):
+        from api.middleware.rate_limiting import RateLimitingMiddleware
+
+        sentinel = MpangoAPIException(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            message="route failure",
+            status_code=422,
+            details={"field": "email"},
+        )
+        limiter = Mock()
+        limiter.check_rate_limit = AsyncMock(return_value=(True, 1, 100))
+        middleware = RateLimitingMiddleware(app=FastAPI())
+        request = _build_dispatch_request(request_id="call-next-mpango")
+
+        async def call_next(_request):
+            raise sentinel
+
+        with patch("api.middleware.rate_limiting.get_rate_limiter", return_value=limiter):
+            with pytest.raises(MpangoAPIException) as exc_info:
+                await middleware.dispatch(request, call_next)
+
+        assert exc_info.value is sentinel
+
+    @pytest.mark.asyncio
+    async def test_call_next_runtime_error_is_reraised_unchanged(self):
+        from api.middleware.rate_limiting import RateLimitingMiddleware
+
+        sentinel = RuntimeError("call_next boom")
+        limiter = Mock()
+        limiter.check_rate_limit = AsyncMock(return_value=(True, 1, 100))
+        middleware = RateLimitingMiddleware(app=FastAPI())
+        request = _build_dispatch_request(request_id="call-next-runtime")
+
+        async def call_next(_request):
+            raise sentinel
+
+        with patch("api.middleware.rate_limiting.get_rate_limiter", return_value=limiter):
+            with pytest.raises(RuntimeError) as exc_info:
+                await middleware.dispatch(request, call_next)
+
+        assert exc_info.value is sentinel
 
     @pytest.mark.asyncio
     async def test_middleware_does_not_mask_unrelated_exception_types(self):

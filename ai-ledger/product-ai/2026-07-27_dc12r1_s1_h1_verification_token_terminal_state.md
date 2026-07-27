@@ -521,25 +521,32 @@ code/tests):
 
 ## Final Branch Tip
 
-Recorded after the fast-forward push of the isolated branch:
+The branch tip is the report's own latest commit; to avoid a self-referential
+claim, the report does not embed its own tip SHA here. The stable, referenced
+commit on the branch is the product fix:
 
 - branch: `opencode/dc12r1-s1-h1-verification-token-terminal-state-2026-07-27`
 - product fix commit: `9420476bc4d6f8bc0803b339a8c4671d9202d4e2`
-- final branch tip (R1 report correction): `24fd910c0b360fcbf4f18a0034111a14a46ea8ce`
+- R1 hygiene-correction commit (first R1 push, verified equal at push time):
+  `24fd910c0b360fcbf4f18a0034111a14a46ea8ce`
+- final tip: proven equal to `git ls-remote` in the `R1 Push Proof` and in the
+  delivery response that accompanies this report.
 
 ## R1 Push Proof
 
-- local HEAD after R1 commit: `24fd910c0b360fcbf4f18a0034111a14a46ea8ce`
-- `git ls-remote origin opencode/dc12r1-s1-h1-verification-token-terminal-state-2026-07-27`
-  HEAD: `24fd910c0b360fcbf4f18a0034111a14a46ea8ce`
-- equality: local HEAD == `git ls-remote` HEAD ==
+- R1 hygiene correction was pushed as a fast-forward
+  (`a258e97f..24fd910c`, no `--force`).
+- at that push: local HEAD == `git ls-remote` HEAD ==
   `24fd910c0b360fcbf4f18a0034111a14a46ea8ce` -> `LOCAL_REMOTE_EQUAL`.
-- push method: fast-forward (`a258e97f..24fd910c`, no `--force`); protected
-  branches untouched
+- a follow-up fast-forward commit recorded this proof in-repo; the authoritative
+  final local-HEAD == `git ls-remote` equality for the resulting tip is given in
+  the delivery response (recorded live, not self-referenced here).
+- push method: fast-forward only (no `--force` in R1); protected branches
+  untouched
   (`origin/product-dev-recovered` == `c78101186f1fb4811a886e3e55f96708ea960c0a`,
   `origin/main` == `134ea59e02204842e55ebe36f721f44df5a33737`).
-- GitNexus `analyze`/`status` after final commit: indexed commit `24fd910` ==
-  current commit `24fd910`, `Status: up-to-date`
+- GitNexus `analyze`/`status` after the R1 hygiene-correction commit: indexed
+  commit `24fd910` == current commit `24fd910`, `Status: up-to-date`
   (13,605 nodes / 41,944 edges / 878 clusters / 300 flows).
 
 ## R1 Verdict

@@ -29,7 +29,6 @@ found, the test MUST report it, not silently patch it.
 """
 from __future__ import annotations
 
-import ast
 import os
 import uuid
 from typing import Dict, List, Optional
@@ -40,6 +39,8 @@ from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+from core.permission_registry import ADMIN_PERMISSION_CODES, ADMIN_PERMISSIONS
 
 # =========================================================================
 # Live DB configuration (no hardcoded password)
@@ -83,69 +84,10 @@ def _fresh_schema_name() -> str:
 
 
 # =========================================================================
-# Permissions (exact match with onboard_tenant.py setup_admin)
+# Permissions (authoritative match with the canonical admin registry)
 # =========================================================================
 
-PERMISSIONS: List[tuple] = [
-    # --- User management ---
-    ("users:read",        "Read users"),
-    ("users:create",      "Create users"),
-    ("users:update",      "Update users"),
-    ("users:deactivate",  "Deactivate users"),
-    # --- Wholesaler ---
-    ("wholesalers:read",  "Read wholesalers"),
-    ("wholesalers:write", "Create/update/delete wholesalers"),
-    # --- Role management ---
-    ("roles:read",        "Read roles"),
-    ("roles:create",      "Create roles"),
-    ("roles:update",      "Update roles"),
-    ("roles:delete",      "Delete roles"),
-    ("roles:assign",      "Assign roles to users"),
-    # --- Order management ---
-    ("orders:read",       "Read orders"),
-    ("orders:create",     "Create orders"),
-    ("orders:update",     "Update orders"),
-    ("orders:confirm",    "Confirm orders"),
-    ("orders:ship",       "Ship orders"),
-    ("orders:cancel",     "Cancel orders"),
-    # --- SKU / Product management ---
-    ("skus:read",         "Read SKUs"),
-    ("skus:create",       "Create SKUs"),
-    ("skus:update",       "Update SKUs"),
-    ("skus:import",       "Import SKUs via preview/validate/apply contract"),
-    # --- Data Intake ---
-    ("intake:read", "Read data intake batches"),
-    ("intake:create", "Create data intake batches"),
-    ("intake:update", "Update data intake batches"),
-    ("intake:approve", "Approve data intake batches for ERP import"),
-    ("intake:export", "Export data intake batches"),
-    ("intake:import_to_erp", "Import approved data intake into ERP"),
-    # --- Inventory management ---
-    ("inventory:read",    "Read inventory"),
-    ("inventory:write",   "Write inventory (legacy alias)"),
-    ("inventory:update",  "Update inventory (adjustments)"),
-    # --- Payment management ---
-    ("payments:read",     "Read payments"),
-    ("payments:create",   "Create payments"),
-    # --- Retailer management ---
-    ("retailers:read",    "Read retailers"),
-    # --- Invitations ---
-    ("invitations:create","Create invitations"),
-    # --- Pricing ---
-    ("pricing:read",      "Read pricing"),
-    ("pricing:write",     "Write pricing"),
-    # --- Finance ---
-    ("finance:read",      "View invoices, receivables, financial summary"),
-    # --- Dashboards & Reports ---
-    ("dashboards:read",   "View dashboard KPIs and charts"),
-    ("reports:read",      "Read reports"),
-    ("reports:analyze",   "Analyze reports"),
-    # --- Exports ---
-    ("exports:create",    "Request data exports"),
-    # --- System ---
-    ("system:admin",      "Full system administration (job queues, debug endpoints)"),
-    ("metrics:admin",     "Reset application metrics"),
-]
+PERMISSIONS: List[tuple] = list(ADMIN_PERMISSIONS)
 
 # Required read perms for the 11 S3-C endpoints
 REQUIRED_READ_PERMS = {
@@ -155,61 +97,23 @@ REQUIRED_READ_PERMS = {
 
 
 # =========================================================================
-# R1: AST-based permission consistency check against onboard_tenant.py
+# R1: registry-based permission consistency check against onboarding contract
 # =========================================================================
 
 def _extract_onboard_admin_permission_codes() -> set:
-    """AST-parse onboard_tenant.py and extract permission codes from
-    ``permissions_data`` inside ``setup_admin()``.
-
-    Returns the set of permission code strings (first element of each tuple).
-    """
-    _backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    onboard_path = os.path.join(_backend, "scripts", "onboard_tenant.py")
-    with open(onboard_path, "r", encoding="utf-8") as f:
-        tree = ast.parse(f.read())
-
-    # Find setup_admin function
-    setup_admin_node = None
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "setup_admin":
-            setup_admin_node = node
-            break
-
-    assert setup_admin_node is not None, "setup_admin() not found in onboard_tenant.py"
-
-    # Find permissions_data assignment inside setup_admin
-    perm_names = None
-    for node in ast.walk(setup_admin_node):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "permissions_data":
-                    if isinstance(node.value, ast.List):
-                        perm_names = [
-                            elt.elts[0].value  # type: ignore[union-attr]
-                            for elt in node.value.elts
-                            if isinstance(elt, ast.Tuple)
-                            and len(elt.elts) >= 1
-                            and isinstance(elt.elts[0], ast.Constant)
-                        ]
-                    break
-        if perm_names is not None:
-            break
-
-    assert perm_names is not None, "permissions_data list not found in setup_admin()"
-    assert len(perm_names) >= 30, (
-        f"Expected >=30 permission codes from onboard_tenant.py, got {len(perm_names)}"
+    """Return the canonical onboarding admin permission codes."""
+    assert len(ADMIN_PERMISSION_CODES) >= 30, (
+        "Expected >=30 permission codes from the canonical admin registry, "
+        f"got {len(ADMIN_PERMISSION_CODES)}"
     )
-    return set(perm_names)
+    return set(ADMIN_PERMISSION_CODES)
 
 
 class TestPermissionConsistencyWithOnboard:
-    """R1: S3-C seed permissions must match onboard_tenant.py admin
-    permissions exactly.  Any drift indicates the test fixture has not
-    been updated to reflect the production onboarding contract."""
+    """R1: S3-C seed permissions must match the canonical onboarding contract."""
 
     def test_s3c_seed_permissions_match_onboard_exactly(self):
-        """AST-parse onboard_tenant.py and assert exact 1:1 code match."""
+        """Use the canonical admin registry and assert exact 1:1 code match."""
         onboard_codes = _extract_onboard_admin_permission_codes()
         s3c_codes = {code for code, _desc in PERMISSIONS}
 
@@ -226,7 +130,7 @@ class TestPermissionConsistencyWithOnboard:
         )
 
     def test_s3c_seed_permission_count(self):
-        """Count check as a fast sanity gate against onboard_tenant.py."""
+        """Count check as a fast sanity gate against the canonical registry."""
         onboard_codes = _extract_onboard_admin_permission_codes()
         s3c_codes = {code for code, _desc in PERMISSIONS}
         assert len(s3c_codes) == len(onboard_codes), (

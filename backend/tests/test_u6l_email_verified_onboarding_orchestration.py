@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, Mock, patch
 from urllib.parse import parse_qs, urlparse
 from types import SimpleNamespace
 from typing import Any
@@ -59,6 +60,14 @@ async def _u6l_public_schema():
         await _clear_u6l_rows_and_schemas()
         clear_dev_email_deliveries()
         FakeSMTP.reset()
+
+
+@pytest.fixture(autouse=True)
+def _allow_rate_limiter():
+    limiter = Mock()
+    limiter.check_rate_limit = AsyncMock(return_value=(True, 1, 100))
+    with patch("api.middleware.rate_limiting.get_rate_limiter", return_value=limiter):
+        yield limiter
 
 
 async def _ensure_onboarding_tables() -> None:

@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-import ast
 import hashlib
+import importlib.util
 import os
 import re
+import subprocess
+import sys
+import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi.routing import APIRoute
+
+from core.permission_registry import ADMIN_PERMISSION_CODES, ADMIN_PERMISSIONS
+from tests.async_test_utils import run_coroutine
 
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test_db")  # pragma: allowlist secret
@@ -42,8 +49,8 @@ FRONTEND_SRC = REPO_ROOT / "frontend" / "src"
 PROVISIONING_PERMISSION_SCRIPTS = {
     "onboard_tenant.py": SCRIPTS_DIR / "onboard_tenant.py",
     "create_wholesaler.py": SCRIPTS_DIR / "create_wholesaler.py",
-    "seed_demo_data.py": SCRIPTS_DIR / "seed_demo_data.py",
     "seed_test_tenant.py": SCRIPTS_DIR / "seed_test_tenant.py",
+    "seed_demo_data.py": SCRIPTS_DIR / "seed_demo_data.py",
 }
 
 REQUIRED_DATA_INTAKE_PERMISSIONS = {
@@ -54,6 +61,220 @@ REQUIRED_DATA_INTAKE_PERMISSIONS = {
 }
 
 S6D_ALLOWED_DATA_INTAKE_PAGE_PERMISSIONS = REQUIRED_DATA_INTAKE_PERMISSIONS
+
+
+class _FakeResult:
+    def __init__(
+        self,
+        *,
+        scalar_value: Any = None,
+        fetchone_value: Any = None,
+        fetchall_value: list[Any] | None = None,
+    ) -> None:
+        self._scalar_value = scalar_value
+        self._fetchone_value = fetchone_value
+        self._fetchall_value = list(fetchall_value or [])
+
+    def scalar(self) -> Any:
+        return self._scalar_value
+
+    def fetchone(self) -> Any:
+        return self._fetchone_value
+
+    def fetchall(self) -> list[Any]:
+        return list(self._fetchall_value)
+
+
+class _PermissionCaptureDB:
+    def __init__(self) -> None:
+        self.permission_ids: dict[str, str] = {}
+        self.role_ids: dict[str, str] = {}
+        self.user_ids: dict[str, str] = {}
+
+    @staticmethod
+    def _sql(statement: Any) -> str:
+        return " ".join(str(statement).split())
+
+    @staticmethod
+    def _new_id() -> str:
+        return str(uuid.uuid4())
+
+    def add(self, obj: Any) -> None:
+        identifier = getattr(obj, "id", None) or uuid.uuid4()
+        obj.id = identifier
+        if hasattr(obj, "code"):
+            self.permission_ids[str(obj.code)] = str(identifier)
+        elif hasattr(obj, "name"):
+            self.role_ids[str(obj.name)] = str(identifier)
+        elif hasattr(obj, "email"):
+            self.user_ids[str(obj.email)] = str(identifier)
+
+    async def execute(self, statement: Any, params: dict[str, Any] | None = None) -> _FakeResult:
+        params = params or {}
+        sql = self._sql(statement)
+
+        if "SELECT id FROM permissions WHERE code = :code" in sql or "SELECT * FROM permissions WHERE code = :code" in sql:
+            code = str(params["code"])
+            perm_id = self.permission_ids.get(code)
+            if perm_id is None:
+                return _FakeResult()
+            return _FakeResult(scalar_value=perm_id, fetchone_value=(perm_id,))
+
+        if "SELECT id FROM roles WHERE name = :name" in sql or "SELECT * FROM roles WHERE name = :name" in sql:
+            role_name = str(params.get("name", "admin"))
+            role_id = self.role_ids.get(role_name)
+            if role_id is None:
+                return _FakeResult()
+            return _FakeResult(scalar_value=role_id, fetchone_value=(role_id,))
+
+        if "SELECT id FROM users WHERE email = :email" in sql or "SELECT id FROM users WHERE email = :e" in sql:
+            email = str(params.get("email") or params.get("e"))
+            user_id = self.user_ids.get(email)
+            if user_id is None:
+                return _FakeResult()
+            return _FakeResult(scalar_value=user_id, fetchone_value=(user_id,))
+
+        if "SELECT 1 FROM role_permissions" in sql or "SELECT * FROM role_permissions" in sql:
+            return _FakeResult()
+
+        if "INSERT INTO roles (name, description)" in sql:
+            role_name = str(params["n"])
+            self.role_ids.setdefault(role_name, self._new_id())
+            return _FakeResult()
+
+        if "INSERT INTO users (email, password_hash, full_name, is_active)" in sql:
+            email = str(params["e"])
+            self.user_ids.setdefault(email, self._new_id())
+            return _FakeResult()
+
+        if "INSERT INTO permissions (code, description)" in sql:
+            code = str(params.get("code") or params.get("c"))
+            self.permission_ids.setdefault(code, self._new_id())
+            return _FakeResult()
+
+        if "SELECT id FROM roles WHERE name = 'admin'" in sql:
+            role_id = self.role_ids.setdefault("admin", self._new_id())
+            return _FakeResult(scalar_value=role_id, fetchone_value=(role_id,))
+
+        if "SELECT id FROM permissions" in sql:
+            return _FakeResult(fetchall_value=[(perm_id,) for perm_id in self.permission_ids.values()])
+
+        if sql.startswith("SET LOCAL search_path TO") or sql.startswith("INSERT INTO user_roles") or sql.startswith(
+            "INSERT INTO role_permissions"
+        ):
+            return _FakeResult()
+
+        raise AssertionError(f"Unhandled SQL in permission capture DB: {sql}")
+
+    async def flush(self) -> None:
+        return None
+
+    async def commit(self) -> None:
+        return None
+
+    async def refresh(self, _obj: Any) -> None:
+        return None
+
+    def codes(self) -> set[str]:
+        return set(self.permission_ids)
+
+
+def _load_script_module(script_path: Path) -> Any:
+    module_name = f"s6e_{script_path.stem}_{abs(hash(script_path))}"
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    assert spec and spec.loader, f"Unable to load provisioning script: {script_path}"
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _run(awaitable: Any) -> Any:
+    return run_coroutine(awaitable)
+
+
+def _extract_onboard_permissions(script_path: Path) -> set[str]:
+    module = _load_script_module(script_path)
+    assert module.ADMIN_PERMISSIONS is ADMIN_PERMISSIONS
+
+    class _DummyUser:
+        def __init__(self, **kwargs: Any) -> None:
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+            self.id = uuid.uuid4()
+
+    module.User = _DummyUser
+    db = _PermissionCaptureDB()
+    _run(module.setup_admin(db, "t_test", "admin@test.local", "password"))
+    return db.codes()
+
+
+def _extract_create_wholesaler_permissions(script_path: Path) -> set[str]:
+    module = _load_script_module(script_path)
+    assert module.ADMIN_PERMISSIONS is ADMIN_PERMISSIONS
+
+    db = _PermissionCaptureDB()
+    _run(module.create_permissions(db, "t_test"))
+    return db.codes()
+
+
+def _extract_seed_test_tenant_permissions(script_path: Path) -> set[str]:
+    module = _load_script_module(script_path)
+    captured: dict[str, Any] = {}
+
+    async def _noop(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    async def _capture_seed_admin_rbac(*_args: Any, **kwargs: Any) -> None:
+        captured["permission_codes"] = kwargs["permission_codes"]
+
+    class _SessionManager:
+        async def __aenter__(self) -> Any:
+            return SimpleNamespace(commit=_noop)
+
+        async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+    from core import config as core_config
+    from database import session as database_session
+    from models import wholesaler as wholesaler_model
+
+    original_get_settings = core_config.get_settings
+    original_async_session_local = database_session.AsyncSessionLocal
+    original_derive_schema = wholesaler_model.Wholesaler.derive_schema_from_id
+
+    try:
+        core_config.get_settings = lambda: SimpleNamespace(
+            DATABASE_URL="postgresql://pytest_gate:PytestGate_20260727!@127.0.0.1:56433/test_backend_v2_r1_source"
+        )
+        database_session.AsyncSessionLocal = lambda: _SessionManager()
+        wholesaler_model.Wholesaler.derive_schema_from_id = staticmethod(lambda _value: "t_test")
+
+        module._add_backend_to_path = lambda: None
+        module._looks_like_production_db = lambda _url: False
+        module._ensure_public_wholesaler = _noop
+        module._ensure_tenant_tables = _noop
+        module._seed_admin_rbac = _capture_seed_admin_rbac
+
+        os.environ["MPANGO_ENV"] = "test"
+        _run(module.seed(also_seed_t_dev=False, allow_production=False))
+    finally:
+        core_config.get_settings = original_get_settings
+        database_session.AsyncSessionLocal = original_async_session_local
+        wholesaler_model.Wholesaler.derive_schema_from_id = original_derive_schema
+
+    assert captured.get("permission_codes") is ADMIN_PERMISSIONS
+    return {code for code, _description in captured["permission_codes"]}
+
+
+def _extract_seed_demo_permissions(script_path: Path) -> set[str]:
+    module = _load_script_module(script_path)
+    assert module.ADMIN_PERMISSIONS is ADMIN_PERMISSIONS
+    assert module.PERMISSION_CODES is ADMIN_PERMISSIONS
+
+    db = _PermissionCaptureDB()
+    _run(module._seed_rbac(db, "t_test"))
+    return db.codes()
 
 
 def _collect_all_dependencies(route: APIRoute) -> list[Any]:
@@ -106,27 +327,34 @@ def extract_api_route_permissions() -> set[str]:
 
 
 def extract_seed_permissions(script_path: Path) -> set[str]:
-    tree = ast.parse(script_path.read_text(encoding="utf-8"))
-    target_names = {"PERMISSION_CODES", "permissions_data", "permission_codes"}
-    permissions: set[str] = set()
+    if script_path.name == "onboard_tenant.py":
+        return _extract_onboard_permissions(script_path)
+    if script_path.name == "create_wholesaler.py":
+        return _extract_create_wholesaler_permissions(script_path)
+    if script_path.name == "seed_test_tenant.py":
+        return _extract_seed_test_tenant_permissions(script_path)
+    if script_path.name == "seed_demo_data.py":
+        return _extract_seed_demo_permissions(script_path)
+    raise AssertionError(f"Unsupported provisioning permission script: {script_path}")
 
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(target, ast.Name) and target.id in target_names for target in node.targets):
-            continue
-        if not isinstance(node.value, ast.List):
-            continue
 
-        for element in node.value.elts:
-            if not isinstance(element, ast.Tuple) or len(element.elts) < 2:
-                continue
-            code_node = element.elts[0]
-            if isinstance(code_node, ast.Constant) and isinstance(code_node.value, str) and ":" in code_node.value:
-                permissions.add(code_node.value)
+def test_seed_demo_data_cli_help_runs_without_pythonpath():
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env["MPANGO_ENV"] = "test"
 
-    assert permissions, f"No seed permissions extracted from {script_path}"
-    return permissions
+    result = subprocess.run(
+        [sys.executable, "scripts/seed_demo_data.py", "--help"],
+        cwd=BACKEND_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    combined_output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    assert result.returncode == 0, combined_output or "seed_demo_data.py --help exited non-zero"
+    assert "Traceback" not in combined_output, combined_output
 
 
 def extract_frontend_permissions() -> set[str]:
@@ -169,6 +397,17 @@ def test_api_route_permissions_are_seeded_in_all_tenant_provisioning_paths():
         seed_permissions = extract_seed_permissions(script_path)
         missing = tenant_api_permissions - seed_permissions
         assert not missing, f"{script_name} missing API route permissions: {sorted(missing)}"
+
+
+def test_provisioning_scripts_import_and_consume_canonical_registry_exactly():
+    for script_name, script_path in PROVISIONING_PERMISSION_SCRIPTS.items():
+        seed_permissions = extract_seed_permissions(script_path)
+        missing = sorted(ADMIN_PERMISSION_CODES - seed_permissions)
+        extra = sorted(seed_permissions - ADMIN_PERMISSION_CODES)
+        assert seed_permissions == set(ADMIN_PERMISSION_CODES), (
+            f"{script_name} drifted from canonical admin permissions; "
+            f"missing={missing}, extra={extra}"
+        )
 
 
 def test_provisioning_paths_seed_required_data_intake_permissions():

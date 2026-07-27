@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from core.permission_registry import ADMIN_PERMISSION_CODES, ADMIN_PERMISSIONS
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,12 +58,12 @@ class TestSkusImportPermission:
     """Verify skus:import is present in all four seed scripts."""
 
     def test_create_wholesaler_has_skus_import(self):
-        """create_wholesaler.py create_permissions() must include skus:import."""
+        """create_wholesaler.py must source admin permissions from the canonical registry."""
         import scripts.create_wholesaler as cw
 
-        source = inspect.getsource(cw.create_permissions)
-        assert "skus:import" in source, (
-            "create_wholesaler.py create_permissions() missing 'skus:import'"
+        assert "skus:import" in ADMIN_PERMISSION_CODES
+        assert cw.ADMIN_PERMISSIONS is ADMIN_PERMISSIONS, (
+            "create_wholesaler.py must seed admin permissions from ADMIN_PERMISSIONS"
         )
 
     def test_seed_demo_data_has_skus_import(self):
@@ -74,22 +76,22 @@ class TestSkusImportPermission:
         )
 
     def test_onboard_tenant_has_skus_import(self):
-        """onboard_tenant.py setup_admin() must include skus:import."""
+        """onboard_tenant.py must source admin permissions from the canonical registry."""
         import scripts.onboard_tenant as ot
 
-        source = inspect.getsource(ot.setup_admin)
-        assert "skus:import" in source, (
-            "onboard_tenant.py setup_admin() missing 'skus:import'"
+        assert "skus:import" in ADMIN_PERMISSION_CODES
+        assert ot.ADMIN_PERMISSIONS is ADMIN_PERMISSIONS, (
+            "onboard_tenant.py must seed admin permissions from ADMIN_PERMISSIONS"
         )
 
     def test_seed_test_tenant_has_skus_import(self):
-        """seed_test_tenant.py permission_codes must include skus:import."""
-        # seed_test_tenant.py builds permission_codes inside seed() so we
-        # check the source file directly (avoiding DB imports).
-        backend_dir = Path(__file__).resolve().parent.parent
-        source = (backend_dir / "scripts" / "seed_test_tenant.py").read_text(encoding="utf-8")
-        assert "skus:import" in source, (
-            "seed_test_tenant.py missing 'skus:import' in permission_codes"
+        """seed_test_tenant.py must source permission_codes from the canonical registry."""
+        import scripts.seed_test_tenant as st
+
+        source = inspect.getsource(st.seed)
+        assert "skus:import" in ADMIN_PERMISSION_CODES
+        assert "ADMIN_PERMISSIONS" in source, (
+            "seed_test_tenant.py seed() must source permission_codes from ADMIN_PERMISSIONS"
         )
 
 

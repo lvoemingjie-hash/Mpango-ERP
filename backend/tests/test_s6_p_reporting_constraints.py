@@ -16,13 +16,12 @@ Test Cases:
 """
 import pytest
 import pytest_asyncio
-import os
-from urllib.parse import quote_plus
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from database.reporting_session import (
     REPORTING_CURRENCY_CODE,
+    _build_reporting_url,
 )
 pytest_plugins = ("tests.reporting_bootstrap_contract_helpers",)
 
@@ -31,24 +30,10 @@ pytest_plugins = ("tests.reporting_bootstrap_contract_helpers",)
 # Fixtures
 # ---------------------------------------------------------------------------
 
-
-def _build_test_reporting_url() -> str:
-    password = os.environ.get("REPORTING_USER_PASSWORD")
-    if not password:
-        raise RuntimeError("REPORTING_USER_PASSWORD environment variable must be set")
-    host = os.environ.get("POSTGRES_HOST", "127.0.0.1")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    database = os.environ.get("POSTGRES_DB", "mpango_erp")
-    return (
-        "postgresql+asyncpg://reporting_user:"
-        f"{quote_plus(password)}@{host}:{port}/{database}"
-    )
-
-
 @pytest_asyncio.fixture(scope="module")
 async def reporting_engine(ensure_reporting_user_password):
-    """Create a reporting engine for tests."""
-    url = _build_test_reporting_url()
+    """Create a reporting engine using the explicit test reporting DSN."""
+    url = _build_reporting_url()
     engine = create_async_engine(url, pool_pre_ping=True)
     try:
         yield engine
@@ -56,29 +41,10 @@ async def reporting_engine(ensure_reporting_user_password):
         await engine.dispose()
 
 
-@pytest.fixture
-async def reporting_session(reporting_engine, provisioned_reporting_tenant):
-    """Provide a reporting session connected as reporting_user."""
-    factory = async_sessionmaker(
-        reporting_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autocommit=False,
-        autoflush=False,
-    )
-    async with factory() as session:
-        # Set search_path to a tenant created through supported provisioning.
-        await session.execute(
-            text(
-                f'SET LOCAL search_path TO '
-                f'"{provisioned_reporting_tenant.tenant_schema}", public'
-            )
-        )
-        try:
-            yield session
-        finally:
-            await session.rollback()
-            await session.close()
+@pytest_asyncio.fixture
+async def reporting_session(reporting_user_tenant_session: AsyncSession):
+    """Provide a reporting_user session via the supported test helper."""
+    yield reporting_user_tenant_session
 
 
 # ============================================================================

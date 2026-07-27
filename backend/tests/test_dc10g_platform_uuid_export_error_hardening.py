@@ -33,6 +33,19 @@ def _mock_db_returns_none():
     return db
 
 
+class _CaptureHandler(logging.Handler):
+    def __init__(self):
+        super().__init__(level=logging.ERROR)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        rendered = record.getMessage()
+        error_class = getattr(record, "error_class", None)
+        if error_class and error_class not in rendered:
+            rendered = f"{rendered} {error_class}"
+        self.messages.append(rendered)
+
+
 # ---------------------------------------------------------------------------
 # Platform tenant UUID hardening (direct handler calls)
 # ---------------------------------------------------------------------------
@@ -130,49 +143,58 @@ class TestExportEnqueueErrorBoundary:
     """Execute the actual create_export handler; prove no str(exception) leak."""
 
     @pytest.mark.asyncio
-    async def test_enqueue_failure_sanitized_response_and_logs(self, caplog):
+    async def test_enqueue_failure_sanitized_response_and_logs(self):
         """When enqueue raises a sentinel exception containing fake internal
         URL/credential text, the 500 response must use a fixed sanitized
         message and the sentinel text must not appear in response or logs."""
-        from api.v1.exports import create_export
-        from api.schemas.jobs import ExportRequest
-        from services.reporting.semantic_layer import ViewScope, ReportMetric
-        from api.schemas.jobs import ExportFormat
-        from api.context.tenant import TenantContext
-
         # Sentinel exception text that must NEVER leak to the client or logs.
         SENTINEL_URL = "redis://super-secret:password@internal-host:6379/0"  # pragma: allowlist secret
         SENTINEL_TEXT = f"Connection refused: {SENTINEL_URL}"
 
-        body = ExportRequest(
-            view=ViewScope.SALES_DAILY,
-            metrics=[ReportMetric.REVENUE],
-            format=ExportFormat.CSV,
-        )
+        export_logger = logging.getLogger("api.v1.exports")
+        capture = _CaptureHandler()
+        original_level = export_logger.level
+        export_logger.setLevel(logging.ERROR)
+        export_logger.addHandler(capture)
 
-        fake_user = MagicMock()
-        fake_user.id = "00000000-0000-0000-0000-000000000001"
-        fake_tenant_ctx = TenantContext(
-            tenant_id="00000000-0000-0000-0000-000000000002",
-            tenant_schema="t_test",
-            session=MagicMock(),
-            user=fake_user,
-        )
+        try:
+            import main as main_module
+            from api.context.tenant import TenantContext
+            from api.schemas.jobs import ExportFormat
+            from api.schemas.jobs import ExportRequest
+            from api.v1.exports import create_export
+            from services.reporting.semantic_layer import ReportMetric, ViewScope
 
-        sentinel_exc = ConnectionError(SENTINEL_TEXT)
+            body = ExportRequest(
+                view=ViewScope.SALES_DAILY,
+                metrics=[ReportMetric.REVENUE],
+                format=ExportFormat.CSV,
+            )
 
-        caplog.set_level(logging.ERROR, logger="api.v1.exports")
+            fake_user = MagicMock()
+            fake_user.id = "00000000-0000-0000-0000-000000000001"
+            fake_tenant_ctx = TenantContext(
+                tenant_id="00000000-0000-0000-0000-000000000002",
+                tenant_schema="t_test",
+                session=MagicMock(),
+                user=fake_user,
+            )
 
-        with patch("api.v1.exports._extract_tenant", return_value=fake_tenant_ctx), \
-             patch("main.get_job_queue") as mock_get_queue:
-            mock_queue = MagicMock()
-            mock_queue.enqueue = AsyncMock(side_effect=sentinel_exc)
-            mock_get_queue.return_value = mock_queue
+            sentinel_exc = ConnectionError(SENTINEL_TEXT)
 
-            mock_request = MagicMock()
-            result = await create_export(request=mock_request, body=body)
+            with patch("api.v1.exports._extract_tenant", return_value=fake_tenant_ctx), \
+                 patch.object(main_module, "get_job_queue") as mock_get_queue:
+                mock_queue = MagicMock()
+                mock_queue.enqueue = AsyncMock(side_effect=sentinel_exc)
+                mock_get_queue.return_value = mock_queue
 
-        log_text = caplog.text
+                mock_request = MagicMock()
+                result = await create_export(request=mock_request, body=body)
+        finally:
+            export_logger.removeHandler(capture)
+            export_logger.setLevel(original_level)
+
+        log_text = "\n".join(capture.messages)
 
         # Assert HTTP 500
         assert isinstance(result, JSONResponse)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -43,6 +44,14 @@ async def _u6d_public_schema():
         app.dependency_overrides.pop(get_db_session, None)
         await _clear_u6d_rows()
         clear_dev_email_deliveries()
+
+
+@pytest.fixture(autouse=True)
+def _allow_rate_limiter():
+    limiter = Mock()
+    limiter.check_rate_limit = AsyncMock(return_value=(True, 1, 100))
+    with patch("api.middleware.rate_limiting.get_rate_limiter", return_value=limiter):
+        yield limiter
 
 
 async def _ensure_onboarding_tables() -> None:

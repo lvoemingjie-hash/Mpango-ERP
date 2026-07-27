@@ -4,72 +4,60 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import subprocess
-import sys
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import quote_plus
 
 import pytest
+from alembic.config import Config
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
+from tests.async_test_utils import run_alembic_upgrade, temporary_database_url
+
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MIGRATION_017 = BACKEND_DIR / "alembic" / "versions" / "017_retailer_prices.py"
 ALEMBIC_DIR = BACKEND_DIR / "alembic"
+ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
 
 
-def _database_url(database: str) -> str:
-    user = os.environ["POSTGRES_USER"]
-    password = os.environ["POSTGRES_PASSWORD"]
-    host = os.environ.get("POSTGRES_HOST", "127.0.0.1")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    return (
-        f"postgresql://{quote_plus(user)}:{quote_plus(password)}@"
-        f"{host}:{port}/{database}"
-    )
+def _sync_url(url: str) -> str:
+    return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
-def _engine(database: str):
-    return create_engine(_database_url(database), future=True)
+def _async_url(url: str) -> str:
+    return url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 
-def _create_database(database: str) -> None:
-    admin_database = os.environ["POSTGRES_DB"]
-    engine = create_engine(
-        _database_url(admin_database), future=True, isolation_level="AUTOCOMMIT"
-    )
-    with engine.connect() as connection:
-        connection.execute(
-            text(
-                "SELECT pg_terminate_backend(pid) "
-                "FROM pg_stat_activity WHERE datname = :database"
-            ),
-            {"database": database},
-        )
-        connection.execute(text(f'DROP DATABASE IF EXISTS "{database}"'))
-        connection.execute(text(f'CREATE DATABASE "{database}"'))
-    engine.dispose()
+def _engine(database_url: str):
+    return create_engine(_sync_url(database_url), future=True)
 
 
-def _drop_database(database: str) -> None:
-    admin_database = os.environ["POSTGRES_DB"]
-    engine = create_engine(
-        _database_url(admin_database), future=True, isolation_level="AUTOCOMMIT"
-    )
-    with engine.connect() as connection:
-        connection.execute(
-            text(
-                "SELECT pg_terminate_backend(pid) "
-                "FROM pg_stat_activity WHERE datname = :database"
-            ),
-            {"database": database},
-        )
-        connection.execute(text(f'DROP DATABASE IF EXISTS "{database}"'))
-    engine.dispose()
+def _source_test_database_url() -> str:
+    return os.environ["TEST_DATABASE_URL"]
+
+
+def _alembic_config(database_url: str) -> Config:
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("script_location", str(ALEMBIC_DIR))
+    config.set_main_option("sqlalchemy.url", _async_url(database_url))
+    return config
+
+
+@contextmanager
+def _database_url_env(url: str):
+    previous = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = url
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous
 
 
 def _load_migration_017():
@@ -92,30 +80,18 @@ def _run_migration_017(connection) -> None:
         module.op = original_op
 
 
-def _run_alembic_upgrade_head(database: str) -> None:
-    env = os.environ.copy()
-    env["DATABASE_URL"] = _database_url(database)
-    env["PYTHONIOENCODING"] = "utf-8"
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=BACKEND_DIR,
-        env=env,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-        timeout=120,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr + result.stdout
+def _run_alembic_upgrade_head(database_url: str) -> None:
+    config = _alembic_config(database_url)
+    with _database_url_env(database_url):
+        run_alembic_upgrade(config, "head")
 
 
 def _current_alembic_head() -> str:
     return ScriptDirectory(str(ALEMBIC_DIR)).get_current_head()
 
 
-def _version_table_state(database: str) -> tuple[int, set[str]]:
-    engine = _engine(database)
+def _version_table_state(database_url: str) -> tuple[int, set[str]]:
+    engine = _engine(database_url)
     with engine.connect() as connection:
         version_length = connection.execute(
             text(
@@ -199,24 +175,17 @@ def _assert_retailer_prices_contract(connection, schema: str) -> None:
 
 @pytest.mark.integration
 def test_alembic_upgrade_head_creates_wide_version_table_on_fresh_database():
-    database = f"s4g_version_{uuid.uuid4().hex[:12]}"
-    _create_database(database)
-    try:
-        _run_alembic_upgrade_head(database)
-        version_length, versions = _version_table_state(database)
-
+    with temporary_database_url(_source_test_database_url(), "s4gver") as database_url:
+        _run_alembic_upgrade_head(database_url)
+        version_length, versions = _version_table_state(database_url)
         assert version_length >= 128
         assert _current_alembic_head() in versions
-    finally:
-        _drop_database(database)
 
 
 @pytest.mark.integration
 def test_alembic_upgrade_head_widens_existing_varchar32_version_table():
-    database = f"s4g_existing_{uuid.uuid4().hex[:12]}"
-    _create_database(database)
-    try:
-        engine = _engine(database)
+    with temporary_database_url(_source_test_database_url(), "s4gwide") as database_url:
+        engine = _engine(database_url)
         with engine.begin() as connection:
             connection.execute(
                 text(
@@ -226,24 +195,21 @@ def test_alembic_upgrade_head_widens_existing_varchar32_version_table():
             )
         engine.dispose()
 
-        _run_alembic_upgrade_head(database)
-        version_length, versions = _version_table_state(database)
+        _run_alembic_upgrade_head(database_url)
+        version_length, versions = _version_table_state(database_url)
 
         assert version_length >= 128
         assert _current_alembic_head() in versions
-    finally:
-        _drop_database(database)
 
 
 def test_migration_017_creates_retailer_prices_on_fresh_tenant_schema():
     schema = _schema_name()
-    engine = _engine(os.environ["POSTGRES_DB"])
-    try:
+    with temporary_database_url(_source_test_database_url(), "s4g017a") as database_url:
+        engine = _engine(database_url)
         with engine.begin() as connection:
             _create_schema(connection, schema)
             _run_migration_017(connection)
             _assert_retailer_prices_contract(connection, schema)
-    finally:
         with engine.begin() as connection:
             connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         engine.dispose()
@@ -253,8 +219,8 @@ def test_migration_017_reconciles_compatible_preexisting_retailer_prices():
     schema = _schema_name()
     retailer_id = uuid.uuid4()
     sku_id = uuid.uuid4()
-    engine = _engine(os.environ["POSTGRES_DB"])
-    try:
+    with temporary_database_url(_source_test_database_url(), "s4g017b") as database_url:
+        engine = _engine(database_url)
         with engine.begin() as connection:
             _create_schema(connection, schema)
             connection.execute(
@@ -291,7 +257,6 @@ def test_migration_017_reconciles_compatible_preexisting_retailer_prices():
                 text(f'SELECT count(*) FROM "{schema}".retailer_prices')
             ).scalar_one()
             assert row_count == 1
-    finally:
         with engine.begin() as connection:
             connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         engine.dispose()
@@ -299,8 +264,8 @@ def test_migration_017_reconciles_compatible_preexisting_retailer_prices():
 
 def test_migration_017_fails_closed_for_incompatible_retailer_prices():
     schema = _schema_name()
-    engine = _engine(os.environ["POSTGRES_DB"])
-    try:
+    with temporary_database_url(_source_test_database_url(), "s4g017c") as database_url:
+        engine = _engine(database_url)
         with engine.begin() as connection:
             _create_schema(connection, schema)
             connection.execute(
@@ -317,7 +282,6 @@ def test_migration_017_fails_closed_for_incompatible_retailer_prices():
 
             with pytest.raises(RuntimeError, match="missing column 'price'"):
                 _run_migration_017(connection)
-    finally:
         with engine.begin() as connection:
             connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         engine.dispose()

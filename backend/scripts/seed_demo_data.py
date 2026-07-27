@@ -21,6 +21,25 @@ import uuid
 from decimal import Decimal
 from pathlib import Path
 
+
+def _add_backend_to_path() -> None:
+    # Script location: backend/scripts/seed_demo_data.py (local) or /app/scripts/seed_demo_data.py (Docker)
+    # In Docker, backend code is at /app/ directly, not /app/backend/
+    script_dir = Path(__file__).resolve().parent
+    backend_dir = script_dir.parent  # backend/ locally, /app/ in Docker
+
+    # Verify this is the backend root by checking for main.py or database/
+    if not (backend_dir / "main.py").exists() and (backend_dir / "backend" / "main.py").exists():
+        backend_dir = backend_dir / "backend"
+
+    if str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
+
+
+_add_backend_to_path()
+
+from core.permission_registry import ADMIN_PERMISSIONS
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -36,37 +55,9 @@ ADMIN_EMAIL = "admin@mpango.demo"
 ADMIN_PASSWORD = "DemoAdmin2026!"  # pragma: allowlist secret (demo credential)
 ADMIN_FULL_NAME = "Demo Administrator"
 
-PERMISSION_CODES = [
-    ("users:read", "Read users"), ("users:create", "Create users"),
-    ("users:update", "Update users"), ("users:delete", "Delete users"),
-    ("users:deactivate", "Deactivate users"),
-    ("wholesalers:read", "Read wholesalers"),
-    ("wholesalers:write", "Create/update/delete wholesalers"),
-    ("roles:read", "Read roles"), ("roles:assign", "Assign roles to users"),
-    ("orders:read", "Read orders"), ("orders:create", "Create orders"),
-    ("orders:write", "Write/update orders"), ("orders:delete", "Delete orders"),
-    ("orders:update", "Update orders"),
-    ("payments:read", "Read payments"), ("payments:create", "Create payments"),
-    ("skus:read", "Read SKUs"), ("skus:create", "Create SKUs"),
-    ("skus:update", "Update SKUs"), ("skus:import", "Import SKUs via preview/validate/apply contract"),
-    ("intake:read", "Read data intake batches"),
-    ("intake:create", "Create data intake batches"),
-    ("intake:update", "Update data intake batches"),
-    ("intake:approve", "Approve data intake batches for ERP import"),
-    ("intake:export", "Export data intake batches"),
-    ("intake:import_to_erp", "Import approved data intake into ERP"),
-    ("inventory:read", "Read inventory"),
-    ("inventory:update", "Update inventory"), ("reports:read", "Read reports"),
-    ("retailers:read", "Read retailers"),
-    ("pricing:read", "Read pricing"), ("pricing:write", "Write pricing"),
-    ("finance:read", "View invoices, receivables, financial summary"),
-    ("dashboards:read", "Read dashboard KPIs and charts"),
-    ("reports:analyze", "Execute ad-hoc semantic analysis queries"),
-    ("exports:create", "Request data exports"),
-    ("system:admin", "Full system administration (job queues, debug endpoints)"),
-    ("metrics:admin", "Reset application metrics"),
-    ("invitations:create", "Create invitations"),
-]
+# Preserve the public name used by legacy callers while sourcing from the
+# canonical runtime registry.
+PERMISSION_CODES = ADMIN_PERMISSIONS
 
 ROLES = [
     ("admin", "Administrator with full access"),
@@ -135,21 +126,6 @@ DEMO_ORDERS = [
         "transitions": ["confirmed", "cancelled"],
     },
 ]
-
-
-def _add_backend_to_path() -> None:
-    # Script location: backend/scripts/seed_demo_data.py (local) or /app/scripts/seed_demo_data.py (Docker)
-    # In Docker, backend code is at /app/ directly, not /app/backend/
-    script_dir = Path(__file__).resolve().parent
-    backend_dir = script_dir.parent  # backend/ locally, /app/ in Docker
-
-    # Verify this is the backend root by checking for main.py or database/
-    if not (backend_dir / "main.py").exists() and (backend_dir / "backend" / "main.py").exists():
-        backend_dir = backend_dir / "backend"
-
-    if str(backend_dir) not in sys.path:
-        sys.path.insert(0, str(backend_dir))
-
 
 def _require_safe_environment(*, allow_production: bool) -> None:
     mpango_env = os.getenv("MPANGO_ENV", "production").strip().lower()

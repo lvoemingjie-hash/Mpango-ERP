@@ -295,7 +295,7 @@ setup/reset/retailer credential semantics are untouched.
   `verify_email_token`; orchestration + dependent lookup identified).
 - Post-commit analyze: 13,607 nodes / 41,943 edges / 879 clusters / 300 flows,
   re-indexed against the product-fix commit `9420476`,
-  `Status: up-to-date` (the report-only follow-up commit `18c3a2c8` adds no code).
+  `Status: up-to-date` (the report-only follow-up commits add no code).
 - Post-commit `context verify_email_token`: outgoing calls unchanged
   (`complete_email_verified_onboarding`, `_is_retryable_setup_email_failure`,
   `hash_token`, `_assert_token_hash_key`, `get_settings`); the conditional

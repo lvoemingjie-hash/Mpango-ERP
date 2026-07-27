@@ -525,17 +525,23 @@ Recorded after the fast-forward push of the isolated branch:
 
 - branch: `opencode/dc12r1-s1-h1-verification-token-terminal-state-2026-07-27`
 - product fix commit: `9420476bc4d6f8bc0803b339a8c4671d9202d4e2`
-- final branch tip (R1 report correction): filled in the `R1 Push Proof`
-  section immediately after the push completed.
+- final branch tip (R1 report correction): `24fd910c0b360fcbf4f18a0034111a14a46ea8ce`
 
 ## R1 Push Proof
 
-- local HEAD after R1 commit: _RECORDED_BELOW_
-- `git ls-remote origin <branch>` HEAD: _RECORDED_BELOW_
-- equality: local HEAD == `git ls-remote` HEAD (recorded below).
-- push method: fast-forward (no `--force`); protected branches untouched.
+- local HEAD after R1 commit: `24fd910c0b360fcbf4f18a0034111a14a46ea8ce`
+- `git ls-remote origin opencode/dc12r1-s1-h1-verification-token-terminal-state-2026-07-27`
+  HEAD: `24fd910c0b360fcbf4f18a0034111a14a46ea8ce`
+- equality: local HEAD == `git ls-remote` HEAD ==
+  `24fd910c0b360fcbf4f18a0034111a14a46ea8ce` -> `LOCAL_REMOTE_EQUAL`.
+- push method: fast-forward (`a258e97f..24fd910c`, no `--force`); protected
+  branches untouched
+  (`origin/product-dev-recovered` == `c78101186f1fb4811a886e3e55f96708ea960c0a`,
+  `origin/main` == `134ea59e02204842e55ebe36f721f44df5a33737`).
+- GitNexus `analyze`/`status` after final commit: indexed commit `24fd910` ==
+  current commit `24fd910`, `Status: up-to-date`
+  (13,605 nodes / 41,944 edges / 878 clusters / 300 flows).
 
 ## R1 Verdict
 
-`PASS_FOR_CTO_DC12R1_S1_H1_R1_INDEPENDENT_VALIDATION` (pending the push-proof
-SHAs recorded below).
+`PASS_FOR_CTO_DC12R1_S1_H1_R1_INDEPENDENT_VALIDATION`.

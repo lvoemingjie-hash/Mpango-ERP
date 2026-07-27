@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
+import main as main_module
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +165,7 @@ class TestExportEnqueueErrorBoundary:
         caplog.set_level(logging.ERROR, logger="api.v1.exports")
 
         with patch("api.v1.exports._extract_tenant", return_value=fake_tenant_ctx), \
-             patch("main.get_job_queue") as mock_get_queue:
+             patch.object(main_module, "get_job_queue") as mock_get_queue:
             mock_queue = MagicMock()
             mock_queue.enqueue = AsyncMock(side_effect=sentinel_exc)
             mock_get_queue.return_value = mock_queue

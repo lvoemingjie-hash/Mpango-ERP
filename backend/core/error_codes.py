@@ -4,6 +4,8 @@ S2-6: Central Error Codes System
 Defines standard error codes and provides global exception handling.
 All HTTP exceptions return JSON in standard format with error codes.
 """
+import math
+import re
 from enum import Enum
 from typing import Any, Dict, Optional
 from fastapi import HTTPException, Request, status
@@ -169,22 +171,70 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     """DC-12R1-H2: Handler for FastAPI HTTPException.
 
     Serializes EVERY HTTPException into the standard flat envelope
-    ``{code, message, request_id}`` — never a Python ``str(dict)`` repr
-    leaking into the ``message`` field.
+    ``{code, message, request_id}`` — the handler never creates a Python
+    ``str(dict)``/``str(list)`` repr by stringifying a non-string detail.
 
     Detail handling:
-    - **dict detail**: a non-empty string ``code`` is preserved (falling back
-      to the status-derived code); only a string ``message`` is preserved;
-      an explicitly-public, JSON-safe ``details`` mapping is optionally
-      preserved. The complete dict is NEVER stringified.
+    - **dict detail**: a non-empty, identifier-safe string ``code`` is
+      preserved (oversized/malformed codes fall back to the status-derived
+      code); only a string ``message`` is preserved; an explicitly-public,
+      genuinely JSON-safe ``details`` mapping is optionally preserved.
+      The complete dict is NEVER stringified.
     - **string detail**: the message is preserved verbatim; the code is
       derived from the status mapping (existing behaviour).
     - **malformed/non-string detail** (list, int, None, object): a fixed
       sanitized fallback message is used; the raw value is never surfaced.
+
+    The handler itself NEVER raises: any unexpected error while normalizing a
+    detail is caught and fail-closed to the standard envelope with the
+    original HTTP status preserved.
     """
     request_id = getattr(request.state, 'request_id', None)
 
-    # Map status code to the default error code.
+    try:
+        body, public_code, message, details = _build_error_body(exc, request_id)
+    except Exception:
+        # DC-12R1-H2-R1: the exception handler must never raise. Any
+        # normalization failure fail-closes to a sanitized envelope, still
+        # preserving the original HTTP status, code and request_id.
+        status_code = exc.status_code if isinstance(getattr(exc, "status_code", None), int) else 500
+        error_code = STATUS_CODE_TO_ERROR_CODE.get(status_code, ErrorCode.INTERNAL_SERVER_ERROR)
+        message = _status_fallback_message(status_code)
+        details = None
+        public_code = error_code.value
+        body = create_error_response(
+            error_code=error_code,
+            message=message,
+            status_code=status_code,
+            request_id=request_id,
+        )
+        body["code"] = public_code
+
+    # Logging: sanitized code + status only. NEVER log the raw detail repr.
+    logger.warning(
+        f"HTTP Exception: {exc.status_code}",
+        extra={
+            "error_code": public_code,
+            "status_code": exc.status_code,
+            # Intentionally NO raw detail/message here — logs must not carry
+            # a dict repr or request content.
+        }
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=body,
+        headers=exc.headers
+    )
+
+
+def _build_error_body(exc: HTTPException, request_id: Optional[str]):
+    """Normalize ``exc.detail`` into the flat error envelope components.
+
+    Returns ``(body, public_code, message, details)``. Pure normalization
+    only — raises on unexpected error so ``http_exception_handler`` can
+    fail-close uniformly.
+    """
     error_code = STATUS_CODE_TO_ERROR_CODE.get(
         exc.status_code,
         ErrorCode.INTERNAL_SERVER_ERROR
@@ -194,7 +244,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     details: Optional[Dict[str, Any]] = None
     detail = exc.detail
     # The public code to emit. Defaults to the status-derived ErrorCode; may be
-    # overridden by a non-empty string code in a dict detail.
+    # overridden by a non-empty, safe string code in a dict detail.
     public_code: str = error_code.value
 
     if isinstance(detail, str):
@@ -213,7 +263,9 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         message = raw_message if isinstance(raw_message, str) and raw_message else (
             _status_fallback_message(exc.status_code)
         )
-        # Optionally preserve an explicitly-public, JSON-safe details mapping.
+        # Optionally preserve an explicitly-public, genuinely JSON-safe details
+        # mapping. Unsafe details are OMITTED — never surfaced — while the
+        # original HTTP status, sanitized code/message and request_id survive.
         raw_details = detail.get("details")
         if isinstance(raw_details, dict) and _is_json_safe(raw_details):
             details = raw_details
@@ -228,17 +280,6 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         message = _status_fallback_message(exc.status_code)
     message = _sanitize_message(message)
 
-    # Logging: sanitized code + status only. NEVER log the raw detail repr.
-    logger.warning(
-        f"HTTP Exception: {exc.status_code}",
-        extra={
-            "error_code": public_code,
-            "status_code": exc.status_code,
-            # Intentionally NO raw detail/message here — logs must not carry
-            # a dict repr or request content.
-        }
-    )
-
     body = create_error_response(
         error_code=error_code,
         message=message,
@@ -246,28 +287,23 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         request_id=request_id,
         details=details,
     )
-    # Apply the (possibly overridden) public code verbatim.
     body["code"] = public_code
+    return body, public_code, message, details
 
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=body,
-        headers=exc.headers
-    )
+
+_SAFE_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 
 
 def _is_safe_code(candidate: str) -> bool:
-    """True if *candidate* is an identifier-safe error code string.
+    """True if *candidate* is a strict, public error-code identifier.
 
-    Allows UPPER_SNAKE codes (and simple alphanumerics) so a caller-supplied
-    code passes through, but rejects anything that could smuggle structure
-    (braces, quotes, spaces, repr markers).
+    DC-12R1-H2-R1: codes are constrained to ``^[A-Z][A-Z0-9_]{0,63}$`` — an
+    UPPER_SNAKE identifier (max 64 chars) so a caller-supplied code passes
+    through, but oversized/malformed codes (braces, quotes, spaces, lowercase,
+    repr markers, non-ASCII) are rejected and fall back to the status-derived
+    code. Nothing that could smuggle structure is accepted.
     """
-    if not candidate:
-        return False
-    # UPPER_SNAKE_CASE / alphanumeric only.
-    allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
-    return all(c in allowed for c in candidate)
+    return isinstance(candidate, str) and bool(_SAFE_CODE_RE.match(candidate))
 
 
 def _status_fallback_message(status_code: int) -> str:
@@ -302,35 +338,54 @@ def _sanitize_message(message: str) -> str:
 
 
 def _is_json_safe(value: Any) -> bool:
-    """True if *value* is a JSON-safe mapping of primitives (safe to surface).
+    """True if *value* is a genuinely JSON-safe structure safe to surface.
 
-    Prevents nested objects, callables, bytes, or arbitrary types from being
-    forwarded into a public ``details`` field.
+    DC-12R1-H2-R1 hardening. A public ``details`` payload is only preserved
+    when it is fully JSON-safe:
+
+    - mappings require **string keys** at every level (top-level and nested);
+      any non-string key fails closed
+    - leaf values are restricted to ``None``, ``bool``, ``int``, ``str`` and
+      finite ``float``
+    - **NaN / +Infinity / -Infinity** floats are rejected
+    - ``bytes``, ``set``, ``tuple`` and arbitrary objects are rejected
+    - nested containers must themselves be JSON-safe dicts (string keys) or
+      lists; other iterables/types are rejected
+
+    Unsafe details are OMITTED by the caller — never surfaced — while the
+    original HTTP status, sanitized code/message and request_id survive.
     """
-    if not isinstance(value, dict):
+    return _is_json_safe_value(value)
+
+
+def _is_json_safe_value(value: Any) -> bool:
+    """Recursive JSON-safety check (string-keyed dicts + JSON primitives)."""
+    if value is None:
+        return True
+    # bool is a subclass of int — check before int so it stays its own case,
+    # but both are accepted.
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, int):
+        return True
+    if isinstance(value, float):
+        # Reject NaN and +/-Infinity (not representable in strict JSON).
+        return math.isfinite(value)
+    if isinstance(value, str):
+        return True
+    # Explicitly reject other common container/binary types before the generic
+    # dict/list handling so they can never slip through.
+    if isinstance(value, (bytes, bytearray, set, frozenset, tuple)):
         return False
-    for v in value.values():
-        if isinstance(v, (dict, list)):
-            if not _is_json_safe_nested(v):
-                return False
-        elif not isinstance(v, (str, int, float, bool)) and v is not None:
-            return False
-    return True
-
-
-def _is_json_safe_nested(value: Any) -> bool:
     if isinstance(value, dict):
-        return all(
-            (isinstance(v, (str, int, float, bool)) or v is None
-             or (isinstance(v, (dict, list)) and _is_json_safe_nested(v)))
-            for v in value.values()
-        )
+        # String keys required at every level.
+        for key in value.keys():
+            if not isinstance(key, str):
+                return False
+        return all(_is_json_safe_value(v) for v in value.values())
     if isinstance(value, list):
-        return all(
-            isinstance(v, (str, int, float, bool)) or v is None
-            or (isinstance(v, (dict, list)) and _is_json_safe_nested(v))
-            for v in value
-        )
+        return all(_is_json_safe_value(v) for v in value)
+    # Any other type (objects, callables, custom classes, generators, ...).
     return False
 
 

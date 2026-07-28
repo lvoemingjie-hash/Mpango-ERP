@@ -204,6 +204,75 @@ describe('DC-12R1-S2 ClientLoginPage — invalid portal makes ZERO API calls', (
   });
 });
 
+describe('DC-12R1-S2-R2 ClientLoginPage — fixed neutral 401 message', () => {
+  async function submitLogin(portal: string) {
+    renderLoginPage(`?w=${portal}`);
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: 'retailer@example.com' },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: TEST_PASSWORD },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+  }
+
+  it('renders fixed neutral "Invalid credentials" for a production flat 401 envelope', async () => {
+    // Production body: {code, message, request_id} — NO "error" wrapper.
+    vi.mocked(authService.retailerLogin).mockRejectedValueOnce({
+      response: { status: 401, data: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials', request_id: 'rid-1' } },
+    } as never);
+    await submitLogin(PORTAL_CODE);
+    expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
+  });
+
+  it('renders fixed neutral "Invalid credentials" for a legacy {error:{}} 401 envelope', async () => {
+    vi.mocked(authService.retailerLogin).mockRejectedValueOnce({
+      response: {
+        status: 401,
+        data: { success: false, error: { code: 'INVALID_CREDENTIALS', message: 'whatever leaked' } },
+      },
+    } as never);
+    await submitLogin(PORTAL_CODE);
+    expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
+    // The leaked legacy message must NOT be surfaced.
+    expect(screen.queryByText('whatever leaked')).toBeNull();
+  });
+
+  it('renders fixed neutral "Invalid credentials" for a 401 with NO body (raw axios)', async () => {
+    vi.mocked(authService.retailerLogin).mockRejectedValueOnce({
+      response: { status: 401, data: undefined },
+      message: 'Request failed with status code 401',
+    } as never);
+    await submitLogin(PORTAL_CODE);
+    expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
+    expect(screen.queryByText('Request failed')).toBeNull();
+  });
+});
+
+describe('DC-12R1-S2-R2 ClientLoginPage — failed login pins the attempted portal', () => {
+  it('after a failed login on portal B, retailerPortalCode is B (never a prior A)', async () => {
+    // Simulate a prior successful login through A leaving portal code A.
+    useAuthStore.setState({ retailerPortalCode: 'PRIORA' });
+    // Now attempt (and fail) login on portal B.
+    vi.mocked(authService.retailerLogin).mockRejectedValueOnce({
+      response: { status: 401, data: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' } },
+    } as never);
+    renderLoginPage('?w=PORTALB');
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'r@e.com' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: TEST_PASSWORD } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+    await screen.findByText('Invalid credentials');
+    // The retained portal code must be the ATTEMPTED portal (B), not the
+    // stale prior-A value.
+    expect(useAuthStore.getState().retailerPortalCode).toBe('PORTALB');
+    expect(useAuthStore.getState().accessToken).toBeNull();
+  });
+});
+
 describe('DC-12R1-S2 RetailerRoute — only retailer_operator enters /client', () => {
   // The guards render <Outlet />, so child content must be nested routes
   // (wrapping them as React children is ignored).

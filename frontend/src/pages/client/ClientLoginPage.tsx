@@ -89,18 +89,43 @@ export function ClientLoginPage() {
       );
       navigate('/client', { replace: true });
     } catch (err) {
+      // The backend may emit either the legacy envelope {error:{code,message}}
+      // or the production flat envelope {code,message,request_id}; read the
+      // body loosely so both shapes are handled without favoring either.
       const axiosErr = err as AxiosError<ApiErrorResponse>;
-      const detail = axiosErr.response?.data;
+      const status = axiosErr.response?.status;
+      const detail = axiosErr.response?.data as
+        | (ApiErrorResponse & { message?: string; code?: string })
+        | undefined;
 
-      if (detail && 'error' in detail) {
+      // DC-12R1-S2-R2: a 401 is ALWAYS rendered as the fixed neutral
+      // "Invalid credentials" — regardless of which error envelope the
+      // backend emits (production flat {code,message,request_id}, legacy
+      // {error:{code,message}}, or a raw axios fallback). We never surface
+      // the raw response body, a dict repr, or the attempted credential.
+      if (status === 401) {
+        setServerError('Invalid credentials');
+      } else if (detail && 'error' in detail && detail.error?.message) {
         setServerError(detail.error.message);
-      } else if (axiosErr.message) {
-        setServerError(axiosErr.message);
+      } else if (detail && typeof detail.message === 'string') {
+        setServerError(detail.message);
       } else {
         setServerError('An unexpected error occurred. Please try again.');
       }
 
-      useAuthStore.getState().logout();
+      // DC-12R1-S2-R2: on a failed login the retained portal code must
+      // become the portal being ATTEMPTED (portalCode), never a previously
+      // selected one. We do NOT call logout() (which would preserve a stale
+      // code from a prior successful login, e.g. A). Instead we clear any
+      // authenticated session while pinning the portal code to the current
+      // attempt, so a later refresh-failure redirects to THIS portal.
+      useAuthStore.setState({
+        accessToken: null,
+        refreshToken: null,
+        user: null,
+        tenantCode: null,
+        retailerPortalCode: portalCode,
+      });
     }
   };
 

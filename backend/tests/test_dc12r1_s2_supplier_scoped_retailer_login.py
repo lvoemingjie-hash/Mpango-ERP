@@ -363,10 +363,19 @@ async def two_tenants(s2_db):
 from httpx import AsyncClient, ASGITransport
 from api.app import app
 
+# DC-12R1-S2-R2: register the PRODUCTION exception handlers on the test app so
+# every assertion runs through the real error pipeline (mpango_exception_handler
+# / http_exception_handler), exactly as main.py does at startup. Without this,
+# FastAPI's default handler would serialize HTTPException.detail verbatim and
+# hide the production envelope contract these tests must prove.
+from core.error_codes import register_exception_handlers
+
+register_exception_handlers(app)
+
 
 @pytest_asyncio.fixture
 async def client():
-    """HTTP client bound to the FastAPI app."""
+    """HTTP client bound to the FastAPI app (production handlers registered)."""
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://testserver",
@@ -468,10 +477,24 @@ class TestRetailerLoginNeutral401:
     """All well-formed authentication mismatches return identical neutral 401."""
 
     async def _assert_neutral_401(self, resp):
+        """Assert the exact production 401 contract and NO dict-repr leak.
+
+        The body must be the flat mpango_exception_handler envelope:
+            {"code": "INVALID_CREDENTIALS",
+             "message": "Invalid credentials",
+             "request_id": "..."}
+        with no nested "detail" wrapper and no Python dict repr in message.
+        """
         assert resp.status_code == HTTPStatus.UNAUTHORIZED
         body = resp.json()
-        assert body["detail"]["code"] == "INVALID_CREDENTIALS"
-        assert body["detail"]["message"] == "Invalid credentials"
+        # Flat envelope (NOT nested under a "detail" key).
+        assert body["code"] == "INVALID_CREDENTIALS"
+        assert body["message"] == "Invalid credentials"
+        assert "request_id" in body and body["request_id"]
+        # No dict-repr leak: the message must be the clean literal, and the
+        # body must not contain a serialized dict (no "{" inside message).
+        assert "{" not in body["message"] and "}" not in body["message"]
+        assert "detail" not in body
 
     async def test_wrong_email_returns_neutral_401(
         self, client: AsyncClient, two_tenants
@@ -656,9 +679,17 @@ class TestRetailerLoginNeutral401:
         )
         bodies.append(r3.json())
 
-        # All bodies must be identical.
+        # All bodies must be identical in their discriminating fields. The
+        # request_id is per-request (no auth info) and is excluded from the
+        # comparison — only code/message must match across mismatch types.
+        def _public_part(body):
+            return {k: v for k, v in body.items() if k != "request_id"}
+
+        ref = _public_part(bodies[0])
         for b in bodies[1:]:
-            assert b == bodies[0], f"401 body mismatch: {b} != {bodies[0]}"
+            assert _public_part(b) == ref, (
+                f"401 body mismatch: {_public_part(b)} != {ref}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -789,6 +820,59 @@ class TestMalformedCode422:
         assert login_queries == [], (
             f"Malformed-code 422 path executed login SQL: {login_queries}"
         )
+
+
+# ---------------------------------------------------------------------------
+# §4b Production error contract (R2) — exact public body, no repr leak
+# ---------------------------------------------------------------------------
+
+
+class TestProductionErrorContract:
+    """The 401/422 responses go through the PRODUCTION exception handlers
+    (registered on the test app) and emit the exact mpango_exception_handler
+    envelope. No Python dict repr may leak into the message field."""
+
+    async def test_401_is_exact_public_envelope(self, client: AsyncClient, s2_db):
+        code, email, password = await _setup_full_login(s2_db)
+        resp = await client.post(
+            "/api/v1/client/auth/login",
+            json={"email": email, "password": _WRONG_PW, "wholesaler_code": code},
+        )
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
+        body = resp.json()
+        # Exact public envelope — flat, no nested "detail".
+        assert set(body.keys()) == {"code", "message", "request_id"}
+        assert body["code"] == "INVALID_CREDENTIALS"
+        assert body["message"] == "Invalid credentials"
+        assert isinstance(body["request_id"], str) and body["request_id"]
+
+    async def test_401_message_has_no_dict_repr_leak(self, client: AsyncClient, s2_db):
+        """The message must be the clean literal — never str(dict) like
+        \"{'code': 'INVALID_CREDENTIALS', ...}\" which the legacy
+        http_exception_handler would produce from a dict detail."""
+        code, email, password = await _setup_full_login(s2_db)
+        resp = await client.post(
+            "/api/v1/client/auth/login",
+            json={"email": "no.such.user@example.com", "password": password, "wholesaler_code": code},
+        )
+        body = resp.json()
+        message = body["message"]
+        assert message == "Invalid credentials"
+        # No dict-repr markers anywhere in the message.
+        assert "{" not in message and "}" not in message
+        assert "'" not in message and "code" not in message.lower()
+
+    async def test_422_malformed_code_is_clean_envelope(self, client: AsyncClient):
+        resp = await client.post(
+            "/api/v1/client/auth/login",
+            json={"email": "a@b.com", "password": _DUMMY_PW, "wholesaler_code": "BAD!CODE"},
+        )
+        assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+        body = resp.json()
+        # Clean envelope, no dict repr in the message.
+        assert body["code"] == "INVALID_INPUT"
+        assert "{" not in body["message"] and "}" not in body["message"]
+        assert "request_id" in body
 
 
 # ---------------------------------------------------------------------------
@@ -1115,10 +1199,24 @@ class TestFailClosedLifecycle:
     all fail with a neutral 401 (never authenticate, never 500)."""
 
     async def _assert_neutral_401(self, resp):
+        """Assert the exact production 401 contract and NO dict-repr leak.
+
+        The body must be the flat mpango_exception_handler envelope:
+            {"code": "INVALID_CREDENTIALS",
+             "message": "Invalid credentials",
+             "request_id": "..."}
+        with no nested "detail" wrapper and no Python dict repr in message.
+        """
         assert resp.status_code == HTTPStatus.UNAUTHORIZED
         body = resp.json()
-        assert body["detail"]["code"] == "INVALID_CREDENTIALS"
-        assert body["detail"]["message"] == "Invalid credentials"
+        # Flat envelope (NOT nested under a "detail" key).
+        assert body["code"] == "INVALID_CREDENTIALS"
+        assert body["message"] == "Invalid credentials"
+        assert "request_id" in body and body["request_id"]
+        # No dict-repr leak: the message must be the clean literal, and the
+        # body must not contain a serialized dict (no "{" inside message).
+        assert "{" not in body["message"] and "}" not in body["message"]
+        assert "detail" not in body
 
     async def test_soft_deleted_registration_returns_neutral_401(
         self, client: AsyncClient, s2_db
@@ -1300,10 +1398,13 @@ class TestFailClosedLifecycle:
         req = RetailerLoginRequest(
             email=email, password=password, wholesaler_code=code
         )
-        with pytest.raises(HTTPException) as exc_info:
+        from core.error_codes import MpangoAPIException
+
+        with pytest.raises(MpangoAPIException) as exc_info:
             await auth_module.retailer_login(req, _StubSession())
         assert exc_info.value.status_code == HTTPStatus.UNAUTHORIZED
-        assert exc_info.value.detail["code"] == "INVALID_CREDENTIALS"
+        assert exc_info.value.error_code.value == "INVALID_CREDENTIALS"
+        assert exc_info.value.message == "Invalid credentials"
 
 
 # ---------------------------------------------------------------------------
@@ -1312,44 +1413,61 @@ class TestFailClosedLifecycle:
 
 
 class TestRateLimit429:
-    """The rate limiter raises a controlled MpangoAPIException (429) when the
-    configured limit is exceeded — never a 500. Proven against the real
-    RateLimiter.check_rate_limit path with a mock Redis."""
+    """POST /client/auth/login, when rate-limited through the real
+    RateLimitingMiddleware, returns a controlled 429 (never 500) carrying the
+    required X-RateLimit-* / Retry-After headers. Proven over real Redis."""
 
-    async def test_rate_limit_raises_controlled_429(self):
-        from core.error_codes import ErrorCode, MpangoAPIException
-        from core.rate_limiter import RateLimiter
-
-        # A mock Redis that always reports the counter above the limit.
-        class _FakeRedis:
-            async def incr(self, _key):
-                return 11  # above DEFAULT_IP_LIMIT processing inside limiter
-
-            async def expire(self, _key, _ttl):
-                return True
-
-        limiter = RateLimiter(redis_client=_FakeRedis())
-
-        # Forcibly lower the limit so count(11) clearly exceeds it.
+    async def test_rate_limited_login_returns_429_with_headers(
+        self, client: AsyncClient, s2_db
+    ):
         import core.rate_limiter as rl_mod
 
-        original = rl_mod.DEFAULT_IP_LIMIT
-        rl_mod.DEFAULT_IP_LIMIT = 5
+        # Set up a valid portal + credentials so requests reach the limiter
+        # (and so the first <limit> requests succeed rather than 401).
+        code, email, password = await _setup_full_login(s2_db)
+
+        # A unique forwarded-IP isolates this test's Redis counter from any
+        # other run (the limiter keys on X-Forwarded-For for anonymous calls).
+        test_ip = f"203.0.113.{(uuid.uuid4().int % 200) + 1}"
+        headers = {"X-Forwarded-For": test_ip}
+
+        # Lower the IP limit so we can exceed it within the test window.
+        original_limit = rl_mod.DEFAULT_IP_LIMIT
+        rl_mod.DEFAULT_IP_LIMIT = 3
+        limit_plus = original_limit  # noqa: F841 (documented below)
         try:
-            class _FakeRequest:
-                url = type("U", (), {"path": "/api/v1/client/auth/login"})()
-                method = "POST"
-                headers = {}
-                client = None
-                state = type("S", (), {})()
+            statuses = []
+            # Fire limit+2 requests: first `limit` succeed, the next 429.
+            for _ in range(rl_mod.DEFAULT_IP_LIMIT + 2):
+                resp = await client.post(
+                    "/api/v1/client/auth/login",
+                    json={
+                        "email": email,
+                        "password": password,
+                        "wholesaler_code": code,
+                    },
+                    headers=headers,
+                )
+                statuses.append(resp.status_code)
 
-            with pytest.raises(MpangoAPIException) as exc_info:
-                await limiter.check_rate_limit(_FakeRequest())
+            # The final request must be the controlled 429.
+            assert statuses[-1] == HTTPStatus.TOO_MANY_REQUESTS, (
+                f"Expected final 429, got statuses {statuses}"
+            )
+            # And at least the first request was NOT a 429 (limiter allowed it).
+            assert statuses[0] != HTTPStatus.TOO_MANY_REQUESTS
 
-            assert exc_info.value.status_code == 429
-            assert exc_info.value.error_code == ErrorCode.RATE_LIMIT_EXCEEDED
+            # Required rate-limit headers present on the 429 response.
+            limited = next(
+                r for r in [resp] if r.status_code == HTTPStatus.TOO_MANY_REQUESTS
+            )
+            assert "Retry-After" in limited.headers
+            assert "X-RateLimit-Limit" in limited.headers
+            assert "X-RateLimit-Remaining" in limited.headers
+            assert "X-RateLimit-Reset" in limited.headers
+            assert int(limited.headers["X-RateLimit-Remaining"]) == 0
         finally:
-            rl_mod.DEFAULT_IP_LIMIT = original
+            rl_mod.DEFAULT_IP_LIMIT = original_limit
 
 
 # ---------------------------------------------------------------------------

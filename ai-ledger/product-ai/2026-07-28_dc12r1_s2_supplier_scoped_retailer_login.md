@@ -158,3 +158,92 @@ sent back to its portal login.
 ## Verdict (R1)
 
 **PASS_FOR_CTO_DC12R1_S2_R1_MERGE_REVIEW**
+
+---
+
+# R2 — Production Error Contract + Independent Full Gate
+
+**Date:** 2026-07-28
+**Prior tip:** `6e71a53e6e8287c0807395b49bc6b10a800e8b03`
+**Verdict:** **STOP_AND_REPORT_CTO** (pre-existing product-wide defect blocks §5)
+
+## Completed and verified (§1–4)
+
+- **§1 Narrow error contract:** replaced the retailer-login
+  `HTTPException(detail={dict})` with `MpangoAPIException(INVALID_CREDENTIALS,
+  "Invalid credentials", 401)`. The 422 malformed-code path likewise uses
+  `MpangoAPIException(INVALID_INPUT, …, 422)`. Both now serialize through the
+  production `mpango_exception_handler` as the exact flat envelope.
+- **§2 Production-handler tests:** the test app now calls
+  `register_exception_handlers(app)` (mirrors `main.py:196`). New
+  `TestProductionErrorContract` proves the exact public 401 body
+  `{code, message, request_id}` and that **no Python dict repr leaks** into
+  `message` (no `{`, `}`, `'`, or the word "code").
+- **§3 Frontend neutral 401:** `ClientLoginPage` renders the fixed literal
+  "Invalid credentials" for ANY 401 — production flat envelope, legacy
+  `{error:{}}` envelope, or raw axios — and never surfaces the response body.
+- **§4 A→B failed-login:** the catch block no longer calls `logout()` (which
+  preserved a stale prior portal code). It pins `retailerPortalCode` to the
+  portal being attempted via `setState`, so a failed login on B retains B.
+- **§5 (partial) rate-limit 429:** real HTTP test through
+  `RateLimitingMiddleware` over Redis — exceeds the IP limit and asserts 429
+  with `Retry-After`, `X-RateLimit-Limit/Remaining/Reset` (remaining == 0).
+
+Exact counts: backend S2 42/42; route+auth+u6f 47/47; frontend Vitest 142/142;
+Vite build success.
+
+## STOP — pre-existing product defect blocking §5 endpoint denials
+
+Task §5 requires proving a **controlled denial** (clean 4xx) from real orders,
+payments, finance, invitation-management and platform endpoints for a
+contextual retailer JWT. Probing these through the production handlers
+reveals a **pre-existing, product-wide defect** in the RBAC layer:
+
+`api/middleware/rbac.py` — `RequirePermission` (lines 45, 67) and
+`RequirePlatformAdmin` (line 126) raise
+`HTTPException(detail={"code": …, "message": …})`. The production
+`http_exception_handler` does `message = str(exc.detail)`, so every RBAC 403
+**leaks a Python dict repr** into the public `message` field.
+
+Observed (real HTTP, production handlers, retailer JWT):
+
+```
+GET /api/v1/payments  -> 403
+  {"code":"PERMISSION_DENIED",
+   "message":"{'code': 'PERMISSION_DENIED', 'message': \"Permission 'payments:read' required\"}",
+   "request_id":"…"}
+
+POST /api/v1/invitations  -> 403
+  {"code":"PERMISSION_DENIED",
+   "message":"{'code': 'PERMISSION_DENIED', 'message': \"Permission 'invitations:create' required\"}",
+   "request_id":"…"}
+```
+
+`GET /api/v1/orders` and finance return 500 (`UndefinedTableError`) because
+the minimal test-fixture tenant schema lacks the `orders` table — a fixture
+limitation, not a product defect; the RBAC dict-repr leak, however, reproduces
+independent of fixture completeness (it fires before any table query).
+
+### Why this is a STOP, not a fix-in-place
+1. **Pre-existing:** `git diff bb1b39f1..HEAD -- api/middleware/rbac.py` is
+   empty — the defect is on the base, present for ALL protected routes, not
+   introduced by this branch.
+2. **Out of scope / high blast radius:** ~10 test files
+   (`test_rbac_enforcement`, `test_route_authorization_policy`,
+   `test_users_roles_api`, `test_u4*`, `test_s3b/s3c`, …) assert the current
+   leaky contract via `exc_info.value.detail["code"]`. Converting RBAC to the
+   clean `MpangoAPIException` contract is a product-wide refactor that those
+   tests encode as expectation — a separate, CTO-scoped change, not a
+   drive-by inside a retailer-login PR.
+3. **Cannot be asserted around:** §7 forbids skip/xfail/assertion weakening,
+   so the leak cannot be papered over to manufacture a "pass."
+
+This is the same dict-repr-leak defect class §1 fixed for retailer login; the
+RBAC layer needs the identical treatment, authorized as its own change.
+
+## Verdict (R2)
+
+**STOP_AND_REPORT_CTO** — retailer-login error contract (§1–4) is complete and
+verified; §5's real-endpoint controlled-denial proof is blocked by a
+pre-existing, product-wide RBAC dict-repr leak (`api/middleware/rbac.py`)
+that requires a separately-scoped fix.

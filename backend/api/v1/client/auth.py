@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
+from core.error_codes import ErrorCode, MpangoAPIException
 from core.security import create_contextual_token, verify_password
 from db.sql_safety import validate_identifier
 from models.wholesaler import Wholesaler
@@ -49,20 +50,29 @@ NEUTRAL_RETAILER_CREDENTIAL_MESSAGE = (
     "Retailer credential result is not disclosed through this endpoint."
 )
 
-# Neutral 401 body for all well-formed authentication mismatches.  The same
-# literal is returned whether the email, wholesaler, binding, role, or
+# Neutral 401 for all well-formed authentication mismatches.  The same
+# contract is returned whether the email, wholesaler, binding, role, or
 # password was wrong — no information leaks.
-INVALID_CREDENTIALS_DETAIL = {
-    "code": "INVALID_CREDENTIALS",
-    "message": "Invalid credentials",
-}
+#
+# DC-12R1-S2-R2: raised as the narrow MpangoAPIException contract (not a
+# bare HTTPException with a dict detail) so the production
+# mpango_exception_handler emits the exact public body
+#   {"code": "INVALID_CREDENTIALS", "message": "Invalid credentials",
+#    "request_id": "..."}
+# with NO Python dict repr leaking into the message field.
+INVALID_CREDENTIALS_MESSAGE = "Invalid credentials"
 
 
-def _raise_invalid_credentials() -> HTTPException:
-    """Return the single neutral 401 used for all authentication mismatches."""
-    raise HTTPException(
+def _raise_invalid_credentials() -> None:
+    """Raise the single neutral 401 used for all authentication mismatches.
+
+    Uses MpangoAPIException (the production error contract) so the serialized
+    body is the exact public envelope above — never a str(dict) repr.
+    """
+    raise MpangoAPIException(
+        error_code=ErrorCode.INVALID_CREDENTIALS,
+        message=INVALID_CREDENTIALS_MESSAGE,
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail=INVALID_CREDENTIALS_DETAIL,
     )
 
 
@@ -119,12 +129,12 @@ async def retailer_login(
 
     # --- 2. Format gate (no SQL) --------------------------------------------
     if not WHOLESALER_CODE_RE.match(raw_code):
-        raise HTTPException(
+        # DC-12R1-S2-R2: MpangoAPIException contract (not HTTPException w/ dict
+        # detail) so the public 422 body is the exact envelope, no repr leak.
+        raise MpangoAPIException(
+            error_code=ErrorCode.INVALID_INPUT,
+            message="Wholesaler code must be alphanumeric (A-Z, 0-9).",
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "code": "INVALID_WHOLESALER_CODE",
-                "message": "Wholesaler code must be alphanumeric (A-Z, 0-9).",
-            },
         )
 
     # --- 3. Resolve registration via tenant_registrations + wholesalers -----

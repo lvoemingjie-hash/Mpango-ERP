@@ -3,7 +3,8 @@
 **Last updated:** 2026-07-28
 **Status owner:** CTO
 **Current product branch:** `origin/product-dev-recovered`
-**Current product commit:** `6d81b4012c136a4655f8aa162fe15ed8854626b7`
+**Accepted product-code commit:** `6d81b4012c136a4655f8aa162fe15ed8854626b7`
+**Status-document publication merge:** `1a986bdbb658c0d452b4e4f0d940bbffaa8e38cc`
 **Current database head:** `036_retailer_mvp_identity`
 **Overall verdict:** Stable engineering foundation; pre-pilot, not yet
 customer-delivery complete
@@ -85,7 +86,7 @@ customers will be onboarded and supported manually by Mpango operators.
 
 | Item | Current truth |
 |---|---|
-| Product baseline | `origin/product-dev-recovered@6d81b401` |
+| Product code baseline | `6d81b401`; fetch `origin/product-dev-recovered` for the exact current branch head |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `036_retailer_mvp_identity` |

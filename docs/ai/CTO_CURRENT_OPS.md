@@ -3,7 +3,8 @@
 **Last updated:** 2026-07-28
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Canonical product commit:** `6d81b4012c136a4655f8aa162fe15ed8854626b7`
+**Accepted product-code commit:** `6d81b4012c136a4655f8aa162fe15ed8854626b7`
+**Status-document publication merge:** `1a986bdbb658c0d452b4e4f0d940bbffaa8e38cc`
 **Current migration head:** `036_retailer_mvp_identity`
 **Current delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
@@ -17,6 +18,8 @@ only for detailed evidence.
 ## Current Truth / 当前事实
 
 - `origin/product-dev-recovered` is the only active product baseline.
+- The exact branch head must be fetched and verified before every task. The
+  accepted product code is `6d81b401`; later commits may be documentation-only.
 - `origin/main` remains unchanged at
   `134ea59e02204842e55ebe36f721f44df5a33737`.
 - `origin/platform-dev` remains unchanged at

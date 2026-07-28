@@ -135,6 +135,11 @@ async def verify_email_token(
         select(EmailVerificationToken, TenantRegistration)
         .join(TenantRegistration, EmailVerificationToken.registration_id == TenantRegistration.id)
         .where(EmailVerificationToken.token_hash == token_hash)
+        # Fail-closed predicate: a soft-deleted verification token is never a
+        # valid lookup target. This preserves the retry anchor (whose token is
+        # never soft-deleted) and keeps the soft-delete boundary at the data
+        # layer in addition to the in-memory check below.
+        .where(EmailVerificationToken.is_deleted.is_(False))
         .execution_options(ignore_tenant=True)
     )
     row = result.one_or_none()
@@ -142,19 +147,32 @@ async def verify_email_token(
         raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
 
     verification_token, registration = row
-    retryable_after_setup_email_failure = await _is_retryable_setup_email_failure(
-        db, registration, now
-    )
+
+    # Terminal replay boundary: a used, revoked, expired, or soft-deleted
+    # verification token is rejected up front. No dependent query (such as the
+    # owner-setup-token lookup), provisioning, orchestration, email delivery,
+    # or write may run once the token is known to be terminal. The public
+    # wording stays neutral.
     if (
-        verification_token.used_at is not None
+        verification_token.is_deleted is True
+        or verification_token.used_at is not None
         or verification_token.revoked_at is not None
         or verification_token.expires_at <= now
-        or (
-            registration.status != "pending_email_verification"
-            and not retryable_after_setup_email_failure
-        )
     ):
         raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
+
+    # The token itself is actionable. A registration that is no longer in
+    # pending_email_verification is only accepted when it is the documented
+    # setup-email-delivery retry anchor: an unused, unrevoked, unexpired,
+    # non-deleted verification token on a fully provisioned registration whose
+    # owner setup email has not yet been delivered. The dependent lookup runs
+    # only for that non-pending case, never for a terminal token.
+    if registration.status != "pending_email_verification":
+        retryable_after_setup_email_failure = await _is_retryable_setup_email_failure(
+            db, registration, now
+        )
+        if not retryable_after_setup_email_failure:
+            raise VerificationTokenInvalidError(INVALID_OR_EXPIRED_VERIFICATION_TOKEN)
 
     if registration.status == "pending_email_verification":
         registration.status = "email_verified"

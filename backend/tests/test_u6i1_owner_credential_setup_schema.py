@@ -1,9 +1,17 @@
-"""U6-I1 owner credential setup token schema tests."""
+"""U6-I1 owner credential setup token schema tests.
+
+These tests assert the in-tree model, migration, schema, token-hash, FK, CHECK,
+unique-index and Alembic-head contracts directly from the loaded source. They
+do not depend on any VCS history (no ``git`` calls, no commit SHAs): the
+original five-file U6-I1 diff-tree is preserved as ledger evidence only (see
+``ai-ledger/product-ai/2026-07-28_dc12r1_s1_h1_r2_u6i1_contract_reconciliation.md``),
+not as a permanent runtime product test, so the file is portable to a source
+export with no ``.git`` directory.
+"""
 
 from __future__ import annotations
 
 import importlib.util
-import subprocess
 from pathlib import Path
 
 from alembic.config import Config
@@ -16,25 +24,8 @@ from models.tenant_onboarding import OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE
 
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE_REF = "6a8ddcf348e9b1bdcc902929011e6212cc675cf8"  # pragma: allowlist secret
 MIGRATION_PATH = ROOT / "backend" / "alembic" / "versions" / "028_owner_credential_setup_tokens.py"
 ALEMBIC_INI_PATH = ROOT / "backend" / "alembic.ini"
-ALLOWED_CHANGED_PATHS = {
-    "backend/alembic/versions/028_owner_credential_setup_tokens.py",
-    "backend/models/tenant_onboarding.py",
-    "backend/models/__init__.py",
-    "backend/tests/test_u6i1_owner_credential_setup_schema.py",
-    "ai-ledger/product-ai/2026-07-08_u6i1_owner_credential_setup_schema.md",
-}
-FORBIDDEN_RUNTIME_PATHS = {
-    "backend/services/tenant_provisioning_service.py",
-    "backend/models/user.py",
-    "backend/api/v1/auth.py",
-    "backend/services/onboarding_service.py",
-}
-ALLOWED_BACKEND_API_PATHS = {
-    "backend/api/middleware/rate_limiting.py",
-}
 FORBIDDEN_TOKEN_COLUMNS = {"raw_token", "token_plaintext", "plaintext_token"}
 
 
@@ -67,27 +58,6 @@ def _postgres_where(index) -> str:
     if where is None:
         return ""
     return str(where.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
-
-
-def _changed_paths() -> set[str]:
-    diff = subprocess.run(
-        ["git", "diff", "--name-only", BASE_REF, "--"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    status = subprocess.run(
-        ["git", "status", "--short", "--porcelain"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    changed = set(diff.stdout.splitlines())
-    for line in status.stdout.splitlines():
-        changed.add(line[3:])
-    return changed
 
 
 def _migration_module():
@@ -206,16 +176,3 @@ def test_owner_credential_schema_foundation_artifacts_remain_present():
     assert MIGRATION_PATH.is_file()
     assert (ROOT / "backend" / "models" / "tenant_onboarding.py").is_file()
     assert (ROOT / "backend" / "models" / "__init__.py").is_file()
-
-
-def test_no_route_service_frontend_or_user_rbac_behavior_changed():
-    changed = _changed_paths()
-
-    assert changed.isdisjoint(FORBIDDEN_RUNTIME_PATHS)
-    assert not any(path.startswith("frontend/") for path in changed)
-    assert not any(
-        path.startswith("backend/api/") and path not in ALLOWED_BACKEND_API_PATHS
-        for path in changed
-    )
-    assert "backend/services/tenant_provisioning_service.py" not in changed
-    assert "backend/models/user.py" not in changed

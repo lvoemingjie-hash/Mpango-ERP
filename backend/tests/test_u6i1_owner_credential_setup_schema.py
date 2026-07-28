@@ -1,9 +1,17 @@
-"""U6-I1 owner credential setup token schema tests."""
+"""U6-I1 owner credential setup token schema tests.
+
+These tests assert the in-tree model, migration, schema, token-hash, FK, CHECK,
+unique-index and Alembic-head contracts directly from the loaded source. They
+do not depend on any VCS history (no ``git`` calls, no commit SHAs): the
+original five-file U6-I1 diff-tree is preserved as ledger evidence only (see
+``ai-ledger/product-ai/2026-07-28_dc12r1_s1_h1_r2_u6i1_contract_reconciliation.md``),
+not as a permanent runtime product test, so the file is portable to a source
+export with no ``.git`` directory.
+"""
 
 from __future__ import annotations
 
 import importlib.util
-import subprocess
 from pathlib import Path
 
 from alembic.config import Config
@@ -16,27 +24,8 @@ from models.tenant_onboarding import OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE
 
 
 ROOT = Path(__file__).resolve().parents[2]
-# Fixed historical U6-I1 implementation commit. The U6-I1 scope assertion is
-# anchored on this exact commit (not on the moving current HEAD), so later
-# tasks that legitimately touch runtime paths no longer trip the guard. The
-# guard now inspects only what U6-I1 itself changed, via git diff-tree.
-U6I1_HISTORICAL_COMMIT = "712db0c1d3796a22c8b3c4c398d91577146d3ee1"  # pragma: allowlist secret
 MIGRATION_PATH = ROOT / "backend" / "alembic" / "versions" / "028_owner_credential_setup_tokens.py"
 ALEMBIC_INI_PATH = ROOT / "backend" / "alembic.ini"
-# The exact five files the original U6-I1 implementation commit touched.
-EXPECTED_U6I1_PATHS = {
-    "backend/alembic/versions/028_owner_credential_setup_tokens.py",
-    "backend/models/tenant_onboarding.py",
-    "backend/models/__init__.py",
-    "backend/tests/test_u6i1_owner_credential_setup_schema.py",
-    "ai-ledger/product-ai/2026-07-08_u6i1_owner_credential_setup_schema.md",
-}
-FORBIDDEN_RUNTIME_PATHS = {
-    "backend/services/tenant_provisioning_service.py",
-    "backend/models/user.py",
-    "backend/api/v1/auth.py",
-    "backend/services/onboarding_service.py",
-}
 FORBIDDEN_TOKEN_COLUMNS = {"raw_token", "token_plaintext", "plaintext_token"}
 
 
@@ -69,35 +58,6 @@ def _postgres_where(index) -> str:
     if where is None:
         return ""
     return str(where.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
-
-
-def _historical_u6i1_paths() -> set[str]:
-    """Return the exact file set the original U6-I1 implementation commit changed.
-
-    Anchored on the fixed historical commit (``U6I1_HISTORICAL_COMMIT``) via
-    ``git diff-tree``, so the scope assertion is stable and does not compare
-    against the moving current HEAD. Fails closed if the historical commit is
-    unavailable in the local repository.
-    """
-    # Fail closed if the historical commit is missing (e.g. shallow clone).
-    verify = subprocess.run(
-        ["git", "rev-parse", "--verify", U6I1_HISTORICAL_COMMIT + "^{commit}"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-    if verify.returncode != 0:
-        raise AssertionError(
-            "U6-I1 historical commit is unavailable; cannot verify scope"
-        )
-    diff_tree = subprocess.run(
-        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", U6I1_HISTORICAL_COMMIT],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return {line for line in diff_tree.stdout.splitlines() if line}
 
 
 def _migration_module():
@@ -216,31 +176,3 @@ def test_owner_credential_schema_foundation_artifacts_remain_present():
     assert MIGRATION_PATH.is_file()
     assert (ROOT / "backend" / "models" / "tenant_onboarding.py").is_file()
     assert (ROOT / "backend" / "models" / "__init__.py").is_file()
-
-
-def test_u6i1_historical_implementation_scope_is_exactly_the_original_five_files():
-    """U6-I1 touched exactly its original five files and no runtime path.
-
-    The scope is anchored on the fixed historical implementation commit, not on
-    the moving current HEAD, so later tasks that legitimately touch runtime
-    paths do not trip this guard.
-    """
-    changed = _historical_u6i1_paths()
-
-    assert changed == EXPECTED_U6I1_PATHS
-    assert len(changed) == 5
-    # No runtime path was touched by the original U6-I1 implementation.
-    assert changed.isdisjoint(FORBIDDEN_RUNTIME_PATHS)
-    assert not any(path.startswith("frontend/") for path in changed)
-
-
-def test_synthetic_forbidden_runtime_path_is_still_rejected():
-    """Regression: the forbidden-runtime-path guard still rejects violations.
-
-    Proves the scope assertion was not weakened by the historical-commit
-    re-anchoring: a synthetic scope containing a forbidden runtime path still
-    fails the disjoint check.
-    """
-    synthetic_scope = EXPECTED_U6I1_PATHS | {"backend/services/onboarding_service.py"}
-
-    assert not synthetic_scope.isdisjoint(FORBIDDEN_RUNTIME_PATHS)

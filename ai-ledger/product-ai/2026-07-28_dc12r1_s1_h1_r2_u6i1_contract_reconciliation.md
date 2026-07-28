@@ -188,3 +188,158 @@ diff-tree proof above but is NOT modified by R2.)
 ## R2 Verdict
 
 `PASS_FOR_CTO_DC12R1_S1_H1_R2_INDEPENDENT_FULL_GATE`.
+
+---
+
+## DC-12R1-S1-H1-R2-R1 Source-Tree Portable U6I1 Contract
+
+Date: Tuesday, July 28, 2026 (R2-R1 follow-up on the same isolated branch).
+
+- Branch: `opencode/dc12r1-s1-h1-r2-u6i1-contract-reconciliation-2026-07-28`
+- R2-R1 base (prior tip): `5771b78877a0b1998607651658face0e959fe5a0`
+- Final branch tip: proven equal to `git ls-remote` in the `R2-R1 Push Proof`
+  section below (recorded after the fast-forward push; not self-referenced
+  inline).
+
+### R2-R1 Verdict
+
+`PASS_FOR_CTO_DC12R1_S1_H1_R2_R1_INDEPENDENT_FULL_GATE`
+
+### R2-R1 Correction
+
+R2 anchored the U6I1 scope assertion on a `git diff-tree` against a fixed
+historical commit. That is valid **ledger evidence** but it made the test a
+runtime product test that depends on VCS history: on a shallow clone or a
+source export with no `.git`, the test could not run. R2-R1 removes that
+runtime VCS dependency while preserving every U6I1 model/migration/schema/
+token-hash/FK/CHECK/unique-index/Alembic-head assertion unchanged.
+
+### What R2-R1 removed (test/report only)
+
+Changed file:
+
+- `backend/tests/test_u6i1_owner_credential_setup_schema.py`
+
+Removed from the test (all runtime Git-history dependencies):
+
+- `import subprocess`
+- `U6I1_HISTORICAL_COMMIT` constant
+- `EXPECTED_U6I1_PATHS` and `FORBIDDEN_RUNTIME_PATHS` constants
+- `_historical_u6i1_paths()` (the `git rev-parse` / `git diff-tree` subprocess
+  calls)
+- the two history/helper-only tests:
+  `test_u6i1_historical_implementation_scope_is_exactly_the_original_five_files`
+  and `test_synthetic_forbidden_runtime_path_is_still_rejected`
+
+### Why this is not a weakening
+
+Removing a VCS-history assertion is not weakening a product or security
+invariant. The removed checks verified "which files a past Git commit touched",
+which is a repository-provenance property, not an in-tree product contract.
+The product/security invariants (token-hash-only table, FK `ON DELETE CASCADE`,
+unique `token_hash`, active partial index
+`used_at IS NULL AND revoked_at IS NULL AND is_deleted = false`, purpose
+default + CHECK, migration revision/down_revision, Alembic head, forbidden
+token columns, foundation artifacts) are all retained verbatim and assert the
+loaded source directly. No skip, xfail, or conditional pass was added.
+
+The original five-file U6I1 diff-tree remains documented as **ledger evidence**
+in the `Historical Scope Proof` section above; it is no longer a permanent
+runtime test.
+
+### Portability Proof (no Git history)
+
+Exported the candidate with `git archive` of the staged index into a disposable
+directory with **no `.git`** directory:
+
+- `git rev-parse --is-inside-work-tree` in the export -> `fatal: not a git
+  repository` (no VCS history available).
+- the exported `test_u6i1_owner_credential_setup_schema.py` contains zero
+  references to `U6I1_HISTORICAL_COMMIT` / `_historical_u6i1_paths` /
+  `subprocess` (`EXPORT_HAS_NO_GIT_HISTORY_DEPENDENCY`).
+- running `pytest tests/test_u6i1_owner_credential_setup_schema.py` from that
+  source export -> **6 passed** (no Git history needed).
+
+### R2-R1 Validation Bundle (real PostgreSQL 16 + Redis 7)
+
+Fresh disposable environment:
+
+- PostgreSQL 16 container `dc12r1_s1_h1r2r1_pg16` (image `postgres:16`,
+  server `16.14`, host `127.0.0.1:5519`)
+- Redis 7 container `dc12r1_s1_h1r2r1_redis7` (image `redis:7`,
+  host `127.0.0.1:6393`)
+- source DB `test_dc12r1_s1_h1r2r1` migrated to head before the run;
+  `MPANGO_ENV=test`, loopback-only DSN.
+
+Command:
+
+```bash
+cd backend
+pytest \
+  tests/test_u6i1_owner_credential_setup_schema.py \
+  tests/test_dc12r1_s1_h1_verification_token_terminal_state.py \
+  tests/test_u6d_verify_email_endpoint.py \
+  tests/test_u6f_onboarding_auth_chain_closeout.py \
+  tests/test_u6l_email_verified_onboarding_orchestration.py \
+  tests/test_u6i6_onboarding_e2e_closeout.py \
+  tests/test_auth_regressions.py \
+  tests/test_route_authorization_policy.py
+```
+
+Result:
+
+- `72 passed`
+
+(72 vs the prior 74 because the two history/helper-only tests were removed;
+every retained U6I1 schema/security assertion and every H1/U6/auth/route test
+passes.)
+
+### R2-R1 Quality Gates
+
+- `python -m py_compile tests/test_u6i1_owner_credential_setup_schema.py` ->
+  `PYCOMPILE_OK`
+- `git diff --check` -> clean
+- scoped `pre-commit run --files` on the test: trailing-whitespace,
+  end-of-file-fixer, check-added-large-files, detect-secrets all Passed
+- scoped `detect-secrets scan --baseline .secrets.baseline` -> exit 0 (no new
+  secrets; unintended `.secrets.baseline` path-separator normalization produced
+  by the scan was discarded, not committed)
+- mojibake scan -> `MOJIBAKE_CLEAN` (pure ASCII)
+- GitNexus `impact` before edit: confirmed the to-be-removed git-history
+  symbols had only same-file test dependents and no production processes.
+- GitNexus `analyze`/`status` after commit -> recorded in `R2-R1 Push Proof`.
+
+### R2-R1 Final Changed-File Scope (exactly 2 files)
+
+`git diff --name-status ac625b78..HEAD`:
+
+```
+M  backend/tests/test_u6i1_owner_credential_setup_schema.py
+A  ai-ledger/product-ai/2026-07-28_dc12r1_s1_h1_r2_u6i1_contract_reconciliation.md
+```
+
+No product, migration, model/schema, config, workflow, frontend, or lockfile
+changes.
+
+### R2-R1 Cleanup Proof
+
+- disposable PostgreSQL 16 container `dc12r1_s1_h1r2r1_pg16` removed
+- disposable Redis 7 container `dc12r1_s1_h1r2r1_redis7` removed
+- portable export directory `_h1r2r1_portable_export` removed
+- final `git status --porcelain | wc -l` == 0 (zero tracked, zero untracked)
+
+### R2-R1 Push Proof
+
+- push method: fast-forward only (no `--force`).
+- protected branches untouched:
+  `origin/product-dev-recovered` == `c78101186f1fb4811a886e3e55f96708ea960c0a`,
+  `origin/main` == `134ea59e02204842e55ebe36f721f44df5a33737`.
+- local HEAD == `git ls-remote` HEAD for
+  `opencode/dc12r1-s1-h1-r2-u6i1-contract-reconciliation-2026-07-28`
+  (recorded in the delivery response).
+- GitNexus `analyze`/`status` after final commit: indexed commit == current
+  commit, `Status: up-to-date`.
+
+### R2-R1 Verdict
+
+`PASS_FOR_CTO_DC12R1_S1_H1_R2_R1_INDEPENDENT_FULL_GATE`.

@@ -1,338 +1,180 @@
 # CTO Current Ops / 当前作战摘要
 
-**Last updated:** 2026-05-16
+**Last updated:** 2026-07-28
 **Owner:** Codex acting as CTO
-**Purpose:** Give every AI agent a short, current, evidence-aware operating picture before touching code.
-
-本文件是 Mpango ERP 的“当前态势图”。它不是完整历史，不替代 `ai-ledger/`，也不是新的产品需求文档。它的作用是让 Codex、Claude Code、Leo、Goose、OpenCode、CodeBuddy 或其他 agent 在几分钟内知道：
-
-- 项目现在真实处于什么状态。
-- 当前最重要的目标是什么。
-- 哪些边界不能碰。
-- 哪些证据可信。
-- 下一步应该怎么做。
-
-If this file conflicts with contracts or decision records, pause and reconcile through repository docs before coding.
-
-## Read Order / 启动阅读顺序
-
-For new AI work, read in this order:
-
-1. `docs/ai/README.md`
-2. `docs/ai/CTO_CURRENT_OPS.md`
-3. `docs/ai/PROJECT.md`
-4. `docs/ai/PROJECT_MEMORY.md`
-5. `docs/ai/AI_TEAM_OPERATING_RULES.md`
-6. Relevant `ai-ledger/` entries only when exact evidence or history is needed
-
-原则：先读当前态势，再查长期记忆，最后才进入详细审计账本。不要一上来吞完整历史聊天或完整 ledger。
-
-## Memory Model / 记忆分层
-
-Mpango AI team uses five memory layers:
-
-- **Constitution layer:** non-negotiable rules such as tenant isolation, no unauthorized push, evidence-first reporting, no destructive git cleanup without approval.
-- **Current ops layer:** this file. It captures current baseline, active work, risks, and next actions.
-- **Project memory layer:** durable strategic truths in `PROJECT_MEMORY.md`.
-- **Ledger evidence layer:** detailed action trail in `ai-ledger/`; use for audit, dispute resolution, or exact command reconstruction.
-- **External validation layer:** Leo/Vibecoder/GitHub Actions reports; useful evidence, but not self-approving.
-
-中文原则：
-
-- 不靠长聊天维持项目记忆。
-- 不让 agent 每次读取几十 MB 背景材料。
-- 当前任务只给“作战包”，详细历史按需索引。
-- 所有关键状态必须落在仓库文档或 ledger 中，不能只存在对话里。
-
-## Current Baseline / 当前基线
-
-Canonical product baseline:
-
-- Branch: `origin/product-dev-recovered`
-- Current promoted commit: `f70cf332e507fee5ab5e11c09e0aa34de987b4a3`
-- Commit message: `merge: promote phase6 receivables closeout`
-- Meaning: Phase 6 credit payment semantics, receivables read-side work, and platform integration closeout have been promoted into the current product baseline.
-
-Main branch:
-
-- `origin/main` remains behind the active product baseline.
-- Do not promote to `main` without a separate CTO-approved release gate.
-
-Dirty workspace warning:
-
-- `C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp` is not suitable for promotion or controlled sprint work right now.
-- Use clean worktrees for implementation, validation, merge rehearsal, and documentation updates.
-
-Current clean documentation baseline used for this update:
-
-- `C:\Users\Jeff0\MPANGO ERP\phase6-closeout-promotion-2026-05-15`
-- Branch: `product-dev-recovered`
-- HEAD: `f70cf332e507fee5ab5e11c09e0aa34de987b4a3`
-
-## Accepted Evidence / 已接受证据
-
-Latest local ledger evidence for Phase 6 closeout:
-
-- `ai-ledger/product-ai/2026-05-15_phase6_receivables_closeout_promotion.md`
-- Receivables service/API: `38 passed, 0 failed, 0 skipped`
-- Phase 5/6 payment regression: `53 passed, 1 xfailed, 0 failed, 0 skipped`
-- DB schema contract: `40 passed, 0 failed, 0 skipped`
-
-Phase 6.3A accepted scope:
-
-- Receivables API contract stabilization.
-- Frontend-readiness guardrails.
-- Read-only receivables visibility.
-- No accounting rewrite.
-
-Promotion evidence caveat:
-
-- Do not claim product-wide 100% validation from targeted suites.
-- A known `xfailed` payment/order test is acceptable only when explicitly reported as `xfailed`.
-- DB-capable tests with unexplained skips must not be reported as PASS.
-
-## Current Product Direction / 当前产品方向
-
-Immediate objective:
-
-- Finish the MVP loop for real wholesaler usability.
-
-Current product thesis:
-
-- Wholesaler is the primary customer.
-- Retailer-facing features exist to increase wholesaler throughput, repeat purchases, and payment recovery.
-- Credit sales are MVP-relevant, but must stay inside a minimal safe accounting model.
-
-Current Phase 6 meaning:
-
-- Credit payment is not a cash receipt.
-- A credit sale can close the order lifecycle while preserving accounts receivable.
-- Later repayment must reduce receivables and increase cash through controlled payment paths.
-- No split-tender or partial-credit semantics may be introduced casually.
-
-## Active Sprint / 当前冲刺
-
-Sprint name:
-
-- MVP Sprint A: credit sales / receivables / repayment usability loop.
-
-Active worktree:
-
-- `C:\Users\Jeff0\MPANGO ERP\mvp-sprint-credit-loop-2026-05-15`
-
-Active branch:
-
-- `codex/mvp-sprint-credit-loop-2026-05-15`
-
-Base:
-
-- `origin/product-dev-recovered` at `f70cf332e507fee5ab5e11c09e0aa34de987b4a3`
-
-Current sprint state:
-
-- Worktree is clean.
-- Frontend dependencies are present in this worktree after CTO-controlled `pnpm install --frozen-lockfile --ignore-scripts`.
-- Backend tests can reuse an existing Poetry virtualenv instead of reinstalling dependencies.
-
-Primary sprint slice:
-
-- Improve `frontend/src/pages/finance/FinancePage.tsx` into a clearer wholesaler accounts receivable dashboard.
-- Use existing backend endpoints via `frontend/src/services/financeService.ts`.
-- Prefer safe navigation to existing `/orders` repayment flow rather than duplicating payment modal behavior inside finance.
-- Do not rewrite backend accounting, auth, tenancy, permissions, migrations, or ledger logic.
-
-Success standard for Sprint A:
-
-- The wholesaler can clearly see outstanding receivables, overdue risk, cash/revenue summary, order balance, paid amount, and next action.
-- Build/type checks pass.
-- Relevant backend targeted suites remain green or blocked only by explicitly classified environment issues.
-- Ledger records exact branch, commit, changed files, commands, results, and gaps.
-
-## Dependency Policy / 依赖策略
-
-Default rule:
-
-- Reuse first.
-- Diagnose second.
-- Install only after CTO/user approval.
-
-Frontend:
-
-- This repo uses `pnpm-lock.yaml`.
-- Do not run `npm install` for frontend dependencies.
-- If dependency preparation is required, use:
-
-```powershell
-pnpm install --frozen-lockfile --ignore-scripts
-```
-
-- Prefer CTO-controlled dependency preparation before Claude or another coding agent starts.
-- `node_modules/` is local to each worktree and should remain ignored.
-
-Backend:
-
-- Poetry uses global virtualenvs under:
-
-```text
-C:\Users\Jeff0\AppData\Local\pypoetry\Cache\virtualenvs
-```
-
-- Current reusable Python for backend targeted tests:
-
-```text
-C:\Users\Jeff0\AppData\Local\pypoetry\Cache\virtualenvs\mpango-erp-backend-WPJOVxVi-py3.12\Scripts\python.exe
-```
-
-- Prefer this interpreter for short targeted tests in clean worktrees when lockfile compatibility is unchanged.
-- Do not run `poetry install` unless CTO/user approves.
-
-Environment variables:
-
-- Use `MPANGO_ENV=test` for backend test/import smoke.
-- Generate a secure test `SECRET_KEY`; do not use weak substrings such as `secret` or `123456`.
-- DB-capable tests require reachable PostgreSQL/Redis and correct DB credentials.
-
-## Agent Roles / AI 团队分工
-
-Codex CTO:
-
-- Owns direction, scope, risk control, review, and final decision.
-- Runs impact analysis and validation checks where appropriate.
-- Creates small executable directives for other agents.
-- Stops long-running or drifting agents.
-- Updates this current ops file after meaningful phase changes.
-
-Claude Code:
-
-- Primary product-line coding executor.
-- Should receive small tasks sized for 5-10 minutes.
-- Must not install dependencies unless explicitly approved.
-- Must not commit or push unless explicitly instructed.
-- Must leave exact evidence and ledger notes.
-
-Leo headless runner:
-
-- DB-capable and cross-environment validation on Lubuntu via GitHub Actions.
-- Should run from directives and produce reports under `reports/lubuntu-validation`.
-- Must collect skip reasons; unexplained DB skips downgrade verdict.
-- Does not approve product changes by itself.
-
-Vibecoder:
-
-- Human-facing Lubuntu coordinator and skill/report workflow maintainer.
-- Should not be used as the long-running headless executor when Leo can run the gate.
-- Can help inspect runner health, directive workflow, and report delivery.
-
-Goose / OpenCode:
-
-- Platform or OPS support agents when explicitly assigned.
-- Must use clean worktrees and bounded scopes.
-- Must not drift platform docs away from product baseline.
-
-CodeBuddy / SWE-style agents:
-
-- Auxiliary executors or reviewers for bounded tasks.
-- Must follow the same evidence and no-push discipline.
-
-## Harness Rules / 执行护栏
-
-Small-task rule:
-
-- Break work into 5-10 minute agent tasks.
-- If an agent runs longer than expected, inspect process state, git status, and diff.
-- Do not wait indefinitely for a stuck agent.
-
-Before coding:
-
-- Confirm branch and worktree.
-- Confirm dependency state.
-- Confirm no unrelated dirty files will be swept into the task.
-- Run GitNexus impact before editing indexed functions/classes/methods.
-
-During coding:
-
-- Stay inside assigned files.
-- Avoid broad refactors.
-- Do not change auth, RBAC, tenancy, migrations, payment semantics, or ledger semantics unless the task explicitly requires CTO escalation.
-
-Before review:
-
-- Run relevant targeted tests/builds.
-- Run `git status --short`.
-- Run `git diff --name-only`.
-- Add or update ledger for meaningful implementation.
-- Separate code failures, environment failures, test-data failures, and branch-sync failures.
-
-## Current Validation Commands / 当前推荐验证命令
-
-Frontend from `frontend/`:
-
-```powershell
-pnpm run build
-pnpm run lint
-```
-
-Backend from `backend/`, using the reusable Python interpreter:
-
-```powershell
-$env:MPANGO_ENV='test'
-$env:SECRET_KEY='<secure-generated-test-key>'
-C:\Users\Jeff0\AppData\Local\pypoetry\Cache\virtualenvs\mpango-erp-backend-WPJOVxVi-py3.12\Scripts\python.exe -m pytest tests/test_receivables_service.py tests/test_finance_receivables_api.py -q --tb=short
-C:\Users\Jeff0\AppData\Local\pypoetry\Cache\virtualenvs\mpango-erp-backend-WPJOVxVi-py3.12\Scripts\python.exe -m pytest tests/test_phase5_order_payment.py -q --tb=short
-```
-
-Repo checks:
-
-```powershell
-git status --short
-git diff --name-only
-```
-
-## Current Risks / 当前风险
-
-- Long context can pollute agent judgment; use this file as the current task memory gate.
-- Dirty default workspace must not be used for controlled sprint execution.
-- Frontend dependency command drift is dangerous; `npm install` is not the default path for this repo.
-- Backend Poetry envs are path-hashed; do not assume a new worktree automatically has an env.
-- Targeted tests are not full MVP acceptance.
-- DB-capable validation reports must account for skipped tests.
-- Any change to credit/payment/ledger semantics can cause accounting regressions and requires CTO review.
-
-## Next Actions / 下一步
-
-1. Use Claude Code for the small frontend Sprint A task:
-   - Target: `frontend/src/pages/finance/FinancePage.tsx`
-   - Scope: receivables dashboard usability
-   - No dependency install
-   - No backend semantics change
-   - No commit/push
-
-2. Codex CTO reviews Claude diff:
-   - Check file scope.
-   - Check business semantics.
-   - Run build/lint/targeted tests.
-   - Add missing ledger polish if needed.
-
-3. If local checks pass:
-   - Commit only intended files.
-   - Push feature branch only with approval.
-   - Trigger Leo DB-capable validation if backend/API contracts are touched or if promotion evidence is required.
-
-4. After Sprint A:
-   - Update this file.
-   - Update `PROJECT.md` if baseline, branch ownership, accepted scope, or next task changes.
-   - Keep detailed evidence in `ai-ledger/`.
+**Canonical product branch:** `origin/product-dev-recovered`
+**Canonical product commit:** `6d81b4012c136a4655f8aa162fe15ed8854626b7`
+**Current migration head:** `036_retailer_mvp_identity`
+**Current delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
+
+This is the short, current operating picture for every Mpango agent. Read
+`docs/ai/PROJECT.md` for the full project status and roadmap. Use `ai-ledger/`
+only for detailed evidence.
+
+本文件只记录当前态势、当前任务和停止条件。它不是完整历史，也不能替代 PRD、决策记录或
+详细测试报告。
+
+## Current Truth / 当前事实
+
+- `origin/product-dev-recovered` is the only active product baseline.
+- `origin/main` remains unchanged at
+  `134ea59e02204842e55ebe36f721f44df5a33737`.
+- `origin/platform-dev` remains unchanged at
+  `12c5ee557876498240b1a36cc850d030d7bd8293`.
+- The Windows default workspace is dirty and must not be used for controlled
+  implementation, validation, migration rehearsal, or protected-branch merge.
+- All new work starts from a fetched, clean, isolated worktree.
+- The primary customer is the wholesaler. Retailer functionality exists to make
+  each wholesaler's private sales channel easier to use; Mpango is not a
+  cross-supplier price-comparison marketplace.
+
+## What Is Closed / 已闭环
+
+### Product and financial foundation
+
+- Tenant isolation remains schema-per-tenant and JWT-derived.
+- Payment methods are restricted to `cash`, `transfer`, and `credit`.
+- Payment replay, idempotency, duplicate-transfer, partial-payment, ledger, and
+  receivable underflow boundaries are covered by regression tests.
+- Receivable collection semantics and database constraints are represented by
+  migration `035_receivable_collection_integrity`.
+- Legacy order-status enum reconciliation, finance scoping, export worker tenant
+  context, malformed platform UUID handling, and public error sanitization have
+  been merged.
+
+### Credential and customer-entry foundation
+
+- Customer credential email links are absolute, fragment-based, and reject
+  query-string token delivery in product code.
+- Retailer S1 identity, invitation, credential setup/reset, authoritative
+  `tenant_user_id` mapping, retailer-owned verified email, finite invitation
+  lifecycle, and `retailer_operator` permission foundation are merged through
+  migration `036_retailer_mvp_identity`.
+- Verification-token terminal states now reject used, revoked, expired,
+  deleted, or otherwise terminal tokens before dependent orchestration.
+- Rate-limit exceptions are converted only at the intended 429 boundary and do
+  not mask unrelated application exceptions.
+
+### Deterministic validation
+
+The final independent full backend gate for candidate `d44abae5` ran twice on
+independent fresh PostgreSQL 16 and Redis 7 environments:
+
+| Metric | Run A | Run B |
+|---|---:|---:|
+| Collected | 2949 | 2949 |
+| Passed | 2886 | 2886 |
+| Skipped | 48 | 48 |
+| XFailed | 15 | 15 |
+| Failed | 0 | 0 |
+| Errors | 0 | 0 |
+| Exit code | 0 | 0 |
+
+The reviewed candidate was merged as
+`6d81b4012c136a4655f8aa162fe15ed8854626b7`.
+
+## What Is Not Closed / 未闭环
+
+- Retailer S1 is a foundation, not the complete retailer journey.
+- Supplier-scoped retailer login and supplier-private workspace selection are
+  not implemented. This is the DC-12R1-S2 boundary.
+- Retailer catalog, order, payment, and relationship-scoped finance UX are not
+  yet proven as one real browser journey. This is DC-12R1-S3/S4 work.
+- The latest product baseline is not proven deployed on a customer-facing HTTPS
+  environment.
+- The Tencent mainland VPS is retained for development, validation, or disaster
+  recovery. It is not the intended customer-facing Kenyan MVP origin.
+- Real mailbox signup, verification, setup, reset, login, order, payment, and
+  finance closure has not been rerun against `6d81b401`.
+- Platform operator schema foundation exists, but dedicated platform operator
+  login/JWT/guard/frontend lifecycle is not yet merged as a complete runtime
+  capability.
+- Formal human-plus-AI database operations, restore policy, monitoring,
+  retention, and incident runbooks are not yet a complete delivery package.
+- Tenant legal identity, logo/branding onboarding, current user manuals, and
+  pilot support procedures remain incomplete.
+
+## Active Phase / 当前阶段
+
+**Next product slice:** DC-12R1-S2 supplier-scoped retailer authentication and
+private wholesaler portal boundary.
+
+S2 must preserve these rules:
+
+- A retailer signs in through one wholesaler's portal context.
+- The issued token contains one wholesaler context only.
+- No `available_tenants` or cross-supplier workspace picker is returned.
+- No supplier name, price, catalog, order, payment, or balance from another
+  relationship is exposed.
+- Authentication resolves the retailer through
+  `token.user_id -> binding.tenant_user_id -> retailer_id`, never by email after
+  authentication.
+- Inactive or suspended bindings fail closed without disabling the same
+  retailer's independent relationship with another wholesaler.
+- Existing wholesaler owner login behavior must not change.
+
+## Ordered Delivery Plan / 下一步顺序
+
+1. **DC-12R1-S2:** supplier-scoped retailer login and authorization boundary.
+2. **DC-12R1-S3:** relationship-scoped retailer catalog/order/payment/finance
+   UX, with no comparison marketplace behavior.
+3. **DC-12R1-S4:** fresh-database, cross-environment, HTTPS, real-mailbox and
+   real-browser end-to-end closure.
+4. **DB-OPS foundation:** operator access, backup/restore drills, monitoring,
+   retention, incident response, and safe AI-agent procedures.
+5. **Tenant identity and branding:** legal/business profile, logo, dual-brand
+   entry, controlled onboarding review, and tenant configuration UX.
+6. **User enablement:** wholesaler manual, retailer manual, platform operator
+   runbook, pilot checklist, and support escalation guide.
+7. **AI-native layer:** begin only after reliable operational data, permissions,
+   approvals, audit, and rollback boundaries are proven.
+
+## Current Release Gates / 当前交付门禁
+
+No customer delivery verdict may be issued until all are true:
+
+- Latest product SHA is deployed to the intended non-mainland HTTPS origin.
+- Alembic reaches sole head `036_retailer_mvp_identity`.
+- Fresh wholesaler signup and credential lifecycle work through a real mailbox.
+- Invited retailer setup, supplier-scoped login, catalog, order, payment, and
+  finance journeys pass in browser.
+- Cross-wholesaler negative reads and writes are rejected.
+- Finance, payment, ledger, and receivable invariants remain green.
+- Backup and restore evidence exists for the target environment.
+- Runtime logs and public responses contain no tokens, credentials, database
+  URLs, stack traces, or raw internal exceptions.
+- User-facing manuals and operator runbooks match the deployed behavior.
+
+## Agent Assignment / 角色分工
+
+- **Codex CTO:** scope, contracts, impact analysis, merge decision, project-state
+  truth, and final delivery verdict.
+- **Product implementation agent:** bounded S2/S3 code slices on isolated
+  branches; no protected push.
+- **Lubuntu Codex/Leo:** independent PostgreSQL 16/Redis 7 full gates,
+  cross-environment and browser validation.
+- **OPS agent:** deployment, backup, restore, runtime logs, health, DNS/TLS, and
+  reversible operational procedures.
+- **Human owner:** credentials, mailbox access, DNS/domain decisions, legal and
+  business data, and final production authorization.
+
+## Stop Conditions / 停止条件
+
+Stop and report to the CTO when:
+
+- the fetched product baseline differs from the assigned SHA;
+- a task changes tenant isolation, finance semantics, migrations, platform auth,
+  or protected refs outside its approved scope;
+- any unexplained HTTP 500, cross-tenant result, financial invariant failure, or
+  secret exposure occurs;
+- tests pass only through skip, xfail, deselection, assertion weakening, schema
+  repair inside a read-only gate, or environment reuse;
+- an agent cannot prove worktree, branch, changed files, test results, and
+  cleanup.
 
 ## Update Protocol / 更新规则
 
-Update this file when any of these change:
-
-- Current product baseline commit.
-- Active sprint branch or worktree.
-- Agent role assignment.
-- Dependency reuse path.
-- Validation gate results.
-- Current blockers or next actions.
-- Any rule needed to prevent repeated AI failure.
-
-Keep this file concise. If a detail becomes long, move it to `PROJECT.md`, `PROJECT_MEMORY.md`, or `ai-ledger/`, then link to it here.
+Update this file after every meaningful merge, release gate, deployment,
+blocker, or phase transition. Keep it short and current. Move durable strategy
+to `PROJECT_MEMORY.md`, full status and roadmap to `PROJECT.md`, and detailed
+evidence to `ai-ledger/`.

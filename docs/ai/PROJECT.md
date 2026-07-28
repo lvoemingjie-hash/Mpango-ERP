@@ -1,309 +1,371 @@
-# Project Log / 项目快速交接说明
+# Mpango ERP Project Status / 项目情况
+
+**Last updated:** 2026-07-28
+**Status owner:** CTO
+**Current product branch:** `origin/product-dev-recovered`
+**Current product commit:** `6d81b4012c136a4655f8aa162fe15ed8854626b7`
+**Current database head:** `036_retailer_mvp_identity`
+**Overall verdict:** Stable engineering foundation; pre-pilot, not yet
+customer-delivery complete
+
+This file is the continuously maintained project-wide source of truth for
+current status, accepted capabilities, delivery blockers, and next work.
+
+本文件用于回答四个问题：
+
+1. Mpango 现在已经完成了什么？
+2. 哪些能力仍然不能对客户宣称已交付？
+3. 当前最大的产品和运维风险是什么？
+4. 下一步按什么顺序推进？
+
+Detailed execution evidence stays in `ai-ledger/`. Durable product philosophy
+stays in `docs/ai/PROJECT_MEMORY.md` and `decision-register/`.
+
+## 1. Executive Summary / 项目总览
+
+Mpango has moved beyond a prototype, but it is still in the pre-pilot hardening
+stage. The core wholesaler ERP, financial integrity, tenant isolation,
+credential lifecycle, test infrastructure, and the first retailer identity
+foundation are materially stronger than the May baseline reflected in the old
+project documents.
+
+The product is not yet ready for an honest customer-delivery verdict because
+the complete retailer browser journey, latest-SHA HTTPS deployment, real mailbox
+credential lifecycle, formal database operations, tenant branding, and current
+user documentation are not all closed.
+
+当前可以准确描述为：
+
+- 核心 ERP 与财务地基已经基本稳定。
+- 零售商身份与凭据地基已经合并，但零售商完整使用闭环尚未完成。
+- 测试体系已经能够在两个独立新数据库上获得确定性全绿。
+- 当前最新代码尚未在目标海外 HTTPS 环境完成真实用户交付门禁。
+- 平台运维能力有较多基础，但专用平台操作员运行时生命周期和正式 DB-OPS
+  体系仍需补齐。
+
+## 2. Product Position / 产品定位
+
+### Primary value owner
+
+The wholesaler is the primary customer and future payer. Mpango helps a
+wholesaler run orders, inventory, payments, receivables, reporting, staff
+permissions, and a private downstream retailer channel.
+
+### Retailer role
+
+The retailer is an invited operational participant, not the primary product
+owner. Retailer UX should reduce ordering friction and improve wholesaler
+throughput and retention. Mpango must not become a retailer-facing
+cross-supplier price-comparison marketplace.
+
+A retailer may have independent relationships with multiple wholesalers, but:
+
+- each wholesaler's catalog, negotiated price, order, payment, receivable, and
+  operational data remains private to that relationship;
+- one wholesaler cannot read another wholesaler's data;
+- a retailer uses a supplier-scoped portal context rather than receiving a
+  system-generated cross-supplier comparison screen;
+- Mpango cannot prevent a human from manually sharing information they already
+  know, but it must not aggregate or expose that information on their behalf.
+
+The accepted positioning decision is recorded in
+`decision-register/2026-07-23_wholesaler-private-channel-positioning.md`.
+
+### Platform operator role
+
+Platform operators maintain service health, tenant lifecycle, support,
+backups, restores, incidents, and controlled platform operations. They are not
+ordinary tenant users and must not use tenant-local `super_admin` as a
+substitute for a dedicated platform identity.
+
+There is currently no subscription or automated billing product. Early pilot
+customers will be onboarded and supported manually by Mpango operators.
+
+## 3. Current Branch and Environment Map / 分支与环境
+
+| Item | Current truth |
+|---|---|
+| Product baseline | `origin/product-dev-recovered@6d81b401` |
+| Main | `origin/main@134ea59e`, not promoted |
+| Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
+| Alembic head | `036_retailer_mvp_identity` |
+| Windows default workspace | Dirty; read-only for controlled work |
+| Controlled development | Clean isolated worktrees only |
+| Tencent mainland VPS | Development, validation, or disaster-recovery role |
+| Customer MVP hosting | Non-mainland HTTPS environment still to be provisioned and closed |
+
+The currently deployed VPS SHA must be verified before every runtime task. Do
+not infer deployment state from the product branch. A merged SHA is not a
+deployed SHA.
+
+## 4. Capability Status / 能力状态
+
+| Area | Status | Current truth |
+|---|---|---|
+| Tenant isolation | Strong foundation | Schema-per-tenant, validated identifiers and tenant-context guards; cross-tenant negatives remain mandatory |
+| Wholesaler authentication | Implemented and hardened | Login, tenant selection, owner setup/reset and terminal token handling exist |
+| Credential email links | Source complete, runtime pending | Absolute fragment links and query rejection merged; latest-SHA real HTTPS/mailbox closure pending |
+| Users and RBAC | Implemented | Tenant roles and permissions exist; retailer permissions are separated as `client:*` |
+| Orders | Implemented and regression-covered | State, payment and ledger paths hardened; browser pilot still required |
+| Payments | Financially hardened | Canonical methods, idempotency, replay, duplicate transfer, partial payment and ledger invariants covered |
+| Receivables and finance | Financially hardened | Collection semantics, scope and non-negative exposure protected by migration `035` and regressions |
+| Inventory and catalog | Core wholesaler capability present | Retailer supplier-scoped presentation remains part of S3 |
+| Exports | Implemented and hardened | Worker tenant context and sanitized error boundaries merged |
+| Reporting | Implemented | Test contracts now use supported provisioning paths; customer runtime evidence still belongs to deployment gates |
+| Retailer identity S1 | Merged | Authoritative mapping, invitation lifecycle, setup/reset, verified email and role foundation in migration `036` |
+| Retailer private login S2 | Not started in product code | Supplier-scoped login and single-context token remain the next slice |
+| Retailer portal S3 | Incomplete | Catalog/order/payment/finance browser UX and relationship-scoped navigation remain |
+| Retailer end-to-end S4 | Not closed | Fresh invitation through real browser and mailbox has not passed on latest deployed SHA |
+| Platform operator schema | Foundation merged | Migration `034` tables exist |
+| Platform operator runtime | Incomplete | Dedicated login/JWT/guard/frontend lifecycle is not yet a merged end-to-end capability |
+| DB operations | Partial evidence, incomplete operating system | Backups, disposable restore proofs and incident work exist; unified policy/runbooks/monitoring/access model remain |
+| Tenant branding | Not implemented | Legal profile, business license review, logo, dual branding and configuration UX remain |
+| User manuals | Outdated/incomplete | Wholesaler, retailer and operator manuals must be regenerated from deployed behavior |
+| AI-native operations | Planned | Must build on governed data, permissions, approval, audit, rollback and operator trust |
+
+## 5. Accepted Engineering Milestones / 已接受里程碑
+
+### DC-10 financial and boundary hardening
+
+- Export worker tenant context restoration.
+- Canonical payment-method integrity across API, frontend, database migration,
+  and fresh-tenant bootstrap.
+- Platform malformed UUID handling and export error sanitization.
+- Finance receivable scoping and legacy order-status enum reconciliation.
+
+### DC-11 delivery and test foundation
+
+- Payment replay and concurrency integrity.
+- Receivable collection integrity in migration `035`.
+- Reporting/bootstrap test-contract repair.
+- Tenant-schema teardown safety.
+- Deterministic test-infrastructure and full-gate reconciliation.
+- Platform operator schema foundation in migration `034`.
+
+### DC-12 product positioning and customer entry
+
+- Wholesaler-private-channel product positioning recorded.
+- Absolute, fragment-based credential email links and query-token rejection.
+- Retailer identity, invitation, credential and permission foundation in
+  migration `036`.
+- Rate-limit 429 exception boundary hardening.
+- Verification-token terminal-state hardening.
+- Portable U6I1 schema/security contract without runtime Git-history
+  dependency.
+
+## 6. Latest Validation Snapshot / 最新验证
+
+The authoritative independent full backend gate for the H1/R2-R1 candidate ran
+twice on separate fresh PostgreSQL 16 and Redis 7 environments:
+
+| Metric | Run A | Run B |
+|---|---:|---:|
+| Collected | 2949 | 2949 |
+| Passed | 2886 | 2886 |
+| Skipped | 48 | 48 |
+| XFailed | 15 | 15 |
+| Failed | 0 | 0 |
+| Errors | 0 | 0 |
+| Exit code | 0 | 0 |
+
+Evidence branch:
+`reports/dc12r1-s1-h1-r2-r1-v2-independent-full-gate-2026-07-28`
+at `843d7a6e275b15ab342ceecf8615e4cfaadfa1bf`.
+
+The candidate was merged into the product baseline as:
+
+`6d81b4012c136a4655f8aa162fe15ed8854626b7`
+
+This proves deterministic backend integrity for that source tree. It does not
+prove that the latest source is deployed, that a customer can complete the
+journey over HTTPS, or that production operations are complete.
+
+## 7. Current Delivery Blockers / 当前交付阻塞
+
+### P1 product journey blockers
+
+1. Supplier-scoped retailer login is not implemented.
+2. Retailer catalog, order, payment and finance UX is not closed as one
+   relationship-scoped browser journey.
+3. No latest-SHA real-mailbox invitation/setup/reset/login proof exists.
+4. No latest-SHA customer-facing HTTPS deployment and browser closure exists.
+
+### P1 operational blockers
+
+1. The intended non-mainland MVP environment, DNS and TLS termination are not
+   yet the canonical customer deployment.
+2. Database backup, restore, retention, monitoring, operator access and
+   incident procedures are not yet one approved DB-OPS operating package.
+3. Dedicated platform operator identity and credential lifecycle is not yet
+   wired end to end.
+4. Current operator and customer manuals do not yet match the final deployed
+   behavior.
+
+### Important but later
+
+- Subscription and billing automation.
+- Multi-warehouse expansion.
+- Retailer staff sub-roles such as buyer, inventory clerk and finance
+  reconciler.
+- Full tenant branding automation and self-service configuration.
+- AI-native conversational actions.
+
+These are valuable, but they must not displace the secure MVP business loop.
+
+## 8. Ordered Work Plan / 下一步工作计划
+
+### Stage 1: Complete the retailer MVP loop
+
+#### DC-12R1-S2 - supplier-scoped retailer authentication
 
-**Last updated:** 2026-05-13
-**Current product baseline:** `origin/product-dev-recovered` at `030e96449ea9e09559fb777cfb62b8d66a08d92a`
-**Promotion status:** Product/platform integration promoted and pushed to `origin/product-dev-recovered`
-**Main branch:** `origin/main` remains unchanged at `02d69c00e7aeefdc788a0335a09a6f735b85f07b`
+Deliver:
+
+- portal/wholesaler context resolution;
+- retailer login that checks only the selected wholesaler schema;
+- one context token with no `available_tenants`;
+- exact binding and `retailer_operator` checks;
+- neutral failure behavior with no supplier disclosure;
+- owner-login regression protection.
 
-This file is the fast handoff document for new AI threads and newly activated agents.
+Exit criteria:
 
-本文件是新对话、新 AI Agent、新工作线程的快速交接文档。它不是完整审计日志，也不能替代
-`ai-ledger/`；它的作用是让 Agent 在几分钟内了解项目当前真实状态、不能触碰的边界、下一步
-应该做什么。
-
-## How To Use / 使用方式
-
-Read this after:
-
-1. `docs/ai/README.md`
-2. `docs/ai/CTO_COCKPIT.md`
-3. `docs/ai/CTO_CONTEXT.md`
-
-Then use this file to orient yourself before opening detailed ledgers or code.
-
-阅读顺序：先读 AI 启动入口和 CTO 上下文，再读本文件。只有当本文件无法回答具体细节时，
-再进入 `ai-ledger/` 查完整过程证据。
-
-## Document Roles / 文档分工
-
-- `docs/ai/PROJECT.md`
-  Current project status, active branches, accepted slices, blockers, and next moves.
-- `docs/ai/PROJECT_MEMORY.md`
-  Durable strategic truth, long-lived decisions, product philosophy.
-- `docs/ai/AI_TEAM_OPERATING_RULES.md`
-  AI team operating discipline, CTO instruction compliance, and reporting requirements.
-- `ai-ledger/`
-  Detailed implementation/session audit trail.
-- `AI_REPORT/`
-  Manually collected reports from external or remote agents, especially Lubuntu/Vibecoder.
-
-## Current Strategic Frame / 当前战略框架
-
-- Product first, platform second.
-- Primary customer is the wholesaler.
-- Retailer workflows exist to improve wholesaler throughput and retention.
-- Platform work must support the ERP product line and must not force architecture drift.
-- `schema-per-tenant` remains the primary tenancy model.
-- AI agents must preserve evidence quality: claims require commands, hashes, test output, and branch state.
-
-中文说明：
-
-- 产品线优先，平台线服务产品线。
-- 核心客户是批发商，零售商端能力是为了提升批发商成交、复购和履约效率。
-- 平台层不是另起炉灶，而是在不破坏现有 ERP 架构的基础上增加 SaaS 管控能力。
-- 租户隔离继续采用 `schema-per-tenant`，不得擅自改成共享表或新租户模型。
-- AI 团队必须用证据说话：分支、commit hash、测试结果、环境前提都要写清楚。
-
-## Current Branch Map / 当前分支地图
-
-- `origin/product-dev-recovered`
-  当前产品主基线。已完成产品线恢复、平台 P0 集成、Gate 6B/6C 验证、最终晋升和项目交接文档同步。
-  当前 HEAD: `030e96449ea9e09559fb777cfb62b8d66a08d92a`.
-- `origin/ops/integration-rehearsal-clean-2026-05-08`
-  集成彩排候选分支，当前 HEAD: `803634b9b46cdb454c25e89e28170e658601c9de`. 已被合入
-  `product-dev-recovered`，保留作审计和回溯。
-- `origin/platform-dev`
-  平台线历史/并行分支。其已验证平台 P0 基座已经通过 promotion 进入 `product-dev-recovered`。
-  后续平台开发必须先从最新 `product-dev-recovered` 对齐，避免再次形成“两张皮”。
-- `origin/main`
-  尚未晋升，保持不变。不要在未获 CTO 明确批准时推送或合并到 `main`。
-- `product-dev-backup`
-  历史备份分支。保留作恢复参考，不作为活跃开发主线。
-
-## Promotion Summary / 2026-05-13 晋升结论
-
-The product/platform integration is now promoted to `origin/product-dev-recovered` via:
-
-`2e8e506 merge: promote platform integration into product-dev-recovered`
-
-Key evidence:
-
-- Gate 6B DB-capable targeted tests:
-  `127 passed, 1 xfailed, 0 failed, 0 errors`.
-- Gate 6C clean migration path:
-  `alembic upgrade head` from clean DB succeeded through migration `021`.
-- Lubuntu Stage 4D-R anti-gaming evidence:
-  `40 passed, 0 failed, 0 skipped, 0 deselected` for schema contract tests at commit `803634b`.
-- Merge into `product-dev-recovered` had no conflicts.
-- `origin/main` was not changed.
-
-中文结论：
-
-- 双线合并已经完成一次关键闭环。平台线 P0 基座已经不再只是“平台分支上的成果”，而是进入了
-  当前产品基线 `product-dev-recovered`。
-- 这次合并验证了平台层基础设施可以与产品线共存，不再属于“理论上可合并”。
-- 仍然不能把这理解为可以随意双线并行。未来双线开发必须更严格：开工前 fetch，对齐文档，
-  明确写范围，避免多个 AI 修改同一片代码。
-
-## Product Line Status / 产品线现状
-
-Accepted before recovery:
-
-- Phase 3 pricing MVP accepted.
-- Phase 4 pricing-safe wholesaler order creation accepted.
-
-Recovered and promoted state:
-
-- Phase 5 order/payment loop recovered.
-- Auth regressions repaired:
-  `select-tenant` and identity-only `/auth/me` restored.
-- Payment runtime repaired:
-  nested transaction conflict removed from payment creation path.
-- Tenant schema lifecycle repaired:
-  `bootstrap_tenant_schema.py` now reconciles payments, reporting views/materialized views, and
-  `retailer_prices`.
-- Schema contract guard added:
-  `backend/tests/test_payments_schema_contract.py`.
-- Pricing and payment targeted suites passed in DB-capable promotion gate.
-
-中文说明：
-
-- 订单、支付、定价主链已经回到可继续推进的状态。
-- `retailer_prices` 缺失问题已经被修复并加了 schema-contract 防线。
-- 新租户 bootstrap 现在会补齐 `payments`、reporting、`retailer_prices` 等关键结构，降低“迁移跑过但新租户缺表”的风险。
-- 目前产品线下一步不是继续救火，而是进入更有纪律的 MVP 功能推进。
-
-## Platform Line Status / 平台线现状
-
-Platform P0 baseline has been integrated into `product-dev-recovered`.
-
-Accepted platform capabilities now included in the product baseline:
-
-- platform routing scaffold
-- platform tenant lifecycle scaffold
-- platform audit log boundary
-- platform operational reporting stats
-- audit time-range filtering and activity summary enhancement
-- platform handoff skill and governance docs
-
-Platform constraints remain:
-
-- No auth rewrite.
-- No tenancy rewrite.
-- No billing engine unless explicitly approved.
-- No tenant-schema migration in platform-only work.
-- Platform tables live in `public` schema with `platform_` prefix.
-- Platform references `wholesalers.id`; it must not duplicate tenant identity.
-
-中文说明：
-
-- 平台线基座已经平稳并入产品基线，但平台线仍然必须保持 proposal-first。
-- 下一阶段平台工作可以继续做只读管控、审计、状态面板等低风险增量。
-- 暂不进入计费系统、订阅系统、租户生命周期写操作，除非 CTO 单独批准。
-
-## Validation Snapshot / 验证快照
-
-Latest reliable validation evidence:
-
-- `2e8e506` final promotion commit pushed to `origin/product-dev-recovered`.
-- `030e964` project handoff document sync pushed after promotion.
-- Gate 6B:
-  - schema contract: `40 passed`
-  - pricing: `34 passed`
-  - payments/order: `53 passed, 1 xfailed`
-- Gate 6C:
-  - clean DB migration `001 -> 021` passed with no `alembic stamp`
-  - targeted tests: `127 passed, 1 xfailed, 0 failed`
-- Lubuntu post-promotion sync:
-  - remote sync confirmed at `2e8e506`
-  - local checkout succeeded
-  - validation limited by Lubuntu DB availability in the final sync report
-
-Known caveat:
-
-- Do not claim full product-wide 100% validation yet.
-- Some environments without PostgreSQL will show skips/errors for live DB tests.
-- Full backend regression is still desirable before any future `main` promotion.
-
-## Current Risks / 当前风险
-
-- Windows main workspace is dirty and must not be used as a promotion execution environment.
-- Temporary promotion worktrees were cleaned after archiving manual evidence, but main workspace still needs a separate sync plan.
-- Full backend regression has not yet been declared universally green across every environment.
-- Known `xfailed` test remains in the payment/order suite; do not report it as normal pass.
-- Deployment prerequisites must be respected:
-  - `database/init.sql`
-  - `PYTHONIOENCODING=utf-8` on Windows
-  - `REPORTING_USER_PASSWORD`
-  - reachable PostgreSQL/Redis for live DB tests
-
-中文说明：
-
-- 当前最大工程风险不是 `retailer_prices`，而是工作区治理和环境一致性。
-- Windows 主工作区仍然很脏，不允许直接切换或重置。
-- 后续任何正式合并都必须继续使用 clean worktree。
-- 测试报告必须区分：通过、跳过、预期失败、环境失败，不能把环境失败包装成通过。
-
-## AI Team Operating Discipline / AI 团队纪律
-
-All agents must:
-
-- Fetch and verify remote state before starting.
-- Read `docs/ai/PROJECT.md` before implementation.
-- Preserve branch boundaries.
-- Use clean worktrees for risky merge/promotion work.
-- Never push without explicit CTO approval.
-- Never use `git reset --hard` without explicit human approval.
-- Never hide skips, xfails, or environment errors.
-- Report exact commit hashes, branch names, and test counts.
-- Add CTO Instruction Compliance Check before requesting review.
-
-中文说明：
-
-- 不允许“感觉完成”。必须证明完成。
-- 不允许“为了通过而跳过测试”。
-- 不允许在脏工作区做晋升、合并、清理。
-- 不允许多个 AI 在不同机器上各自维护一套不同的项目文档。
-- 阶段性成果必须更新项目说明文档，并确保远程可见。
-
-## Future Plan / 未来规划
-
-### Near-term product plan
-
-1. Stabilize the promoted `product-dev-recovered` baseline across machines.
-2. Sync Windows and Lubuntu to the promoted baseline.
-3. Resolve Windows main workspace governance separately, without destructive cleanup.
-4. Resume Phase 6 credit payment MVP with the minimal safe accounting model:
-   - full-credit sale only
-   - no split tender
-   - no partial credit
-   - clean order only
-   - outstanding balance increases correctly
-   - order lifecycle closes safely
-
-### Near-term platform plan
-
-1. Continue only proposal-first slices.
-2. Prefer read-only platform capabilities before write workflows.
-3. Keep platform governance docs and handoff skill aligned with `product-dev-recovered`.
-4. Do not start billing/subscription/quota enforcement without CTO approval.
-
-### Validation and harness plan
-
-1. Keep schema-contract tests as a permanent guardrail.
-2. Add DB-capable nightly validation once the Lubuntu/remote environment is stable.
-3. Add Playwright/E2E only after backend baseline is stable.
-4. Treat skips and xfails as tracked engineering debt, not invisible success.
-5. Before any future promotion to `main`, run:
-   - targeted gate tests
-   - clean migration path validation
-   - DB-capable full or critical regression
-   - anti-gaming evidence for any surprising pass
-
-## Next Expected Action / 下一步安排
-
-Immediate next actions:
-
-1. Sync all active agents to `origin/product-dev-recovered@030e964`.
-2. Do not use the dirty Windows main workspace for new development until its state is reviewed.
-3. Start new product work from a clean branch/worktree based on `origin/product-dev-recovered`.
-4. If continuing product MVP, next feature is Phase 6 credit payment minimal safe model.
-5. If continuing platform work, next slice must start with a proposal and boundary check.
-
-Recommended branch/worktree rule:
-
-- New product work:
-  branch from `origin/product-dev-recovered`.
-- New platform work:
-  branch from `origin/product-dev-recovered` unless CTO explicitly asks to resume `platform-dev`.
-- Validation/promotion work:
-  always use a clean temporary worktree.
-
-## Current Non-Negotiables / 当前红线
-
-- Do not change `schema-per-tenant`.
-- Do not push to `main` without CTO approval.
-- Do not delete historical backup branches without explicit human approval.
-- Do not treat skipped live DB tests as passed.
-- Do not report route-level or live validation unless the tests actually ran.
-- Do not use dirty worktrees for merge/promotion.
-- Do not allow platform work to force product architecture drift.
-- Do not start billing or subscription engines without explicit approval.
-- Do not let `PROJECT.md` drift behind the actual accepted branch/blocker state.
-
-## What A New Agent Should Preserve / 新 Agent 必须继承什么
-
-- `product-dev-recovered@030e964` is the current accepted product baseline.
-- Platform P0 has been integrated into the product baseline.
-- `main` is not yet the active promoted branch.
-- The wholesaler-first product hierarchy remains the guiding product truth.
-- Phase 3 pricing and Phase 4 pricing-safe order creation remain accepted baselines.
-- Phase 5 order/payment recovery is complete enough to continue MVP work.
-- Phase 6 credit payment must start with the minimal safe model, not a full accounting redesign.
-- Clean worktree discipline is mandatory.
-- Live DB test evidence must not be faked by skip/deselect.
-
-## Update Rule / 更新规则
-
-Update this file when any of the following changes:
-
-- active branch strategy
-- accepted phase/slice status
-- current blocker list
-- project-wide next action
-- promotion status
-- cross-machine sync state
-- AI team operating discipline
-
-Keep entries concise.
-Do not turn this into a raw transcript or a duplicate of `ai-ledger/`.
+- retailer R with relationships A and B can log into A without seeing B;
+- suspended A relationship does not disable B;
+- retailer tokens cannot use generic wholesaler or platform routes;
+- cross-supplier negative tests pass.
+
+#### DC-12R1-S3 - relationship-scoped retailer workspace
+
+Deliver:
+
+- supplier-branded catalog browsing;
+- order creation and history;
+- payment recording/history appropriate to the relationship;
+- server-authoritative balance and finance visibility;
+- no cross-supplier comparison dashboard.
+
+Exit criteria:
+
+- every read/write is derived from the current binding and tenant context;
+- all price, order, payment and balance cross-tenant probes fail;
+- mobile and desktop browser journeys pass.
+
+#### DC-12R1-S4 - end-to-end delivery closure
+
+Deliver:
+
+- fresh PostgreSQL/Redis and migration `001 -> 036`;
+- real invitation email, fragment setup link and password creation;
+- supplier-scoped login, catalog, order, payment and finance journey;
+- reset-password replay and terminal-token negatives;
+- two-wholesaler isolation matrix;
+- sanitized logs and public responses.
+
+### Stage 2: Establish human-plus-AI DB operations
+
+Deliver:
+
+- named human and AI-agent responsibility matrix;
+- least-privilege production access and break-glass process;
+- encrypted backup policy and retention schedule;
+- restore drill and recovery-time/recovery-point targets;
+- migration preflight, maintenance mode and rollback decision tree;
+- database health, storage, replication/backup-age and error monitoring;
+- incident ledger, audit evidence and secret-handling rules;
+- explicit prohibition on direct business-data edits outside approved,
+  replayable artifacts.
+
+Exit criteria:
+
+- a new operator can follow the runbook without hidden chat context;
+- backup restore succeeds in a disposable environment;
+- production change is reversible or has an approved forward-fix plan;
+- every AI action is bounded, reviewed and auditable.
+
+### Stage 3: Tenant identity, branding and onboarding UX
+
+Deliver:
+
+- legal/business name, registration/license data and contact profile;
+- logo and brand assets with validation and safe storage;
+- Mpango plus tenant dual-brand entry experience;
+- operator review/approval for early pilots;
+- tenant configuration and controlled asset replacement;
+- wholesaler, retailer and operator manuals generated from final behavior.
+
+MVP boundary:
+
+- manual operator review is acceptable for the first one or two wholesalers;
+- subscription billing and fully automated KYC are not required for the pilot;
+- branding must not weaken security headers, tenant routing or cache isolation.
+
+### Stage 4: Non-mainland pilot deployment
+
+Deliver:
+
+- region selected for Kenyan latency, reliability, support and legal fit;
+- customer domain, DNS, TLS, backups, monitoring and alert ownership;
+- exact-SHA deployment and rollback proof;
+- one or two controlled wholesaler pilots with named support contacts;
+- feedback loop for UX, documentation and operational defects.
+
+### Stage 5: AI-native operating layer
+
+Start only after the operational foundation produces trustworthy events and
+permissions.
+
+Initial direction:
+
+- conversational read-only assistance;
+- guided data entry and workflow suggestions;
+- anomaly summaries and operator recommendations;
+- approval-required actions through typed, audited tools;
+- no unrestricted SQL, shell, payment mutation or tenant impersonation.
+
+AI-native value should come from reliable ERP context and safe action
+boundaries, not from placing a chatbot over unstable foundations.
+
+## 9. Role and Ownership Model / 角色责任
+
+| Role | Responsibility |
+|---|---|
+| CTO/Codex | Architecture, scope, risk, contracts, merge, release verdict and project-state truth |
+| Product coding agent | Small S2/S3 implementation slices and exact regression evidence |
+| Independent Lubuntu validator | Fresh DB, full-suite, cross-environment and browser evidence |
+| OPS agent | Deployment, DNS/TLS, backup/restore, monitoring, runtime health and incident evidence |
+| Human owner | Credentials, mailbox, domains, legal/business information and production authorization |
+| Wholesaler pilot owner | Business workflow acceptance and named operational feedback |
+
+No agent's self-reported PASS is sufficient by itself. Product changes require
+source review plus independent evidence appropriate to their risk.
+
+## 10. Non-Negotiables / 当前红线
+
+- No cross-tenant data exposure.
+- No unsupported payment method or hidden financial side effect.
+- No negative receivable exposure represented as valid customer debt.
+- No query-string credential tokens.
+- No silent schema repair inside a read-only validation gate.
+- No dirty-worktree merge or deployment.
+- No hidden skip, xfail, deselection or assertion weakening.
+- No production credential, token, email, database URL or raw exception in
+  reports.
+- No protected push without explicit human approval.
+- No claim that merged code is deployed without exact runtime SHA proof.
+- No claim that a schema foundation is a complete runtime capability.
+
+## 11. Document Maintenance / 文档维护
+
+Update `docs/ai/CTO_CURRENT_OPS.md` after every meaningful active-task change.
+
+Update this file whenever any of these changes:
+
+- product baseline or migration head;
+- accepted feature stage;
+- customer-delivery blocker;
+- deployment role or target environment;
+- ordered project roadmap;
+- major product positioning or trust decision.
+
+Do not append raw transcripts. Replace stale status with current facts and link
+to the evidence. Historical command output belongs in `ai-ledger/`, not here.

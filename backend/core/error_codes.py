@@ -166,41 +166,172 @@ async def mpango_exception_handler(request: Request, exc: MpangoAPIException) ->
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    """
-    S2-6: Handler for FastAPI HTTPException.
+    """DC-12R1-H2: Handler for FastAPI HTTPException.
 
-    Converts standard HTTP exceptions to error response format.
+    Serializes EVERY HTTPException into the standard flat envelope
+    ``{code, message, request_id}`` — never a Python ``str(dict)`` repr
+    leaking into the ``message`` field.
+
+    Detail handling:
+    - **dict detail**: a non-empty string ``code`` is preserved (falling back
+      to the status-derived code); only a string ``message`` is preserved;
+      an explicitly-public, JSON-safe ``details`` mapping is optionally
+      preserved. The complete dict is NEVER stringified.
+    - **string detail**: the message is preserved verbatim; the code is
+      derived from the status mapping (existing behaviour).
+    - **malformed/non-string detail** (list, int, None, object): a fixed
+      sanitized fallback message is used; the raw value is never surfaced.
     """
     request_id = getattr(request.state, 'request_id', None)
 
-    # Map status code to error code
+    # Map status code to the default error code.
     error_code = STATUS_CODE_TO_ERROR_CODE.get(
         exc.status_code,
         ErrorCode.INTERNAL_SERVER_ERROR
     )
 
-    # Extract message from detail
-    message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    message: str
+    details: Optional[Dict[str, Any]] = None
+    detail = exc.detail
+    # The public code to emit. Defaults to the status-derived ErrorCode; may be
+    # overridden by a non-empty string code in a dict detail.
+    public_code: str = error_code.value
 
+    if isinstance(detail, str):
+        # Plain string detail: preserve verbatim (backward compatible).
+        message = detail
+    elif isinstance(detail, dict):
+        # Structured dict detail (the RBAC/tenant/platform convention).
+        # Preserve a non-empty, identifier-safe string code if supplied.
+        raw_code = detail.get("code")
+        if isinstance(raw_code, str) and raw_code.strip():
+            candidate = raw_code.strip()
+            if _is_safe_code(candidate):
+                public_code = candidate
+        # Preserve ONLY a string message; never stringify the whole dict.
+        raw_message = detail.get("message")
+        message = raw_message if isinstance(raw_message, str) and raw_message else (
+            _status_fallback_message(exc.status_code)
+        )
+        # Optionally preserve an explicitly-public, JSON-safe details mapping.
+        raw_details = detail.get("details")
+        if isinstance(raw_details, dict) and _is_json_safe(raw_details):
+            details = raw_details
+    else:
+        # Malformed detail (list, int, None, object, ...): fail closed to a
+        # sanitized generic message. The raw value is never surfaced.
+        message = _status_fallback_message(exc.status_code)
+
+    # Belt-and-braces: guarantee the message is a plain string with no
+    # serialized structure that could leak internals.
+    if not isinstance(message, str) or not message:
+        message = _status_fallback_message(exc.status_code)
+    message = _sanitize_message(message)
+
+    # Logging: sanitized code + status only. NEVER log the raw detail repr.
     logger.warning(
         f"HTTP Exception: {exc.status_code}",
         extra={
-            "error_code": error_code.value,
+            "error_code": public_code,
             "status_code": exc.status_code,
-            "error_message": message
+            # Intentionally NO raw detail/message here — logs must not carry
+            # a dict repr or request content.
         }
     )
 
+    body = create_error_response(
+        error_code=error_code,
+        message=message,
+        status_code=exc.status_code,
+        request_id=request_id,
+        details=details,
+    )
+    # Apply the (possibly overridden) public code verbatim.
+    body["code"] = public_code
+
     return JSONResponse(
         status_code=exc.status_code,
-        content=create_error_response(
-            error_code=error_code,
-            message=message,
-            status_code=exc.status_code,
-            request_id=request_id
-        ),
+        content=body,
         headers=exc.headers
     )
+
+
+def _is_safe_code(candidate: str) -> bool:
+    """True if *candidate* is an identifier-safe error code string.
+
+    Allows UPPER_SNAKE codes (and simple alphanumerics) so a caller-supplied
+    code passes through, but rejects anything that could smuggle structure
+    (braces, quotes, spaces, repr markers).
+    """
+    if not candidate:
+        return False
+    # UPPER_SNAKE_CASE / alphanumeric only.
+    allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+    return all(c in allowed for c in candidate)
+
+
+def _status_fallback_message(status_code: int) -> str:
+    """Return a fixed, sanitized human message for a status code.
+
+    Used when a detail is malformed/missing so we never surface raw content.
+    """
+    fallbacks = {
+        400: "Invalid request.",
+        401: "Authentication required.",
+        403: "Access denied.",
+        404: "Resource not found.",
+        405: "Method not allowed.",
+        409: "Request conflicts with the current state.",
+        422: "Request validation failed.",
+        429: "Rate limit exceeded. Please try again later.",
+    }
+    return fallbacks.get(status_code, "Request could not be completed.")
+
+
+def _sanitize_message(message: str) -> str:
+    """Ensure a message carries no serialized Python structure.
+
+    A genuine human message never contains a dict/list repr; if one slipped
+    through (e.g. a caller stuffed a non-string into ``message``), replace it
+    with a safe generic rather than leak it.
+    """
+    if "{'" in message or "'}" in message or "['" in message:
+        # Looks like a str(dict)/str(list) repr — refuse to emit it.
+        return "Request could not be completed."
+    return message
+
+
+def _is_json_safe(value: Any) -> bool:
+    """True if *value* is a JSON-safe mapping of primitives (safe to surface).
+
+    Prevents nested objects, callables, bytes, or arbitrary types from being
+    forwarded into a public ``details`` field.
+    """
+    if not isinstance(value, dict):
+        return False
+    for v in value.values():
+        if isinstance(v, (dict, list)):
+            if not _is_json_safe_nested(v):
+                return False
+        elif not isinstance(v, (str, int, float, bool)) and v is not None:
+            return False
+    return True
+
+
+def _is_json_safe_nested(value: Any) -> bool:
+    if isinstance(value, dict):
+        return all(
+            (isinstance(v, (str, int, float, bool)) or v is None
+             or (isinstance(v, (dict, list)) and _is_json_safe_nested(v)))
+            for v in value.values()
+        )
+    if isinstance(value, list):
+        return all(
+            isinstance(v, (str, int, float, bool)) or v is None
+            or (isinstance(v, (dict, list)) and _is_json_safe_nested(v))
+            for v in value
+        )
+    return False
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

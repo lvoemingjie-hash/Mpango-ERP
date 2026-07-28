@@ -1,12 +1,31 @@
-# DC-12R1-S1-H1-R2-R1-V2-R1 Localhost-Mapped Deterministic Full Gate Report
+# DC-12R1-S1-H1-R2-R1-V2 Independent Full Gate Report (R1A Authoritative)
 
 **Date:** 2026-07-28
 **Verifier:** `opencode` (session)
 **Target:** `d44abae5f4cddfbc8d5a1ccee13986f9cf88a8c9`
 **Branch:** `origin/opencode/dc12r1-s1-h1-r2-u6i1-contract-reconciliation-2026-07-28`
 **Base:** `c78101186f1fb4811a886e3e55f96708ea960c0a`
-**Worktree:** `/home/ivy/MPANGO/dc12r1-s1-h1-r2-r1-v2-r1-verify`
+**Worktree:** `/home/ivy/MPANGO/dc12r1-s1-h1-r2-r1-v2-r1-verify` (removed after R1A)
 **Report branch:** `reports/dc12r1-s1-h1-r2-r1-v2-independent-full-gate-2026-07-28`
+
+---
+
+## Authoritative Final Gate
+
+This report contains two iterations. The R1A iteration is the authoritative final gate.
+
+| Iteration | Status |
+|-----------|--------|
+| R1 (diagnostic only, superseded) | Run A: 2885 pass, 1 fail, 0 err, exit=1 / Run B: 2886 pass, 0 fail, 0 err, exit=0 |
+| **R1A (authoritative final gate)** | **Run A: 2949 collected, 2886 pass, 48 skip, 15 xfail, 0 fail, 0 err, exit=0 / Run B: 2949 collected, 2886 pass, 48 skip, 15 xfail, 0 fail, 0 err, exit=0** |
+
+| Criterion | R1A Result |
+|-----------|------------|
+| Gate 14 — Identical totals | **PASS** (both 2949/2886/48/15/0/0) |
+| Gate 15 — Exit=0 + failed=0 + errors=0 | **PASS** (both runs) |
+| Classification | **ALL GATES PASS** |
+
+The R1 Hypothesis flake did not reproduce in either R1A run and is not part of the final gate.
 
 ---
 
@@ -15,9 +34,10 @@
 **All gates pass after R1A rerun with deterministic infrastructure cleanup.
 Both full-suite runs exit=0, failed=0, errors=0, with identical totals.**
 
-The prior R1 STOP was caused by a Hypothesis timing flake in `test_uuid_serialization.py`
-that did not reproduce in the R1A run. All infrastructure red nodes from the original
+All infrastructure red nodes from the original
 V2 Docker-IP runs remain classified as **INVALID_ENVIRONMENT_DIAGNOSTIC only**.
+The R1 UUID Hypothesis flake did not reproduce in either R1A run and is not
+part of the final gate.
 
 ---
 
@@ -34,7 +54,14 @@ V2 Docker-IP runs remain classified as **INVALID_ENVIRONMENT_DIAGNOSTIC only**.
 
 ---
 
-## Run A — Localhost-Mapped
+## Historical Superseded Evidence — Non-authoritative
+
+The following sections document the superseded R1 iteration. These results are
+NOT the final gate. They are preserved for audit completeness only. The R1
+Hypothesis flake (1-test swing in Run A) was a pre-existing non-deterministic
+failure that did not reproduce in either R1A run and is not part of the final gate.
+
+### Run A — Localhost-Mapped (R1, Superseded)
 
 - PG16: `127.0.0.1:55161` (container `dc12r1-s1-h1-r2-r1-v2-r1-a-pg16`)
 - Redis7: `127.0.0.1:32953` (container `dc12r1-s1-h1-r2-r1-v2-r1-a-redis7`)
@@ -71,7 +98,7 @@ Alembic: 36 migrations → sole head `036_retailer_mvp_identity`. ✅
 
 ---
 
-## Run B — Localhost-Mapped (Independent Infrastructure)
+### Run B — Localhost-Mapped (R1, Superseded)
 
 - PG16: `127.0.0.1:36633` (container `dc12r1-s1-h1-r2-r1-v2-r1-b-pg16`)
 - Redis7: `127.0.0.1:58023` (container `dc12r1-s1-h1-r2-r1-v2-r1-b-redis7`)
@@ -98,7 +125,7 @@ All 2886 tests passed. No failures, no errors. This proves the UUID flake is non
 
 ---
 
-## Gate 14 — Identical Run A/B Totals
+### Gate 14 — Identical Run A/B Totals (R1, Superseded — FAIL)
 
 | Metric | Run A | Run B | Match? |
 |--------|-------|-------|--------|
@@ -115,7 +142,7 @@ Totals are deterministic (2949) but status distribution is not.
 
 ---
 
-## Gate 15 — Exit 0 + Failed=0 + Errors=0 for Both Runs
+### Gate 15 — Exit 0 + Failed=0 + Errors=0 for Both Runs (R1, Superseded — FAIL)
 
 | Check | Run A | Run B | Both? |
 |-------|-------|-------|-------|
@@ -127,7 +154,7 @@ Totals are deterministic (2949) but status distribution is not.
 
 ---
 
-## Gate 16 — Red-Node Evidence (No Classification for PASS)
+### Gate 16 — Red-Node Evidence (R1, Superseded)
 
 All red nodes from prior Docker-IP runs are **INVALID_ENVIRONMENT_DIAGNOSTIC** —
 zero carry-forward evidence weight.
@@ -169,7 +196,7 @@ Setup-email retry-anchor confirmed via `test_u6l` suite. **PASS**.
 
 ---
 
-## Gate 20 — Cleanup Proof
+## Gate 20 — Cleanup Proof (R1, Superseded)
 
 | Resource | Status |
 |----------|--------|
@@ -213,7 +240,8 @@ No stray `dc12r1-s1-h1-r2-r1-v2-r1` containers, networks, or volumes remain.
 The **R1A rerun has resolved all gates.** Both full-suite runs on independent
 localhost-mapped infrastructure produced identical results: 2886 passed, 48
 skipped, 15 xfailed, 0 failed, 0 errors, exit code 0. The prior R1 UUID
-Hypothesis flake did not reproduce and is confirmed non-deterministic.
+Hypothesis flake did not reproduce in either R1A run and is not part of the
+final gate.
 
 The **R2-R1 U6I1 contract fix is verified working** — the stale-test-contract
 from the V1 report is fully resolved. The U6I1 test file has no git dependency

@@ -69,3 +69,53 @@ export interface CurrentUserResponse {
   data: CurrentUserData;
   timestamp: string;
 }
+
+// ---------------------------------------------------------------------------
+// DC-12R1-S2: Supplier-scoped retailer login
+// ---------------------------------------------------------------------------
+
+export interface RetailerLoginRequest {
+  email: string;
+  password: string;
+  wholesaler_code: string;
+}
+
+export interface RetailerLoginTokens {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  user_id: string;
+  tenant_id: string;
+  tenant_schema: string;
+  roles: string[];
+}
+
+export interface RetailerLoginUser {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+}
+
+export interface RetailerLoginRetailer {
+  id: string;
+  name: string | null;
+}
+
+export interface RetailerLoginWholesaler {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface RetailerLoginData {
+  tokens: RetailerLoginTokens;
+  user: RetailerLoginUser;
+  retailer: RetailerLoginRetailer;
+  wholesaler: RetailerLoginWholesaler;
+}
+
+export interface RetailerLoginResponse {
+  success: boolean;
+  data: RetailerLoginData;
+  timestamp: string;
+}

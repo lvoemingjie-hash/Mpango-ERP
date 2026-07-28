@@ -166,6 +166,9 @@ PUBLIC_ALLOWLIST: Set[str] = {
     "/api/v1/retailers/setup-credential",
     "/api/v1/client/auth/forgot-password",
     "/api/v1/client/auth/reset-password",
+    # DC-12R1-S2: pre-auth supplier-scoped retailer login. Credentials are
+    # exchanged for a single contextual JWT; no cross-tenant discovery.
+    "/api/v1/client/auth/login",
     "/api/v1/invitations/lookup",
 }
 
@@ -952,6 +955,8 @@ class TestPublicAllowlistIntegrity:
             "/api/v1/retailers/setup-credential",
             "/api/v1/client/auth/forgot-password",
             "/api/v1/client/auth/reset-password",
+            # DC-12R1-S2 (CTO-approved): pre-auth supplier-scoped retailer login.
+            "/api/v1/client/auth/login",
             "/api/v1/invitations/lookup",
         }, (
             "PUBLIC_ALLOWLIST was modified. Any addition requires CTO sign-off. "

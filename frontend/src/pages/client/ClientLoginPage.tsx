@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -8,17 +8,29 @@ import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/authService';
 import type { ApiErrorResponse } from '@/types/api';
 
+/**
+ * Wholesaler portal codes follow the DB regex ^[A-Z0-9]+$. A missing or
+ * malformed `w` param shows a controlled invalid-portal state and performs
+ * ZERO login API calls.
+ */
+const WHOLESALER_CODE_RE = /^[A-Z0-9]+$/;
+
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(1, 'Password is required'),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export function ClientLoginPage() {
   const navigate = useNavigate();
-  const login = useAuthStore((s) => s.login);
+  const [searchParams] = useSearchParams();
+  const retailerLogin = useAuthStore((s) => s.retailerLogin);
   const [serverError, setServerError] = useState<string | null>(null);
+
+  const rawCode = searchParams.get('w') ?? '';
+  const portalCode = rawCode.trim().toUpperCase();
+  const isValidPortal = portalCode.length > 0 && WHOLESALER_CODE_RE.test(portalCode);
 
   const {
     register,
@@ -32,24 +44,45 @@ export function ClientLoginPage() {
   const onSubmit = async (formData: LoginFormData) => {
     setServerError(null);
 
+    // Guard: portal code must be valid before any API call.
+    if (!isValidPortal) {
+      setServerError('This supplier portal link is invalid. Please use the link your supplier provided.');
+      return;
+    }
+
     try {
-      // 1. Identity Phase
-      const loginRes = await authService.login(formData);
-      const identityData = loginRes.data.data;
-      const idToken = identityData.access_token;
+      // DC-12R1-S2: single supplier-scoped login call. Never calls
+      // /auth/login or /auth/select-tenant.
+      const res = await authService.retailerLogin({
+        email: formData.email,
+        password: formData.password,
+        wholesaler_code: portalCode,
+      });
+      const data = res.data.data;
 
-      // 2. Auto-select first tenant (retailer typically has 1 tenant)
-      if (identityData.available_tenants.length === 0) {
-        setServerError('No supplier accounts linked. Please contact your supplier.');
-        return;
-      }
-
-      const tenant = identityData.available_tenants[0];
-      const ctxRes = await authService.selectTenant({ tenant_id: tenant.id }, idToken);
-      const ctxTokens = ctxRes.data.data;
-
-      const meRes = await authService.me(ctxTokens.access_token);
-      login(ctxTokens, meRes.data.data, tenant.code);
+      // Build the contextual session and store it. The portal code is
+      // preserved for refresh-failure redirect back to this portal.
+      retailerLogin(
+        {
+          access_token: data.tokens.access_token,
+          refresh_token: data.tokens.refresh_token,
+          token_type: data.tokens.token_type,
+          user_id: data.tokens.user_id,
+          tenant_id: data.tokens.tenant_id,
+          tenant_schema: data.tokens.tenant_schema,
+          roles: data.tokens.roles,
+        },
+        {
+          id: data.user.id,
+          email: data.user.email,
+          full_name: data.user.full_name,
+          tenant_id: data.tokens.tenant_id,
+          tenant_schema: data.tokens.tenant_schema,
+          roles: data.tokens.roles,
+          permissions: [],
+        },
+        data.wholesaler.code,
+      );
       navigate('/client', { replace: true });
     } catch (err) {
       const axiosErr = err as AxiosError<ApiErrorResponse>;
@@ -67,6 +100,27 @@ export function ClientLoginPage() {
     }
   };
 
+  // Controlled invalid-portal state: zero API calls.
+  if (!isValidPortal) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 px-4">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500 text-white shadow-lg">
+              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Invalid Portal</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              This supplier portal link is invalid or incomplete. Please contact your supplier for the correct link.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 px-4">
       <div className="w-full max-w-sm">
@@ -78,7 +132,7 @@ export function ClientLoginPage() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Mpango</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Sign in to order from your suppliers
+            Sign in to order from your supplier
           </p>
         </div>
 

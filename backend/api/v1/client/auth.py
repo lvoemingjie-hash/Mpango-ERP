@@ -1,27 +1,37 @@
-"""Client Auth API — Retailer self-service credential recovery (DC-12R1-S1).
+"""Client Auth API — Retailer authentication and credential recovery.
 
-Public endpoints (no auth dependency) for retailer forgot-password /
-reset-password. Both are strictly neutral: no-account / unverified-email /
-wrong-wholesaler-code / SMTP-failure all return the identical response.
-Tokens arrive ONLY in the JSON body; query-string token/password params are
-rejected before any service work.
+DC-12R1-S1: forgot-password / reset-password (public, neutral responses).
+DC-12R1-S2: supplier-scoped retailer login (public, neutral on mismatch).
 
-NOTE: the supplier-scoped retailer LOGIN endpoint is S2 and is intentionally
-NOT implemented here.
+All credential redemptions accept tokens ONLY in the JSON body.  Responses are
+neutral (no account / relationship / role existence disclosure).  Unexpected
+DB / runtime exceptions propagate to the existing sanitized error boundary;
+they are NOT swallowed as INVALID_CREDENTIALS.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
+from core.security import create_contextual_token, verify_password
 from schemas.retailer_credentials import (
+    WHOLESALER_CODE_RE,
     RetailerCredentialResponse,
     RetailerCredentialResponseData,
     RetailerForgotPasswordRequest,
+    RetailerLoginRequest,
+    RetailerLoginResponse,
+    RetailerLoginData,
+    RetailerLoginTokens,
+    RetailerLoginUser,
+    RetailerLoginRetailer,
+    RetailerLoginWholesaler,
     RetailerResetPasswordRequest,
 )
 from services.email_delivery import EmailDeliveryNotConfiguredError
@@ -36,6 +46,215 @@ router = APIRouter()
 NEUTRAL_RETAILER_CREDENTIAL_MESSAGE = (
     "Retailer credential result is not disclosed through this endpoint."
 )
+
+# Neutral 401 body for all well-formed authentication mismatches.  The same
+# literal is returned whether the email, wholesaler, binding, role, or
+# password was wrong — no information leaks.
+INVALID_CREDENTIALS_DETAIL = {
+    "code": "INVALID_CREDENTIALS",
+    "message": "Invalid credentials",
+}
+
+
+def _raise_invalid_credentials() -> HTTPException:
+    """Return the single neutral 401 used for all authentication mismatches."""
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=INVALID_CREDENTIALS_DETAIL,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /login — Supplier-scoped retailer login (DC-12R1-S2)
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/login",
+    response_model=RetailerLoginResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def retailer_login(
+    request: RetailerLoginRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Authenticate a retailer against a single supplier portal.
+
+    Flow (all within the single requested wholesaler's context):
+    1. Normalize email and wholesaler_code.
+    2. Validate wholesaler_code format (regex). Malformed → 422, zero SQL.
+    3. Resolve exactly one active wholesaler via
+       ``public.tenant_registrations JOIN public.wholesalers``.
+    4. Require registration active, wholesaler active, valid tenant_schema.
+    5. Query **only** the requested wholesaler's tenant schema for user +
+       password.
+    6. Resolve binding by wholesaler_id + tenant_user_id + is_deleted=false.
+    7. Require active binding and retailer_operator role.
+    8. Issue contextual access + refresh JWTs via ``create_contextual_token``.
+    9. Return tokens, authenticated user, current retailer, current wholesaler.
+
+    All well-formed mismatches return the same neutral 401 INVALID_CREDENTIALS.
+    Unexpected DB/runtime exceptions propagate (not swallowed).
+
+    Scope gate: never calls ``find_user_across_tenants``.
+    """
+    # --- 1. Normalize -------------------------------------------------------
+    normalized_email = str(request.email).strip().lower()
+    raw_code = request.wholesaler_code.strip().upper()
+
+    # --- 2. Format gate (no SQL) --------------------------------------------
+    if not WHOLESALER_CODE_RE.match(raw_code):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "INVALID_WHOLESALER_CODE",
+                "message": "Wholesaler code must be alphanumeric (A-Z, 0-9).",
+            },
+        )
+
+    # --- 3. Resolve wholesaler via tenant_registrations + wholesalers --------
+    # Authoritative public query: joins the registration (confirming active
+    # onboarding state) with the wholesaler (confirming active tenant state).
+    ws_row = await db.execute(
+        text(
+            """
+            SELECT w.id, w.code, w.name, w.status,
+                   tr.tenant_schema
+            FROM public.wholesalers w
+            JOIN public.tenant_registrations tr
+              ON tr.wholesaler_id = w.id
+            WHERE w.code = :code
+              AND w.is_deleted IS FALSE
+              AND tr.status = 'active'
+              AND w.status = 'active'
+              AND tr.tenant_schema IS NOT NULL
+            LIMIT 1
+            """
+        ),
+        {"code": raw_code},
+    )
+    ws = ws_row.fetchone()
+
+    if ws is None:
+        _raise_invalid_credentials()
+
+    wholesaler_id = str(ws.id)
+    tenant_schema = ws.tenant_schema
+
+    # --- 4. Query only the single wholesaler tenant schema -----------------
+    user_row = await db.execute(
+        text(
+            f'SELECT id, email, full_name, password_hash, is_active '
+            f'FROM "{tenant_schema}".users '
+            f'WHERE email = :email '
+            f'LIMIT 1'
+        ),
+        {"email": normalized_email},
+    )
+    user = user_row.fetchone()
+
+    if user is None:
+        _raise_invalid_credentials()
+
+    if not user.is_active:
+        _raise_invalid_credentials()
+
+    if not verify_password(request.password, user.password_hash):
+        _raise_invalid_credentials()
+
+    tenant_user_id = str(user.id)
+
+    # --- 5. Resolve binding (wholesaler_id + tenant_user_id, active) --------
+    bind_row = await db.execute(
+        text(
+            """
+            SELECT b.retailer_id, b.status
+            FROM public.wholesaler_retailer_bindings b
+            WHERE b.wholesaler_id = :wholesaler_id
+              AND b.tenant_user_id = :tenant_user_id
+              AND b.is_deleted IS FALSE
+            LIMIT 1
+            """
+        ),
+        {"wholesaler_id": wholesaler_id, "tenant_user_id": tenant_user_id},
+    )
+    binding = bind_row.fetchone()
+
+    if binding is None:
+        _raise_invalid_credentials()
+
+    if binding.status != "active":
+        _raise_invalid_credentials()
+
+    # --- 6. Verify retailer_operator role -----------------------------------
+    role_row = await db.execute(
+        text(
+            f'SELECT r.name '
+            f'FROM "{tenant_schema}".roles r '
+            f'JOIN "{tenant_schema}".user_roles ur ON ur.role_id = r.id '
+            f'WHERE ur.user_id = :user_id '
+            f'  AND r.name = :role_name '
+            f'LIMIT 1'
+        ),
+        {"user_id": tenant_user_id, "role_name": "retailer_operator"},
+    )
+    if role_row.fetchone() is None:
+        _raise_invalid_credentials()
+
+    # --- 7. Issue contextual tokens via create_contextual_token --------------
+    access_token = create_contextual_token(
+        user_id=tenant_user_id,
+        roles=["retailer_operator"],
+        tenant_id=wholesaler_id,
+        tenant_schema=tenant_schema,
+        token_type="access",
+    )
+    refresh_token = create_contextual_token(
+        user_id=tenant_user_id,
+        roles=["retailer_operator"],
+        tenant_id=wholesaler_id,
+        tenant_schema=tenant_schema,
+        token_type="refresh",
+    )
+
+    # --- 8. Load retailer name for the response -----------------------------
+    retailer_row = await db.execute(
+        text(
+            "SELECT id, name FROM public.retailers WHERE id = :rid LIMIT 1"
+        ),
+        {"rid": binding.retailer_id},
+    )
+    retailer = retailer_row.fetchone()
+
+    # --- 9. Build response --------------------------------------------------
+    return RetailerLoginResponse(
+        success=True,
+        data=RetailerLoginData(
+            tokens=RetailerLoginTokens(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type="bearer",
+                user_id=tenant_user_id,
+                tenant_id=wholesaler_id,
+                tenant_schema=tenant_schema,
+                roles=["retailer_operator"],
+            ),
+            user=RetailerLoginUser(
+                id=tenant_user_id,
+                email=user.email,
+                full_name=user.full_name,
+            ),
+            retailer=RetailerLoginRetailer(
+                id=str(binding.retailer_id),
+                name=retailer.name if retailer else None,
+            ),
+            wholesaler=RetailerLoginWholesaler(
+                id=wholesaler_id,
+                code=ws.code,
+                name=ws.name,
+            ),
+        ),
+        timestamp=datetime.utcnow(),
+    )
 
 
 def _reject_query_token(http_request: Request, keys: tuple[str, ...]) -> None:

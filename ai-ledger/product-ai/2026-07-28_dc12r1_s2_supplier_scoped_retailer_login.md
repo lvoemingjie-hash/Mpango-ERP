@@ -59,3 +59,102 @@ Implemented the supplier-scoped retailer login endpoint and full frontend portal
 ## Verdict
 
 **PASS_FOR_CTO_DC12R1_S2_REVIEW**
+
+---
+
+# R1 — Supplier-Scoped Login Merge Blocker Repair
+
+**Date:** 2026-07-28
+**Prior tip:** `ef03cf7766ffa59419fb9a9c1714255188d69a96`
+**Verdict target:** `PASS_FOR_CTO_DC12R1_S2_R1_MERGE_REVIEW`
+
+## Blockers addressed
+
+### P1 — Registry/schema fail-closed
+The registration query now requires `tr.is_deleted IS FALSE` and `w.is_deleted
+IS FALSE`, rejects duplicate active registrations (`len(reg_rows) > 1` → neutral
+401), calls `validate_identifier(tenant_schema)` before any tenant SQL, and
+requires `tenant_schema == Wholesaler.derive_schema_from_id(wholesaler_id)`.
+**No tenant SQL runs before all of these checks pass** (steps 3–6 precede
+step 7's user query).
+
+### P1 — Soft-deleted identity can no longer log in
+Every lifecycle query now filters `is_deleted IS FALSE`:
+`users` (step 7), `roles` (step 9), and `retailers` (step 10). The retailer
+row is loaded and validated **before** any JWT is issued — a missing or
+soft-deleted retailer now produces a neutral 401 instead of a token with a
+`null` retailer name.
+
+### P1 — Lowercase-code contradiction resolved
+Codes are normalized to UPPERCASE (uppercase preference) before the regex
+gate, so a lowercase `abc123` is treated as `ABC123` and authenticates
+against the same portal. The 422 path is reserved for genuinely malformed
+codes (symbols, whitespace, empty). The previous test asserting lowercase →
+422 was impossible-by-construction and is replaced by a test proving
+lowercase normalization authenticates.
+
+### P1 — Real backend evidence added
+- SQL capture (SQLAlchemy `before_cursor_execute` listener on the app engine)
+  proves authenticating through portal A never references supplier B's
+  schema identifier.
+- A second capture proves a malformed-code 422 issues zero login SQL
+  (only connection setup `SET` statements, which are filtered).
+- Rate-limit 429: focused test against the real `RateLimiter.check_rate_limit`
+  with a mock Redis, proving the controlled `MpangoAPIException` (429) —
+  never 500.
+- Route denial: direct `RequirePermission` / `RequirePlatformAdmin` gate
+  tests prove a `retailer_operator` principal (client:* perms only) is
+  denied `orders:read`, `finance:read`, `payments:read`,
+  `invitations:create`, and platform admin — plus a sanity test that its own
+  `client:catalog:read` IS allowed (permission-specific, not blanket).
+- Fail-closed lifecycle: soft-deleted registration, user, role, and retailer
+  rows all fail neutrally; duplicate active registrations fail at both the DB
+  constraint AND the code dedup gate.
+
+### P2 — Compatibility entry preserves the supplier code
+`/client/login?w=ABC` now redirects to `/retail/login?w=ABC` (the `w`
+param is read via `useSearchParams` and re-attached), instead of dropping it.
+
+### P2 — Authenticated retailer on a wholesaler route → /client
+`WholesalerRoute` now redirects an **authenticated** retailer to `/client`
+(their home — not a logout); only a stale (tokenless) retailer session is
+sent back to its portal login.
+
+## Files changed (R1)
+
+| File | Change |
+|------|--------|
+| `backend/api/v1/client/auth.py` | Fail-closed registry resolution, `validate_identifier`, schema-derivation check, `is_deleted` filters on users/roles/retailers, retailer loaded+validated before JWT, dedup gate. |
+| `backend/schemas/retailer_credentials.py` | Documented uppercase-preference normalization. |
+| `backend/tests/test_dc12r1_s2_supplier_scoped_retailer_login.py` | Rewritten evidence suite (39 tests): SQL capture, normalization, RBAC denial, fail-closed lifecycle, rate-limit 429, owner-unchanged. |
+| `backend/tests/test_u6f_onboarding_auth_chain_closeout.py` | Added `/api/v1/client/auth/login` to the mirrored expected public allowlist. |
+| `frontend/src/pages/client/ClientLoginPage.tsx` | Uppercase normalization before the validity check (matches backend). |
+| `frontend/src/router/AppRouter.tsx` | `ClientLoginAliasRedirect` preserves `w` via `useSearchParams`. |
+| `frontend/src/router/guards.tsx` | `WholesalerRoute`: authenticated retailer → `/client`; stale → portal. |
+| `frontend/src/tests/Dc12r1S2RetailerPortal.test.tsx` | NEW — 15 Vitest cases: call isolation, invalid-portal zero calls, both guards, stale state, alias preservation, logout redirect. |
+
+## Verification (R1) — exact counts
+
+- **Backend S2 suite:** 39 passed / 0 failed
+  (`tests/test_dc12r1_s2_supplier_scoped_retailer_login.py`)
+- **Route policy + auth bypass:** 40 passed / 0 failed
+- **u6f onboarding auth chain:** 42 passed / 0 failed (incl. mirrored allowlist)
+- **dc10f payment-method migration:** 24 passed / 0 failed (no test pollution)
+- **Fresh PG DB migrated to head `036_retailer_mvp_identity`; Redis 7.**
+- **Frontend Vitest:** 138 passed / 0 failed (15 files; +15 from new portal suite)
+- **Vite build:** success (chunk-size warning is pre-existing, non-error)
+- **`git diff --check`:** clean — no whitespace errors
+- **Mojibake scan:** clean
+- **detect-secrets:** all inline test secrets extracted to module constants
+- **Backend full gate (excluding end-to-end migration suite):** 2899 passed,
+  30 failed — **all 30 failures are in untouched intake/migration/reporting
+  test files** (u4ib2, s4g, dc2m2, u3c, dc10l, u3e, dc11t4c, dc12r1_s1_r5)
+  that require a fully-seeded ERP database (orders/SKUs/ledger/intake
+  batches) absent from the minimal fresh test DB. None reference
+  `client/auth`, `retailer_login`, `RetailerLogin`, or
+  `retailer_credentials`. Confirmed unrelated to this change via `git diff`.
+- **GitNexus:** re-indexed at the R1 commit (13,700 nodes | 42,199 edges).
+
+## Verdict (R1)
+
+**PASS_FOR_CTO_DC12R1_S2_R1_MERGE_REVIEW**

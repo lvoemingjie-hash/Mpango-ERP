@@ -66,8 +66,10 @@ class RetailerResetPasswordRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 # Wholesaler portal codes follow the database_contract.md regex ^[A-Z0-9]+$.
-# A pre-compiled regex check is applied before any DB query so malformed codes
-# raise a controlled 422 without touching SQL.
+# The endpoint normalizes codes to UPPERCASE before validation (so a lowercase
+# "abc123" is treated as "ABC123"); only genuinely malformed codes (symbols,
+# whitespace, empty) raise a controlled 422. The pre-compiled regex check runs
+# before any DB query so those 422s never touch SQL.
 import re as _re
 
 WHOLESALER_CODE_RE = _re.compile(r"^[A-Z0-9]+$")

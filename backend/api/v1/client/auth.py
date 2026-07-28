@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
 from core.security import create_contextual_token, verify_password
+from db.sql_safety import validate_identifier
+from models.wholesaler import Wholesaler
 from schemas.retailer_credentials import (
     WHOLESALER_CODE_RE,
     RetailerCredentialResponse,
@@ -80,17 +82,28 @@ async def retailer_login(
     """Authenticate a retailer against a single supplier portal.
 
     Flow (all within the single requested wholesaler's context):
-    1. Normalize email and wholesaler_code.
+
+    Registry/schema fail-closed (no tenant SQL runs before these pass):
+    1. Normalize email and wholesaler_code (uppercase preference).
     2. Validate wholesaler_code format (regex). Malformed → 422, zero SQL.
-    3. Resolve exactly one active wholesaler via
-       ``public.tenant_registrations JOIN public.wholesalers``.
-    4. Require registration active, wholesaler active, valid tenant_schema.
-    5. Query **only** the requested wholesaler's tenant schema for user +
-       password.
-    6. Resolve binding by wholesaler_id + tenant_user_id + is_deleted=false.
-    7. Require active binding and retailer_operator role.
-    8. Issue contextual access + refresh JWTs via ``create_contextual_token``.
-    9. Return tokens, authenticated user, current retailer, current wholesaler.
+    3. Resolve exactly one active registration via
+       ``public.tenant_registrations JOIN public.wholesalers`` requiring
+       ``tr.is_deleted IS FALSE``, ``tr.status = 'active'``, an active
+       wholesaler and a non-null tenant_schema.
+    4. Reject duplicate active registrations for the same wholesaler.
+    5. ``validate_identifier(tenant_schema)`` (SQL-injection guard).
+    6. Require ``tenant_schema == Wholesaler.derive_schema_from_id(w.id)``.
+
+    Principal lifecycle (all must be live before any JWT is issued):
+    7. Query **only** the requested wholesaler's tenant schema for a
+       non-deleted, active user; verify the password.
+    8. Resolve a non-deleted, active binding.
+    9. Require a non-deleted retailer_operator role/membership.
+    10. Load and validate a non-deleted retailer row BEFORE issuing tokens.
+
+    Token issuance: contextual access + refresh JWTs via
+    ``create_contextual_token`` (tenant_id, tenant_schema, roles only — no
+    tmap/identity/available_tenants).
 
     All well-formed mismatches return the same neutral 401 INVALID_CREDENTIALS.
     Unexpected DB/runtime exceptions propagate (not swallowed).
@@ -99,6 +112,9 @@ async def retailer_login(
     """
     # --- 1. Normalize -------------------------------------------------------
     normalized_email = str(request.email).strip().lower()
+    # Uppercase preference: portal codes follow the DB regex ^[A-Z0-9]+$.
+    # A lowercase code is normalized (not rejected) so users typing "abc123"
+    # are treated as "ABC123"; genuine format errors (symbols, empty) still 422.
     raw_code = request.wholesaler_code.strip().upper()
 
     # --- 2. Format gate (no SQL) --------------------------------------------
@@ -111,41 +127,67 @@ async def retailer_login(
             },
         )
 
-    # --- 3. Resolve wholesaler via tenant_registrations + wholesalers --------
+    # --- 3. Resolve registration via tenant_registrations + wholesalers -----
     # Authoritative public query: joins the registration (confirming active
-    # onboarding state) with the wholesaler (confirming active tenant state).
-    ws_row = await db.execute(
-        text(
-            """
-            SELECT w.id, w.code, w.name, w.status,
-                   tr.tenant_schema
-            FROM public.wholesalers w
-            JOIN public.tenant_registrations tr
-              ON tr.wholesaler_id = w.id
-            WHERE w.code = :code
-              AND w.is_deleted IS FALSE
-              AND tr.status = 'active'
-              AND w.status = 'active'
-              AND tr.tenant_schema IS NOT NULL
-            LIMIT 1
-            """
-        ),
-        {"code": raw_code},
-    )
-    ws = ws_row.fetchone()
+    # onboarding state and not soft-deleted) with the wholesaler (confirming
+    # active tenant state and not soft-deleted). A NULL tenant_schema is
+    # never accepted.
+    reg_rows = (
+        await db.execute(
+            text(
+                """
+                SELECT w.id, w.code, w.name, w.status,
+                       tr.id AS registration_id, tr.tenant_schema
+                FROM public.tenant_registrations tr
+                JOIN public.wholesalers w
+                  ON tr.wholesaler_id = w.id
+                WHERE w.code = :code
+                  AND w.is_deleted IS FALSE
+                  AND w.status = 'active'
+                  AND tr.is_deleted IS FALSE
+                  AND tr.status = 'active'
+                  AND tr.tenant_schema IS NOT NULL
+                """
+            ),
+            {"code": raw_code},
+        )
+    ).fetchall()
 
-    if ws is None:
+    # No active registration+wholesaler pair → neutral 401.
+    if not reg_rows:
         _raise_invalid_credentials()
 
-    wholesaler_id = str(ws.id)
-    tenant_schema = ws.tenant_schema
+    # --- 4. Reject duplicate active registrations ---------------------------
+    # Fail-closed: more than one live registration for the same wholesaler is
+    # an integrity violation. We never pick one arbitrarily; we refuse to
+    # authenticate and surface a neutral 401 (no leakage).
+    if len(reg_rows) > 1:
+        _raise_invalid_credentials()
 
-    # --- 4. Query only the single wholesaler tenant schema -----------------
+    reg = reg_rows[0]
+    wholesaler_id = str(reg.id)
+    tenant_schema = reg.tenant_schema
+
+    # --- 5. SQL-injection guard on the tenant schema identifier ------------
+    # validate_identifier raises ValueError on anything outside
+    # ^[a-zA-Z_][a-zA-Z0-9_]{0,62}$. A ValueError here is an unexpected
+    # condition (the registry stored an unsafe identifier) and must propagate
+    # to the error boundary — it is NOT a credential mismatch.
+    validate_identifier(tenant_schema, "tenant_schema")
+
+    # --- 6. Schema must match the wholesaler's own derived schema -----------
+    # Prevents a stale/tampered tenant_registrations row from pointing login
+    # at the wrong schema. derive_schema_from_id is the authoritative source.
+    if tenant_schema != Wholesaler.derive_schema_from_id(wholesaler_id):
+        _raise_invalid_credentials()
+
+    # --- 7. Query only the single wholesaler tenant schema (live user) -----
     user_row = await db.execute(
         text(
             f'SELECT id, email, full_name, password_hash, is_active '
             f'FROM "{tenant_schema}".users '
             f'WHERE email = :email '
+            f'  AND is_deleted IS FALSE '
             f'LIMIT 1'
         ),
         {"email": normalized_email},
@@ -163,7 +205,7 @@ async def retailer_login(
 
     tenant_user_id = str(user.id)
 
-    # --- 5. Resolve binding (wholesaler_id + tenant_user_id, active) --------
+    # --- 8. Resolve binding (non-deleted, active) --------------------------
     bind_row = await db.execute(
         text(
             """
@@ -185,7 +227,7 @@ async def retailer_login(
     if binding.status != "active":
         _raise_invalid_credentials()
 
-    # --- 6. Verify retailer_operator role -----------------------------------
+    # --- 9. Verify non-deleted retailer_operator role/membership ------------
     role_row = await db.execute(
         text(
             f'SELECT r.name '
@@ -193,6 +235,7 @@ async def retailer_login(
             f'JOIN "{tenant_schema}".user_roles ur ON ur.role_id = r.id '
             f'WHERE ur.user_id = :user_id '
             f'  AND r.name = :role_name '
+            f'  AND r.is_deleted IS FALSE '
             f'LIMIT 1'
         ),
         {"user_id": tenant_user_id, "role_name": "retailer_operator"},
@@ -200,7 +243,21 @@ async def retailer_login(
     if role_row.fetchone() is None:
         _raise_invalid_credentials()
 
-    # --- 7. Issue contextual tokens via create_contextual_token --------------
+    # --- 10. Load + validate the retailer row BEFORE issuing tokens ---------
+    # The binding must point at a non-deleted retailer. A missing/soft-deleted
+    # retailer row is an integrity failure treated as a neutral 401.
+    retailer_row = await db.execute(
+        text(
+            "SELECT id, name FROM public.retailers "
+            "WHERE id = :rid AND is_deleted IS FALSE LIMIT 1"
+        ),
+        {"rid": binding.retailer_id},
+    )
+    retailer = retailer_row.fetchone()
+    if retailer is None:
+        _raise_invalid_credentials()
+
+    # --- 11. Issue contextual tokens via create_contextual_token ------------
     access_token = create_contextual_token(
         user_id=tenant_user_id,
         roles=["retailer_operator"],
@@ -216,16 +273,7 @@ async def retailer_login(
         token_type="refresh",
     )
 
-    # --- 8. Load retailer name for the response -----------------------------
-    retailer_row = await db.execute(
-        text(
-            "SELECT id, name FROM public.retailers WHERE id = :rid LIMIT 1"
-        ),
-        {"rid": binding.retailer_id},
-    )
-    retailer = retailer_row.fetchone()
-
-    # --- 9. Build response --------------------------------------------------
+    # --- 12. Build response -------------------------------------------------
     return RetailerLoginResponse(
         success=True,
         data=RetailerLoginData(
@@ -245,12 +293,12 @@ async def retailer_login(
             ),
             retailer=RetailerLoginRetailer(
                 id=str(binding.retailer_id),
-                name=retailer.name if retailer else None,
+                name=retailer.name,
             ),
             wholesaler=RetailerLoginWholesaler(
                 id=wholesaler_id,
-                code=ws.code,
-                name=ws.name,
+                code=reg.code,
+                name=reg.name,
             ),
         ),
         timestamp=datetime.utcnow(),

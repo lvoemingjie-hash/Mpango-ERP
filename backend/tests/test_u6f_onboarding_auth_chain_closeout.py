@@ -55,6 +55,7 @@ EXPECTED_PUBLIC_ALLOWLIST = {
     "/api/v1/retailers/setup-credential",
     "/api/v1/client/auth/forgot-password",
     "/api/v1/client/auth/reset-password",
+    "/api/v1/client/auth/login",
     "/api/v1/invitations/lookup",
 }
 SENSITIVE_RESPONSE_TERMS = (

@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, useSearchParams } from 'react-router-dom';
 import { ProtectedRoute, PublicRoute, PlatformRoute, RetailerRoute, WholesalerRoute } from '@/router/guards';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
@@ -198,10 +198,14 @@ const router = createBrowserRouter([
 
 /**
  * DC-12R1-S2: /client/login compatibility alias. Preserves the `w` query
- * param and redirects to the canonical /retail/login entry.
+ * param and redirects to the canonical /retail/login entry, so legacy
+ * supplier links keep working and the portal code is not lost.
  */
 function ClientLoginAliasRedirect() {
-  return <Navigate to="/retail/login" replace />;
+  const [searchParams] = useSearchParams();
+  const w = searchParams.get('w');
+  const target = w ? `/retail/login?w=${encodeURIComponent(w)}` : '/retail/login';
+  return <Navigate to={target} replace />;
 }
 
 export function AppRouter() {

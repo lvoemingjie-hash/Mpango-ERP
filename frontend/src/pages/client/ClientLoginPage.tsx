@@ -29,6 +29,10 @@ export function ClientLoginPage() {
   const [serverError, setServerError] = useState<string | null>(null);
 
   const rawCode = searchParams.get('w') ?? '';
+  // Uppercase preference (matches the backend): a lowercase/mixed-case code
+  // is normalized to UPPERCASE before the validity check and before any API
+  // call. Only genuinely malformed codes (symbols, empty, whitespace) reach
+  // the controlled invalid-portal state.
   const portalCode = rawCode.trim().toUpperCase();
   const isValidPortal = portalCode.length > 0 && WHOLESALER_CODE_RE.test(portalCode);
 

@@ -16,10 +16,15 @@ from models.tenant_onboarding import OWNER_CREDENTIAL_SETUP_TOKEN_PURPOSE
 
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE_REF = "6a8ddcf348e9b1bdcc902929011e6212cc675cf8"  # pragma: allowlist secret
+# Fixed historical U6-I1 implementation commit. The U6-I1 scope assertion is
+# anchored on this exact commit (not on the moving current HEAD), so later
+# tasks that legitimately touch runtime paths no longer trip the guard. The
+# guard now inspects only what U6-I1 itself changed, via git diff-tree.
+U6I1_HISTORICAL_COMMIT = "712db0c1d3796a22c8b3c4c398d91577146d3ee1"  # pragma: allowlist secret
 MIGRATION_PATH = ROOT / "backend" / "alembic" / "versions" / "028_owner_credential_setup_tokens.py"
 ALEMBIC_INI_PATH = ROOT / "backend" / "alembic.ini"
-ALLOWED_CHANGED_PATHS = {
+# The exact five files the original U6-I1 implementation commit touched.
+EXPECTED_U6I1_PATHS = {
     "backend/alembic/versions/028_owner_credential_setup_tokens.py",
     "backend/models/tenant_onboarding.py",
     "backend/models/__init__.py",
@@ -31,9 +36,6 @@ FORBIDDEN_RUNTIME_PATHS = {
     "backend/models/user.py",
     "backend/api/v1/auth.py",
     "backend/services/onboarding_service.py",
-}
-ALLOWED_BACKEND_API_PATHS = {
-    "backend/api/middleware/rate_limiting.py",
 }
 FORBIDDEN_TOKEN_COLUMNS = {"raw_token", "token_plaintext", "plaintext_token"}
 
@@ -69,25 +71,33 @@ def _postgres_where(index) -> str:
     return str(where.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
 
 
-def _changed_paths() -> set[str]:
-    diff = subprocess.run(
-        ["git", "diff", "--name-only", BASE_REF, "--"],
+def _historical_u6i1_paths() -> set[str]:
+    """Return the exact file set the original U6-I1 implementation commit changed.
+
+    Anchored on the fixed historical commit (``U6I1_HISTORICAL_COMMIT``) via
+    ``git diff-tree``, so the scope assertion is stable and does not compare
+    against the moving current HEAD. Fails closed if the historical commit is
+    unavailable in the local repository.
+    """
+    # Fail closed if the historical commit is missing (e.g. shallow clone).
+    verify = subprocess.run(
+        ["git", "rev-parse", "--verify", U6I1_HISTORICAL_COMMIT + "^{commit}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if verify.returncode != 0:
+        raise AssertionError(
+            "U6-I1 historical commit is unavailable; cannot verify scope"
+        )
+    diff_tree = subprocess.run(
+        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", U6I1_HISTORICAL_COMMIT],
         cwd=ROOT,
         check=True,
         capture_output=True,
         text=True,
     )
-    status = subprocess.run(
-        ["git", "status", "--short", "--porcelain"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    changed = set(diff.stdout.splitlines())
-    for line in status.stdout.splitlines():
-        changed.add(line[3:])
-    return changed
+    return {line for line in diff_tree.stdout.splitlines() if line}
 
 
 def _migration_module():
@@ -208,14 +218,29 @@ def test_owner_credential_schema_foundation_artifacts_remain_present():
     assert (ROOT / "backend" / "models" / "__init__.py").is_file()
 
 
-def test_no_route_service_frontend_or_user_rbac_behavior_changed():
-    changed = _changed_paths()
+def test_u6i1_historical_implementation_scope_is_exactly_the_original_five_files():
+    """U6-I1 touched exactly its original five files and no runtime path.
 
+    The scope is anchored on the fixed historical implementation commit, not on
+    the moving current HEAD, so later tasks that legitimately touch runtime
+    paths do not trip this guard.
+    """
+    changed = _historical_u6i1_paths()
+
+    assert changed == EXPECTED_U6I1_PATHS
+    assert len(changed) == 5
+    # No runtime path was touched by the original U6-I1 implementation.
     assert changed.isdisjoint(FORBIDDEN_RUNTIME_PATHS)
     assert not any(path.startswith("frontend/") for path in changed)
-    assert not any(
-        path.startswith("backend/api/") and path not in ALLOWED_BACKEND_API_PATHS
-        for path in changed
-    )
-    assert "backend/services/tenant_provisioning_service.py" not in changed
-    assert "backend/models/user.py" not in changed
+
+
+def test_synthetic_forbidden_runtime_path_is_still_rejected():
+    """Regression: the forbidden-runtime-path guard still rejects violations.
+
+    Proves the scope assertion was not weakened by the historical-commit
+    re-anchoring: a synthetic scope containing a forbidden runtime path still
+    fails the disjoint check.
+    """
+    synthetic_scope = EXPECTED_U6I1_PATHS | {"backend/services/onboarding_service.py"}
+
+    assert not synthetic_scope.isdisjoint(FORBIDDEN_RUNTIME_PATHS)

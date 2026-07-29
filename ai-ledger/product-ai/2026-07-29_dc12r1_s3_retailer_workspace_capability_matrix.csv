@@ -1,0 +1,41 @@
+capability_id,domain,capability,status,priority,slice,evidence_file_line,notes
+CAP-01,auth,Supplier-scoped retailer login (POST /client/auth/login),EXISTS,P0,n/a,backend/api/v1/client/auth.py:83,Returns one contextual JWT; no available_tenants/tmap. Reused as-is.
+CAP-02,auth,retailer_operator role required on all client routes,EXISTS,P0,n/a,backend/api/v1/client/dependencies.py:78,resolve_client_identity enforces role via _has_retailer_operator_role.
+CAP-03,auth,retailer_id derived server-side from JWT user_id -> active binding,EXISTS,P0,n/a,backend/api/v1/client/dependencies.py:91,Never from request body/query. Financial-authority sound.
+CAP-04,auth,wholesaler_id derived from JWT tenant_id (tenant-scoped session),EXISTS,P0,n/a,backend/api/v1/client/dependencies.py:67,Enforced by get_tenant_db_session schema boundary.
+CAP-05,auth,Identity-only JWT rejected from client routes (403 TENANT_CONTEXT_REQUIRED),EXISTS,P0,n/a,backend/api/v1/client/dependencies.py:58,
+CAP-06,auth,Inactive/missing binding -> 403 BINDING_NOT_FOUND / BINDING_NOT_ACTIVE,EXISTS,P0,n/a,backend/api/v1/client/dependencies.py:105,
+CAP-07,catalog,GET /client/products (paginated catalog browse),EXISTS,P0,S3-S1,backend/api/v1/client/products.py:38,Search + stock-level badges; retailer_prices join scoped by retailer_id.
+CAP-08,catalog,GET /client/products/{id} (product detail),EXISTS,P0,S3-S1,backend/api/v1/client/products.py:141,can_order flag gates ordering; server-derived price.
+CAP-09,catalog,Price server-authoritative (retailer_prices.price),EXISTS,P0,S3-S1,backend/api/v1/client/products.py:88,Client never supplies price. Confirmed.
+CAP-10,orders,POST /client/orders (create order),EXISTS,P0,S3-S1,backend/api/v1/client/orders.py:86,Client supplies only sku_code/quantity/notes; totals server-computed.
+CAP-11,orders,GET /client/orders (list own orders),EXISTS,P0,S3-S1,backend/api/v1/client/orders.py:201,Filtered by retailer_id; status mapped via CLIENT_VISIBLE_STATUSES.
+CAP-12,orders,GET /client/orders/{id} (order detail),EXISTS,P0,S3-S1,backend/api/v1/client/orders.py:255,Ownership check retailer_id != client.retailer_id -> 404.
+CAP-13,orders,POST /client/orders/{id}/cancel,EXISTS,P0,S3-S1,backend/api/v1/client/orders.py:293,State machine: only DRAFT/CONFIRMED cancellable; releases reservation.
+CAP-14,orders,Create-order price validation against server retailer_prices,EXISTS,P0,S3-S1,backend/api/v1/client/orders.py:145,Rejects if no price configured or price<=0. Server-authoritative.
+CAP-15,orders,Stock availability check (quantity_on_hand >= qty),EXISTS,P1,S3-S1,backend/api/v1/client/orders.py:137,Read-only check at create; reservation happens later (design choice).
+CAP-16,frontend,Branded workspace shell (ClientLayout),EXISTS,P2,S3-S3,frontend/src/components/layout/ClientLayout.tsx:14,Mobile-friendly; header + bottom tab nav (Products/Orders).
+CAP-17,frontend,Product catalog browser page,EXISTS,P0,S3-S3,frontend/src/pages/client/ProductListPage.tsx:16,Mounted at /client.
+CAP-18,frontend,Product detail page,EXISTS,P0,S3-S3,frontend/src/pages/client/ProductDetailPage.tsx:14,Mounted at /client/products/:id.
+CAP-19,frontend,Order history list page,EXISTS,P0,S3-S3,frontend/src/pages/client/OrderListPage.tsx:25,Mounted at /client/orders; status filter tabs.
+CAP-20,frontend,Order detail page,EXISTS,P0,S3-S3,frontend/src/pages/client/OrderDetailPage.tsx:16,Mounted at /client/orders/:id; cancel action.
+CAP-21,frontend,Order creation page,EXISTS,P0,S3-S3,frontend/src/pages/client/CreateOrderPage.tsx:16,Mounted at /client/orders/new.
+CAP-22,frontend,clientProductService / clientOrderService,EXISTS,P0,n/a,frontend/src/services/clientProductService.ts:6,Dedicated client services; no generic wholesaler calls.
+CAP-23,frontend,RetailerRoute guard (retailer_operator only),EXISTS,P0,n/a,frontend/src/router/guards.tsx:75,Blocks non-retailer; redirects stale session to portal.
+CAP-24,frontend,WholesalerRoute blocks retailer from ERP routes,EXISTS,P0,n/a,frontend/src/router/guards.tsx:103,Redirects authenticated retailer to /client.
+CAP-25,isolation,A/B supplier isolation (tenant-scoped session boundary),EXISTS,P0,n/a,backend/api/dependencies.py:43,Same retailer identity in portal A cannot reach portal B data (schema boundary).
+CAP-26,isolation,Generic /payments blocked from retailer (RequirePermission payments:read),EXISTS,P0,n/a,backend/api/v1/payments.py:42,Retailer lacks payments:read (disjoint perm set). Proven.
+CAP-27,isolation,Generic /finance blocked from retailer (RequirePermission finance:read),EXISTS,P0,n/a,backend/api/v1/finance.py:171,Retailer lacks finance:read (disjoint perm set). Proven.
+CAP-28,isolation,No available_tenants / supplier picker / cross-supplier comparison,EXISTS(by-design),P0,n/a,frontend/src/stores/authStore.ts:10,Single retailerPortalCode; no multi-supplier state. Required.
+GAP-01,rbac,Client routes do NOT use RequirePermission codes (use resolve_client_identity only),GAP,P1,S3-S1,backend/api/v1/client/,Permission codes client:* declared in registry but never enforced via RequirePermission. Asymmetry vs wholesaler routes.
+GAP-02,orders,list_orders does not pass wholesaler_id to get_orders_paginated,GAP,P1,S3-S1,backend/api/v1/client/orders.py:229,Mitigated by tenant-scoped session; defense-in-depth missing.
+GAP-03,orders,get_order/cancel ownership check is retailer_id-only (not + wholesaler_id),GAP,P1,S3-S1,backend/api/v1/client/orders.py:275,Mitigated by session; explicit wholesaler_id check more robust.
+GAP-04,payments,Client payment/receivable READ visibility (statement/outstanding balance/history),MISSING,P1,S3-S2,n/a,No /client/payments or /client/finance route or frontend page exists. Retailer cannot see what they owe.
+GAP-05,payments,Client-scoped read-only payment contract definition,MISSING,P1,S3-S2,n/a,Need GET /client/payments and GET /client/finance/balance scoped to retailer_id; read-only; no settle/mutation.
+GAP-06,finance,Client-scoped read-only outstanding-balance contract definition,MISSING,P1,S3-S2,n/a,Receivable projection filtered by wholesaler_id+retailer_id; server-authoritative balances.
+GAP-07,payments,client:payments:create declared in registry but UNIMPLEMENTED and FORBIDDEN without CTO approval,UNRESOLVED_DECISION,P0,CTO,core/permission_registry.py:69,Requirement #7: payment submission semantics need explicit CTO approval. Registry anticipates it; no route; must NOT auto-implement.
+GAP-08,tests,Error/malformed-UUID/inactive-binding/deleted-rows/stale-JWT/401-403-404/no-route-body-after-denial suite for client routes,MISSING,P0,S3-S1,backend/tests/,Targeted client-workspace denial + sanitized-error + no-body-execution tests not present.
+GAP-09,frontend,Component tests for catalog/order pages + no-payment-call assertion,MISSING,P1,S3-S3,frontend/src/tests/,Only Dc12r1S2RetailerPortal covers login/guards; no page-component or payment-absence tests.
+GAP-10,frontend,ClientLayout logout loses portal code in URL (navigates /client/login not /retail/login?w=),MINOR_DEFECT,P3,S3-S3,frontend/src/components/layout/ClientLayout.tsx:20,Store retains code; URL loses it on explicit logout. UX inconsistency.
+GAP-11,frontend,CreateOrderPage picker swallows load errors silently (catch {}),MINOR_DEFECT,P3,S3-S3,frontend/src/pages/client/CreateOrderPage.tsx:45,No UI feedback on catalog load failure.
+GAP-12,rbac,crud.get_order_by_id has no DB-layer retailer/wholesaler scope filter,GAP,P2,S3-S1,backend/crud/order.py:109,Ownership enforced in handler post-fetch; future callers could skip scoping.

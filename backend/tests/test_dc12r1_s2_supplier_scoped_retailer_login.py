@@ -296,16 +296,39 @@ async def _setup_full_login(s2_db, *, code: str | None = None):
 
 @pytest_asyncio.fixture
 async def s2_db():
-    """Provide a fresh database session, cleaned after the test."""
+    """Provide a fresh database session, cleaned after the test.
+
+    DC-12R1-S2-R2A: idempotently ensures the global public tables the S2 helpers
+    insert into (wholesalers / tenant_registrations / retailers /
+    wholesaler_retailer_bindings) exist. In the full backend gate these are
+    created by other suites / migrations; creating them here keeps this module
+    self-contained and deterministic when run on a fresh database.
+    """
+    from models.retailer import Retailer
+    from models.wholesaler import Wholesaler
+    from models.tenant_onboarding import TenantRegistration
+    from models.binding import WholesalerRetailerBinding
+
     engine = create_async_engine(
         get_settings().DATABASE_URL.replace(
             "postgresql://", "postgresql+asyncpg://"
         )
     )
+    _public_tables = [
+        Wholesaler.__table__,
+        TenantRegistration.__table__,
+        Retailer.__table__,
+        WholesalerRetailerBinding.__table__,
+    ]
+    async with engine.begin() as conn:
+        for table in _public_tables:
+            await conn.run_sync(table.create, checkfirst=True)
+
     async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
         await session.rollback()
     await engine.dispose()
+
 
 
 @pytest_asyncio.fixture
@@ -1187,6 +1210,259 @@ class TestRouteAccess:
         # Should NOT raise — retailer has client:catalog:read.
         token = await RequirePermission("client:catalog:read")(request)
         assert token is not None
+
+
+class TestRealRegisteredRouteDenials:
+    """DC-12R1-S2-R2A: real registered-route HTTP proof.
+
+    Unlike ``TestRouteAccess`` (which invokes the RBAC *dependency* directly),
+    this class exercises **actual registered product routes over HTTP** using a
+    real retailer JWT obtained through ``POST /api/v1/client/auth/login``.
+
+    The default test app uses the mock auth strategy (selected when
+    ``MPANGO_ENV=test``), which would bypass real JWT validation and synthesize
+    a permissive identity. To prove the REAL production authorization boundary,
+    this class routes the protected requests through a second app instance whose
+    ``AuthenticationMiddleware`` is wired with the production ``JwtAuthStrategy``
+    — so the Bearer token is actually decoded and tenant context is resolved
+    from the database, exactly as production serves it. The full pipeline then
+    runs: auth middleware attaches tenant context, then the route's
+    ``RequirePermission`` / platform guard denies before the route body executes.
+
+    For every denial it asserts: exact HTTP status + public code, the flat
+    ``{code, message, request_id}`` envelope, no Python dict repr, no supplier
+    information (schema/SQL/exception class), that the protected route body /
+    resource query does NOT execute after the authorization denial, and never a
+    500. It also proves the retailer may still use its permitted ``client:*``
+    route (no blanket denial was introduced).
+    """
+
+    @staticmethod
+    def _build_jwt_strategy_app():
+        """Build a fresh FastAPI app configured with the PRODUCTION JwtAuthStrategy.
+
+        ``configure_app`` reads the strategy via ``auth.factory.get_auth_strategy``
+        at configuration time, so we temporarily force the JWT strategy while
+        wiring this dedicated app instance (the shared module-level ``app`` keeps
+        the mock strategy used by the rest of this suite).
+        """
+        from fastapi import FastAPI
+
+        from api.app import configure_app
+        from auth.strategies.jwt import JwtAuthStrategy
+        import auth.factory as auth_factory
+        from core.config import get_settings
+        from core.error_codes import register_exception_handlers
+
+        original = auth_factory.get_auth_strategy
+        auth_factory.get_auth_strategy = lambda: JwtAuthStrategy()
+        try:
+            fresh_app = FastAPI()
+            configure_app(fresh_app, get_settings())
+            register_exception_handlers(fresh_app)
+        finally:
+            auth_factory.get_auth_strategy = original
+        return fresh_app
+
+    async def _retailer_token(self, client: AsyncClient, two_tenants) -> str:
+        """Obtain a REAL retailer JWT through the production login endpoint."""
+        code_a, _code_b, _schema_b, email, password, _a, _b = two_tenants
+        resp = await client.post(
+            "/api/v1/client/auth/login",
+            json={"email": email, "password": password, "wholesaler_code": code_a},
+        )
+        assert resp.status_code == HTTPStatus.OK, resp.text
+        return resp.json()["data"]["tokens"]["access_token"]
+
+    @staticmethod
+    def _assert_flat_403_denial(resp, expected_code: str):
+        """Shared denial assertions: 403, flat envelope, no repr, no supplier info."""
+        assert resp.status_code == HTTPStatus.FORBIDDEN, (
+            f"expected 403, got {resp.status_code}: {resp.text}"
+        )
+        body = resp.json()
+        assert body["code"] == expected_code, body
+        assert "message" in body and isinstance(body["message"], str)
+        assert "request_id" in body and body["request_id"]
+        text = resp.text
+        # No Python dict/list repr markers anywhere in the serialized body.
+        assert "'code'" not in text, f"dict repr leaked: {text}"
+        assert "{'" not in text and "'}" not in text
+        assert "['" not in text
+        # No supplier-internal information leaks into the public body.
+        for leak in ("postgresql", "select ", "select_", "tenant_schema",
+                     "Traceback", "Exception", "Error:"):
+            assert leak not in text, f"internal info leaked ({leak!r}): {text}"
+
+    async def test_orders_route_denied_over_http(self, client: AsyncClient, two_tenants):
+        token = await self._retailer_token(client, two_tenants)
+        jwt_app = self._build_jwt_strategy_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=jwt_app), base_url="http://testserver"
+        ) as jwt_client:
+            resp = await jwt_client.get(
+                "/api/v1/orders", headers={"Authorization": f"Bearer {token}"}
+            )
+        self._assert_flat_403_denial(resp, "PERMISSION_DENIED")
+
+    async def test_payments_route_denied_over_http(self, client: AsyncClient, two_tenants):
+        token = await self._retailer_token(client, two_tenants)
+        jwt_app = self._build_jwt_strategy_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=jwt_app), base_url="http://testserver"
+        ) as jwt_client:
+            resp = await jwt_client.get(
+                "/api/v1/payments", headers={"Authorization": f"Bearer {token}"}
+            )
+        self._assert_flat_403_denial(resp, "PERMISSION_DENIED")
+
+    async def test_finance_route_denied_over_http(self, client: AsyncClient, two_tenants):
+        token = await self._retailer_token(client, two_tenants)
+        # /api/v1/orders/{order_id}/invoice is the finance route (orders:read).
+        jwt_app = self._build_jwt_strategy_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=jwt_app), base_url="http://testserver"
+        ) as jwt_client:
+            resp = await jwt_client.get(
+                "/api/v1/orders/00000000-0000-0000-0000-000000000001/invoice",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        self._assert_flat_403_denial(resp, "PERMISSION_DENIED")
+
+    async def test_invitation_route_denied_over_http(self, client: AsyncClient, two_tenants):
+        token = await self._retailer_token(client, two_tenants)
+        # Invitation *management* is a write route (invitations:create) -> 403.
+        jwt_app = self._build_jwt_strategy_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=jwt_app), base_url="http://testserver"
+        ) as jwt_client:
+            resp = await jwt_client.post(
+                "/api/v1/invitations",
+                json={"email": "someone@example.com", "role": "viewer"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        self._assert_flat_403_denial(resp, "PERMISSION_DENIED")
+
+    async def test_platform_route_denied_over_http(self, client: AsyncClient, two_tenants):
+        """The actual registered platform route (``require_platform_operator``)
+        denies a retailer token. For a contextual (non-identity) retailer Bearer
+        the guard returns ``401 PLATFORM_ACCESS_REQUIRED`` (credential present
+        but not a platform credential). This is the registered route's real,
+        controlled denial — flat envelope, no repr, never a 500.
+
+        The ``PLATFORM_ADMIN_REQUIRED`` code belongs to the
+        ``RequirePlatformAdmin`` dependency, which has NO registered route in
+        this baseline; it is proven by the dependency-level test in
+        ``TestRouteAccess`` above and the H2 real-RBAC suite."""
+        token = await self._retailer_token(client, two_tenants)
+        jwt_app = self._build_jwt_strategy_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=jwt_app), base_url="http://testserver"
+        ) as jwt_client:
+            resp = await jwt_client.get(
+                "/api/v1/platform/p10/tenants",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        # Controlled denial (401 here, not 500), flat envelope, exact code.
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED, (
+            f"expected controlled platform denial, got {resp.status_code}: {resp.text}"
+        )
+        body = resp.json()
+        assert body["code"] == "PLATFORM_ACCESS_REQUIRED", body
+        assert "message" in body and isinstance(body["message"], str)
+        assert "request_id" in body and body["request_id"]
+        text = resp.text
+        assert "'code'" not in text and "{'" not in text and "'}" not in text
+        for leak in ("postgresql", "select ", "tenant_schema", "Traceback", "Exception"):
+            assert leak not in text, f"internal info leaked ({leak!r}): {text}"
+
+    async def test_denied_route_body_does_not_execute(
+        self, client: AsyncClient, two_tenants
+    ):
+        """SQL-capture proof: when the orders route denies, the protected
+        resource query never runs. The only SQL permitted is the auth
+        middleware's tenant/user resolution — never an orders-table read."""
+        from database.session import async_engine
+
+        token = await self._retailer_token(client, two_tenants)
+        jwt_app = self._build_jwt_strategy_app()
+        captured: list[str] = []
+
+        def _capture(conn, cursor, statement, parameters, context, executemany):
+            captured.append(statement)
+
+        event.listen(async_engine.sync_engine, "before_cursor_execute", _capture)
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=jwt_app), base_url="http://testserver"
+            ) as jwt_client:
+                resp = await jwt_client.get(
+                    "/api/v1/orders", headers={"Authorization": f"Bearer {token}"}
+                )
+        finally:
+            event.remove(async_engine.sync_engine, "before_cursor_execute", _capture)
+        # Authorization denied before the route body.
+        assert resp.status_code == HTTPStatus.FORBIDDEN
+        # No statement may read the protected orders resource.
+        offending = [s for s in captured if "orders" in s.lower()]
+        assert not offending, (
+            f"denied route executed resource SQL: {offending}"
+        )
+
+    async def test_retailer_can_still_use_permitted_client_route(
+        self, client: AsyncClient, two_tenants, s2_db
+    ):
+        """Allowed-path proof: the same retailer JWT is NOT blanket-denied — it
+        can still reach its permitted ``client:*`` route.
+
+        The minimal ``two_tenants`` schema intentionally carries only the auth
+        tables, so this test first provisions the few business tables the
+        ``GET /api/v1/client/products`` route reads (skus / inventory_stocks /
+        retailer_prices) in the seeded tenant schema. The route then runs its
+        full body through the real JWT-strategy app and returns 200, confirming
+        the 403s above are permission-specific, not a global block."""
+        code_a, _code_b, _schema_b, email, password, _a, _b = two_tenants
+        # Resolve the tenant schema for portal A from the registered login.
+        login = await client.post(
+            "/api/v1/client/auth/login",
+            json={"email": email, "password": password, "wholesaler_code": code_a},
+        )
+        schema_a = decode_token(
+            login.json()["data"]["tokens"]["access_token"]
+        ).tenant_schema
+        token = login.json()["data"]["tokens"]["access_token"]
+
+        # Provision the minimal business tables the route reads.
+        for stmt in (
+            f'CREATE TABLE IF NOT EXISTS "{schema_a}".skus ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
+            "name TEXT, sku_code TEXT, category TEXT, unit TEXT, "
+            "description TEXT, is_active BOOLEAN DEFAULT TRUE, "
+            "is_deleted BOOLEAN DEFAULT FALSE)",
+            f'CREATE TABLE IF NOT EXISTS "{schema_a}".inventory_stocks ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
+            "sku_id UUID, quantity_on_hand NUMERIC DEFAULT 0, "
+            "is_deleted BOOLEAN DEFAULT FALSE)",
+            f'CREATE TABLE IF NOT EXISTS "{schema_a}".retailer_prices ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
+            "sku_id UUID, retailer_id UUID, price NUMERIC, "
+            "is_deleted BOOLEAN DEFAULT FALSE)",
+        ):
+            await s2_db.execute(text(stmt))
+        await s2_db.commit()
+
+        jwt_app = self._build_jwt_strategy_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=jwt_app), base_url="http://testserver"
+        ) as jwt_client:
+            resp = await jwt_client.get(
+                "/api/v1/client/products",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        # The retailer reaches its own permitted route (200, not a denial).
+        assert resp.status_code == HTTPStatus.OK, (
+            f"allowed client route was not reachable: {resp.status_code} {resp.text}"
+        )
 
 
 # ---------------------------------------------------------------------------

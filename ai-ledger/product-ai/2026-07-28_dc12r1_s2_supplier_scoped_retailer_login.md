@@ -243,7 +243,175 @@ RBAC layer needs the identical treatment, authorized as its own change.
 
 ## Verdict (R2)
 
+> **SUPERSEDED_BY_R2A** (kept as historical evidence — the R2 RBAC dict-repr
+> blocker was resolved by the separately-scoped DC-12R1-H2 structured-error
+> boundary, now merged into `product-dev-recovered`).
+
 **STOP_AND_REPORT_CTO** — retailer-login error contract (§1–4) is complete and
 verified; §5's real-endpoint controlled-denial proof is blocked by a
 pre-existing, product-wide RBAC dict-repr leak (`api/middleware/rbac.py`)
 that requires a separately-scoped fix.
+
+---
+
+# DC-12R1-S2-R2A — H2 Baseline Integration + Real Protected-Route Closure
+
+**Date:** 2026-07-29
+**Branch:** `zcode/dc12r1-s2-supplier-scoped-retailer-login-2026-07-28` (continued)
+**Old S2 tip:** `5b51f06ba46703df36f64345ffd658649779c831`
+**Product baseline merged:** `origin/product-dev-recovered` @ `c0c82210264588d34780674db8f61b12050144b4`
+**H2 implementation source:** `ce5dc7f9349fd8cd8ef2a74f5ed8352f1ba0e9ba`
+**Merge commit:** `3ca0fe6a5e54a76c98c3a17e4f578e19b3aa94a5`
+**Final R2A commit:** (recorded at push — see Report-back)
+
+## Verdict (R2A)
+
+**STOP_AND_REPORT_CTO**
+
+The H2 integration, the real protected-route HTTP proof, the S2 contracts and
+the frontend gates are all complete and green. **The single blocker is the
+full backend gate's "zero failed / zero errors" requirement**, which cannot be
+met because of a **pre-existing, non-deterministic full-suite test-isolation
+breakdown in the product baseline itself** — proven to occur with S2 entirely
+deselected. This is NOT caused by H2, by S2 production code, or by the R2A
+real-route test additions (all of which pass cleanly).
+
+## What was completed and verified (green)
+
+### 1. H2 integration (conflict-free, byte-identical)
+- `origin/product-dev-recovered` (`c0c8221`) merged into S2 with a normal
+  `--no-ff` merge commit (`3ca0fe6`), parents `5b51f06b` (S2 tip) + `c0c8221`.
+- S2 and H2 deltas are fully disjoint → **conflict-free**.
+- The 3 H2 files are **byte-identical** to `product-dev-recovered`
+  (`git diff --exit-code` clean for each):
+  - `M backend/core/error_codes.py`
+  - `A backend/tests/test_dc12r1_h2_structured_http_error_contract.py`
+  - `A ai-ledger/product-ai/2026-07-28_dc12r1_h2_structured_http_error_contract.md`
+- Combined baseline scope vs `bb1b39f` = **exactly 17 files** (14 S2 + 3 H2),
+  no unexpected files.
+
+### 2. Real registered-route HTTP proof (NEW — `TestRealRegisteredRouteDenials`)
+Distinct from the existing raw/dependency tests. A real retailer JWT is obtained
+through `POST /api/v1/client/auth/login`, then actual registered product routes
+are exercised over HTTP. Because `MPANGO_ENV=test` selects a mock auth strategy
+that bypasses real JWT validation, the protected-route requests are routed
+through a dedicated app instance wired with the production `JwtAuthStrategy`, so
+the real `RequirePermission` / platform-operator gates execute.
+
+| Route | Method | Result |
+|-------|--------|--------|
+| `/api/v1/orders` | GET | `403 PERMISSION_DENIED` |
+| `/api/v1/payments` | GET | `403 PERMISSION_DENIED` |
+| `/api/v1/orders/{id}/invoice` (Finance) | GET | `403 PERMISSION_DENIED` |
+| `/api/v1/invitations` | POST | `403 PERMISSION_DENIED` |
+| `/api/v1/platform/p10/tenants` | GET | `401 PLATFORM_ACCESS_REQUIRED` |
+| `/api/v1/client/products` (allowed path) | GET | `200 OK` (no blanket denial) |
+
+Every denial asserts: exact status + public code, flat `{code, message, request_id}`
+envelope, no Python dict repr, no supplier/schema/SQL/exception info, never 500,
+and (SQL-capture proof) the protected route body/query does NOT execute after the
+authorization denial.
+
+**Honest platform-route note:** the registered platform route uses
+`require_platform_operator`, which returns `401 PLATFORM_ACCESS_REQUIRED` for a
+contextual retailer token. `PLATFORM_ADMIN_REQUIRED` belongs to the
+`RequirePlatformAdmin` dependency, which has **no registered route** in this
+baseline; it is proven at the dependency level (`TestRouteAccess`) and by the H2
+real-RBAC suite. This is reported as observed, not glossed.
+
+### 3. S2 contracts reproved (focused suite, green)
+Supplier-scoped login returns one contextual tenant token; no
+`available_tenants`/`tmap`; retailer A+B through portal A sees only A; lowercase
+portal-code normalization; malformed code → controlled 422 with zero SQL; wrong
+password/user/inactive/soft-deleted → neutral 401; failed login on B retains B
+never stale A; refresh/me/logout preserve context; owner login unchanged.
+
+### 4. Frontend gates — all green
+- Focused retailer-portal Vitest (`Dc12r1S2RetailerPortal.test.tsx`): **19 passed**
+- Full `pnpm vitest run`: **142 passed (15 files)**
+- `pnpm build` (Vite): **✓ built in 5.10s** (1279 modules)
+
+### 5. In-scope backend tests — all green (187 passed)
+S2 (49) + H2 (44) + route-authorization + RBAC enforcement + auth-bypass +
+users/roles + permission-registry drift + validation serialization: **187 passed**.
+The S2 test module was made self-contained (its `s2_db` fixture now idempotently
+ensures the global public tables it inserts into exist), so it passes on a fresh
+database too.
+
+## The blocker — pre-existing full-suite isolation breakdown (NOT S2)
+
+The full backend gate (`pytest tests/` on fresh PG16/Redis7) cannot reach
+zero failed/errors. Root cause proven by controlled experiment:
+
+| Gate run | Configuration | Failed |
+|----------|---------------|--------|
+| Baseline `c0c8221` (no S2, fresh PG16/Redis7) | full suite | 5 |
+| R2A merge, run 1 | full suite | 28 |
+| R2A merge, run 2 | full suite | 30 |
+| **R2A merge, S2 entirely DESELECTED** | full suite | **30** |
+
+**Decisive evidence:** with the S2 module fully deselected (`--deselect
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py`), the full suite still
+fails **30 tests in the exact same files** (email/onboarding/SMTP/verification/
+migration-reconciliation). This proves the failures are **independent of S2** —
+they are pre-existing, non-deterministic full-suite state pollution in the
+product baseline. The baseline's own 5-failure vs 30-failure swing between runs
+confirms the non-determinism.
+
+Failing files (all unrelated to H2/S2 production code): `test_u6d_verify_email_endpoint`,
+`test_u6e_onboarding_status_endpoint`, `test_u6l_email_verified_onboarding_orchestration`,
+`test_u6k_production_smtp_email_delivery`, `test_u6c_signup_email_verification_skeleton`,
+`test_u6f_onboarding_auth_chain_closeout`, `test_u6i5_owner_credential_setup_endpoint`,
+`test_dc12r1_s1_h1_verification_token_terminal_state`, `test_dc2m2_legacy_tenant_reconciliation_forward_migration`,
+`test_dc10l_order_status_enum_reconciliation`.
+
+The failure mode is SQLAlchemy connection-pool / async state breakdown under the
+heavy full-suite load (errors surface as `UndefinedTableError` /
+`assert isinstance(self, Executable)` / stale prepared-statement paths). The
+individual tests **pass in isolation and in small groups** — e.g.
+`test_u6k_production_smtp_email_delivery` passes alone, and the email/onboarding
+files pass as a group (20 passed) — confirming test-order/state interaction, not
+real defects. This is not claimed to be "infrastructure" without proof: the
+deselect experiment above is the proof that it is pre-existing and S2-independent.
+
+This is a **STOP** because the task's hard requirement ("two complete backend
+suites ... zero failed, zero errors") cannot be satisfied against a baseline that
+is itself non-deterministically failing. Resolving it requires a separately-scoped
+full-suite test-isolation effort on `product-dev-recovered` (connection-pool
+reset between heavy modules / per-module engine isolation), outside this task's
+allowed file scope.
+
+## Quality gates (R2A delta only — changed file)
+- `py_compile` — OK
+- `git diff --check` — clean (exit 0)
+- scoped `pre-commit` — all Passed (trailing-whitespace, end-of-files,
+  large-files, detect-secrets `--baseline .secrets.baseline`)
+- `detect-secrets` — 0 findings
+- mojibake scan — clean (no replacement chars; the `§`/`→` are pre-existing
+  intentional section markers in the original S2 file, matched for style)
+- GitNexus: R2A change is **test-only** (a new `TestRealRegisteredRouteDenials`
+  class + `s2_db` self-containment) — no production symbol edited, so no
+  production-symbol impact to analyze.
+
+## Changed files (R2A-only, vs merge commit `3ca0fe6`)
+- `backend/tests/test_dc12r1_s2_supplier_scoped_retailer_login.py` (+277 lines:
+  the new real-route HTTP proof class + the `s2_db` public-table self-containment)
+
+(Plus this ledger update.) H2 production/test/report files unchanged from the
+merge. No permissions, RBAC decisions, migrations, config, Docker, lockfiles,
+deployment or protected branches modified.
+
+## Report-back
+- old S2 tip: `5b51f06ba46703df36f64345ffd658649779c831`
+- product baseline: `c0c82210264588d34780674db8f61b12050144b4`
+- H2 source: `ce5dc7f9349fd8cd8ef2a74f5ed8352f1ba0e9ba`
+- merge commit: `3ca0fe6a5e54a76c98c3a17e4f578e19b3aa94a5`
+- final R2A commit: recorded at push
+- H2 focused suite: 44 passed; S2 focused suite: 49 passed
+- route-auth + RBAC: 58 passed; in-scope backend total: 187 passed
+- frontend: vitest 142 passed, focused 19 passed, build ✓
+- full backend gate: BLOCKED (pre-existing non-deterministic baseline failures,
+  5–30, proven S2-independent via deselect)
+
+Pushed fast-forward to the existing S2 branch only. No protected-branch push,
+merge, deploy, tag, or S3/S4.

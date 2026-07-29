@@ -415,3 +415,66 @@ deployment or protected branches modified.
 
 Pushed fast-forward to the existing S2 branch only. No protected-branch push,
 merge, deploy, tag, or S3/S4.
+
+---
+
+# DC-12R1-S2-R2A-R1 — Test Rewrite: TenantProvisioningService + Full Bootstrap
+
+**Date:** 2026-07-29
+**Branch tip:** `684d4fc`
+
+## Objective
+
+Rewrite the S2 test file to use `TenantProvisioningService` + full bootstrap
+(instead of handwritten DDL and `_make_tenant()`). Replace the invoice surrogate
+with the real `/api/v1/finance/summary` endpoint for finance-denial proof.
+Add ownership tracking with FK-safe teardown and residue proof.
+
+## What changed
+
+- Removed: handwritten DDL, `_make_tenant()`, `s2_db` `table.create(checkfirst=True)`,
+  module-level `from api.app import app` mutation, `_build_jwt_strategy_app()`,
+  handwritten `CREATE TABLE` for client/products
+- Added: `_TenantPool` module-scoped pool provisioning through
+  `TenantProvisioningService.provision_wholesaler_and_schema()` + full bootstrap
+- Added: `_OwnedIds` tracking + FK-safe teardown + double-validated schema DROP
+- Fixed: `TokenPayload` import from `core.security` (canonical, with
+  `is_identity_only`/`is_super_admin`) instead of `schemas.auth` (stale)
+- Fixed: all `wholesaler_code` values to match `^[A-Z0-9]+$` regex (no underscores)
+- Fixed: all INSERTs include `expires_at` (migration 036 requirement)
+- Fixed: code normalization tests use pool code instead of orphan `_unique_code`
+- Fixed: route access tests use `self._pool_ws_schema()` (not bare function)
+- Fixed: duplicate-registration test uses pool code for DB query
+
+## Verification results
+
+| Test group | Count | Result |
+|---|---|---|
+| S2 focused | 50 | 50 passed |
+| H2 focused | 44 | 44 passed |
+| S2 + H2 (H2 first) | 94 | 94 passed |
+| S2 + H2 (S2 first) | 94 | 94 passed |
+| Route auth + RBAC | 51 | 51 passed |
+| Provisioning contracts | 29 | 29 passed |
+| **S2 run 2 (same DB)** | **50** | **50 passed — zero residue** |
+
+## Quality gates
+
+- **Residue proof**: zero A/B/sentinel schemas remain after run (only `public`
+  exists); sentinel fingerprint preserved
+- **Teardown idempotence**: second teardown is a no-op (no errors)
+- **Zero production-code changes**: only the test file was modified
+- **No handwritten DDL**: all tenants provisioned through
+  `TenantProvisioningService` + `bootstrap_tenant_schema`
+- **Real finance endpoint**: `GET /api/v1/finance/summary` with `finance:read`
+  gate (not invoice surrogate)
+
+## Changed files
+
+- `backend/tests/test_dc12r1_s2_supplier_scoped_retailer_login.py`
+  (+559/−812 = net −253 lines, 1539 lines final)
+
+## Report-back
+
+- S2 branch tip: `684d4fc`
+- Candidate final commit: (recorded at push)

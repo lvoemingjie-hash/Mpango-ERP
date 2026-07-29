@@ -5,6 +5,8 @@ import type {
   IdentityLoginResponse,
   SelectTenantRequest,
   CurrentUserResponse,
+  RetailerLoginRequest,
+  RetailerLoginResponse,
 } from '@/types/auth';
 
 /**
@@ -61,4 +63,9 @@ export const authService = {
       reset_token: payload.resetToken,
       new_password: payload.newPassword,
     }),
+
+  // DC-12R1-S2: supplier-scoped retailer login. Calls only /client/auth/login.
+  // Never calls /auth/login or /auth/select-tenant.
+  retailerLogin: (payload: RetailerLoginRequest) =>
+    api.post<RetailerLoginResponse>('/client/auth/login', payload),
 };

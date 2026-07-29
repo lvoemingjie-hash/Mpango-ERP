@@ -4,11 +4,19 @@ import { useAuthStore } from '@/stores/authStore';
 /**
  * ProtectedRoute — redirects to /login if not authenticated.
  * Wraps child routes via <Outlet />.
+ *
+ * DC-12R1-S2: if a stale/expired retailer session is detected (portal code
+ * preserved but no access token), redirect back to the same supplier portal
+ * instead of the owner login page.
  */
 export function ProtectedRoute() {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const retailerPortalCode = useAuthStore((s) => s.retailerPortalCode);
 
   if (!accessToken) {
+    if (retailerPortalCode) {
+      return <Navigate to={`/retail/login?w=${retailerPortalCode}`} replace />;
+    }
     return <Navigate to="/login" replace />;
   }
 
@@ -52,6 +60,64 @@ export function PlatformRoute() {
 
   if (!isIdentityOnlySuperAdmin) {
     return <Navigate to="/" replace />;
+  }
+
+  return <Outlet />;
+}
+
+/**
+ * RetailerRoute — DC-12R1-S2 guard for /client/** routes.
+ *
+ * Only users carrying the retailer_operator role may enter retailer-facing
+ * client routes. On rejection the retailer is redirected back to its portal
+ * login (preserving the portal code); owner/platform sessions go to /login.
+ */
+export function RetailerRoute() {
+  const user = useAuthStore((s) => s.user);
+  const retailerPortalCode = useAuthStore((s) => s.retailerPortalCode);
+
+  const isRetailerOperator =
+    !!user && user.roles?.includes('retailer_operator') === true;
+
+  if (!isRetailerOperator) {
+    if (retailerPortalCode) {
+      return <Navigate to={`/retail/login?w=${retailerPortalCode}`} replace />;
+    }
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Outlet />;
+}
+
+/**
+ * WholesalerRoute — DC-12R1-S2 guard for wholesaler ERP routes.
+ *
+ * retailer_operator must NOT enter wholesaler ERP routes. The redirect target
+ * depends on session state:
+ *   - Authenticated retailer  → /client (their own home; they are signed in,
+ *     just on the wrong side of the boundary — we do NOT log them out).
+ *   - Stale/unauthenticated    → supplier portal login (preserving the code).
+ * All other non-retailer sessions pass through to the existing
+ * ProtectedRoute/auth checks.
+ */
+export function WholesalerRoute() {
+  const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const retailerPortalCode = useAuthStore((s) => s.retailerPortalCode);
+
+  const isRetailerOperator =
+    !!user && user.roles?.includes('retailer_operator') === true;
+
+  if (isRetailerOperator) {
+    if (accessToken) {
+      // Authenticated retailer on a wholesaler route → send to retailer home.
+      return <Navigate to="/client" replace />;
+    }
+    // Stale retailer session → back to its supplier portal.
+    if (retailerPortalCode) {
+      return <Navigate to={`/retail/login?w=${retailerPortalCode}`} replace />;
+    }
+    return <Navigate to="/retail/login" replace />;
   }
 
   return <Outlet />;

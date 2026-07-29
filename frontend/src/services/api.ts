@@ -114,7 +114,7 @@ api.interceptors.response.use(
 
     // Don't retry refresh or login endpoints (prevents infinite loop)
     const url = originalRequest.url || '';
-    if (url.includes('/auth/refresh') || url.includes('/auth/login')) {
+    if (url.includes('/auth/refresh') || url.includes('/auth/login') || url.includes('/client/auth/login')) {
       return Promise.reject(error);
     }
 
@@ -136,8 +136,14 @@ api.interceptors.response.use(
 
     if (!refreshToken) {
       isRefreshing = false;
+      // DC-12R1-S2: redirect retailer sessions back to their supplier portal.
+      const { retailerPortalCode } = useAuthStore.getState();
       logout();
-      window.location.href = '/login';
+      if (retailerPortalCode) {
+        window.location.href = `/retail/login?w=${retailerPortalCode}`;
+      } else {
+        window.location.href = '/login';
+      }
       return Promise.reject(error);
     }
 
@@ -166,8 +172,14 @@ api.interceptors.response.use(
     } catch (refreshError) {
       // Refresh failed — clear everything, redirect to login
       processQueue(refreshError, null);
+      // DC-12R1-S2: redirect retailer sessions back to their supplier portal.
+      const { retailerPortalCode } = useAuthStore.getState();
       logout();
-      window.location.href = '/login';
+      if (retailerPortalCode) {
+        window.location.href = `/retail/login?w=${retailerPortalCode}`;
+      } else {
+        window.location.href = '/login';
+      }
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;

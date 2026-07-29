@@ -1,5 +1,5 @@
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { ProtectedRoute, PublicRoute, PlatformRoute } from '@/router/guards';
+import { createBrowserRouter, RouterProvider, Navigate, useSearchParams } from 'react-router-dom';
+import { ProtectedRoute, PublicRoute, PlatformRoute, RetailerRoute, WholesalerRoute } from '@/router/guards';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -69,10 +69,15 @@ const router = createBrowserRouter([
       { path: '/retailer/reset-password', element: <RetailerResetPasswordPage /> },
     ],
   },
-  // Client login -- separate from wholesaler login
+  // DC-12R1-S2: /retail/login?w=<code> is the canonical retailer portal entry.
+  {
+    path: '/retail/login',
+    element: <ClientLoginPage />,
+  },
+  // /client/login is kept as a compatibility redirect/alias preserving `w`.
   {
     path: '/client/login',
-    element: <ClientLoginPage />,
+    element: <ClientLoginAliasRedirect />,
   },
   // Workspace selector -- after login, but before app
   {
@@ -89,32 +94,44 @@ const router = createBrowserRouter([
     element: <ProtectedRoute />,
     children: [
       {
-        element: <MainLayout />,
+        // DC-12R1-S2: retailer_operator must not enter wholesaler ERP routes.
+        element: <WholesalerRoute />,
         children: [
-          { path: '/', element: <DashboardPage /> },
-          { path: '/orders', element: <OrderListPage /> },
-          { path: '/orders/new', element: <WholesalerCreateOrderPage /> },
-          { path: '/inventory', element: <InventoryPage /> },
-          { path: '/inventory/logs', element: <InventoryLogPage /> },
-          { path: '/skus', element: <SKUListPage /> },
-          { path: '/skus/intake', element: <DataIntakePage /> },
-          { path: '/skus/scan', element: <MobileScanPreview /> },
-          { path: '/retailers', element: <RetailerListPage /> },
-          { path: '/pricing', element: <RetailerPricingPage /> },
-          { path: '/tenants', element: <TenantListPage /> },
-          { path: '/finance', element: <FinancePage /> },
-          { path: '/payments', element: <PaymentListPage /> },
+          {
+            element: <MainLayout />,
+            children: [
+              { path: '/', element: <DashboardPage /> },
+              { path: '/orders', element: <OrderListPage /> },
+              { path: '/orders/new', element: <WholesalerCreateOrderPage /> },
+              { path: '/inventory', element: <InventoryPage /> },
+              { path: '/inventory/logs', element: <InventoryLogPage /> },
+              { path: '/skus', element: <SKUListPage /> },
+              { path: '/skus/intake', element: <DataIntakePage /> },
+              { path: '/skus/scan', element: <MobileScanPreview /> },
+              { path: '/retailers', element: <RetailerListPage /> },
+              { path: '/pricing', element: <RetailerPricingPage /> },
+              { path: '/tenants', element: <TenantListPage /> },
+              { path: '/finance', element: <FinancePage /> },
+              { path: '/payments', element: <PaymentListPage /> },
+            ],
+          },
         ],
       },
       // Client App routes (Retailer-facing, mobile-friendly layout)
+      // DC-12R1-S2: only retailer_operator may enter /client/**.
       {
-        element: <ClientLayout />,
+        element: <RetailerRoute />,
         children: [
-          { path: '/client', element: <ProductListPage /> },
-          { path: '/client/products/:productId', element: <ProductDetailPage /> },
-          { path: '/client/orders', element: <ClientOrderListPage /> },
-          { path: '/client/orders/new', element: <ClientCreateOrderPage /> },
-          { path: '/client/orders/:orderId', element: <OrderDetailPage /> },
+          {
+            element: <ClientLayout />,
+            children: [
+              { path: '/client', element: <ProductListPage /> },
+              { path: '/client/products/:productId', element: <ProductDetailPage /> },
+              { path: '/client/orders', element: <ClientOrderListPage /> },
+              { path: '/client/orders/new', element: <ClientCreateOrderPage /> },
+              { path: '/client/orders/:orderId', element: <OrderDetailPage /> },
+            ],
+          },
         ],
       },
       // Platform Admin Cockpit routes (P11) -- super_admin only
@@ -178,6 +195,18 @@ const router = createBrowserRouter([
     element: <NotFoundPage />,
   },
 ]);
+
+/**
+ * DC-12R1-S2: /client/login compatibility alias. Preserves the `w` query
+ * param and redirects to the canonical /retail/login entry, so legacy
+ * supplier links keep working and the portal code is not lost.
+ */
+function ClientLoginAliasRedirect() {
+  const [searchParams] = useSearchParams();
+  const w = searchParams.get('w');
+  const target = w ? `/retail/login?w=${encodeURIComponent(w)}` : '/retail/login';
+  return <Navigate to={target} replace />;
+}
 
 export function AppRouter() {
   return <RouterProvider router={router} />;

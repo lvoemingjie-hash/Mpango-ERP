@@ -48,7 +48,12 @@ from database.session import AsyncSessionLocal
 from models.wholesaler import Wholesaler
 from models.user import User, Role, Permission
 from core.security import hash_password
-from core.permission_registry import ADMIN_PERMISSIONS, ADMIN_ROLE
+from core.permission_registry import (
+    ADMIN_PERMISSIONS,
+    ADMIN_ROLE,
+    RETAILER_OPERATOR_PERMISSIONS,
+    RETAILER_OPERATOR_ROLE,
+)
 from db.sql_safety import validate_identifier as _validate_identifier
 
 
@@ -165,7 +170,10 @@ async def setup_admin(
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
     # --- Create permissions ---
-    permissions_data = ADMIN_PERMISSIONS
+    # DC-12R1-S3-S1: seed BOTH admin and retailer_operator permissions so every
+    # API-route RequirePermission code is present in the provisioning path
+    # (the s6e RBAC drift gate asserts no route permission is missing here).
+    permissions_data = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS
 
     perm_ids = []
     for code, description in permissions_data:
@@ -211,6 +219,47 @@ async def setup_admin(
                 text('INSERT INTO role_permissions (role_id, permission_id) VALUES (:rid, :pid)'),
                 {"rid": str(role_id), "pid": str(perm_id)}
             )
+
+    # --- DC-12R1-S3-S1: ensure the retailer_operator role + its client:* perms ---
+    # The client catalog/order routes enforce RequirePermission(client:*); the
+    # retailer_operator role must carry those permissions in every provisioned
+    # tenant (admin gets all perms above; retailer_operator gets only client:*).
+    result = await db.execute(
+        text('SELECT id FROM roles WHERE name = :name'),
+        {"name": RETAILER_OPERATOR_ROLE}
+    )
+    retailer_row = result.fetchone()
+    if retailer_row:
+        retailer_role_id = retailer_row[0]
+    else:
+        retailer_role = Role(
+            name=RETAILER_OPERATOR_ROLE, description="Retailer MVP operator"
+        )
+        db.add(retailer_role)
+        await db.flush()
+        retailer_role_id = retailer_role.id
+
+    # Resolve the retailer_operator client:* permission ids and grant them.
+    retailer_perm_ids = []
+    for code, _desc in RETAILER_OPERATOR_PERMISSIONS:
+        result = await db.execute(
+            text('SELECT id FROM permissions WHERE code = :code'),
+            {"code": code}
+        )
+        row = result.fetchone()
+        if row:
+            retailer_perm_ids.append(row[0])
+    for pid in retailer_perm_ids:
+        check = await db.execute(
+            text('SELECT 1 FROM role_permissions WHERE role_id = :rid AND permission_id = :pid'),
+            {"rid": str(retailer_role_id), "pid": str(pid)}
+        )
+        if not check.fetchone():
+            await db.execute(
+                text('INSERT INTO role_permissions (role_id, permission_id) VALUES (:rid, :pid)'),
+                {"rid": str(retailer_role_id), "pid": str(pid)}
+            )
+    print(f"  ✓ {RETAILER_OPERATOR_ROLE} role ensured ({len(retailer_perm_ids)} client perms)")
 
     # --- Create admin user ---
     result = await db.execute(

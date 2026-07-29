@@ -222,7 +222,7 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     _add_backend_to_path()
 
     from core.config import get_settings
-    from core.permission_registry import ADMIN_PERMISSIONS
+    from core.permission_registry import ADMIN_PERMISSIONS, RETAILER_OPERATOR_PERMISSIONS
     from database.session import AsyncSessionLocal
     from models.wholesaler import Wholesaler
 
@@ -242,7 +242,7 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     admin_password = "testpassword"
     admin_full_name = "Test Admin"
 
-    permission_codes = ADMIN_PERMISSIONS
+    permission_codes = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS
 
     async with AsyncSessionLocal() as db:
         await _ensure_public_wholesaler(

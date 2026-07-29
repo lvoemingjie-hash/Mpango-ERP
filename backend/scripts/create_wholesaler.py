@@ -33,7 +33,12 @@ from models.wholesaler import Wholesaler
 from models.user import User, Role, Permission
 from models.associations import user_roles, role_permissions
 from core.security import hash_password
-from core.permission_registry import ADMIN_PERMISSION_CODES, ADMIN_PERMISSIONS, ADMIN_ROLE
+from core.permission_registry import (
+    ADMIN_PERMISSION_CODES,
+    ADMIN_PERMISSIONS,
+    ADMIN_ROLE,
+    RETAILER_OPERATOR_PERMISSIONS,
+)
 from db.sql_safety import validate_identifier as _validate_identifier
 
 
@@ -162,7 +167,7 @@ async def create_permissions(db: AsyncSession, tenant_schema: str):
     # Set search path
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
-    for code, description in ADMIN_PERMISSIONS:
+    for code, description in ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS:
         result = await db.execute(
             text('SELECT * FROM permissions WHERE code = :code'),
             {"code": code}

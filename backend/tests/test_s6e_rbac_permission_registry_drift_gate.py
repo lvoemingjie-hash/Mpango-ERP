@@ -15,7 +15,11 @@ from typing import Any
 
 from fastapi.routing import APIRoute
 
-from core.permission_registry import ADMIN_PERMISSION_CODES, ADMIN_PERMISSIONS
+from core.permission_registry import (
+    ADMIN_PERMISSION_CODES,
+    ADMIN_PERMISSIONS,
+    RETAILER_OPERATOR_PERMISSION_CODES,
+)
 from tests.async_test_utils import run_coroutine
 
 
@@ -263,14 +267,26 @@ def _extract_seed_test_tenant_permissions(script_path: Path) -> set[str]:
         database_session.AsyncSessionLocal = original_async_session_local
         wholesaler_model.Wholesaler.derive_schema_from_id = original_derive_schema
 
-    assert captured.get("permission_codes") is ADMIN_PERMISSIONS
-    return {code for code, _description in captured["permission_codes"]}
+    # DC-12R1-S3-S1: seed_test_tenant now passes the admin + retailer_operator
+    # registries concatenated (both are canonical). The identity check confirms
+    # the script consumes the canonical registry objects (not a hand-rolled copy).
+    captured_codes = captured.get("permission_codes")
+    assert captured_codes is not None
+    assert captured_codes[: len(ADMIN_PERMISSIONS)] == tuple(ADMIN_PERMISSIONS), (
+        "seed_test_tenant must consume the canonical ADMIN_PERMISSIONS registry"
+    )
+    return {code for code, _description in captured_codes}
 
 
 def _extract_seed_demo_permissions(script_path: Path) -> set[str]:
     module = _load_script_module(script_path)
     assert module.ADMIN_PERMISSIONS is ADMIN_PERMISSIONS
-    assert module.PERMISSION_CODES is ADMIN_PERMISSIONS
+    # DC-12R1-S3-S1: PERMISSION_CODES is now ADMIN + RETAILER_OPERATOR (both
+    # canonical registries concatenated). Confirm it starts with the canonical
+    # admin registry rather than a hand-rolled copy.
+    assert module.PERMISSION_CODES[: len(ADMIN_PERMISSIONS)] == tuple(ADMIN_PERMISSIONS), (
+        "seed_demo_data must consume the canonical ADMIN_PERMISSIONS registry"
+    )
 
     db = _PermissionCaptureDB()
     _run(module._seed_rbac(db, "t_test"))
@@ -400,12 +416,17 @@ def test_api_route_permissions_are_seeded_in_all_tenant_provisioning_paths():
 
 
 def test_provisioning_scripts_import_and_consume_canonical_registry_exactly():
+    # DC-12R1-S3-S1: provisioning scripts seed BOTH the admin and the
+    # retailer_operator canonical registries (the client:* route permissions
+    # belong to the disjoint retailer namespace). The union is the exact set a
+    # fully-provisioned tenant must carry.
+    canonical = set(ADMIN_PERMISSION_CODES) | set(RETAILER_OPERATOR_PERMISSION_CODES)
     for script_name, script_path in PROVISIONING_PERMISSION_SCRIPTS.items():
         seed_permissions = extract_seed_permissions(script_path)
-        missing = sorted(ADMIN_PERMISSION_CODES - seed_permissions)
-        extra = sorted(seed_permissions - ADMIN_PERMISSION_CODES)
-        assert seed_permissions == set(ADMIN_PERMISSION_CODES), (
-            f"{script_name} drifted from canonical admin permissions; "
+        missing = sorted(canonical - seed_permissions)
+        extra = sorted(seed_permissions - canonical)
+        assert seed_permissions == canonical, (
+            f"{script_name} drifted from canonical registries; "
             f"missing={missing}, extra={extra}"
         )
 

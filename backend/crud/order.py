@@ -134,6 +134,42 @@ async def get_order_by_id(
     return result.scalar_one_or_none()
 
 
+async def get_order_for_retailer(
+    db: AsyncSession,
+    order_id: str,
+    wholesaler_id: str,
+    retailer_id: str,
+) -> Optional[Order]:
+    """
+    DC-12R1-S3-S1: dual-key scoped order fetch for the retailer client API.
+
+    Loads an order ONLY if it matches ``order_id`` AND ``wholesaler_id`` AND
+    ``retailer_id`` AND is not soft-deleted. This enforces ownership at the
+    database layer (defense-in-depth on top of the tenant-scoped session) so a
+    wrong-retailer or wrong-supplier request returns ``None`` -> neutral 404,
+    without first fetching the row and disclosing its existence.
+
+    Used by the client ``get_order`` / ``cancel_order`` routes. The unscoped
+    ``get_order_by_id`` remains for wholesaler-side use.
+    """
+    try:
+        order_uuid = UUID(order_id)
+        ws_uuid = UUID(wholesaler_id)
+        retailer_uuid = UUID(retailer_id)
+    except (ValueError, TypeError):
+        return None
+
+    result = await db.execute(
+        select(Order)
+        .where(Order.id == order_uuid)
+        .where(Order.wholesaler_id == ws_uuid)
+        .where(Order.retailer_id == retailer_uuid)
+        .where(Order.is_deleted == False)
+        .options(selectinload(Order.items))
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_orders_paginated(
     db: AsyncSession,
     page: int = 1,

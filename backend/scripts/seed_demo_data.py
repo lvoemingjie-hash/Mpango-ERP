@@ -38,7 +38,7 @@ def _add_backend_to_path() -> None:
 
 _add_backend_to_path()
 
-from core.permission_registry import ADMIN_PERMISSIONS
+from core.permission_registry import ADMIN_PERMISSIONS, RETAILER_OPERATOR_PERMISSIONS
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -57,7 +57,7 @@ ADMIN_FULL_NAME = "Demo Administrator"
 
 # Preserve the public name used by legacy callers while sourcing from the
 # canonical runtime registry.
-PERMISSION_CODES = ADMIN_PERMISSIONS
+PERMISSION_CODES = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS
 
 ROLES = [
     ("admin", "Administrator with full access"),

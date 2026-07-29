@@ -38,7 +38,7 @@ from core.security import TokenPayload
 from crud.order import (
     create_order as crud_create_order,
     get_order_for_retailer,
-    get_orders_paginated,
+    get_orders_for_retailer,
     cancel_order as crud_cancel_order,
 )
 from schemas.client import (
@@ -238,12 +238,12 @@ async def list_orders(
         }
         internal_status = status_map.get(order_status.upper())
 
-    orders, total = await get_orders_paginated(
+    orders, total = await get_orders_for_retailer(
         db=db,
+        wholesaler_id=client.tenant_id,  # mandatory validated dual-key scope
+        retailer_id=client.retailer_id,  # mandatory validated dual-key scope
         page=page,
         size=size,
-        wholesaler_id=client.tenant_id,  # DC-12R1-S3-S1: dual-key scope
-        retailer_id=client.retailer_id,  # P0: server-enforced scope
         status_filter=internal_status,
     )
 

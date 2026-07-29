@@ -234,6 +234,60 @@ async def get_orders_paginated(
     return orders, total
 
 
+async def get_orders_for_retailer(
+    db: AsyncSession,
+    *,
+    wholesaler_id: str,
+    retailer_id: str,
+    page: int = 1,
+    size: int = 20,
+    status_filter: Optional[OrderStatus] = None,
+) -> Tuple[List[Order], int]:
+    """DC-12R1-S3-S1-R1: retailer-specific paginated order list.
+
+    Both ``wholesaler_id`` and ``retailer_id`` are **mandatory** and validated.
+    Invalid UUIDs raise ``ValueError`` (never silently omit either predicate),
+    so the caller gets a controlled error rather than an unscoped query.
+
+    The generic ``get_orders_paginated`` remains for wholesaler-side use where
+    filters are genuinely optional.
+    """
+    ws_uuid = UUID(wholesaler_id)  # raises ValueError on invalid — mandatory
+    retailer_uuid = UUID(retailer_id)  # raises ValueError on invalid — mandatory
+
+    base_query = (
+        select(Order)
+        .where(Order.is_deleted == False)
+        .where(Order.wholesaler_id == ws_uuid)
+        .where(Order.retailer_id == retailer_uuid)
+    )
+    count_query = (
+        select(func.count(Order.id))
+        .where(Order.is_deleted == False)
+        .where(Order.wholesaler_id == ws_uuid)
+        .where(Order.retailer_id == retailer_uuid)
+    )
+
+    if status_filter:
+        base_query = base_query.where(Order.status == status_filter)
+        count_query = count_query.where(Order.status == status_filter)
+
+    count_result = await db.execute(count_query)
+    total = count_result.scalar_one()
+
+    offset = (page - 1) * size
+    result = await db.execute(
+        base_query
+        .options(selectinload(Order.items))
+        .order_by(Order.created_at.desc())
+        .offset(offset)
+        .limit(size)
+    )
+    orders = list(result.scalars().all())
+
+    return orders, total
+
+
 async def create_order(
     db: AsyncSession,
     wholesaler_id: str,

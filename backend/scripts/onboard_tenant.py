@@ -170,13 +170,15 @@ async def setup_admin(
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
     # --- Create permissions ---
-    # DC-12R1-S3-S1: seed BOTH admin and retailer_operator permissions so every
-    # API-route RequirePermission code is present in the provisioning path
-    # (the s6e RBAC drift gate asserts no route permission is missing here).
-    permissions_data = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS
+    # DC-12R1-S3-S1-R1: seed BOTH admin and retailer_operator permission codes
+    # into the permissions table so every API-route RequirePermission code is
+    # present. Each role gets ONLY its own canonical set (admin gets
+    # ADMIN_PERMISSIONS only; retailer_operator gets RETAILER_OPERATOR_PERMISSIONS
+    # only). The two sets are disjoint by registry assertion.
+    all_permissions = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS
 
-    perm_ids = []
-    for code, description in permissions_data:
+    perm_id_by_code: dict[str, Any] = {}
+    for code, description in all_permissions:
         result = await db.execute(
             text('SELECT id FROM permissions WHERE code = :code'),
             {"code": code}
@@ -186,13 +188,13 @@ async def setup_admin(
             perm = Permission(code=code, description=description)
             db.add(perm)
             await db.flush()
-            perm_ids.append(perm.id)
+            perm_id_by_code[code] = perm.id
         else:
-            perm_ids.append(row[0])
+            perm_id_by_code[code] = row[0]
 
-    print(f"  ✓ {len(perm_ids)} permissions ensured")
+    print(f"  ✓ {len(perm_id_by_code)} permissions ensured")
 
-    # --- Create admin role ---
+    # --- Create admin role + assign ONLY ADMIN_PERMISSIONS ---
     result = await db.execute(
         text('SELECT id FROM roles WHERE name = :name'),
         {"name": ADMIN_ROLE}
@@ -208,8 +210,8 @@ async def setup_admin(
 
     print(f"  ✓ Admin role ensured")
 
-    # --- Assign all permissions to admin role ---
-    for perm_id in perm_ids:
+    for code, _desc in ADMIN_PERMISSIONS:
+        perm_id = perm_id_by_code[code]
         check = await db.execute(
             text('SELECT 1 FROM role_permissions WHERE role_id = :rid AND permission_id = :pid'),
             {"rid": str(role_id), "pid": str(perm_id)}
@@ -220,10 +222,7 @@ async def setup_admin(
                 {"rid": str(role_id), "pid": str(perm_id)}
             )
 
-    # --- DC-12R1-S3-S1: ensure the retailer_operator role + its client:* perms ---
-    # The client catalog/order routes enforce RequirePermission(client:*); the
-    # retailer_operator role must carry those permissions in every provisioned
-    # tenant (admin gets all perms above; retailer_operator gets only client:*).
+    # --- DC-12R1-S3-S1-R1: retailer_operator role gets ONLY client:* perms ---
     result = await db.execute(
         text('SELECT id FROM roles WHERE name = :name'),
         {"name": RETAILER_OPERATOR_ROLE}
@@ -239,27 +238,18 @@ async def setup_admin(
         await db.flush()
         retailer_role_id = retailer_role.id
 
-    # Resolve the retailer_operator client:* permission ids and grant them.
-    retailer_perm_ids = []
     for code, _desc in RETAILER_OPERATOR_PERMISSIONS:
-        result = await db.execute(
-            text('SELECT id FROM permissions WHERE code = :code'),
-            {"code": code}
-        )
-        row = result.fetchone()
-        if row:
-            retailer_perm_ids.append(row[0])
-    for pid in retailer_perm_ids:
+        perm_id = perm_id_by_code[code]
         check = await db.execute(
             text('SELECT 1 FROM role_permissions WHERE role_id = :rid AND permission_id = :pid'),
-            {"rid": str(retailer_role_id), "pid": str(pid)}
+            {"rid": str(retailer_role_id), "pid": str(perm_id)}
         )
         if not check.fetchone():
             await db.execute(
                 text('INSERT INTO role_permissions (role_id, permission_id) VALUES (:rid, :pid)'),
-                {"rid": str(retailer_role_id), "pid": str(pid)}
+                {"rid": str(retailer_role_id), "pid": str(perm_id)}
             )
-    print(f"  ✓ {RETAILER_OPERATOR_ROLE} role ensured ({len(retailer_perm_ids)} client perms)")
+    print(f"  ✓ {RETAILER_OPERATOR_ROLE} role ensured ({len(RETAILER_OPERATOR_PERMISSIONS)} client perms)")
 
     # --- Create admin user ---
     result = await db.execute(

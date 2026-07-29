@@ -239,7 +239,7 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     tenant_name = "Mpango Test Tenant"
 
     admin_email = "admin@test.com"
-    admin_password = "testpassword"
+    admin_password = "testpassword"  # pragma: allowlist secret
     admin_full_name = "Test Admin"
 
     permission_codes = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS

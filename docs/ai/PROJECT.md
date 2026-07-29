@@ -1,10 +1,11 @@
 # Mpango ERP Project Status / 项目情况
 
-**Last updated:** 2026-07-28
+**Last updated:** 2026-07-29
 **Status owner:** CTO
 **Current product branch:** `origin/product-dev-recovered`
-**Accepted product-code commit:** `6d81b4012c136a4655f8aa162fe15ed8854626b7`
-**Status-document publication merge:** `1a986bdbb658c0d452b4e4f0d940bbffaa8e38cc`
+**Accepted product-code merge:** `31eeb140c551eb7896ea2e84baca7a8f35f9b812`
+**Status-document publication:** fetch the current branch head; this update follows
+the accepted product-code merge above
 **Current database head:** `036_retailer_mvp_identity`
 **Overall verdict:** Stable engineering foundation; pre-pilot, not yet
 customer-delivery complete
@@ -86,7 +87,7 @@ customers will be onboarded and supported manually by Mpango operators.
 
 | Item | Current truth |
 |---|---|
-| Product code baseline | `6d81b401`; fetch `origin/product-dev-recovered` for the exact current branch head |
+| Product code baseline | `31eeb140`; fetch `origin/product-dev-recovered` for the exact current branch head |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `036_retailer_mvp_identity` |
@@ -114,7 +115,7 @@ deployed SHA.
 | Exports | Implemented and hardened | Worker tenant context and sanitized error boundaries merged |
 | Reporting | Implemented | Test contracts now use supported provisioning paths; customer runtime evidence still belongs to deployment gates |
 | Retailer identity S1 | Merged | Authoritative mapping, invitation lifecycle, setup/reset, verified email and role foundation in migration `036` |
-| Retailer private login S2 | Not started in product code | Supplier-scoped login and single-context token remain the next slice |
+| Retailer private login S2 | Merged | Supplier-scoped login issues one contextual JWT, exposes no `available_tenants`, and preserves wholesaler-private boundaries |
 | Retailer portal S3 | Incomplete | Catalog/order/payment/finance browser UX and relationship-scoped navigation remain |
 | Retailer end-to-end S4 | Not closed | Fresh invitation through real browser and mailbox has not passed on latest deployed SHA |
 | Platform operator schema | Foundation merged | Migration `034` tables exist |
@@ -153,29 +154,32 @@ deployed SHA.
 - Verification-token terminal-state hardening.
 - Portable U6I1 schema/security contract without runtime Git-history
   dependency.
+- Supplier-scoped retailer login, neutral authentication failure, contextual JWT
+  issuance, private portal routing, and explicit retailer/wholesaler route
+  guards.
 
 ## 6. Latest Validation Snapshot / 最新验证
 
-The authoritative independent full backend gate for the H1/R2-R1 candidate ran
-twice on separate fresh PostgreSQL 16 and Redis 7 environments:
+The authoritative S2-R2A-R1C backend gate ran twice on separate authorized
+temporary-database PostgreSQL 16 and Redis 7 environments:
 
 | Metric | Run A | Run B |
 |---|---:|---:|
-| Collected | 2949 | 2949 |
-| Passed | 2886 | 2886 |
+| Collected | 3043 | 3043 |
+| Passed | 2980 | 2980 |
 | Skipped | 48 | 48 |
 | XFailed | 15 | 15 |
 | Failed | 0 | 0 |
 | Errors | 0 | 0 |
 | Exit code | 0 | 0 |
 
-Evidence branch:
-`reports/dc12r1-s1-h1-r2-r1-v2-independent-full-gate-2026-07-28`
-at `843d7a6e275b15ab342ceecf8615e4cfaadfa1bf`.
+Evidence source branch:
+`zcode/dc12r1-s2-supplier-scoped-retailer-login-2026-07-28`
+at `04d9649d64a122266f73504b8f9597cda26af118`.
 
 The candidate was merged into the product baseline as:
 
-`6d81b4012c136a4655f8aa162fe15ed8854626b7`
+`31eeb140c551eb7896ea2e84baca7a8f35f9b812`
 
 This proves deterministic backend integrity for that source tree. It does not
 prove that the latest source is deployed, that a customer can complete the
@@ -185,11 +189,10 @@ journey over HTTPS, or that production operations are complete.
 
 ### P1 product journey blockers
 
-1. Supplier-scoped retailer login is not implemented.
-2. Retailer catalog, order, payment and finance UX is not closed as one
+1. Retailer catalog, order, payment and finance UX is not closed as one
    relationship-scoped browser journey.
-3. No latest-SHA real-mailbox invitation/setup/reset/login proof exists.
-4. No latest-SHA customer-facing HTTPS deployment and browser closure exists.
+2. No latest-SHA real-mailbox invitation/setup/reset/login proof exists.
+3. No latest-SHA customer-facing HTTPS deployment and browser closure exists.
 
 ### P1 operational blockers
 
@@ -217,7 +220,9 @@ These are valuable, but they must not displace the secure MVP business loop.
 
 ### Stage 1: Complete the retailer MVP loop
 
-#### DC-12R1-S2 - supplier-scoped retailer authentication
+#### DC-12R1-S2 - supplier-scoped retailer authentication (completed)
+
+Merged as `31eeb140c551eb7896ea2e84baca7a8f35f9b812`.
 
 Deliver:
 
@@ -235,7 +240,7 @@ Exit criteria:
 - retailer tokens cannot use generic wholesaler or platform routes;
 - cross-supplier negative tests pass.
 
-#### DC-12R1-S3 - relationship-scoped retailer workspace
+#### DC-12R1-S3 - relationship-scoped retailer workspace (active)
 
 Deliver:
 

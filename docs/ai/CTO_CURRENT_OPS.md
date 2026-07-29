@@ -1,10 +1,11 @@
 # CTO Current Ops / 当前作战摘要
 
-**Last updated:** 2026-07-28
+**Last updated:** 2026-07-29
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product-code commit:** `6d81b4012c136a4655f8aa162fe15ed8854626b7`
-**Status-document publication merge:** `1a986bdbb658c0d452b4e4f0d940bbffaa8e38cc`
+**Accepted product-code merge:** `31eeb140c551eb7896ea2e84baca7a8f35f9b812`
+**Status-document publication:** fetch the current branch head; this update follows
+the accepted product-code merge above
 **Current migration head:** `036_retailer_mvp_identity`
 **Current delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
@@ -19,7 +20,8 @@ only for detailed evidence.
 
 - `origin/product-dev-recovered` is the only active product baseline.
 - The exact branch head must be fetched and verified before every task. The
-  accepted product code is `6d81b401`; later commits may be documentation-only.
+  accepted product-code merge is `31eeb140`; later commits may be
+  documentation-only.
 - `origin/main` remains unchanged at
   `134ea59e02204842e55ebe36f721f44df5a33737`.
 - `origin/platform-dev` remains unchanged at
@@ -53,6 +55,9 @@ only for detailed evidence.
   `tenant_user_id` mapping, retailer-owned verified email, finite invitation
   lifecycle, and `retailer_operator` permission foundation are merged through
   migration `036_retailer_mvp_identity`.
+- Retailer S2 supplier-scoped login is merged. It resolves exactly one
+  wholesaler portal, issues one contextual JWT, returns no `available_tenants`,
+  uses neutral authentication failures, and preserves private supplier routing.
 - Verification-token terminal states now reject used, revoked, expired,
   deleted, or otherwise terminal tokens before dependent orchestration.
 - Rate-limit exceptions are converted only at the intended 429 boundary and do
@@ -60,13 +65,14 @@ only for detailed evidence.
 
 ### Deterministic validation
 
-The final independent full backend gate for candidate `d44abae5` ran twice on
-independent fresh PostgreSQL 16 and Redis 7 environments:
+The final S2-R2A-R1C backend gate for candidate `04d9649` ran twice on
+independent authorized temporary-database PostgreSQL 16 and Redis 7
+environments:
 
 | Metric | Run A | Run B |
 |---|---:|---:|
-| Collected | 2949 | 2949 |
-| Passed | 2886 | 2886 |
+| Collected | 3043 | 3043 |
+| Passed | 2980 | 2980 |
 | Skipped | 48 | 48 |
 | XFailed | 15 | 15 |
 | Failed | 0 | 0 |
@@ -74,13 +80,11 @@ independent fresh PostgreSQL 16 and Redis 7 environments:
 | Exit code | 0 | 0 |
 
 The reviewed candidate was merged as
-`6d81b4012c136a4655f8aa162fe15ed8854626b7`.
+`31eeb140c551eb7896ea2e84baca7a8f35f9b812`.
 
 ## What Is Not Closed / 未闭环
 
-- Retailer S1 is a foundation, not the complete retailer journey.
-- Supplier-scoped retailer login and supplier-private workspace selection are
-  not implemented. This is the DC-12R1-S2 boundary.
+- Retailer S1 and S2 are foundations, not the complete retailer journey.
 - Retailer catalog, order, payment, and relationship-scoped finance UX are not
   yet proven as one real browser journey. This is DC-12R1-S3/S4 work.
 - The latest product baseline is not proven deployed on a customer-facing HTTPS
@@ -88,7 +92,7 @@ The reviewed candidate was merged as
 - The Tencent mainland VPS is retained for development, validation, or disaster
   recovery. It is not the intended customer-facing Kenyan MVP origin.
 - Real mailbox signup, verification, setup, reset, login, order, payment, and
-  finance closure has not been rerun against `6d81b401`.
+  finance closure has not been rerun against the latest product branch head.
 - Platform operator schema foundation exists, but dedicated platform operator
   login/JWT/guard/frontend lifecycle is not yet merged as a complete runtime
   capability.
@@ -99,28 +103,29 @@ The reviewed candidate was merged as
 
 ## Active Phase / 当前阶段
 
-**Next product slice:** DC-12R1-S2 supplier-scoped retailer authentication and
-private wholesaler portal boundary.
+**Active product slice:** DC-12R1-S3 relationship-scoped retailer workspace.
 
-S2 must preserve these rules:
+S3 must preserve these rules:
 
-- A retailer signs in through one wholesaler's portal context.
-- The issued token contains one wholesaler context only.
-- No `available_tenants` or cross-supplier workspace picker is returned.
-- No supplier name, price, catalog, order, payment, or balance from another
-  relationship is exposed.
-- Authentication resolves the retailer through
-  `token.user_id -> binding.tenant_user_id -> retailer_id`, never by email after
-  authentication.
-- Inactive or suspended bindings fail closed without disabling the same
-  retailer's independent relationship with another wholesaler.
-- Existing wholesaler owner login behavior must not change.
+- Every read and write is derived from the contextual JWT, active binding, and
+  tenant context; client-supplied wholesaler or retailer IDs are never trusted.
+- Catalog, negotiated price, orders, payments, and balances from another
+  supplier relationship are never disclosed.
+- Mpango must not add a cross-supplier comparison dashboard or workspace picker.
+- Price and balance calculations remain server-authoritative.
+- A retailer may not mark a payment settled, mutate a ledger, or alter a
+  receivable unless an existing approved financial contract explicitly permits
+  that action.
+- Retailer access stays inside `client:*`; generic wholesaler and platform
+  routes remain denied.
+- Existing wholesaler owner behavior must not change.
 
 ## Ordered Delivery Plan / 下一步顺序
 
-1. **DC-12R1-S2:** supplier-scoped retailer login and authorization boundary.
-2. **DC-12R1-S3:** relationship-scoped retailer catalog/order/payment/finance
-   UX, with no comparison marketplace behavior.
+1. **DC-12R1-S2 (completed):** supplier-scoped retailer login and
+   authorization boundary.
+2. **DC-12R1-S3 (active):** relationship-scoped retailer
+   catalog/order/payment/finance UX, with no comparison marketplace behavior.
 3. **DC-12R1-S4:** fresh-database, cross-environment, HTTPS, real-mailbox and
    real-browser end-to-end closure.
 4. **DB-OPS foundation:** operator access, backup/restore drills, monitoring,
@@ -152,7 +157,7 @@ No customer delivery verdict may be issued until all are true:
 
 - **Codex CTO:** scope, contracts, impact analysis, merge decision, project-state
   truth, and final delivery verdict.
-- **Product implementation agent:** bounded S2/S3 code slices on isolated
+- **Product implementation agent:** bounded S3 code slices on isolated
   branches; no protected push.
 - **Lubuntu Codex/Leo:** independent PostgreSQL 16/Redis 7 full gates,
   cross-environment and browser validation.

@@ -625,3 +625,33 @@ Stack A+B identical results: 2980 + 48 + 15 = 3043. Zero failed, zero errors.
 | R2A-R1A | `f1f7e7b` | Explicit per-test cleanup (s2_clean_db, registry) |
 | R2A-R1B | `adda92e` | Residue hardening (pg_namespace, exact Redis, full suite) |
 | R2A-R1C | `adda92e` | Authorized temp-DB gate (validated code-tree; MPANGO_ALLOW_TEMP_DB_CREATE=1) |
+
+## CTO merge-time production-build correction (2026-07-29)
+
+The reviewed source tip was
+`04d9649d64a122266f73504b8f9597cda26af118`. It was merged without conflicts
+into the product target by merge commit
+`31eeb140c551eb7896ea2e84baca7a8f35f9b812`.
+
+The first post-merge production build reproduced a real TypeScript failure:
+
+- `useAuthStore` referenced itself from inside its own Zustand initializer;
+- TypeScript reported TS7022/TS7023 for the circular inference;
+- downstream store selectors consequently reported implicit `any`;
+- two pre-S2 SKU test mocks omitted the new retailer portal state/action.
+
+The correction is deliberately narrow:
+
+- the Zustand initializer now accepts `get` and reads
+  `get().retailerPortalCode`, removing the self-reference;
+- the SKU mocks now include `retailerPortalCode` and `retailerLogin`.
+
+Post-correction evidence:
+
+- backend H2 plus route authorization and RBAC: 102 passed;
+- frontend Vitest: 15 files, 142 tests passed;
+- TypeScript project check: passed;
+- frontend production build: passed.
+
+No migration, permission, backend route, financial behavior, lockfile, config,
+deployment, or protected non-product branch was changed by this correction.

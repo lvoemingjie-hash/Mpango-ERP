@@ -40,7 +40,7 @@ const initialState: AuthState = {
 
 export const useAuthStore = create<AuthStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...initialState,
 
       login: (tokens, user, tenantCode) =>
@@ -66,7 +66,7 @@ export const useAuthStore = create<AuthStore>()(
         set({
           // DC-12R1-S2: preserve the portal code across logout so the
           // refresh-failure redirect returns the retailer to the same portal.
-          retailerPortalCode: useAuthStore.getState().retailerPortalCode,
+          retailerPortalCode: get().retailerPortalCode,
           accessToken: null,
           refreshToken: null,
           user: null,

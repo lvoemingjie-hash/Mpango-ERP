@@ -152,3 +152,62 @@ from 3009 to 3011).
 - final commit SHA: recorded at push
 - S3-S1 focused suite: 17 passed (natural + reverse)
 - GAP-07: P1 GOVERNANCE_HOLD, proven frozen
+
+## Debugging Log (transparency — issues encountered and resolved)
+
+### Product / infrastructure issues (pre-existing, not introduced by S3-S1)
+
+1. **Full-suite test-isolation fragility (dc2m2 / dc10l / email / onboarding).**
+   The protected product baseline `product-dev-recovered` itself fails 5 tests
+   deterministically (dc2m2 migration reconciliation x3 + dc10l order-status enum
+   reconciliation x2). Proven pre-existing via the S2-R2A deselect control run and
+   confirmed here (identical 5-failure set, fails in isolation too, unrelated to
+   S3-S1). S3-S1 introduced **zero** new failures (pass count rose 3009→3011 by
+   *fixing* the s6e/u1 permission-registry failures).
+
+2. **asyncpg prepared-statement cache expiry (`CannotCoerceError`).**
+   Cross-tenant order-create tests reuse pooled connections whose asyncpg prepared
+   statements were cached under a different `search_path`/enum context. Order
+   creation is sound (passes in isolation and per-tenant); resolved with a test-only
+   autouse fixture that disposes the shared `async_engine` between tests. No product
+   code changed for this.
+
+### S3-S1-triggered cascade (correctly surfaced and fixed)
+
+3. **s6e/u1 permission-registry drift.** Adding `RequirePermission(client:*)` to
+   routes correctly tripped the s6e RBAC drift gate, whose purpose is to assert that
+   every route permission is seeded in every provisioning path. Fixed by seeding
+   `RETAILER_OPERATOR_PERMISSIONS` (`client:*`) in all 4 provisioning scripts and
+   updating the drift-gate tests to treat the admin+retailer union as canonical.
+
+### Test-code bugs (development-time, fixed before commit)
+
+4. **`two_tenants` tuple shape misread.** The S2 `two_tenants` fixture returns
+   `(code_a, code_b, schema_b, ...)` — the 3rd element is **schema_b**, not
+   schema_a. Initial permission-strip tests unpacked it as `schema_a` and stripped
+   permissions from the wrong tenant, so the A token still had its permissions
+   (returned 200 instead of 403). Fixed by resolving schema via
+   `_schema_for(db, code_a)`.
+
+5. **Leak-detector false positive on "select a tenant".** `_assert_controlled_envelope`
+   flagged the substring `"select "` as a SQL leak, but it matched the English phrase
+   "Please select a tenant first" in the 403 message. Fixed by detecting SQL-shaped
+   patterns (`SELECT ` / `INSERT ` / etc.) instead of the bare English word.
+
+6. **tuple vs list comparison in s6e assertions.** After updating the drift-gate
+   extractors, `captured_codes[:len(ADMIN_PERMISSIONS)] == list(ADMIN_PERMISSIONS)`
+   always evaluated False (tuple != list). Fixed by comparing against
+   `tuple(ADMIN_PERMISSIONS)`.
+
+7. **`.secrets.baseline` regeneration destroyed existing entries.** Running
+   `detect-secrets scan --baseline` regenerated the entire baseline (484→1 entries)
+   instead of appending. Detected immediately via `grep -c hashed_secret`; restored
+   the original baseline and merged the single `seed_test_tenant.py` false positive
+   programmatically, preserving all 484 existing entries (484→485).
+
+### Governance hold (escalated, not auto-implemented)
+
+8. **GAP-07: `client:payments:create`.** Declared in the permission registry
+   ("Retailer: pay own orders") but requirement #7 forbids retailer payment
+   submission without explicit CTO approval. Proven frozen (no route consumes it;
+   no mutation exists). Held as **P1 GOVERNANCE_HOLD** for CTO decision.

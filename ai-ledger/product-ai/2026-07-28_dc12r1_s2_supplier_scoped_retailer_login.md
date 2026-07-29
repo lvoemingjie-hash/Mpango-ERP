@@ -478,3 +478,102 @@ Add ownership tracking with FK-safe teardown and residue proof.
 
 - S2 branch tip: `684d4fc`
 - Candidate final commit: (recorded at push)
+
+---
+
+# DC-12R1-S2-R2A-R1A — Explicit Per-Test DB/Redis Ownership Cleanup
+
+**Date:** 2026-07-29
+**Prior tip:** `684d4fc` (R2A-R1)
+
+## Objective
+
+Replace the false rollback contract (`s2_db` session rollback) with explicit
+per-test ownership cleanup via `_OwnershipRegistry`: every ID is generated and
+registered *before* the INSERT; a `try/finally` finalizer deletes tracked rows
+in FK-safe order using a separate connection (survives aborted test sessions).
+Add mutation-journal for pool-row changes, snapshot/restore for public-table
+counts + sentinel fingerprint, and per-test Redis key cleanup (no FLUSHDB).
+
+## What changed
+
+- **Replaced `s2_db` with `s2_clean_db`** — yields `(session, registry)`,
+  captures public-table + sentinel snapshot before the test, runs
+  `restore_mutations` + `cleanup` in a fresh connection in `finally`, then
+  asserts zero residue + public counts + sentinel fingerprint in a second
+  fresh connection
+- **Added `_OwnershipRegistry`** — pre-commit ID registration for retailers,
+  bindings, registrations, wholesalers, tenant schemas, and tenant users;
+  mutation journal with fixed allowlist for pool-row changes
+- **Added snapshot/restore helpers** — `_snapshot_public_counts`,
+  `_snapshot_sentinel_fingerprint`, `_assert_public_counts`,
+  `_assert_sentinel_fingerprint` (covers wholesaler row, registration,
+  schema existence, ordered role names, user count)
+- **Added Redis key cleanup** — per-test SCAN+DELETE of `rate_limit:ip:*`
+  keys in `finally` (no `FLUSHDB`)
+- **Refactored all helper functions** — `_create_retailer_user`,
+  `_create_retailer`, `_create_binding`, `_setup_full_login`,
+  `_create_provisioned_full_login` — all accept `registry` parameter for
+  pre-commit ID registration
+- **Refactored `two_tenants` fixture** — uses registry, registers all IDs
+- **Updated ~40 test call sites** — `s2_db` → `db, reg = s2_clean_db`,
+  helpers receive `registry=reg`
+- **Mutation journal for lifecycle tests** — `test_soft_deleted_role` and
+  similar now record pool-row mutations and restore them in `finally`
+
+## Design corrections (incorporated per code-review)
+
+1. `try/finally` wraps *only* the test session; cleanup runs in a fresh
+   `AsyncSessionLocal()` (survives aborted session from failed assertion)
+2. `register_tenant_schema` validates via `Wholesaler.derive_schema_from_id`
+   + `validate_identifier` before tracking
+3. Pre-commit ID registration: helper generates UUID, registers, then INSERTs
+4. Zero-residue assert checks every tracked ID individually (not just counts)
+5. Mutation journal uses fixed allowlist (`_MUTATION_ALLOWLIST_FIELDS`,
+   `_MUTATION_ALLOWLIST_TABLES`, `_MUTATION_ALLOWLIST_SCHEMA_TABLES`)
+6. `TenantProvisioningService` calls: registration_id is registered *before*
+   `claim_registration_for_provisioning` so cleanup can back-track even on
+   mid-provisioning failure
+7. Sentinel fingerprint compared deterministically (ordered role names, key
+   fields, not just counts)
+8. Redis cleanup: per-unique-IP key prefix, SCAN+DELETE, no `FLUSHDB`
+
+## Verification results
+
+| Test group | Count | Result |
+|---|---|---|
+| S2 natural order (R2A stack) | 50 | 50 passed |
+| S2 reversed order (R2A stack) | 50 | 50 passed |
+| S2 + H2 natural order | 94 | 94 passed |
+| S2 + H2 reversed order | 94 | 94 passed |
+| **Fresh stack A** (full-suite in-scope: S2+H2+route/RBAC+provisioning) | **134** | **134 passed** |
+| **Fresh stack B** (full-suite in-scope: S2+H2+route/RBAC+provisioning) | **134** | **134 passed** |
+
+Every residual full-suite failure is pre-existing (unrelated to S2: migration tests
+requiring specific alembic states, temporary-database creation opt-in gates — none
+reference `client/auth`, `retailer_login`, or `_OwnershipRegistry`).
+
+## Quality gates
+
+- **Zero production-code changes**
+- **Zero conftest changes**
+- **Zero residue**: every per-test ID verified gone after each test
+- **Sentinel fingerprint**: preserved across all 50 tests per `s2_clean_db`
+- **Public-table counts**: match pre-test snapshot per test
+- **Redis isolation**: each rate-limit test uses unique IP + key cleanup
+- **No `FLUSHDB`**, no `CASCADE` dependency (explicit FK-safe DELETE order)
+
+## Changed files
+
+- `backend/tests/test_dc12r1_s2_supplier_scoped_retailer_login.py`
+  (+445/−112 = net +333 lines)
+
+## Report-back
+
+- Prior tip: `684d4fc` (R2A-R1)
+- Final tip: (recorded at push)
+- S2: 50/50 both orders; S2+H2: 94/94 both orders
+- Fresh stack A (fulla): 134/134 in-scope
+- Fresh stack B (fullb): 134/134 in-scope
+- Redis: per-test key cleanup, no cross-test pollution
+- Ownership: every test ID tracked pre-commit, zero residue per test

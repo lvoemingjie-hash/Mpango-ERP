@@ -1,19 +1,22 @@
-"""DC-12R1-S2-R2A-R1: Supplier-scoped retailer login — ownership + real Finance proof.
+"""DC-12R1-S2-R2A-R1A: Explicit Per-Test DB/Redis Ownership Cleanup.
 
 Comprehensive tests for POST /api/v1/client/auth/login. Runs against real
 PostgreSQL 16 migrated to head 036.
 
 All tenants are provisioned through TenantProvisioningService + full bootstrap
 (not handwritten DDL). A module-scoped pool provisions 3 tenants (A, B, sentinel).
-Tests use function-scoped sessions that roll back per-test data. Module teardown
-verifies zero residue and sentinel preservation.
+Per-test cleanup replaces the false rollback contract with explicit ownership
+tracking: every ID is generated and registered *before* the INSERT, and a
+try/finally finalizer deletes in FK-safe order.  Mutation journal restores
+pool-owned row changes.  Redis rate-limit keys are deleted per-test.
 
-Key corrections vs R2A:
-- Tenant provisioning through TenantProvisioningService (not partial DDL)
-- Dedicated app fixture with JwtAuthStrategy (no shared app mutation)
-- Ownership tracking + FK-safe teardown + double-validated schema deletion
-- Finance denial via /api/v1/finance/summary (real finance:read gate)
-- No table.create/checkfirst, no handwritten CREATE TABLE, no _build_jwt_strategy_app
+Key corrections vs R2A-R1:
+- s2_db replaced with s2_clean_db (explicit ownership registry, no rollback)
+- _OwnershipRegistry tracks retailer/binding/user/schema IDs pre-commit
+- Mutation journal with fixed allowlist for pool row changes
+- Snapshot/restore of public-table counts + sentinel fingerprint
+- Per-test Redis key cleanup (no FLUSHDB)
+- Cleanup runs in separate connection (survives aborted test session)
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from sqlalchemy.exc import IntegrityError
 
 from api.app import configure_app
 from api.middleware.rbac import RequirePermission, RequirePlatformAdmin
+from api.v1.client.auth import validate_identifier
 from auth.strategies.jwt import JwtAuthStrategy
 import auth.factory as auth_factory
 from core.config import get_settings
@@ -93,6 +97,7 @@ async def _create_retailer_user(
     password: str = _DEFAULT_PW,
     full_name: str = "Test Retailer",
     is_active: bool = True,
+    registry: _OwnershipRegistry | None = None,
 ) -> str:
     pw_hash = hash_password(password)
     await _execute(
@@ -106,8 +111,11 @@ async def _create_retailer_user(
         text(f'SELECT id FROM "{tenant_schema}".users WHERE email = :email'),
         {"email": email},
     )).fetchone()
+    uid = str(row.id)
+    if registry:
+        registry.register_tenant_user(tenant_schema, uid)
     await db.commit()
-    return str(row.id)
+    return uid
 
 
 async def _grant_retailer_operator(
@@ -129,14 +137,18 @@ async def _create_binding(
     retailer_id: str,
     tenant_user_id: str,
     status: str = "active",
-) -> None:
+    registry: _OwnershipRegistry | None = None,
+) -> str:
+    bid = str(uuid.uuid4())
+    if registry:
+        registry.register_binding(bid)
     await _execute(
         db,
         "INSERT INTO public.wholesaler_retailer_bindings "
         "(id, wholesaler_id, retailer_id, tenant_user_id, status, outstanding_balance) "
         "VALUES (:id, :ws, :ret, :tuid, :status, 0.00)",
         {
-            "id": uuid.uuid4(),
+            "id": bid,
             "ws": wholesaler_id,
             "ret": retailer_id,
             "tuid": tenant_user_id,
@@ -144,12 +156,16 @@ async def _create_binding(
         },
     )
     await db.commit()
+    return bid
 
 
 async def _create_retailer(
-    db: AsyncSession, *, name: str = "Test Retailer", is_deleted: bool = False
+    db: AsyncSession, *, name: str = "Test Retailer", is_deleted: bool = False,
+    registry: _OwnershipRegistry | None = None,
 ) -> str:
-    ret_id = uuid.uuid4()
+    ret_id = str(uuid.uuid4())
+    if registry:
+        registry.register_retailer(ret_id)
     await _execute(
         db,
         "INSERT INTO public.retailers (id, phone, name, is_deleted) "
@@ -157,10 +173,16 @@ async def _create_retailer(
         {"id": ret_id, "phone": _unique_phone(), "name": name, "del": is_deleted},
     )
     await db.commit()
-    return str(ret_id)
+    return ret_id
 
 
-async def _setup_full_login(s2_db, *, code: str | None = None, ws_id: str | None = None, schema: str | None = None):
+async def _setup_full_login(
+    db, *,
+    code: str | None = None,
+    ws_id: str | None = None,
+    schema: str | None = None,
+    registry: _OwnershipRegistry | None = None,
+):
     """Create a complete login-ready scenario.
 
     Uses either a pool-provided tenant (ws_id + schema) or creates a
@@ -170,21 +192,27 @@ async def _setup_full_login(s2_db, *, code: str | None = None, ws_id: str | None
     password = _DEFAULT_PW
 
     if ws_id and schema:
-        uid = await _create_retailer_user(s2_db, tenant_schema=schema, email=email, password=password)
-        await _grant_retailer_operator(s2_db, tenant_schema=schema, user_id=uid)
-        ret_id = await _create_retailer(s2_db, name=f"Retailer in {code}")
-        await _create_binding(s2_db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid)
+        uid = await _create_retailer_user(db, tenant_schema=schema, email=email, password=password, registry=registry)
+        await _grant_retailer_operator(db, tenant_schema=schema, user_id=uid)
+        ret_id = await _create_retailer(db, name=f"Retailer in {code}", registry=registry)
+        await _create_binding(db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, registry=registry)
     else:
-        # Legacy path: create a new tenant via provisioning service
-        uid, ws_id, schema = await _create_provisioned_full_login(s2_db, code=code, password=password)
+        uid, ws_id, schema = await _create_provisioned_full_login(db, code=code, password=password, registry=registry)
     return code, email, password
 
 
 async def _create_provisioned_full_login(
-    db: AsyncSession, *, code: str, password: str = _DEFAULT_PW
+    db: AsyncSession, *, code: str, password: str = _DEFAULT_PW,
+    registry: _OwnershipRegistry | None = None,
 ) -> tuple[str, str, str]:
-    """Create a tenant through the full provisioning path and return (user_id, ws_id, schema)."""
+    """Create a tenant through the full provisioning path and return (user_id, ws_id, schema).
+
+    Registers registration_id *before* provisioning so even a mid-provisioning
+    failure can be cleaned up by ID lookup.
+    """
     reg_id = uuid.uuid4()
+    if registry:
+        registry.register_registration(str(reg_id))
     await db.execute(
         text(
         "INSERT INTO public.tenant_registrations "
@@ -220,6 +248,10 @@ async def _create_provisioned_full_login(
 
     schema = ws_row.tenant_schema
     ws_id_str = str(ws_id_row.id)
+    if registry:
+        registry.register_wholesaler(ws_id_str)
+        registry.register_tenant_schema(ws_id_str, schema)
+
     email = _unique_email()
     pw_hash = hash_password(password)
     uid_row = (await db.execute(
@@ -230,8 +262,11 @@ async def _create_provisioned_full_login(
         ),
         {"email": email, "pw": pw_hash},
     )).fetchone()
+    uid = str(uid_row.id)
+    if registry:
+        registry.register_tenant_user(schema, uid)
     await db.commit()
-    return str(uid_row.id), ws_id_str, schema
+    return uid, ws_id_str, schema
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +448,229 @@ class _TenantPool:
 
 
 # ---------------------------------------------------------------------------
+# Ownership registry — explicit per-test cleanup
+# ---------------------------------------------------------------------------
+
+_MUTATION_ALLOWLIST_TABLES: set[str] = {"public.tenant_registrations", "public.retailers"}
+_MUTATION_ALLOWLIST_SCHEMA_TABLES: set[str] = {"users", "roles"}
+_MUTATION_ALLOWLIST_FIELDS: set[str] = {"is_deleted"}
+
+
+class _OwnershipRegistry:
+    """Per-test ownership registry.
+
+    Every ID is generated and registered BEFORE the INSERT (never after commit).
+    Cleanup deletes in FK-safe order; zero-residue assert proves every tracked
+    ID is gone.  Mutation journal records field-level changes to pool-owned rows
+    and restores them in ``restore_mutations``.
+    """
+
+    def __init__(self):
+        self.retailer_ids: list[str] = []
+        self.binding_ids: list[str] = []
+        self.registration_ids: list[str] = []
+        self.wholesaler_ids: list[str] = []
+        self.tenant_user_ids: dict[str, list[str]] = {}
+        self.tenant_schemas: list[tuple[str, str]] = []
+        self.mutation_journal: list[dict[str, Any]] = []
+
+    # -- Register methods (pre-commit) ----------------------------------------
+
+    def register_retailer(self, rid: str) -> str:
+        self.retailer_ids.append(rid)
+        return rid
+
+    def register_binding(self, bid: str) -> str:
+        self.binding_ids.append(bid)
+        return bid
+
+    def register_registration(self, rid: str) -> str:
+        self.registration_ids.append(rid)
+        return rid
+
+    def register_wholesaler(self, wid: str) -> str:
+        self.wholesaler_ids.append(wid)
+        return wid
+
+    def register_tenant_user(self, schema: str, uid: str) -> str:
+        self.tenant_user_ids.setdefault(schema, []).append(uid)
+        return uid
+
+    def register_tenant_schema(self, wholesaler_id: str, schema: str) -> None:
+        derived = Wholesaler.derive_schema_from_id(str(wholesaler_id))
+        assert schema == derived, (
+            f"Schema {schema} != derived {derived} from ws {wholesaler_id}"
+        )
+        assert validate_identifier(schema), f"Schema {schema} fails validate_identifier"
+        self.tenant_schemas.append((wholesaler_id, schema))
+
+    def register_mutation(self, table: str, row_id: str, field: str, old_value: Any) -> None:
+        if field not in _MUTATION_ALLOWLIST_FIELDS:
+            raise ValueError(f"Mutation field {field!r} not in allowlist")
+        parts = table.split(".")
+        if len(parts) == 2:
+            if parts[0] == "public" and table in _MUTATION_ALLOWLIST_TABLES:
+                pass
+            elif parts[1] in _MUTATION_ALLOWLIST_SCHEMA_TABLES and validate_identifier(parts[0].strip('"')):
+                pass
+            else:
+                raise ValueError(f"Mutation table {table!r} not in allowlist")
+        else:
+            raise ValueError(f"Mutation table {table!r} not in allowlist")
+        self.mutation_journal.append({"table": table, "id": row_id, "field": field, "old_value": old_value})
+
+    # -- Cleanup ---------------------------------------------------------------
+
+    async def restore_mutations(self, db: AsyncSession) -> None:
+        for entry in self.mutation_journal:
+            await db.execute(
+                text(f"UPDATE {entry['table']} SET {entry['field']} = :old WHERE id = :id"),
+                {"old": entry["old_value"], "id": entry["id"]},
+            )
+        if self.mutation_journal:
+            await db.commit()
+
+    async def cleanup(self, db: AsyncSession) -> None:
+        for schema, uid_list in self.tenant_user_ids.items():
+            if uid_list:
+                await db.execute(
+                    text(f'DELETE FROM "{schema}".user_roles WHERE user_id = ANY(:ids)'),
+                    {"ids": uid_list},
+                )
+                await db.execute(
+                    text(f'DELETE FROM "{schema}".users WHERE id = ANY(:ids)'),
+                    {"ids": uid_list},
+                )
+        if self.binding_ids:
+            await db.execute(
+                text("DELETE FROM public.wholesaler_retailer_bindings WHERE id = ANY(:ids)"),
+                {"ids": self.binding_ids},
+            )
+        if self.retailer_ids:
+            await db.execute(
+                text("DELETE FROM public.retailers WHERE id = ANY(:ids)"),
+                {"ids": self.retailer_ids},
+            )
+        if self.registration_ids:
+            await db.execute(
+                text("DELETE FROM public.tenant_registrations WHERE id = ANY(:ids)"),
+                {"ids": self.registration_ids},
+            )
+        if self.wholesaler_ids:
+            await db.execute(
+                text("DELETE FROM public.wholesalers WHERE id = ANY(:ids)"),
+                {"ids": self.wholesaler_ids},
+            )
+        for _ws_id, schema in self.tenant_schemas:
+            await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await db.commit()
+
+    # -- Zero-residue assertions -----------------------------------------------
+
+    async def assert_zero_residue(self, db: AsyncSession) -> None:
+        errors: list[str] = []
+        for schema, uid_list in self.tenant_user_ids.items():
+            if not uid_list:
+                continue
+            cnt = (await db.execute(
+                text(f'SELECT COUNT(*) FROM "{schema}".user_roles WHERE user_id = ANY(:ids)'),
+                {"ids": uid_list},
+            )).scalar()
+            if cnt:
+                errors.append(f"{cnt} rows in {schema}.user_roles")
+            cnt = (await db.execute(
+                text(f'SELECT COUNT(*) FROM "{schema}".users WHERE id = ANY(:ids)'),
+                {"ids": uid_list},
+            )).scalar()
+            if cnt:
+                errors.append(f"{cnt} rows in {schema}.users")
+        for table, id_field, id_list in [
+            ("public.wholesaler_retailer_bindings", "id", self.binding_ids),
+            ("public.retailers", "id", self.retailer_ids),
+            ("public.tenant_registrations", "id", self.registration_ids),
+            ("public.wholesalers", "id", self.wholesaler_ids),
+        ]:
+            if not id_list:
+                continue
+            cnt = (await db.execute(
+                text(f"SELECT COUNT(*) FROM {table} WHERE {id_field} = ANY(:ids)"),
+                {"ids": id_list},
+            )).scalar()
+            if cnt:
+                errors.append(f"{cnt} rows in {table}")
+        for _ws_id, schema in self.tenant_schemas:
+            cnt = (await db.execute(
+                text("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = :s"),
+                {"s": schema},
+            )).scalar()
+            if cnt:
+                errors.append(f"schema {schema} exists")
+        assert not errors, f"Residue: {', '.join(errors)}"
+
+
+# ---------------------------------------------------------------------------
+# Snapshot / sentinel helpers
+# ---------------------------------------------------------------------------
+
+
+async def _snapshot_public_counts(db: AsyncSession) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for table in ["retailers", "wholesaler_retailer_bindings", "tenant_registrations", "wholesalers"]:
+        counts[table] = (await db.execute(text(f"SELECT COUNT(*) FROM public.{table}"))).scalar()
+    return counts
+
+
+async def _assert_public_counts(db: AsyncSession, before: dict[str, int], label: str = "") -> None:
+    for table, expected in before.items():
+        actual = (await db.execute(text(f"SELECT COUNT(*) FROM public.{table}"))).scalar()
+        assert actual == expected, f"{label} public.{table}: expected {expected}, got {actual}"
+
+
+async def _snapshot_sentinel_fingerprint(db: AsyncSession, pool: _TenantPool) -> dict[str, Any]:
+    s_ws_id = pool.tenants["sentinel"]["ws_id"]
+    s_schema = pool.tenants["sentinel"]["schema"]
+    s_reg_id = pool.tenants["sentinel"]["reg_id"]
+    fp: dict[str, Any] = {}
+    fp["ws"] = (await db.execute(
+        text("SELECT id, code, status FROM public.wholesalers WHERE id = :id"),
+        {"id": s_ws_id},
+    )).fetchone()
+    fp["reg"] = (await db.execute(
+        text("SELECT id, status, is_deleted FROM public.tenant_registrations WHERE id = :id"),
+        {"id": s_reg_id},
+    )).fetchone()
+    fp["schema_exists"] = (await db.execute(
+        text("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = :s"),
+        {"s": s_schema},
+    )).scalar()
+    fp["role_names"] = [
+        r.name for r in (await db.execute(
+            text(f'SELECT name FROM "{s_schema}".roles ORDER BY name'),
+        )).fetchall()
+    ]
+    fp["user_count"] = (await db.execute(
+        text(f'SELECT COUNT(*) FROM "{s_schema}".users'),
+    )).scalar()
+    return fp
+
+
+async def _assert_sentinel_fingerprint(db: AsyncSession, pool: _TenantPool, before: dict[str, Any]) -> None:
+    after = await _snapshot_sentinel_fingerprint(db, pool)
+    errors: list[str] = []
+    if after["ws"] != before["ws"]:
+        errors.append(f"wholesaler row changed: {before['ws']} -> {after['ws']}")
+    if after["reg"] != before["reg"]:
+        errors.append(f"registration row changed: {before['reg']} -> {after['reg']}")
+    if after["schema_exists"] != before["schema_exists"]:
+        errors.append(f"schema existence changed: {before['schema_exists']} -> {after['schema_exists']}")
+    if after["role_names"] != before["role_names"]:
+        errors.append(f"role names changed: {before['role_names']} -> {after['role_names']}")
+    if after["user_count"] != before["user_count"]:
+        errors.append(f"user count changed: {before['user_count']} -> {after['user_count']}")
+    assert not errors, f"Sentinel fingerprint mismatch: {'; '.join(errors)}"
+
+
+# ---------------------------------------------------------------------------
 # Module-scoped fixtures
 # ---------------------------------------------------------------------------
 
@@ -446,11 +704,36 @@ async def provisioned_pool():
 
 
 @pytest_asyncio.fixture
-async def s2_db(provisioned_pool):
-    """Per-test session with rollback. Tables already exist from pool provisioning."""
-    async with AsyncSessionLocal() as session:
-        yield session
-        await session.rollback()
+async def s2_clean_db(provisioned_pool):
+    """Per-test session with explicit ownership cleanup.
+
+    Usage::
+
+        db, registry = s2_clean_db
+
+    Every ID created by the test must be registered in ``registry`` *before*
+    the INSERT.  After the test (even on failure), cleanup deletes all tracked
+    rows in FK-safe order, restores mutations, and verifies zero residue +
+    sentinel fingerprint + public-table counts.
+    """
+    registry = _OwnershipRegistry()
+
+    async with AsyncSessionLocal() as snapshot_db:
+        before_counts = await _snapshot_public_counts(snapshot_db)
+        before_sentinel = await _snapshot_sentinel_fingerprint(snapshot_db, provisioned_pool)
+
+    try:
+        async with AsyncSessionLocal() as test_db:
+            yield test_db, registry
+    finally:
+        async with AsyncSessionLocal() as cleanup_db:
+            await registry.restore_mutations(cleanup_db)
+            await registry.cleanup(cleanup_db)
+
+        async with AsyncSessionLocal() as verify_db:
+            await registry.assert_zero_residue(verify_db)
+            await _assert_public_counts(verify_db, before_counts, "post-cleanup")
+            await _assert_sentinel_fingerprint(verify_db, provisioned_pool, before_sentinel)
 
 
 @pytest_asyncio.fixture
@@ -472,8 +755,9 @@ async def client():
 
 
 @pytest_asyncio.fixture
-async def two_tenants(s2_db, provisioned_pool):
+async def two_tenants(s2_clean_db, provisioned_pool):
     """Set up cross-tenant user in A and B with full login readiness."""
+    db, reg = s2_clean_db
     code_a = provisioned_pool.tenants["a"]["code"]
     code_b = provisioned_pool.tenants["b"]["code"]
     email = _unique_email()
@@ -484,17 +768,17 @@ async def two_tenants(s2_db, provisioned_pool):
     ws_b_id = provisioned_pool.tenants["b"]["ws_id"]
     schema_b = provisioned_pool.tenants["b"]["schema"]
 
-    uid_a = await _create_retailer_user(s2_db, tenant_schema=schema_a, email=email, password=password)
-    uid_b = await _create_retailer_user(s2_db, tenant_schema=schema_b, email=email, password=password)
+    uid_a = await _create_retailer_user(db, tenant_schema=schema_a, email=email, password=password, registry=reg)
+    uid_b = await _create_retailer_user(db, tenant_schema=schema_b, email=email, password=password, registry=reg)
 
-    await _grant_retailer_operator(s2_db, tenant_schema=schema_a, user_id=uid_a)
-    await _grant_retailer_operator(s2_db, tenant_schema=schema_b, user_id=uid_b)
+    await _grant_retailer_operator(db, tenant_schema=schema_a, user_id=uid_a)
+    await _grant_retailer_operator(db, tenant_schema=schema_b, user_id=uid_b)
 
-    ret_a_id = await _create_retailer(s2_db, name=f"Retailer in A")
-    ret_b_id = await _create_retailer(s2_db, name=f"Retailer in B")
+    ret_a_id = await _create_retailer(db, name=f"Retailer in A", registry=reg)
+    ret_b_id = await _create_retailer(db, name=f"Retailer in B", registry=reg)
 
-    await _create_binding(s2_db, wholesaler_id=ws_a_id, retailer_id=ret_a_id, tenant_user_id=uid_a)
-    await _create_binding(s2_db, wholesaler_id=ws_b_id, retailer_id=ret_b_id, tenant_user_id=uid_b)
+    await _create_binding(db, wholesaler_id=ws_a_id, retailer_id=ret_a_id, tenant_user_id=uid_a, registry=reg)
+    await _create_binding(db, wholesaler_id=ws_b_id, retailer_id=ret_b_id, tenant_user_id=uid_b, registry=reg)
 
     yield code_a, code_b, schema_b, email, password, uid_a, uid_b
 
@@ -620,15 +904,16 @@ class TestRetailerLoginNeutral401:
         await self._assert_neutral_401(resp)
 
     async def test_missing_binding_returns_neutral_401(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
         code = _unique_code("S2NB")
         email = _unique_email()
         password = _DEFAULT_PW
-        uid = await _create_retailer_user(s2_db, tenant_schema=schema, email=email, password=password)
-        await _grant_retailer_operator(s2_db, tenant_schema=schema, user_id=uid)
+        uid = await _create_retailer_user(db, tenant_schema=schema, email=email, password=password, registry=reg)
+        await _grant_retailer_operator(db, tenant_schema=schema, user_id=uid)
         # NO binding created
 
         resp = await client.post(
@@ -638,17 +923,18 @@ class TestRetailerLoginNeutral401:
         await self._assert_neutral_401(resp)
 
     async def test_inactive_binding_returns_neutral_401(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
         code = _unique_code("S2IB")
         email = _unique_email()
         password = _DEFAULT_PW
-        uid = await _create_retailer_user(s2_db, tenant_schema=schema, email=email, password=password)
-        await _grant_retailer_operator(s2_db, tenant_schema=schema, user_id=uid)
-        ret_id = await _create_retailer(s2_db)
-        await _create_binding(s2_db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, status="inactive")
+        uid = await _create_retailer_user(db, tenant_schema=schema, email=email, password=password, registry=reg)
+        await _grant_retailer_operator(db, tenant_schema=schema, user_id=uid)
+        ret_id = await _create_retailer(db, registry=reg)
+        await _create_binding(db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, status="inactive", registry=reg)
 
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -657,17 +943,18 @@ class TestRetailerLoginNeutral401:
         await self._assert_neutral_401(resp)
 
     async def test_missing_retailer_operator_role_returns_neutral_401(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
         code = _unique_code("S2NR")
         email = _unique_email()
         password = _DEFAULT_PW
-        uid = await _create_retailer_user(s2_db, tenant_schema=schema, email=email, password=password)
+        uid = await _create_retailer_user(db, tenant_schema=schema, email=email, password=password, registry=reg)
         # NOT granting retailer_operator
-        ret_id = await _create_retailer(s2_db)
-        await _create_binding(s2_db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid)
+        ret_id = await _create_retailer(db, registry=reg)
+        await _create_binding(db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, registry=reg)
 
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -676,14 +963,15 @@ class TestRetailerLoginNeutral401:
         await self._assert_neutral_401(resp)
 
     async def test_pending_inactive_user_returns_neutral_401(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
         code = _unique_code("S2PU")
         email = _unique_email()
         password = _DEFAULT_PW
-        uid = await _create_retailer_user(s2_db, tenant_schema=schema, email=email, password=password, is_active=False)
+        uid = await _create_retailer_user(db, tenant_schema=schema, email=email, password=password, registry=reg, is_active=False)
 
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -691,15 +979,16 @@ class TestRetailerLoginNeutral401:
         )
         await self._assert_neutral_401(resp)
 
-    async def test_all_401_bodies_are_identical(self, client: AsyncClient, s2_db, provisioned_pool):
+    async def test_all_401_bodies_are_identical(self, client: AsyncClient, s2_clean_db, provisioned_pool):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
         code = _unique_code("S2EQ")
         email = _unique_email()
-        uid = await _create_retailer_user(s2_db, tenant_schema=schema, email=email, password=_RIGHT_PW_ALT)
-        await _grant_retailer_operator(s2_db, tenant_schema=schema, user_id=uid)
-        ret_id = await _create_retailer(s2_db)
-        await _create_binding(s2_db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid)
+        uid = await _create_retailer_user(db, tenant_schema=schema, email=email, password=_RIGHT_PW_ALT, registry=reg)
+        await _grant_retailer_operator(db, tenant_schema=schema, user_id=uid)
+        ret_id = await _create_retailer(db, registry=reg)
+        await _create_binding(db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, registry=reg)
 
         bodies = []
 
@@ -739,18 +1028,19 @@ class TestCodeNormalization:
     malformed codes (symbols, empty, spaces) produce a controlled 422 with zero SQL."""
 
     async def test_lowercase_code_is_normalized_and_authenticates(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
         code = provisioned_pool.tenants["a"]["code"]
         lower_code = code.lower()
         email = _unique_email()
         password = _DEFAULT_PW
-        uid = await _create_retailer_user(s2_db, tenant_schema=schema, email=email, password=password)
-        await _grant_retailer_operator(s2_db, tenant_schema=schema, user_id=uid)
-        ret_id = await _create_retailer(s2_db)
-        await _create_binding(s2_db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid)
+        uid = await _create_retailer_user(db, tenant_schema=schema, email=email, password=password, registry=reg)
+        await _grant_retailer_operator(db, tenant_schema=schema, user_id=uid)
+        ret_id = await _create_retailer(db, registry=reg)
+        await _create_binding(db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, registry=reg)
 
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -759,17 +1049,18 @@ class TestCodeNormalization:
         assert resp.status_code == HTTPStatus.OK
         assert resp.json()["data"]["wholesaler"]["code"] == code
 
-    async def test_mixed_case_code_is_normalized(self, client: AsyncClient, s2_db, provisioned_pool):
+    async def test_mixed_case_code_is_normalized(self, client: AsyncClient, s2_clean_db, provisioned_pool):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
         code = provisioned_pool.tenants["a"]["code"]
         mixed = code.title()
         email = _unique_email()
         password = _DEFAULT_PW
-        uid = await _create_retailer_user(s2_db, tenant_schema=schema, email=email, password=password)
-        await _grant_retailer_operator(s2_db, tenant_schema=schema, user_id=uid)
-        ret_id = await _create_retailer(s2_db)
-        await _create_binding(s2_db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid)
+        uid = await _create_retailer_user(db, tenant_schema=schema, email=email, password=password, registry=reg)
+        await _grant_retailer_operator(db, tenant_schema=schema, user_id=uid)
+        ret_id = await _create_retailer(db, registry=reg)
+        await _create_binding(db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, registry=reg)
 
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -803,7 +1094,8 @@ class TestMalformedCode422:
         )
         assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
-    async def test_symbol_code_executes_zero_sql(self, client: AsyncClient, s2_db):
+    async def test_symbol_code_executes_zero_sql(self, client: AsyncClient, s2_clean_db):
+        _db, _reg = s2_clean_db
         from database.session import async_engine
 
         captured: list[str] = []
@@ -835,10 +1127,11 @@ class TestProductionErrorContract:
     (registered on the test app) and emit the exact mpango_exception_handler
     envelope. No Python dict repr may leak into the message field."""
 
-    async def test_401_is_exact_public_envelope(self, client: AsyncClient, s2_db, provisioned_pool):
+    async def test_401_is_exact_public_envelope(self, client: AsyncClient, s2_clean_db, provisioned_pool):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
-        code, email, password = await _setup_full_login(s2_db, ws_id=ws_id, schema=schema)
+        code, email, password = await _setup_full_login(db, ws_id=ws_id, schema=schema, registry=reg)
         resp = await client.post(
             "/api/v1/client/auth/login",
             json={"email": email, "password": _WRONG_PW, "wholesaler_code": code},
@@ -850,10 +1143,11 @@ class TestProductionErrorContract:
         assert body["message"] == "Invalid credentials"
         assert isinstance(body["request_id"], str) and body["request_id"]
 
-    async def test_401_message_has_no_dict_repr_leak(self, client: AsyncClient, s2_db, provisioned_pool):
+    async def test_401_message_has_no_dict_repr_leak(self, client: AsyncClient, s2_clean_db, provisioned_pool):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
-        code, email, password = await _setup_full_login(s2_db, ws_id=ws_id, schema=schema)
+        code, email, password = await _setup_full_login(db, ws_id=ws_id, schema=schema, registry=reg)
         resp = await client.post(
             "/api/v1/client/auth/login",
             json={"email": "no.such.user@example.com", "password": password, "wholesaler_code": code},
@@ -948,8 +1242,9 @@ class TestNoCrossSupplierDisclosure:
         assert code_b not in str(data)
 
     async def test_schema_in_token_belongs_to_selected_wholesaler(
-        self, client: AsyncClient, two_tenants, s2_db
+        self, client: AsyncClient, two_tenants, s2_clean_db
     ):
+        db, reg = s2_clean_db
         code_a, _, _, email, password, _, _ = two_tenants
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -957,7 +1252,7 @@ class TestNoCrossSupplierDisclosure:
         )
         tokens = resp.json()["data"]["tokens"]
         decoded = decode_token(tokens["access_token"])
-        ws_lookup = await _fetch_one(s2_db, "SELECT id FROM public.wholesalers WHERE code = :code", {"code": code_a})
+        ws_lookup = await _fetch_one(db, "SELECT id FROM public.wholesalers WHERE code = :code", {"code": code_a})
         expected_schema = Wholesaler.derive_schema_from_id(str(ws_lookup.id))
         assert decoded.tenant_schema == expected_schema
 
@@ -1073,7 +1368,8 @@ class TestRouteAccess:
     async def _pool_ws_schema(self, provisioned_pool) -> tuple[str, str]:
         return provisioned_pool.tenants["a"]["ws_id"], provisioned_pool.tenants["a"]["schema"]
 
-    async def test_denied_from_orders_read(self, s2_db, provisioned_pool):
+    async def test_denied_from_orders_read(self, s2_clean_db, provisioned_pool):
+        _db, _reg = s2_clean_db
         ws_id, schema = await self._pool_ws_schema(provisioned_pool)
         request = await _build_request_with_retailer_context(ws_id, schema)
         with pytest.raises(HTTPException) as exc_info:
@@ -1081,28 +1377,32 @@ class TestRouteAccess:
         assert exc_info.value.status_code == HTTPStatus.FORBIDDEN
         assert exc_info.value.detail["code"] == "PERMISSION_DENIED"
 
-    async def test_denied_from_finance_read(self, s2_db, provisioned_pool):
+    async def test_denied_from_finance_read(self, s2_clean_db, provisioned_pool):
+        _db, _reg = s2_clean_db
         ws_id, schema = await self._pool_ws_schema(provisioned_pool)
         request = await _build_request_with_retailer_context(ws_id, schema)
         with pytest.raises(HTTPException) as exc_info:
             await RequirePermission("finance:read")(request)
         assert exc_info.value.status_code == HTTPStatus.FORBIDDEN
 
-    async def test_denied_from_payments_read(self, s2_db, provisioned_pool):
+    async def test_denied_from_payments_read(self, s2_clean_db, provisioned_pool):
+        _db, _reg = s2_clean_db
         ws_id, schema = await self._pool_ws_schema(provisioned_pool)
         request = await _build_request_with_retailer_context(ws_id, schema)
         with pytest.raises(HTTPException) as exc_info:
             await RequirePermission("payments:read")(request)
         assert exc_info.value.status_code == HTTPStatus.FORBIDDEN
 
-    async def test_denied_from_invitation_management(self, s2_db, provisioned_pool):
+    async def test_denied_from_invitation_management(self, s2_clean_db, provisioned_pool):
+        _db, _reg = s2_clean_db
         ws_id, schema = await self._pool_ws_schema(provisioned_pool)
         request = await _build_request_with_retailer_context(ws_id, schema)
         with pytest.raises(HTTPException) as exc_info:
             await RequirePermission("invitations:create")(request)
         assert exc_info.value.status_code == HTTPStatus.FORBIDDEN
 
-    async def test_denied_from_platform_admin(self, s2_db, provisioned_pool):
+    async def test_denied_from_platform_admin(self, s2_clean_db, provisioned_pool):
+        _db, _reg = s2_clean_db
         ws_id, schema = await self._pool_ws_schema(provisioned_pool)
         request = await _build_request_with_retailer_context(ws_id, schema)
         with pytest.raises(HTTPException) as exc_info:
@@ -1110,7 +1410,8 @@ class TestRouteAccess:
         assert exc_info.value.status_code == HTTPStatus.FORBIDDEN
         assert exc_info.value.detail["code"] == "PLATFORM_ADMIN_REQUIRED"
 
-    async def test_retailer_client_permission_is_allowed(self, s2_db, provisioned_pool):
+    async def test_retailer_client_permission_is_allowed(self, s2_clean_db, provisioned_pool):
+        _db, _reg = s2_clean_db
         ws_id, schema = await self._pool_ws_schema(provisioned_pool)
         request = await _build_request_with_retailer_context(ws_id, schema)
         token = await RequirePermission("client:catalog:read")(request)
@@ -1303,18 +1604,27 @@ class TestFailClosedLifecycle:
         assert "detail" not in body
 
     async def test_soft_deleted_registration_returns_neutral_401(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
-        code, email, password = await _setup_full_login(s2_db, ws_id=ws_id, schema=schema)
+        code, email, password = await _setup_full_login(db, ws_id=ws_id, schema=schema, registry=reg)
+        reg_row = await _fetch_one(
+            db,
+            "SELECT id, is_deleted FROM public.tenant_registrations "
+            "WHERE wholesaler_id = (SELECT id FROM public.wholesalers WHERE code = :code)",
+            {"code": code},
+        )
+        if reg_row:
+            reg.register_mutation("public.tenant_registrations", str(reg_row.id), "is_deleted", reg_row.is_deleted)
         await _execute(
-            s2_db,
+            db,
             "UPDATE public.tenant_registrations SET is_deleted = true "
             "WHERE wholesaler_id = (SELECT id FROM public.wholesalers WHERE code = :code)",
             {"code": code},
         )
-        await s2_db.commit()
+        await db.commit()
 
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -1323,17 +1633,18 @@ class TestFailClosedLifecycle:
         await self._assert_neutral_401(resp)
 
     async def test_soft_deleted_user_returns_neutral_401(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
-        code, email, password = await _setup_full_login(s2_db, ws_id=ws_id, schema=schema)
+        code, email, password = await _setup_full_login(db, ws_id=ws_id, schema=schema, registry=reg)
         await _execute(
-            s2_db,
+            db,
             f'UPDATE "{schema}".users SET is_deleted = true WHERE email = :email',
             {"email": email},
         )
-        await s2_db.commit()
+        await db.commit()
 
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -1342,16 +1653,23 @@ class TestFailClosedLifecycle:
         await self._assert_neutral_401(resp)
 
     async def test_soft_deleted_role_returns_neutral_401(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
-        code, email, password = await _setup_full_login(s2_db, ws_id=ws_id, schema=schema)
+        code, email, password = await _setup_full_login(db, ws_id=ws_id, schema=schema, registry=reg)
+        role_row = await _fetch_one(
+            db,
+            f'SELECT id, is_deleted FROM "{schema}".roles WHERE name = \'retailer_operator\'',
+        )
+        if role_row:
+            reg.register_mutation(f'"{schema}".roles', str(role_row.id), "is_deleted", role_row.is_deleted)
         await _execute(
-            s2_db,
+            db,
             f'UPDATE "{schema}".roles SET is_deleted = true WHERE name = \'retailer_operator\'',
         )
-        await s2_db.commit()
+        await db.commit()
 
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -1360,19 +1678,20 @@ class TestFailClosedLifecycle:
         await self._assert_neutral_401(resp)
 
     async def test_soft_deleted_retailer_returns_neutral_401(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
-        code, email, password = await _setup_full_login(s2_db, ws_id=ws_id, schema=schema)
+        code, email, password = await _setup_full_login(db, ws_id=ws_id, schema=schema, registry=reg)
         await _execute(
-            s2_db,
+            db,
             "UPDATE public.retailers SET is_deleted = true "
             "WHERE id IN (SELECT retailer_id FROM public.wholesaler_retailer_bindings b "
             "JOIN public.wholesalers w ON w.id = b.wholesaler_id WHERE w.code = :code)",
             {"code": code},
         )
-        await s2_db.commit()
+        await db.commit()
 
         resp = await client.post(
             "/api/v1/client/auth/login",
@@ -1381,16 +1700,17 @@ class TestFailClosedLifecycle:
         await self._assert_neutral_401(resp)
 
     async def test_duplicate_active_registrations_rejected_at_db_and_code(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
         pool_code = provisioned_pool.tenants["a"]["code"]
-        code, email, password = await _setup_full_login(s2_db, ws_id=ws_id, schema=schema)
+        code, email, password = await _setup_full_login(db, ws_id=ws_id, schema=schema, registry=reg)
         code = pool_code
 
         ws_row = await _fetch_one(
-            s2_db,
+            db,
             "SELECT w.id AS wid, tr.tenant_schema AS schema "
             "FROM public.wholesalers w "
             "JOIN public.tenant_registrations tr ON tr.wholesaler_id = w.id "
@@ -1398,16 +1718,18 @@ class TestFailClosedLifecycle:
             {"code": pool_code},
         )
 
+        dup_reg_id = str(uuid.uuid4())
+        reg.register_registration(dup_reg_id)
         with pytest.raises(IntegrityError):
             await _execute(
-                s2_db,
+                db,
                 "INSERT INTO public.tenant_registrations "
                 "(id, company_name, tenant_code, country, owner_email, status, "
                 " wholesaler_id, tenant_schema, expires_at, password_hash_cleared_at) "
                 "VALUES (:id, :company, :code2, 'TZ', :email2, 'active', "
                 " :ws_id, :schema, :expires, :cleared)",
                 {
-                    "id": uuid.uuid4(),
+                    "id": dup_reg_id,
                     "company": f"Company Dup {pool_code}",
                     "code2": _unique_code("DUP"),
                     "email2": _unique_email(),
@@ -1417,8 +1739,8 @@ class TestFailClosedLifecycle:
                     "cleared": datetime.now(timezone.utc),
                 },
             )
-            await s2_db.commit()
-        await s2_db.rollback()
+            await db.commit()
+        await db.rollback()
 
         from api.v1.client import auth as auth_module
         from schemas.retailer_credentials import RetailerLoginRequest
@@ -1462,13 +1784,15 @@ class TestRateLimit429:
     required X-RateLimit-* / Retry-After headers."""
 
     async def test_rate_limited_login_returns_429_with_headers(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
         import core.rate_limiter as rl_mod
+        from core.cache import get_redis_client
 
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
-        code, email, password = await _setup_full_login(s2_db, ws_id=ws_id, schema=schema)
+        code, email, password = await _setup_full_login(db, ws_id=ws_id, schema=schema, registry=reg)
 
         test_ip = f"203.0.113.{(uuid.uuid4().int % 200) + 1}"
         headers = {"X-Forwarded-For": test_ip}
@@ -1496,6 +1820,14 @@ class TestRateLimit429:
             assert int(limited.headers["X-RateLimit-Remaining"]) == 0
         finally:
             rl_mod.DEFAULT_IP_LIMIT = original_limit
+            _r = await get_redis_client()
+            cursor = 0
+            while True:
+                cursor, keys = await _r.scan(cursor=cursor, match=f"rate_limit:ip:{test_ip}:*", count=100)
+                if keys:
+                    await _r.delete(*keys)
+                if cursor == 0:
+                    break
 
 
 # ---------------------------------------------------------------------------
@@ -1507,27 +1839,28 @@ class TestOwnerLoginUnchanged:
     """Owner login still returns its existing available_tenants contract."""
 
     async def test_owner_login_returns_available_tenants(
-        self, client: AsyncClient, s2_db, provisioned_pool
+        self, client: AsyncClient, s2_clean_db, provisioned_pool
     ):
+        db, reg = s2_clean_db
         ws_id = provisioned_pool.tenants["a"]["ws_id"]
         schema = provisioned_pool.tenants["a"]["schema"]
         code = provisioned_pool.tenants["a"]["code"]
         email = _unique_email()
         password = _OWNER_PW
 
-        uid = await _create_retailer_user(s2_db, tenant_schema=schema, email=email, password=password)
+        uid = await _create_retailer_user(db, tenant_schema=schema, email=email, password=password, registry=reg)
         await _execute(
-            s2_db,
+            db,
             f'INSERT INTO "{schema}".roles (name, description) '
             "VALUES ('admin', 'Tenant Admin') ON CONFLICT (name) DO NOTHING",
         )
         await _execute(
-            s2_db,
+            db,
             f'INSERT INTO "{schema}".user_roles (user_id, role_id) '
             f"SELECT :uid, id FROM \"{schema}\".roles WHERE name = 'admin'",
             {"uid": uid},
         )
-        await s2_db.commit()
+        await db.commit()
 
         resp = await client.post(
             "/api/v1/auth/login",

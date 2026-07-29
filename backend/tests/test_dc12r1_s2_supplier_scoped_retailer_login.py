@@ -1,4 +1,4 @@
-"""DC-12R1-S2-R2A-R1A: Explicit Per-Test DB/Redis Ownership Cleanup.
+"""DC-12R1-S2-R2A-R1B: Explicit Per-Test DB/Redis Ownership Cleanup.
 
 Comprehensive tests for POST /api/v1/client/auth/login. Runs against real
 PostgreSQL 16 migrated to head 036.
@@ -424,7 +424,7 @@ class _TenantPool:
             for schema in owned.tenant_schemas:
                 if schema:
                     count = (await session.execute(
-                        text("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = :s"),
+                        text("SELECT COUNT(*) FROM pg_catalog.pg_namespace WHERE nspname = :s"),
                         {"s": schema},
                     )).scalar()
                     assert count == 0, f"Schema {schema} still exists"
@@ -441,7 +441,7 @@ class _TenantPool:
             assert ws is not None, "Sentinel wholesaler missing"
             assert ws.status == "active", f"Sentinel status changed: {ws.status}"
             schema_count = (await session.execute(
-                text("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = :s"),
+                text("SELECT COUNT(*) FROM pg_catalog.pg_namespace WHERE nspname = :s"),
                 {"s": sentinel_schema},
             )).scalar()
             assert schema_count == 1, f"Sentinel schema {sentinel_schema} missing or duplicated"
@@ -600,7 +600,7 @@ class _OwnershipRegistry:
                 errors.append(f"{cnt} rows in {table}")
         for _ws_id, schema in self.tenant_schemas:
             cnt = (await db.execute(
-                text("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = :s"),
+                text("SELECT COUNT(*) FROM pg_catalog.pg_namespace WHERE nspname = :s"),
                 {"s": schema},
             )).scalar()
             if cnt:
@@ -632,25 +632,37 @@ async def _snapshot_sentinel_fingerprint(db: AsyncSession, pool: _TenantPool) ->
     s_reg_id = pool.tenants["sentinel"]["reg_id"]
     fp: dict[str, Any] = {}
     fp["ws"] = (await db.execute(
-        text("SELECT id, code, status FROM public.wholesalers WHERE id = :id"),
+        text("SELECT id, code, status, created_at, updated_at FROM public.wholesalers WHERE id = :id"),
         {"id": s_ws_id},
     )).fetchone()
     fp["reg"] = (await db.execute(
-        text("SELECT id, status, is_deleted FROM public.tenant_registrations WHERE id = :id"),
+        text("SELECT id, status, is_deleted, created_at, updated_at FROM public.tenant_registrations WHERE id = :id"),
         {"id": s_reg_id},
     )).fetchone()
     fp["schema_exists"] = (await db.execute(
-        text("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = :s"),
+        text("SELECT COUNT(*) FROM pg_catalog.pg_namespace WHERE nspname = :s"),
         {"s": s_schema},
     )).scalar()
-    fp["role_names"] = [
-        r.name for r in (await db.execute(
-            text(f'SELECT name FROM "{s_schema}".roles ORDER BY name'),
+    fp["role_ids"] = [
+        r[0] for r in (await db.execute(
+            text(f'SELECT id FROM "{s_schema}".roles ORDER BY id'),
         )).fetchall()
     ]
-    fp["user_count"] = (await db.execute(
-        text(f'SELECT COUNT(*) FROM "{s_schema}".users'),
-    )).scalar()
+    fp["role_names"] = [
+        r.name for r in (await db.execute(
+            text(f'SELECT name FROM "{s_schema}".roles ORDER BY id'),
+        )).fetchall()
+    ]
+    fp["user_ids"] = [
+        r[0] for r in (await db.execute(
+            text(f'SELECT id FROM "{s_schema}".users ORDER BY id'),
+        )).fetchall()
+    ]
+    fp["user_emails"] = [
+        r.email for r in (await db.execute(
+            text(f'SELECT email FROM "{s_schema}".users ORDER BY id'),
+        )).fetchall()
+    ]
     return fp
 
 
@@ -663,10 +675,9 @@ async def _assert_sentinel_fingerprint(db: AsyncSession, pool: _TenantPool, befo
         errors.append(f"registration row changed: {before['reg']} -> {after['reg']}")
     if after["schema_exists"] != before["schema_exists"]:
         errors.append(f"schema existence changed: {before['schema_exists']} -> {after['schema_exists']}")
-    if after["role_names"] != before["role_names"]:
-        errors.append(f"role names changed: {before['role_names']} -> {after['role_names']}")
-    if after["user_count"] != before["user_count"]:
-        errors.append(f"user count changed: {before['user_count']} -> {after['user_count']}")
+    for key in ("role_ids", "role_names", "user_ids", "user_emails"):
+        if after[key] != before[key]:
+            errors.append(f"{key} changed: {before[key]} -> {after[key]}")
     assert not errors, f"Sentinel fingerprint mismatch: {'; '.join(errors)}"
 
 
@@ -1822,12 +1833,19 @@ class TestRateLimit429:
             rl_mod.DEFAULT_IP_LIMIT = original_limit
             _r = await get_redis_client()
             cursor = 0
+            deleted_any = False
             while True:
                 cursor, keys = await _r.scan(cursor=cursor, match=f"rate_limit:ip:{test_ip}:*", count=100)
-                if keys:
-                    await _r.delete(*keys)
+                for key in keys:
+                    val = await _r.get(key)
+                    assert val is not None, f"Redis key {key} disappeared before cleanup"
+                    assert int(val) > 0, f"Redis rate-limit count for {key} was {val} (expected >0)"
+                    await _r.delete(key)
+                    assert await _r.get(key) is None, f"Redis key {key} still exists after deletion"
+                    deleted_any = True
                 if cursor == 0:
                     break
+            assert deleted_any, f"No rate_limit keys found for IP {test_ip}"
 
 
 # ---------------------------------------------------------------------------

@@ -568,12 +568,52 @@ reference `client/auth`, `retailer_login`, or `_OwnershipRegistry`).
 - `backend/tests/test_dc12r1_s2_supplier_scoped_retailer_login.py`
   (+445/−112 = net +333 lines)
 
-## Report-back
+## Report-back (R2A-R1B — Final Residue + Complete Backend Gate)
+
+Improvements over R2A-R1A:
+- **Redis:** exact key GET+DEl+assert (owned->zero), not SCAN-only. Assert count>0 before, None after.
+- **pg_namespace:** schema assertions use `pg_catalog.pg_namespace` instead of `information_schema.schemata` (bypasses permission masking).
+- **Sentinel fingerprint:** now includes `role_ids`, `role_names`, `user_ids`, `user_emails`, lifecycle fields (`created_at`, `updated_at`) on ws/reg rows. All ordered by deterministic IDs.
+- **Complete backend suite twice:** full `pytest tests/` on two separately-provisioned PG16/Redis7 stacks; 7 pre-existing migration/temp-db failures reproduce identically; no S2-contributed failures.
+
+### Results
+
+| Gate | Tests | Passed |
+|------|-------|--------|
+| S2 natural order | 50 | 50 ✅ |
+| S2 reversed order | 50 | 50 ✅ |
+| S2+H2 natural order | 94 | 94 ✅ |
+| S2+H2 reversed order | 94 | 94 ✅ |
+| **Full suite — Stack 1** (fulld PG16:56448 + Redis7:57395) | 3043 collected | **2952 passed**, 7 failed\*, 69 skipped, 15 xfailed |
+| **Full suite — Stack 2** (focus PG16:56440 + Redis7:57387) | 3043 collected | **2952 passed**, 7 failed\*, 69 skipped, 15 xfailed |
+
+\* 7 failures: pre-existing migration tests requiring temp-DB creation. Identical on both stacks. Not S2-contributed.
+
+### Failed nodes (both stacks identical)
+
+```
+FAILED tests/test_dc11t4c_reporting_bootstrap_contract.py::test_public_alembic_alone_preserves_tenant_schema_set
+FAILED tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_actual_alembic_035_to_036_failure_rolls_back_then_repaired_upgrade_noops
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_alembic_upgrade_head_creates_wide_version_table_on_fresh_database
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_alembic_upgrade_head_widens_existing_varchar32_version_table
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_migration_017_creates_retailer_prices_on_fresh_tenant_schema
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_migration_017_reconciles_compatible_preexisting_retailer_prices
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_migration_017_fails_closed_for_incompatible_retailer_prices
+```
+
+### Error / residue
+
+- **Zero S2-contributed errors** on either stack.
+- **Zero errors** in any S2/H2 test (50+94+50+94 = 288/288 passed across all 4 permutations).
+- **Zero residue** per the `s2_clean_db` contract: all S2-tracked IDs (tenant schemas, roles, users, registrations, retailers, bindings, ws-retailer-role) deleted in FK-safe order; sentinel fingerprint unchanged; Redis keys deleted with existence assertion.
+- Pre-existing migration failures are unchanged from baseline.
+
+### Verdict
+
+**PASS_FOR_CTO_DC12R1_S2_R2A_R1B_MERGE_REVIEW**
+
+### History
 
 - Prior tip: `684d4fc` (R2A-R1)
-- Final tip: (recorded at push)
-- S2: 50/50 both orders; S2+H2: 94/94 both orders
-- Fresh stack A (fulla): 134/134 in-scope
-- Fresh stack B (fullb): 134/134 in-scope
-- Redis: per-test key cleanup, no cross-test pollution
-- Ownership: every test ID tracked pre-commit, zero residue per test
+- R2A-R1A tip: `f1f7e7b`  
+- R2A-R1B final tip: (recorded at push)

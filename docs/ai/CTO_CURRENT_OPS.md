@@ -1,188 +1,195 @@
 # CTO Current Ops / 当前作战摘要
 
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-30
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product-code merge:** `31eeb140c551eb7896ea2e84baca7a8f35f9b812`
-**Status-document publication:** fetch the current branch head; this update follows
-the accepted product-code merge above
+**Accepted product baseline:** `44ec07ffd92c601957b78fb7909514360232e3eb`
 **Current migration head:** `036_retailer_mvp_identity`
-**Current delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
+**Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
+**Active slice:** `DC-12R1-S3-S2` read-only retailer payment/finance visibility
 
-This is the short, current operating picture for every Mpango agent. Read
-`docs/ai/PROJECT.md` for the full project status and roadmap. Use `ai-ledger/`
-only for detailed evidence.
+This is the short operating picture for every Mpango agent. Read
+`docs/ai/PROJECT.md` for full status and roadmap. Detailed evidence belongs in
+`ai-ledger/`.
 
-本文件只记录当前态势、当前任务和停止条件。它不是完整历史，也不能替代 PRD、决策记录或
-详细测试报告。
+本文件只记录当前事实、当前任务、责任人和停止条件，不替代 PRD、决策记录或详细测试报告。
 
 ## Current Truth / 当前事实
 
-- `origin/product-dev-recovered` is the only active product baseline.
-- The exact branch head must be fetched and verified before every task. The
-  accepted product-code merge is `31eeb140`; later commits may be
-  documentation-only.
-- `origin/main` remains unchanged at
+- The only active product baseline is
+  `origin/product-dev-recovered@44ec07ffd92c601957b78fb7909514360232e3eb`.
+- `origin/main` remains
   `134ea59e02204842e55ebe36f721f44df5a33737`.
-- `origin/platform-dev` remains unchanged at
+- `origin/platform-dev` remains
   `12c5ee557876498240b1a36cc850d030d7bd8293`.
-- The Windows default workspace is dirty and must not be used for controlled
-  implementation, validation, migration rehearsal, or protected-branch merge.
-- All new work starts from a fetched, clean, isolated worktree.
-- The primary customer is the wholesaler. Retailer functionality exists to make
-  each wholesaler's private sales channel easier to use; Mpango is not a
-  cross-supplier price-comparison marketplace.
+- Every task must fetch and verify its assigned SHA before editing.
+- The Windows default workspace is dirty. Controlled work uses a clean isolated
+  worktree.
+- A merged SHA is not a deployed SHA.
+- The wholesaler is the primary customer. Retailer capabilities support a
+  wholesaler-private sales channel, not a comparison marketplace.
 
-## What Is Closed / 已闭环
+## Closed / 已闭环
 
-### Product and financial foundation
+- Core tenant isolation, payment, ledger, receivable, reporting, export, and
+  structured-error boundaries are merged and regression-covered.
+- Credential links are absolute fragment URLs; query-string token delivery is
+  rejected.
+- Retailer S1 identity, invitation, credential setup/reset, verified email,
+  authoritative binding mapping, and migration `036` are merged.
+- Retailer S2 supplier-scoped login is merged: one portal, one contextual JWT,
+  no `available_tenants`, neutral authentication failure.
+- H0/H1/H2 boundaries are merged: correct 429 handling, terminal verification
+  tokens, and safe structured HTTP error serialization.
+- Retailer S3-S1 catalog/order hardening is merged:
+  - server-derived supplier and retailer identity;
+  - mandatory dual-key order scope;
+  - wrong supplier/retailer and malformed-ID fail-closed behavior;
+  - exact client-route and permission inventory;
+  - canonical seeder/bootstrap RBAC reconciliation.
 
-- Tenant isolation remains schema-per-tenant and JWT-derived.
-- Payment methods are restricted to `cash`, `transfer`, and `credit`.
-- Payment replay, idempotency, duplicate-transfer, partial-payment, ledger, and
-  receivable underflow boundaries are covered by regression tests.
-- Receivable collection semantics and database constraints are represented by
-  migration `035_receivable_collection_integrity`.
-- Legacy order-status enum reconciliation, finance scoping, export worker tenant
-  context, malformed platform UUID handling, and public error sanitization have
-  been merged.
+## Latest Evidence / 最新证据
 
-### Credential and customer-entry foundation
+Authoritative S3-S1 source:
+`280c2b027c2fae7373d9168d4fc3d07e7f4806b1`.
 
-- Customer credential email links are absolute, fragment-based, and reject
-  query-string token delivery in product code.
-- Retailer S1 identity, invitation, credential setup/reset, authoritative
-  `tenant_user_id` mapping, retailer-owned verified email, finite invitation
-  lifecycle, and `retailer_operator` permission foundation are merged through
-  migration `036_retailer_mvp_identity`.
-- Retailer S2 supplier-scoped login is merged. It resolves exactly one
-  wholesaler portal, issues one contextual JWT, returns no `available_tenants`,
-  uses neutral authentication failures, and preserves private supplier routing.
-- Verification-token terminal states now reject used, revoked, expired,
-  deleted, or otherwise terminal tokens before dependent orchestration.
-- Rate-limit exceptions are converted only at the intended 429 boundary and do
-  not mask unrelated application exceptions.
-
-### Deterministic validation
-
-The final S2-R2A-R1C backend gate for candidate `04d9649` ran twice on
-independent authorized temporary-database PostgreSQL 16 and Redis 7
-environments:
+Two independent fresh PostgreSQL 16/Redis 7 full backend gates:
 
 | Metric | Run A | Run B |
 |---|---:|---:|
-| Collected | 3043 | 3043 |
-| Passed | 2980 | 2980 |
+| Collected | 3086 | 3086 |
+| Passed | 3023 | 3023 |
 | Skipped | 48 | 48 |
 | XFailed | 15 | 15 |
 | Failed | 0 | 0 |
 | Errors | 0 | 0 |
-| Exit code | 0 | 0 |
 
-The reviewed candidate was merged as
-`31eeb140c551eb7896ea2e84baca7a8f35f9b812`.
+Frontend: `15` files and `142` tests passed; production build passed.
 
-## What Is Not Closed / 未闭环
+The source was merged as `44ec07ffd92c601957b78fb7909514360232e3eb`.
+Post-merge: Alembic reached sole head `036`; focused backend result was
+`234 passed, 5 xfailed`; frontend remained `142 passed` with a successful build.
 
-- Retailer S1 and S2 are foundations, not the complete retailer journey.
-- Retailer catalog, order, payment, and relationship-scoped finance UX are not
-  yet proven as one real browser journey. This is DC-12R1-S3/S4 work.
-- The latest product baseline is not proven deployed on a customer-facing HTTPS
-  environment.
-- The Tencent mainland VPS is retained for development, validation, or disaster
-  recovery. It is not the intended customer-facing Kenyan MVP origin.
-- Real mailbox signup, verification, setup, reset, login, order, payment, and
-  finance closure has not been rerun against the latest product branch head.
-- Platform operator schema foundation exists, but dedicated platform operator
-  login/JWT/guard/frontend lifecycle is not yet merged as a complete runtime
-  capability.
-- Formal human-plus-AI database operations, restore policy, monitoring,
-  retention, and incident runbooks are not yet a complete delivery package.
-- Tenant legal identity, logo/branding onboarding, current user manuals, and
-  pilot support procedures remain incomplete.
+## Not Closed / 未闭环
 
-## Active Phase / 当前阶段
+- Retailer payment history and finance balance are not yet available in the
+  client workspace.
+- Retailer branded/responsive workspace and browser continuity are incomplete.
+- The latest product baseline is not proven on the intended overseas HTTPS
+  customer origin.
+- Real mailbox invitation, setup, reset, login, order, and finance journeys are
+  not closed on the latest deployment.
+- Formal DB-OPS, monitoring, backup/restore policy, retention, access, and
+  incident runbooks are incomplete.
+- Dedicated platform-operator login/JWT/guard/frontend lifecycle is incomplete.
+- Tenant branding and customer/operator manuals are incomplete.
 
-**Active product slice:** DC-12R1-S3 relationship-scoped retailer workspace.
+## Frozen Decision / 冻结决策
 
-S3 must preserve these rules:
+`client:payments:create` is **future-gated**. It is not permission to add a
+retailer payment-submission route.
 
-- Every read and write is derived from the contextual JWT, active binding, and
-  tenant context; client-supplied wholesaler or retailer IDs are never trusted.
-- Catalog, negotiated price, orders, payments, and balances from another
-  supplier relationship are never disclosed.
-- Mpango must not add a cross-supplier comparison dashboard or workspace picker.
-- Price and balance calculations remain server-authoritative.
-- A retailer may not mark a payment settled, mutate a ledger, or alter a
-  receivable unless an existing approved financial contract explicitly permits
-  that action.
-- Retailer access stays inside `client:*`; generic wholesaler and platform
-  routes remain denied.
-- Existing wholesaler owner behavior must not change.
+Until a separate CTO-approved financial contract exists:
 
-## Ordered Delivery Plan / 下一步顺序
+- retailer finance is read-only;
+- retailers cannot settle payments, mutate ledgers, or alter receivables;
+- no `/api/v1/client/payments` write method may exist;
+- no generic wholesaler payment/finance endpoint may be exposed to retailers;
+- all displayed balances are server-authoritative and relationship-scoped.
 
-1. **DC-12R1-S2 (completed):** supplier-scoped retailer login and
-   authorization boundary.
-2. **DC-12R1-S3 (active):** relationship-scoped retailer
-   catalog/order/payment/finance UX, with no comparison marketplace behavior.
-3. **DC-12R1-S4:** fresh-database, cross-environment, HTTPS, real-mailbox and
-   real-browser end-to-end closure.
-4. **DB-OPS foundation:** operator access, backup/restore drills, monitoring,
-   retention, incident response, and safe AI-agent procedures.
-5. **Tenant identity and branding:** legal/business profile, logo, dual-brand
-   entry, controlled onboarding review, and tenant configuration UX.
-6. **User enablement:** wholesaler manual, retailer manual, platform operator
-   runbook, pilot checklist, and support escalation guide.
-7. **AI-native layer:** begin only after reliable operational data, permissions,
-   approvals, audit, and rollback boundaries are proven.
+## Active Task / 当前任务
 
-## Current Release Gates / 当前交付门禁
+### DC-12R1-S3-S2 - Read-Only Payment and Finance Visibility
 
-No customer delivery verdict may be issued until all are true:
+**Primary implementer:** local Codex CLI
 
-- Latest product SHA is deployed to the intended non-mainland HTTPS origin.
-- Alembic reaches sole head `036_retailer_mvp_identity`.
-- Fresh wholesaler signup and credential lifecycle work through a real mailbox.
-- Invited retailer setup, supplier-scoped login, catalog, order, payment, and
-  finance journeys pass in browser.
-- Cross-wholesaler negative reads and writes are rejected.
-- Finance, payment, ledger, and receivable invariants remain green.
-- Backup and restore evidence exists for the target environment.
-- Runtime logs and public responses contain no tokens, credentials, database
-  URLs, stack traces, or raw internal exceptions.
-- User-facing manuals and operator runbooks match the deployed behavior.
+**Independent source reviewer:** Zcode
 
-## Agent Assignment / 角色分工
+**Independent runtime validator:** Lubuntu Codex
 
-- **Codex CTO:** scope, contracts, impact analysis, merge decision, project-state
-  truth, and final delivery verdict.
-- **Product implementation agent:** bounded S3 code slices on isolated
-  branches; no protected push.
-- **Lubuntu Codex/Leo:** independent PostgreSQL 16/Redis 7 full gates,
-  cross-environment and browser validation.
-- **OPS agent:** deployment, backup, restore, runtime logs, health, DNS/TLS, and
-  reversible operational procedures.
-- **Human owner:** credentials, mailbox access, DNS/domain decisions, legal and
-  business data, and final production authorization.
+Required delivery:
+
+1. `GET /api/v1/client/payments` returns only the active supplier-retailer
+   relationship's payment history.
+2. `GET /api/v1/client/finance/balance` returns a server-authoritative balance
+   and exposure summary.
+3. Repository/query predicates require both `wholesaler_id` and `retailer_id`;
+   invalid identity fails before financial SQL.
+4. Frontend adds read-only payment history and balance views inside the existing
+   client workspace.
+5. Exact route inventory proves there is no client payment mutation route.
+6. A/B supplier isolation, pagination, empty state, inactive/deleted binding,
+   missing permission, malformed ID, and generic-route denial are tested.
+7. Existing wholesaler finance/payment behavior remains unchanged.
+
+Forbidden:
+
+- payment submission, settlement, ledger mutation, or receivable mutation;
+- request-body/query authority for wholesaler or retailer identity;
+- cross-supplier aggregation or comparison;
+- client-side recomputation presented as the financial source of truth;
+- migration, permission, or deployment expansion without an explicit stop and
+  CTO review.
+
+Acceptance:
+
+- focused backend tests pass in natural and reverse order;
+- affected finance/payment/route/RBAC regressions pass;
+- two fresh full backend gates have identical totals and zero failures/errors;
+- frontend Vitest and production build pass;
+- no skip, xfail, deselection, rerun, or assertion weakening;
+- independent review confirms zero financial write path.
+
+## Ordered Work / 下一步顺序
+
+1. **S3-S2:** read-only relationship payment and finance visibility.
+2. **Independent S3-S2 review and merge gate.**
+3. **S3-S3:** supplier branding, responsive workspace, portal continuity, and
+   browser component closure.
+4. **S4:** overseas HTTPS, real mailbox, real browser, two-wholesaler isolation,
+   exact-SHA deployment, rollback, and sanitized runtime closure.
+5. **DB-OPS:** access, backup/restore, retention, monitoring, migration,
+   incident, and AI-agent runbooks.
+6. **Tenant identity and manuals:** legal profile, logo, dual branding,
+   wholesaler/retailer/operator documentation.
+7. **Pilot then AI-native:** one or two supported wholesalers first; governed
+   read-only AI and approval-bound actions later.
+
+## Release Gates / 当前交付门禁
+
+No customer-delivery verdict until:
+
+- the latest product SHA is deployed to the intended non-mainland HTTPS origin;
+- Alembic reaches sole head `036_retailer_mvp_identity`;
+- fresh wholesaler and retailer credential journeys work through a real mailbox;
+- supplier-scoped catalog, order, read-only payment, and balance journeys pass
+  on desktop and mobile;
+- cross-supplier negative reads and writes are rejected;
+- finance, payment, ledger, and receivable invariants remain green;
+- backup and restore evidence exists for the target environment;
+- logs and public responses expose no token, credential, database URL, stack
+  trace, or raw internal exception;
+- customer manuals and operator runbooks match the deployed behavior.
 
 ## Stop Conditions / 停止条件
 
 Stop and report to the CTO when:
 
-- the fetched product baseline differs from the assigned SHA;
-- a task changes tenant isolation, finance semantics, migrations, platform auth,
-  or protected refs outside its approved scope;
-- any unexplained HTTP 500, cross-tenant result, financial invariant failure, or
+- the fetched baseline differs from the assigned SHA;
+- any client financial write route appears;
+- any identity is accepted from request data instead of server context;
+- a cross-supplier result, unexplained 500, financial invariant failure, or
   secret exposure occurs;
-- tests pass only through skip, xfail, deselection, assertion weakening, schema
-  repair inside a read-only gate, or environment reuse;
-- an agent cannot prove worktree, branch, changed files, test results, and
-  cleanup.
+- a task changes migration, permission registry, platform auth, deployment, or
+  protected refs outside scope;
+- tests pass only through skip, xfail, deselection, rerun, assertion weakening,
+  schema repair inside a read-only gate, or reused dirty infrastructure;
+- branch, changed files, test totals, cleanup, and remote equality cannot be
+  proven.
 
 ## Update Protocol / 更新规则
 
-Update this file after every meaningful merge, release gate, deployment,
-blocker, or phase transition. Keep it short and current. Move durable strategy
-to `PROJECT_MEMORY.md`, full status and roadmap to `PROJECT.md`, and detailed
-evidence to `ai-ledger/`.
+Update this file after every meaningful merge, deployment, blocker, release
+gate, or phase transition. Keep it short and current. Move full status to
+`PROJECT.md`, durable strategy to `PROJECT_MEMORY.md`, and evidence to
+`ai-ledger/`.

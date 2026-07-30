@@ -67,8 +67,13 @@ export function OrderListPage() {
   // Phase 5: payment modal state
   const [payModalOrder, setPayModalOrder] = useState<Order | null>(null);
 
-  const hasUpdatePermission = user?.permissions.includes('orders:update') || user?.roles.includes('admin');
-  const hasCreatePermission = user?.permissions.includes('orders:create') || user?.roles.includes('admin');
+  // H3: Payment actions require payments:create (matching backend POST /orders/{id}/pay).
+  // Order-edit actions (confirm, fulfill, cancel, return) require orders:update.
+  // Role-name shortcuts are NOT used as authorization truth; the backend permission
+  // set is the sole source of truth (admin works because it is granted payments:create).
+  const hasUpdatePermission = user?.permissions.includes('orders:update') ?? false;
+  const hasCreatePermission = user?.permissions.includes('orders:create') ?? false;
+  const hasPayPermission = user?.permissions.includes('payments:create') ?? false;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -259,13 +264,13 @@ export function OrderListPage() {
     // Fast path: order already in loaded rows
     const order = orders.find((o) => o.id === collectOrderId);
     if (order) {
-      if (hasUpdatePermission && canPay(order.status)) {
+      if (hasPayPermission && canPay(order.status)) {
         void handleOpenPayModal(order);
       } else {
         useToastStore.getState().addToast({
           type: 'error',
           title: 'Cannot Record Payment',
-          message: !hasUpdatePermission
+          message: !hasPayPermission
             ? 'You do not have permission to record payments.'
             : `Order ${collectOrderId.slice(0, 8)}... is not payable (status: ${order.status}).`,
         });
@@ -278,13 +283,13 @@ export function OrderListPage() {
       try {
         const res = await orderService.getById(collectOrderId);
         const fetched = res.data.data;
-        if (hasUpdatePermission && canPay(fetched.status)) {
+        if (hasPayPermission && canPay(fetched.status)) {
           void handleOpenPayModal(fetched);
         } else {
           useToastStore.getState().addToast({
             type: 'error',
             title: 'Cannot Record Payment',
-            message: !hasUpdatePermission
+            message: !hasPayPermission
               ? 'You do not have permission to record payments.'
               : `Order ${collectOrderId.slice(0, 8)}... is not payable (status: ${fetched.status}).`,
           });
@@ -297,7 +302,7 @@ export function OrderListPage() {
         });
       }
     })();
-  }, [searchParams, loading, payModalOrder, orders, hasUpdatePermission, setSearchParams]);
+  }, [searchParams, loading, payModalOrder, orders, hasPayPermission, setSearchParams]);
 
   const canInvoice = (status: OrderStatus) => {
     const noInvoice: OrderStatus[] = ['draft', 'cancelled', 'voided'];
@@ -437,8 +442,8 @@ export function OrderListPage() {
                       {isOrderListPaymentActionVisible(o.status) && (
                         <button
                           onClick={() => handleOpenPayModal(o)}
-                          disabled={!hasUpdatePermission}
-                          title={!hasUpdatePermission ? "Permission Denied" : "Record Payment"}
+                          disabled={!hasPayPermission}
+                          title={!hasPayPermission ? "Permission Denied" : "Record Payment"}
                           className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Record Payment

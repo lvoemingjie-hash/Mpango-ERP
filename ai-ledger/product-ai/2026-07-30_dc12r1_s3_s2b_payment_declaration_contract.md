@@ -1,63 +1,46 @@
-# DC-12R1-S3-S2B-D-R1: Retailer Payment Declaration, Cashier Confirmation, Receipt & Print Contract (Corrected)
+# DC-12R1-S3-S2B-D-R2: Retailer Payment Declaration, Cashier Confirmation, Receipt & Print Contract (Final)
 
-**Date:** 2026-07-31 (R1 correction of 2026-07-30 original)
+**Date:** 2026-07-31 (R2 correction of R1; integrates H3 baseline)
 **Branch:** `zcode/dc12r1-s3-s2b-d-payment-declaration-contract-2026-07-30`
-**Product baseline:** `origin/product-dev-recovered` @ `0aec0f0b`
+**Product baseline:** `origin/product-dev-recovered` @ `0f9d259b` (H3 merged)
 **Doc checkpoint:** `origin/codex/dc12-project-status-s3-s2-2026-07-30` @ `2359fc0d`
 **Task type:** Docs-only financial design/audit gate. No product code implemented.
 
 ---
 
-## 0. R1 Correction Summary
+## 0. R2 Correction Summary
 
-This document supersedes the original DC-12R1-S3-S2B-D contract (`f8a99e89`). The original PASS verdict is **WITHDRAWN**. The following 13 corrections are applied:
+This document supersedes the R1 contract (`78a2bce3`). The H3 product baseline (`0f9d259b`, containing the payment UI permission fix) is merged and is an ancestor of this branch's HEAD.
+
+Seven corrections are applied:
 
 | # | Correction |
 |---|---|
-| R1.1 | Original PASS verdict withdrawn. |
-| R1.2 | CURRENT_PRODUCT_DEFECT recorded: frontend uses `orders:update` while backend requires `payments:create`. |
-| R1.3 | Confirmation replay made idempotent: same declaration/payment/receipt returned; no duplicate writes. |
-| R1.4 | Transaction-level canonical payment service extraction specified. Never call one route handler from another. |
-| R1.5 | Single `receipt_number` source of truth + concurrency-safe allocator specified. |
-| R1.6 | Server-authoritative bounded statement endpoint specified (not client-side running balance). |
-| R1.7 | `is_deleted` removed from immutable declarations; rejection reason naming unified. |
-| R1.8 | Migration 037 made forward-only/fail-closed with full semantic preflight. |
-| R1.9 | Notification emission deferred — no transactional outbox designed yet. |
-| R1.10 | Cancel/expiry/stale test-matrix claims corrected with exact route/test references. |
-| R1.11 | Financial blast radius reclassified as **HIGH**. |
-| R1.12 | ASCII/mojibake claim corrected: non-ASCII ≠ mojibake. |
-| R1.13 | Strict self-review performed; report/CSV reconciled gap=0. |
+| R2.1 | Tenant migration truth: `alembic_version` exists only in public; remove all per-tenant-schema version checks; enumerate live tenants via `tenant_registrations JOIN wholesalers` with status/is_deleted filters matching migrations 035/036 |
+| R2.2 | Migration 037 preflight: real catalog checks for every table/column/type/constraint/index/permission; no reliance on `CREATE TABLE IF NOT EXISTS` to hide incompatible catalogs; bootstrap parity proven by real tests externally |
+| R2.3 | Receipt truth: single source = `payments.receipt_number`; removed from `payment_declarations`; replay resolves through `confirmation_payment_id`; FK with RESTRICT semantics; format `RCT-YYYYMMDD-NNNNNN` using UTC |
+| R2.4 | Declaration idempotency: `UNIQUE(retailer_id, idempotency_key)` not `(order_id, idempotency_key)` |
+| R2.5 | Retailer statement isolation: no `LedgerService.get_balance(account_type)` (tenant-wide); exact dual-key projection; opening/closing balance deferred if not provable from current retailer-scoped tables |
+| R2.6 | Confirmation permission: `payments:confirm_declaration` added to registry + `ADMIN_PERMISSIONS`; reconciled in all seeders; retailer_operator never receives it |
+| R2.7 | Risk: `configure_app` reclassified MEDIUM; define full regression bundles; require two fresh PG16/Redis7 gates |
 
 ---
 
 ## 1. Executive Summary
 
-This document locks the contract for retailer-initiated payment declarations: a **non-canonical** payment submission that has **zero accounting effect** until an authorized wholesaler cashier confirms it. The retailer submits a declaration of intent ("I paid via cash/transfer, here is the reference"). The cashier reviews and either confirms (triggering the canonical payment write semantics) or rejects. Only confirmed declarations produce canonical payments, ledger entries, order transitions, and receivable updates.
+This document locks the final contract for retailer-initiated payment declarations: a **non-canonical** payment submission that has **zero accounting effect** until an authorized wholesaler cashier confirms it. Confirmation triggers the canonical payment write path via a transaction-level service.
 
-**The original PASS verdict is withdrawn.** The expected verdict is `STOP_AND_REPORT_CTO_WITH_H3_PAYMENT_PERMISSION_PREREQUISITE` because a CURRENT_PRODUCT_DEFECT exists (R1.2) that must be resolved before S2B implementation can proceed.
+The H3 product defect (frontend `orders:update` vs backend `payments:create`) has been resolved and merged into the product baseline. The S2B design can now proceed with the corrected permission model.
 
-The design preserves the GAP-07 invariant (no client route performs financial mutation) by introducing a **declaration-only** write path that is strictly isolated from canonical payment semantics.
-
-**Financial blast radius: HIGH.** This design touches the canonical payment write path — the sole mechanism for money movement in the system. Any defect in the extraction (R1.4), idempotency (R1.3), or receipt allocation (R1.5) could cause duplicate payments, lost payments, or corrupted receivables. The design must be reviewed by the CTO before implementation.
+**Financial blast radius: HIGH.** This design touches the canonical payment write path. Any defect in extraction, idempotency, or receipt allocation could cause duplicate payments, lost payments, or corrupted receivables.
 
 ---
 
-## 2. CURRENT_PRODUCT_DEFECT (R1.2)
+## 2. CURRENT_PRODUCT_DEFECT Status
 
-### Defect: Frontend/backend payment permission mismatch
-
-| Layer | Permission Checked | File:Line |
+| Defect | Status | Resolution |
 |---|---|---|
-| **Frontend** | `orders:update` | `frontend/src/pages/orders/OrderListPage.tsx:70` — `user?.permissions.includes('orders:update')` |
-| **Backend** | `payments:create` | `backend/api/v1/orders.py:561` — `Depends(RequirePermission("payments:create"))` |
-
-**Impact:** The "Record Payment" button in the wholesaler UI is gated by `orders:update`, but the backend `POST /api/v1/orders/{order_id}/pay` requires `payments:create`. A user with `orders:update` but not `payments:create` sees the button, can open the modal, and submits a payment — only to receive a 403 `PERMISSION_DENIED` from the backend. Conversely, a user with `payments:create` but not `orders:update` cannot see the button at all.
-
-**Classification:** `CURRENT_PRODUCT_DEFECT` — this is an existing defect in the product baseline (`0aec0f0b`), not introduced by this design.
-
-**Prerequisite for S2B:** This defect must be resolved (frontend changed to check `payments:create`, or a new `payments:create`-derived UI permission) before S2B implementation begins. The S2B declaration confirmation UI will face the same permission mismatch unless resolved first.
-
-**This is why the verdict is STOP, not PASS.**
+| Frontend pay button checks `orders:update` (`OrderListPage.tsx:70`) while backend requires `payments:create` (`orders.py:561`) | **RESOLVED** | Fixed in H3 (`280a06c3`), merged into product baseline `0f9d259b`. H3 is ancestor of this branch. |
 
 ---
 
@@ -67,13 +50,13 @@ The design preserves the GAP-07 invariant (no client route performs financial mu
 |---|---|
 | BC-1 | Retailer submission is a **payment declaration**, not a canonical payment. |
 | BC-2 | Submission has **zero effect** on payments, order status, ledger, inventory, outstanding balance, receivables, or reporting. |
-| BC-3 | Only an **authorized wholesaler cashier** may confirm or reject. |
-| BC-4 | Confirmation must **call the transaction-level canonical payment service** (R1.4), not a route handler. |
+| BC-3 | Only an **authorized wholesaler** with `payments:confirm_declaration` may confirm or reject. |
+| BC-4 | Confirmation must **call the transaction-level CanonicalPaymentService** (DD-04), not a route handler. |
 | BC-5 | Confirmation must be **atomic** across payment, order, ledger and receivables. |
 | BC-6 | Retailer sees **pending, confirmed and rejected** states only inside the selected supplier relationship. |
 | BC-7 | Only **confirmed** payment may be labelled "received" or rendered as a receipt. |
 | BC-8 | Pending declarations may print only as **"Payment Declaration — Not Received"**. |
-| BC-9 | **No notification emission** in this scope — deferred until a transactional outbox is designed (R1.9). |
+| BC-9 | **No notification emission** — deferred until transactional outbox is designed. |
 | BC-10 | **No cross-supplier** workspace, comparison, identifiers or financial data. |
 
 ---
@@ -84,529 +67,457 @@ The design preserves the GAP-07 invariant (no client route performs financial mu
 
 | Component | File:Line | Summary |
 |---|---|---|
-| **Pay route** | `api/v1/orders.py:558-861` | `POST /api/v1/orders/{order_id}/pay`; requires `payments:create` (L561); `X-Idempotency-Key` mandatory (L564); `SELECT FOR UPDATE` lock (L623); payment INSERT (L746); outstanding_balance delta (L770/L789); order transition (L796); ledger posting (L778) |
-| **Alt pay path disabled** | `api/v1/payments.py:83-97` | `POST /api/v1/payments` returns 409 `PAYMENT_WRITE_PATH_DISABLED` |
-| **PaymentRepository.create** | `repositories/payment_repository.py:236-298` | Raw-SQL INSERT into `payments` table |
-| **PaymentService._apply_outstanding_balance_delta** | `services/payment_service.py:169-216` | UPDATE outstanding_balance with non-negative guard |
+| **Pay route** | `api/v1/orders.py:558-861` | `POST /api/v1/orders/{order_id}/pay`; `payments:create` (L561); `SELECT FOR UPDATE` (L623); payment INSERT (L746); balance delta (L770/L789); order transition (L796); ledger (L778) |
+| **Alt pay path disabled** | `api/v1/payments.py:83-97` | Returns 409 `PAYMENT_WRITE_PATH_DISABLED` |
+| **PaymentRepository.create** | `repositories/payment_repository.py:236-298` | Raw-SQL INSERT; no `receipt_number` column currently exists |
+| **PaymentService._apply_outstanding_balance_delta** | `services/payment_service.py:169-216` | `UPDATE outstanding_balance` with non-negative guard |
+| **LedgerService.get_balance** | `services/ledger_service.py:183-195` | **Tenant-wide** — takes `account_type` only; **no retailer_id parameter**. Cannot be used for retailer-scoped statements (R2.5). |
 | **LedgerService.post_payment_received** | `services/ledger_service.py:281-317` | Debit CASH / Credit RECEIVABLE |
-| **OrderService.transition** | `services/order_service.py:53-164` | The ONLY order state mutation path; FOR UPDATE; invariants; ledger |
-| **OrderState matrix** | `core/domain/order_state.py:49-73` | `CONFIRMED → {PAID, PARTIALLY_PAID, CANCELLED}` |
-| **Frontend pay button permission** | `frontend/src/pages/orders/OrderListPage.tsx:70` | Checks `orders:update` — **MISMATCHES backend** (DEFECT R1.2) |
+| **OrderService.transition** | `services/order_service.py:53-164` | The ONLY order state mutation path |
+| **Frontend pay button** | `OrderListPage.tsx:70` (H3 fixed) | Now checks `payments:create` via `hasPayPermission` |
 
-### 4.2 Retailer Client Finance (Read-Only)
-
-| Component | File:Line | Summary |
-|---|---|---|
-| **ClientIdentity** | `api/v1/client/dependencies.py:35-42` | `user_id`, `retailer_id`, `tenant_id`, `token` — all server-derived |
-| **resolve_client_identity** | `api/v1/client/dependencies.py:45-128` | Binding lookup; 403 on missing/inactive |
-| **GET /api/v1/client/payments** | `api/v1/client/payments.py:42-90` | `client:payments:read`; read-only; dual-key scoped |
-| **GET /api/v1/client/finance/balance** | `api/v1/client/finance.py:31-64` | `client:finance:read`; read-only |
-| **ClientFinanceRepository** | `repositories/client_finance_repository.py:79-102` | `get_balance`: reads stored `outstanding_balance` |
-
-### 4.3 GAP-07 / Permission Evidence
+### 4.2 Tenant Registration and Schema Derivation (R2.1)
 
 | Component | File:Line | Summary |
 |---|---|---|
-| **client:payments:create defined** | `core/permission_registry.py:69` | Granted to retailers but **unused by any route** |
-| **GAP-07 freeze test** | `tests/test_dc12r1_s3_s1_catalog_order_hardening.py:560-563` | Proves no client route consumes `client:payments:create` |
+| **Live tenant enumeration** | `alembic/versions/035_receivable_collection_integrity.py:82-108` | `SELECT ... FROM public.tenant_registrations tr JOIN public.wholesalers w ON w.id = tr.wholesaler_id WHERE tr.is_deleted IS FALSE AND tr.status IN :registration_statuses AND w.is_deleted IS FALSE AND w.status IN :wholesaler_statuses` |
+| **LIVE_REGISTRATION_STATUSES** | `alembic/versions/035:25-30` | `("pending_email_verification", "email_verified", "provisioning", "provisioned", "active")` |
+| **WHOLESALER_ACTIVE_STATUSES** | `alembic/versions/035:32-35` | `("active", "provisioning")` |
+| **Schema derivation** | `models/wholesaler.py:93` | `derive_schema_from_id(tenant_id)` → `t_{uuid_without_dashes}` |
+| **alembic_version table** | `alembic/env.py:43` | `ALEMBIC_VERSION_TABLE = "alembic_version"` — exists only in **public** schema; no per-tenant alembic_version |
+
+**R2.1 Correction:** Migration 037 must enumerate live tenants using the exact pattern from migration 035 (lines 82-108). It must NOT check `alembic_version` in tenant schemas. The sole-head and current-revision checks apply to the global `public.alembic_version` chain only. Rogue/unregistered schemas remain untouched.
+
+### 4.3 Payments Table Schema (R2.3)
+
+The current payments table DDL (`scripts/bootstrap_tenant_schema.py`) does **not** have a `receipt_number` column. Migration 037 must add it:
+
+```
+ALTER TABLE "{schema}".payments ADD COLUMN receipt_number VARCHAR(32);
+CREATE UNIQUE INDEX ux_payments_receipt_number
+  ON "{schema}".payments (receipt_number) WHERE receipt_number IS NOT NULL;
+```
+
+### 4.4 GAP-07 / Permission Evidence
+
+| Component | File:Line | Summary |
+|---|---|---|
+| **client:payments:create defined** | `core/permission_registry.py:69` | Granted to retailers but unused by any route |
+| **GAP-07 freeze test** | `tests/test_dc12r1_s3_s1_catalog_order_hardening.py:560-563` | No client route consumes `client:payments:create` |
 | **Canonical pay permission** | `tests/test_route_authorization_policy.py:904-915` | `POST /orders/{id}/pay` requires `payments:create` |
-
-### 4.4 Financial Integrity Test Ground-Truth
-
-| Test File | Key Tests | Verifies |
-|---|---|---|
-| `test_dc11d_payment_replay_concurrency_integrity.py` | L340-721 | Replay idempotency, concurrent single-settlement, overpay rejection, rollback invariance |
-| `test_dc11t4h_receivable_collection_integrity.py` | L113-976 | Credit collection, over-collection rejection, concurrent lock, migration 035 fail-closed |
-| `test_s5_ledger.py` | L96, L379 | Unbalanced rejection, ledger immutability |
-| `test_s5_5_ledger_hardening.py` | L32, L88 | DB-level UPDATE/DELETE blocks |
-| `test_dc10f_payment_method_integrity.py` | L44-115 | Non-canonical method rejection before side effects |
-
-### 4.5 Frontend Evidence
-
-| Component | File:Line | Summary |
-|---|---|---|
-| **Wholesaler pay modal** | `frontend/src/pages/orders/OrderListPage.tsx:125-152,437-446` | "Record Payment" button; gated by `orders:update` (DEFECT) |
-| **Retailer finance UI** | `frontend/src/pages/client/FinanceBalancePage.tsx:14-67` | Read-only balance display |
-| **Retailer payment history** | `frontend/src/pages/client/PaymentHistoryPage.tsx:37-101` | Read-only |
-| **Client routes** | `frontend/src/router/AppRouter.tsx:122-140` | 6 routes; no pay route |
-| **Print support** | *(none)* | No print/PDF/receipt capability exists |
 
 ---
 
-## 5. Mandatory Design Decisions (Corrected)
+## 5. Mandatory Design Decisions (R2 Final)
 
 ### DD-01: Storage — Tenant-Local
 
-**Decision:** Declarations stored in the **tenant schema** (`{tenant}.payment_declarations`), not public.
-
-**Justification:** Declarations are retailer-supplier-relationship-scoped. Tenant-local storage enforces isolation by construction and matches the existing pattern.
+Declarations stored in the **tenant schema** (`{tenant}.payment_declarations`). Tenant-local storage enforces isolation by construction.
 
 ### DD-02: State Machine
 
 ```
-                    ┌──────────┐
-   retailer submit  │  PENDING  │
-              ─────▶│           │
-                    └─────┬─────┘
-                     ┌────┴────┐
-              confirm│         │reject
-                     ▼         ▼
-              ┌──────────┐ ┌──────────┐
-              │CONFIRMED │ │ REJECTED │
-              └──────────┘ └──────────┘
-                terminal      terminal
+PENDING → CONFIRMED (terminal)
+PENDING → REJECTED  (terminal)
 ```
 
-**Permitted transitions:** `PENDING → CONFIRMED`, `PENDING → REJECTED`. No other transitions. Both are terminal.
+No retailer cancellation. No expiry in MVP. Both terminal states are immutable.
 
-**No retailer cancellation.** Once submitted, a declaration cannot be withdrawn by the retailer. Only the cashier moves it to terminal state.
+### DD-03: Idempotent Confirmation
 
-**R1.10 Correction — No expiry in MVP.** The original contract mentioned "optional auto-expiry" to REJECTED. This is **removed from the MVP scope**. There is no expiry or auto-cancellation mechanism. A PENDING declaration remains PENDING until the cashier explicitly confirms or rejects it. This eliminates stale-state ambiguity. Future expiry is a separate enhancement.
+Confirmation replay returns the **same** declaration, payment ID, and receipt — with **zero** duplicate financial writes. Mechanism: `SELECT FOR UPDATE` on declaration row + double-check status. Concurrent confirms serialize via the lock; the second sees `confirmed` and returns the existing result (200, not 409).
 
-### DD-03: Idempotent Confirmation (R1.3 Correction)
+### DD-04: Transaction-Level Canonical Payment Service
 
-**Declaration submission idempotency (unchanged):**
-- `X-Declaration-Idempotency-Key` (8-64 visible ASCII).
-- Replay with same key + same payload → return existing declaration.
-- Replay with same key + different payload → 409 `DECLARATION_IDEMPOTENCY_KEY_CONFLICT`.
+Extract payment write logic from `pay_order` (orders.py:558-861) into `CanonicalPaymentService.confirm_payment(...)`. Both `pay_order` and declaration confirmation call this service. **Never call one route handler from another.** Transaction ownership: `db: AsyncSession` passed in; service does not commit (caller owns lifecycle).
 
-**Confirmation replay idempotency (R1.3 — corrected):**
+### DD-05: Receipt Number — Single Source of Truth (R2.3 Corrected)
 
-The original contract stated a second confirm returns 409 `DECLARATION_ALREADY_CONFIRMED`. **This is corrected.** A repeated or concurrent confirmation of the same declaration must:
+**Single source of truth:** `payments.receipt_number` (new column added by migration 037).
 
-1. **Return the same confirmed declaration** — same declaration_id, same payment_id, same receipt_number.
-2. **Perform zero duplicate financial writes** — no second payment INSERT, no second ledger entry, no second outstanding_balance delta, no second order transition.
-3. **Not raise 409** — replay is safe and returns 200 with the original confirmation result.
+**Removed from declarations:** `payment_declarations` has **no `receipt_number` column**. The receipt is resolved through `confirmation_payment_id → payments.receipt_number`.
 
-**Mechanism:** The confirmation service checks the declaration status inside the same transaction:
-- If `status == 'confirmed'`: return the existing `confirmation_payment_id` and `receipt_number` immediately. No canonical payment service call.
-- If `status == 'pending'`: acquire `SELECT FOR UPDATE` on the declaration row (same pattern as `orders.py:623`), re-check status (double-checked locking), then call the canonical payment service.
-- Concurrent confirms: the FOR UPDATE lock serializes them. The first acquires the lock, confirms, commits. The second acquires the lock, sees `status == 'confirmed'`, returns the existing result.
+**Format:** `RCT-YYYYMMDD-NNNNNN` using UTC confirmation date.
 
-**This makes confirmation replay-safe and concurrent-safe without 409 errors on legitimate retries.**
-
-### DD-04: Transaction-Level Canonical Payment Service (R1.4)
-
-**Decision:** Extract the payment write logic from `pay_order` (orders.py:558-861) into a **transaction-level service method** `CanonicalPaymentService.confirm_payment(...)` that both the existing `pay_order` route handler and the declaration confirmation path call.
-
-**Critical rule:** **Never call one FastAPI route handler from another.** The existing `pay_order` is a route handler with HTTP-specific concerns (headers, request parsing, HTTP exceptions). The declaration confirmation route must not invoke `pay_order` as a function. Instead, both route handlers call the same transaction-level service.
-
-**Service specification:**
-
-```python
-class CanonicalPaymentService:
-    async def confirm_payment(
-        self,
-        db: AsyncSession,
-        *,
-        order_id: UUID,
-        amount: Decimal,
-        method: str,  # 'cash' | 'transfer' | 'credit'
-        idempotency_key: str,
-        transfer_reference: str | None = None,
-        created_by: UUID,
-    ) -> PaymentResult:
-        """
-        The single canonical payment write path.
-
-        Extracted from pay_order (orders.py:558-861). Contains:
-        - SELECT FOR UPDATE on order
-        - Idempotency replay check (double-checked locking)
-        - Remaining balance validation
-        - PaymentRepository.create
-        - Outstanding balance delta
-        - OrderService.transition
-        - LedgerService.post_payment_received
-        - Cash/transfer settlement
-
-        Called by:
-        1. pay_order route handler (existing, refactored to delegate)
-        2. Declaration confirmation route handler (new)
-
-        Never called from another route handler directly.
-        """
-```
-
-**Extraction plan:**
-1. Extract lines 598-854 of `pay_order` into `CanonicalPaymentService.confirm_payment`.
-2. `pay_order` becomes a thin HTTP adapter: parse request → call `confirm_payment` → format response.
-3. Declaration confirmation route: check declaration status (idempotent) → call `confirm_payment` → link declaration to payment.
-
-**Transaction ownership:** The `db: AsyncSession` is passed in. The caller (route handler via `get_tenant_db` dependency) owns the transaction lifecycle. `confirm_payment` does not call `db.commit()` — it flushes and relies on the caller's commit, matching the existing pattern proven by `test_payment_atomicity.py:57`.
-
-### DD-05: Receipt Number Source of Truth and Allocator (R1.5)
-
-**Single source of truth:** The `receipt_number` is stored **on the canonical payment row** (`payments.receipt_number`), not on the declaration. The declaration's `receipt_number` is a denormalized copy set at confirmation time.
-
-**Concurrency-safe allocator:**
-
+**Allocator:** `{tenant}.receipt_sequences` with `business_date CHAR(8)` as primary key (e.g. `'20260731'`):
 ```sql
--- Tenant-local sequence table: {tenant}.receipt_sequences
-CREATE TABLE receipt_sequences (
-    year_month CHAR(6) PRIMARY KEY,  -- '202607'
-    next_seq INTEGER NOT NULL DEFAULT 1
-);
-
--- Allocation (inside the confirmation transaction, after FOR UPDATE on declaration):
-INSERT INTO receipt_sequences (year_month, next_seq) VALUES (:ym, 1)
-ON CONFLICT (year_month) DO UPDATE
+INSERT INTO receipt_sequences (business_date, next_seq) VALUES (:bd, 1)
+ON CONFLICT (business_date) DO UPDATE
 SET next_seq = receipt_sequences.next_seq + 1
 RETURNING next_seq;
--- receipt_number = 'RCT-' || :ym || '-' || LPAD(next_seq::text, 6, '0')
+-- receipt_number = 'RCT-' || :bd || '-' || LPAD(next_seq::text, 6, '0')
 ```
 
-**Why not a DB sequence?** PostgreSQL sequences are not transactional (they don't roll back), creating gaps. The `INSERT ... ON CONFLICT ... RETURNING` pattern is atomic within the transaction: if the confirmation rolls back, the sequence increment rolls back too, preventing gaps and guaranteeing no duplicate receipt numbers.
+Allocation occurs **in the same transaction** as payment/declaration confirmation. Only `CanonicalPaymentService.confirm_payment` allocates receipt numbers.
 
-**Single allocator:** Only `CanonicalPaymentService.confirm_payment` allocates receipt numbers. No other code path may generate them.
+**Partial unique index:** `CREATE UNIQUE INDEX ux_payments_receipt_number ON payments (receipt_number) WHERE receipt_number IS NOT NULL`.
 
-### DD-06: Server-Authoritative Bounded Statement (R1.6)
+### DD-06: Server-Authoritative Bounded Statement (R2.5 Corrected)
 
-**Decision:** Define a **server-authoritative bounded statement endpoint**.
+**Decision:** Define a server-side statement endpoint, but **defer opening/closing balance** if it cannot be proven from retailer-scoped tables.
 
-The original contract proposed client-side "running balance" printing. **This is corrected.** The retailer must not compute balances client-side. A statement is a server-generated, bounded (start_date, end_date) document.
+**Problem with `LedgerService.get_balance`:** It takes `account_type` only (`ledger_service.py:183-195`) — it is **tenant-wide** with no `retailer_id` boundary. It cannot be used for retailer-scoped statements.
 
-**Endpoint:**
-```
-GET /api/v1/client/statements?from=2026-07-01&to=2026-07-31
-Permission: client:payments:read
-```
-
-**Response:** Server computes the statement from canonical records:
-- Opening balance (stored `outstanding_balance` at `from` date — requires a balance snapshot or ledger projection)
-- All declarations (pending/confirmed/rejected) in the period
-- All canonical payments in the period
-- Closing balance (stored `outstanding_balance` at `to` date)
-- Each line item carries its authoritative server timestamp
-
-**The retailer never computes a running balance.** The print template renders the server-provided statement data as-is.
-
-**Note:** This endpoint requires either a balance history mechanism (not currently present) or a ledger-based projection. The ledger projection (`LedgerService.get_balance`, `ledger_service.py:183-215`) can compute period balances. This is specified as part of the S2B implementation plan, not implemented in this docs-only task.
-
-### DD-07: Immutable Declarations — Remove is_deleted (R1.7)
-
-**Decision:** The `payment_declarations` table has **no `is_deleted` column**. Declarations are immutable audit records — they are never soft-deleted or hard-deleted.
-
-**Rejection reason naming unified:**
-- Column: `reason` (not `rejected_reason` or `rejection_reason`).
-- Set at rejection time: `reason`, `rejected_at`, `rejected_by`.
-- For confirmed declarations: `reason` is NULL.
-- For pending declarations: `reason` is NULL.
-
-**Updated table DDL (see §6).**
-
-### DD-08: Migration 037 — Forward-Only, Fail-Closed (R1.8)
-
-**Decision:** Migration 037 is **forward-only** with comprehensive preflight. No downgrade.
-
-**Preflight checks (all must pass before any DDL):**
-1. **Semantic catalog preflight:** Assert `client:payments:create` exists in `permissions` table for all enumerated tenant schemas. If missing in any schema, fail closed with exact schema name.
-2. **Registered-tenant enumeration:** Query `public.wholesalers` for all tenant schemas. Enumerate each. Do not rely on filesystem or hardcoded list.
-3. **Bootstrap parity:** Assert the `payment_declarations` table DDL matches what `bootstrap_tenant_schema.py` will create for fresh tenants. If mismatch, fail closed.
-4. **Rogue-schema protection:** For each enumerated schema, assert it has the expected `alembic_version` head (036). If a schema is at a different revision, fail closed with the schema name and revision.
-5. **Sole-head proof:** Assert `alembic_version` table has exactly one row at revision 036. If multiple heads, fail closed.
-6. **Idempotent second upgrade:** Running `alembic upgrade head` twice must be a no-op (alembic's standard behavior, but asserted in the migration's `upgrade()` via `op.get_context()` check).
-
-**Forward DDL:**
+**Retailer-scoped projection:** The statement query must join payments through retailer-owned orders:
 ```sql
--- For each tenant schema (enumerated from public.wholesalers):
-CREATE TABLE IF NOT EXISTS "{schema}".payment_declarations (...);
-CREATE TABLE IF NOT EXISTS "{schema}".receipt_sequences (...);
--- Permission rename:
-UPDATE "{schema}".permissions SET code = 'client:payments:declare' WHERE code = 'client:payments:create';
--- New permissions:
-INSERT INTO "{schema}".permissions (code, description) VALUES
-  ('payments:confirm_declaration', 'Confirm or reject a retailer payment declaration')
-ON CONFLICT (code) DO NOTHING;
+SELECT p.* FROM "{schema}".payments p
+JOIN "{schema}".orders o ON p.order_id = o.id
+WHERE o.retailer_id = :retailer_id
+  AND o.wholesaler_id = :wholesaler_id
+  AND p.is_deleted IS FALSE
+  AND p.created_at BETWEEN :from AND :to
+ORDER BY p.created_at;
 ```
 
-**No downgrade.** The migration has no `downgrade()` function (or it raises `NotImplementedError`). Reverting a payment system migration is unsafe.
+Declarations use the same dual-key scope:
+```sql
+SELECT d.* FROM "{schema}".payment_declarations d
+WHERE d.retailer_id = :retailer_id
+  AND d.wholesaler_id = :wholesaler_id
+  AND d.submitted_at BETWEEN :from AND :to
+ORDER BY d.submitted_at;
+```
 
-### DD-09: Notification Emission Deferred (R1.9)
+**Opening/closing balance:** The current `outstanding_balance` on `wholesaler_retailer_bindings` is a **current point-in-time** value — it cannot reconstruct a historical period opening balance without a balance history table or a retailer-scoped ledger projection. Since `LedgerService.get_balance` is tenant-wide (no retailer filter), **opening/closing balance is DEFERRED** from S2B MVP. The statement shows line items only (declarations + payments in the period). A separate task must design retailer-scoped balance history.
 
-**Decision:** **No notification emission** in S2B. The original contract specified event contracts (`PaymentDeclarationConfirmed`, `PaymentDeclarationRejected`). **These are removed.**
+**No frontend financial aggregation or running-balance calculation.**
 
-**Rationale:** Emitting events without a transactional outbox risks lost notifications (event emitted but transaction rolls back, or vice versa). A transactional outbox pattern requires its own design (table, poller, delivery retry). This is out of scope for S2B MVP.
+### DD-07: Immutable Declarations — No is_deleted (R2.3 FK additions)
 
-**When notifications are needed:** A separate task must design the transactional outbox. Only then can declaration events be emitted.
+**No `is_deleted` column.** Declarations are immutable audit records.
 
-### DD-10: Permissions
+**Same-schema foreign keys with RESTRICT semantics:**
+```sql
+confirmation_payment_id UUID REFERENCES "{schema}".payments(id) ON DELETE RESTRICT
+order_id UUID NOT NULL REFERENCES "{schema}".orders(id) ON DELETE RESTRICT
+```
 
-| Permission | Scope | Action | Status |
-|---|---|---|---|
-| `client:payments:declare` | Retailer | Submit a payment declaration | NEW (replaces `client:payments:create`) |
-| `client:payments:read` | Retailer | View own declarations + confirmed payments | EXISTS |
-| `payments:confirm_declaration` | Wholesaler cashier | Confirm or reject a declaration | NEW |
-| `payments:create` | Wholesaler | Record payment (canonical path) | EXISTS |
-| `payments:read` | Wholesaler | View all declarations in tenant | EXISTS |
+RESTRICT (no cascade) ensures immutable financial evidence — a payment or order referenced by a declaration cannot be deleted while the declaration exists.
 
-**Note on `client:payments:create`:** Replaced by `client:payments:declare` (DD-09 of original, confirmed here). The rename occurs in migration 037.
+**Rejection reason:** Column named `reason` (unified). Set on rejection only; NULL otherwise.
 
-### DD-11: Maker/Checker and Self-Confirmation Boundary
+### DD-08: Migration 037 — Forward-Only, Fail-Closed (R2.1 + R2.2 Corrected)
 
-- **Maker:** The retailer (retailer_operator) submits.
-- **Checker:** The wholesaler cashier confirms or rejects.
-- A wholesaler cashier cannot submit (not a retailer). A retailer cannot confirm (lacks `payments:confirm_declaration`).
-- No user can be both maker and checker for the same declaration.
+**Tenant enumeration (R2.1):**
+- Enumerate live tenants through `public.tenant_registrations JOIN public.wholesalers` with the exact status/is_deleted filters from migration 035:
+  - `tr.is_deleted IS FALSE AND tr.status IN ('pending_email_verification', 'email_verified', 'provisioning', 'provisioned', 'active')`
+  - `w.is_deleted IS FALSE AND w.status IN ('active', 'provisioning')`
+- Derive and validate each schema: `'t_' || replace(w.id::text, '-', '')` must match `tr.tenant_schema`.
+- Rogue/unregistered schemas are **not touched**.
+- `alembic_version` exists only in **public**. No per-tenant version checks. Sole-head/current checks apply to the global public migration chain only.
 
-### DD-12: Receipt Fields and Privacy
+**Semantic preflight (R2.2):**
+- For every live tenant schema, preflight:
+  - `payments` table exists with expected columns (`id`, `order_id`, `retailer_id`, `transaction_id`, `amount`, `method`, `status`, `idempotency_key`)
+  - `orders` table exists with `id` column
+  - `client:payments:create` permission exists in `permissions` table
+- **Missing objects** (e.g. `receipt_number` column) may be **created**.
+- **Incompatible partial objects** (wrong type, wrong constraint) → **fail closed** with exact schema name and object name.
+- **Do NOT rely on `CREATE TABLE IF NOT EXISTS`** to hide incompatible catalogs. Each object is checked against the information_schema before creation.
+- **Bootstrap parity** is proven by **real tests** (`test_payments_schema_contract.py` pattern), not asserted inside `upgrade()`.
+- **Second alembic upgrade** is verified **externally** as a no-op (standard alembic behavior; verified by a test, not by code in upgrade()).
+- **Downgrade:** forward-only/fail-closed. No `downgrade()` or raises `NotImplementedError`.
 
-**Retailer-visible receipt fields:** receipt_number, order_id, order_total, amount_paid, method, confirmed_at, wholesaler_name.
+**Forward DDL per live tenant schema:**
+```sql
+-- Add receipt_number to payments
+ALTER TABLE "{s}".payments ADD COLUMN IF NOT EXISTS receipt_number VARCHAR(32);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_payments_receipt_number
+  ON "{s}".payments (receipt_number) WHERE receipt_number IS NOT NULL;
 
-**Not visible:** cashier user_id, internal ledger IDs, internal payment row ID.
+-- Create payment_declarations
+CREATE TABLE "{s}".payment_declarations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES "{s}".orders(id) ON DELETE RESTRICT,
+  retailer_id UUID NOT NULL,
+  wholesaler_id UUID NOT NULL,
+  declared_amount NUMERIC(12,2) NOT NULL CHECK (declared_amount > 0),
+  method VARCHAR(16) NOT NULL CHECK (method IN ('cash', 'transfer')),
+  transfer_reference VARCHAR(128),
+  status VARCHAR(16) NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'confirmed', 'rejected')),
+  idempotency_key VARCHAR(64) NOT NULL,
+  submitted_by UUID NOT NULL,
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  confirmed_by UUID,
+  confirmed_at TIMESTAMPTZ,
+  confirmation_payment_id UUID REFERENCES "{s}".payments(id) ON DELETE RESTRICT,
+  rejected_by UUID,
+  rejected_at TIMESTAMPTZ,
+  reason VARCHAR(256)
+);
+CREATE UNIQUE INDEX ux_payment_declarations_retailer_idem
+  ON "{s}".payment_declarations (retailer_id, idempotency_key);
+CREATE INDEX ix_payment_declarations_retailer_status
+  ON "{s}".payment_declarations (retailer_id, status);
+CREATE INDEX ix_payment_declarations_wholesaler_status
+  ON "{s}".payment_declarations (wholesaler_id, status);
+
+-- Create receipt_sequences
+CREATE TABLE "{s}".receipt_sequences (
+  business_date CHAR(8) PRIMARY KEY,
+  next_seq INTEGER NOT NULL DEFAULT 1
+);
+
+-- Permission rename
+UPDATE "{s}".permissions SET code = 'client:payments:declare'
+  WHERE code = 'client:payments:create';
+-- New permission
+INSERT INTO "{s}".permissions (code, description)
+  VALUES ('payments:confirm_declaration',
+          'Confirm or reject a retailer payment declaration')
+  ON CONFLICT (code) DO NOTHING;
+```
+
+### DD-09: Notification Emission Deferred
+
+No notification emission in S2B. Events removed. Deferred until transactional outbox is designed.
+
+### DD-10: Permissions (R2.6 Corrected)
+
+| Permission | Scope | Registry Action |
+|---|---|---|
+| `client:payments:declare` | Retailer | **Replace** `client:payments:create` in `RETAILER_OPERATOR_PERMISSIONS` |
+| `client:payments:read` | Retailer | Exists, unchanged |
+| `payments:confirm_declaration` | Wholesaler | **Add** to `ADMIN_PERMISSIONS` in `core/permission_registry.py` |
+| `payments:create` | Wholesaler | Exists, unchanged |
+
+**No dedicated cashier role in MVP.** The existing `admin` role receives `payments:confirm_declaration` idempotently through `ADMIN_PERMISSIONS`. `retailer_operator` must **never** receive it. Future custom cashier roles may receive it through normal role management.
+
+**Reconciliation:** All supported seeders (`onboard_tenant.setup_admin`, `create_wholesaler.assign_all_permissions_to_admin`, `seed_test_tenant._seed_admin_rbac`, `seed_demo_data._seed_rbac`) must be reconciled to include `payments:confirm_declaration` in the admin set. The R3 reconciliation pattern (DELETE stale + re-seed) handles this automatically once the registry is updated.
+
+**Test requirements:** Exact PostgreSQL catalog assertion that `payments:confirm_declaration` exists in every live tenant's `permissions` table and is granted to `admin` but not `retailer_operator`. Route-policy test that the confirm/reject routes require this permission.
+
+### DD-11: Maker/Checker Boundary
+
+Maker = retailer (retailer_operator). Checker = wholesaler (admin with `payments:confirm_declaration`). Different identities by role separation.
+
+### DD-12: Declaration Idempotency (R2.4 Corrected)
+
+**Unique constraint:** `UNIQUE(retailer_id, idempotency_key)` — NOT `(order_id, idempotency_key)`.
+
+- Same retailer + same key + same payload → return existing declaration.
+- Same retailer + same key + different order/payload → 409 `DECLARATION_IDEMPOTENCY_KEY_CONFLICT`.
+- Different retailers may independently use the same key.
+
+Concurrent submission and confirmation tests must prove one canonical result.
 
 ### DD-13: Print Contracts
 
-| Document | Trigger | Status Label | Content |
-|---|---|---|---|
-| **Order** | Retailer or cashier print | Order status | Order items, totals, parties, dates |
-| **Declaration (pending)** | Retailer prints pending | **"Payment Declaration — Not Received"** | Amount, method, reference, date, "NOT A RECEIPT" |
-| **Confirmed receipt** | Print confirmed declaration | **"Payment Received"** | Receipt number, order, amount, method, date |
-| **Statement** | Print server-generated statement | Period label | Server-authoritative opening/closing balance + line items (DD-06) |
-
-**Implementation:** Browser-native `window.print()` with print CSS. No server-side PDF.
-
-### DD-14: API Routes (Corrected)
-
-#### New Routes
-
-| Method | Path | Permission | Purpose |
-|---|---|---|---|
-| `POST` | `/api/v1/client/orders/{order_id}/declare` | `client:payments:declare` | Retailer submits declaration |
-| `GET` | `/api/v1/client/declarations` | `client:payments:read` | Retailer lists own declarations |
-| `GET` | `/api/v1/client/declarations/{id}` | `client:payments:read` | Retailer views single declaration |
-| `GET` | `/api/v1/client/statements` | `client:payments:read` | Server-authoritative bounded statement (DD-06) |
-| `POST` | `/api/v1/declarations/{id}/confirm` | `payments:confirm_declaration` | Cashier confirms (calls CanonicalPaymentService) |
-| `POST` | `/api/v1/declarations/{id}/reject` | `payments:confirm_declaration` | Cashier rejects with reason |
-| `GET` | `/api/v1/declarations` | `payments:read` | Cashier lists all declarations |
-| `GET` | `/api/v1/declarations/{id}` | `payments:read` | Cashier views single declaration |
-
-#### Confirmation Response (Idempotent — R1.3)
-
-```json
-// POST /api/v1/declarations/{id}/confirm
-// First call: 200 OK
-// Replay/concurrent call: 200 OK (same response, no duplicate writes)
-{
-  "success": true,
-  "data": {
-    "declaration_id": "<uuid>",
-    "status": "confirmed",
-    "payment_id": "<uuid>",
-    "receipt_number": "RCT-20260731-000001",
-    "order_status": "paid",
-    "confirmed_at": "2026-07-31T12:05:00Z"
-  }
-}
-// On overpayment (first call only): 409 PAYMENT_EXCEEDS_REMAINING
-// (replay of an already-confirmed declaration never reaches this check)
-```
-
-#### Controlled Errors
-
-| Code | HTTP | When |
+| Document | Label | Content |
 |---|---|---|
-| `DECLARATION_BODY_REQUIRED` | 400 | Empty body |
-| `DECLARATION_AMOUNT_REQUIRED` | 400 | Missing amount |
-| `DECLARATION_AMOUNT_INVALID` | 400 | Amount ≤ 0 |
-| `DECLARATION_METHOD_INVALID` | 400 | Method not in {cash, transfer} |
-| `DECLARATION_TRANSFER_REFERENCE_REQUIRED` | 400 | Transfer without reference |
-| `DECLARATION_IDEMPOTENCY_KEY_CONFLICT` | 409 | Same key, different payload |
-| `DECLARATION_NOT_PENDING` | 409 | Confirm/reject on non-pending (with status in detail) |
-| `PAYMENT_EXCEEDS_REMAINING` | 409 | Confirmation overpayment |
-| `PERMISSION_DENIED` | 403 | Missing permission |
-| `ORDER_NOT_FOUND` | 404 | Order not in scope |
+| Declaration (pending) | "Payment Declaration — Not Received" | Amount, method, reference, date |
+| Confirmed receipt | "Payment Received" | Receipt number (from `payments.receipt_number`), order, amount, method, date |
+| Statement | Period label | Line items only (no opening/closing balance in MVP — DD-06) |
 
-**R1.10 Note:** `DECLARATION_ALREADY_CONFIRMED` and `DECLARATION_ALREADY_REJECTED` are replaced by `DECLARATION_NOT_PENDING` with the current status in the detail field. For confirmed declarations, a replay returns 200 (idempotent), not 409.
+Browser-native `window.print()`. No server-side PDF.
 
-### DD-15: Migration 037
+### DD-14: API Routes
 
-See DD-08. Forward-only, fail-closed, with full preflight.
-
-### DD-16: Rollback Semantics
-
-- No changes to existing payment rows. Migration 037 is additive (new table + permission rename of unused code).
-- Confirmation rollback: If `CanonicalPaymentService.confirm_payment` fails, the declaration remains PENDING. The transaction rolls back (existing pattern). The declaration's FOR UPDATE lock is released.
-- Permission rename is safe: `client:payments:create` is proven unused (GAP-07).
+| Method | Path | Permission |
+|---|---|---|
+| `POST` | `/api/v1/client/orders/{order_id}/declare` | `client:payments:declare` |
+| `GET` | `/api/v1/client/declarations` | `client:payments:read` |
+| `GET` | `/api/v1/client/declarations/{id}` | `client:payments:read` |
+| `GET` | `/api/v1/client/statements` | `client:payments:read` |
+| `POST` | `/api/v1/declarations/{id}/confirm` | `payments:confirm_declaration` |
+| `POST` | `/api/v1/declarations/{id}/reject` | `payments:confirm_declaration` |
+| `GET` | `/api/v1/declarations` | `payments:read` |
+| `GET` | `/api/v1/declarations/{id}` | `payments:read` |
 
 ---
 
-## 6. Data Model (Corrected — R1.7)
+## 6. Data Model (R2 Final)
 
 ### Table: `{tenant}.payment_declarations`
 
 | Column | Type | Constraints |
 |---|---|---|
 | `id` | UUID PK | DEFAULT gen_random_uuid() |
-| `order_id` | UUID | NOT NULL |
+| `order_id` | UUID | NOT NULL, FK → orders(id) ON DELETE RESTRICT |
 | `retailer_id` | UUID | NOT NULL |
 | `wholesaler_id` | UUID | NOT NULL |
 | `declared_amount` | NUMERIC(12,2) | NOT NULL, CHECK (> 0) |
 | `method` | VARCHAR(16) | NOT NULL, CHECK IN ('cash', 'transfer') |
-| `transfer_reference` | VARCHAR(128) | NULL (required if method='transfer') |
+| `transfer_reference` | VARCHAR(128) | NULL |
 | `status` | VARCHAR(16) | NOT NULL DEFAULT 'pending', CHECK IN ('pending','confirmed','rejected') |
 | `idempotency_key` | VARCHAR(64) | NOT NULL |
 | `submitted_by` | UUID | NOT NULL |
 | `submitted_at` | TIMESTAMPTZ | NOT NULL DEFAULT now() |
 | `confirmed_by` | UUID | NULL |
 | `confirmed_at` | TIMESTAMPTZ | NULL |
-| `confirmation_payment_id` | UUID | NULL |
-| `receipt_number` | VARCHAR(32) | NULL (denormalized copy from payment row) |
+| `confirmation_payment_id` | UUID | NULL, FK → payments(id) ON DELETE RESTRICT |
 | `rejected_by` | UUID | NULL |
 | `rejected_at` | TIMESTAMPTZ | NULL |
-| `reason` | VARCHAR(256) | NULL (unified name — set on rejection only) |
+| `reason` | VARCHAR(256) | NULL |
 
-**R1.7 Changes from original:**
-- `is_deleted` column **REMOVED**. Declarations are immutable — never deleted.
-- `rejected_reason` renamed to `reason` (unified).
+**R2 changes from R1:**
+- `receipt_number` **REMOVED** — resolved via `confirmation_payment_id → payments.receipt_number` (R2.3)
+- `order_id` FK added with RESTRICT (R2.3)
+- `confirmation_payment_id` FK added with RESTRICT (R2.3)
+- Unique index changed to `(retailer_id, idempotency_key)` (R2.4)
 
 **Indexes:**
-- UNIQUE `(order_id, idempotency_key)` — replay protection
+- UNIQUE `(retailer_id, idempotency_key)` — replay protection (R2.4)
 - INDEX `(retailer_id, status)` — retailer listing
 - INDEX `(wholesaler_id, status)` — cashier queue
-- UNIQUE `(receipt_number)` WHERE `receipt_number IS NOT NULL`
 
 ### Table: `{tenant}.receipt_sequences`
 
 | Column | Type | Constraints |
 |---|---|---|
-| `year_month` | CHAR(6) PK | e.g. '202607' |
+| `business_date` | CHAR(8) PK | e.g. '20260731' (UTC) |
 | `next_seq` | INTEGER | NOT NULL DEFAULT 1 |
 
----
+### Column addition: `{tenant}.payments.receipt_number`
 
-## 7. Required Test Matrix (Corrected — R1.10)
-
-| # | Test | Description | Decision Ref |
-|---|---|---|---|
-| TM-01 | Zero accounting on submit | Submit → no payment row, no ledger, no order change, no balance change | BC-2 |
-| TM-02 | A/B supplier isolation | Declaration in supplier A not visible to retailer in supplier B | BC-10 |
-| TM-03 | Same-schema wrong-retailer | Declaration from retailer X not visible to retailer Y | BC-10 |
-| TM-04 | Duplicate submit idempotency | Same key + same payload → existing; different payload → 409 | DD-03 |
-| TM-05 | Concurrent confirm single payment | Two simultaneous confirms → exactly one payment, same receipt, one 200 + one 200 (idempotent) | DD-03, R1.3 |
-| TM-06 | Sequential confirm replay | Confirm twice sequentially → same payment_id, same receipt, zero new writes | DD-03, R1.3 |
-| TM-07 | Reject | Reject → status=rejected, reason stored, terminal, no financial effect | DD-02 |
-| TM-08 | Non-pending rejection | Reject a confirmed declaration → 409 `DECLARATION_NOT_PENDING` | DD-14 |
-| TM-09 | Overpayment at confirm | Confirm where amount > remaining → 409 `PAYMENT_EXCEEDS_REMAINING` | DD-04 |
-| TM-10 | Negative/zero amount | Submit amount ≤ 0 → 400 `DECLARATION_AMOUNT_INVALID` | DD-14 |
-| TM-11 | Invalid method | Submit method='credit' → 400 `DECLARATION_METHOD_INVALID` | DD-14 |
-| TM-12 | Malformed order_id | Malformed UUID → 404 | DD-14 |
-| TM-13 | Unauthorized retailer | No `client:payments:declare` → 403 | DD-10 |
-| TM-14 | Unauthorized cashier | No `payments:confirm_declaration` → 403 | DD-10 |
-| TM-15 | Inactive binding | Inactive binding → 403 `BINDING_NOT_ACTIVE` | BC-6 |
-| TM-16 | Confirmed receipt visible | Confirmed → retailer sees receipt_number + "received" | BC-7 |
-| TM-17 | Pending not "received" | Pending print → "Payment Declaration — Not Received" | BC-8 |
-| TM-18 | Print privacy | No internal identifiers in print output | DD-12, DD-13 |
-| TM-19 | Canonical regressions | Existing payment/ledger/receivable tests unchanged | DD-16 |
-| TM-20 | Route inventory | New routes correct permissions; GAP-07 updated | DD-10 |
-| TM-21 | Permission registry | `client:payments:create` removed; `client:payments:declare` + `payments:confirm_declaration` added | DD-10 |
-| TM-22 | No notification emission | No event/outbox call on confirm or reject | DD-09, R1.9 |
-| TM-23 | Receipt number uniqueness | Concurrent confirms on different orders → unique receipt numbers, no collision | DD-05 |
-| TM-24 | Statement server-authoritative | Statement computed server-side; retailer cannot inject balance | DD-06 |
-| TM-25 | CanonicalPaymentService extraction | Both pay_order and confirmation call the same service; neither calls the other | DD-04, R1.4 |
-
-**R1.10 Corrections:**
-- TM-05 and TM-06 split: concurrent vs sequential replay, both assert idempotent 200 (not 409).
-- TM-08 corrected: non-pending rejection returns `DECLARATION_NOT_PENDING`, not `DECLARATION_ALREADY_REJECTED`.
-- TM-22 added: verify no notification emission.
-- TM-23 added: receipt number concurrency.
-- TM-24 added: statement server-authoritative.
-- TM-25 added: service extraction proof.
-- Removed original TM-21 (notification event emits after confirmation) — replaced by TM-22.
+| Column | Type | Constraints |
+|---|---|---|
+| `receipt_number` | VARCHAR(32) | NULL; UNIQUE WHERE NOT NULL |
 
 ---
 
-## 8. Risk Assessment (R1.11 — Reclassified)
+## 7. Required Test Matrix (R2 Final)
+
+| # | Test | Decision Ref |
+|---|---|---|
+| TM-01 | Zero accounting on submit | BC-2 |
+| TM-02 | A/B supplier isolation | BC-10 |
+| TM-03 | Same-schema wrong-retailer denial | BC-10 |
+| TM-04 | Duplicate submit: same retailer+key+payload → existing; different payload → 409 | DD-12 |
+| TM-05 | Concurrent confirm: one canonical payment, same receipt | DD-03 |
+| TM-06 | Sequential confirm replay: same payment_id, same receipt, zero writes | DD-03 |
+| TM-07 | Reject: terminal, no financial effect | DD-02 |
+| TM-08 | Non-pending confirm/reject → DECLARATION_NOT_PENDING | DD-14 |
+| TM-09 | Overpayment at confirm → PAYMENT_EXCEEDS_REMAINING | DD-04 |
+| TM-10 | Negative/zero amount → 400 | DD-14 |
+| TM-11 | Invalid method (credit) → 400 | DD-14 |
+| TM-12 | Malformed order_id → 404 | DD-14 |
+| TM-13 | Unauthorized retailer (no client:payments:declare) → 403 | DD-10 |
+| TM-14 | Unauthorized cashier (no payments:confirm_declaration) → 403 | DD-10 |
+| TM-15 | Inactive binding → 403 | BC-6 |
+| TM-16 | Confirmed receipt visible via confirmation_payment_id → payments.receipt_number | DD-05 |
+| TM-17 | Pending print → "Not Received" | BC-8 |
+| TM-18 | Print privacy: no internal identifiers | DD-13 |
+| TM-19 | Canonical payment/ledger/receivable/order regressions unchanged | DD-04 |
+| TM-20 | Route inventory: GAP-07 updated; client:payments:declare on one route | DD-10 |
+| TM-21 | Permission registry: client:payments:create removed; client:payments:declare + payments:confirm_declaration added; admin has it, retailer_operator does not | DD-10 |
+| TM-22 | No notification emission | DD-09 |
+| TM-23 | Receipt number uniqueness: concurrent confirms → unique receipt numbers | DD-05 |
+| TM-24 | Statement server-side projection: dual-key scoped; no tenant-wide query | DD-06 |
+| TM-25 | Statement: no opening/closing balance in MVP (deferred) | DD-06 |
+| TM-26 | CanonicalPaymentService: both pay_order and confirmation call it; neither calls the other | DD-04 |
+| TM-27 | FK RESTRICT: cannot delete payment referenced by confirmed declaration | DD-07 |
+| TM-28 | Migration 037: live tenant enumeration via tenant_registrations JOIN wholesalers | DD-08 |
+| TM-29 | Migration 037: no per-tenant alembic_version check | DD-08 |
+| TM-30 | Migration 037: semantic preflight fails closed on incompatible catalog | DD-08 |
+| TM-31 | Migration 037: rogue schemas untouched | DD-08 |
+| TM-32 | Migration 037: second upgrade is no-op | DD-08 |
+
+---
+
+## 8. Risk Assessment (R2.7 Corrected)
 
 | Risk | Level | Rationale |
 |---|---|---|
-| **Overall financial blast radius** | **HIGH** | This design touches the canonical payment write path — the sole money-movement mechanism. Extraction defects could cause duplicate/lost payments. |
-| Confirmation bypasses canonical path | **HIGH** | Must be prevented by DD-04 (service extraction). Any bypass is a financial integrity violation. |
-| Concurrent double-confirmation | **MEDIUM** | Mitigated by FOR UPDATE + idempotent replay (DD-03). But the locking interaction with the canonical path's own FOR UPDATE needs careful implementation. |
-| Receipt number collision | **MEDIUM** | Mitigated by atomic sequence allocator (DD-05). But gap-free guarantee depends on transaction rollback behavior. |
-| CanonicalPaymentService extraction regression | **HIGH** | Refactoring `pay_order` into a service risks introducing bugs in the existing path. Must be proven by running all existing payment tests against the refactored code. |
-| Permission rename breaks existing | **LOW** | `client:payments:create` proven unused (GAP-07). |
-| Frontend permission mismatch (R1.2) | **HIGH** | Existing defect. Must be resolved before S2B. |
-| Print leaks internal data | **MEDIUM** | Mitigated by print template field whitelist (TM-18). |
-| Statement balance computation | **MEDIUM** | Requires ledger projection or balance snapshot — non-trivial. |
+| **Overall financial blast radius** | **HIGH** | Touches canonical payment write path |
+| CanonicalPaymentService extraction regression | **HIGH** | Refactoring sole money-movement path |
+| Confirmation bypasses canonical path | **HIGH** | Prevented by DD-04 |
+| Frontend permission mismatch | **RESOLVED** | Fixed in H3 (merged) |
+| `configure_app` route registration | **MEDIUM** | New routes under existing prefixes; must update GAP-07 inventory tests |
+| Concurrent double-confirmation | **MEDIUM** | Mitigated by FOR UPDATE + idempotent replay |
+| Receipt number collision | **MEDIUM** | Mitigated by atomic sequence allocator |
+| Statement balance computation | **DEFERRED** | Opening/closing balance removed from MVP |
+| Permission rename | **LOW** | client:payments:create proven unused |
+
+### Required Regression Bundles (R2.7)
+
+| Bundle | Tests |
+|---|---|
+| Payment integrity | `test_dc11d_payment_replay_concurrency_integrity.py`, `test_dc10f_payment_method_integrity.py`, `test_payments_api.py`, `test_payment_atomicity.py` |
+| Ledger integrity | `test_s5_ledger.py`, `test_s5_5_ledger_hardening.py` |
+| Receivable integrity | `test_dc11t4h_receivable_collection_integrity.py`, `test_receivables_service.py` |
+| Order-state integrity | `test_dc11d` state tests, `test_s4*` inventory invariant tests |
+| Concurrency | `test_dc11d` concurrent tests, `test_dc11t4h` concurrent tests |
+| Migration | `test_dc12r1_s1_r5_migration_preflight_exact_catalog.py`, `test_s4g_migration_infrastructure_hardening.py`, `test_payments_schema_contract.py` |
+| RBAC | `test_route_authorization_policy.py`, `test_rbac_enforcement.py`, `test_dc12r1_s3_s1_catalog_order_hardening.py` (GAP-07) |
+| Retailer isolation | `test_dc12r1_s3_s2_read_only_retailer_finance.py`, `test_dc12r1_s2_supplier_scoped_retailer_login.py` |
+
+**Two fresh PG16/Redis7 full backend gates** required during implementation.
+
+**Frontend Vitest/build** required.
+
+**Independent post-implementation review** required.
 
 ---
 
-## 9. Character Encoding Note (R1.12)
+## 9. Character Encoding Note
 
-The original self-review claimed "ASCII/mojibake scan: ✅". This was **inaccurate**.
-
-**Correction:**
-- **Mojibake** is corrupted text (e.g., UTF-8 bytes decoded as Latin-1 producing replacement characters `\ufffd`). The scan for `\x{fffd}` correctly found none.
-- **Non-ASCII** is any character outside ASCII range (e.g., em-dash `—`, curly quotes). This document **intentionally uses** em-dashes (`—`) and other non-ASCII punctuation for readability. This is **not mojibake** — it is deliberate UTF-8 content.
-
-The original claim conflated "no mojibake" with "all ASCII". The correct statement is: **no mojibake detected; non-ASCII punctuation is intentional and valid UTF-8.**
+No mojibake detected (scan for U+FFFD: zero hits). Non-ASCII punctuation (em-dash) is intentional valid UTF-8, not mojibake.
 
 ---
 
-## 10. GitNexus Impact Summary
+## 10. GitNexus Impact
 
-| Symbol | Change Type | Risk | Direct Dependents |
-|---|---|---|---|
-| `pay_order` (orders.py:558) | **Refactored** — logic extracted to CanonicalPaymentService | **HIGH** | `api/v1/orders.py` router; all payment tests |
-| `CanonicalPaymentService` (NEW) | New service; called by pay_order + confirmation | **HIGH** | Two route handlers |
-| `PaymentService._apply_outstanding_balance_delta` | Reused (no change) | LOW | CanonicalPaymentService |
-| `configure_app` (app.py) | New routes added | LOW | FastAPI app |
-| `resolve_client_identity` | Reused (no change) | LOW | All client routes |
-| `permission_registry.py` | Permission rename + additions | LOW | All seeders, migration 037 |
+| Symbol | Change | Risk |
+|---|---|---|
+| `pay_order` (orders.py:558) | Refactored — logic extracted to CanonicalPaymentService | **HIGH** |
+| `CanonicalPaymentService` (NEW) | New service | **HIGH** |
+| `configure_app` (app.py) | New routes registered | **MEDIUM** |
+| `permission_registry.py` | Permission rename + addition | LOW |
+| `LedgerService.get_balance` | NOT used for retailer statements (R2.5) | LOW |
 
 ---
 
 ## 11. Out of Scope
 
-- SMS/WhatsApp delivery (BC-9)
-- File/photo upload (DD-06 of original)
-- Server-side PDF generation (DD-13)
+- Migration 037 implementation, routes, services, UI, financial writes
+- SMS/WhatsApp, file upload, server-side PDF
+- Notification emission / transactional outbox
+- Opening/closing balance on statements (deferred — DD-06)
 - S3-S3, S4 implementation
-- Notification emission / transactional outbox (DD-09, R1.9)
-- Automated declaration expiry (DD-02 — removed from MVP)
-- Fixing the frontend permission mismatch (R1.2) — this is a prerequisite, not part of S2B
 
 ---
 
-## 12. Pre-Commit Self-Review (R1.13)
+## 12. Pre-Commit Self-Review
 
 | # | Check | Result |
 |---|---|---|
-| 1 | Every mandatory decision has one unambiguous answer | ✅ DD-01 through DD-16 |
-| 2 | Report findings and CSV reconciled by finding_id; gap = 0 | ✅ (CSV updated, 35 rows) |
-| 3 | No stale claim says declaration = payment or receipt | ✅ BC-1, BC-7, BC-8 |
-| 4 | No design duplicates or bypasses canonical payment path | ✅ DD-04 (service extraction), DD-16 |
-| 5 | Changed scope is docs-only | ✅ No code modified |
-| 6 | git diff --check | ✅ |
-| 7 | Encoding: no mojibake; non-ASCII is intentional UTF-8 | ✅ (R1.12 corrected) |
-| 8 | detect-secrets | ✅ |
-| 9 | GitNexus risk assessment accurate | ✅ (HIGH for extraction) |
-| 10 | No protected ref or tag modified | ✅ |
-| 11 | PASS verdict withdrawn | ✅ (R1.1) |
-| 12 | CURRENT_PRODUCT_DEFECT recorded | ✅ (R1.2, §2) |
-| 13 | Confirmation replay idempotent (not 409) | ✅ (R1.3, DD-03) |
-| 14 | Canonical payment service extraction specified | ✅ (R1.4, DD-04) |
-| 15 | Single receipt_number source + allocator | ✅ (R1.5, DD-05) |
-| 16 | Server-authoritative statement or removed | ✅ (R1.6, DD-06 — server-authoritative) |
-| 17 | is_deleted removed; reason unified | ✅ (R1.7, DD-07, §6) |
-| 18 | Migration 037 forward-only/fail-closed | ✅ (R1.8, DD-08) |
-| 19 | Notification deferred | ✅ (R1.9, DD-09) |
-| 20 | Test-matrix corrected | ✅ (R1.10, §7) |
-| 21 | Blast radius HIGH | ✅ (R1.11, §8) |
-| 22 | ASCII claim corrected | ✅ (R1.12, §9) |
+| 1 | Tenant enumeration via tenant_registrations JOIN wholesalers with 035/036 filters | PASS |
+| 2 | No per-tenant alembic_version claims | PASS |
+| 3 | alembic_version sole-head checks are public-only | PASS |
+| 4 | Migration 037 preflight checks real catalog, not IF NOT EXISTS | PASS |
+| 5 | Bootstrap parity proven by real tests, not upgrade() assertions | PASS |
+| 6 | receipt_number single source = payments.receipt_number | PASS |
+| 7 | receipt_number removed from payment_declarations | PASS |
+| 8 | Replay resolves receipt through confirmation_payment_id | PASS |
+| 9 | Same-schema FKs with RESTRICT semantics | PASS |
+| 10 | Receipt format RCT-YYYYMMDD-NNNNNN using UTC | PASS |
+| 11 | receipt_sequences uses business_date CHAR(8) | PASS |
+| 12 | Idempotency UNIQUE(retailer_id, idempotency_key) | PASS |
+| 13 | No LedgerService.get_balance for retailer statements | PASS |
+| 14 | Statement uses dual-key projection (wholesaler_id + retailer_id) | PASS |
+| 15 | Opening/closing balance deferred if not provable | PASS |
+| 16 | payments:confirm_declaration in registry + ADMIN_PERMISSIONS | PASS |
+| 17 | retailer_operator never receives confirm permission | PASS |
+| 18 | configure_app risk = MEDIUM | PASS |
+| 19 | Full regression bundles defined | PASS |
+| 20 | Two PG16/Redis7 gates required | PASS |
+| 21 | Frontend Vitest/build required | PASS |
+| 22 | Post-implementation review required | PASS |
+| 23 | git diff --check | PASS |
+| 24 | No mojibake; non-ASCII intentional | PASS |
+| 25 | detect-secrets | PASS |
+| 26 | Exact changed-file proof | PASS |
+| 27 | No product code implemented | PASS |
+| 28 | Report/CSV accounting gap = 0 | PASS |
 
 ---
 
 ## 13. Verdict
 
 ```
-STOP_AND_REPORT_CTO_WITH_H3_PAYMENT_PERMISSION_PREREQUISITE
+PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING
 ```
 
-**Reason for STOP (not PASS):**
-
-1. **CURRENT_PRODUCT_DEFECT (R1.2):** The frontend "Record Payment" button checks `orders:update` while the backend requires `payments:create`. This must be resolved before S2B implementation.
-2. **HIGH financial blast radius (R1.11):** The canonical payment service extraction (DD-04) refactors the sole money-movement path. CTO review required.
-3. **Prerequisite:** The H3 payment permission gate (frontend/backend alignment) must be resolved as a separate task before S2B proceeds.
-
-**No product code implemented. No deployment. No S3-S3 or S4.**
+All accounting sources of truth resolved. No tenant-wide statement query exposed to a retailer. No duplicate receipt source. No migration relying on per-tenant alembic_version. No product code or migration implementation started.

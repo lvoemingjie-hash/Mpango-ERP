@@ -142,7 +142,8 @@ class _PermissionCaptureDB:
             return _FakeResult()
 
         if "INSERT INTO roles (name, description)" in sql:
-            role_name = str(params["n"])
+            # Handle both named-param (:n/:d) and literal-value INSERTs.
+            role_name = str(params.get("n", "retailer_operator")) if params else "retailer_operator"
             self.role_ids.setdefault(role_name, self._new_id())
             return _FakeResult()
 
@@ -160,12 +161,21 @@ class _PermissionCaptureDB:
             role_id = self.role_ids.setdefault("admin", self._new_id())
             return _FakeResult(scalar_value=role_id, fetchone_value=(role_id,))
 
+        if "SELECT id FROM roles WHERE name = 'retailer_operator'" in sql:
+            role_id = self.role_ids.setdefault("retailer_operator", self._new_id())
+            return _FakeResult(scalar_value=role_id, fetchone_value=(role_id,))
+
+        if "SELECT id FROM permissions WHERE code = ANY" in sql:
+            codes = params.get("codes", [])
+            ids = [self.permission_ids.get(c, self._new_id()) for c in codes]
+            return _FakeResult(fetchall_value=[(pid,) for pid in ids])
+
         if "SELECT id FROM permissions" in sql:
             return _FakeResult(fetchall_value=[(perm_id,) for perm_id in self.permission_ids.values()])
 
         if sql.startswith("SET LOCAL search_path TO") or sql.startswith("INSERT INTO user_roles") or sql.startswith(
             "INSERT INTO role_permissions"
-        ):
+        ) or sql.startswith("INSERT INTO roles"):
             return _FakeResult()
 
         raise AssertionError(f"Unhandled SQL in permission capture DB: {sql}")

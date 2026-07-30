@@ -75,6 +75,7 @@ async def _seed_admin_rbac(
     admin_password: str,
     admin_full_name: str,
     permission_codes: list[tuple[str, str]] | tuple[tuple[str, str], ...],
+    admin_role_codes: list[str] | tuple[str, ...] | None = None,
 ) -> None:
     from sqlalchemy import text
 
@@ -145,9 +146,14 @@ async def _seed_admin_rbac(
         {"user_id": user_id, "role_id": role_id},
     )
 
+    # R2: only assign admin_role_codes (default: all requested_codes for backward compat)
+    # to the admin role. client:* permissions are seeded into the permissions table
+    # but NOT granted to admin.
+    assign_codes = list(admin_role_codes) if admin_role_codes is not None else requested_codes
+
     resolved_permission_ids: list[str] = []
     missing_permissions: list[str] = []
-    for code in requested_codes:
+    for code in assign_codes:
         perm_id = (
             await db.execute(
                 text("SELECT id FROM permissions WHERE code = :code"), {"code": code}
@@ -242,7 +248,10 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     admin_password = "testpassword"  # pragma: allowlist secret
     admin_full_name = "Test Admin"
 
+    # R2: seed ALL permission codes into the permissions table, but assign ONLY
+    # ADMIN_PERMISSIONS to the admin role (never client:* permissions).
     permission_codes = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS
+    admin_role_codes = tuple(code for code, _ in ADMIN_PERMISSIONS)
 
     async with AsyncSessionLocal() as db:
         await _ensure_public_wholesaler(
@@ -259,6 +268,7 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
             admin_password=admin_password,
             admin_full_name=admin_full_name,
             permission_codes=permission_codes,
+            admin_role_codes=admin_role_codes,
         )
 
         if also_seed_t_dev:
@@ -270,6 +280,7 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
                 admin_password=admin_password,
                 admin_full_name=admin_full_name,
                 permission_codes=permission_codes,
+                admin_role_codes=admin_role_codes,
             )
 
         await db.commit()

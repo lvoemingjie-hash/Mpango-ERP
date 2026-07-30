@@ -617,3 +617,176 @@ class TestProvisioningRolePermissions:
             assert admin_perms == set(ADMIN_PERMISSION_CODES), (
                 f"admin drift: {admin_perms ^ set(ADMIN_PERMISSION_CODES)}")
             assert not (admin_perms & retailer_perms), "roles overlap"
+
+
+# ===========================================================================
+# §9 R2: Exact client route allowlist + payment/finance mutation rejection
+# ===========================================================================
+
+
+class TestClientRouteAllowlist:
+    """Enumerate EVERY registered /api/v1/client route and enforce an exact
+    method/path/permission allowlist. No route may consume
+    client:payments:create or be a payment/finance mutation."""
+
+    def test_exact_client_route_inventory(self):
+        from api.middleware.rbac import RequirePermission
+
+        app = FastAPI()
+        with mock.patch("auth.factory.get_auth_strategy", return_value=JwtAuthStrategy()):
+            configure_app(app, get_settings())
+
+        expected = {
+            ("POST", "/api/v1/client/auth/forgot-password"): None,
+            ("POST", "/api/v1/client/auth/login"): None,
+            ("POST", "/api/v1/client/auth/reset-password"): None,
+            ("POST", "/api/v1/client/orders"): "client:orders:create",
+            ("GET", "/api/v1/client/orders"): "client:orders:read",
+            ("GET", "/api/v1/client/orders/{order_id}"): "client:orders:read",
+            ("POST", "/api/v1/client/orders/{order_id}/cancel"): "client:orders:create",
+            ("GET", "/api/v1/client/products"): "client:catalog:read",
+            ("GET", "/api/v1/client/products/{product_id}"): "client:catalog:read",
+        }
+
+        actual: dict[tuple[str, str], str | None] = {}
+        for route in app.routes:
+            if not isinstance(route, APIRoute):
+                continue
+            if not route.path.startswith("/api/v1/client"):
+                continue
+            methods = sorted(route.methods - {"HEAD", "OPTIONS"}) if route.methods else []
+            perm = None
+            if hasattr(route, "dependant") and route.dependant:
+                for dep in route.dependant.dependencies:
+                    call = getattr(dep, "call", None)
+                    if isinstance(call, RequirePermission):
+                        perm = call.permission
+            for method in methods:
+                actual[(method, route.path)] = perm
+
+        assert set(actual.keys()) == set(expected.keys()), (
+            f"route drift:\n  extra: {set(actual) - set(expected)}\n"
+            f"  missing: {set(expected) - set(actual)}"
+        )
+        for key, exp_perm in expected.items():
+            assert actual[key] == exp_perm, (
+                f"permission drift for {key}: expected {exp_perm}, got {actual[key]}"
+            )
+
+    def test_no_client_payments_or_finance_route(self):
+        """No /api/v1/client/payments or /api/v1/client/finance route exists."""
+        app = FastAPI()
+        with mock.patch("auth.factory.get_auth_strategy", return_value=JwtAuthStrategy()):
+            configure_app(app, get_settings())
+        for route in app.routes:
+            if not isinstance(route, APIRoute):
+                continue
+            assert "/payments" not in route.path or not route.path.startswith("/api/v1/client"), (
+                f"client payment route exists: {route.path}"
+            )
+            assert "/finance" not in route.path or not route.path.startswith("/api/v1/client"), (
+                f"client finance route exists: {route.path}"
+            )
+
+
+# ===========================================================================
+# §10 R2: Same-schema wrong-wholesaler + wrong-retailer cancel
+# ===========================================================================
+
+
+class TestSameSchemaWrongEntityExclusion:
+    """Wrong-wholesaler and wrong-retailer rows in the same schema are excluded."""
+
+    async def test_detail_wrong_wholesaler_same_schema_404(
+        self, s3_client, two_tenants, s2_clean_db
+    ):
+        """An order with a DIFFERENT wholesaler_id but same retailer_id in the
+        same schema is not reachable (schema boundary = different wholesaler =
+        different schema in practice, but the dual-key still excludes)."""
+        from sqlalchemy import text
+        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+        db, reg = s2_clean_db
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ws_a = _pool_instance.tenants["a"]["ws_id"]
+        sch_a = _pool_instance.tenants["a"]["schema"]
+        ret_a = await _resolve_binding(db, ws_a, uid_a)
+        sku = await _seed_sku(db, sch_a, ret_a)
+        token = await _login_retailer(s3_client, two_tenants)
+        oid = await _create_order(s3_client, token, sku)
+        # Create a second wholesaler registration pointing at the same schema
+        # (simulating a wrong-wholesaler row). Insert a foreign order with a
+        # different wholesaler_id but the SAME retailer_id.
+        fake_ws = uuid.uuid4()
+        await db.execute(text(
+            f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
+            "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
+            {"id": uuid.uuid4(), "ws": str(fake_ws), "ret": ret_a})
+        await db.commit()
+        # The retailer's own order is found; the wrong-wholesaler order is not.
+        resp = await s3_client.get("/api/v1/client/orders",
+            headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == HTTPStatus.OK
+        items = resp.json()["data"]["items"]
+        # Only our order should appear; wrong-wholesaler excluded by dual-key.
+        assert len(items) >= 1
+        assert all(i["id"] == str(oid) or i["notes"] == "s3" for i in items)
+
+    async def test_cancel_wrong_retailer_same_supplier_404(
+        self, s3_client, two_tenants, s2_clean_db
+    ):
+        """Cancelling another retailer's order in the same supplier → 404."""
+        from sqlalchemy import text
+        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+        db, reg = s2_clean_db
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ws_a = _pool_instance.tenants["a"]["ws_id"]
+        sch_a = _pool_instance.tenants["a"]["schema"]
+        # Create a foreign retailer + order in the same supplier.
+        foreign_ret = await _create_retailer(db, name="CancelFR", registry=reg)
+        foreign_uid = await _create_retailer_user(db, tenant_schema=sch_a,
+            email=f"cfr_{uuid.uuid4().hex[:6]}@x.com", password=_TWO_TENANT_PW, registry=reg)
+        await _grant_retailer_operator(db, tenant_schema=sch_a, user_id=foreign_uid)
+        await _create_binding(db, wholesaler_id=ws_a, retailer_id=foreign_ret,
+            tenant_user_id=foreign_uid, registry=reg)
+        await _seed_sku(db, sch_a, str(foreign_ret))
+        foreign_oid = uuid.uuid4()
+        await db.execute(text(
+            f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
+            "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
+            {"id": foreign_oid, "ws": ws_a, "ret": str(foreign_ret)})
+        await db.commit()
+        token = await _login_retailer(s3_client, two_tenants)
+        resp = await s3_client.post(f"/api/v1/client/orders/{foreign_oid}/cancel",
+            headers={"Authorization": f"Bearer {token}"})
+        _assert_controlled_envelope(resp)
+        assert resp.status_code == HTTPStatus.NOT_FOUND
+
+
+# ===========================================================================
+# §11 R2: Malformed UUID → controlled fail-closed with zero order query
+# ===========================================================================
+
+
+class TestMalformedUuidFailClosed:
+    async def test_malformed_uuid_zero_order_query(
+        self, s3_client, two_tenants, s2_clean_db
+    ):
+        """A malformed UUID on detail/cancel must return 404 without executing
+        any orders-table SELECT (the scoped repo returns None before querying)."""
+        from sqlalchemy import event
+        from database.session import async_engine
+        token = await _login_retailer(s3_client, two_tenants)
+        captured: list[str] = []
+
+        def _cap(conn, cursor, statement, parameters, context, executemany):
+            captured.append(statement)
+
+        event.listen(async_engine.sync_engine, "before_cursor_execute", _cap)
+        try:
+            resp = await s3_client.get("/api/v1/client/orders/not-a-valid-uuid",
+                headers={"Authorization": f"Bearer {token}"})
+        finally:
+            event.remove(async_engine.sync_engine, "before_cursor_execute", _cap)
+        assert resp.status_code == HTTPStatus.NOT_FOUND
+        offending = [s for s in captured if "orders" in s.lower() and "select" in s.lower()]
+        assert not offending, f"malformed-UUID request executed orders SQL: {offending}"

@@ -52,3 +52,21 @@ export interface CreateOrderRequest {
   items: CreateOrderItem[];
   notes?: string;
 }
+
+export type ClientPaymentMethod = 'cash' | 'transfer' | 'credit';
+export type ClientPaymentStatus = 'pending' | 'completed';
+
+export interface ClientPayment {
+  id: string;
+  order_id: string;
+  amount: string;
+  method: ClientPaymentMethod;
+  status: ClientPaymentStatus;
+  created_at: string;
+}
+
+export interface ClientFinanceBalance {
+  outstanding_balance: string;
+  has_outstanding_balance: boolean;
+  updated_at: string;
+}

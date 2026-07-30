@@ -30,6 +30,8 @@ import { ProductDetailPage } from '@/pages/client/ProductDetailPage';
 import { CreateOrderPage as ClientCreateOrderPage } from '@/pages/client/CreateOrderPage';
 import { ClientOrderListPage } from '@/pages/client/OrderListPage';
 import { OrderDetailPage } from '@/pages/client/OrderDetailPage';
+import { ClientPaymentHistoryPage } from '@/pages/client/PaymentHistoryPage';
+import { ClientFinanceBalancePage } from '@/pages/client/FinanceBalancePage';
 // DC-12R1-S1: retailer credential setup/reset pages (fragment-only token transport)
 import { RetailerSetupCredentialPage } from '@/pages/retailer/RetailerSetupCredentialPage';
 import { RetailerResetPasswordPage } from '@/pages/retailer/RetailerResetPasswordPage';
@@ -130,6 +132,8 @@ const router = createBrowserRouter([
               { path: '/client/orders', element: <ClientOrderListPage /> },
               { path: '/client/orders/new', element: <ClientCreateOrderPage /> },
               { path: '/client/orders/:orderId', element: <OrderDetailPage /> },
+              { path: '/client/payments', element: <ClientPaymentHistoryPage /> },
+              { path: '/client/finance', element: <ClientFinanceBalancePage /> },
             ],
           },
         ],

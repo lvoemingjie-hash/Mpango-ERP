@@ -115,6 +115,31 @@ class ClientOrderView(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Payment and finance read models
+# ---------------------------------------------------------------------------
+
+class ClientPaymentView(BaseModel):
+    """Retailer-safe payment history row."""
+    id: str
+    order_id: str
+    amount: Decimal
+    method: str
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ClientFinanceBalanceView(BaseModel):
+    """Retailer-safe authoritative outstanding balance view."""
+    outstanding_balance: Decimal
+    has_outstanding_balance: bool
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
 # Client Order Status (subset visible to retailer)
 # ---------------------------------------------------------------------------
 

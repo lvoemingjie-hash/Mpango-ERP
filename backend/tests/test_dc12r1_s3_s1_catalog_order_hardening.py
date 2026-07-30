@@ -644,6 +644,8 @@ class TestClientRouteAllowlist:
             ("GET", "/api/v1/client/orders"): "client:orders:read",
             ("GET", "/api/v1/client/orders/{order_id}"): "client:orders:read",
             ("POST", "/api/v1/client/orders/{order_id}/cancel"): "client:orders:create",
+            ("GET", "/api/v1/client/payments"): "client:payments:read",
+            ("GET", "/api/v1/client/finance/balance"): "client:finance:read",
             ("GET", "/api/v1/client/products"): "client:catalog:read",
             ("GET", "/api/v1/client/products/{product_id}"): "client:catalog:read",
         }
@@ -673,20 +675,21 @@ class TestClientRouteAllowlist:
                 f"permission drift for {key}: expected {exp_perm}, got {actual[key]}"
             )
 
-    def test_no_client_payments_or_finance_route(self):
-        """No /api/v1/client/payments or /api/v1/client/finance route exists."""
+    def test_client_payment_and_finance_routes_are_get_only(self):
+        """Client payment and finance visibility routes are read-only."""
         app = FastAPI()
         with mock.patch("auth.factory.get_auth_strategy", return_value=JwtAuthStrategy()):
             configure_app(app, get_settings())
+        financial_routes = []
         for route in app.routes:
             if not isinstance(route, APIRoute):
                 continue
-            assert "/payments" not in route.path or not route.path.startswith("/api/v1/client"), (
-                f"client payment route exists: {route.path}"
-            )
-            assert "/finance" not in route.path or not route.path.startswith("/api/v1/client"), (
-                f"client finance route exists: {route.path}"
-            )
+            if route.path.startswith(("/api/v1/client/payments", "/api/v1/client/finance")):
+                financial_routes.append((route.path, route.methods - {"HEAD", "OPTIONS"}))
+        assert financial_routes == [
+            ("/api/v1/client/payments", {"GET"}),
+            ("/api/v1/client/finance/balance", {"GET"}),
+        ]
 
 
 # ===========================================================================

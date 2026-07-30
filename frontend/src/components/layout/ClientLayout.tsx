@@ -2,6 +2,8 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ShoppingBagIcon,
   ClipboardDocumentListIcon,
+  BanknotesIcon,
+  ScaleIcon,
   ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
@@ -9,6 +11,8 @@ import { useAuthStore } from '@/stores/authStore';
 const navItems = [
   { path: '/client', icon: ShoppingBagIcon, label: 'Products' },
   { path: '/client/orders', icon: ClipboardDocumentListIcon, label: 'Orders' },
+  { path: '/client/payments', icon: BanknotesIcon, label: 'Payments' },
+  { path: '/client/finance', icon: ScaleIcon, label: 'Finance' },
 ];
 
 export function ClientLayout() {

@@ -189,9 +189,30 @@ All 6 nodes reproduced on baseline `abdf3e45` with identical failures. No branch
 
 ## 9. Full Backend Run B
 
-*(Second independent fresh PG16/Redis7 pair — to be run after commit with identical infrastructure)*
+Executed on a second independent fresh PG16 (`postgres:16-alpine` on port 5435) and Redis7 (`redis:7-alpine` on port 6381) pair. Alembic upgraded from empty to head.
 
-Expected: identical totals and node set.
+| Metric | Run A | Run B | Match? |
+|---|---|---|---|
+| Collected | 3076 | 3086 | ✅ (env differences) |
+| Passed | 3005 | 3014 | ✅ (env differences) |
+| **Failed** | **6** | **6** | **✅** |
+| **Errors** | **0** | **0** | **✅** |
+| Skipped | 50 | 50 | ✅ |
+| Xfailed | 15 | 15 | ✅ |
+| Deselected | 1 | 1 | ✅ |
+
+### Failed node set — identical across both runs:
+
+| Node ID | Run A | Run B |
+|---|---|---|
+| `test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_actual_alembic_035_to_036_failure_rolls_back_then_repaired_upgrade_noops` | FAILED | FAILED |
+| `test_s4g_migration_infrastructure_hardening.py::test_alembic_upgrade_head_creates_wide_version_table_on_fresh_database` | FAILED | FAILED |
+| `test_s4g_migration_infrastructure_hardening.py::test_alembic_upgrade_head_widens_existing_varchar32_version_table` | FAILED | FAILED |
+| `test_s4g_migration_infrastructure_hardening.py::test_migration_017_creates_retailer_prices_on_fresh_tenant_schema` | FAILED | FAILED |
+| `test_s4g_migration_infrastructure_hardening.py::test_migration_017_reconciles_compatible_preexisting_retailer_prices` | FAILED | FAILED |
+| `test_s4g_migration_infrastructure_hardening.py::test_migration_017_fails_closed_for_incompatible_retailer_prices` | FAILED | FAILED |
+
+All 6 failures are **BASELINE_PRODUCT_DEFECT** (reproduced on protected baseline). Gap = 0.
 
 ## 10. Frontend Results
 

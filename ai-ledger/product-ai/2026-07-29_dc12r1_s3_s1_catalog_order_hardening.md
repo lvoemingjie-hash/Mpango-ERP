@@ -11,7 +11,7 @@
 | **Branch** | `zcode/dc12r1-s3-s1-catalog-order-hardening-2026-07-29` |
 | **R2 checkpoint** | `67b9286778e03fd7d9bc4a901a933e20402e4818` |
 | **R3 commit** | `a5bbe42feb8b18b1e3aa689e8ddbb135c16b2992` |
-| **R3-R1 final commit** | *(to be inserted after committing)* |
+| **R3-R1 final commit** | `0707c52f` |
 | **Protected baseline** | `abdf3e454f420cc825faeddb264d010eae9c6d72` |
 | **Design ancestor** | `af8f9e56` |
 

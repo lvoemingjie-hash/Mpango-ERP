@@ -48,7 +48,12 @@ from database.session import AsyncSessionLocal
 from models.wholesaler import Wholesaler
 from models.user import User, Role, Permission
 from core.security import hash_password
-from core.permission_registry import ADMIN_PERMISSIONS, ADMIN_ROLE
+from core.permission_registry import (
+    ADMIN_PERMISSIONS,
+    ADMIN_ROLE,
+    RETAILER_OPERATOR_PERMISSIONS,
+    RETAILER_OPERATOR_ROLE,
+)
 from db.sql_safety import validate_identifier as _validate_identifier
 
 
@@ -165,10 +170,15 @@ async def setup_admin(
     await db.execute(text(f'SET LOCAL search_path TO "{tenant_schema}", public'))
 
     # --- Create permissions ---
-    permissions_data = ADMIN_PERMISSIONS
+    # DC-12R1-S3-S1-R1: seed BOTH admin and retailer_operator permission codes
+    # into the permissions table so every API-route RequirePermission code is
+    # present. Each role gets ONLY its own canonical set (admin gets
+    # ADMIN_PERMISSIONS only; retailer_operator gets RETAILER_OPERATOR_PERMISSIONS
+    # only). The two sets are disjoint by registry assertion.
+    all_permissions = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS
 
-    perm_ids = []
-    for code, description in permissions_data:
+    perm_id_by_code: dict[str, Any] = {}
+    for code, description in all_permissions:
         result = await db.execute(
             text('SELECT id FROM permissions WHERE code = :code'),
             {"code": code}
@@ -178,13 +188,13 @@ async def setup_admin(
             perm = Permission(code=code, description=description)
             db.add(perm)
             await db.flush()
-            perm_ids.append(perm.id)
+            perm_id_by_code[code] = perm.id
         else:
-            perm_ids.append(row[0])
+            perm_id_by_code[code] = row[0]
 
-    print(f"  ✓ {len(perm_ids)} permissions ensured")
+    print(f"  ✓ {len(perm_id_by_code)} permissions ensured")
 
-    # --- Create admin role ---
+    # --- Create admin role + assign ONLY ADMIN_PERMISSIONS ---
     result = await db.execute(
         text('SELECT id FROM roles WHERE name = :name'),
         {"name": ADMIN_ROLE}
@@ -200,8 +210,13 @@ async def setup_admin(
 
     print(f"  ✓ Admin role ensured")
 
-    # --- Assign all permissions to admin role ---
-    for perm_id in perm_ids:
+    # R3: reconcile — remove stale grants before re-seeding canonical set
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :rid'
+    ), {"rid": str(role_id)})
+
+    for code, _desc in ADMIN_PERMISSIONS:
+        perm_id = perm_id_by_code[code]
         check = await db.execute(
             text('SELECT 1 FROM role_permissions WHERE role_id = :rid AND permission_id = :pid'),
             {"rid": str(role_id), "pid": str(perm_id)}
@@ -211,6 +226,40 @@ async def setup_admin(
                 text('INSERT INTO role_permissions (role_id, permission_id) VALUES (:rid, :pid)'),
                 {"rid": str(role_id), "pid": str(perm_id)}
             )
+
+    # --- DC-12R1-S3-S1-R1: retailer_operator role gets ONLY client:* perms ---
+    result = await db.execute(
+        text('SELECT id FROM roles WHERE name = :name'),
+        {"name": RETAILER_OPERATOR_ROLE}
+    )
+    retailer_row = result.fetchone()
+    if retailer_row:
+        retailer_role_id = retailer_row[0]
+    else:
+        retailer_role = Role(
+            name=RETAILER_OPERATOR_ROLE, description="Retailer MVP operator"
+        )
+        db.add(retailer_role)
+        await db.flush()
+        retailer_role_id = retailer_role.id
+
+    # R3: reconcile — remove stale grants before re-seeding canonical set
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :rid'
+    ), {"rid": str(retailer_role_id)})
+
+    for code, _desc in RETAILER_OPERATOR_PERMISSIONS:
+        perm_id = perm_id_by_code[code]
+        check = await db.execute(
+            text('SELECT 1 FROM role_permissions WHERE role_id = :rid AND permission_id = :pid'),
+            {"rid": str(retailer_role_id), "pid": str(perm_id)}
+        )
+        if not check.fetchone():
+            await db.execute(
+                text('INSERT INTO role_permissions (role_id, permission_id) VALUES (:rid, :pid)'),
+                {"rid": str(retailer_role_id), "pid": str(perm_id)}
+            )
+    print(f"  ✓ {RETAILER_OPERATOR_ROLE} role ensured ({len(RETAILER_OPERATOR_PERMISSIONS)} client perms)")
 
     # --- Create admin user ---
     result = await db.execute(
@@ -225,11 +274,9 @@ async def setup_admin(
 
     user = User(
         email=email,
-        hashed_password=hash_password(password),
-        first_name=first_name,
-        last_name=last_name,
+        password_hash=hash_password(password),
+        full_name=f"{first_name} {last_name}",
         is_active=True,
-        is_superuser=False,
     )
     db.add(user)
     await db.flush()

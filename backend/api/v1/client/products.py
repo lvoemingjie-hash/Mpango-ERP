@@ -18,7 +18,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_tenant_db_session
+from api.middleware.rbac import RequirePermission
 from api.v1.client.dependencies import ClientIdentity, resolve_client_identity
+from core.security import TokenPayload
 from schemas.client import (
     ClientProductSummary,
     ClientProductDetail,
@@ -42,6 +44,7 @@ async def list_products(
     category: Optional[str] = Query(None, description="Filter by category"),
     search: Optional[str] = Query(None, description="Search by name or SKU code"),
     client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:catalog:read")),
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     """
@@ -146,6 +149,7 @@ async def list_products(
 async def get_product(
     product_id: str,
     client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:catalog:read")),
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     """

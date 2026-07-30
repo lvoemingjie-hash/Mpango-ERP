@@ -32,11 +32,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_tenant_db_session
+from api.middleware.rbac import RequirePermission
 from api.v1.client.dependencies import ClientIdentity, resolve_client_identity
+from core.security import TokenPayload
 from crud.order import (
     create_order as crud_create_order,
-    get_order_by_id,
-    get_orders_paginated,
+    get_order_for_retailer,
+    get_orders_for_retailer,
     cancel_order as crud_cancel_order,
 )
 from schemas.client import (
@@ -87,6 +89,7 @@ def _order_to_client_view(order) -> ClientOrderView:
 async def create_order(
     request: ClientCreateOrderRequest,
     client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:orders:create")),
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     """
@@ -96,6 +99,10 @@ async def create_order(
     server-side identity resolution. It is NEVER accepted from the
     request body. Any attempt to inject a foreign retailer_id is
     structurally impossible.
+
+    DC-12R1-S3-S1: requires the ``client:orders:create`` permission. MVP
+    create authority also covers cancellation of the retailer's own
+    DRAFT/CONFIRMED order (no separate cancel permission in this slice).
     """
     # Validate all SKUs exist, are active, and have stock
     sku_codes = [item.sku_code for item in request.items]
@@ -204,6 +211,7 @@ async def list_orders(
     size: int = Query(20, ge=1, le=100),
     order_status: Optional[str] = Query(None, alias="status", description="Filter by client status"),
     client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:orders:read")),
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     """
@@ -211,6 +219,10 @@ async def list_orders(
 
     Security: Enforces retailer_id filter server-side — retailer can
     never see another retailer's orders within the same tenant.
+
+    DC-12R1-S3-S1: dual-key scope — both wholesaler_id (tenant) and
+    retailer_id are passed to the repository (defense-in-depth on top of
+    the tenant-scoped session).
     """
     from models.order import OrderStatus
 
@@ -226,11 +238,12 @@ async def list_orders(
         }
         internal_status = status_map.get(order_status.upper())
 
-    orders, total = await get_orders_paginated(
+    orders, total = await get_orders_for_retailer(
         db=db,
+        wholesaler_id=client.tenant_id,  # mandatory validated dual-key scope
+        retailer_id=client.retailer_id,  # mandatory validated dual-key scope
         page=page,
         size=size,
-        retailer_id=client.retailer_id,  # P0: server-enforced scope
         status_filter=internal_status,
     )
 
@@ -260,20 +273,24 @@ async def list_orders(
 async def get_order(
     order_id: str,
     client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:orders:read")),
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     """
     Get order detail — only if it belongs to the authenticated retailer.
-    """
-    order = await get_order_by_id(db, order_id)
-    if order is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
-        )
 
-    # P0 Security: verify ownership
-    if str(order.retailer_id) != client.retailer_id:
+    DC-12R1-S3-S1: the order is fetched with a dual-key scoped query
+    (order_id + wholesaler_id + retailer_id + is_deleted=false) so a
+    wrong-retailer / wrong-supplier request returns a neutral 404 without
+    first loading the row and disclosing its existence.
+    """
+    order = await get_order_for_retailer(
+        db,
+        order_id=order_id,
+        wholesaler_id=client.tenant_id,
+        retailer_id=client.retailer_id,
+    )
+    if order is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
@@ -298,21 +315,26 @@ async def get_order(
 async def cancel_order(
     order_id: str,
     client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:orders:create")),
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     """
     Cancel an order — only allowed if status is CREATED or CONFIRMED,
     and only if the order belongs to the authenticated retailer.
-    """
-    order = await get_order_by_id(db, order_id)
-    if order is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
-        )
 
-    # P0 Security: verify ownership
-    if str(order.retailer_id) != client.retailer_id:
+    DC-12R1-S3-S1: MVP create authority (``client:orders:create``) also
+    covers cancellation of the retailer's own DRAFT/CONFIRMED order — no
+    separate cancel permission is introduced in this slice. The order is
+    fetched with a dual-key scoped query so a wrong-retailer /
+    wrong-supplier cancel returns a neutral 404 without loading the row.
+    """
+    order = await get_order_for_retailer(
+        db,
+        order_id=order_id,
+        wholesaler_id=client.tenant_id,
+        retailer_id=client.retailer_id,
+    )
+    if order is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},

@@ -88,9 +88,14 @@ class TestOnboardTenantPermissionCompleteness:
     def test_all_api_perms_in_onboard(
         self, api_permissions: set[str], canonical_admin_permissions: set[str]
     ):
-        missing = api_permissions - canonical_admin_permissions
+        # DC-12R1-S3-S1: client:* permissions belong to the disjoint
+        # retailer_operator registry (admin and retailer sets are mutually
+        # exclusive by design), so they are a valid route-permission namespace
+        # even though they are absent from the admin registry.
+        all_canonical = canonical_admin_permissions | set(RETAILER_OPERATOR_PERMISSION_CODES)
+        missing = api_permissions - all_canonical
         assert not missing, (
-            f"canonical admin registry is missing {len(missing)} permissions "
+            f"canonical registries are missing {len(missing)} permissions "
             f"required by API endpoints: {sorted(missing)}"
         )
 

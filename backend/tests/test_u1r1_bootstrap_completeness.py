@@ -33,7 +33,7 @@ TEST_U1R1_SCHEMA = "t_u1r1_test"
 TEST_U1R1_TENANT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 TEST_U1R1_USER_ID = "11111111-1111-1111-1111-111111111111"
 TEST_U1R1_ADMIN_EMAIL = "admin@u1r1.test"
-TEST_U1R1_ADMIN_PASSWORD = "testpassword"
+TEST_U1R1_ADMIN_PASSWORD = "testpassword"  # pragma: allowlist secret
 
 # All MVP tables expected in a fully bootstrapped tenant schema.
 # Does NOT include retailers — that's in the public schema.
@@ -86,6 +86,7 @@ async def _u1r1_bootstrap():
             admin_password=TEST_U1R1_ADMIN_PASSWORD,
             admin_full_name="U1R1 Test Admin",
             permission_codes=U1R1_PERMISSION_CODES,
+            admin_role_codes=tuple(code for code, _ in U1R1_PERMISSION_CODES),
         )
         await db.commit()
 
@@ -523,6 +524,7 @@ class TestAdminPermissionCompleteness:
                     admin_password=TEST_U1R1_ADMIN_PASSWORD,
                     admin_full_name="Scoped Admin",
                     permission_codes=requested_permissions,
+                    admin_role_codes=tuple(code for code, _ in requested_permissions),
                 )
                 await db.commit()
 

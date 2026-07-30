@@ -38,7 +38,7 @@ def _add_backend_to_path() -> None:
 
 _add_backend_to_path()
 
-from core.permission_registry import ADMIN_PERMISSIONS
+from core.permission_registry import ADMIN_PERMISSIONS, RETAILER_OPERATOR_PERMISSIONS
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -57,7 +57,7 @@ ADMIN_FULL_NAME = "Demo Administrator"
 
 # Preserve the public name used by legacy callers while sourcing from the
 # canonical runtime registry.
-PERMISSION_CODES = ADMIN_PERMISSIONS
+PERMISSION_CODES = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS
 
 ROLES = [
     ("admin", "Administrator with full access"),
@@ -362,14 +362,45 @@ async def _seed_rbac(db, ts: str) -> None:
     ), {"u": uid, "r": rid})
 
     perms = (await db.execute(text("SELECT id FROM permissions"))).fetchall()
-    for (pid,) in perms:
+    # R2: admin gets ONLY ADMIN_PERMISSION_CODES — never client:* permissions.
+    from core.permission_registry import ADMIN_PERMISSION_CODES
+    admin_perm_ids = (await db.execute(text(
+        "SELECT id FROM permissions WHERE code = ANY(:codes)"
+    ), {"codes": list(ADMIN_PERMISSION_CODES)})).fetchall()
+    # R3: reconcile
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :r'
+    ), {"r": rid})
+    for (pid,) in admin_perm_ids:
         await db.execute(text(
             "INSERT INTO role_permissions (role_id, permission_id) "
             "VALUES (:r, :p) ON CONFLICT DO NOTHING"
         ), {"r": rid, "p": pid})
 
+    # R2: also seed retailer_operator role with ONLY its canonical client:* perms.
+    from core.permission_registry import RETAILER_OPERATOR_PERMISSION_CODES
+    await db.execute(text(
+        "INSERT INTO roles (name, description) VALUES ('retailer_operator', 'Retailer MVP') "
+        "ON CONFLICT (name) DO NOTHING"
+    ))
+    ret_rid = (await db.execute(text(
+        "SELECT id FROM roles WHERE name = 'retailer_operator'"
+    ))).scalar()
+    ret_perm_ids = (await db.execute(text(
+        "SELECT id FROM permissions WHERE code = ANY(:codes)"
+    ), {"codes": list(RETAILER_OPERATOR_PERMISSION_CODES)})).fetchall()
+    # R3: reconcile
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :r'
+    ), {"r": ret_rid})
+    for (pid,) in ret_perm_ids:
+        await db.execute(text(
+            "INSERT INTO role_permissions (role_id, permission_id) "
+            "VALUES (:r, :p) ON CONFLICT DO NOTHING"
+        ), {"r": ret_rid, "p": pid})
+
     await db.commit()
-    print(f"  + RBAC seeded: admin user + {len(ROLES)} roles + {len(PERMISSION_CODES)} perms")
+    print(f"  + RBAC seeded: admin (ADMIN only) + retailer_operator (client:* only)")
 
 
 async def _seed_skus(db, ts: str) -> None:

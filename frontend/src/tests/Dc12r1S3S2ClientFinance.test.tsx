@@ -50,6 +50,34 @@ const balanceResponse = {
   },
 };
 
+const cashStatusResponse = {
+  data: {
+    success: true,
+    data: {
+      items: [
+        {
+          id: 'pay-pending-cash',
+          order_id: 'order-pending-cash',
+          amount: '500.00',
+          method: 'cash',
+          status: 'pending',
+          created_at: '2026-07-30T08:00:00Z',
+        },
+        {
+          id: 'pay-completed-cash',
+          order_id: 'order-completed-cash',
+          amount: '750.00',
+          method: 'cash',
+          status: 'completed',
+          created_at: '2026-07-30T09:00:00Z',
+        },
+      ],
+      pagination: { page: 1, size: 20, total: 2, pages: 1 },
+    },
+    timestamp: '2026-07-30T09:00:00Z',
+  },
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.setState({
@@ -103,6 +131,24 @@ describe('DC-12R1-S3-S2 retailer finance pages', () => {
     expect(await screen.findByText(/payment history/i)).toBeInTheDocument();
     expect(screen.getByText(/KES\s*1,250\.50/i)).toBeInTheDocument();
     expect(screen.getByText(/credit sale/i)).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('uses status-aware cash labels so pending cash is not presented as received', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce(cashStatusResponse as never);
+
+    render(
+      <MemoryRouter initialEntries={['/client/payments']}>
+        <Routes>
+          <Route path="/client/payments" element={<ClientPaymentHistoryPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/cash payment/i)).toBeInTheDocument();
+    expect(screen.getByText(/cash received/i)).toBeInTheDocument();
+    expect(screen.getByText(/pending/i)).toBeInTheDocument();
+    expect(screen.getByText(/completed/i)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 

@@ -280,6 +280,18 @@ class TestReadOnlyClientFinanceDeniedBeforeFinancialSql:
                     "/api/v1/client/payments?order_id=not-a-uuid",
                     headers={"Authorization": f"Bearer {token}"},
                 )
+                blank_filters = []
+                for blank_path in (
+                    "/api/v1/client/payments?order_id=",
+                    "/api/v1/client/payments?order_id=%20%20",
+                    "/api/v1/client/payments?method=",
+                    "/api/v1/client/payments?method=%20",
+                    "/api/v1/client/payments?status=",
+                    "/api/v1/client/payments?status=%20",
+                ):
+                    blank_filters.append(
+                        await client.get(blank_path, headers={"Authorization": f"Bearer {token}"})
+                    )
                 app.dependency_overrides[resolve_client_identity] = lambda: ClientIdentity(
                     user_id="770e8400-e29b-41d4-a716-446655440000",
                     retailer_id="not-a-uuid",
@@ -293,6 +305,9 @@ class TestReadOnlyClientFinanceDeniedBeforeFinancialSql:
         finally:
             event.remove(async_engine.sync_engine, "before_cursor_execute", _cap)
         assert bad_filter.status_code == HTTPStatus.BAD_REQUEST
+        for resp in blank_filters:
+            _assert_controlled_envelope(resp, allow=(HTTPStatus.BAD_REQUEST,))
+            assert resp.status_code == HTTPStatus.BAD_REQUEST
         assert bad_identity.status_code == HTTPStatus.BAD_REQUEST
         assert not [s for s in captured if "payments" in s.lower() or "orders" in s.lower() or "wholesaler_retailer_bindings" in s.lower()]
 

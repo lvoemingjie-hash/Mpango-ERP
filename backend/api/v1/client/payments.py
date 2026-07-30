@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from math import ceil
 from typing import Optional
 
@@ -30,6 +30,15 @@ def _parse_uuid(value: str, code: str, message: str) -> uuid.UUID:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"code": code, "message": message})
 
 
+def _normalize_filter(value: str | None, code: str, message: str) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"code": code, "message": message})
+    return normalized
+
+
 @router.get("", response_model=DataResponse[dict], status_code=status.HTTP_200_OK)
 async def list_client_payments(
     page: int = Query(1, ge=1),
@@ -43,9 +52,12 @@ async def list_client_payments(
 ):
     wholesaler_uuid = _parse_uuid(client.tenant_id, "INVALID_CLIENT_CONTEXT", "Invalid client context")
     retailer_uuid = _parse_uuid(client.retailer_id, "INVALID_CLIENT_CONTEXT", "Invalid client context")
-    order_uuid = _parse_uuid(order_id, "INVALID_ORDER_ID", "Invalid order_id format") if order_id else None
-    method_filter = method.lower() if method else None
-    status_filter = payment_status.lower() if payment_status else None
+    order_filter = _normalize_filter(order_id, "INVALID_ORDER_ID", "Invalid order_id format")
+    method_filter = _normalize_filter(method, "INVALID_PAYMENT_METHOD", "Invalid payment method filter")
+    status_filter = _normalize_filter(payment_status, "INVALID_PAYMENT_STATUS", "Invalid payment status filter")
+    order_uuid = _parse_uuid(order_filter, "INVALID_ORDER_ID", "Invalid order_id format") if order_filter else None
+    method_filter = method_filter.lower() if method_filter else None
+    status_filter = status_filter.lower() if status_filter else None
     if method_filter is not None and method_filter not in _ALLOWED_METHODS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -74,5 +86,5 @@ async def list_client_payments(
             "items": [ClientPaymentView(id=str(row["id"]), order_id=str(row["order_id"]), amount=row["amount"], method=row["method"], status=row["status"], created_at=row["created_at"]).model_dump() for row in rows],
             "pagination": Pagination(page=page, size=size, total=total, pages=pages).model_dump(),
         },
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )

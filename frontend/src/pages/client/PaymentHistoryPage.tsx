@@ -6,8 +6,8 @@ import { clientFinanceService } from '@/services/clientFinanceService';
 import type { ClientPayment } from '@/types/client';
 
 const METHOD_LABEL: Record<string, string> = {
-  cash: 'Cash received',
-  transfer: 'Transfer received',
+  cash: 'Cash payment',
+  transfer: 'Transfer payment',
   credit: 'Credit sale',
 };
 
@@ -22,6 +22,16 @@ function formatMoney(amount: string) {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function paymentMethodLabel(payment: ClientPayment) {
+  if (payment.status === 'completed' && payment.method === 'cash') {
+    return 'Cash received';
+  }
+  if (payment.status === 'completed' && payment.method === 'transfer') {
+    return 'Transfer received';
+  }
+  return METHOD_LABEL[payment.method] ?? payment.method;
 }
 
 export function ClientPaymentHistoryPage() {
@@ -79,7 +89,7 @@ export function ClientPaymentHistoryPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs text-gray-400">Order #{payment.order_id.slice(0, 8)}</p>
-                    <p className="mt-1 text-sm font-semibold text-gray-900">{METHOD_LABEL[payment.method] ?? payment.method}</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900">{paymentMethodLabel(payment)}</p>
                     <p className="mt-1 text-xs text-gray-500">{formatDate(payment.created_at)} · {STATUS_LABEL[payment.status] ?? payment.status}</p>
                   </div>
                   <div className="flex items-center gap-2 text-right">

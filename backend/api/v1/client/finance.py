@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,5 +60,5 @@ async def get_client_finance_balance(
             has_outstanding_balance=outstanding_balance != 0,
             updated_at=row["updated_at"],
         ),
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )

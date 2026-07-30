@@ -12,7 +12,8 @@ PASS_FOR_CTO_DC12R1_S3_S2_R1_MERGE_REVIEW
 - Worktree: C:\Users\Jeff0\MPANGO ERP\_kilo_dc12r1_s3_s2_readonly_finance_2026-07-30
 - Branch: kilo/dc12r1-s3-s2-read-only-retailer-finance-2026-07-30
 - S3-S2 initial delivery commit: `387febf5cb0e224a810b396f64aa98384513fd1a`
-- R1 delivery commit: final pushed HEAD for this report
+- R1 tested correction commit: `0bfa4515f6b96df345174f3d44336b6013584681`
+- R1 report publication commit: final pushed HEAD after report-only SHA update
 
 ## Baseline Gate
 

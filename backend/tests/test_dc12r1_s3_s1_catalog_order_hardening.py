@@ -716,19 +716,20 @@ class TestSameSchemaWrongEntityExclusion:
         # Insert a wrong-wholesaler order with same retailer_id.
         fake_ws = uuid.uuid4()
         wrong_oid = uuid.uuid4()
-        await db.execute(text(
-            f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
-            "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
-            {"id": wrong_oid, "ws": str(fake_ws), "ret": ret_a})
-        await db.commit()
-        resp = await s3_client.get("/api/v1/client/orders",
-            headers={"Authorization": f"Bearer {token}"})
-        assert resp.status_code == HTTPStatus.OK
-        items = resp.json()["data"]["items"]
-        assert all(str(i["id"]) != str(wrong_oid) for i in items), "wrong-wholesaler order leaked into list"
-        # cleanup
-        await db.execute(text(f'DELETE FROM "{sch_a}".orders WHERE id = :id'), {"id": wrong_oid})
-        await db.commit()
+        try:
+            await db.execute(text(
+                f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
+                "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
+                {"id": wrong_oid, "ws": str(fake_ws), "ret": ret_a})
+            await db.commit()
+            resp = await s3_client.get("/api/v1/client/orders",
+                headers={"Authorization": f"Bearer {token}"})
+            assert resp.status_code == HTTPStatus.OK
+            items = resp.json()["data"]["items"]
+            assert all(str(i["id"]) != str(wrong_oid) for i in items), "wrong-wholesaler order leaked into list"
+        finally:
+            await db.execute(text(f'DELETE FROM "{sch_a}".orders WHERE id = :id'), {"id": str(wrong_oid)})
+            await db.commit()
 
     async def test_detail_wrong_wholesaler_404(
         self, s3_client, two_tenants, s2_clean_db
@@ -743,19 +744,20 @@ class TestSameSchemaWrongEntityExclusion:
         ret_a = await _resolve_binding(db, ws_a, uid_a)
         fake_ws = uuid.uuid4()
         wrong_oid = uuid.uuid4()
-        await db.execute(text(
-            f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
-            "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
-            {"id": wrong_oid, "ws": str(fake_ws), "ret": ret_a})
-        await db.commit()
-        token = await _login_retailer(s3_client, two_tenants)
-        resp = await s3_client.get(f"/api/v1/client/orders/{wrong_oid}",
-            headers={"Authorization": f"Bearer {token}"})
-        _assert_controlled_envelope(resp)
-        assert resp.status_code == HTTPStatus.NOT_FOUND
-        # cleanup
-        await db.execute(text(f'DELETE FROM "{sch_a}".orders WHERE id = :id'), {"id": wrong_oid})
-        await db.commit()
+        try:
+            await db.execute(text(
+                f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
+                "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
+                {"id": wrong_oid, "ws": str(fake_ws), "ret": ret_a})
+            await db.commit()
+            token = await _login_retailer(s3_client, two_tenants)
+            resp = await s3_client.get(f"/api/v1/client/orders/{wrong_oid}",
+                headers={"Authorization": f"Bearer {token}"})
+            _assert_controlled_envelope(resp)
+            assert resp.status_code == HTTPStatus.NOT_FOUND
+        finally:
+            await db.execute(text(f'DELETE FROM "{sch_a}".orders WHERE id = :id'), {"id": str(wrong_oid)})
+            await db.commit()
 
     async def test_cancel_wrong_wholesaler_404(
         self, s3_client, two_tenants, s2_clean_db
@@ -770,19 +772,20 @@ class TestSameSchemaWrongEntityExclusion:
         ret_a = await _resolve_binding(db, ws_a, uid_a)
         fake_ws = uuid.uuid4()
         wrong_oid = uuid.uuid4()
-        await db.execute(text(
-            f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
-            "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
-            {"id": wrong_oid, "ws": str(fake_ws), "ret": ret_a})
-        await db.commit()
-        token = await _login_retailer(s3_client, two_tenants)
-        resp = await s3_client.post(f"/api/v1/client/orders/{wrong_oid}/cancel",
-            headers={"Authorization": f"Bearer {token}"})
-        _assert_controlled_envelope(resp)
-        assert resp.status_code == HTTPStatus.NOT_FOUND
-        # cleanup
-        await db.execute(text(f'DELETE FROM "{sch_a}".orders WHERE id = :id'), {"id": wrong_oid})
-        await db.commit()
+        try:
+            await db.execute(text(
+                f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
+                "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
+                {"id": wrong_oid, "ws": str(fake_ws), "ret": ret_a})
+            await db.commit()
+            token = await _login_retailer(s3_client, two_tenants)
+            resp = await s3_client.post(f"/api/v1/client/orders/{wrong_oid}/cancel",
+                headers={"Authorization": f"Bearer {token}"})
+            _assert_controlled_envelope(resp)
+            assert resp.status_code == HTTPStatus.NOT_FOUND
+        finally:
+            await db.execute(text(f'DELETE FROM "{sch_a}".orders WHERE id = :id'), {"id": str(wrong_oid)})
+            await db.commit()
 
     async def test_cancel_wrong_retailer_same_supplier_404(
         self, s3_client, two_tenants, s2_clean_db
@@ -797,23 +800,36 @@ class TestSameSchemaWrongEntityExclusion:
         foreign_ret = await _create_retailer(db, name="CancelFR", registry=reg)
         foreign_uid = await _create_retailer_user(db, tenant_schema=sch_a,
             email=f"cfr_{uuid.uuid4().hex[:6]}@x.com", password=_TWO_TENANT_PW, registry=reg)
-        await _grant_retailer_operator(db, tenant_schema=sch_a, user_id=foreign_uid)
-        await _create_binding(db, wholesaler_id=ws_a, retailer_id=foreign_ret,
-            tenant_user_id=foreign_uid, registry=reg)
+        foreign_ret_id = str(foreign_ret)
         foreign_oid = uuid.uuid4()
-        await db.execute(text(
-            f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
-            "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
-            {"id": foreign_oid, "ws": ws_a, "ret": str(foreign_ret)})
-        await db.commit()
-        token = await _login_retailer(s3_client, two_tenants)
-        resp = await s3_client.post(f"/api/v1/client/orders/{foreign_oid}/cancel",
-            headers={"Authorization": f"Bearer {token}"})
-        _assert_controlled_envelope(resp)
-        assert resp.status_code == HTTPStatus.NOT_FOUND
-        # cleanup
-        await db.execute(text(f'DELETE FROM "{sch_a}".orders WHERE id = :id'), {"id": foreign_oid})
-        await db.commit()
+        try:
+            await _grant_retailer_operator(db, tenant_schema=sch_a, user_id=foreign_uid)
+            await _create_binding(db, wholesaler_id=ws_a, retailer_id=foreign_ret_id,
+                tenant_user_id=foreign_uid, registry=reg)
+            await db.execute(text(
+                f'INSERT INTO "{sch_a}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
+                "VALUES (:id, :ws, :ret, 'draft', 100, false)"),
+                {"id": foreign_oid, "ws": ws_a, "ret": foreign_ret_id})
+            await db.commit()
+            token = await _login_retailer(s3_client, two_tenants)
+            resp = await s3_client.post(f"/api/v1/client/orders/{foreign_oid}/cancel",
+                headers={"Authorization": f"Bearer {token}"})
+            _assert_controlled_envelope(resp)
+            assert resp.status_code == HTTPStatus.NOT_FOUND
+        finally:
+            await db.execute(text(f'DELETE FROM "{sch_a}".orders WHERE id = :id'), {"id": str(foreign_oid)})
+            # Delete binding, retailer, user in FK-safe order
+            await db.execute(text(
+                "DELETE FROM public.wholesaler_retailer_bindings "
+                "WHERE tenant_user_id = :uid"), {"uid": str(foreign_uid)})
+            await db.execute(text(
+                f'DELETE FROM "{sch_a}".user_roles WHERE user_id = :uid'), {"uid": str(foreign_uid)})
+            await db.execute(text(
+                f'DELETE FROM "{sch_a}".users WHERE id = :uid'), {"uid": str(foreign_uid)})
+            await db.execute(text(
+                "DELETE FROM public.retailers WHERE id = :rid AND name = 'CancelFR'"),
+                {"rid": foreign_ret_id})
+            await db.commit()
 
 
 # ===========================================================================
@@ -847,15 +863,66 @@ class TestMalformedUuidFailClosed:
 
 
 # ===========================================================================
-# §12 R3: Dirty-state RBAC reconciliation (real PostgreSQL)
+# §11b R3-R1: Malformed wholesaler_id / retailer_id repository proof
 # ===========================================================================
 
 
-class TestRbacReconciliation:
-    """R3: deliberately contaminate roles, run the real seeder, assert exact
-    canonical reconciliation. Uses real PG16, not mock/fake DBs."""
+class TestMalformedIdentity:
+    """Direct repository tests for malformed wholesaler_id and retailer_id.
 
-    async def _role_perms(self, db, schema: str, role_name: str) -> set[str]:
+    The R3 change to crud.order.get_orders_for_retailer catches ValueError/
+    TypeError from UUID() and returns ([], 0) with zero SQL queries.
+    """
+
+    async def test_malformed_wholesaler_id_returns_empty(
+        self, s2_clean_db
+    ):
+        """get_orders_for_retailer with invalid wholesaler_id → ([], 0), no SQL."""
+        from unittest.mock import AsyncMock
+        from crud.order import get_orders_for_retailer
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock()
+
+        result, count = await get_orders_for_retailer(
+            mock_db,
+            wholesaler_id="not-a-valid-uuid-for-wholesaler",
+            retailer_id="550e8400-e29b-41d4-a716-446655440000",
+        )
+        assert result == [], f"expected [], got {result}"
+        assert count == 0, f"expected 0, got {count}"
+        mock_db.execute.assert_not_called()
+
+    async def test_malformed_retailer_id_returns_empty(
+        self, s2_clean_db
+    ):
+        """get_orders_for_retailer with invalid retailer_id → ([], 0), no SQL."""
+        from unittest.mock import AsyncMock
+        from crud.order import get_orders_for_retailer
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock()
+
+        result, count = await get_orders_for_retailer(
+            mock_db,
+            wholesaler_id="550e8400-e29b-41d4-a716-446655440000",
+            retailer_id="not-a-valid-uuid-for-retailer",
+        )
+        assert result == [], f"expected [], got {result}"
+        assert count == 0, f"expected 0, got {count}"
+        mock_db.execute.assert_not_called()
+
+
+# ===========================================================================
+# §12 R3-R1: Real-PG dirty-state reconciliation proof for ALL 4 seeder paths
+# ===========================================================================
+
+
+class _ContaminationHelper:
+    """Shared helpers for dirty-state RBAC tests."""
+
+    @staticmethod
+    async def role_perms(db, schema: str, role_name: str) -> set[str]:
         from sqlalchemy import text
         rows = (await db.execute(text(
             f'SELECT p.code FROM "{schema}".role_permissions rp '
@@ -865,16 +932,15 @@ class TestRbacReconciliation:
         ))).fetchall()
         return set(r.code for r in rows)
 
-    async def _contaminate(self, db, schema: str, role_name: str, perm_code: str):
-        """Grant a foreign permission to a role to simulate contamination.
-        Ensures the permission code exists in the permissions table first."""
+    @staticmethod
+    async def contaminate(db, schema: str, role_name: str, perm_code: str) -> None:
+        """Grant a foreign permission to a role. Ensures the permission code
+        exists in the permissions table first."""
         from sqlalchemy import text
-        # Ensure the permission code exists in the permissions table.
         await db.execute(text(
             f'INSERT INTO "{schema}".permissions (code, description) '
             "VALUES (:code, :desc) ON CONFLICT (code) DO NOTHING"),
             {"code": perm_code, "desc": "contamination test"})
-        # Now grant it to the role.
         await db.execute(text(
             f'INSERT INTO "{schema}".role_permissions (role_id, permission_id) '
             f'SELECT r.id, p.id FROM "{schema}".roles r, "{schema}".permissions p '
@@ -882,15 +948,53 @@ class TestRbacReconciliation:
             f'AND NOT EXISTS (SELECT 1 FROM "{schema}".role_permissions rp '
             f'WHERE rp.role_id = r.id AND rp.permission_id = p.id)'),
             {"role": role_name, "code": perm_code})
-        await db.commit()
 
-    async def test_onboard_reconciles_contaminated_admin(
+    @staticmethod
+    async def strip_perm(db, schema: str, role_name: str, perm_code: str) -> None:
+        """Remove a canonical permission from a role to simulate missing grant."""
+        from sqlalchemy import text
+        await db.execute(text(
+            f'DELETE FROM "{schema}".role_permissions rp '
+            f'USING "{schema}".permissions p, "{schema}".roles r '
+            "WHERE rp.permission_id = p.id AND rp.role_id = r.id "
+            f"AND p.code = :code AND r.name = :role"),
+            {"code": perm_code, "role": role_name})
+
+    @staticmethod
+    async def cleanup_perms(db, schema: str, *perm_codes: str) -> None:
+        """Remove contamination permission codes from permissions table."""
+        from sqlalchemy import text
+        for code in perm_codes:
+            await db.execute(text(
+                f'DELETE FROM "{schema}".permissions WHERE code = :code AND description = \'contamination test\''),
+                {"code": code})
+
+    @staticmethod
+    async def cleanup_users(db, schema: str, *emails: str) -> None:
+        """Delete test users and their role assignments."""
+        from sqlalchemy import text
+        for email in emails:
+            uid = (await db.execute(text(
+                f'SELECT id FROM "{schema}".users WHERE email = :e'), {"e": email})).scalar()
+            if uid:
+                await db.execute(text(
+                    f'DELETE FROM "{schema}".user_roles WHERE user_id = :u'), {"u": uid})
+                await db.execute(text(
+                    f'DELETE FROM "{schema}".users WHERE id = :u'), {"u": uid})
+
+
+class TestRealPgSeederPaths:
+    """Each test exercises a real production seeder callable on real PG16 with
+    deliberately contaminated RBAC state, then proves exact canonical
+    reconciliation and second-run idempotency."""
+
+    # ------------------------------------------------------------------
+    # Seeder 1: onboard_tenant.setup_admin
+    # ------------------------------------------------------------------
+
+    async def test_seeder1_onboard_tenant(
         self, s2_clean_db
     ):
-        """Deliberately add a client:* perm to admin, run setup_admin, assert
-        admin is clean (only ADMIN_PERMISSION_CODES) and retailer_operator
-        has exactly RETAILER_OPERATOR_PERMISSION_CODES."""
-        from sqlalchemy import text
         from core.permission_registry import (
             ADMIN_PERMISSION_CODES,
             RETAILER_OPERATOR_PERMISSION_CODES,
@@ -900,78 +1004,425 @@ class TestRbacReconciliation:
 
         db, reg = s2_clean_db
         sch = _pool_instance.tenants["a"]["schema"]
+        email_base = f"r3r1_seed1_{uuid.uuid4().hex[:8]}"
+        email1 = f"{email_base}@cleanup.local"
+        email2 = f"{email_base}2@cleanup.local"
+        email3 = f"{email_base}3@cleanup.local"
+        owned_emails = [email1, email2, email3]
 
-        # Step 1: run setup_admin once to create the admin role + permissions.
-        await setup_admin(db, sch, f"r3a_{uuid.uuid4().hex[:6]}@test.local", "TestPass1!")
-        await db.commit()
+        try:
+            # Run seeder once to establish baseline
+            await setup_admin(db, sch, email1, "TestPass1!")
+            await db.commit()
 
-        # Step 2: contaminate admin with a client:* perm.
-        await self._contaminate(db, sch, "admin", "client:catalog:read")
-        assert "client:catalog:read" in await self._role_perms(db, sch, "admin"), "contamination setup failed"
+            # Contaminate: admin gets client:* ; retailer gets admin perm ; missing canonical
+            await _ContaminationHelper.contaminate(db, sch, "admin", "client:catalog:read")
+            await _ContaminationHelper.contaminate(db, sch, "retailer_operator", "orders:read")
+            await _ContaminationHelper.strip_perm(db, sch, "retailer_operator", "client:orders:read")
+            await db.commit()
 
-        # Step 3: re-run setup_admin — should reconcile (DELETE stale + re-seed).
-        await setup_admin(db, sch, f"r3b_{uuid.uuid4().hex[:6]}@test.local", "TestPass1!")
-        await db.commit()
+            # Verify contamination took hold
+            assert "client:catalog:read" in await _ContaminationHelper.role_perms(db, sch, "admin")
+            assert "orders:read" in await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
+            assert "client:orders:read" not in await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
 
-        admin_perms = await self._role_perms(db, sch, "admin")
-        retailer_perms = await self._role_perms(db, sch, "retailer_operator")
+            # Run seeder again with different user — should reconcile
+            await setup_admin(db, sch, email2, "TestPass1!")
+            await db.commit()
 
-        assert admin_perms == set(ADMIN_PERMISSION_CODES), (
-            f"admin not reconciled: {admin_perms ^ set(ADMIN_PERMISSION_CODES)}")
-        assert retailer_perms == set(RETAILER_OPERATOR_PERMISSION_CODES), (
-            f"retailer not reconciled: {retailer_perms ^ set(RETAILER_OPERATOR_PERMISSION_CODES)}")
-        assert not (admin_perms & retailer_perms), "roles overlap"
+            admin_perms = await _ContaminationHelper.role_perms(db, sch, "admin")
+            retailer_perms = await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
 
-    async def test_onboard_idempotent_second_run(
+            assert admin_perms == set(ADMIN_PERMISSION_CODES), (
+                f"admin not reconciled: extra={admin_perms - set(ADMIN_PERMISSION_CODES)}, "
+                f"missing={set(ADMIN_PERMISSION_CODES) - admin_perms}")
+            assert retailer_perms == set(RETAILER_OPERATOR_PERMISSION_CODES), (
+                f"retailer not reconciled: extra={retailer_perms - set(RETAILER_OPERATOR_PERMISSION_CODES)}, "
+                f"missing={set(RETAILER_OPERATOR_PERMISSION_CODES) - retailer_perms}")
+            assert "client:catalog:read" not in admin_perms, "client perm leaked into admin"
+            assert "orders:read" not in retailer_perms, "admin perm leaked into retailer"
+            assert "client:orders:read" in retailer_perms, "canonical perm still missing after reconcile"
+
+            # Prove third run is idempotent
+            await setup_admin(db, sch, email3, "TestPass1!")
+            await db.commit()
+
+            admin_perms2 = await _ContaminationHelper.role_perms(db, sch, "admin")
+            retailer_perms2 = await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
+
+            assert admin_perms2 == admin_perms, "admin fingerprint changed on re-run"
+            assert retailer_perms2 == retailer_perms, "retailer fingerprint changed on re-run"
+
+        finally:
+            await _ContaminationHelper.cleanup_users(db, sch, *owned_emails)
+            await _ContaminationHelper.cleanup_perms(db, sch, "client:catalog:read")
+            await db.commit()
+
+    # ------------------------------------------------------------------
+    # Seeder 2: create_wholesaler.assign_all_permissions_to_admin
+    # ------------------------------------------------------------------
+
+    async def test_seeder2_create_wholesaler(
         self, s2_clean_db
     ):
-        """A second run produces identical role-permission fingerprints."""
-        from core.permission_registry import ADMIN_PERMISSION_CODES
-        from scripts.onboard_tenant import setup_admin
-        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
-
-        db, reg = s2_clean_db
-        sch = _pool_instance.tenants["a"]["schema"]
-
-        await setup_admin(db, sch, f"idem1_{uuid.uuid4().hex[:6]}@test.local", "TestPass1!")
-        await db.commit()
-        fp1_admin = await self._role_perms(db, sch, "admin")
-        fp1_retailer = await self._role_perms(db, sch, "retailer_operator")
-
-        await setup_admin(db, sch, f"idem2_{uuid.uuid4().hex[:6]}@test.local", "TestPass1!")
-        await db.commit()
-        fp2_admin = await self._role_perms(db, sch, "admin")
-        fp2_retailer = await self._role_perms(db, sch, "retailer_operator")
-
-        assert fp1_admin == fp2_admin, "admin fingerprint changed on second run"
-        assert fp1_retailer == fp2_retailer, "retailer fingerprint changed on second run"
-
-    async def test_onboard_reconciles_contaminated_retailer(
-        self, s2_clean_db
-    ):
-        """Deliberately add an admin-only perm to retailer_operator, run
-        setup_admin, assert retailer_operator is clean."""
+        """assign_all_permissions_to_admin reconciles only the admin role
+        (this seeder does not touch retailer_operator)."""
         from sqlalchemy import text
-        from core.permission_registry import RETAILER_OPERATOR_PERMISSION_CODES
-        from scripts.onboard_tenant import setup_admin
+        from core.permission_registry import ADMIN_PERMISSION_CODES
+        from scripts.create_wholesaler import assign_all_permissions_to_admin
         from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
 
         db, reg = s2_clean_db
         sch = _pool_instance.tenants["a"]["schema"]
 
-        # Step 1: run setup_admin once to create roles + permissions.
-        await setup_admin(db, sch, f"r3ra_{uuid.uuid4().hex[:6]}@test.local", "TestPass1!")
-        await db.commit()
+        try:
+            # Record pre-seeder retailer perms (should not change)
+            retailer_before = await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
 
-        # Step 2: contaminate retailer_operator with an admin perm.
-        await self._contaminate(db, sch, "retailer_operator", "orders:read")
-        assert "orders:read" in await self._role_perms(db, sch, "retailer_operator")
+            # Contaminate admin with a client:* perm
+            await _ContaminationHelper.contaminate(db, sch, "admin", "client:catalog:read")
+            await db.commit()
+            assert "client:catalog:read" in await _ContaminationHelper.role_perms(db, sch, "admin")
 
-        # Step 3: re-run setup_admin — should reconcile.
-        await setup_admin(db, sch, f"r3rb_{uuid.uuid4().hex[:6]}@test.local", "TestPass1!")
-        await db.commit()
+            # Run the production seeder
+            await assign_all_permissions_to_admin(db, sch)
+            await db.commit()
 
-        retailer_perms = await self._role_perms(db, sch, "retailer_operator")
-        assert retailer_perms == set(RETAILER_OPERATOR_PERMISSION_CODES), (
-            f"retailer not reconciled: {retailer_perms ^ set(RETAILER_OPERATOR_PERMISSION_CODES)}")
-        assert "orders:read" not in retailer_perms, "admin perm leaked into retailer"
+            admin_perms = await _ContaminationHelper.role_perms(db, sch, "admin")
+            assert admin_perms == set(ADMIN_PERMISSION_CODES), (
+                f"admin not reconciled after seeder2: {admin_perms ^ set(ADMIN_PERMISSION_CODES)}")
+            assert "client:catalog:read" not in admin_perms
+
+            # Retailer operator must be unchanged by this seeder
+            retailer_after = await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
+            assert retailer_after == retailer_before, "retailer_operator was modified by create_wholesaler seeder"
+
+            # Second run: idempotent
+            await assign_all_permissions_to_admin(db, sch)
+            await db.commit()
+            admin_perms2 = await _ContaminationHelper.role_perms(db, sch, "admin")
+            assert admin_perms2 == admin_perms, "admin fingerprint changed on re-run"
+
+        finally:
+            await _ContaminationHelper.cleanup_perms(db, sch, "client:catalog:read")
+            await db.commit()
+
+    # ------------------------------------------------------------------
+    # Seeder 3: seed_test_tenant._seed_admin_rbac
+    # ------------------------------------------------------------------
+
+    async def test_seeder3_seed_test_tenant(
+        self, s2_clean_db
+    ):
+        from core.permission_registry import (
+            ADMIN_PERMISSION_CODES,
+            ADMIN_PERMISSIONS,
+            RETAILER_OPERATOR_PERMISSION_CODES,
+            RETAILER_OPERATOR_PERMISSIONS,
+        )
+        from scripts.seed_test_tenant import _seed_admin_rbac
+        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+
+        db, reg = s2_clean_db
+        sch = _pool_instance.tenants["a"]["schema"]
+        email_base = f"r3r1_seed3_{uuid.uuid4().hex[:8]}"
+        email1 = f"{email_base}@cleanup.local"
+        email2 = f"{email_base}2@cleanup.local"
+        owned_emails = [email1, email2]
+        all_permissions = ADMIN_PERMISSIONS + RETAILER_OPERATOR_PERMISSIONS
+        admin_codes = tuple(code for code, _ in ADMIN_PERMISSIONS)
+
+        try:
+            # Run seeder once
+            await _seed_admin_rbac(
+                db,
+                tenant_schema=sch,
+                admin_email=email1,
+                admin_password="TestPass1!",  # pragma: allowlist secret
+                admin_full_name="Seeder3 Admin",
+                permission_codes=all_permissions,
+                admin_role_codes=admin_codes,
+            )
+            await db.commit()
+
+            # Contaminate admin with a client:* perm
+            await _ContaminationHelper.contaminate(db, sch, "admin", "client:catalog:read")
+            await db.commit()
+            assert "client:catalog:read" in await _ContaminationHelper.role_perms(db, sch, "admin")
+
+            # Run seeder second time — should reconcile
+            await _seed_admin_rbac(
+                db,
+                tenant_schema=sch,
+                admin_email=email2,
+                admin_password="TestPass1!",  # pragma: allowlist secret
+                admin_full_name="Seeder3 Admin 2",
+                permission_codes=all_permissions,
+                admin_role_codes=admin_codes,
+            )
+            await db.commit()
+
+            admin_perms = await _ContaminationHelper.role_perms(db, sch, "admin")
+            assert admin_perms == set(ADMIN_PERMISSION_CODES), (
+                f"admin not reconciled: {admin_perms ^ set(ADMIN_PERMISSION_CODES)}")
+            assert "client:catalog:read" not in admin_perms
+
+            # Third run idempotent
+            await _seed_admin_rbac(
+                db,
+                tenant_schema=sch,
+                admin_email=email1,
+                admin_password="TestPass1!",  # pragma: allowlist secret
+                admin_full_name="Seeder3 Admin",
+                permission_codes=all_permissions,
+                admin_role_codes=admin_codes,
+            )
+            await db.commit()
+            admin_perms2 = await _ContaminationHelper.role_perms(db, sch, "admin")
+            assert admin_perms2 == admin_perms, "admin fingerprint changed on re-run"
+
+        finally:
+            await _ContaminationHelper.cleanup_users(db, sch, *owned_emails)
+            await _ContaminationHelper.cleanup_perms(db, sch, "client:catalog:read")
+            await db.commit()
+
+    # ------------------------------------------------------------------
+    # Seeder 4: seed_demo_data._seed_rbac
+    # ------------------------------------------------------------------
+
+    async def test_seeder4_seed_demo_data(
+        self, s2_clean_db
+    ):
+        from sqlalchemy import text
+        from core.permission_registry import (
+            ADMIN_PERMISSION_CODES,
+            RETAILER_OPERATOR_PERMISSION_CODES,
+        )
+        from core.security import hash_password
+        from scripts.seed_demo_data import _seed_rbac
+        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+
+        db, reg = s2_clean_db
+        sch = _pool_instance.tenants["a"]["schema"]
+        demo_email = "admin@mpango.demo"
+
+        try:
+            # _seed_rbac expects the demo admin user to exist
+            existing = (await db.execute(text(
+                f'SELECT id FROM "{sch}".users WHERE email = :e'), {"e": demo_email})).scalar()
+            if not existing:
+                await db.execute(text(
+                    f'INSERT INTO "{sch}".users (email, password_hash, full_name, is_active) '
+                    "VALUES (:e, :p, :n, true) ON CONFLICT (email) DO NOTHING"),
+                    {"e": demo_email, "p": hash_password("TestPass1!"), "n": "Demo Admin"})
+                await db.commit()
+
+            # Run seeder once to establish baseline
+            await _seed_rbac(db, sch)
+            await db.commit()
+
+            # Contaminate: admin gets client:* perm; retailer gets admin perm; missing canonical
+            await _ContaminationHelper.contaminate(db, sch, "admin", "client:catalog:read")
+            await _ContaminationHelper.contaminate(db, sch, "retailer_operator", "orders:read")
+            await _ContaminationHelper.strip_perm(db, sch, "retailer_operator", "client:orders:read")
+            await db.commit()
+
+            assert "client:catalog:read" in await _ContaminationHelper.role_perms(db, sch, "admin")
+            assert "orders:read" in await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
+            assert "client:orders:read" not in await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
+
+            # Run seeder second time — should reconcile
+            await _seed_rbac(db, sch)
+            await db.commit()
+
+            admin_perms = await _ContaminationHelper.role_perms(db, sch, "admin")
+            retailer_perms = await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
+
+            assert admin_perms == set(ADMIN_PERMISSION_CODES), (
+                f"admin not reconciled: extra={admin_perms - set(ADMIN_PERMISSION_CODES)}, "
+                f"missing={set(ADMIN_PERMISSION_CODES) - admin_perms}")
+            assert retailer_perms == set(RETAILER_OPERATOR_PERMISSION_CODES), (
+                f"retailer not reconciled: extra={retailer_perms - set(RETAILER_OPERATOR_PERMISSION_CODES)}, "
+                f"missing={set(RETAILER_OPERATOR_PERMISSION_CODES) - retailer_perms}")
+            assert "client:catalog:read" not in admin_perms
+            assert "orders:read" not in retailer_perms
+            assert "client:orders:read" in retailer_perms
+
+            # Third run idempotent
+            await _seed_rbac(db, sch)
+            await db.commit()
+            admin_perms2 = await _ContaminationHelper.role_perms(db, sch, "admin")
+            retailer_perms2 = await _ContaminationHelper.role_perms(db, sch, "retailer_operator")
+            assert admin_perms2 == admin_perms, "admin fingerprint changed on re-run"
+            assert retailer_perms2 == retailer_perms, "retailer fingerprint changed on re-run"
+
+        finally:
+            await _ContaminationHelper.cleanup_perms(db, sch, "client:catalog:read")
+            await db.commit()
+
+
+# ===========================================================================
+# §13 R3-R1: Malformed identity HTTP route tests
+# ===========================================================================
+
+
+class TestMalformedIdentityHttp:
+    """Registered HTTP routes with malformed ClientIdentity (wholesaler_id or
+    retailer_id set to non-UUID strings) must return controlled responses
+    (never 500, no internal detail leak).
+
+    Injects malformed identity via FastAPI app.dependency_overrides to
+    bypass the real resolve_client_identity — this is a test-only mechanism;
+    in production the UUID columns in the binding table prevent such values.
+
+    Zero-SQL proof is at the repository level (§11b); HTTP-level proof here
+    is that no 500 or internal detail leaks through the route handler.
+    """
+
+    @staticmethod
+    def _app_with_malformed_identity(
+        malformed_wholesaler: bool = False,
+        malformed_retailer: bool = False,
+    ):
+        """Build a FastAPI app where resolve_client_identity returns a
+        ClientIdentity with one malformed (non-UUID) ID."""
+        from unittest.mock import MagicMock
+        from fastapi import FastAPI
+        from api.v1.client.dependencies import ClientIdentity, resolve_client_identity
+        from api.app import configure_app
+        from core.config import get_settings
+
+        tid = "not-a-uuid-tenant" if malformed_wholesaler else "550e8400-e29b-41d4-a716-446655440000"
+        rid = "not-a-uuid-retailer" if malformed_retailer else "660e8400-e29b-41d4-a716-446655440000"
+
+        app = FastAPI()
+        with mock.patch("auth.factory.get_auth_strategy", return_value=JwtAuthStrategy()):
+            configure_app(app, get_settings())
+        register_exception_handlers(app)
+
+        malformed = ClientIdentity(
+            user_id="770e8400-e29b-41d4-a716-446655440000",
+            retailer_id=rid,
+            tenant_id=tid,
+            token=MagicMock(),
+        )
+        app.dependency_overrides[resolve_client_identity] = lambda: malformed
+        return app
+
+    async def test_list_malformed_wholesaler_id(
+        self, s3_client, two_tenants
+    ):
+        """GET /api/v1/client/orders with malformed wholesaler_id gets fail-closed."""
+        token = await _login_retailer(s3_client, two_tenants)
+        app = self._app_with_malformed_identity(malformed_wholesaler=True)
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as client:
+            resp = await client.get("/api/v1/client/orders")
+        assert resp.status_code != HTTPStatus.INTERNAL_SERVER_ERROR, resp.text
+        _assert_controlled_envelope(resp, allow=(HTTPStatus.OK, HTTPStatus.NOT_FOUND, HTTPStatus.FORBIDDEN))
+
+    async def test_detail_malformed_wholesaler_id(
+        self, s3_client, two_tenants, s2_clean_db
+    ):
+        """GET /api/v1/client/orders/{id} with malformed wholesaler_id."""
+        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+        db, reg = s2_clean_db
+        sch = _pool_instance.tenants["a"]["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ws_a = _pool_instance.tenants["a"]["ws_id"]
+        ret_a = await _resolve_binding(db, ws_a, uid_a)
+        sku = await _seed_sku(db, sch, ret_a)
+        token = await _login_retailer(s3_client, two_tenants)
+        oid = await _create_order(s3_client, token, sku)
+        app = self._app_with_malformed_identity(malformed_wholesaler=True)
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as client:
+            resp = await client.get(f"/api/v1/client/orders/{oid}")
+        assert resp.status_code != HTTPStatus.INTERNAL_SERVER_ERROR, resp.text
+
+    async def test_cancel_malformed_wholesaler_id(
+        self, s3_client, two_tenants, s2_clean_db
+    ):
+        """POST /api/v1/client/orders/{id}/cancel with malformed wholesaler_id."""
+        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+        db, reg = s2_clean_db
+        sch = _pool_instance.tenants["a"]["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ws_a = _pool_instance.tenants["a"]["ws_id"]
+        ret_a = await _resolve_binding(db, ws_a, uid_a)
+        sku = await _seed_sku(db, sch, ret_a)
+        token = await _login_retailer(s3_client, two_tenants)
+        oid = await _create_order(s3_client, token, sku)
+        app = self._app_with_malformed_identity(malformed_wholesaler=True)
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as client:
+            resp = await client.post(f"/api/v1/client/orders/{oid}/cancel")
+        assert resp.status_code != HTTPStatus.INTERNAL_SERVER_ERROR, resp.text
+
+    async def test_list_malformed_retailer_id(
+        self, s3_client, two_tenants
+    ):
+        """GET /api/v1/client/orders with malformed retailer_id gets fail-closed."""
+        token = await _login_retailer(s3_client, two_tenants)
+        app = self._app_with_malformed_identity(malformed_retailer=True)
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as client:
+            resp = await client.get("/api/v1/client/orders")
+        assert resp.status_code != HTTPStatus.INTERNAL_SERVER_ERROR, resp.text
+        _assert_controlled_envelope(resp, allow=(HTTPStatus.OK, HTTPStatus.NOT_FOUND, HTTPStatus.FORBIDDEN))
+
+    async def test_detail_malformed_retailer_id(
+        self, s3_client, two_tenants, s2_clean_db
+    ):
+        """GET /api/v1/client/orders/{id} with malformed retailer_id."""
+        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+        db, reg = s2_clean_db
+        sch = _pool_instance.tenants["a"]["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ws_a = _pool_instance.tenants["a"]["ws_id"]
+        ret_a = await _resolve_binding(db, ws_a, uid_a)
+        sku = await _seed_sku(db, sch, ret_a)
+        token = await _login_retailer(s3_client, two_tenants)
+        oid = await _create_order(s3_client, token, sku)
+        app = self._app_with_malformed_identity(malformed_retailer=True)
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as client:
+            resp = await client.get(f"/api/v1/client/orders/{oid}")
+        assert resp.status_code != HTTPStatus.INTERNAL_SERVER_ERROR, resp.text
+
+    async def test_cancel_malformed_retailer_id(
+        self, s3_client, two_tenants, s2_clean_db
+    ):
+        """POST /api/v1/client/orders/{id}/cancel with malformed retailer_id."""
+        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+        db, reg = s2_clean_db
+        sch = _pool_instance.tenants["a"]["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ws_a = _pool_instance.tenants["a"]["ws_id"]
+        ret_a = await _resolve_binding(db, ws_a, uid_a)
+        sku = await _seed_sku(db, sch, ret_a)
+        token = await _login_retailer(s3_client, two_tenants)
+        oid = await _create_order(s3_client, token, sku)
+        app = self._app_with_malformed_identity(malformed_retailer=True)
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as client:
+            resp = await client.post(f"/api/v1/client/orders/{oid}/cancel")
+        assert resp.status_code != HTTPStatus.INTERNAL_SERVER_ERROR, resp.text

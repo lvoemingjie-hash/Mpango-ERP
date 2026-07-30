@@ -75,7 +75,7 @@ async def _seed_admin_rbac(
     admin_password: str,
     admin_full_name: str,
     permission_codes: list[tuple[str, str]] | tuple[tuple[str, str], ...],
-    admin_role_codes: list[str] | tuple[str, ...] | None = None,
+    admin_role_codes: list[str] | tuple[str, ...],
 ) -> None:
     from sqlalchemy import text
 
@@ -146,10 +146,9 @@ async def _seed_admin_rbac(
         {"user_id": user_id, "role_id": role_id},
     )
 
-    # R2: only assign admin_role_codes (default: all requested_codes for backward compat)
-    # to the admin role. client:* permissions are seeded into the permissions table
-    # but NOT granted to admin.
-    assign_codes = list(admin_role_codes) if admin_role_codes is not None else requested_codes
+    # R2: only assign admin_role_codes to the admin role. client:* permissions are
+    # seeded into the permissions table but NOT granted to admin.
+    assign_codes = list(admin_role_codes)
 
     resolved_permission_ids: list[str] = []
     missing_permissions: list[str] = []
@@ -168,6 +167,11 @@ async def _seed_admin_rbac(
         raise RuntimeError(
             f"Missing requested admin permission(s): {sorted(missing_permissions)}"
         )
+
+    # R3: reconcile — remove stale grants before re-seeding
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :role_id'
+    ), {"role_id": str(role_id)})
 
     for perm_id in resolved_permission_ids:
         await db.execute(

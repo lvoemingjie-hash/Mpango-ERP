@@ -220,6 +220,11 @@ async def assign_all_permissions_to_admin(db: AsyncSession, tenant_schema: str):
         )
 
     # Assign only canonical admin permissions, never client:* permissions.
+    # R3: reconcile — remove stale grants before re-seeding canonical admin set
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :role_id'
+    ), {"role_id": str(role_id)})
+
     for _code, perm_id in resolved_permissions:
         # Check if already assigned
         check = await db.execute(

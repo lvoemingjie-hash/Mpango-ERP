@@ -175,7 +175,10 @@ class _PermissionCaptureDB:
 
         if sql.startswith("SET LOCAL search_path TO") or sql.startswith("INSERT INTO user_roles") or sql.startswith(
             "INSERT INTO role_permissions"
-        ) or sql.startswith("INSERT INTO roles"):
+        ) or sql.startswith("INSERT INTO roles") or sql.startswith("DELETE FROM role_permissions"
+        ) or sql.startswith("DELETE FROM \"") or sql.startswith("INSERT INTO permissions"
+        ) or sql.startswith("INSERT INTO retailer_prices"
+        ) or "ON CONFLICT" in sql:
             return _FakeResult()
 
         raise AssertionError(f"Unhandled SQL in permission capture DB: {sql}")

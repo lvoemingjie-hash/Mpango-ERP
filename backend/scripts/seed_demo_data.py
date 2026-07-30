@@ -367,6 +367,10 @@ async def _seed_rbac(db, ts: str) -> None:
     admin_perm_ids = (await db.execute(text(
         "SELECT id FROM permissions WHERE code = ANY(:codes)"
     ), {"codes": list(ADMIN_PERMISSION_CODES)})).fetchall()
+    # R3: reconcile
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :r'
+    ), {"r": rid})
     for (pid,) in admin_perm_ids:
         await db.execute(text(
             "INSERT INTO role_permissions (role_id, permission_id) "
@@ -385,6 +389,10 @@ async def _seed_rbac(db, ts: str) -> None:
     ret_perm_ids = (await db.execute(text(
         "SELECT id FROM permissions WHERE code = ANY(:codes)"
     ), {"codes": list(RETAILER_OPERATOR_PERMISSION_CODES)})).fetchall()
+    # R3: reconcile
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :r'
+    ), {"r": ret_rid})
     for (pid,) in ret_perm_ids:
         await db.execute(text(
             "INSERT INTO role_permissions (role_id, permission_id) "

@@ -210,6 +210,11 @@ async def setup_admin(
 
     print(f"  ✓ Admin role ensured")
 
+    # R3: reconcile — remove stale grants before re-seeding canonical set
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :rid'
+    ), {"rid": str(role_id)})
+
     for code, _desc in ADMIN_PERMISSIONS:
         perm_id = perm_id_by_code[code]
         check = await db.execute(
@@ -238,6 +243,11 @@ async def setup_admin(
         await db.flush()
         retailer_role_id = retailer_role.id
 
+    # R3: reconcile — remove stale grants before re-seeding canonical set
+    await db.execute(text(
+        'DELETE FROM role_permissions WHERE role_id = :rid'
+    ), {"rid": str(retailer_role_id)})
+
     for code, _desc in RETAILER_OPERATOR_PERMISSIONS:
         perm_id = perm_id_by_code[code]
         check = await db.execute(
@@ -264,11 +274,9 @@ async def setup_admin(
 
     user = User(
         email=email,
-        hashed_password=hash_password(password),
-        first_name=first_name,
-        last_name=last_name,
+        password_hash=hash_password(password),
+        full_name=f"{first_name} {last_name}",
         is_active=True,
-        is_superuser=False,
     )
     db.add(user)
     await db.flush()

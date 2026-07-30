@@ -246,14 +246,17 @@ async def get_orders_for_retailer(
     """DC-12R1-S3-S1-R1: retailer-specific paginated order list.
 
     Both ``wholesaler_id`` and ``retailer_id`` are **mandatory** and validated.
-    Invalid UUIDs raise ``ValueError`` (never silently omit either predicate),
-    so the caller gets a controlled error rather than an unscoped query.
+    Invalid UUIDs return an empty result (zero orders, zero count) — never an
+    unscoped query and never a propagated ValueError/500.
 
     The generic ``get_orders_paginated`` remains for wholesaler-side use where
     filters are genuinely optional.
     """
-    ws_uuid = UUID(wholesaler_id)  # raises ValueError on invalid — mandatory
-    retailer_uuid = UUID(retailer_id)  # raises ValueError on invalid — mandatory
+    try:
+        ws_uuid = UUID(wholesaler_id)
+        retailer_uuid = UUID(retailer_id)
+    except (ValueError, TypeError):
+        return [], 0
 
     base_query = (
         select(Order)

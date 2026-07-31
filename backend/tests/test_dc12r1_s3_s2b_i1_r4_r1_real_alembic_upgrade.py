@@ -703,6 +703,262 @@ class TestRealAlembicUpgradeFailClosed:
                 eng.dispose()
 
     # ------------------------------------------------------------------
+    # R4-R2 Bypass 12: status <> all allowed values (<> chain rejected)
+    # ------------------------------------------------------------------
+    def test_status_not_equal_chain_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r2ne") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+                    run_alembic_upgrade(config, "head")
+
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            'DROP CONSTRAINT ck_payment_declarations_status'))
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            "ADD CONSTRAINT ck_payment_declarations_status "
+                            "CHECK (status <> 'cash' AND status <> 'transfer')"))
+                        conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                                     {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert "status" in str(exc.value).lower()
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # R4-R2 Bypass 13: status IN valid list OR 1=1 (OR weakening)
+    # ------------------------------------------------------------------
+    def test_status_or_1_equals_1_weakening_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r2or") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+                    run_alembic_upgrade(config, "head")
+
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            'DROP CONSTRAINT ck_payment_declarations_status'))
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            "ADD CONSTRAINT ck_payment_declarations_status "
+                            "CHECK (status IN ('pending','confirmed','rejected') OR 1=1)"))
+                        conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                                     {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert "status" in str(exc.value).lower()
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # R4-R2 Bypass 14: declared_amount > 0 OR 1=1
+    # ------------------------------------------------------------------
+    def test_amount_or_1_equals_1_weakening_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r2am") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+                    run_alembic_upgrade(config, "head")
+
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            'DROP CONSTRAINT ck_payment_declarations_amount_positive'))
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            "ADD CONSTRAINT ck_payment_declarations_amount_positive "
+                            "CHECK (declared_amount > 0 OR 1=1)"))
+                        conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                                     {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert "declared_amount" in str(exc.value).lower()
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # R4-R2 Bypass 15: status DEFAULT 'pending '::text (trailing space)
+    # ------------------------------------------------------------------
+    def test_status_default_trailing_space_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r2ts") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+                    run_alembic_upgrade(config, "head")
+
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            "ALTER COLUMN status SET DEFAULT 'pending '::text"))
+                        conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                                     {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert "status" in str(exc.value).lower()
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # R4-R2 Bypass 16: ux_payments_receipt_number with wrong key
+    # ------------------------------------------------------------------
+    def test_receipt_index_wrong_key_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r2rk") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+                    run_alembic_upgrade(config, "head")
+
+                    with eng.begin() as conn:
+                        conn.execute(text(f'DROP INDEX "{schema}".{UX_RECEIPT}'))
+                        # Recreate with wrong key (idempotency_key instead of receipt_number)
+                        conn.execute(text(
+                            f'CREATE UNIQUE INDEX {UX_RECEIPT} '
+                            f'ON "{schema}".payments (idempotency_key) '
+                            'WHERE receipt_number IS NOT NULL'))
+                        conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                                     {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert UX_RECEIPT in str(exc.value) or "receipt" in str(exc.value).lower()
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # R4-R2 Bypass 17: ux_payments_receipt_number with weakened predicate
+    # ------------------------------------------------------------------
+    def test_receipt_index_weakened_predicate_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r2rp") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+                    run_alembic_upgrade(config, "head")
+
+                    with eng.begin() as conn:
+                        conn.execute(text(f'DROP INDEX "{schema}".{UX_RECEIPT}'))
+                        # Recreate with correct key but no partial predicate
+                        conn.execute(text(
+                            f'CREATE UNIQUE INDEX {UX_RECEIPT} '
+                            f'ON "{schema}".payments (receipt_number)'))
+                        conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                                     {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert UX_RECEIPT in str(exc.value) or "receipt" in str(exc.value).lower()
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # R4-R2 Bypass 18: regular index with extra predicate
+    # ------------------------------------------------------------------
+    def test_regular_index_extra_predicate_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r2ep") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+                    run_alembic_upgrade(config, "head")
+
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'DROP INDEX "{schema}".{IX_DECL_RS}'))
+                        # Recreate with extra predicate that shouldn't be there
+                        conn.execute(text(
+                            f'CREATE INDEX {IX_DECL_RS} '
+                            f'ON "{schema}".payment_declarations (retailer_id, status) '
+                            "WHERE status IS NOT NULL"))
+                        conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                                     {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert IX_DECL_RS in str(exc.value)
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # R4-R2 Bypass 19: regular index with wrong uniqueness
+    # ------------------------------------------------------------------
+    def test_regular_index_wrong_uniqueness_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r2wu") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+                    run_alembic_upgrade(config, "head")
+
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'DROP INDEX "{schema}".{IX_DECL_RS}'))
+                        # Recreate as UNIQUE (should be non-unique)
+                        conn.execute(text(
+                            f'CREATE UNIQUE INDEX {IX_DECL_RS} '
+                            f'ON "{schema}".payment_declarations (retailer_id, status)'))
+                        conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                                     {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert IX_DECL_RS in str(exc.value)
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
     # GREEN path: canonical upgrade, second run no-op
     # ------------------------------------------------------------------
     def test_canonical_upgrade_reaches_037_and_second_run_noops(self):

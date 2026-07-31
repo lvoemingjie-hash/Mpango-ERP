@@ -1,9 +1,9 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-07-30
+**Last updated:** 2026-07-31
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `0aec0f0ba9b63aafd43f9194e63348b0f57c7e19`
+**Accepted product merge:** `0f9d259b4a6c20584721c53b59ba94c510d1970d`
 **Current database head:** `036_retailer_mvp_identity`
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
@@ -74,7 +74,7 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product baseline | `origin/product-dev-recovered@0aec0f0b` |
+| Product baseline | `origin/product-dev-recovered@0f9d259b` |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `036_retailer_mvp_identity` |
@@ -158,7 +158,7 @@ The reviewed source
 `kilo/dc12r1-s3-s2-read-only-retailer-finance-2026-07-30@b56ae841`
 was merged with `--no-ff` as:
 
-`0aec0f0ba9b63aafd43f9194e63348b0f57c7e19`
+`0f9d259b4a6c20584721c53b59ba94c510d1970d`
 
 Post-merge verification on fresh PostgreSQL 16 and Redis 7 reached sole
 Alembic head `036`, passed the S3-S1/S3-S2 backend bundle (`50 passed`),
@@ -212,7 +212,7 @@ retailer permission boundary.
 
 #### DC-12R1-S3-S2 - read-only retailer finance (completed)
 
-Merged as `0aec0f0ba9b63aafd43f9194e63348b0f57c7e19`.
+Merged as `0f9d259b4a6c20584721c53b59ba94c510d1970d`.
 
 Delivered:
 

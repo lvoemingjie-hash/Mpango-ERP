@@ -1,6 +1,6 @@
-# DC-12R1-S3-S2B-D-R4: Retailer Payment Declaration, Cashier Confirmation, Receipt & Print Contract (Final)
+# DC-12R1-S3-S2B-D-R4-R1: Retailer Payment Declaration, Cashier Confirmation, Receipt & Print Contract (Final)
 
-**Date:** 2026-07-31 (R4 correction of R2; integrates H3 baseline)
+**Date:** 2026-07-31 (R4-R1 correction of R4; integrates H3 baseline)
 **Branch:** `zcode/dc12r1-s3-s2b-d-payment-declaration-contract-2026-07-30`
 **Product baseline:** `origin/product-dev-recovered` @ `0f9d259b` (H3 merged)
 **Doc checkpoint:** `origin/codex/dc12-project-status-s3-s2-2026-07-30` @ `2359fc0d`
@@ -24,6 +24,17 @@ R2 applied seven corrections (R2.1–R2.7). R4 applies six additional correction
 | R4.6 | Test matrix expanded with 8 new R4 tests (TM-33 through TM-40) covering all above |
 
 R2 corrections (R2.1–R2.7) remain in effect and are not repeated here.
+
+R4-R1 applies six additional corrections on top of R4:
+
+| # | R4-R1 Correction |
+|---|---|
+| R4-R1.1 | Canonical confirmation payment key is exactly `decl-confirm-{declaration_id.hex}` — never the retailer declaration idempotency key (DD-16) |
+| R4-R1.2 | `transfer_reference`: trim first; reject blank; length 1–128; no truncation; widen `payments.transaction_id` to `VARCHAR(128)` in migration 037 + bootstrap parity (DD-15) |
+| R4-R1.3 | Every cashier-confirmed declaration creates `status='completed'` payment; removed all "pending confirmation" language; direct `pay_order` status behavior unchanged (DD-17) |
+| R4-R1.4 | Restored DR-01 through DR-12 in decision register; all FIND-01–FIND-46 mapped to valid DR IDs; CSV `decision_ref` validated |
+| R4-R1.5 | `CTO_CURRENT_OPS.md` and `PROJECT.md` updated to baseline `0f9d259b`; stale `0aec0f0b` removed |
+| R4-R1.6 | Added design tests TM-41 through TM-48 for exact key, cross-retailer reuse, 128/129 boundary, blank rejection, duplicate 409, partial/final completed, direct-pay preservation, DR/FIND gap |
 
 ---
 
@@ -326,15 +337,27 @@ Browser-native `window.print()`. No server-side PDF.
 | `GET` | `/api/v1/declarations` | `payments:read` |
 | `GET` | `/api/v1/declarations/{id}` | `payments:read` |
 
-### DD-15: Transfer Reference → Transaction ID Mapping (R4)
+### DD-15: Transfer Reference → Transaction ID Mapping (R4/R4-R1)
 
 **Exact mapping:** When a cashier confirms a declaration, the declaration's `transfer_reference` is passed to `CanonicalPaymentService.confirm_payment` as the canonical payment's `transaction_id`.
 
-- Declaration field: `transfer_reference VARCHAR(128)`
-- Payment field: `transaction_id VARCHAR(64)` (existing — `payment_repository.py:242`)
-- The value from `transfer_reference` is stored as `transaction_id` on the canonical payment row.
-- The canonical path's duplicate-transfer check (`get_by_transaction_id`, `orders.py:732-739`) runs at confirmation. A duplicate `transaction_id` returns controlled 409 `DUPLICATE_TRANSFER_REFERENCE`.
+**Validation rules (R4-R1):**
+- `transfer_reference` is **trimmed** (leading/trailing whitespace removed) before any processing.
+- After trim, a **blank** reference (empty string or whitespace-only) for a transfer declaration is **rejected** with 400 `DECLARATION_TRANSFER_REFERENCE_REQUIRED`.
+- After trim, the length must be **1–128 characters**. No truncation is performed — a reference exceeding 128 characters is rejected with 400 `DECLARATION_TRANSFER_REFERENCE_TOO_LONG`.
 - For cash declarations, `transfer_reference` is NULL; `transaction_id` on the payment is also NULL.
+
+**Schema widening (R4-R1):**
+- Declaration field: `transfer_reference VARCHAR(128)` (no truncation; reject if > 128 after trim).
+- Payment field: `transaction_id` is currently `VARCHAR(64)` (`scripts/bootstrap_tenant_schema.py` payments DDL). Migration 037 must **widen** `payments.transaction_id` to `VARCHAR(128)` in every live tenant schema:
+  ```sql
+  ALTER TABLE "{schema}".payments ALTER COLUMN transaction_id TYPE VARCHAR(128);
+  ```
+- **Fresh-bootstrap parity:** `bootstrap_tenant_schema.py` payments DDL must also use `VARCHAR(128)` for `transaction_id` so new tenants match migrated tenants.
+- **Existing-schema reconciliation:** Migration 037 must apply the `ALTER COLUMN ... TYPE VARCHAR(128)` to every enumerated live tenant schema (same enumeration as R2.1).
+
+**Duplicate detection:**
+- The canonical path's duplicate-transfer check (`get_by_transaction_id`, `orders.py:732-739`) runs at confirmation. A duplicate tenant-local `transaction_id` returns controlled 409 `DUPLICATE_TRANSFER_REFERENCE`.
 
 ### DD-16: Declaration Key vs Canonical Payment Key (R4)
 
@@ -345,19 +368,29 @@ Browser-native `window.print()`. No server-side PDF.
 | Declaration key | `UNIQUE(retailer_id, idempotency_key)` on `payment_declarations` | Prevents duplicate declarations by the same retailer |
 | Canonical payment key | `UNIQUE(idempotency_key)` on `payments` (existing) | Prevents duplicate canonical payments |
 
-**No collision:** The declaration's `idempotency_key` is NOT passed as the canonical payment's `idempotency_key`. The canonical payment key is generated by `CanonicalPaymentService` (deterministic from declaration ID). This ensures:
+**No collision:** The declaration's `idempotency_key` is NOT passed as the canonical payment's `idempotency_key`. The canonical payment key is exactly:
+
+```
+decl-confirm-{declaration_id.hex}
+```
+
+where `declaration_id.hex` is the hex representation of the declaration's UUID (32 chars, no dashes). This key is **never** the retailer's declaration idempotency key. This ensures:
 
 - A declaration key and a canonical payment key can never collide (different namespaces).
 - Two retailers can use the same declaration key independently (different `retailer_id` in the unique constraint).
 - Concurrent confirmation of the same declaration produces exactly one canonical payment (FOR UPDATE + double-check).
 
-### DD-17: Partial and Final Confirmation Lifecycle (R4)
+### DD-17: Partial and Final Confirmation Lifecycle (R4/R4-R1)
 
-**Partial confirmation:** A cashier may confirm a declaration for an amount less than the order's remaining balance. The canonical payment is created with `status='completed'` (for cash/transfer), the order transitions from `CONFIRMED` to `PARTIALLY_PAID` (via `OrderService.transition`), and the `outstanding_balance` is reduced by the confirmed amount.
+**Every cashier-confirmed declaration creates a canonical payment with `status='completed'.** There is no path where confirmation produces a `pending` payment. The existing `pay_order` route handler's logic for determining `completed` vs `pending` status (orders.py:746-764) applies only to **direct** wholesaler-initiated payments — it is **unchanged** by this design. The declaration confirmation path always sets `status='completed'` because the cashier has verified the payment before confirming.
 
-**Final confirmation:** When cumulative confirmed payments reach or exceed the order total, the order transitions to `PAID`. The `receipt_number` is allocated only for the canonical payment row — it is not allocated for pending declarations.
+**Partial confirmation:** A cashier may confirm a declaration for an amount less than the order's remaining balance. The canonical payment is created with `status='completed'`, the order transitions from `CONFIRMED` to `PARTIALLY_PAID` (via `OrderService.transition`), and the `outstanding_balance` is reduced by the confirmed amount.
 
-**Receipt-on-completed-only:** A receipt (`payments.receipt_number`) exists only when the canonical payment is `completed`. Pending declarations have no receipt. If a confirmation produces a `pending` canonical payment (e.g., transfer that doesn't fully settle), the receipt is allocated when the payment is later completed via `update_cash_transfer_to_completed` (orders.py:806-810).
+**Final confirmation:** When cumulative confirmed payments reach or exceed the order total, the order transitions to `PAID`. The `receipt_number` is allocated for the canonical payment row.
+
+**Receipt-on-completed-only:** A receipt (`payments.receipt_number`) exists only on `completed` canonical payments. Since every confirmation creates a `completed` payment, every confirmed declaration has a receipt. Pending declarations (not yet confirmed) have no receipt and no payment row.
+
+**Direct pay_order behavior preserved (R4-R1):** The existing `POST /api/v1/orders/{order_id}/pay` route handler retains its current status logic unchanged — it may still create `pending` payments for transfers that don't fully settle, and complete them later via `update_cash_transfer_to_completed` (orders.py:806-810). This behavior is **not modified** by the declaration confirmation design. The declaration confirmation path uses `CanonicalPaymentService.confirm_payment` with `force_completed=True`, which is a new parameter that does not affect the direct `pay_order` path.
 
 **Exposure closure:** For credit-collection declarations, final confirmation reduces `outstanding_balance` to 0 via `_apply_outstanding_balance_delta(delta=-amount)`. The order remains `PAID` (credit orders enter payment flow already PAID; confirmation collects the exposure).
 
@@ -457,6 +490,14 @@ Browser-native `window.print()`. No server-side PDF.
 | TM-38 | Receipt only for cashier-confirmed completed payment: pending declaration has no receipt_number on payment row (R4) | DD-05, DD-17 |
 | TM-39 | transfer_reference maps exactly to transaction_id on canonical payment row (R4) | DD-15 |
 | TM-40 | Duplicate transfer reference at confirmation → controlled 409 DUPLICATE_TRANSFER_REFERENCE (R4) | DD-15 |
+| TM-41 | Exact canonical confirm key: payment.idempotency_key = `decl-confirm-{declaration_id.hex}`; never the retailer declaration key (R4-R1) | DD-16 |
+| TM-42 | Cross-retailer key reuse: two retailers use the same declaration idempotency_key; both succeed independently; different canonical payments (R4-R1) | DD-12, DD-16 |
+| TM-43 | transfer_reference 128 chars accepted; 129 chars rejected with 400 DECLARATION_TRANSFER_REFERENCE_TOO_LONG; no truncation (R4-R1) | DD-15 |
+| TM-44 | Blank/whitespace-only transfer_reference rejected with 400 DECLARATION_TRANSFER_REFERENCE_REQUIRED (R4-R1) | DD-15 |
+| TM-45 | Duplicate transfer reference → controlled 409 DUPLICATE_TRANSFER_REFERENCE; tenant-local scope (R4-R1) | DD-15 |
+| TM-46 | Every confirmation creates status='completed' payment; no path produces pending payment from confirmation (R4-R1) | DD-17 |
+| TM-47 | Direct pay_order behavior preserved: existing pending/completed status logic unchanged after CanonicalPaymentService extraction (R4-R1) | DD-04, DD-17 |
+| TM-48 | DR/FIND mechanical accounting: findings=46, mapped=46, gap=0; every CSV decision_ref is a valid DR ID (R4-R1) | DD-01 through DD-17 |
 
 ---
 
@@ -562,14 +603,21 @@ No mojibake detected (scan for U+FFFD: zero hits). Non-ASCII punctuation (em-das
 | 33 | Receipt only for completed payment, never pending (R4.4, DD-17) | PASS |
 | 34 | Duplicate transfer reference → 409 DUPLICATE_TRANSFER_REFERENCE (R4.5, DD-15) | PASS |
 | 35 | No stale 0aec baseline reference (product baseline is 0f9d259b) | PASS |
-| 36 | FIND-01 through FIND-42 all mapped in CSV (gap=0) | PASS |
+| 36 | FIND-01 through FIND-46 all mapped in CSV (gap=0) | PASS |
+| 37 | Canonical confirm key = `decl-confirm-{declaration_id.hex}`; never declaration key (R4-R1.1) | PASS |
+| 38 | transfer_reference: trim, reject blank, 1-128, no truncation, widen transaction_id VARCHAR(128) (R4-R1.2) | PASS |
+| 39 | Every confirmation creates status='completed'; no pending-from-confirmation language (R4-R1.3) | PASS |
+| 40 | Direct pay_order status behavior preserved unchanged (R4-R1.3) | PASS |
+| 41 | DR-01 through DR-12 restored in decision register; FIND-01–FIND-46 mapped to valid DR IDs (R4-R1.4) | PASS |
+| 42 | CTO_CURRENT_OPS.md + PROJECT.md updated to 0f9d259b; stale 0aec removed (R4-R1.5) | PASS |
+| 43 | No contradictory pending-confirmation language found | PASS |
 
 ---
 
 ## 13. Verdict
 
 ```
-PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING_R4
+PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING_R4_R1
 ```
 
 All accounting sources of truth resolved. No tenant-wide statement query exposed to a retailer. No duplicate receipt source. No migration relying on per-tenant alembic_version. No product code or migration implementation started.

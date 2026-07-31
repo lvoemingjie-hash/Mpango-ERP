@@ -1,9 +1,9 @@
 # CTO Current Ops
 
-**Last updated:** 2026-07-30
+**Last updated:** 2026-07-31
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `0aec0f0ba9b63aafd43f9194e63348b0f57c7e19`
+**Accepted product merge:** `0f9d259b4a6c20584721c53b59ba94c510d1970d`
 **Current migration head:** `036_retailer_mvp_identity`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
@@ -13,7 +13,7 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered@0aec0f0b` is the active product baseline.
+- `origin/product-dev-recovered@0f9d259b` is the active product baseline.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -54,7 +54,7 @@ Source validation:
 
 Controlled merge:
 
-`0aec0f0ba9b63aafd43f9194e63348b0f57c7e19`
+`0f9d259b4a6c20584721c53b59ba94c510d1970d`
 
 Post-merge validation:
 
@@ -132,7 +132,7 @@ Required business boundary:
 Stop and report to the CTO if:
 
 - fetched `origin/product-dev-recovered` is not
-  `0aec0f0ba9b63aafd43f9194e63348b0f57c7e19`;
+  `0f9d259b4a6c20584721c53b59ba94c510d1970d`;
 - the design permits a declaration to mutate a payment, ledger, order status, or
   receivable before cashier confirmation;
 - the design reuses generic wholesaler routes for retailer writes;

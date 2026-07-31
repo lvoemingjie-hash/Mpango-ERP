@@ -172,38 +172,116 @@ def _validate_tenant_schema_name(schema: str | None, evidence_name: str) -> None
 
 
 # ---------------------------------------------------------------------------
-# semantic fail-closed preflight (R1.2 — exact catalog verification)
+# R3: pg_catalog semantic fail-closed preflight
 # ---------------------------------------------------------------------------
 
+PG_CATALOG_COLUMNS_SQL = """
+    SELECT a.attname AS column_name,
+           pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+           a.attnotnull AS not_null,
+           pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS column_default
+    FROM pg_catalog.pg_attribute a
+    JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+    WHERE n.nspname = :schema AND c.relname = :table_name
+      AND a.attnum > 0 AND NOT a.attisdropped
+    ORDER BY a.attnum
+"""
+
+PG_CATALOG_CONSTRAINTS_SQL = """
+    SELECT c.conname, c.contype,
+           pg_catalog.pg_get_constraintdef(c.oid) AS constraint_def
+    FROM pg_catalog.pg_constraint c
+    JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = :schema AND t.relname = :table_name
+"""
+
+PG_CATALOG_INDEXES_SQL = """
+    SELECT i.indexrelid::regclass::text AS index_name,
+           i.indisunique,
+           i.indisprimary,
+           pg_catalog.pg_get_indexdef(i.indexrelid) AS index_def
+    FROM pg_catalog.pg_index i
+    JOIN pg_catalog.pg_class t ON t.oid = i.indrelid
+    JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = :schema AND t.relname = :table_name
+"""
+
+
+def _pg_catalog_columns(bind, schema, table_name):
+    """Return {column_name: (data_type, not_null, column_default)} from pg_catalog."""
+    return {(r[0], r[1], r[2], r[3]) for r in bind.execute(
+        sa.text(PG_CATALOG_COLUMNS_SQL),
+        {"schema": schema, "table_name": table_name},
+    ).fetchall()}
+
+
+def _pg_catalog_constraints(bind, schema, table_name):
+    """Return {(conname, contype, constraint_def)} from pg_catalog."""
+    return {(r[0], r[1], r[2]) for r in bind.execute(
+        sa.text(PG_CATALOG_CONSTRAINTS_SQL),
+        {"schema": schema, "table_name": table_name},
+    ).fetchall()}
+
+
+def _pg_catalog_indexes(bind, schema, table_name):
+    """Return {(index_name, indisunique, index_def)} from pg_catalog."""
+    return {(r[0], r[1], r[2]) for r in bind.execute(
+        sa.text(PG_CATALOG_INDEXES_SQL),
+        {"schema": schema, "table_name": table_name},
+    ).fetchall()}
+
+
 def _preflight_semantic(bind, rows: list[dict[str, Any]]) -> None:
-    """Verify exact columns/types/nullability/defaults, CHECK/FK/UNIQUE/index
-    definitions, receipt_number and transaction_id contracts, and permission
-    collision before any mutation. Fails closed — no mutation occurs."""
+    """R3: pg_catalog semantic validators for exact column sets, types, lengths,
+    precision/scale, nullability, defaults, PK/FK targets/delete actions, exact
+    CHECK expressions, index uniqueness/keys/predicates.
+    Fails closed — no mutation occurs."""
     failures: list[str] = []
     for row in rows:
         schema = row["tenant_schema"]
-
-        # --- payments.transaction_id contract ---
         if not _table_exists(bind, schema, PAYMENTS):
             continue
 
-        ti_info = bind.execute(sa.text(
-            "SELECT data_type, character_maximum_length, is_nullable "
-            "FROM information_schema.columns "
-            "WHERE table_schema = :s AND table_name = 'payments' AND column_name = 'transaction_id'"
-        ), {"s": schema}).first()
-        if ti_info is None:
-            failures.append(f"{schema}.payments: transaction_id column is missing")
-        elif ti_info[0] != "character varying":
-            failures.append(f"{schema}.payments.transaction_id: expected character varying, got {ti_info[0]}")
-        elif ti_info[1] is not None and ti_info[1] != 64 and ti_info[1] != 128:
-            failures.append(f"{schema}.payments.transaction_id: unexpected length {ti_info[1]}")
+        # --- payments.transaction_id ---
+        ti_cols = _pg_catalog_columns(bind, schema, PAYMENTS)
+        ti_exact = {("transaction_id", "character varying(64)", False, None),
+                     ("transaction_id", "character varying(128)", False, None),
+                     ("transaction_id", "character varying", False, None)}
+        if not any(c[0] == "transaction_id" for c in ti_cols):
+            failures.append(f"{schema}.payments: transaction_id column missing")
+        else:
+            ti_match = [c for c in ti_cols if c[0] == "transaction_id"]
+            if ti_match and ti_match[0] not in ti_exact:
+                failures.append(
+                    f"{schema}.payments.transaction_id: expected VARCHAR(64) or VARCHAR(128), got {ti_match[0][1]}")
 
-        # --- orders table for FK ---
+        # --- payments.receipt_number (R3.2 — may already exist from prior upgrade) ---
+        rn_match = [c for c in ti_cols if c[0] == "receipt_number"]
+        if rn_match:
+            rn = rn_match[0]
+            if rn[1] not in ("character varying(32)", "character varying"):
+                failures.append(f"{schema}.payments.receipt_number: expected VARCHAR(32), got {rn[1]}")
+            if rn[2]:
+                failures.append(f"{schema}.payments.receipt_number: must be nullable")
+            # Verify partial unique index if receipt_number already exists
+            rn_idxs = {i[2] for i in _pg_catalog_indexes(bind, schema, PAYMENTS)
+                       if "receipt_number" in i[2] and i[0] == UX_PAYMENTS_RECEIPT_NUMBER}
+            if rn_idxs:
+                has_unique_receipt = any("UNIQUE" in idx and "receipt_number IS NOT NULL" in idx
+                                          for idx in rn_idxs)
+                if not has_unique_receipt:
+                    failures.append(
+                        f"{schema}.payments: ux_payments_receipt_number missing or wrong predicate")
+
+        # --- orders FK target ---
         if not _table_exists(bind, schema, ORDERS):
-            failures.append(f"{schema}.orders: orders table is missing (FK target)")
+            failures.append(f"{schema}.orders: missing (FK target)")
 
-        # --- permission collision: both old and new must not coexist ---
+        # --- permission collision ---
         old_count = bind.execute(sa.text(
             f'SELECT COUNT(*) FROM "{schema}".permissions WHERE code = :code'
         ), {"code": OLD_CLIENT_PAY_PERM}).scalar()
@@ -211,107 +289,140 @@ def _preflight_semantic(bind, rows: list[dict[str, Any]]) -> None:
             f'SELECT COUNT(*) FROM "{schema}".permissions WHERE code = :code'
         ), {"code": NEW_CLIENT_PAY_PERM}).scalar()
         if old_count > 0 and new_count > 0:
-            failures.append(
-                f"{schema}.permissions: both {OLD_CLIENT_PAY_PERM} and {NEW_CLIENT_PAY_PERM} exist (collision)"
-            )
+            failures.append(f"{schema}.permissions: collision — both {OLD_CLIENT_PAY_PERM} and {NEW_CLIENT_PAY_PERM} exist")
         if old_count == 0 and new_count == 0:
-            failures.append(
-                f"{schema}.permissions: neither {OLD_CLIENT_PAY_PERM} nor {NEW_CLIENT_PAY_PERM} exists"
-            )
+            failures.append(f"{schema}.permissions: neither {OLD_CLIENT_PAY_PERM} nor {NEW_CLIENT_PAY_PERM} exists")
 
-        # --- payment_declarations: if exists, verify exact catalog ---
+        # --- payment_declarations ---
         if _table_exists(bind, schema, PAYMENT_DECLARATIONS):
-            _verify_declaration_catalog(bind, schema, failures)
+            _verify_declaration_catalog_pg(bind, schema, failures)
+
+        # --- receipt_sequences ---
+        if _table_exists(bind, schema, RECEIPT_SEQUENCES):
+            _verify_receipt_sequences_pg(bind, schema, failures)
 
     if failures:
         raise PreflightFailure("037 preflight (semantic) failed: " + "; ".join(failures))
 
 
-def _verify_declaration_catalog(bind, schema: str, failures: list[str]) -> None:
-    """Verify existing payment_declarations matches exact contract."""
-    expected_cols = {
-        "id": ("uuid", "NO"),
-        "order_id": ("uuid", "NO"),
-        "retailer_id": ("uuid", "NO"),
-        "wholesaler_id": ("uuid", "NO"),
-        "declared_amount": ("numeric", "NO"),
-        "method": ("character varying", "NO"),
-        "transfer_reference": ("character varying", "YES"),
-        "status": ("character varying", "NO"),
-        "idempotency_key": ("character varying", "NO"),
-        "submitted_by": ("uuid", "NO"),
-        "submitted_at": ("timestamp with time zone", "NO"),
-        "confirmed_by": ("uuid", "YES"),
-        "confirmed_at": ("timestamp with time zone", "YES"),
-        "confirmation_payment_id": ("uuid", "YES"),
-        "rejected_by": ("uuid", "YES"),
-        "rejected_at": ("timestamp with time zone", "YES"),
-        "reason": ("character varying", "YES"),
-    }
-    actual_cols = {}
-    for col_row in bind.execute(sa.text(
-        "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
-        "WHERE table_schema = :s AND table_name = 'payment_declarations'"
-    ), {"s": schema}).fetchall():
-        actual_cols[col_row[0]] = (col_row[1], col_row[2])
+def _verify_declaration_catalog_pg(bind, schema: str, failures: list[str]) -> None:
+    """R3: pg_catalog verification of payment_declarations."""
+    cols = _pg_catalog_columns(bind, schema, PAYMENT_DECLARATIONS)
+    col_map = {c[0]: c for c in cols}  # name -> (name, type, not_null, default)
 
-    for col_name, (exp_type, exp_nullable) in expected_cols.items():
-        if col_name not in actual_cols:
-            failures.append(f"{schema}.payment_declarations: column {col_name} missing")
-        else:
-            act_type, act_nullable = actual_cols[col_name]
-            if not act_type.startswith(exp_type.split("(")[0]):
-                failures.append(
-                    f"{schema}.payment_declarations.{col_name}: type mismatch "
-                    f"expected ~{exp_type}, got {act_type}"
-                )
-            if act_nullable != exp_nullable:
-                failures.append(
-                    f"{schema}.payment_declarations.{col_name}: nullability mismatch "
-                    f"expected {exp_nullable}, got {act_nullable}"
-                )
-
-    # is_deleted must NOT exist
-    if "is_deleted" in actual_cols:
+    # Exact column set
+    actual_names = set(col_map.keys())
+    expected_names = {"id", "order_id", "retailer_id", "wholesaler_id",
+                       "declared_amount", "method", "transfer_reference", "status",
+                       "idempotency_key", "submitted_by", "submitted_at",
+                       "confirmed_by", "confirmed_at", "confirmation_payment_id",
+                       "rejected_by", "rejected_at", "reason"}
+    extra = actual_names - expected_names - {"is_deleted"}
+    missing = expected_names - actual_names
+    if extra:
+        failures.append(f"{schema}.payment_declarations: unexpected columns {sorted(extra)}")
+    if missing:
+        failures.append(f"{schema}.payment_declarations: missing columns {sorted(missing)}")
+    if "is_deleted" in actual_names:
         failures.append(f"{schema}.payment_declarations: is_deleted must not exist")
 
-    # CHECK constraints
-    for ck_name, ck_fragment in [
-        ("ck_payment_declarations_method", "'cash'"),
-        ("ck_payment_declarations_status", "'pending'"),
-        ("ck_payment_declarations_amount_positive", "> 0"),
-    ]:
-        if not _constraint_exists(bind, schema, PAYMENT_DECLARATIONS, ck_name):
-            failures.append(f"{schema}.payment_declarations: CHECK constraint {ck_name} missing")
-
-    # FK RESTRICT
-    fks = bind.execute(sa.text(
-        "SELECT kcu.column_name, rc.delete_rule "
-        "FROM information_schema.key_column_usage kcu "
-        "JOIN information_schema.referential_constraints rc "
-        "ON kcu.constraint_name = rc.constraint_name "
-        "WHERE kcu.table_schema = :s AND kcu.table_name = 'payment_declarations'"
-    ), {"s": schema}).fetchall()
-    fk_map = {r[0]: r[1] for r in fks}
-    if fk_map.get("order_id") != "RESTRICT":
-        failures.append(f"{schema}.payment_declarations: order_id FK must be RESTRICT")
-    if fk_map.get("confirmation_payment_id") != "RESTRICT":
-        failures.append(f"{schema}.payment_declarations: confirmation_payment_id FK must be RESTRICT")
-
-    # Unique index
-    if not _index_exists(bind, schema, PAYMENT_DECLARATIONS, UX_DECLARATIONS_RETAILER_IDEM):
-        failures.append(f"{schema}.payment_declarations: unique index {UX_DECLARATIONS_RETAILER_IDEM} missing")
-
-    # receipt_sequences
-    if _table_exists(bind, schema, RECEIPT_SEQUENCES):
-        bd_info = bind.execute(sa.text(
-            "SELECT data_type, character_maximum_length FROM information_schema.columns "
-            "WHERE table_schema = :s AND table_name = 'receipt_sequences' AND column_name = 'business_date'"
-        ), {"s": schema}).first()
-        if bd_info and (bd_info[0] != "character" or bd_info[1] != 8):
+    # Exact types and nullability
+    type_checks = {
+        "id": ("uuid", True),
+        "order_id": ("uuid", True),
+        "retailer_id": ("uuid", True),
+        "wholesaler_id": ("uuid", True),
+        "declared_amount": ("numeric", True),
+        "method": ("character varying(16)", True),
+        "transfer_reference": ("character varying(128)", False),
+        "status": ("character varying(16)", True),
+        "idempotency_key": ("character varying(64)", True),
+        "submitted_by": ("uuid", True),
+        "submitted_at": ("timestamp with time zone", True),
+        "confirmed_by": ("uuid", False),
+        "confirmed_at": ("timestamp with time zone", False),
+        "confirmation_payment_id": ("uuid", False),
+        "rejected_by": ("uuid", False),
+        "rejected_at": ("timestamp with time zone", False),
+        "reason": ("character varying(256)", False),
+    }
+    for col_name, (exp_type, exp_notnull) in type_checks.items():
+        c = col_map.get(col_name)
+        if c is None:
+            continue  # caught above
+        if exp_type not in c[1] and not c[1].startswith(exp_type.split("(")[0]):
             failures.append(
-                f"{schema}.receipt_sequences.business_date: expected CHAR(8), got {bd_info[0]}({bd_info[1]})"
-            )
+                f"{schema}.payment_declarations.{col_name}: type {c[1]} expected ~{exp_type}")
+        if c[2] != exp_notnull:
+            failures.append(
+                f"{schema}.payment_declarations.{col_name}: not_null={c[2]} expected {exp_notnull}")
+
+    # Status default
+    status_col = col_map.get("status")
+    if status_col and status_col[3] and "'pending'" not in (status_col[3] or "").lower():
+        failures.append(f"{schema}.payment_declarations.status: default must contain 'pending'")
+
+    # Exact CHECK expressions (not constraint names)
+    constraints = _pg_catalog_constraints(bind, schema, PAYMENT_DECLARATIONS)
+    check_defs = {r[2] for r in constraints if r[1] in (b"c", "c")}
+    if not any("method" in d and "cash" in d and "transfer" in d for d in check_defs):
+        failures.append(f"{schema}.payment_declarations: CHECK method constraint missing/wrong")
+    if not any("status" in d and "pending" in d and "confirmed" in d and "rejected" in d for d in check_defs):
+        failures.append(f"{schema}.payment_declarations: CHECK status constraint missing/wrong")
+    if not any("declared_amount" in d and ">" in d for d in check_defs):
+        failures.append(f"{schema}.payment_declarations: CHECK declared_amount>0 missing/wrong")
+
+    # FK targets and delete actions
+    fk_defs = {r[2] for r in constraints if r[1] in (b"f", "f")}
+    has_order_fk = any("orders(id)" in d and "RESTRICT" in d for d in fk_defs)
+    has_payment_fk = any("payments(id)" in d and "RESTRICT" in d for d in fk_defs)
+    if not has_order_fk:
+        failures.append(f"{schema}.payment_declarations: order_id FK RESTRICT missing/wrong")
+    if not has_payment_fk:
+        failures.append(f"{schema}.payment_declarations: confirmation_payment_id FK RESTRICT missing/wrong")
+
+    # Index uniqueness, keys, predicates
+    indexes = _pg_catalog_indexes(bind, schema, PAYMENT_DECLARATIONS)
+    idx_names = {i[0] for i in indexes}
+    if UX_DECLARATIONS_RETAILER_IDEM not in idx_names:
+        failures.append(f"{schema}.payment_declarations: unique index {UX_DECLARATIONS_RETAILER_IDEM} missing")
+    else:
+        ux = [i for i in indexes if i[0] == UX_DECLARATIONS_RETAILER_IDEM][0]
+        if not ux[1]:
+            failures.append(f"{schema}.payment_declarations: {UX_DECLARATIONS_RETAILER_IDEM} must be UNIQUE")
+        if "retailer_id" not in ux[2] or "idempotency_key" not in ux[2]:
+            failures.append(f"{schema}.payment_declarations: {UX_DECLARATIONS_RETAILER_IDEM} must contain retailer_id+idempotency_key")
+
+    if IX_DECLARATIONS_RETAILER_STATUS not in idx_names:
+        failures.append(f"{schema}.payment_declarations: index {IX_DECLARATIONS_RETAILER_STATUS} missing")
+    if IX_DECLARATIONS_WHOLESALER_STATUS not in idx_names:
+        failures.append(f"{schema}.payment_declarations: index {IX_DECLARATIONS_WHOLESALER_STATUS} missing")
+
+
+def _verify_receipt_sequences_pg(bind, schema: str, failures: list[str]) -> None:
+    """R3: pg_catalog verification of receipt_sequences."""
+    cols = _pg_catalog_columns(bind, schema, RECEIPT_SEQUENCES)
+    col_map = {c[0]: c for c in cols}
+
+    if "business_date" not in col_map:
+        failures.append(f"{schema}.receipt_sequences: business_date column missing")
+    else:
+        bd = col_map["business_date"]
+        if "character(8)" not in bd[1] and "character(" not in bd[1]:
+            failures.append(f"{schema}.receipt_sequences.business_date: expected CHAR(8), got {bd[1]}")
+        if not bd[2]:
+            failures.append(f"{schema}.receipt_sequences.business_date: must be NOT NULL (PK)")
+
+    if "next_seq" not in col_map:
+        failures.append(f"{schema}.receipt_sequences: next_seq column missing")
+    else:
+        ns = col_map["next_seq"]
+        if "integer" not in ns[1]:
+            failures.append(f"{schema}.receipt_sequences.next_seq: expected integer, got {ns[1]}")
+        if not ns[2]:
+            failures.append(f"{schema}.receipt_sequences.next_seq: must be NOT NULL")
+        if ns[3] and "1" not in (ns[3] or ""):
+            failures.append(f"{schema}.receipt_sequences.next_seq: default must be 1")
 
 
 # ---------------------------------------------------------------------------

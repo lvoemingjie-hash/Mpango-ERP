@@ -20,9 +20,11 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -67,6 +69,18 @@ class PaymentDeclaration(Base):
         CheckConstraint(
             "declared_amount > 0",
             name="ck_payment_declarations_amount_positive",
+        ),
+        UniqueConstraint(
+            "retailer_id", "idempotency_key",
+            name="ux_payment_declarations_retailer_idem",
+        ),
+        Index(
+            "ix_payment_declarations_retailer_status",
+            "retailer_id", "status",
+        ),
+        Index(
+            "ix_payment_declarations_wholesaler_status",
+            "wholesaler_id", "status",
         ),
     )
 

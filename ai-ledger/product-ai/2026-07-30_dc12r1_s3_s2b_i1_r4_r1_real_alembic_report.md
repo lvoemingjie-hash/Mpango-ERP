@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-31
 **Branch**: `codex/dc12r1-s3-s2b-i1-financial-schema-foundation-2026-07-31`
-**Status**: PASS — 9/9 real-alembic tests GREEN; focused gate red=0, gap=0
+**Status**: PASS — 13/13 real-alembic tests GREEN; focused gate red=0, gap=0
 **Parent**: DC-12R1-S3-S2B-I1-R4
 
 ---
@@ -43,11 +43,16 @@ Two corrections to the I1 migration preflight and its evidence:
 | 8 | Index key order | Substring check only | Exact `(retailer_id, idempotency_key)` / `(retailer_id, status)` key order |
 | 9 | receipt_sequences extra columns | Not checked | Rejects any column outside `{business_date, next_seq}` |
 | 10 | declared_amount precision | `"numeric"` substring | Exact `numeric(12,2)` |
+| 11 | declared_amount >= 0 weakening | `">" in n` accepted `>=` | `_check_amount_positive`: rejects `>=`, validates RHS is exactly 0 |
+| 12 | status DEFAULT missing | `if status_col[3] and ...` skipped when None | Now requires DEFAULT contains 'pending' regardless of presence |
+| 13 | next_seq DEFAULT 10/100 | `"1" in default` matched any default containing "1" | Regex `^\d+` extracts leading integer, must equal "1" exactly |
+| 14 | CHECK on wrong column | `_check_in_allowed_values` didn't verify column identity | Now requires column name present in normalised expression |
 
 ### 2.2 New Helpers
 
 - `_normalize_check_expr(expr)` — lowercases, strips whitespace for semantic comparison
-- `_check_in_allowed_values(normalised, column, allowed)` — rejects OR TRUE, extra literals
+- `_check_in_allowed_values(normalised, column, allowed)` — requires column identity, rejects OR TRUE, extra literals
+- `_check_amount_positive(normalised)` — exact `> 0` validation: rejects `>=`, `> -1`, OR TRUE
 
 ---
 

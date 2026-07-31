@@ -555,6 +555,154 @@ class TestRealAlembicUpgradeFailClosed:
                 eng.dispose()
 
     # ------------------------------------------------------------------
+    # Bypass 8: declared_amount >= 0 (weakened — allows zero)
+    # ------------------------------------------------------------------
+    def test_amount_ge_zero_weakening_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r1amt") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+
+                    run_alembic_upgrade(config, "head")
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_037
+
+                    # Malform: weaken > 0 to >= 0
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            'DROP CONSTRAINT ck_payment_declarations_amount_positive'))
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            "ADD CONSTRAINT ck_payment_declarations_amount_positive "
+                            "CHECK (declared_amount >= 0)"))
+                        conn.execute(text(
+                            "UPDATE public.alembic_version SET version_num = :v"
+                        ), {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert "declared_amount" in str(exc.value).lower()
+
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # Bypass 9: status missing DEFAULT 'pending'
+    # ------------------------------------------------------------------
+    def test_status_missing_default_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r1sd") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+
+                    run_alembic_upgrade(config, "head")
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_037
+
+                    # Malform: drop DEFAULT on status
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            'ALTER COLUMN status DROP DEFAULT'))
+                        conn.execute(text(
+                            "UPDATE public.alembic_version SET version_num = :v"
+                        ), {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert "status" in str(exc.value).lower()
+
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # Bypass 10: next_seq DEFAULT 10 (wrong default)
+    # ------------------------------------------------------------------
+    def test_next_seq_wrong_default_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r1ns") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+
+                    run_alembic_upgrade(config, "head")
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_037
+
+                    # Malform: change next_seq default to 10
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".receipt_sequences '
+                            'ALTER COLUMN next_seq SET DEFAULT 10'))
+                        conn.execute(text(
+                            "UPDATE public.alembic_version SET version_num = :v"
+                        ), {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert "next_seq" in str(exc.value).lower()
+
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # Bypass 11: CHECK on wrong column with right values
+    # ------------------------------------------------------------------
+    def test_check_wrong_column_identity_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r1ci") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                with _database_url_env(db_url):
+                    run_alembic_upgrade(config, REV_036)
+                    schema = self._setup_tenant(eng, db_url)
+
+                    run_alembic_upgrade(config, "head")
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_037
+
+                    # Malform: move method CHECK to a different column
+                    with eng.begin() as conn:
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            'DROP CONSTRAINT ck_payment_declarations_method'))
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}".payment_declarations '
+                            "ADD CONSTRAINT ck_payment_declarations_method "
+                            "CHECK (status IN ('cash', 'transfer'))"))
+                        conn.execute(text(
+                            "UPDATE public.alembic_version SET version_num = :v"
+                        ), {"v": REV_036})
+
+                    with pytest.raises(RuntimeError) as exc:
+                        run_alembic_upgrade(config, "head")
+                    assert "method" in str(exc.value).lower()
+
+                    with eng.connect() as conn:
+                        assert _current_revision(conn) == REV_036
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
     # GREEN path: canonical upgrade, second run no-op
     # ------------------------------------------------------------------
     def test_canonical_upgrade_reaches_037_and_second_run_noops(self):

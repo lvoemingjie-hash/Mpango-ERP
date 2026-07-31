@@ -106,8 +106,11 @@ def _normalize_check_expr(expr: str) -> str:
 
 def _check_in_allowed_values(normalised: str, column: str,
                              allowed: tuple[str, ...]) -> bool:
-    """Return True only when *every* allowed value appears and no extra
-    value or weakening clause is present."""
+    """Return True only when the CHECK constraint references *column*, contains
+    every value in *allowed*, has no extra values, and no weakening clause."""
+    # Must reference the correct column
+    if column not in normalised:
+        return False
     # Must contain every allowed literal
     for val in allowed:
         if val not in normalised:
@@ -124,6 +127,24 @@ def _check_in_allowed_values(normalised: str, column: str,
     if extra_literals:
         return False
     return True
+
+
+def _check_amount_positive(normalised: str) -> bool:
+    """Return True only for exact ``declared_amount > 0`` (reject >=, > -1, etc.)."""
+    if "declared_amount" not in normalised:
+        return False
+    if "or true" in normalised:
+        return False
+    # Must use strict > (not >=)
+    if ">=" in normalised:
+        return False
+    # Must compare against 0 (not -1, 1, or any other value)
+    # PG rewrites > 0 as "> (0)::numeric" — extract the right-hand operand
+    m = re.search(r"declared_amount\s*>\s*\(?([^)<\s]+)", normalised)
+    if not m:
+        return False
+    rhs = m.group(1).strip("()")
+    return rhs == "0"
 
 
 # ---------------------------------------------------------------------------
@@ -406,10 +427,13 @@ def _verify_declaration_catalog_pg(bind, schema: str, failures: list[str]) -> No
             failures.append(
                 f"{schema}.payment_declarations.{col_name}: not_null={c[2]} expected {exp_notnull}")
 
-    # Status default must contain 'pending'
+    # Status must have DEFAULT 'pending' (reject missing or wrong default)
     status_col = col_map.get("status")
-    if status_col and status_col[3] and "'pending'" not in (status_col[3] or "").lower():
-        failures.append(f"{schema}.payment_declarations.status: default must contain 'pending'")
+    if status_col:
+        default = status_col[3] or ""
+        if "'pending'" not in default.lower():
+            failures.append(
+                f"{schema}.payment_declarations.status: DEFAULT must be 'pending', got {default!r}")
 
     # Exact CHECK semantics (normalised — reject OR TRUE, extra values, weakeners)
     constraints = _pg_catalog_constraints(bind, schema, PAYMENT_DECLARATIONS)
@@ -424,9 +448,8 @@ def _verify_declaration_catalog_pg(bind, schema: str, failures: list[str]) -> No
                for n in check_norm):
         failures.append(
             f"{schema}.payment_declarations: CHECK status must be exactly IN ('pending','confirmed','rejected')")
-    # declared_amount > 0
-    if not any("declared_amount" in n and ">" in n and "0" in n and "or true" not in n
-               for n in check_norm):
+    # declared_amount > 0 (exact — reject >=, > -1, OR TRUE weakeners)
+    if not any(_check_amount_positive(n) for n in check_norm):
         failures.append(f"{schema}.payment_declarations: CHECK declared_amount>0 missing/wrong")
 
     # FK: validate local column, target schema/table/column, delete action
@@ -519,8 +542,13 @@ def _verify_receipt_sequences_pg(bind, schema: str, failures: list[str]) -> None
             failures.append(f"{schema}.receipt_sequences.next_seq: expected integer, got {ns[1]}")
         if not ns[2]:
             failures.append(f"{schema}.receipt_sequences.next_seq: must be NOT NULL")
-        if not ns[3] or "1" not in (ns[3] or ""):
-            failures.append(f"{schema}.receipt_sequences.next_seq: default must be 1")
+        # DEFAULT must be exactly 1 (PG stores as '1' or '1::integer')
+        default = ns[3] or ""
+        # Extract the leading numeric token from the default expression
+        m = re.match(r"'?(\d+)", default.strip())
+        if not m or m.group(1) != "1":
+            failures.append(
+                f"{schema}.receipt_sequences.next_seq: DEFAULT must be 1, got {default!r}")
 
     # PK constraint must exist on business_date
     constraints = _pg_catalog_constraints(bind, schema, RECEIPT_SEQUENCES)

@@ -1310,9 +1310,16 @@ async def _reconcile_rbac_s1(db, ts: str) -> None:
                  tuple(c for c, _ in RETAILER_OPERATOR_PERMISSIONS))
     await _grant(ADMIN_ROLE, tuple(c for c, _ in ADMIN_MANAGEMENT_PERMISSIONS))
 
-    # S2B-I1: ensure admin has payments:confirm_declaration
+    # S2B-I1: seed payments:confirm_declaration permission BEFORE granting to admin
     from core.permission_registry import ADMIN_PERMISSION_CODES
     if "payments:confirm_declaration" in ADMIN_PERMISSION_CODES:
+        await db.execute(text(
+            f"INSERT INTO {perms_t} (code, description) "
+            "VALUES ('payments:confirm_declaration', "
+            "'Confirm or reject a retailer payment declaration') "
+            "ON CONFLICT (code) DO NOTHING"
+        ))
+        await db.flush()
         await _grant(ADMIN_ROLE, ("payments:confirm_declaration",))
     # S2B-I1: remove stale client:payments:create from retailer_operator
     await db.execute(text(
@@ -1320,6 +1327,12 @@ async def _reconcile_rbac_s1(db, ts: str) -> None:
         f"WHERE role_id IN (SELECT id FROM {roles_t} WHERE name = :role) "
         f"AND permission_id IN (SELECT id FROM {perms_t} WHERE code = :old_code)"
     ), {"role": RETAILER_OPERATOR_ROLE, "old_code": "client:payments:create"})
+    # S2B-I1: remove payments:confirm_declaration from ALL non-admin roles
+    await db.execute(text(
+        f"DELETE FROM {role_perms_t} "
+        f"WHERE role_id IN (SELECT id FROM {roles_t} WHERE name != :admin_role) "
+        f"AND permission_id IN (SELECT id FROM {perms_t} WHERE code = :confirm_code)"
+    ), {"admin_role": ADMIN_ROLE, "confirm_code": "payments:confirm_declaration"})
 
     if await _table_exists(db, ts, "users"):
         await _ensure_index(

@@ -460,9 +460,9 @@ def _reconcile_permissions(bind, schema: str) -> None:
     # R1.4: Ensure retailer_operator NEVER has payments:confirm_declaration
     bind.execute(sa.text(
         f"DELETE FROM {role_perms_t} "
-        f"WHERE role_id IN (SELECT id FROM {roles_t} WHERE name = :role) "
+        f"WHERE role_id IN (SELECT id FROM {roles_t} WHERE name != :admin_role) "
         f"AND permission_id IN (SELECT id FROM {perms_t} WHERE code = :confirm_code)"
-    ), {"role": RETAILER_OPERATOR_ROLE, "confirm_code": NEW_CONFIRM_PERM})
+    ), {"admin_role": ADMIN_ROLE, "confirm_code": NEW_CONFIRM_PERM})
 
 
 # ---------------------------------------------------------------------------

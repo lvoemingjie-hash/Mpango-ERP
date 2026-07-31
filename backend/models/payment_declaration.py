@@ -2,6 +2,9 @@
 
 Tenant-scoped models for the retailer payment declaration workflow.
 These models are NOT soft-deletable — declarations are immutable audit records.
+
+R2: CHAR(8) for receipt_sequences.business_date (matches migration/bootstrap exactly).
+    CHECK constraints and defaults added for metadata parity.
 """
 from __future__ import annotations
 
@@ -12,9 +15,12 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
+    CHAR,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     text,
@@ -49,6 +55,20 @@ class PaymentDeclaration(Base):
     Immutable: no is_deleted column. Never soft-deleted or hard-deleted.
     """
     __tablename__ = "payment_declarations"
+    __table_args__ = (
+        CheckConstraint(
+            "method IN ('cash', 'transfer')",
+            name="ck_payment_declarations_method",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'confirmed', 'rejected')",
+            name="ck_payment_declarations_status",
+        ),
+        CheckConstraint(
+            "declared_amount > 0",
+            name="ck_payment_declarations_amount_positive",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -85,7 +105,7 @@ class PaymentDeclaration(Base):
         String(16),
         nullable=False,
         default=DeclarationStatus.PENDING.value,
-        server_default=DeclarationStatus.PENDING.value,
+        server_default=text(f"'{DeclarationStatus.PENDING.value}'"),
     )
     idempotency_key: Mapped[str] = mapped_column(
         String(64),
@@ -130,17 +150,18 @@ class PaymentDeclaration(Base):
 class ReceiptSequence(Base):
     """Per-tenant receipt number allocator.
 
-    Uses business_date CHAR(8) as primary key. Allocation via
-    INSERT ... ON CONFLICT DO UPDATE ... RETURNING next_seq.
+    Uses business_date CHAR(8) as primary key (exact match with migration/bootstrap).
+    Allocation via INSERT ... ON CONFLICT DO UPDATE ... RETURNING next_seq.
     Atomic within the same transaction as the payment confirmation.
     """
     __tablename__ = "receipt_sequences"
 
     business_date: Mapped[str] = mapped_column(
-        String(8),
+        CHAR(8),
         primary_key=True,
     )
     next_seq: Mapped[int] = mapped_column(
+        Integer,
         nullable=False,
         default=1,
         server_default=text("1"),

@@ -229,7 +229,7 @@ def _pg_catalog_constraints(bind, schema, table_name):
 
 def _pg_catalog_indexes(bind, schema, table_name):
     """Return {(index_name, indisunique, index_def)} from pg_catalog."""
-    return {(r[0], r[1], r[2]) for r in bind.execute(
+    return {(r[0], r[1], r[3]) for r in bind.execute(
         sa.text(PG_CATALOG_INDEXES_SQL),
         {"schema": schema, "table_name": table_name},
     ).fetchall()}
@@ -276,6 +276,9 @@ def _preflight_semantic(bind, rows: list[dict[str, Any]]) -> None:
                 if not has_unique_receipt:
                     failures.append(
                         f"{schema}.payments: ux_payments_receipt_number missing or wrong predicate")
+            else:
+                failures.append(
+                    f"{schema}.payments: ux_payments_receipt_number index missing")
 
         # --- orders FK target ---
         if not _table_exists(bind, schema, ORDERS):
@@ -350,7 +353,13 @@ def _verify_declaration_catalog_pg(bind, schema: str, failures: list[str]) -> No
         c = col_map.get(col_name)
         if c is None:
             continue  # caught above
-        if exp_type not in c[1] and not c[1].startswith(exp_type.split("(")[0]):
+        # For types with explicit length/precision/scale, require exact match;
+        # for types without (uuid, integer, timestamp), starts-with is sufficient.
+        if "(" in exp_type:
+            if exp_type not in c[1]:
+                failures.append(
+                    f"{schema}.payment_declarations.{col_name}: type {c[1]} expected {exp_type}")
+        elif not c[1].startswith(exp_type):
             failures.append(
                 f"{schema}.payment_declarations.{col_name}: type {c[1]} expected ~{exp_type}")
         if c[2] != exp_notnull:

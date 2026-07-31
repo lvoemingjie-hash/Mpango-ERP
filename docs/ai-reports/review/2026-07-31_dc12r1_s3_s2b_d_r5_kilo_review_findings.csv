@@ -1,0 +1,26 @@
+finding_id,severity,category,r3_closure,check_number,doc_evidence,source_evidence,summary,status
+R5-001,INFO,scope_verification,N/A,N/A,c583cea1f040f23827c97f9427d559199069b46b,git rev-parse,Target SHA verified: c583cea1f040f23827c97f9427d559199069b46b,CLOSED
+R5-002,INFO,ancestry,N/A,N/A,0f9d259b..c583cea1,git log --ancestry-path,Baseline 0f9d259b is ancestor of target via 5-commit path,CLOSED
+R5-003,INFO,status_set,KILO-R3-001,CHECK-01,payment_declaration_contract.md:19,035:28-35;036:43-50,035/036 status set matches contract exactly,CLOSED
+R5-004,INFO,migration_enumeration,KILO-R3-001,CHECK-02,payment_declaration_contract.md:213-218,035:82-108,Migration 037 uses authoritative tenant enumeration,CLOSED
+R5-005,INFO,alembic_version,N/A,CHECK-03,payment_declaration_contract.md:219,env.py:43-45,public.alembic_version sole authority confirmed,CLOSED
+R5-006,INFO,transaction_id_widening,N/A,CHECK-04,payment_declaration_contract.md:351-357,bootstrap_tenant_schema.py:1453,VARCHAR(64)->VARCHAR(128) widening defined for all paths,CLOSED
+R5-007,INFO,transfer_reference,N/A,CHECK-05,payment_declaration_contract.md:344-348,N/A,Trim/reject-blank/1-128/no-truncation specified,CLOSED
+R5-008,INFO,duplicate_transfer,KILO-R3-004,CHECK-06,payment_declaration_contract.md:359-361,orders.py:732-739,Duplicate transfer reference produces controlled 409,CLOSED
+R5-009,INFO,confirm_idempotency_key,KILO-R3-002,CHECK-07,payment_declaration_contract.md:371-376,N/A,Canonical key = decl-confirm-{declaration_id.hex},CLOSED
+R5-010,INFO,key_namespace隔离,KILO-R3-002,CHECK-08,payment_declaration_contract.md:370-371,N/A,Declaration key never passed as payment key,CLOSED
+R5-011,INFO,cross_retailer_reuse,KILO-R3-002,CHECK-09,payment_declaration_contract.md:380,N/A,Two retailers reuse same key without collision,CLOSED
+R5-012,INFO,concurrent_confirm,N/A,CHECK-10,payment_declaration_contract.md:140,N/A,FOR UPDATE + double-check = exactly one payment,CLOSED
+R5-013,INFO,completed_payment,KILO-R3-003,CHECK-11,payment_declaration_contract.md:385,N/A,Every confirmation creates completed payment,CLOSED
+R5-014,INFO,partial_confirmation,N/A,CHECK-12,payment_declaration_contract.md:387,N/A,Partial -> PARTIALLY_PAID; reduces exposure by received amount,CLOSED
+R5-015,INFO,final_confirmation,N/A,CHECK-13,payment_declaration_contract.md:389,N/A,Final -> PAID; exposure closed,CLOSED
+R5-016,INFO,direct_pay_order_unchanged,KILO-R3-003,CHECK-14,payment_declaration_contract.md:393,orders.py:754-761,Direct pay_order status logic unchanged,CLOSED
+R5-017,INFO,receipt_source,N/A,CHECK-15,payment_declaration_contract.md:150-151,N/A,Receipt via confirmation_payment_id -> payments.receipt_number,CLOSED
+R5-018,INFO,receipt_allocator,N/A,CHECK-16,payment_declaration_contract.md:156-161,N/A,Atomic INSERT ON CONFLICT RETURNING + partial unique index,CLOSED
+R5-019,INFO,single_transaction,N/A,CHECK-17,payment_declaration_contract.md:140;144,N/A,All writes in one caller-owned transaction,CLOSED
+R5-020,INFO,maker_checker,N/A,CHECK-18,payment_declaration_contract.md:288-306,permission_registry.py:17-71,retailer cannot confirm; admin cannot declare,CLOSED
+R5-021,INFO,permission_consistency,N/A,CHECK-19,payment_declaration_contract.md:299,permission_registry.py:17-71,Seeders reconciled; GAP-07 updated,CLOSED
+R5-022,INFO,findings_accounting,KILO-R3-006,CHECK-20,register:34-83;csv:1-47,N/A,findings=46 mapped=46 gap=0,CLOSED
+R5-023,INFO,baseline_sha,KILO-R3-005,CHECK-21,CTO_CURRENT_OPS.md:6;PROJECT.md:6,N/A,Baseline 0f9d259b verified in both docs,CLOSED
+R5-024,INFO,no_pending_confirmation,KILO-R3-003,CHECK-22,payment_declaration_contract.md:385;393,N/A,No text permits confirmation to create pending payment,CLOSED
+R5-025,INFO,r3_closure_all,N/A,N/A,r3_kilo_review.md:findings.csv,KILO-R3-001 through KILO-R3-006,All 6 R3 findings closed with evidence,CLOSED

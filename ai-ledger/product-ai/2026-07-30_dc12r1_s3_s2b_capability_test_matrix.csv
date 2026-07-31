@@ -1,0 +1,47 @@
+finding_id,category,capability,route_or_symbol,status,current_evidence,proposed_change,test_reference,decision_ref,risk
+FIND-01,canonical_payment,POST /api/v1/orders/{order_id}/pay,api/v1/orders.py:558,exists,Canonical payment write; payments:create; FOR UPDATE lock,Refactored: extract to CanonicalPaymentService.confirm_payment,test_route_authorization_policy.py:904,DR-04,HIGH
+FIND-02,canonical_payment,CanonicalPaymentService.confirm_payment,,NEW,Does not exist; pay_order has inline logic,Extract transaction-level service; called by pay_order + confirmation; never route-to-route,TM-26,DR-04,HIGH
+FIND-03,canonical_payment,PaymentRepository.create,repositories/payment_repository.py:236,exists,Raw-SQL INSERT; no receipt_number column,Reused; migration 037 adds receipt_number column,test_dc11d_payment_replay_concurrency_integrity.py:340,DR-04,LOW
+FIND-04,canonical_payment,PaymentService._apply_outstanding_balance_delta,services/payment_service.py:169,exists,UPDATE outstanding_balance with non-negative guard,Reused by CanonicalPaymentService,test_dc11t4h_receivable_collection_integrity.py:235,DR-04,LOW
+FIND-05,canonical_payment,LedgerService.get_balance,services/ledger_service.py:183,exists,Tenant-wide; account_type only; NO retailer_id param,NOT used for retailer statements; retailer projection defined separately,TM-24,DR-06,MEDIUM
+FIND-06,canonical_payment,LedgerService.post_payment_received,services/ledger_service.py:281,exists,Debit CASH / Credit RECEIVABLE,Reused by CanonicalPaymentService,test_s5_ledger.py:284,DR-04,LOW
+FIND-07,canonical_payment,OrderService.transition,services/order_service.py:53,exists,ONLY order state mutation path,Reused by CanonicalPaymentService,test_dc11d_payment_replay_concurrency_integrity.py:620,DR-04,LOW
+FIND-08,canonical_payment,POST /api/v1/payments (disabled),api/v1/payments.py:83,disabled,Returns 409 PAYMENT_WRITE_PATH_DISABLED,No change,test_payments_api.py:29,DR-04,LOW
+FIND-09,product_defect,Frontend pay button permission,OrderListPage.tsx:70,RESOLVED,Was orders:update vs backend payments:create; H3 fixed,H3 merged into product baseline 0f9d259b,N/A,DR-10,RESOLVED
+FIND-10,receipt,receipt_number source of truth,payments.receipt_number,NEW,Column does not exist yet,ADD payments.receipt_number VARCHAR(32); partial unique index,TM-16/TM-23,DR-05,MEDIUM
+FIND-11,receipt,receipt_number removed from declarations,payment_declarations,REMOVED,Was denormalized copy,Resolved via confirmation_payment_id,TM-16,DR-05,LOW
+FIND-12,receipt,receipt_sequences allocator,receipt_sequences table,NEW,Atomic INSERT ON CONFLICT RETURNING,business_date CHAR(8); format RCT-YYYYMMDD-NNNNNN UTC,TM-23,DR-05,MEDIUM
+FIND-13,receipt,FK RESTRICT on declarations,payment_declarations,NEW,confirmation_payment_id and order_id FKs,Immutable financial evidence; no cascade,TM-27,DR-07,LOW
+FIND-14,client_finance,GET /api/v1/client/payments,api/v1/client/payments.py:42,exists,Read-only; client:payments:read; dual-key scoped,No change,test_dc12r1_s3_s2_read_only_retailer_finance.py:336,DR-06,LOW
+FIND-15,client_finance,GET /api/v1/client/finance/balance,api/v1/client/finance.py:31,exists,Read-only; client:finance:read,No change,test_dc12r1_s3_s2_read_only_retailer_finance.py:337,DR-06,LOW
+FIND-16,client_identity,ClientIdentity dataclass,api/v1/client/dependencies.py:35,exists,All server-derived,Reused by new declaration routes,test_dc12r1_s3_s1_catalog_order_hardening.py:632,DR-12,LOW
+FIND-17,client_identity,resolve_client_identity,api/v1/client/dependencies.py:45,exists,Binding lookup; 403 on missing/inactive,Reused by new client routes,test_dc12r1_s3_s2_read_only_retailer_finance.py:170,DR-12,LOW
+FIND-18,permission,client:payments:create,core/permission_registry.py:69,unused,Granted but consumed by no route (GAP-07),REPLACE with client:payments:declare,test_dc12r1_s3_s1_catalog_order_hardening.py:560,DR-10,LOW
+FIND-19,permission,client:payments:read,core/permission_registry.py:68,exists,Read access to own payments/declarations,No change,test_dc12r1_s3_s2_read_only_retailer_finance.py:336,DR-10,LOW
+FIND-20,permission,client:payments:declare,,NEW,Retailer submits payment declaration,ADD to RETAILER_OPERATOR_PERMISSIONS,TM-13/TM-21,DR-10,LOW
+FIND-21,permission,payments:confirm_declaration,,NEW,Cashier confirms/rejects; no cashier role,ADD to ADMIN_PERMISSIONS; reconcile seeders,TM-14/TM-21,DR-10,MEDIUM
+FIND-22,statement,Server-authoritative statement,,NEW,Dual-key projection; payments through retailer orders,NO opening/closing balance in MVP,TM-24/TM-25,DR-06,MEDIUM
+FIND-23,statement,Retailer-scoped payment projection,,NEW,JOIN payments through orders WHERE dual-key,Replaces tenant-wide LedgerService.get_balance,TM-24,DR-06,MEDIUM
+FIND-24,declaration,idempotency UNIQUE key,,NEW,UNIQUE(retailer_id idempotency_key),Same retailer+key+payload=existing; different=409,TM-04,DR-12,LOW
+FIND-25,route,POST declare,,NEW,Retailer submits declaration,ADD route; zero accounting effect,TM-01/TM-04,DR-02,LOW
+FIND-26,route,GET declarations,,NEW,Retailer lists own declarations,ADD route; dual-key scoped,TM-02/TM-03,DR-02,LOW
+FIND-27,route,GET declarations/{id},,NEW,Retailer views single declaration,ADD route,TM-12,DR-02,LOW
+FIND-28,route,POST confirm,,NEW,Cashier confirms; CanonicalPaymentService,ADD route; returns 200 on replay,TM-05/TM-06/TM-09,DR-03,HIGH
+FIND-29,route,POST reject,,NEW,Cashier rejects with reason,ADD route; terminal; no financial effect,TM-07/TM-08,DR-02,LOW
+FIND-30,route,GET declarations (cashier),,NEW,Cashier lists all declarations,ADD route; tenant-scoped,N/A,DR-02,LOW
+FIND-31,route,GET declarations/{id} (cashier),,NEW,Cashier views single declaration,ADD route,N/A,DR-02,LOW
+FIND-32,gap07,GAP-07 governance freeze,test_dc12r1_s3_s1_catalog_order_hardening.py:560,active,No client route consumes client:payments:create,UPDATE: allow client:payments:declare,TM-20/TM-21,DR-10,LOW
+FIND-33,migration,Migration 037,,NEW,CREATE tables; ADD receipt_number; widen transaction_id,Forward-only/fail-closed; catalog preflight,TM-28/TM-29/TM-30/TM-31/TM-32,DR-08,MEDIUM
+FIND-34,migration,Tenant enumeration truth,public.tenant_registrations JOIN public.wholesalers,exists,Live tenant query with 035/036 filters,Migration 037 must use this exact pattern,TM-28,DR-08,LOW
+FIND-35,migration,alembic_version location,public schema only,exists,alembic_version ONLY in public,Sole-head checks public-only,TM-29,DR-08,LOW
+FIND-36,declarations,Immutable declarations,,NEW,No is_deleted; never deleted; FK RESTRICT,R1 confirmed; R2 adds FK RESTRICT,TM-01/TM-27,DR-07,LOW
+FIND-37,notification,Notification emission,,DEFERRED,Original specified events; removed,No emission until transactional outbox designed,TM-22,DR-09,LOW
+FIND-38,configure_app,Route registration,api/app.py,exists,configure_app mounts routers,New routes; GAP-07 inventory must update,TM-20,DR-08,MEDIUM
+FIND-39,frontend,Wholesaler pay UI,OrderListPage.tsx:70,H3 fixed,Now uses payments:create; H3 merged,Add declaration queue/confirm UI in S2B,N/A,DR-10/DR-11,LOW
+FIND-40,frontend,Retailer finance UI,FinanceBalancePage.tsx:14,exists,Read-only balance; no payment initiation,Add declaration + history + print in S2B,N/A,DR-06,MEDIUM
+FIND-41,frontend,Print support,,NONE,No print/PDF capability,Add browser-native window.print() in S2B,TM-17/TM-18,DR-06,MEDIUM
+FIND-42,risk,Canonical payment extraction risk,,HIGH,Refactoring sole money-movement path,Two PG16/Redis7 gates + post-impl review,N/A,DR-04,HIGH
+FIND-43,migration_status,Exact 035/036 live-status-set,alembic 035:29-34 + 036:43-49,exists,Set includes failed not provisioned,R4.1 correction,TM-33,DR-13,LOW
+FIND-44,transfer_mapping,transfer_reference to transaction_id,,NEW,Maps to transaction_id; trim; reject blank; 1-128; widen VARCHAR(128),Duplicate ref triggers 409,TM-39/TM-40/TM-43/TM-44/TM-45,DR-14,MEDIUM
+FIND-45,key_collision,Declaration key vs canonical payment key,,NEW,Two independent namespaces; key = decl-confirm-{declaration_id.hex},No collision; cross-retailer reuse,TM-34/TM-35/TM-41/TM-42,DR-15/DR-16,LOW
+FIND-46,confirmation_lifecycle,Partial confirmation lifecycle,,NEW,Every confirmation = completed; partial->PARTIALLY_PAID; final->PAID,Direct pay_order unchanged,TM-36/TM-37/TM-38/TM-46/TM-47,DR-17,MEDIUM

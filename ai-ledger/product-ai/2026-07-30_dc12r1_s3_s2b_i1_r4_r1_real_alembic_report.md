@@ -9,11 +9,20 @@
 
 ## 1. Task Summary
 
-Two corrections to the I1 migration preflight and its evidence:
+**Initial (R4-R1):** 10 bypasses closed; 9 real-alembic tests; 69 suite pass.
 
-1. **Tighten migration 037 preflight** — close every bypass identified in the
-   CTO review (missing tables must fail; reject unbounded VARCHAR; exact
-   NUMERIC(12,2); normalised CHECK semantics rejecting OR TRUE / extra values;
+**Correction (self-review):** Deep review found 4 remaining string-containment
+bypasses — same pattern problem as prior rounds. Closed: declared_amount ≥0
+weakening, status DEFAULT missing, next_seq DEFAULT 10/100, CHECK on wrong
+column. Added 4 new real-alembic tests. Final: **14 bypasses, 13 tests,
+73 suite pass**.
+
+Two core corrections to the I1 migration preflight and its evidence:
+
+1. **Tighten migration 037 preflight** — close every bypass (missing tables
+   must fail; reject unbounded VARCHAR; exact NUMERIC(12,2); normalised CHECK
+   semantics rejecting OR TRUE / extra values / wrong column identity; exact
+   DEFAULT values; amount weakening via ≥; default digit substring match;
    FK local-column + target + delete-action validation; index key-order +
    predicate validation; receipt_sequences rejects extra columns).
 
@@ -75,8 +84,12 @@ tenant schema, and reverts to the exact 036 baseline.
 | 5 | `test_check_or_true_weakening_rejected` | status CHECK + OR TRUE | PreflightFailure + version=036 |
 | 6 | `test_fk_cascade_rejected` | order_id FK → CASCADE | PreflightFailure + version=036 |
 | 7 | `test_wrong_index_keys_rejected` | ux_payment_declarations_retailer_idem → (idempotency_key) only | PreflightFailure + version=036 |
-| 8 | `test_canonical_upgrade_reaches_037_and_second_run_noops` | (none — canonical) | version=037 + sole head + second upgrade no-op fingerprint match |
-| 9 | `test_cross_tenant_failure_neither_mutates` | Tenant B transaction_id unbounded | PreflightFailure + version=036 + A unchanged + B unchanged |
+| 8 | `test_amount_ge_zero_weakening_rejected` | declared_amount CHECK → >= 0 | PreflightFailure + version=036 |
+| 9 | `test_status_missing_default_rejected` | status DROP DEFAULT | PreflightFailure + version=036 |
+| 10 | `test_next_seq_wrong_default_rejected` | next_seq SET DEFAULT 10 | PreflightFailure + version=036 |
+| 11 | `test_check_wrong_column_identity_rejected` | method CHECK moved to status column | PreflightFailure + version=036 |
+| 12 | `test_canonical_upgrade_reaches_037_and_second_run_noops` | (none — canonical) | version=037 + sole head + second upgrade no-op fingerprint match |
+| 13 | `test_cross_tenant_failure_neither_mutates` | Tenant B transaction_id unbounded | PreflightFailure + version=036 + A unchanged + B unchanged |
 
 ---
 
@@ -101,22 +114,22 @@ tenant schema, and reverts to the exact 036 baseline.
 ### 5.1 Real Alembic Execution
 
 ```
-9 passed in 41.73s
+13 passed in 51.95s
 ```
 
-### 5.2 Cross-Suite Regression (R2 + R3 + R4)
+### 5.2 Cross-Suite Regression (R2 + R3 + R4 + R4-R1)
 
 ```
-60 passed in ~35s
+73 passed in 92.28s
 ```
 
-(R2: 36, R3: 14, R4: 10 — all GREEN after tightening.)
+(R2: 36, R3: 14, R4: 10, R4-R1: 13 — all GREEN after tightening.)
 
 ---
 
 ## 6. Node Classification
 
-All 9 R4-R1 nodes: **GREEN** (PASS on real PG16 via actual alembic upgrade).
+All 13 R4-R1 nodes: **GREEN** (PASS on real PG16 via actual alembic upgrade).
 
 No RED, AMBER, or ENVIRONMENT_GATED nodes in the R4-R1 suite.
 

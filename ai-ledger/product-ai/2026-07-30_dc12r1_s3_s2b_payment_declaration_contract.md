@@ -1,6 +1,6 @@
-# DC-12R1-S3-S2B-D-R2: Retailer Payment Declaration, Cashier Confirmation, Receipt & Print Contract (Final)
+# DC-12R1-S3-S2B-D-R4: Retailer Payment Declaration, Cashier Confirmation, Receipt & Print Contract (Final)
 
-**Date:** 2026-07-31 (R2 correction of R1; integrates H3 baseline)
+**Date:** 2026-07-31 (R4 correction of R2; integrates H3 baseline)
 **Branch:** `zcode/dc12r1-s3-s2b-d-payment-declaration-contract-2026-07-30`
 **Product baseline:** `origin/product-dev-recovered` @ `0f9d259b` (H3 merged)
 **Doc checkpoint:** `origin/codex/dc12-project-status-s3-s2-2026-07-30` @ `2359fc0d`
@@ -8,21 +8,22 @@
 
 ---
 
-## 0. R2 Correction Summary
+## 0. R4 Correction Summary
 
-This document supersedes the R1 contract (`78a2bce3`). The H3 product baseline (`0f9d259b`, containing the payment UI permission fix) is merged and is an ancestor of this branch's HEAD.
+This document supersedes the R2 contract (`03f18a44`). The H3 product baseline (`0f9d259b`) is merged and is an ancestor of this branch's HEAD.
 
-Seven corrections are applied:
+R2 applied seven corrections (R2.1–R2.7). R4 applies six additional corrections:
 
-| # | Correction |
+| # | R4 Correction |
 |---|---|
-| R2.1 | Tenant migration truth: `alembic_version` exists only in public; remove all per-tenant-schema version checks; enumerate live tenants via `tenant_registrations JOIN wholesalers` with status/is_deleted filters matching migrations 035/036 |
-| R2.2 | Migration 037 preflight: real catalog checks for every table/column/type/constraint/index/permission; no reliance on `CREATE TABLE IF NOT EXISTS` to hide incompatible catalogs; bootstrap parity proven by real tests externally |
-| R2.3 | Receipt truth: single source = `payments.receipt_number`; removed from `payment_declarations`; replay resolves through `confirmation_payment_id`; FK with RESTRICT semantics; format `RCT-YYYYMMDD-NNNNNN` using UTC |
-| R2.4 | Declaration idempotency: `UNIQUE(retailer_id, idempotency_key)` not `(order_id, idempotency_key)` |
-| R2.5 | Retailer statement isolation: no `LedgerService.get_balance(account_type)` (tenant-wide); exact dual-key projection; opening/closing balance deferred if not provable from current retailer-scoped tables |
-| R2.6 | Confirmation permission: `payments:confirm_declaration` added to registry + `ADMIN_PERMISSIONS`; reconciled in all seeders; retailer_operator never receives it |
-| R2.7 | Risk: `configure_app` reclassified MEDIUM; define full regression bundles; require two fresh PG16/Redis7 gates |
+| R4.1 | Stale `'provisioned'` status removed; exact 035/036 live set is `("pending_email_verification", "email_verified", "provisioning", "active", "failed")` — includes `'failed'`, not `'provisioned'` |
+| R4.2 | `transfer_reference` → `transaction_id` exact mapping specified: declaration's `transfer_reference` is stored as canonical payment's `transaction_id` at confirmation (DD-15) |
+| R4.3 | Declaration key vs canonical payment key: two independent idempotency namespaces; declaration key never passed as payment key; no collision possible (DD-16) |
+| R4.4 | Partial and final confirmation lifecycle specified: partial → PARTIALLY_PAID; final → PAID; exposure closure for credit; receipt only for completed payment (DD-17) |
+| R4.5 | Duplicate transfer reference at confirmation → controlled 409 `DUPLICATE_TRANSFER_REFERENCE` (canonical path's existing check) |
+| R4.6 | Test matrix expanded with 8 new R4 tests (TM-33 through TM-40) covering all above |
+
+R2 corrections (R2.1–R2.7) remain in effect and are not repeated here.
 
 ---
 
@@ -81,8 +82,8 @@ The H3 product defect (frontend `orders:update` vs backend `payments:create`) ha
 | Component | File:Line | Summary |
 |---|---|---|
 | **Live tenant enumeration** | `alembic/versions/035_receivable_collection_integrity.py:82-108` | `SELECT ... FROM public.tenant_registrations tr JOIN public.wholesalers w ON w.id = tr.wholesaler_id WHERE tr.is_deleted IS FALSE AND tr.status IN :registration_statuses AND w.is_deleted IS FALSE AND w.status IN :wholesaler_statuses` |
-| **LIVE_REGISTRATION_STATUSES** | `alembic/versions/035:25-30` | `("pending_email_verification", "email_verified", "provisioning", "provisioned", "active")` |
-| **WHOLESALER_ACTIVE_STATUSES** | `alembic/versions/035:32-35` | `("active", "provisioning")` |
+| **LIVE_REGISTRATION_STATUSES** | `alembic/versions/035:29-34` and `036:43-49` | `("pending_email_verification", "email_verified", "provisioning", "active", "failed")` |
+| **WHOLESALER_ACTIVE_STATUSES** | `alembic/versions/035:35` and `036:50` | `("active", "provisioning")` |
 | **Schema derivation** | `models/wholesaler.py:93` | `derive_schema_from_id(tenant_id)` → `t_{uuid_without_dashes}` |
 | **alembic_version table** | `alembic/env.py:43` | `ALEMBIC_VERSION_TABLE = "alembic_version"` — exists only in **public** schema; no per-tenant alembic_version |
 
@@ -200,7 +201,7 @@ RESTRICT (no cascade) ensures immutable financial evidence — a payment or orde
 
 **Tenant enumeration (R2.1):**
 - Enumerate live tenants through `public.tenant_registrations JOIN public.wholesalers` with the exact status/is_deleted filters from migration 035:
-  - `tr.is_deleted IS FALSE AND tr.status IN ('pending_email_verification', 'email_verified', 'provisioning', 'provisioned', 'active')`
+  - `tr.is_deleted IS FALSE AND tr.status IN ('pending_email_verification', 'email_verified', 'provisioning', 'active', 'failed')`
   - `w.is_deleted IS FALSE AND w.status IN ('active', 'provisioning')`
 - Derive and validate each schema: `'t_' || replace(w.id::text, '-', '')` must match `tr.tenant_schema`.
 - Rogue/unregistered schemas are **not touched**.
@@ -325,9 +326,44 @@ Browser-native `window.print()`. No server-side PDF.
 | `GET` | `/api/v1/declarations` | `payments:read` |
 | `GET` | `/api/v1/declarations/{id}` | `payments:read` |
 
+### DD-15: Transfer Reference → Transaction ID Mapping (R4)
+
+**Exact mapping:** When a cashier confirms a declaration, the declaration's `transfer_reference` is passed to `CanonicalPaymentService.confirm_payment` as the canonical payment's `transaction_id`.
+
+- Declaration field: `transfer_reference VARCHAR(128)`
+- Payment field: `transaction_id VARCHAR(64)` (existing — `payment_repository.py:242`)
+- The value from `transfer_reference` is stored as `transaction_id` on the canonical payment row.
+- The canonical path's duplicate-transfer check (`get_by_transaction_id`, `orders.py:732-739`) runs at confirmation. A duplicate `transaction_id` returns controlled 409 `DUPLICATE_TRANSFER_REFERENCE`.
+- For cash declarations, `transfer_reference` is NULL; `transaction_id` on the payment is also NULL.
+
+### DD-16: Declaration Key vs Canonical Payment Key (R4)
+
+**Two independent idempotency keys:**
+
+| Key | Scope | Unique Constraint | Purpose |
+|---|---|---|---|
+| Declaration key | `UNIQUE(retailer_id, idempotency_key)` on `payment_declarations` | Prevents duplicate declarations by the same retailer |
+| Canonical payment key | `UNIQUE(idempotency_key)` on `payments` (existing) | Prevents duplicate canonical payments |
+
+**No collision:** The declaration's `idempotency_key` is NOT passed as the canonical payment's `idempotency_key`. The canonical payment key is generated by `CanonicalPaymentService` (deterministic from declaration ID). This ensures:
+
+- A declaration key and a canonical payment key can never collide (different namespaces).
+- Two retailers can use the same declaration key independently (different `retailer_id` in the unique constraint).
+- Concurrent confirmation of the same declaration produces exactly one canonical payment (FOR UPDATE + double-check).
+
+### DD-17: Partial and Final Confirmation Lifecycle (R4)
+
+**Partial confirmation:** A cashier may confirm a declaration for an amount less than the order's remaining balance. The canonical payment is created with `status='completed'` (for cash/transfer), the order transitions from `CONFIRMED` to `PARTIALLY_PAID` (via `OrderService.transition`), and the `outstanding_balance` is reduced by the confirmed amount.
+
+**Final confirmation:** When cumulative confirmed payments reach or exceed the order total, the order transitions to `PAID`. The `receipt_number` is allocated only for the canonical payment row — it is not allocated for pending declarations.
+
+**Receipt-on-completed-only:** A receipt (`payments.receipt_number`) exists only when the canonical payment is `completed`. Pending declarations have no receipt. If a confirmation produces a `pending` canonical payment (e.g., transfer that doesn't fully settle), the receipt is allocated when the payment is later completed via `update_cash_transfer_to_completed` (orders.py:806-810).
+
+**Exposure closure:** For credit-collection declarations, final confirmation reduces `outstanding_balance` to 0 via `_apply_outstanding_balance_delta(delta=-amount)`. The order remains `PAID` (credit orders enter payment flow already PAID; confirmation collects the exposure).
+
 ---
 
-## 6. Data Model (R2 Final)
+## 6. Data Model (R2/R4 Final)
 
 ### Table: `{tenant}.payment_declarations`
 
@@ -413,6 +449,14 @@ Browser-native `window.print()`. No server-side PDF.
 | TM-30 | Migration 037: semantic preflight fails closed on incompatible catalog | DD-08 |
 | TM-31 | Migration 037: rogue schemas untouched | DD-08 |
 | TM-32 | Migration 037: second upgrade is no-op | DD-08 |
+| TM-33 | Exact 035/036 live-status-set contract: migration 037 uses `("pending_email_verification", "email_verified", "provisioning", "active", "failed")` for registrations and `("active", "provisioning")` for wholesalers — matching 035 and 036 exactly (R4) | DD-08 |
+| TM-34 | Declaration key vs canonical payment key: no collision; declaration key not passed as payment key (R4) | DD-16 |
+| TM-35 | Two retailers using the same declaration key independently: both succeed, independent payments, no collision (R4) | DD-12, DD-16 |
+| TM-36 | Partial cashier-confirmed payment: order transitions CONFIRMED → PARTIALLY_PAID; payment completed; balance reduced (R4) | DD-17 |
+| TM-37 | Final confirmation closes exposure: cumulative payments reach total; order → PAID; balance → 0 (R4) | DD-17 |
+| TM-38 | Receipt only for cashier-confirmed completed payment: pending declaration has no receipt_number on payment row (R4) | DD-05, DD-17 |
+| TM-39 | transfer_reference maps exactly to transaction_id on canonical payment row (R4) | DD-15 |
+| TM-40 | Duplicate transfer reference at confirmation → controlled 409 DUPLICATE_TRANSFER_REFERENCE (R4) | DD-15 |
 
 ---
 
@@ -511,13 +555,21 @@ No mojibake detected (scan for U+FFFD: zero hits). Non-ASCII punctuation (em-das
 | 26 | Exact changed-file proof | PASS |
 | 27 | No product code implemented | PASS |
 | 28 | Report/CSV accounting gap = 0 | PASS |
+| 29 | Stale `'provisioned'` status removed; exact 035/036 set has `'failed'` not `'provisioned'` (R4.1) | PASS |
+| 30 | transfer_reference maps exactly to transaction_id (R4.2, DD-15) | PASS |
+| 31 | Declaration key vs canonical payment key: no collision (R4.3, DD-16) | PASS |
+| 32 | Partial confirmation → PARTIALLY_PAID; final → PAID (R4.4, DD-17) | PASS |
+| 33 | Receipt only for completed payment, never pending (R4.4, DD-17) | PASS |
+| 34 | Duplicate transfer reference → 409 DUPLICATE_TRANSFER_REFERENCE (R4.5, DD-15) | PASS |
+| 35 | No stale 0aec baseline reference (product baseline is 0f9d259b) | PASS |
+| 36 | FIND-01 through FIND-42 all mapped in CSV (gap=0) | PASS |
 
 ---
 
 ## 13. Verdict
 
 ```
-PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING
+PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING_R4
 ```
 
 All accounting sources of truth resolved. No tenant-wide statement query exposed to a retailer. No duplicate receipt source. No migration relying on per-tenant alembic_version. No product code or migration implementation started.

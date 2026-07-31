@@ -1,6 +1,6 @@
-# DC-12R1-S3-S2B-D-R4-R1: Retailer Payment Declaration, Cashier Confirmation, Receipt & Print Contract (Final)
+# DC-12R1-S3-S2B-D-R4-R2: Retailer Payment Declaration, Cashier Confirmation, Receipt & Print Contract (Final)
 
-**Date:** 2026-07-31 (R4-R1 correction of R4; integrates H3 baseline)
+**Date:** 2026-07-31 (R4-R2 correction of R4-R1; integrates H3 baseline)
 **Branch:** `zcode/dc12r1-s3-s2b-d-payment-declaration-contract-2026-07-30`
 **Product baseline:** `origin/product-dev-recovered` @ `0f9d259b` (H3 merged)
 **Doc checkpoint:** `origin/codex/dc12-project-status-s3-s2-2026-07-30` @ `2359fc0d`
@@ -617,7 +617,7 @@ No mojibake detected (scan for U+FFFD: zero hits). Non-ASCII punctuation (em-das
 ## 13. Verdict
 
 ```
-PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING_R4_R1
+PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING_R4_R2
 ```
 
 All accounting sources of truth resolved. No tenant-wide statement query exposed to a retailer. No duplicate receipt source. No migration relying on per-tenant alembic_version. No product code or migration implementation started.

@@ -1,8 +1,8 @@
 # Decision Register: Retailer Payment Declaration & Cashier Confirmation (R4-R1 Final)
 
-**Date:** 2026-07-31 (R4-R1 correction; integrates H3 baseline `0f9d259b`)
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING_R4_R1
-**Supersedes:** R4 DR (`f3e7a23c`) — superseded
+**Date:** 2026-07-31 (R4-R2 correction; integrates H3 baseline `0f9d259b`)
+**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING_R4_R2
+**Supersedes:** R4-R1 DR (`8103b9bf`) — superseded
 **Related:** DC-12R1-S3-S2B-D-R4-R1 contract (`ai-ledger/product-ai/2026-07-30_dc12r1_s3_s2b_payment_declaration_contract.md`)
 
 ---
@@ -42,8 +42,8 @@
 | FIND-05 | DR-06 |
 | FIND-06 | DR-04 |
 | FIND-07 | DR-04 |
-| FIND-08 | (resolved, N/A) |
-| FIND-09 | (resolved, N/A) |
+| FIND-08 | DR-04 |
+| FIND-09 | DR-10 |
 | FIND-10 | DR-05 |
 | FIND-11 | DR-05 |
 | FIND-12 | DR-05 |
@@ -73,7 +73,7 @@
 | FIND-36 | DR-07 |
 | FIND-37 | DR-09 |
 | FIND-38 | DR-08 |
-| FIND-39 | (resolved, N/A) |
+| FIND-39 | DR-10, DR-11 |
 | FIND-40 | DR-06 |
 | FIND-41 | DR-06 |
 | FIND-42 | DR-04 |
@@ -82,12 +82,12 @@
 | FIND-45 | DR-15, DR-16 |
 | FIND-46 | DR-17 |
 
-**Mechanical accounting: findings=46, mapped=46, gap=0.**
+**Mechanical accounting: findings=46, unique_findings=46, mapped=46, invalid_dr_refs=0, register_csv_mismatches=0, gap=0.**
 
 ---
 
 ## Verdict
 
 ```
-PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING_R4_R1
+PASS_FOR_CTO_DC12R1_S3_S2B_IMPLEMENTATION_PLANNING_R4_R2
 ```

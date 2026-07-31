@@ -7,7 +7,7 @@ FIND-05,canonical_payment,LedgerService.get_balance,services/ledger_service.py:1
 FIND-06,canonical_payment,LedgerService.post_payment_received,services/ledger_service.py:281,exists,Debit CASH / Credit RECEIVABLE,Reused by CanonicalPaymentService,test_s5_ledger.py:284,DR-04,LOW
 FIND-07,canonical_payment,OrderService.transition,services/order_service.py:53,exists,ONLY order state mutation path,Reused by CanonicalPaymentService,test_dc11d_payment_replay_concurrency_integrity.py:620,DR-04,LOW
 FIND-08,canonical_payment,POST /api/v1/payments (disabled),api/v1/payments.py:83,disabled,Returns 409 PAYMENT_WRITE_PATH_DISABLED,No change,test_payments_api.py:29,DR-04,LOW
-FIND-09,product_defect,Frontend pay button permission,OrderListPage.tsx:70,RESOLVED,Was orders:update vs backend payments:create; H3 fixed,H3 merged into product baseline 0f9d259b,N/A,DR-04,RESOLVED
+FIND-09,product_defect,Frontend pay button permission,OrderListPage.tsx:70,RESOLVED,Was orders:update vs backend payments:create; H3 fixed,H3 merged into product baseline 0f9d259b,N/A,DR-10,RESOLVED
 FIND-10,receipt,receipt_number source of truth,payments.receipt_number,NEW,Column does not exist yet,ADD payments.receipt_number VARCHAR(32); partial unique index,TM-16/TM-23,DR-05,MEDIUM
 FIND-11,receipt,receipt_number removed from declarations,payment_declarations,REMOVED,Was denormalized copy,Resolved via confirmation_payment_id,TM-16,DR-05,LOW
 FIND-12,receipt,receipt_sequences allocator,receipt_sequences table,NEW,Atomic INSERT ON CONFLICT RETURNING,business_date CHAR(8); format RCT-YYYYMMDD-NNNNNN UTC,TM-23,DR-05,MEDIUM
@@ -37,11 +37,11 @@ FIND-35,migration,alembic_version location,public schema only,exists,alembic_ver
 FIND-36,declarations,Immutable declarations,,NEW,No is_deleted; never deleted; FK RESTRICT,R1 confirmed; R2 adds FK RESTRICT,TM-01/TM-27,DR-07,LOW
 FIND-37,notification,Notification emission,,DEFERRED,Original specified events; removed,No emission until transactional outbox designed,TM-22,DR-09,LOW
 FIND-38,configure_app,Route registration,api/app.py,exists,configure_app mounts routers,New routes; GAP-07 inventory must update,TM-20,DR-08,MEDIUM
-FIND-39,frontend,Wholesaler pay UI,OrderListPage.tsx:70,H3 fixed,Now uses payments:create; H3 merged,Add declaration queue/confirm UI in S2B,N/A,DR-04,LOW
+FIND-39,frontend,Wholesaler pay UI,OrderListPage.tsx:70,H3 fixed,Now uses payments:create; H3 merged,Add declaration queue/confirm UI in S2B,N/A,DR-10/DR-11,LOW
 FIND-40,frontend,Retailer finance UI,FinanceBalancePage.tsx:14,exists,Read-only balance; no payment initiation,Add declaration + history + print in S2B,N/A,DR-06,MEDIUM
 FIND-41,frontend,Print support,,NONE,No print/PDF capability,Add browser-native window.print() in S2B,TM-17/TM-18,DR-06,MEDIUM
 FIND-42,risk,Canonical payment extraction risk,,HIGH,Refactoring sole money-movement path,Two PG16/Redis7 gates + post-impl review,N/A,DR-04,HIGH
 FIND-43,migration_status,Exact 035/036 live-status-set,alembic 035:29-34 + 036:43-49,exists,Set includes failed not provisioned,R4.1 correction,TM-33,DR-13,LOW
 FIND-44,transfer_mapping,transfer_reference to transaction_id,,NEW,Maps to transaction_id; trim; reject blank; 1-128; widen VARCHAR(128),Duplicate ref triggers 409,TM-39/TM-40/TM-43/TM-44/TM-45,DR-14,MEDIUM
-FIND-45,key_collision,Declaration key vs canonical payment key,,NEW,Two independent namespaces; key = decl-confirm-{declaration_id.hex},No collision; cross-retailer reuse,TM-34/TM-35/TM-41/TM-42,DR-15,LOW
+FIND-45,key_collision,Declaration key vs canonical payment key,,NEW,Two independent namespaces; key = decl-confirm-{declaration_id.hex},No collision; cross-retailer reuse,TM-34/TM-35/TM-41/TM-42,DR-15/DR-16,LOW
 FIND-46,confirmation_lifecycle,Partial confirmation lifecycle,,NEW,Every confirmation = completed; partial->PARTIALLY_PAID; final->PAID,Direct pay_order unchanged,TM-36/TM-37/TM-38/TM-46/TM-47,DR-17,MEDIUM

@@ -13,12 +13,20 @@ This migration is additive and forward-only. It:
    schema.
 4. Renames the permission code client:payments:create -> client:payments:declare
    and adds payments:confirm_declaration.
+5. Grants payments:confirm_declaration to admin role idempotently.
+6. Removes stale client:payments:create grants from retailer_operator idempotently.
+
+R1 Corrections:
+- Semantic fail-closed preflight: exact columns/types/nullability/defaults,
+  CHECK/FK/UNIQUE/index definitions, receipt_number and transaction_id contracts,
+  old/new permission collision, malformed partial objects fail before mutation.
+- Grant payments:confirm_declaration to admin in migration.
+- Remove stale retailer_operator grants idempotently.
 
 Tenant enumeration uses the authoritative public.tenant_registrations JOIN
 public.wholesalers pattern with the exact status sets from migrations 035/036.
 alembic_version exists only in public; no per-tenant version checks.
-Rogue/unregistered schemas are untouched. Read-only preflights fail closed
-before any mutation. A failed migration leaves catalog fingerprints unchanged.
+Rogue/unregistered schemas are untouched.
 """
 
 from __future__ import annotations
@@ -58,6 +66,9 @@ WHOLESALER_ACTIVE_STATUSES = ("active", "provisioning")
 USERS = "users"
 PAYMENTS = "payments"
 ORDERS = "orders"
+ROLES = "roles"
+PERMISSIONS = "permissions"
+ROLE_PERMISSIONS = "role_permissions"
 
 PAYMENT_DECLARATIONS = "payment_declarations"
 RECEIPT_SEQUENCES = "receipt_sequences"
@@ -71,6 +82,8 @@ OLD_CLIENT_PAY_PERM = "client:payments:create"
 NEW_CLIENT_PAY_PERM = "client:payments:declare"
 NEW_CONFIRM_PERM = "payments:confirm_declaration"
 NEW_CONFIRM_PERM_DESC = "Confirm or reject a retailer payment declaration"
+ADMIN_ROLE = "admin"
+RETAILER_OPERATOR_ROLE = "retailer_operator"
 
 
 class PreflightFailure(RuntimeError):
@@ -159,37 +172,146 @@ def _validate_tenant_schema_name(schema: str | None, evidence_name: str) -> None
 
 
 # ---------------------------------------------------------------------------
-# read-only preflight checks (fail closed, no mutation)
+# semantic fail-closed preflight (R1.2 — exact catalog verification)
 # ---------------------------------------------------------------------------
 
-def _preflight_payments_catalog(bind, rows: list[dict[str, Any]]) -> None:
-    """Verify payments table has expected columns before mutating."""
+def _preflight_semantic(bind, rows: list[dict[str, Any]]) -> None:
+    """Verify exact columns/types/nullability/defaults, CHECK/FK/UNIQUE/index
+    definitions, receipt_number and transaction_id contracts, and permission
+    collision before any mutation. Fails closed — no mutation occurs."""
     failures: list[str] = []
     for row in rows:
         schema = row["tenant_schema"]
+
+        # --- payments.transaction_id contract ---
         if not _table_exists(bind, schema, PAYMENTS):
-            continue  # already caught in _validate_registry_rows
-        # transaction_id must exist (it was added in migration 021)
-        if not _column_exists(bind, schema, PAYMENTS, "transaction_id"):
-            failures.append(f"{schema}.{PAYMENTS}: transaction_id column is missing")
-        # orders table must exist for FK
+            continue
+
+        ti_info = bind.execute(sa.text(
+            "SELECT data_type, character_maximum_length, is_nullable "
+            "FROM information_schema.columns "
+            "WHERE table_schema = :s AND table_name = 'payments' AND column_name = 'transaction_id'"
+        ), {"s": schema}).first()
+        if ti_info is None:
+            failures.append(f"{schema}.payments: transaction_id column is missing")
+        elif ti_info[0] != "character varying":
+            failures.append(f"{schema}.payments.transaction_id: expected character varying, got {ti_info[0]}")
+        elif ti_info[1] is not None and ti_info[1] != 64 and ti_info[1] != 128:
+            failures.append(f"{schema}.payments.transaction_id: unexpected length {ti_info[1]}")
+
+        # --- orders table for FK ---
         if not _table_exists(bind, schema, ORDERS):
-            failures.append(f"{schema}.{ORDERS}: orders table is missing (FK target)")
-        # client:payments:create permission should exist (seeded by 036)
-        perm_exists = bind.execute(sa.text(
-            f"SELECT 1 FROM \"{schema}\".permissions WHERE code = :code"
-        ), {"code": OLD_CLIENT_PAY_PERM}).first()
-        if not perm_exists:
-            # Check if it was already renamed (idempotent second upgrade)
-            new_exists = bind.execute(sa.text(
-                f"SELECT 1 FROM \"{schema}\".permissions WHERE code = :code"
-            ), {"code": NEW_CLIENT_PAY_PERM}).first()
-            if not new_exists:
-                failures.append(
-                    f"{schema}.permissions: neither {OLD_CLIENT_PAY_PERM} nor {NEW_CLIENT_PAY_PERM} exists"
-                )
+            failures.append(f"{schema}.orders: orders table is missing (FK target)")
+
+        # --- permission collision: both old and new must not coexist ---
+        old_count = bind.execute(sa.text(
+            f'SELECT COUNT(*) FROM "{schema}".permissions WHERE code = :code'
+        ), {"code": OLD_CLIENT_PAY_PERM}).scalar()
+        new_count = bind.execute(sa.text(
+            f'SELECT COUNT(*) FROM "{schema}".permissions WHERE code = :code'
+        ), {"code": NEW_CLIENT_PAY_PERM}).scalar()
+        if old_count > 0 and new_count > 0:
+            failures.append(
+                f"{schema}.permissions: both {OLD_CLIENT_PAY_PERM} and {NEW_CLIENT_PAY_PERM} exist (collision)"
+            )
+        if old_count == 0 and new_count == 0:
+            failures.append(
+                f"{schema}.permissions: neither {OLD_CLIENT_PAY_PERM} nor {NEW_CLIENT_PAY_PERM} exists"
+            )
+
+        # --- payment_declarations: if exists, verify exact catalog ---
+        if _table_exists(bind, schema, PAYMENT_DECLARATIONS):
+            _verify_declaration_catalog(bind, schema, failures)
+
     if failures:
-        raise PreflightFailure("037 preflight (payments catalog) failed: " + "; ".join(failures))
+        raise PreflightFailure("037 preflight (semantic) failed: " + "; ".join(failures))
+
+
+def _verify_declaration_catalog(bind, schema: str, failures: list[str]) -> None:
+    """Verify existing payment_declarations matches exact contract."""
+    expected_cols = {
+        "id": ("uuid", "NO"),
+        "order_id": ("uuid", "NO"),
+        "retailer_id": ("uuid", "NO"),
+        "wholesaler_id": ("uuid", "NO"),
+        "declared_amount": ("numeric", "NO"),
+        "method": ("character varying", "NO"),
+        "transfer_reference": ("character varying", "YES"),
+        "status": ("character varying", "NO"),
+        "idempotency_key": ("character varying", "NO"),
+        "submitted_by": ("uuid", "NO"),
+        "submitted_at": ("timestamp with time zone", "NO"),
+        "confirmed_by": ("uuid", "YES"),
+        "confirmed_at": ("timestamp with time zone", "YES"),
+        "confirmation_payment_id": ("uuid", "YES"),
+        "rejected_by": ("uuid", "YES"),
+        "rejected_at": ("timestamp with time zone", "YES"),
+        "reason": ("character varying", "YES"),
+    }
+    actual_cols = {}
+    for col_row in bind.execute(sa.text(
+        "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+        "WHERE table_schema = :s AND table_name = 'payment_declarations'"
+    ), {"s": schema}).fetchall():
+        actual_cols[col_row[0]] = (col_row[1], col_row[2])
+
+    for col_name, (exp_type, exp_nullable) in expected_cols.items():
+        if col_name not in actual_cols:
+            failures.append(f"{schema}.payment_declarations: column {col_name} missing")
+        else:
+            act_type, act_nullable = actual_cols[col_name]
+            if not act_type.startswith(exp_type.split("(")[0]):
+                failures.append(
+                    f"{schema}.payment_declarations.{col_name}: type mismatch "
+                    f"expected ~{exp_type}, got {act_type}"
+                )
+            if act_nullable != exp_nullable:
+                failures.append(
+                    f"{schema}.payment_declarations.{col_name}: nullability mismatch "
+                    f"expected {exp_nullable}, got {act_nullable}"
+                )
+
+    # is_deleted must NOT exist
+    if "is_deleted" in actual_cols:
+        failures.append(f"{schema}.payment_declarations: is_deleted must not exist")
+
+    # CHECK constraints
+    for ck_name, ck_fragment in [
+        ("ck_payment_declarations_method", "'cash'"),
+        ("ck_payment_declarations_status", "'pending'"),
+        ("ck_payment_declarations_amount_positive", "> 0"),
+    ]:
+        if not _constraint_exists(bind, schema, PAYMENT_DECLARATIONS, ck_name):
+            failures.append(f"{schema}.payment_declarations: CHECK constraint {ck_name} missing")
+
+    # FK RESTRICT
+    fks = bind.execute(sa.text(
+        "SELECT kcu.column_name, rc.delete_rule "
+        "FROM information_schema.key_column_usage kcu "
+        "JOIN information_schema.referential_constraints rc "
+        "ON kcu.constraint_name = rc.constraint_name "
+        "WHERE kcu.table_schema = :s AND kcu.table_name = 'payment_declarations'"
+    ), {"s": schema}).fetchall()
+    fk_map = {r[0]: r[1] for r in fks}
+    if fk_map.get("order_id") != "RESTRICT":
+        failures.append(f"{schema}.payment_declarations: order_id FK must be RESTRICT")
+    if fk_map.get("confirmation_payment_id") != "RESTRICT":
+        failures.append(f"{schema}.payment_declarations: confirmation_payment_id FK must be RESTRICT")
+
+    # Unique index
+    if not _index_exists(bind, schema, PAYMENT_DECLARATIONS, UX_DECLARATIONS_RETAILER_IDEM):
+        failures.append(f"{schema}.payment_declarations: unique index {UX_DECLARATIONS_RETAILER_IDEM} missing")
+
+    # receipt_sequences
+    if _table_exists(bind, schema, RECEIPT_SEQUENCES):
+        bd_info = bind.execute(sa.text(
+            "SELECT data_type, character_maximum_length FROM information_schema.columns "
+            "WHERE table_schema = :s AND table_name = 'receipt_sequences' AND column_name = 'business_date'"
+        ), {"s": schema}).first()
+        if bd_info and (bd_info[0] != "character" or bd_info[1] != 8):
+            failures.append(
+                f"{schema}.receipt_sequences.business_date: expected CHAR(8), got {bd_info[0]}({bd_info[1]})"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -199,9 +321,14 @@ def _preflight_payments_catalog(bind, rows: list[dict[str, Any]]) -> None:
 def _widen_transaction_id(bind, schema: str) -> None:
     """Widen payments.transaction_id to VARCHAR(128)."""
     payments_t = _qualified(bind, schema, PAYMENTS)
-    bind.execute(sa.text(
-        f"ALTER TABLE {payments_t} ALTER COLUMN transaction_id TYPE VARCHAR(128)"
-    ))
+    ti_len = bind.execute(sa.text(
+        "SELECT character_maximum_length FROM information_schema.columns "
+        "WHERE table_schema = :s AND table_name = 'payments' AND column_name = 'transaction_id'"
+    ), {"s": schema}).scalar()
+    if ti_len is not None and ti_len < 128:
+        bind.execute(sa.text(
+            f"ALTER TABLE {payments_t} ALTER COLUMN transaction_id TYPE VARCHAR(128)"
+        ))
 
 
 def _add_receipt_number(bind, schema: str) -> None:
@@ -279,10 +406,16 @@ def _create_receipt_sequences(bind, schema: str) -> None:
     """))
 
 
-def _rename_permission_and_add_confirm(bind, schema: str) -> None:
-    """Rename client:payments:create -> client:payments:declare; add payments:confirm_declaration."""
-    perms_t = _qualified(bind, schema, "permissions")
-    # Rename existing permission code (idempotent: only if old code exists)
+def _reconcile_permissions(bind, schema: str) -> None:
+    """Rename client:payments:create -> client:payments:declare;
+    add payments:confirm_declaration;
+    grant confirm_declaration to admin idempotently;
+    remove stale client:payments:create grants from retailer_operator."""
+    perms_t = _qualified(bind, schema, PERMISSIONS)
+    roles_t = _qualified(bind, schema, ROLES)
+    role_perms_t = _qualified(bind, schema, ROLE_PERMISSIONS)
+
+    # Rename existing permission code (idempotent)
     old_exists = bind.execute(sa.text(
         f"SELECT 1 FROM {perms_t} WHERE code = :code"
     ), {"code": OLD_CLIENT_PAY_PERM}).first()
@@ -292,11 +425,44 @@ def _rename_permission_and_add_confirm(bind, schema: str) -> None:
             f"description = 'Retailer: submit payment declaration' "
             f"WHERE code = :old_code"
         ), {"new_code": NEW_CLIENT_PAY_PERM, "old_code": OLD_CLIENT_PAY_PERM})
+
     # Add payments:confirm_declaration permission (idempotent)
     bind.execute(sa.text(
         f"INSERT INTO {perms_t} (code, description) "
         f"VALUES (:code, :desc) ON CONFLICT (code) DO NOTHING"
     ), {"code": NEW_CONFIRM_PERM, "desc": NEW_CONFIRM_PERM_DESC})
+
+    # R1.3: Grant payments:confirm_declaration to admin role idempotently
+    bind.execute(sa.text(
+        f"INSERT INTO {role_perms_t} (role_id, permission_id) "
+        f"SELECT r.id, p.id FROM {roles_t} r, {perms_t} p "
+        f"WHERE r.name = :role AND p.code = :code "
+        f"AND NOT EXISTS (SELECT 1 FROM {role_perms_t} rp "
+        f"WHERE rp.role_id = r.id AND rp.permission_id = p.id)"
+    ), {"role": ADMIN_ROLE, "code": NEW_CONFIRM_PERM})
+
+    # R1.4: Remove stale client:payments:create grants from retailer_operator (idempotent)
+    bind.execute(sa.text(
+        f"DELETE FROM {role_perms_t} "
+        f"WHERE role_id IN (SELECT id FROM {roles_t} WHERE name = :role) "
+        f"AND permission_id IN (SELECT id FROM {perms_t} WHERE code = :old_code)"
+    ), {"role": RETAILER_OPERATOR_ROLE, "old_code": OLD_CLIENT_PAY_PERM})
+
+    # R1.4: Ensure retailer_operator has client:payments:declare (if it was newly added)
+    bind.execute(sa.text(
+        f"INSERT INTO {role_perms_t} (role_id, permission_id) "
+        f"SELECT r.id, p.id FROM {roles_t} r, {perms_t} p "
+        f"WHERE r.name = :role AND p.code = :code "
+        f"AND NOT EXISTS (SELECT 1 FROM {role_perms_t} rp "
+        f"WHERE rp.role_id = r.id AND rp.permission_id = p.id)"
+    ), {"role": RETAILER_OPERATOR_ROLE, "code": NEW_CLIENT_PAY_PERM})
+
+    # R1.4: Ensure retailer_operator NEVER has payments:confirm_declaration
+    bind.execute(sa.text(
+        f"DELETE FROM {role_perms_t} "
+        f"WHERE role_id IN (SELECT id FROM {roles_t} WHERE name = :role) "
+        f"AND permission_id IN (SELECT id FROM {perms_t} WHERE code = :confirm_code)"
+    ), {"role": RETAILER_OPERATOR_ROLE, "confirm_code": NEW_CONFIRM_PERM})
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +474,7 @@ def upgrade() -> None:
     _ensure_registry_tables_exist(bind)
     rows = _registered_tenants(bind)
     _validate_registry_rows(bind, rows)
-    _preflight_payments_catalog(bind, rows)
+    _preflight_semantic(bind, rows)
 
     for row in rows:
         schema = row["tenant_schema"]
@@ -316,11 +482,10 @@ def upgrade() -> None:
         _add_receipt_number(bind, schema)
         _create_payment_declarations(bind, schema)
         _create_receipt_sequences(bind, schema)
-        _rename_permission_and_add_confirm(bind, schema)
+        _reconcile_permissions(bind, schema)
 
 
 def downgrade() -> None:
-    # Forward-only: reverting a financial schema migration is unsafe.
     raise RuntimeError(
         "037_payment_declarations_schema is forward-only. "
         "Downgrade is not supported."
@@ -349,6 +514,19 @@ def _table_exists(bind, schema: str, table_name: str) -> bool:
             "WHERE table_schema = :schema AND table_name = :table_name"
         ),
         {"schema": schema, "table_name": table_name},
+    ).first())
+
+
+def _constraint_exists(bind, schema: str, table_name: str, constraint_name: str) -> bool:
+    return bool(bind.execute(
+        sa.text(
+            "SELECT 1 FROM pg_constraint c "
+            "JOIN pg_class t ON t.oid = c.conrelid "
+            "JOIN pg_namespace n ON n.oid = t.relnamespace "
+            "WHERE n.nspname = :schema AND t.relname = :table_name "
+            "AND c.conname = :constraint_name"
+        ),
+        {"schema": schema, "table_name": table_name, "constraint_name": constraint_name},
     ).first())
 
 

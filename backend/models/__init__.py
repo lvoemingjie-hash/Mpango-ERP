@@ -41,6 +41,12 @@ from models.retailer_credentials import (
     RetailerCredentialSetupToken,
     RetailerPasswordResetToken,
 )
+from models.payment_declaration import (
+    DeclarationMethod,
+    DeclarationStatus,
+    PaymentDeclaration,
+    ReceiptSequence,
+)
 
 __all__ = [
     # Base classes
@@ -117,4 +123,10 @@ __all__ = [
     "IntakeUpload",
     "IntakeProductRow",
     "IntakeValidationIssue",
+
+    # DC-12R1-S3-S2B-I1: Payment declaration schema (tenant schema)
+    "DeclarationStatus",
+    "DeclarationMethod",
+    "PaymentDeclaration",
+    "ReceiptSequence",
 ]

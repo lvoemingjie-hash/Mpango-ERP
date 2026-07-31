@@ -685,12 +685,22 @@ async def _reconcile_payments(db, ts: str) -> None:
         ))
         print(f"[reconcile] {ts}.payments: added retailer_id (NOT NULL)")
 
-    # --- transaction_id ---
+    # --- transaction_id (S2B-I1: VARCHAR(128) to match declaration transfer_reference) ---
     if not await _column_exists(db, ts, "payments", "transaction_id"):
         await db.execute(text(
-            f'ALTER TABLE "{ts}".payments ADD COLUMN transaction_id VARCHAR(64)'
+            f'ALTER TABLE "{ts}".payments ADD COLUMN transaction_id VARCHAR(128)'
         ))
-        print(f"[reconcile] {ts}.payments: added transaction_id (nullable)")
+        print(f"[reconcile] {ts}.payments: added transaction_id VARCHAR(128) (nullable)")
+    else:
+        ti_len = (await db.execute(text(
+            "SELECT character_maximum_length FROM information_schema.columns "
+            "WHERE table_schema = :s AND table_name = 'payments' AND column_name = 'transaction_id'"
+        ), {"s": ts})).scalar()
+        if ti_len is not None and ti_len < 128:
+            await db.execute(text(
+                f'ALTER TABLE "{ts}".payments ALTER COLUMN transaction_id TYPE VARCHAR(128)'
+            ))
+            print(f"[reconcile] {ts}.payments: widened transaction_id to VARCHAR(128)")
 
     invalid_method_count = (await db.execute(text(
         f'SELECT COUNT(*) FROM "{ts}".payments '
@@ -1311,6 +1321,92 @@ async def _reconcile_rbac_s1(db, ts: str) -> None:
     print(f"[reconcile] {ts}: ensured DC-12R1-S1 retailer_operator RBAC + email index")
 
 
+async def _reconcile_s2b_i1(db, ts: str) -> None:
+    """DC-12R1-S3-S2B-I1: ensure payment_declarations, receipt_sequences,
+    receipt_number column/index, and transaction_id VARCHAR(128)."""
+    from sqlalchemy import text
+
+    payments_t = f'"{ts}".payments'
+    orders_t = f'"{ts}".orders'
+    decl_t = f'"{ts}".payment_declarations'
+    rs_t = f'"{ts}".receipt_sequences'
+
+    # Ensure receipt_number column on payments
+    has_receipt = (await db.execute(text(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = :s AND table_name = 'payments' AND column_name = 'receipt_number'"
+    ), {"s": ts})).first()
+    if not has_receipt:
+        await db.execute(text(f'ALTER TABLE {payments_t} ADD COLUMN receipt_number VARCHAR(32)'))
+
+    # Ensure partial unique index on receipt_number
+    await _ensure_index(
+        db, ts, "ux_payments_receipt_number",
+        f'CREATE UNIQUE INDEX ux_payments_receipt_number ON {payments_t} (receipt_number) '
+        "WHERE receipt_number IS NOT NULL",
+        ("payments", "(receipt_number)", "receipt_number IS NOT NULL"),
+    )
+
+    # Widen transaction_id to VARCHAR(128) if still VARCHAR(64)
+    ti_type = (await db.execute(text(
+        "SELECT character_maximum_length FROM information_schema.columns "
+        "WHERE table_schema = :s AND table_name = 'payments' AND column_name = 'transaction_id'"
+    ), {"s": ts})).scalar()
+    if ti_type is not None and ti_type < 128:
+        await db.execute(text(f'ALTER TABLE {payments_t} ALTER COLUMN transaction_id TYPE VARCHAR(128)'))
+
+    # Create payment_declarations table
+    await db.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS {decl_t} (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL REFERENCES {orders_t}(id) ON DELETE RESTRICT,
+            retailer_id UUID NOT NULL,
+            wholesaler_id UUID NOT NULL,
+            declared_amount NUMERIC(12,2) NOT NULL,
+            method VARCHAR(16) NOT NULL,
+            transfer_reference VARCHAR(128),
+            status VARCHAR(16) NOT NULL DEFAULT 'pending',
+            idempotency_key VARCHAR(64) NOT NULL,
+            submitted_by UUID NOT NULL,
+            submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            confirmed_by UUID,
+            confirmed_at TIMESTAMPTZ,
+            confirmation_payment_id UUID REFERENCES {payments_t}(id) ON DELETE RESTRICT,
+            rejected_by UUID,
+            rejected_at TIMESTAMPTZ,
+            reason VARCHAR(256),
+            CONSTRAINT ck_payment_declarations_method CHECK (method IN ('cash', 'transfer')),
+            CONSTRAINT ck_payment_declarations_status CHECK (status IN ('pending', 'confirmed', 'rejected')),
+            CONSTRAINT ck_payment_declarations_amount_positive CHECK (declared_amount > 0)
+        )
+    """))
+    await _ensure_index(
+        db, ts, "ux_payment_declarations_retailer_idem",
+        f'CREATE UNIQUE INDEX ux_payment_declarations_retailer_idem ON {decl_t} (retailer_id, idempotency_key)',
+        ("payment_declarations", "(retailer_id, idempotency_key)"),
+    )
+    await _ensure_index(
+        db, ts, "ix_payment_declarations_retailer_status",
+        f'CREATE INDEX ix_payment_declarations_retailer_status ON {decl_t} (retailer_id, status)',
+        ("payment_declarations", "(retailer_id, status)"),
+    )
+    await _ensure_index(
+        db, ts, "ix_payment_declarations_wholesaler_status",
+        f'CREATE INDEX ix_payment_declarations_wholesaler_status ON {decl_t} (wholesaler_id, status)',
+        ("payment_declarations", "(wholesaler_id, status)"),
+    )
+
+    # Create receipt_sequences table
+    await db.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS {rs_t} (
+            business_date CHAR(8) PRIMARY KEY,
+            next_seq INTEGER NOT NULL DEFAULT 1
+        )
+    """))
+
+    print(f"[reconcile] {ts}: ensured DC-12R1-S3-S2B-I1 payment_declarations + receipt_sequences + receipt_number")
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -1450,12 +1546,13 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
             f'order_id UUID NOT NULL REFERENCES "{ts}".orders(id) ON DELETE CASCADE,'
             "retailer_id UUID NOT NULL,"
-            "transaction_id VARCHAR(64),"
+            "transaction_id VARCHAR(128),"
             "amount NUMERIC(12,2) NOT NULL,"
             "method VARCHAR(50) NOT NULL DEFAULT 'cash',"
             "status VARCHAR(50) NOT NULL DEFAULT 'completed',"
             "reference_number VARCHAR(100),"
             "idempotency_key VARCHAR(64) UNIQUE,"
+            "receipt_number VARCHAR(32),"
             "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
             "created_by UUID, updated_by UUID,"
@@ -1682,6 +1779,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- DC-12R1-S1: retailer_operator RBAC + active-email index (mirrors 036) ---
         await _reconcile_rbac_s1(db, ts)
+
+        # --- DC-12R1-S3-S2B-I1: payment_declarations + receipt_sequences + receipt_number index ---
+        await _reconcile_s2b_i1(db, ts)
 
         await db.commit()
 

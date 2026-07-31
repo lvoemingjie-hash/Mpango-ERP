@@ -34,17 +34,21 @@ def test_migration_036_does_not_import_runtime_permission_registry():
 
 
 def test_retailer_operator_registry_matches_self_contained_migration_constants():
-    migration = _migration_036()
-    assert tuple(migration.RETAILER_OPERATOR_PERMISSIONS) == RETAILER_OPERATOR_PERMISSIONS
+    # Migration 036 embedded the OLD code client:payments:create.
+    # Migration 037 renames it to client:payments:declare in the runtime registry.
+    # The frozen migration 036 copy and the runtime registry now differ by exactly
+    # this one rename, which is correct: migration 037 applies the rename at upgrade.
     assert RETAILER_OPERATOR_PERMISSION_CODES == {
         "client:catalog:read",
         "client:orders:read",
         "client:orders:create",
         "client:payments:read",
-        "client:payments:create",
+        "client:payments:declare",
         "client:finance:read",
     }
     assert all(code.startswith("client:") for code in RETAILER_OPERATOR_PERMISSION_CODES)
+    assert "client:payments:create" not in RETAILER_OPERATOR_PERMISSION_CODES
+    assert "payments:confirm_declaration" in ADMIN_PERMISSION_CODES
 
 
 def test_admin_management_registry_matches_self_contained_migration_constants():

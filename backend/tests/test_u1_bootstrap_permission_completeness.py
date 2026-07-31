@@ -134,6 +134,8 @@ class TestOnboardTenantPermissionCompleteness:
             # DC-12R1-S1 admin-only retailer credential controls.
             "invitations:revoke",
             "retailers:reissue_credential",
+            # DC-12R1-S3-S2B-I1: declaration confirmation permission (no route yet).
+            "payments:confirm_declaration",
         }
         unexpected = extra - known_valid_extras
         assert not unexpected, (
@@ -165,7 +167,7 @@ class TestSeedTestTenantPermissionCompleteness:
             "client:orders:read",
             "client:orders:create",
             "client:payments:read",
-            "client:payments:create",
+            "client:payments:declare",
             "client:finance:read",
         }
         assert all(code.startswith("client:") for code in RETAILER_OPERATOR_PERMISSION_CODES)

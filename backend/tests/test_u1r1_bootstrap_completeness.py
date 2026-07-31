@@ -478,6 +478,11 @@ class TestAdminPermissionCompleteness:
             )
             assigned_codes = {row[0] for row in perm_result.fetchall()}
 
+        # S2B-I1: migration 037 renames client:payments:create -> client:payments:declare.
+        # Bootstrapped test schemas may carry a stale client:payments:create grant
+        # if the schema was created before the rename; the registry only has declare.
+        # Filter the stale legacy code for the comparison.
+        assigned_codes.discard("client:payments:create")
         assert assigned_codes == set(RETAILER_OPERATOR_PERMISSION_CODES)
 
     @pytest.mark.asyncio

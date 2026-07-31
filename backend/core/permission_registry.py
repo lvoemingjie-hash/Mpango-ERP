@@ -47,6 +47,7 @@ ADMIN_PERMISSIONS: Final[tuple[PermissionSpec, ...]] = (
     ("inventory:update", "Update inventory (adjustments)"),
     ("payments:read", "Read payments"),
     ("payments:create", "Create payments"),
+    ("payments:confirm_declaration", "Confirm or reject a retailer payment declaration"),
     ("retailers:read", "Read retailers"),
     *ADMIN_MANAGEMENT_PERMISSIONS,
     ("invitations:create", "Create invitations"),
@@ -66,7 +67,7 @@ RETAILER_OPERATOR_PERMISSIONS: Final[tuple[PermissionSpec, ...]] = (
     ("client:orders:read", "Retailer: read own orders"),
     ("client:orders:create", "Retailer: create own orders"),
     ("client:payments:read", "Retailer: read own payments"),
-    ("client:payments:create", "Retailer: pay own orders"),
+    ("client:payments:declare", "Retailer: submit payment declaration"),
     ("client:finance:read", "Retailer: read own outstanding balance"),
 )
 

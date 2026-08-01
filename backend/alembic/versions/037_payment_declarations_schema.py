@@ -257,7 +257,7 @@ PG_CATALOG_FK_SQL = """
     WHERE n.nspname = :schema AND t.relname = :table_name AND c.contype = 'f'
 """
 
-# Index with full catalog identity: indkey/indpred/indisunique
+# Index with full catalog identity: indkey/indpred/indisunique/indnatts/indnkeyatts
 PG_CATALOG_INDEX_SQL = """
     SELECT ic.relname AS index_name,
            i.indisunique,
@@ -265,7 +265,8 @@ PG_CATALOG_INDEX_SQL = """
            i.indkey,
            i.indpred,
            pg_catalog.pg_get_expr(i.indpred, i.indrelid) AS pred_text,
-           pg_catalog.pg_get_indexdef(i.indexrelid) AS index_def
+           i.indnatts,
+           i.indnkeyatts
     FROM pg_catalog.pg_index i
     JOIN pg_catalog.pg_class t ON t.oid = i.indrelid
     JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
@@ -328,12 +329,17 @@ def _normalize_int2vector(val) -> list[int]:
 def _resolve_indkey(indkey_val, attnum_map: dict) -> tuple[str, ...]:
     """Resolve pg_index.indkey to ordered column names.
 
-    indkey is an int2vector; drivers may return it as a string ("3 8"),
-    a list ([3, 8]), or a list-as-string ("[3, 8]").  Expression columns
-    use 0 (no attnum) — filtered out.
+    Expression columns use attnum 0 — represented as ``"<expr>"`` so callers
+    can detect and reject them.
     """
     nums = _normalize_int2vector(indkey_val)
-    return tuple(attnum_map.get(n, f"?{n}") for n in nums if n > 0)
+    result = []
+    for n in nums:
+        if n == 0:
+            result.append("<expr>")
+        else:
+            result.append(attnum_map.get(n, f"?{n}"))
+    return tuple(result)
 
 
 def _normalize_expr(expr: str) -> str:
@@ -341,8 +347,13 @@ def _normalize_expr(expr: str) -> str:
     return re.sub(r"\s+", " ", (expr or "")).strip().lower()
 
 
-# DELETE action codes (confdeltype)
-_DELETE_RESTRICT = "r"
+# DELETE action codes (confdeltype) — may arrive as bytes or str
+_DELETE_RESTRICT_CODES = ("r", b"r")
+
+
+def _is_restrict(confdeltype) -> bool:
+    """Check if confdeltype is RESTRICT, handling both bytes and str."""
+    return confdeltype in _DELETE_RESTRICT_CODES
 
 
 def _preflight_semantic(bind, rows: list[dict[str, Any]]) -> None:
@@ -384,7 +395,7 @@ def _preflight_semantic(bind, rows: list[dict[str, Any]]) -> None:
                 failures.append(f"{schema}.payments.receipt_number: must be nullable")
             # Verify partial unique index via catalog identity
             _verify_partial_index(bind, schema, PAYMENTS, UX_PAYMENTS_RECEIPT_NUMBER,
-                                  ("receipt_number",), "receipt_number is not null",
+                                  ("receipt_number",), "(receipt_number is not null)",
                                   failures)
 
         # --- permission collision ---
@@ -413,44 +424,54 @@ def _preflight_semantic(bind, rows: list[dict[str, Any]]) -> None:
 
 def _check_is_exact_in(check_expr: str, column: str,
                        allowed: tuple[str, ...]) -> bool:
-    """Verify a CHECK expression is exactly ``column = ANY(ARRAY[...])`` with
-    the precise allowed value set, no extra clauses.
+    """Verify a CHECK expression is the exact PG16 canonical shape.
 
-    PG16 normalises ``IN ('a','b')`` to ``((col)::text = ANY ((ARRAY[...])::text[]))``.
-    We extract all string literals and compare the *set* against *allowed*.
+    PG16 normalises ``IN ('a','b')`` to::
+
+        ((col)::text = ANY ((ARRAY['a'::character varying, 'b'::character varying])::text[]))
+
+    We build the expected canonical string and compare normalised form
+    exactly.  This rejects extra AND/OR predicates, alternate operators,
+    ``OR 1=1``, ``NOT IN``, ``<>`` chains and any non-equivalent shape.
     """
-    n = _normalize_expr(check_expr)
-    if column not in n:
-        return False
-    # Must be an ANY(ARRAY[...]) or IN (...) form — reject OR 1=1, OR TRUE, <>, NOT IN
-    if re.search(r"\bor\s+\(?\s*1\s*=", n) or "or true" in n or "<>" in n or "not in" in n:
-        return False
-    literals = set(re.findall(r"'([^']*)'", n))
-    return literals == set(allowed)
+    expected = _build_canonical_any_expr(column, allowed)
+    return _normalize_expr(check_expr) == expected
+
+
+def _build_canonical_any_expr(column: str,
+                              allowed: tuple[str, ...]) -> str:
+    """Build the exact normalised PG16 expression for ``column IN (allowed)``."""
+    arr_items = ", ".join(f"'{v}'::character varying" for v in allowed)
+    expr = (
+        f"(({column})::text = ANY "
+        f"((ARRAY[{arr_items}])::text[]))"
+    )
+    return _normalize_expr(expr)
 
 
 def _check_is_exact_amount_positive(check_expr: str) -> bool:
-    """Verify CHECK is exactly ``declared_amount > 0`` — reject >=, > -1, OR, etc."""
-    n = _normalize_expr(check_expr)
-    if "declared_amount" not in n:
-        return False
-    if ">=" in n or re.search(r"\bor\b", n) or "<>" in n:
-        return False
-    # Must compare against exactly 0
-    m = re.search(r"declared_amount\s*>\s*\(?([^)<\s]+)", n)
-    if not m:
-        return False
-    return m.group(1).strip("()") == "0"
+    """Verify CHECK is the exact PG16 canonical ``declared_amount > 0`` shape.
+
+    PG16 normalises to ``(declared_amount > (0)::numeric)``.
+    Exact comparison rejects ``>=``, ``AND amount < 10``, ``OR 1=1``, etc.
+    """
+    expected = _normalize_expr("(declared_amount > (0)::numeric)")
+    return _normalize_expr(check_expr) == expected
 
 
 def _normalize_default(expr: str) -> str:
-    """Normalise a default expression for semantic comparison.
-    Strips type casts and whitespace so 'pending'::character varying
-    == 'pending'::text == 'pending'."""
-    n = re.sub(r"\s+", " ", (expr or "")).strip().lower()
-    # Strip PG type casts: 'pending'::character varying → 'pending'
-    n = re.sub(r"::[a-z ]+", "", n)
-    return n
+    """Normalise a default expression: lowercase + collapse whitespace only.
+    Does NOT strip type casts (use anchored allowlists instead)."""
+    return re.sub(r"\s+", " ", (expr or "")).strip().lower()
+
+
+# Anchored canonical default allowlists — exact expressions PG16 stores.
+_STATUS_DEFAULT_CANONICAL = {
+    "'pending'::character varying",
+}
+_NEXT_SEQ_DEFAULT_CANONICAL = {
+    "1",
+}
 
 
 def _verify_declaration_catalog(bind, schema: str, failures: list[str]) -> None:
@@ -495,24 +516,21 @@ def _verify_declaration_catalog(bind, schema: str, failures: list[str]) -> None:
         c = col_map.get(col_name)
         if c is None:
             continue
-        if "(" in exp_type:
-            if exp_type not in c[1]:
-                failures.append(
-                    f"{schema}.payment_declarations.{col_name}: type {c[1]} expected {exp_type}")
-        elif not c[1].startswith(exp_type):
+        # Exact format_type equality — no substring/prefix matching
+        if c[1] != exp_type:
             failures.append(
-                f"{schema}.payment_declarations.{col_name}: type {c[1]} expected ~{exp_type}")
+                f"{schema}.payment_declarations.{col_name}: type {c[1]!r} expected {exp_type!r}")
         if c[2] != exp_notnull:
             failures.append(
                 f"{schema}.payment_declarations.{col_name}: not_null={c[2]} expected {exp_notnull}")
 
-    # status DEFAULT: normalised comparison — must be exactly 'pending'
+    # status DEFAULT: anchored canonical allowlist — exact expression match
     status_col = col_map.get("status")
     if status_col:
         norm = _normalize_default(status_col[3] or "")
-        if norm != "'pending'":
+        if norm not in _STATUS_DEFAULT_CANONICAL:
             failures.append(
-                f"{schema}.payment_declarations.status: DEFAULT must be 'pending', got {status_col[3]!r}")
+                f"{schema}.payment_declarations.status: DEFAULT must be 'pending'::character varying, got {status_col[3]!r}")
 
     # CHECK constraints via pg_get_expr(conbin) — exact allowlist comparison
     check_rows = bind.execute(
@@ -529,39 +547,50 @@ def _verify_declaration_catalog(bind, schema: str, failures: list[str]) -> None:
     if not any(_check_is_exact_amount_positive(e) for e in check_exprs):
         failures.append(f"{schema}.payment_declarations: CHECK declared_amount>0 missing/wrong")
 
-    # FK constraints via catalog identity: conkey/confkey/confrelid/confdeltype
-    attnum_map = _attnum_map(bind, schema, PAYMENT_DECLARATIONS)
+    # FK constraints via catalog identity: resolve complete conkey/confkey
+    # vectors to column names; require exactly one column per FK.
+    decl_attnum_map = _attnum_map(bind, schema, PAYMENT_DECLARATIONS)
     fk_rows = bind.execute(
         sa.text(PG_CATALOG_FK_SQL),
         {"schema": schema, "table_name": PAYMENT_DECLARATIONS},
     ).fetchall()
 
+    # Expected FKs: (local_col_name, target_qualified, ref_col_name, desc)
     expected_fks = [
-        (2, f"{schema}.orders", 1, "order_id", "orders(id)"),
-        (14, f"{schema}.payments", 1, "confirmation_payment_id", "payments(id)"),
+        ("order_id", f"{schema}.orders", "id", "orders(id)"),
+        ("confirmation_payment_id", f"{schema}.payments", "id", "payments(id)"),
     ]
-    for exp_conkey_attnum, exp_target, exp_confkey_attnum, exp_local_col, desc in expected_fks:
+    for exp_local_col, exp_target, exp_ref_col, desc in expected_fks:
         found = False
         for fk in fk_rows:
             conkey = _normalize_int2vector(fk[1])
             confkey = _normalize_int2vector(fk[2])
             target = fk[3]
             confdeltype = fk[4]
-            if (conkey and conkey[0] == exp_conkey_attnum
-                    and target == exp_target
-                    and confkey and confkey[0] == exp_confkey_attnum
-                    and confdeltype == _DELETE_RESTRICT):
+            # Require exactly one column in both vectors (reject composite FK)
+            if len(conkey) != 1 or len(confkey) != 1:
+                continue
+            local_col = decl_attnum_map.get(conkey[0])
+            if local_col != exp_local_col or target != exp_target:
+                continue
+            if not _is_restrict(confdeltype):
+                continue
+            # Verify referenced column name matches
+            target_schema, target_table = target.rsplit(".", 1)
+            ref_cols = _attnum_map(bind, target_schema, target_table)
+            ref_col_name = ref_cols.get(confkey[0])
+            if ref_col_name == exp_ref_col:
                 found = True
                 break
         if not found:
             failures.append(
                 f"{schema}.payment_declarations: {exp_local_col} FK to {desc} ON DELETE RESTRICT missing/wrong")
 
-    # Reject any non-RESTRICT delete action
+    # Reject any FK with non-RESTRICT delete action
     for fk in fk_rows:
-        if fk[4] != _DELETE_RESTRICT:
+        if not _is_restrict(fk[4]):
             conkey = _normalize_int2vector(fk[1])
-            local_col = attnum_map.get(conkey[0], "?") if conkey else "?"
+            local_col = decl_attnum_map.get(conkey[0], "?") if conkey else "?"
             failures.append(
                 f"{schema}.payment_declarations: FK on {local_col} has delete action {fk[4]!r}, must be RESTRICT")
 
@@ -578,7 +607,11 @@ def _verify_declaration_catalog(bind, schema: str, failures: list[str]) -> None:
 def _verify_index_catalog(bind, schema, table_name, attnum_map,
                           index_name, expect_unique, expect_keys, expect_pred,
                           failures):
-    """Verify index via pg_index catalog columns (indkey/indpred/indisunique)."""
+    """Verify index via pg_index catalog columns.
+
+    Checks: indisunique, indkey (every entry, reject expression keys),
+    indnatts/indnkeyatts (no INCLUDE columns, no extra keys), indpred.
+    """
     rows = bind.execute(
         sa.text(PG_CATALOG_INDEX_SQL),
         {"schema": schema, "table_name": table_name},
@@ -593,25 +626,35 @@ def _verify_index_catalog(bind, schema, table_name, attnum_map,
         return
     is_unique = idx[1]
     indkey = idx[3]
-    indpred_node = idx[4]  # internal node tree or None
-    pred_text = idx[5]     # pg_get_expr or None
+    indpred_node = idx[4]
+    pred_text = idx[5]
+    indnatts = idx[6]
+    indnkeyatts = idx[7]
 
     if is_unique != expect_unique:
         failures.append(
             f"{schema}.{table_name}: {index_name} unique={is_unique}, expected {expect_unique}")
 
+    # Resolve all indkey entries — expression keys (attnum 0) are flagged as <expr>
     actual_keys = _resolve_indkey(indkey, attnum_map)
+    if "<expr>" in actual_keys:
+        failures.append(
+            f"{schema}.{table_name}: {index_name} must not contain expression columns, got {actual_keys}")
     if actual_keys != tuple(expect_keys):
         failures.append(
             f"{schema}.{table_name}: {index_name} keys={actual_keys}, expected {expect_keys}")
 
+    # Reject INCLUDE columns (indnatts > indnkeyatts)
+    if indnatts != indnkeyatts:
+        failures.append(
+            f"{schema}.{table_name}: {index_name} has INCLUDE columns "
+            f"(indnatts={indnatts}, indnkeyatts={indnkeyatts})")
+
     if expect_pred is None:
-        # Must have no predicate
         if indpred_node is not None:
             failures.append(
                 f"{schema}.{table_name}: {index_name} must not have a predicate, got {pred_text!r}")
     else:
-        # Must have the exact predicate
         if indpred_node is None:
             failures.append(
                 f"{schema}.{table_name}: {index_name} missing required predicate {expect_pred!r}")
@@ -663,26 +706,31 @@ def _verify_receipt_sequences_catalog(bind, schema: str, failures: list[str]) ->
             failures.append(f"{schema}.receipt_sequences.next_seq: expected integer, got {ns[1]}")
         if not ns[2]:
             failures.append(f"{schema}.receipt_sequences.next_seq: must be NOT NULL")
-        # DEFAULT must be exactly 1 via normalised pg_get_expr comparison
+        # DEFAULT: anchored canonical allowlist — exact expression match
         norm = _normalize_default(ns[3] or "")
-        if norm != "1":
+        if norm not in _NEXT_SEQ_DEFAULT_CANONICAL:
             failures.append(
                 f"{schema}.receipt_sequences.next_seq: DEFAULT must be 1, got {ns[3]!r}")
 
-    # PK constraint via catalog identity: conkey must point to business_date
+    # PK constraint via catalog identity: conkey must be exactly [business_date]
     pk_rows = bind.execute(
         sa.text(PG_CATALOG_PK_SQL),
         {"schema": schema, "table_name": RECEIPT_SEQUENCES},
     ).fetchall()
     attnum_map = _attnum_map(bind, schema, RECEIPT_SEQUENCES)
-    bd_attnum = [k for k, v in attnum_map.items() if v == "business_date"]
-    has_pk_on_bd = any(
-        _normalize_int2vector(pk[1]) and bd_attnum
-        and _normalize_int2vector(pk[1])[0] == bd_attnum[0]
-        for pk in pk_rows
-    )
-    if not has_pk_on_bd:
-        failures.append(f"{schema}.receipt_sequences: PRIMARY KEY on business_date missing")
+    name_to_attnum = {v: k for k, v in attnum_map.items()}
+    bd_attnum = name_to_attnum.get("business_date")
+    found_pk = False
+    for pk in pk_rows:
+        conkey = _normalize_int2vector(pk[1])
+        # Must be exactly one column (reject composite PK)
+        if len(conkey) != 1:
+            continue
+        if bd_attnum is not None and conkey[0] == bd_attnum:
+            found_pk = True
+            break
+    if not found_pk:
+        failures.append(f"{schema}.receipt_sequences: PRIMARY KEY on exactly business_date missing")
 
 
 # ---------------------------------------------------------------------------

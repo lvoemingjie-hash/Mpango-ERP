@@ -993,10 +993,287 @@ class TestRealAlembicUpgradeFailClosed:
 
 
 # ---------------------------------------------------------------------------
-# Test class: two registered tenants — A canonical, B malformed
+# R4-R3: Exact catalog shape bypass tests with full RED→GREEN→no-op proof
 # ---------------------------------------------------------------------------
 
-class TestTwoRegisteredTenantsUpgrade:
+class TestExactCatalogShapeBypass:
+    """Each test starts from 036, creates one malformation, proves
+    PreflightFailure in the exception chain, version stays 036, fingerprint
+    unchanged, then repairs and upgrades to sole head 037 + second no-op."""
+
+    @pytest.fixture(autouse=True)
+    def _require_env(self):
+        if not os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") == "1":
+            pytest.skip("MPANGO_ALLOW_TEMP_DB_CREATE=1 required")
+        if not os.environ.get("TEST_DATABASE_URL"):
+            pytest.skip("TEST_DATABASE_URL required")
+
+    def _full_proof(self, db_url, config, eng, schema_unused, malform_fn, repair_fn,
+                    root_cause_substr):
+        """Shared RED→GREEN→no-op proof protocol."""
+        with _database_url_env(db_url):
+            import asyncio
+            # 1. Start at 036
+            run_alembic_upgrade(config, REV_036)
+            # 2. Register tenant + bootstrap + revert to 036 baseline
+            with eng.begin() as conn:
+                schema = _register_tenant(conn, prefix="r4r3")
+            asyncio.run(_bootstrap_and_revert_to_036(schema, db_url))
+
+            # 3. First upgrade to 037 (tables need to exist for some malformations)
+            run_alembic_upgrade(config, "head")
+            with eng.connect() as conn:
+                assert _current_revision(conn) == REV_037
+
+            # 4. Malform + stamp back to 036
+            with eng.begin() as conn:
+                malform_fn(conn, schema)
+                conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                             {"v": REV_036})
+                # Capture fingerprint AFTER all mutations (malform + version stamp)
+                fp_before = _catalog_fingerprint(conn, schema)
+
+            # 5. Run upgrade — must fail with PreflightFailure
+            with pytest.raises(RuntimeError) as exc_info:
+                run_alembic_upgrade(config, "head")
+            assert root_cause_substr in str(exc_info.value).lower(), \
+                f"expected '{root_cause_substr}' in: {exc_info.value}"
+
+            # 6. Version must remain 036 + fingerprint unchanged
+            with eng.connect() as conn:
+                assert _current_revision(conn) == REV_036
+                fp_after = _catalog_fingerprint(conn, schema)
+                assert fp_before == fp_after, "catalog mutated on failure"
+
+            # 7. Repair
+            with eng.begin() as conn:
+                repair_fn(conn, schema)
+
+            # 8. Upgrade to sole head 037
+            run_alembic_upgrade(config, "head")
+            with eng.connect() as conn:
+                assert _current_revision(conn) == REV_037
+                assert _script_heads(config) == [REV_037]
+                fp_green = _catalog_fingerprint(conn, schema)
+
+            # 9. Second upgrade — no-op
+            run_alembic_upgrade(config, "head")
+            with eng.connect() as conn:
+                assert _current_revision(conn) == REV_037
+                fp_noop = _catalog_fingerprint(conn, schema)
+                assert fp_green == fp_noop, "second upgrade mutated catalog"
+
+    # ------------------------------------------------------------------
+    # 1. Wrong CHECK with valid literals plus extra AND condition
+    # ------------------------------------------------------------------
+    def test_check_extra_and_condition_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r3ea") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                def malform(conn, s):
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        'DROP CONSTRAINT ck_payment_declarations_status'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        "ADD CONSTRAINT ck_payment_declarations_status "
+                        "CHECK (status IN ('pending','confirmed','rejected') "
+                        "AND status IS NOT NULL)"))
+
+                def repair(conn, s):
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        'DROP CONSTRAINT ck_payment_declarations_status'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        "ADD CONSTRAINT ck_payment_declarations_status "
+                        "CHECK (status IN ('pending','confirmed','rejected'))"))
+
+                self._full_proof(db_url, config, eng, "", malform, repair, "status")
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # 2. amount > 0 AND amount < 10
+    # ------------------------------------------------------------------
+    def test_amount_range_constraint_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r3ar") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                def malform(conn, s):
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        'DROP CONSTRAINT ck_payment_declarations_amount_positive'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        "ADD CONSTRAINT ck_payment_declarations_amount_positive "
+                        "CHECK (declared_amount > 0 AND declared_amount < 10)"))
+
+                def repair(conn, s):
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        'DROP CONSTRAINT ck_payment_declarations_amount_positive'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        "ADD CONSTRAINT ck_payment_declarations_amount_positive "
+                        "CHECK (declared_amount > 0)"))
+
+                self._full_proof(db_url, config, eng, "", malform, repair, "declared_amount")
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # 3. Index with expected keys plus expression column
+    # ------------------------------------------------------------------
+    def test_index_expression_key_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r3ek") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                def malform(conn, s):
+                    conn.execute(text(f'DROP INDEX "{s}".{IX_DECL_RS}'))
+                    conn.execute(text(
+                        f'CREATE INDEX {IX_DECL_RS} '
+                        f'ON "{s}".payment_declarations (retailer_id, status, (id::text))'))
+
+                def repair(conn, s):
+                    conn.execute(text(f'DROP INDEX "{s}".{IX_DECL_RS}'))
+                    conn.execute(text(
+                        f'CREATE INDEX {IX_DECL_RS} '
+                        f'ON "{s}".payment_declarations (retailer_id, status)'))
+
+                self._full_proof(db_url, config, eng, "", malform, repair,
+                                 IX_DECL_RS.lower())
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # 4. Composite FK beginning with the expected FK column
+    # ------------------------------------------------------------------
+    def test_composite_fk_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r3fk") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                def malform(conn, s):
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        'DROP CONSTRAINT payment_declarations_order_id_fkey'))
+                    # Add a unique constraint on orders(id, wholesaler_id) so
+                    # the composite FK is valid in PG, then create the composite FK
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".orders '
+                        'ADD CONSTRAINT uq_orders_id_wholesaler UNIQUE (id, wholesaler_id)'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        f'ADD CONSTRAINT payment_declarations_order_id_fkey '
+                        f'FOREIGN KEY (order_id, wholesaler_id) '
+                        f'REFERENCES "{s}".orders(id, wholesaler_id) ON DELETE RESTRICT'))
+
+                def repair(conn, s):
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        'DROP CONSTRAINT payment_declarations_order_id_fkey'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        f'ADD CONSTRAINT payment_declarations_order_id_fkey '
+                        f'FOREIGN KEY (order_id) REFERENCES "{s}".orders(id) '
+                        'ON DELETE RESTRICT'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".orders '
+                        'DROP CONSTRAINT IF EXISTS uq_orders_id_wholesaler'))
+
+                self._full_proof(db_url, config, eng, "", malform, repair,
+                                 "order_id")
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # 5. Composite PK beginning with business_date
+    # ------------------------------------------------------------------
+    def test_composite_pk_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r3pk") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                def malform(conn, s):
+                    conn.execute(text(f'ALTER TABLE "{s}".receipt_sequences DROP CONSTRAINT receipt_sequences_pkey'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".receipt_sequences '
+                        'ADD PRIMARY KEY (business_date, next_seq)'))
+
+                def repair(conn, s):
+                    conn.execute(text(f'ALTER TABLE "{s}".receipt_sequences DROP CONSTRAINT receipt_sequences_pkey'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".receipt_sequences '
+                        'ADD PRIMARY KEY (business_date)'))
+
+                self._full_proof(db_url, config, eng, "", malform, repair,
+                                 "primary key")
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # 6. Prefix-compatible but wrong column type
+    # ------------------------------------------------------------------
+    def test_prefix_compatible_wrong_type_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r3pt") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                def malform(conn, s):
+                    # VARCHAR(160) starts with "character varying" but is wrong length
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        'ALTER COLUMN reason TYPE VARCHAR(160)'))
+
+                def repair(conn, s):
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        'ALTER COLUMN reason TYPE VARCHAR(256)'))
+
+                self._full_proof(db_url, config, eng, "", malform, repair,
+                                 "reason")
+            finally:
+                eng.dispose()
+
+    # ------------------------------------------------------------------
+    # 7. Computed status default
+    # ------------------------------------------------------------------
+    def test_computed_status_default_rejected(self):
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "r4r3cd") as db_url:
+            config = _alembic_config(db_url)
+            eng = create_engine(_sync_url(db_url))
+            try:
+                def malform(conn, s):
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        "ALTER COLUMN status SET DEFAULT concat('pending', '')"))
+
+                def repair(conn, s):
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        'ALTER COLUMN status DROP DEFAULT'))
+                    conn.execute(text(
+                        f'ALTER TABLE "{s}".payment_declarations '
+                        "ALTER COLUMN status SET DEFAULT 'pending'"))
+
+                self._full_proof(db_url, config, eng, "", malform, repair,
+                                 "status")
+            finally:
+                eng.dispose()
+
+
+
     """Tenant A canonical; Tenant B malformed.  ``alembic upgrade head`` must
     fail on B without mutating A's catalog."""
 

@@ -1,8 +1,15 @@
 # DC-12R1-S3-S2B-I1-R4-R2: Exact PostgreSQL Catalog Semantics Closure
 
+> **⚠ SUPERSEDED by R4-R3** — This report's CHECK/default/type/FK/index
+> validators used string-containment and hardcoded attnum positions.
+> R4-R3 replaces them with exact PG16 canonical expression comparison,
+> anchored default allowlists, complete vector resolution, and
+> `indnatts`/`indnkeyatts` validation. See
+> `2026-07-30_dc12r1_s3_s2b_i1_r4_r3_exact_shape_report.md`.
+
 **Date**: 2026-07-31
 **Branch**: `codex/dc12r1-s3-s2b-i1-financial-schema-foundation-2026-07-31`
-**Status**: PASS — 21/21 real-alembic tests GREEN; focused gate red=0, gap=0
+**Status**: SUPERSEDED — see R4-R3
 **Parent**: DC-12R1-S3-S2B-I1-R4-R1
 
 ---

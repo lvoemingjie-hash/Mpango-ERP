@@ -1,8 +1,16 @@
 # DC-12R1-S3-S2B-I1-R4-R3: Exact Catalog Shape + Uniform Alembic Evidence
 
+> **⚠ CORRECTED by R4-R3-R1** — This report's test count (78/78) was
+> inaccurate due to a merged class and a false "1+1 folded to 1" claim.
+> R4-R3-R1 restores `TestTwoRegisteredTenantsUpgrade`, adds the
+> `next_seq DEFAULT (1+0)` test, replaces all `pytest.skip` with fail-closed
+> assertions, and adds exception-chain proof. Corrected count: **79 collected,
+> 79 passed, 0 failed, 0 errors, 0 skipped, 0 xfailed**.
+> See `2026-07-30_dc12r1_s3_s2b_i1_r4_r3_r1_final_report.md`.
+
 **Date**: 2026-08-01
 **Branch**: `codex/dc12r1-s3-s2b-i1-financial-schema-foundation-2026-07-31`
-**Status**: PASS — 78/78 focused tests GREEN; red=0, gap=0
+**Status**: CORRECTED — see R4-R3-R1
 **Parent**: DC-12R1-S3-S2B-I1-R4-R2 (SUPERSEDED)
 
 ---
@@ -82,7 +90,7 @@ All in `TestExactCatalogShapeBypass` with full RED→GREEN→no-op protocol:
 | 5 | `test_composite_pk_rejected` | Composite PK (business_date, next_seq) |
 | 6 | `test_prefix_compatible_wrong_type_rejected` | reason VARCHAR(160) (prefix-compatible, wrong length) |
 | 7 | `test_computed_status_default_rejected` | DEFAULT concat('pending', '') |
-| 8 | `test_computed_next_seq_default` (via existing test) | DEFAULT 1+1 folded to 1 — semantically correct, no bypass |
+| 8 | `test_next_seq_computed_default_rejected` (added in R4-R3-R1) | DEFAULT (1 + 0) — PG stores as `(1 + 0)`, not folded to `1`; correctly rejected by anchored allowlist |
 
 Every test: 036 start → malform → fingerprint → upgrade fails (PreflightFailure) →
 version=036 → fingerprint unchanged → repair → upgrade to 037 → second no-op.

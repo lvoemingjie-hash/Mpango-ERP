@@ -1,10 +1,10 @@
 # CTO Current Ops
 
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-01
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `0f9d259b4a6c20584721c53b59ba94c510d1970d`
-**Current migration head:** `036_retailer_mvp_identity`
+**Accepted product merge:** `9528cb6de5f668ed09feb7a1eaa9aafaa537987d`
+**Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
 This is the short operating picture for Mpango agents. Read
@@ -13,7 +13,7 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered@0f9d259b` is the active product baseline.
+- `origin/product-dev-recovered@9528cb6d` is the active product baseline.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -39,6 +39,8 @@ in `ai-ledger/`.
   retailer identities.
 - No retailer route currently settles payments, writes ledger entries, or
   changes receivables.
+- I1 financial schema foundation is merged at `9528cb6d`.
+- I2A canonical payment transaction service extraction is the active product task.
 
 ## Latest Accepted Evidence
 
@@ -56,6 +58,14 @@ Controlled merge:
 
 `0f9d259b4a6c20584721c53b59ba94c510d1970d`
 
+S2B-I1 source candidate:
+
+`codex/dc12r1-s3-s2b-i1-financial-schema-foundation-2026-08-01@9528cb6d`
+
+Controlled merge:
+
+`9528cb6de5f668ed09feb7a1eaa9aafaa537987d`
+
 Post-merge validation:
 
 - Fresh PostgreSQL 16 and Redis 7.
@@ -66,7 +76,7 @@ Post-merge validation:
 
 ## What Is Not Closed
 
-- Retailer payment declaration is not implemented.
+- Canonical payment transaction service extraction is not yet complete.
 - Wholesaler cashier confirmation/rejection is not implemented as a dedicated
   maker-checker workflow.
 - Retailer-visible confirmed receipt and rejection result are not closed.
@@ -80,12 +90,12 @@ Post-merge validation:
 
 ## Active Phase
 
-**Next product gate:**
-`DC-12R1-S3-S2B-D Retailer Payment Declaration, Cashier Confirmation, Receipt,
-and Print Contract`
+**Active product gate:**
+`DC-12R1-S3-S2B-I2A Canonical Payment Transaction Service Extraction`
 
-This is a docs-only design/audit gate. It must finish before any financial
-implementation or migration begins.
+The design gate and schema foundation are complete. I2A extracts the canonical
+payment transaction core without changing direct-payment behavior or exposing
+declaration routes.
 
 Required business boundary:
 
@@ -106,12 +116,12 @@ Required business boundary:
 
 ## Ordered Delivery Plan
 
-1. **S3-S2B-D (next):** lock payment declaration, confirmation, receipt, print,
-   permissions, data model, migration, and test contracts.
-2. **S3-S2B:** implement the approved contract with independent financial
-   validation.
-3. **S3-S3:** complete responsive branded retailer workspace and print UX.
-4. **S4:** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
+1. **S3-S2B-I2A (active):** extract `CanonicalPaymentService` from `pay_order`
+   with behavior-preserving parity and independent financial validation.
+2. **S3-S2B-I2B/I2C (pending):** declaration confirmation workflow, receipt,
+   retailer declaration visibility, and maker-checker runtime closure.
+3. **S3-S3 (pending):** complete responsive branded retailer workspace and print UX.
+4. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
 5. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
    package.
 6. **Tenant branding and manuals:** legal profile, logo, dual branding, and

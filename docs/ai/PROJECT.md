@@ -1,10 +1,10 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-01
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `0f9d259b4a6c20584721c53b59ba94c510d1970d`
-**Current database head:** `036_retailer_mvp_identity`
+**Accepted product merge:** `9528cb6de5f668ed09feb7a1eaa9aafaa537987d`
+**Current database head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
 This file is the continuously maintained source of truth for product status,
@@ -74,10 +74,10 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product baseline | `origin/product-dev-recovered@0f9d259b` |
+| Product baseline | `origin/product-dev-recovered@9528cb6d` |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
-| Alembic head | `036_retailer_mvp_identity` |
+| Alembic head | `037_payment_declarations_schema` |
 | Windows default workspace | Dirty; read-only for controlled work |
 | Controlled work | Clean isolated worktrees only |
 | Tencent mainland VPS | Development, validation, or disaster-recovery role |
@@ -103,7 +103,8 @@ deployment state from a merged branch.
 | Retailer private login S2 | Merged | One supplier portal, one contextual JWT, no `available_tenants` |
 | Retailer workspace S3-S1 | Merged | Catalog/order ownership hardening and exact route/RBAC contracts |
 | Retailer finance S3-S2 | Merged | Read-only payment history and server-authoritative relationship balance |
-| Retailer payment declaration | Not implemented | Must not create canonical financial effects before cashier confirmation |
+| Retailer payment declaration schema foundation | Merged | Migration `037` is present; runtime confirmation flow not implemented |
+| Canonical payment transaction extraction I2A | Active | Direct pay path still inline; extraction is the current bounded product task |
 | Printable business records | Incomplete | Payment declaration, confirmed receipt, order, and statement print contracts remain |
 | Retailer workspace closure | In progress | Payment workflow and final responsive/brand UX remain |
 | Retailer end-to-end S4 | Not closed | Real mailbox and browser journey on deployed latest SHA remains |
@@ -223,7 +224,7 @@ Delivered:
 - status-aware cash labels;
 - no payment write, ledger, settlement, or receivable mutation.
 
-#### DC-12R1-S3-S2B-D - payment declaration contract (next)
+#### DC-12R1-S3-S2B-D - payment declaration contract (completed)
 
 This is a design/audit gate before implementation because it introduces a new
 financial workflow.
@@ -245,14 +246,30 @@ The contract must define:
 - migration requirements, rollback/forward-fix strategy, and an
   implementation/test matrix.
 
-No product code or migration is authorized in the design gate.
+The design gate is complete and approved as the contract input for implementation work.
 
-#### DC-12R1-S3-S2B - payment declaration implementation (held)
+#### DC-12R1-S3-S2B-I1 - schema foundation (completed)
 
-Implementation begins only after the CTO approves the design gate. A submitted
-declaration must have zero effect on order status, payment rows, ledger entries,
-or receivable balances until cashier confirmation succeeds atomically through
-the approved canonical financial path.
+Merged as `9528cb6de5f668ed09feb7a1eaa9aafaa537987d`.
+
+Delivered:
+
+- migration `037_payment_declarations_schema`;
+- declaration, receipt-sequence, and receipt-number schema foundation;
+- no frontend/runtime activation.
+
+#### DC-12R1-S3-S2B-I2A - canonical payment transaction extraction (active)
+
+Extract the existing direct pay-order financial mutation path into a reusable
+`CanonicalPaymentService` without changing current wholesaler payment behavior.
+This stage prepares the future declaration-confirmation transaction core but
+must not expose declaration routes.
+
+#### DC-12R1-S3-S2B-I2B/I2C - declaration runtime and confirmation closure (pending)
+
+Implementation remains pending beyond I2A for retailer declaration submission,
+cashier confirmation/rejection, confirmed receipt visibility, and maker-checker
+runtime closure.
 
 #### DC-12R1-S3-S3 - workspace and print closure
 

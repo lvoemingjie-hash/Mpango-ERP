@@ -105,16 +105,40 @@ version=036 → fingerprint unchanged → repair → upgrade to 037 → second n
 
 ---
 
-## 5. Validation Results
+## 5. Validation Results (NON-AUTHORITATIVE — corrected by R4-R3-R1/R4-R3-R2)
+
+> The accounting below was produced before R4-R3-R1 added the
+> `next_seq DEFAULT (1+0)` test, restored `TestTwoRegisteredTenantsUpgrade`
+> as a separate class, and added exception-chain proof.
+> It is preserved here as a historical record only.
+> **Authoritative accounting**: see R4-R3-R2 final report.
+
+### Historical (stale) run
 
 ```
 78 passed in 139.63s
 ```
-(R2: 36, R3: 14, R4-R1+R4-R2: 21, R4-R3: 8 — wait that's 79; actual count is
-78 due to one shared fixture being counted once.)
+
+### Corrected per-class breakdown (authoritative)
+
+| Class | Tests |
+|-------|-------|
+| R2 `financial_schema_foundation` | 36 |
+| R3 `r3_migration_preflight` | 14 |
+| `TestRealAlembicUpgradeFailClosed` | 20 |
+| `TestExactCatalogShapeBypass` | 8 |
+| `TestTwoRegisteredTenantsUpgrade` | 1 |
+| **Total collected** | **79** |
+| **Passed** | **79** |
+| **Failed / Errors / Skipped / Xfailed** | **0 / 0 / 0 / 0** |
 
 ---
 
-## 6. Verdict
+## 6. Verdict (SUPERSEDED)
 
-**PASS_FOR_CTO_DC12R1_S3_S2B_I1_R4_R3_MERGE_REVIEW**
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I1_R4_R3_MERGE_REVIEW** — issued at commit
+> `f4d8fce0`. Superseded by R4-R3-R1 (`5bcb8f60`) and R4-R3-R2 which corrected
+> the accounting from 78 to 79 and added exception-chain proof.
+>
+> **Current authoritative verdict**:
+> `PASS_FOR_CTO_DC12R1_S3_S2B_I1_R4_R3_R2_FINAL_MERGE_REVIEW`

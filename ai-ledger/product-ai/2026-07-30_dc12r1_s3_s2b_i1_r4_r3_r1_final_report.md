@@ -43,7 +43,7 @@ during R4-R3 editing. Restored as a separate class.
 |------|-------|-------|
 | `test_dc12r1_s3_s2b_i1_financial_schema_foundation.py` | (R2) | 36 |
 | `test_dc12r1_s3_s2b_i1_r3_migration_preflight.py` | (R3) | 14 |
-| `test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py` | `TestRealAlembicUpgradeFailClosed` | 19 |
+| `test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py` | `TestRealAlembicUpgradeFailClosed` | 20 |
 | | `TestExactCatalogShapeBypass` | 8 |
 | | `TestTwoRegisteredTenantsUpgrade` | 1 |
 | **Total collected** | | **79** |

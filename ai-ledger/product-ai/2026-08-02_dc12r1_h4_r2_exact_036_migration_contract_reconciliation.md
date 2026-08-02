@@ -146,7 +146,7 @@ In `backend/tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py`:
 
 ---
 
-## Self-Review
+## Self-Review (H4-R2, Lubuntu execution)
 
 - [x] Exactly two allowed files changed (s1_r5 test + this ledger)
 - [x] Exactly three `"head"` calls changed to `REV_036`
@@ -155,19 +155,105 @@ In `backend/tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py`:
 - [x] No product, migration, frontend, config, dependency or lockfile changes
 - [x] No skip, xfail, timeout increase or weakened financial/catalog assertion
 - [x] Report numbers and verdict agree with raw test evidence (3116 passed, 0 failed, 0 errors)
-- [x] Final worktree will be clean after commit
+- [x] Final worktree clean after commit
+
+---
+
+## Original H4-R2 Verdict (Corrected/Superseded by R2-R1)
+
+> **PASS_FOR_CTO_DC12R1_H4_R2_MERGE_REVIEW** (original wording)
+>
+> Both exact full-suite runs exit 0 with 3116 passed, 0 failed, 0 errors, and
+> identical totals. The single pre-existing RED node from H4-R1 is closed. The
+> H4-R1 event-loop/pool repair is preserved without modification.
+
+The original H4-R2 verdict and all runtime evidence above remain valid and are
+preserved as historical evidence. The trailing statement "All other quality
+gates pass" was inaccurate: it did not distinguish between (a) Lubuntu runtime
+gates that passed, (b) the GitNexus tooling limitation in the Lubuntu
+environment, and (c) complementary quality evidence that was not yet recorded.
+This R2-R1 revision corrects that evidence-contract contradiction.
+
+---
+
+## Independent CTO Complementary Quality Evidence
+
+The following evidence was executed independently by the **CTO review
+environment** against source SHA `a4176a5`. It was not executed by Lubuntu and
+is attributed solely to the CTO environment. It closes the GitNexus
+quality-evidence gap that could not be satisfied in the Lubuntu execution
+environment.
+
+### GitNexus analyze
+
+- Repository indexed successfully
+- 14,269 nodes
+- 44,213 edges
+- 922 clusters
+- 300 flows
+
+### GitNexus status
+
+- Indexed commit: `a4176a5`
+- Current commit: `a4176a5`
+- Status: up-to-date
+
+### GitNexus detect_changes
+
+- Comparison base: `f031e033`
+- Changed files: 2
+- Changed count: 21
+- Affected count: 0
+- Affected processes: 0
+- Risk level: low
+
+### GitNexus impact
+
+- Target: `test_actual_alembic_035_to_036_failure_rolls_back_then_repaired_upgrade_noops`
+- Risk: LOW
+- Direct callers: 0
+- Affected processes: 0
+- Affected modules: 0
+
+### Independent CTO hygiene
+
+- py_compile: PASS
+- Scoped pre-commit: PASS
+- Scoped detect-secrets: 0 findings
+- git diff remained clean after checks
+
+---
+
+## No Full-Suite Rerun Required
+
+This R2-R1 revision changes only this ledger Markdown file. Source SHA
+`a4176a5` and its runtime evidence remain unchanged: no code, test, migration,
+or configuration file is modified. The two exact full-suite runs (3116 passed,
+0 failed, 0 errors, identical totals) executed by Lubuntu against `a4176a5`
+remain valid and authoritative.
+
+---
+
+## Corrected Quality-Evidence Summary
+
+| Evidence category | Source | Status |
+|-------------------|--------|--------|
+| Runtime tests (RED/GREEN/exact suite) | Lubuntu | PASS (all gates, 3116/0/0) |
+| py_compile, git diff --check, detect-secrets | Lubuntu | PASS |
+| GitNexus impact/detect_changes/analyze/status | CTO environment | PASS (low risk, 0 affected) |
+| Scoped pre-commit, detect-secrets | CTO environment | PASS |
+| GitNexus availability in Lubuntu | Lubuntu | UNAVAILABLE (tooling limitation, honestly reported) |
 
 ---
 
 ## Verdict
 
-**PASS_FOR_CTO_DC12R1_H4_R2_MERGE_REVIEW**
+**PASS_FOR_CTO_DC12R1_H4_R2_R1_MERGE_REVIEW**
 
-Both exact full-suite runs exit 0 with 3116 passed, 0 failed, 0 errors, and
-identical totals. The single pre-existing RED node from H4-R1 is closed. The
-H4-R1 event-loop/pool repair is preserved without modification.
-
-**GitNexus tooling note**: The GitNexus MCP server is configured in
-`opencode.json` but does not respond (timed out on startup). This tooling
-failure is reported per task rule rather than silently substituting another
-claim. All other quality gates pass.
+The H4-R2 source correction is confirmed by complete Lubuntu runtime evidence
+(3116 passed, 0 failed, 0 errors across two independent full-suite runs with
+identical totals) and by independent CTO complementary quality evidence
+(GitNexus analyze/status/detect_changes/impact all clean, risk LOW). The
+GitNexus tooling limitation in the Lubuntu environment is acknowledged and
+closed by the CTO-side evidence. No exact full-suite rerun is required because
+R2-R1 modifies only this ledger.

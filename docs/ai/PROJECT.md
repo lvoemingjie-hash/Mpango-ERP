@@ -1,10 +1,10 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-02
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `0f9d259b4a6c20584721c53b59ba94c510d1970d`
-**Current database head:** `036_retailer_mvp_identity`
+**Accepted product merge:** `45899145e07c1c21424f2f32904965b49b689e1f`
+**Current database head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
 This file is the continuously maintained source of truth for product status,
@@ -74,10 +74,10 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product baseline | `origin/product-dev-recovered@0f9d259b` |
+| Product baseline | `origin/product-dev-recovered@45899145` |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
-| Alembic head | `036_retailer_mvp_identity` |
+| Alembic head | `037_payment_declarations_schema` |
 | Windows default workspace | Dirty; read-only for controlled work |
 | Controlled work | Clean isolated worktrees only |
 | Tencent mainland VPS | Development, validation, or disaster-recovery role |
@@ -103,7 +103,8 @@ deployment state from a merged branch.
 | Retailer private login S2 | Merged | One supplier portal, one contextual JWT, no `available_tenants` |
 | Retailer workspace S3-S1 | Merged | Catalog/order ownership hardening and exact route/RBAC contracts |
 | Retailer finance S3-S2 | Merged | Read-only payment history and server-authoritative relationship balance |
-| Retailer payment declaration | Not implemented | Must not create canonical financial effects before cashier confirmation |
+| Retailer payment declaration schema foundation | Merged | Migration `037` is present; runtime confirmation flow not implemented |
+| Canonical payment transaction extraction I2A | Active | Direct pay path still inline; extraction is the current bounded product task |
 | Printable business records | Incomplete | Payment declaration, confirmed receipt, order, and statement print contracts remain |
 | Retailer workspace closure | In progress | Payment workflow and final responsive/brand UX remain |
 | Retailer end-to-end S4 | Not closed | Real mailbox and browser journey on deployed latest SHA remains |
@@ -138,32 +139,46 @@ deployment state from a merged branch.
 - Catalog/order dual-key hardening and exact client route allowlist.
 - Read-only retailer payment history and authoritative relationship balance.
 
+### DC-12R1-H4 post-merge test-contract forensics and repair
+
+Forensic investigation identified two latent test-contract defects masked by
+event-loop state leakage from a prior session:
+
+- H4-R1: four `asyncio.run` calls in the I1 real-Alembic upgrade test bypassed
+  the session-scoped event loop and corrupted pool isolation. Replaced with
+  `run_coroutine` and added a dedicated regression suite.
+- H4-R2: three `run_alembic_upgrade(config, "head")` calls in the S1-R5
+  migration preflight test over-upgraded past the contract pin revision `036`,
+  masking rollback semantics. Replaced with `REV_036` and removed two stale
+  sole-head assertions.
+- H4-R2-R1: evidence-ledger correction adding CTO GitNexus cross-environment
+  confirmation.
+
+Full suite after H4 repair: `3116 passed`, `48 skipped`, `15 xfailed`,
+zero red, zero errors (two identical runs on independent stacks).
+
 ## 6. Latest Validation Snapshot
 
-The S3-S2 source candidate was validated twice on independent fresh PostgreSQL
-16 and Redis 7 stacks:
+Post-H4 repair validation ran twice on independent fresh PostgreSQL 16 and
+Redis 7 stacks:
 
 | Metric | Run A | Run B |
 |---|---:|---:|
-| Passed | 3030 | 3030 |
+| Passed | 3116 | 3116 |
 | Skipped | 48 | 48 |
 | XFailed | 15 | 15 |
 | Failed | 0 | 0 |
 | Errors | 0 | 0 |
 
-Frontend source validation passed 16 files and 148 tests, followed by a
-successful production build.
+The H4 repair chain (`f031e03` → `a4176a5` → `90bd3b4`) was merged with
+`--no-ff` into `origin/product-dev-recovered` as:
 
-The reviewed source
-`kilo/dc12r1-s3-s2-read-only-retailer-finance-2026-07-30@b56ae841`
-was merged with `--no-ff` as:
+`45899145e07c1c21424f2f32904965b49b689e1f`
 
-`0f9d259b4a6c20584721c53b59ba94c510d1970d`
+Alembic sole head after H4 validation: `037_payment_declarations_schema`.
 
-Post-merge verification on fresh PostgreSQL 16 and Redis 7 reached sole
-Alembic head `036`, passed the S3-S1/S3-S2 backend bundle (`50 passed`),
-passed the focused frontend bundle (`6 passed`), and completed a production
-frontend build. Scoped pre-commit and secret detection passed.
+The I2A canonical payment service candidate was reconciled against this
+baseline and is under validation.
 
 This proves the merged source tree. It does not prove customer deployment or a
 real browser/mailbox journey.
@@ -223,7 +238,7 @@ Delivered:
 - status-aware cash labels;
 - no payment write, ledger, settlement, or receivable mutation.
 
-#### DC-12R1-S3-S2B-D - payment declaration contract (next)
+#### DC-12R1-S3-S2B-D - payment declaration contract (completed)
 
 This is a design/audit gate before implementation because it introduces a new
 financial workflow.
@@ -245,14 +260,36 @@ The contract must define:
 - migration requirements, rollback/forward-fix strategy, and an
   implementation/test matrix.
 
-No product code or migration is authorized in the design gate.
+The design gate is complete and approved as the contract input for implementation work.
 
-#### DC-12R1-S3-S2B - payment declaration implementation (held)
+#### DC-12R1-S3-S2B-I1 - schema foundation (completed)
 
-Implementation begins only after the CTO approves the design gate. A submitted
-declaration must have zero effect on order status, payment rows, ledger entries,
-or receivable balances until cashier confirmation succeeds atomically through
-the approved canonical financial path.
+Merged as `9528cb6de5f668ed09feb7a1eaa9aafaa537987d`.
+
+Delivered:
+
+- migration `037_payment_declarations_schema`;
+- declaration, receipt-sequence, and receipt-number schema foundation;
+- no frontend/runtime activation.
+
+#### DC-12R1-S3-S2B-I2A - canonical payment transaction extraction (validated, pending CTO merge)
+
+Extract the existing direct pay-order financial mutation path into a reusable
+`CanonicalPaymentService` without changing current wholesaler payment behavior.
+This stage prepares the future declaration-confirmation transaction core but
+must not expose declaration routes.
+
+The I2A candidate branch
+`codex/dc12r1-s3-s2b-i2a-canonical-payment-service-2026-08-01` was reconciled
+against baseline `45899145` and passed exact full-suite validation on two
+independent fresh stacks: `3127 passed`, `48 skipped`, `15 xfailed`, zero red,
+zero errors (identical totals both runs).
+
+#### DC-12R1-S3-S2B-I2B/I2C - declaration runtime and confirmation closure (pending)
+
+Implementation remains pending beyond I2A for retailer declaration submission,
+cashier confirmation/rejection, confirmed receipt visibility, and maker-checker
+runtime closure.
 
 #### DC-12R1-S3-S3 - workspace and print closure
 

@@ -56,6 +56,10 @@ from schemas.order import (
 )
 from schemas.common import Pagination
 from schemas.payment import PaymentMethod
+from services.canonical_payment_service import (
+    CanonicalPaymentMutationHttpError,
+    CanonicalPaymentService,
+)
 
 router = APIRouter()
 
@@ -598,6 +602,7 @@ async def pay_order(
     from repositories.payment_repository import PaymentRepository
 
     payment_repo = PaymentRepository()
+    canonical_payment_service = CanonicalPaymentService()
 
     existing_payment = await payment_repo.get_by_idempotency_key(
         db,
@@ -618,8 +623,6 @@ async def pay_order(
             )
         raise _idempotency_conflict()
 
-    # Acquire the order row lock before reading prior payments or deciding the
-    # target state. This serializes competing payments for the same order.
     order = await _get_order_by_id_for_update(db, order_id)
     if not order:
         raise HTTPException(
@@ -654,7 +657,6 @@ async def pay_order(
     current_state = OrderState(order.status.value)
     order_total = order.total_amount
     prior_paid = await payment_repo.get_order_paid_total(db, order_id=order.id)
-    credit_collection_exposure = Decimal("0")
     is_credit_collection = False
 
     if current_state == OrderState.PAID:
@@ -697,8 +699,6 @@ async def pay_order(
                 "Order must be confirmed or partially_paid before payment",
             )
 
-        # Credit closes the order lifecycle (PAID) but does NOT inflate paid_total
-        # (which counts only cash/transfer for financial reporting).
         if payment_method == "credit":
             credit_count = await payment_repo.count_order_payments(
                 db, order_id=order.id, method="credit",
@@ -738,76 +738,21 @@ async def pay_order(
         if existing_transfer:
             raise _duplicate_transfer_reference()
 
-    from services.order_service import OrderService
-
-    order_service = OrderService(db)
-
     try:
-        payment_record = await payment_repo.create(
-            db,
-            order_id=order.id,
-            retailer_id=order.retailer_id,
-            transaction_id=payment_input.transaction_id,
-            idempotency_key=idempotency_key,
+        result = await canonical_payment_service.confirm_payment(
+            db=db,
+            order_id=order_id,
             amount=pay_amount,
             method=payment_method,
-            status=(
-                "completed"
-                if (
-                    is_credit_collection
-                    or payment_method == "transfer"
-                    and target_state == OrderState.PAID
-                )
-                else "pending"
-            ),
+            transaction_id=payment_input.transaction_id,
+            idempotency_key=idempotency_key,
             created_by=token.user_id if token.user_id else None,
+            force_completed=False,
+            locked_order=order,
+            target_state=target_state,
+            is_credit_collection=is_credit_collection,
+            skip_prechecks=True,
         )
-
-        from services.payment_service import PaymentService
-
-        payment_svc = PaymentService()
-        if is_credit_collection:
-            await payment_svc._apply_outstanding_balance_delta(
-                db,
-                wholesaler_id=order.wholesaler_id,
-                retailer_id=order.retailer_id,
-                delta=-pay_amount,
-            )
-            from services.ledger_service import LedgerService
-
-            await LedgerService(db).post_payment_received(
-                order_id=order.id,
-                amount=pay_amount,
-                description=(
-                    f"Credit collection for order {order.id} - "
-                    f"Amount: {pay_amount}"
-                ),
-            )
-            await db.refresh(order)
-        else:
-            if payment_method == "credit":
-                await payment_svc._apply_outstanding_balance_delta(
-                    db,
-                    wholesaler_id=order.wholesaler_id,
-                    retailer_id=order.retailer_id,
-                    delta=pay_amount,
-                )
-
-            order = await order_service.transition(
-                order_id=order.id,
-                target_state=target_state,
-                reason="Payment recorded",
-                updated_by=token.user_id,
-                payment_method=payment_method,
-            )
-
-            # S5-D4B: Settle only after the transition returns an actual PAID
-            # order, not merely because the proposed target was PAID.
-            order_status = getattr(order.status, "value", order.status)
-            if order_status == OrderState.PAID.value:
-                await payment_repo.update_cash_transfer_to_completed(
-                    db, order_id=order.id,
-                )
     except IntegrityError:
         await db.rollback()
         await _restore_tenant_search_path_after_rollback(db)
@@ -839,6 +784,9 @@ async def pay_order(
             if existing_transfer:
                 raise _duplicate_transfer_reference()
         raise
+    except CanonicalPaymentMutationHttpError as exc:
+        await db.rollback()
+        raise exc.http_exception
     except (InvalidStateTransitionError, DomainInvalidStateTransitionError, OrderInvariantViolation):
         await db.rollback()
         raise _payment_error(
@@ -846,17 +794,14 @@ async def pay_order(
             "INVALID_STATE_TRANSITION",
             "Payment cannot transition the order from its current state",
         )
-    except HTTPException:
-        await db.rollback()
-        raise
     except Exception:
         await db.rollback()
         raise
 
     return OrderActionResponse(
         success=True,
-        data=_payment_response_data(order, payment_record),
-        message="Payment recorded and order updated",
+        data=_payment_response_data(result.order, result.payment_record),
+        message="Payment replayed" if result.replayed else "Payment recorded and order updated",
         timestamp=datetime.utcnow(),
     )
 

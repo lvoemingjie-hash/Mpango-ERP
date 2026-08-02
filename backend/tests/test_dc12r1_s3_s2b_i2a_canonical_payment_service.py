@@ -664,3 +664,164 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(async
             created_by=token_complete.user_id,
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# I2A-R3: Amount integrity boundary tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_r3_negative_cash_amount_rejected_with_zero_mutation(async_session):
+    tenant_id = _tenant_id(async_session)
+    order_id, retailer_id, token = await _seed_confirmed_order(
+        async_session, tenant_id=tenant_id, total=Decimal("100.00")
+    )
+    service = CanonicalPaymentService()
+
+    before = await _snapshot(
+        async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.confirm_payment(
+            db=async_session,
+            order_id=str(order_id),
+            amount=Decimal("-1.00"),
+            method="cash",
+            transaction_id=None,
+            idempotency_key="i2a-r3-negative",
+            created_by=token.user_id,
+        )
+
+    after = await _snapshot(
+        async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
+    )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "INVALID_PAYMENT_AMOUNT"
+    assert after == before
+
+
+@pytest.mark.asyncio
+async def test_r3_zero_amount_rejected(async_session):
+    tenant_id = _tenant_id(async_session)
+    order_id, retailer_id, token = await _seed_confirmed_order(
+        async_session, tenant_id=tenant_id, total=Decimal("100.00")
+    )
+    service = CanonicalPaymentService()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.confirm_payment(
+            db=async_session,
+            order_id=str(order_id),
+            amount=Decimal("0"),
+            method="cash",
+            transaction_id=None,
+            idempotency_key="i2a-r3-zero",
+            created_by=token.user_id,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "INVALID_PAYMENT_AMOUNT"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_amount",
+    [
+        Decimal("NaN"),
+        Decimal("Infinity"),
+        Decimal("-Infinity"),
+    ],
+    ids=["nan", "pos_inf", "neg_inf"],
+)
+async def test_r3_nan_and_infinity_rejected_without_500(async_session, bad_amount):
+    tenant_id = _tenant_id(async_session)
+    order_id, retailer_id, token = await _seed_confirmed_order(
+        async_session, tenant_id=tenant_id, total=Decimal("100.00")
+    )
+    service = CanonicalPaymentService()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.confirm_payment(
+            db=async_session,
+            order_id=str(order_id),
+            amount=bad_amount,
+            method="cash",
+            transaction_id=None,
+            idempotency_key=f"i2a-r3-special-{bad_amount}",
+            created_by=token.user_id,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "INVALID_PAYMENT_AMOUNT"
+
+
+@pytest.mark.asyncio
+async def test_r3_skip_prechecks_cannot_bypass_amount_guard():
+    order_id = uuid.uuid4()
+    locked_order = SimpleNamespace(
+        id=order_id,
+        status=_status("confirmed"),
+        total_amount=Decimal("100.00"),
+        wholesaler_id=uuid.uuid4(),
+        retailer_id=uuid.uuid4(),
+    )
+    db = AsyncMock()
+    service = CanonicalPaymentService()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.confirm_payment(
+            db=db,
+            order_id=str(order_id),
+            amount=Decimal("-50.00"),
+            method="cash",
+            transaction_id=None,
+            idempotency_key="i2a-r3-skip-bypass",
+            created_by=str(uuid.uuid4()),
+            locked_order=locked_order,
+            target_state=SimpleNamespace(value="paid"),
+            is_credit_collection=False,
+            skip_prechecks=True,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "INVALID_PAYMENT_AMOUNT"
+
+
+@pytest.mark.asyncio
+async def test_r3_failed_attempt_leaves_transaction_retryable(async_session):
+    tenant_id = _tenant_id(async_session)
+    order_id, retailer_id, token = await _seed_confirmed_order(
+        async_session, tenant_id=tenant_id, total=Decimal("100.00")
+    )
+    service = CanonicalPaymentService()
+
+    with pytest.raises(HTTPException):
+        await service.confirm_payment(
+            db=async_session,
+            order_id=str(order_id),
+            amount=Decimal("-1.00"),
+            method="cash",
+            transaction_id=None,
+            idempotency_key="i2a-r3-retry-invalid",
+            created_by=token.user_id,
+        )
+
+    result = await service.confirm_payment(
+        db=async_session,
+        order_id=str(order_id),
+        amount=Decimal("100.00"),
+        method="cash",
+        transaction_id=None,
+        idempotency_key="i2a-r3-retry-valid",
+        created_by=token.user_id,
+    )
+
+    assert result.order_state == "paid"
+    snapshot = await _snapshot(
+        async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
+    )
+    assert snapshot["payment_count"] == 1
+    assert snapshot["ledger_count"] == 2

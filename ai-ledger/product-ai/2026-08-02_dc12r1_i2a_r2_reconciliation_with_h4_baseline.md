@@ -74,7 +74,7 @@ No migration, config, permission, or unexpected product-code changes.
 
 ## Validation Results
 
-*(To be filled after focused gates and exact full-suite runs)*
+Changed scope: 6 implementation/status files plus this R2 report, total 7.
 
 ### Focused Gates
 

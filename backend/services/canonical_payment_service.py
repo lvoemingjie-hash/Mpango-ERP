@@ -139,6 +139,13 @@ class CanonicalPaymentService:
         is_credit_collection: bool | None = None,
         skip_prechecks: bool = False,
     ) -> CanonicalPaymentResult:
+        if amount.is_nan() or amount.is_infinite() or amount <= 0:
+            raise _payment_error(
+                status.HTTP_400_BAD_REQUEST,
+                "INVALID_PAYMENT_AMOUNT",
+                "Payment amount must be a positive finite number",
+            )
+
         if skip_prechecks:
             if locked_order is None or target_state is None or is_credit_collection is None:
                 raise ValueError("skip_prechecks requires locked_order, target_state, and is_credit_collection")

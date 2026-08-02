@@ -38,7 +38,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
-from tests.async_test_utils import run_alembic_upgrade, temporary_database_url
+from tests.async_test_utils import run_alembic_upgrade, run_coroutine, temporary_database_url
 
 # ---------------------------------------------------------------------------
 # constants
@@ -307,10 +307,9 @@ class TestRealAlembicUpgradeFailClosed:
 
     def _setup_tenant(self, eng, db_url):
         """Register a tenant, bootstrap to 036 baseline, return schema."""
-        import asyncio
         with eng.begin() as conn:
             schema = _register_tenant(conn, prefix="r4r1")
-        asyncio.run(_bootstrap_and_revert_to_036(schema, db_url))
+        run_coroutine(_bootstrap_and_revert_to_036(schema, db_url))
         return schema
 
     # ------------------------------------------------------------------
@@ -1046,13 +1045,12 @@ class TestExactCatalogShapeBypass:
                     root_cause_substr):
         """Shared RED→GREEN→no-op proof protocol."""
         with _database_url_env(db_url):
-            import asyncio
             # 1. Start at 036
             run_alembic_upgrade(config, REV_036)
             # 2. Register tenant + bootstrap + revert to 036 baseline
             with eng.begin() as conn:
                 schema = _register_tenant(conn, prefix="r4r3")
-            asyncio.run(_bootstrap_and_revert_to_036(schema, db_url))
+            run_coroutine(_bootstrap_and_revert_to_036(schema, db_url))
 
             # 3. First upgrade to 037 (tables need to exist for some malformations)
             run_alembic_upgrade(config, "head")
@@ -1346,7 +1344,6 @@ class TestTwoRegisteredTenantsUpgrade:
         _require_test_env()
 
     def test_cross_tenant_failure_neither_mutates(self):
-        import asyncio
         source = os.environ["TEST_DATABASE_URL"]
         with temporary_database_url(source, "r4r1ct") as db_url:
             config = _alembic_config(db_url)
@@ -1359,8 +1356,8 @@ class TestTwoRegisteredTenantsUpgrade:
                     with eng.begin() as conn:
                         schema_a = _register_tenant(conn, prefix="r4r1cta")
                         schema_b = _register_tenant(conn, prefix="r4r1ctb")
-                    asyncio.run(_bootstrap_and_revert_to_036(schema_a, db_url))
-                    asyncio.run(_bootstrap_and_revert_to_036(schema_b, db_url))
+                    run_coroutine(_bootstrap_and_revert_to_036(schema_a, db_url))
+                    run_coroutine(_bootstrap_and_revert_to_036(schema_b, db_url))
 
                     with eng.begin() as conn:
                         fp_a_before = _catalog_fingerprint(conn, schema_a)

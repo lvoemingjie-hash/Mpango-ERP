@@ -1,9 +1,9 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-08-02
+**Last updated:** 2026-08-03
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `45899145e07c1c21424f2f32904965b49b689e1f`
+**Accepted product merge:** `b03a3b5c078a3824d333b541ccacf19b668c9f9c`
 **Current database head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
@@ -74,7 +74,7 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product baseline | `origin/product-dev-recovered@45899145` |
+| Product code baseline | `origin/product-dev-recovered` includes I2A merge `b03a3b5c` |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `037_payment_declarations_schema` |
@@ -104,7 +104,7 @@ deployment state from a merged branch.
 | Retailer workspace S3-S1 | Merged | Catalog/order ownership hardening and exact route/RBAC contracts |
 | Retailer finance S3-S2 | Merged | Read-only payment history and server-authoritative relationship balance |
 | Retailer payment declaration schema foundation | Merged | Migration `037` is present; runtime confirmation flow not implemented |
-| Canonical payment transaction extraction I2A | Active | Direct pay path still inline; extraction is the current bounded product task |
+| Canonical payment transaction extraction I2A | Merged | `CanonicalPaymentService` owns the reusable mutation core; direct pay behavior is preserved and invalid amounts fail before DB access |
 | Printable business records | Incomplete | Payment declaration, confirmed receipt, order, and statement print contracts remain |
 | Retailer workspace closure | In progress | Payment workflow and final responsive/brand UX remain |
 | Retailer end-to-end S4 | Not closed | Real mailbox and browser journey on deployed latest SHA remains |
@@ -159,26 +159,29 @@ zero red, zero errors (two identical runs on independent stacks).
 
 ## 6. Latest Validation Snapshot
 
-Post-H4 repair validation ran twice on independent fresh PostgreSQL 16 and
-Redis 7 stacks:
+I2A-R3 validation ran twice on independent fresh PostgreSQL 16 and Redis 7
+stacks after reconciliation with the H4 baseline:
 
 | Metric | Run A | Run B |
 |---|---:|---:|
-| Passed | 3116 | 3116 |
+| Passed | 3134 | 3134 |
 | Skipped | 48 | 48 |
 | XFailed | 15 | 15 |
 | Failed | 0 | 0 |
 | Errors | 0 | 0 |
 
-The H4 repair chain (`f031e03` → `a4176a5` → `90bd3b4`) was merged with
-`--no-ff` into `origin/product-dev-recovered` as:
+The H4 chain was merged as `45899145`. I2A-R3 source `f7bd75c1` was then
+merged with `--no-ff` into `origin/product-dev-recovered` as:
 
-`45899145e07c1c21424f2f32904965b49b689e1f`
+`b03a3b5c078a3824d333b541ccacf19b668c9f9c`
 
-Alembic sole head after H4 validation: `037_payment_declarations_schema`.
+Alembic sole head after I2A validation: `037_payment_declarations_schema`.
 
-The I2A canonical payment service candidate was reconciled against this
-baseline and is under validation.
+The merge tree is byte-identical to the independently reviewed I2A-R3 source.
+The amount boundary rejects negative, zero, NaN, and infinite values before
+any DB read or write. Focused evidence includes I2A `18 passed`, payment/order/
+receivable/ledger `101 passed`, H4 `7 passed`, R4-R1 `29 passed`, and S1-R5
+`41 passed`.
 
 This proves the merged source tree. It does not prove customer deployment or a
 real browser/mailbox journey.
@@ -272,24 +275,31 @@ Delivered:
 - declaration, receipt-sequence, and receipt-number schema foundation;
 - no frontend/runtime activation.
 
-#### DC-12R1-S3-S2B-I2A - canonical payment transaction extraction (validated, pending CTO merge)
+#### DC-12R1-S3-S2B-I2A - canonical payment transaction extraction (completed)
 
-Extract the existing direct pay-order financial mutation path into a reusable
-`CanonicalPaymentService` without changing current wholesaler payment behavior.
-This stage prepares the future declaration-confirmation transaction core but
-must not expose declaration routes.
+The existing direct pay-order financial mutation path is now extracted into a
+reusable `CanonicalPaymentService` without changing current wholesaler payment
+behavior. This stage prepares the declaration-confirmation transaction core
+but does not expose declaration routes.
 
-The I2A candidate branch
-`codex/dc12r1-s3-s2b-i2a-canonical-payment-service-2026-08-01` was reconciled
-against baseline `45899145` and passed exact full-suite validation on two
-independent fresh stacks: `3127 passed`, `48 skipped`, `15 xfailed`, zero red,
-zero errors (identical totals both runs).
+Merged as `b03a3b5c078a3824d333b541ccacf19b668c9f9c`. The final I2A-R3
+source passed exact full-suite validation on two independent fresh stacks:
+`3134 passed`, `48 skipped`, `15 xfailed`, zero red, zero errors (identical
+totals both runs). The canonical service rejects non-positive and non-finite
+amounts before any financial read or mutation.
 
-#### DC-12R1-S3-S2B-I2B/I2C - declaration runtime and confirmation closure (pending)
+#### DC-12R1-S3-S2B-I2B - declaration runtime and confirmation closure (active)
 
-Implementation remains pending beyond I2A for retailer declaration submission,
-cashier confirmation/rejection, confirmed receipt visibility, and maker-checker
-runtime closure.
+Implement retailer declaration submission, cashier confirmation/rejection,
+confirmed receipt allocation and visibility, and maker-checker runtime closure.
+A declaration remains non-authoritative until confirmation commits through
+`CanonicalPaymentService` in the same caller-owned transaction.
+
+#### DC-12R1-S3-S2B-I2C - print and notification-event closure (pending)
+
+Deliver printable declaration, receipt, order, and statement contracts after
+I2B financial runtime semantics are accepted. Define event hooks for future
+SMS/WhatsApp delivery without implementing external messaging in this slice.
 
 #### DC-12R1-S3-S3 - workspace and print closure
 

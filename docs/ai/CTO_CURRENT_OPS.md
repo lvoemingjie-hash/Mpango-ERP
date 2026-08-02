@@ -1,9 +1,9 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-02
+**Last updated:** 2026-08-03
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `45899145e07c1c21424f2f32904965b49b689e1f`
+**Accepted product merge:** `b03a3b5c078a3824d333b541ccacf19b668c9f9c`
 **Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
@@ -13,7 +13,7 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered@45899145` is the active product baseline.
+- `origin/product-dev-recovered` includes accepted I2A merge `b03a3b5c`.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -43,22 +43,25 @@ in `ai-ledger/`.
 - H4 post-merge test-contract forensics closed at `45899145`: event-loop pool
   isolation regression suite added, migration-preflight contract pinned to
   `036`, evidence ledger corrected.
-- I2A canonical payment transaction service extraction is validated and
-  awaiting CTO merge decision.
+- I2A canonical payment transaction service extraction is merged at
+  `b03a3b5c`, including the fail-closed positive finite amount boundary.
 
 ## Latest Accepted Evidence
 
-H4 post-merge forensics and repair:
+I2A-R3 controlled merge:
 
-`origin/product-dev-recovered@45899145`
+`origin/product-dev-recovered` includes `b03a3b5c`
 
-- Backend Run A: `3116 passed`, `48 skipped`, `15 xfailed`, zero red, zero errors.
-- Backend Run B: `3116 passed`, `48 skipped`, `15 xfailed`, zero red, zero errors.
+- Approved source: `f7bd75c1`; merge tree equals source tree.
+- Backend Run A: `3134 passed`, `48 skipped`, `15 xfailed`, zero red, zero errors.
+- Backend Run B: identical totals.
+- I2A service and amount-boundary suite: `18 passed`.
+- Payment/order/receivable/ledger bundle: `101 passed`.
+- H4 regression suite: `7 passed`.
 - Alembic sole head: `037_payment_declarations_schema`.
-- H4-R1 regression suite (`test_dc12r1_h4_event_loop_pool_isolation.py`): `7 passed`.
 - S1-R5 migration preflight: `41 passed`.
 - I1 real-Alembic upgrade: `29 passed`.
-- All prior S3-S2 validation evidence remains valid.
+- Zcode independent final review: 43 PASS, 2 INFO, 0 FAIL.
 
 Earlier accepted evidence:
 
@@ -94,7 +97,6 @@ Post-merge validation:
 
 ## What Is Not Closed
 
-- Canonical payment transaction service extraction is not yet complete.
 - Wholesaler cashier confirmation/rejection is not implemented as a dedicated
   maker-checker workflow.
 - Retailer-visible confirmed receipt and rejection result are not closed.
@@ -109,15 +111,11 @@ Post-merge validation:
 ## Active Phase
 
 **Active product gate:**
-`DC-12R1-S3-S2B-I2A Canonical Payment Transaction Service Extraction`
+`DC-12R1-S3-S2B-I2B Payment Declaration and Cashier Confirmation Runtime`
 
-The design gate and schema foundation are complete. I2A extracts the canonical
-payment transaction core without changing direct-payment behavior or exposing
-declaration routes.
-
-The I2A candidate has been reconciled against baseline `45899145` and passed
-exact full-suite validation on two independent fresh stacks: `3127 passed`,
-`48 skipped`, `15 xfailed`, zero red. Awaiting CTO merge decision.
+The design gate, schema foundation, and canonical payment transaction service
+are complete. I2B may now implement declaration submission and maker-checker
+confirmation/rejection without duplicating the financial mutation path.
 
 Required business boundary:
 
@@ -138,22 +136,27 @@ Required business boundary:
 
 ## Ordered Delivery Plan
 
-1. **S3-S2B-I2A (active):** extract `CanonicalPaymentService` from `pay_order`
-   with behavior-preserving parity and independent financial validation.
-2. **S3-S2B-I2B/I2C (pending):** declaration confirmation workflow, receipt,
-   retailer declaration visibility, and maker-checker runtime closure.
-3. **S3-S3 (pending):** complete responsive branded retailer workspace and print UX.
-4. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
-5. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
+1. **S3-S2B-I2A (completed):** reusable canonical payment mutation service,
+   behavior-preserving parity, amount-integrity guard, and independent review.
+2. **S3-S2B-I2B (active):** declaration submission, cashier confirmation/
+   rejection, atomic canonical payment, receipt allocation, and relationship-
+   scoped status visibility.
+3. **S3-S2B-I2C (pending):** printable records and future notification-event
+   contracts without external messaging delivery.
+4. **S3-S3 (pending):** complete responsive branded retailer workspace and print UX.
+5. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
+6. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
    package.
-6. **Tenant branding and manuals:** legal profile, logo, dual branding, and
+7. **Tenant branding and manuals:** legal profile, logo, dual branding, and
    current user/operator documentation.
 
 ## Agent Assignment
 
-- **Zcode:** execute the bounded S3-S2B-D docs-only design gate.
-- **Codex CTO:** review the contract, financial blast radius, and merge decision.
-- **Lubuntu Codex:** independently validate later implementation on fresh
+- **Primary coding agent:** implement bounded I2B slices from the accepted
+  contract in a clean worktree.
+- **Zcode:** perform independent source review after implementation is frozen.
+- **Codex CTO:** own scope, financial blast radius, and merge decision.
+- **Lubuntu Codex:** independently validate implementation on fresh
   PostgreSQL 16 and Redis 7.
 - **OPS:** handle deployment/runtime work only after product merge approval.
 - **Human owner:** approve production, credentials, domains, and business/legal
@@ -163,8 +166,8 @@ Required business boundary:
 
 Stop and report to the CTO if:
 
-- fetched `origin/product-dev-recovered` is not
-  `45899145e07c1c21424f2f32904965b49b689e1f`;
+- fetched `origin/product-dev-recovered` does not descend from accepted I2A
+  merge `b03a3b5c078a3824d333b541ccacf19b668c9f9c`;
 - the design permits a declaration to mutate a payment, ledger, order status, or
   receivable before cashier confirmation;
 - the design reuses generic wholesaler routes for retailer writes;

@@ -1,9 +1,9 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-01
+**Last updated:** 2026-08-02
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `9528cb6de5f668ed09feb7a1eaa9aafaa537987d`
+**Accepted product merge:** `45899145e07c1c21424f2f32904965b49b689e1f`
 **Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
@@ -13,7 +13,7 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered@9528cb6d` is the active product baseline.
+- `origin/product-dev-recovered@45899145` is the active product baseline.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -40,9 +40,27 @@ in `ai-ledger/`.
 - No retailer route currently settles payments, writes ledger entries, or
   changes receivables.
 - I1 financial schema foundation is merged at `9528cb6d`.
-- I2A canonical payment transaction service extraction is the active product task.
+- H4 post-merge test-contract forensics closed at `45899145`: event-loop pool
+  isolation regression suite added, migration-preflight contract pinned to
+  `036`, evidence ledger corrected.
+- I2A canonical payment transaction service extraction is validated and
+  awaiting CTO merge decision.
 
 ## Latest Accepted Evidence
+
+H4 post-merge forensics and repair:
+
+`origin/product-dev-recovered@45899145`
+
+- Backend Run A: `3116 passed`, `48 skipped`, `15 xfailed`, zero red, zero errors.
+- Backend Run B: `3116 passed`, `48 skipped`, `15 xfailed`, zero red, zero errors.
+- Alembic sole head: `037_payment_declarations_schema`.
+- H4-R1 regression suite (`test_dc12r1_h4_event_loop_pool_isolation.py`): `7 passed`.
+- S1-R5 migration preflight: `41 passed`.
+- I1 real-Alembic upgrade: `29 passed`.
+- All prior S3-S2 validation evidence remains valid.
+
+Earlier accepted evidence:
 
 S3-S2 source candidate:
 
@@ -97,6 +115,10 @@ The design gate and schema foundation are complete. I2A extracts the canonical
 payment transaction core without changing direct-payment behavior or exposing
 declaration routes.
 
+The I2A candidate has been reconciled against baseline `45899145` and passed
+exact full-suite validation on two independent fresh stacks: `3127 passed`,
+`48 skipped`, `15 xfailed`, zero red. Awaiting CTO merge decision.
+
 Required business boundary:
 
 1. A retailer may submit a payment declaration.
@@ -142,7 +164,7 @@ Required business boundary:
 Stop and report to the CTO if:
 
 - fetched `origin/product-dev-recovered` is not
-  `0f9d259b4a6c20584721c53b59ba94c510d1970d`;
+  `45899145e07c1c21424f2f32904965b49b689e1f`;
 - the design permits a declaration to mutate a payment, ledger, order status, or
   receivable before cashier confirmation;
 - the design reuses generic wholesaler routes for retailer writes;

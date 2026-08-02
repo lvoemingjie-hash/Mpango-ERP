@@ -697,7 +697,7 @@ def test_actual_alembic_035_to_036_failure_rolls_back_then_repaired_upgrade_noop
                     assert _current_revision(connection) == REV_035
 
                 with pytest.raises(RuntimeError) as exc:
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_036)
                 assert exc.value.__class__.__name__ == "PreflightFailure"
 
                 with eng.connect() as connection:
@@ -713,17 +713,15 @@ def test_actual_alembic_035_to_036_failure_rolls_back_then_repaired_upgrade_noop
                 with eng.begin() as connection:
                     connection.execute(text(f"DROP TABLE public.{SETUP_TABLE}"))
 
-                run_alembic_upgrade(config, "head")
+                run_alembic_upgrade(config, REV_036)
                 with eng.connect() as connection:
                     assert _current_revision(connection) == REV_036
-                    assert _script_heads(config) == [REV_036]
                     before_noop_payload = _catalog_payload(connection, tenant_schema)
                     before_noop_hash = _fingerprint(before_noop_payload)
 
-                run_alembic_upgrade(config, "head")
+                run_alembic_upgrade(config, REV_036)
                 with eng.connect() as connection:
                     assert _current_revision(connection) == REV_036
-                    assert _script_heads(config) == [REV_036]
                     after_noop_payload = _catalog_payload(connection, tenant_schema)
                     after_noop_hash = _fingerprint(after_noop_payload)
                     assert after_noop_payload == before_noop_payload

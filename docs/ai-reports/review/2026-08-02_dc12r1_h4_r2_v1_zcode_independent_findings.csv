@@ -1,0 +1,45 @@
+review_id,category,check_id,subject,status,evidence,verdict_impact
+DC-12R1-H4-R2-V1,Lineage,LIN-01,target SHA == 90bd3b4beaed7e5a44196c56307c5507563de07c,PASS,git rev-parse origin/codex/dc12r1-h4-r2-exact-036-contract-reconciliation-2026-08-02 = 90bd3b4beaed7e5a44196c56307c5507563de07c,None
+DC-12R1-H4-R2-V1,Lineage,LIN-02,baseline SHA == 9528cb6de5f668ed09feb7a1eaa9aafaa537987d,PASS,git rev-parse origin/product-dev-recovered = 9528cb6de5f668ed09feb7a1eaa9aafaa537987d,None
+DC-12R1-H4-R2-V1,Lineage,LIN-03,required chain 9528cb6d -> f031e033 -> a4176a55 -> 90bd3b4b,PASS,parent(90bd3b4)=a4176a55; parent(a4176a55)=f031e033; parent(f031e033)=9528cb6d; linear,None
+DC-12R1-H4-R2-V1,Lineage,LIN-04,baseline is ancestor of target,PASS,git merge-base --is-ancestor 9528cb6 90bd3b4 = true; rev-list count = 3,None
+DC-12R1-H4-R2-V1,Source,SRC-01,exactly 5 files changed baseline->target,PASS,A x2 ledger md + A x1 h4 test + M x2 existing tests; no product/migration/config/deps,None
+DC-12R1-H4-R2-V1,Source,SRC-02,no product code changed,PASS,all changed files under backend/tests/ or ai-ledger/product-ai/,None
+DC-12R1-H4-R2-V1,Source,SRC-03,no migration file changed,PASS,git diff --stat 9528cb6 90bd3b4 -- backend/alembic = empty,None
+DC-12R1-H4-R2-V1,Source,SRC-04,no config/dependency/lockfile changed,PASS,changed-file name-status contains no pyproject/requirements/package.json/lockfiles/ini,None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-01,exactly 4 asyncio.run replaced,PASS,diff f031e033: 4 removed asyncio.run(_bootstrap_and_revert_to_036) / 4 added run_coroutine(...),None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-02,run_coroutine import present at target,PASS,line 41 from tests.async_test_utils import ... run_coroutine ...; 4 call sites,None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-03,no asyncio.run remains in r4_r1 file,PASS,grep asyncio.run on 90bd3b4:r4_r1 file = none; import asyncio = none,None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-04,run_coroutine helper unchanged,PASS,diff 9528cb6:90bd3b4 -- async_test_utils.py = empty; byte-identical; pre-existing since 4c4a684c,None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-05,run_coroutine uses existing loop not throwaway,PASS,_current_or_new_loop() -> loop.run_until_complete; no asyncio.run/create+close,None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-06,H4 regression exercises loop identity,PASS,test_loop_identity_unchanged asserts loop_before is loop_after,None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-07,H4 regression exercises loop-open state,PASS,test_loop_still_open asserts not loop.is_closed(),None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-08,H4 regression exercises following async_session use,PASS,3 tests use AsyncSessionLocal global; SELECT 1 == 1; rollback; after dispose,None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-09,H4 regression exercises leaked-connection cleanup,PASS,test_no_idle... asserts leaked == 0 via pg_stat_activity Mpango ERP idle,None
+DC-12R1-H4-R2-V1,H4-R1 EventLoop,H4R1-10,H4 regression = 7 genuine tests / 3 classes,PASS,no skip/xfail/deselect; all strict asserts,None
+DC-12R1-H4-R2-V1,H4-R2 Migration,H4R2-01,exactly 3 head->REV_036 changes,PASS,diff a4176a55: 3 removed run_alembic_upgrade(config head) / 3 added REV_036,None
+DC-12R1-H4-R2-V1,H4-R2 Migration,H4R2-02,exactly 2 stale assertions removed,PASS,2 removed assert _script_heads(config) == [REV_036]; no other asserts removed,None
+DC-12R1-H4-R2-V1,H4-R2 Migration,H4R2-03,rollback fingerprint intact,PASS,after_failure_payload == before_payload; R5_ROLLBACK_FINGERPRINT print preserved,None
+DC-12R1-H4-R2-V1,H4-R2 Migration,H4R2-04,fail-closed assertion intact,PASS,pytest.raises(RuntimeError) + assert exc.value.__class__.__name__ == PreflightFailure,None
+DC-12R1-H4-R2-V1,H4-R2 Migration,H4R2-05,repaired-upgrade reaches 036,PASS,run_alembic_upgrade(config REV_036); assert _current_revision == REV_036,None
+DC-12R1-H4-R2-V1,H4-R2 Migration,H4R2-06,second-upgrade no-op intact,PASS,2nd REV_036 upgrade; assert _current_revision == REV_036; after_noop_payload == before_noop_payload,None
+DC-12R1-H4-R2-V1,H4-R2 Migration,H4R2-07,no assertion weakening,PASS,0 added/changed asserts in modified files; only 2 stale removed; 7 asserts in fn,None
+DC-12R1-H4-R2-V1,H4-R2 Migration,H4R2-08,migration 037 legitimate head unchanged,PASS,037 revision down_revision=036; branch_labels=None; diff baseline->target = empty,None
+DC-12R1-H4-R2-V1,Evidence,EV-01,two exact runs 3116/48/15/0/0,PASS,Run#1 3116 passed 48 skipped 15 xfailed 0 failed 0 errors; Run#2 identical,None
+DC-12R1-H4-R2-V1,Evidence,EV-02,Run A and Run B totals identical,PASS,comparison table: Passed/Failed/Errors/Skipped/Xfailed all YES,None
+DC-12R1-H4-R2-V1,Evidence,EV-03,Lubuntu GitNexus unavailability disclosed,PASS,UNAVAILABLE marked; MCP server timed out on startup; No substitution attempted,None
+DC-12R1-H4-R2-V1,Evidence,EV-04,CTO GitNexus attributed to CTO env + a4176a5,PASS,CTO review environment; source SHA a4176a5; not executed by Lubuntu,None
+DC-12R1-H4-R2-V1,Evidence,EV-05,report-only commit 90bd3b4 no new runtime claim,PASS,90bd3b4 touches only r2 ledger md; No Full-Suite Rerun Required,None
+DC-12R1-H4-R2-V1,Evidence,EV-06,old H4-R2 verdict marked superseded,PASS,Original H4-R2 Verdict (Corrected/Superseded by R2-R1); inaccurate acknowledged,None
+DC-12R1-H4-R2-V1,Evidence,EV-07,authoritative verdict present,PASS,final verdict = PASS_FOR_CTO_DC12R1_H4_R2_R1_MERGE_REVIEW,None
+DC-12R1-H4-R2-V1,Evidence,EV-08,no evidence misattribution,PASS,runtime 3116 evidence anchored to a4176a5 not 90bd3b4; CTO GitNexus to CTO env,None
+DC-12R1-H4-R2-V1,Gate,GATE-01,py_compile changed test files,PASS,3/3 files pass python -m py_compile,None
+DC-12R1-H4-R2-V1,Gate,GATE-02,git diff --check,PASS,exit 0 baseline->target and per-commit,None
+DC-12R1-H4-R2-V1,Gate,GATE-03,scoped pre-commit,PASS,trailing-ws/eof/large-files/detect-secrets all Passed,None
+DC-12R1-H4-R2-V1,Gate,GATE-04,detect-secrets zero findings,PASS,0 findings per file; 0 findings in 159 added diff lines,None
+DC-12R1-H4-R2-V1,Gate,GATE-05,GitNexus analyze/status at target,PASS,14269 nodes 44213 edges 922 clusters 300 flows; indexed 90bd3b4 up-to-date,None
+DC-12R1-H4-R2-V1,Gate,GATE-06,GitNexus detect_changes vs 9528cb6,PASS,5 files all test+ledger; 0 product; matches ledger,None
+DC-12R1-H4-R2-V1,Gate,GATE-07,GitNexus detect_changes vs f031e033,PASS,2 files (s1_r5 test + ledger); matches CTO ledger exactly,None
+DC-12R1-H4-R2-V1,Gate,GATE-08,GitNexus impact modified functions,PASS,all modified fns LOW risk 0 callers 0 affected,None
+DC-12R1-H4-R2-V1,Gate,GATE-09,runtime H4+exact-036 in disposable env,PASS-BLOCKED,no local PG16/Redis7/TEST_DATABASE_URL; tests hard-require live DB; not substituted for Lubuntu evidence,None
+DC-12R1-H4-R2-V1,Gate,GATE-10,no split-suite substitution,PASS,authoritative Lubuntu exact-suite evidence (3116/0/0 x2) retained; no partial run claimed,None

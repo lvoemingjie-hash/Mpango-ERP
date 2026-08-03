@@ -34,7 +34,6 @@ from api.app import configure_app
 from auth.strategies.jwt import JwtAuthStrategy
 from core.config import get_settings
 from core.error_codes import register_exception_handlers
-from core.security import hash_password
 from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (
     _OWNER_PW,
     _TWO_TENANT_PW,
@@ -50,6 +49,27 @@ from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (
 )
 
 pytestmark = pytest.mark.asyncio
+
+
+# ---------------------------------------------------------------------------
+# H5: Flush asyncpg prepared-statement cache after module-scoped DDL
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def _h5_flush_stmt_cache(provisioned_pool):
+    """H5: Dispose engine pool after provisioning DDL.
+
+    Tenant provisioning (``provisioned_pool``) runs bootstrap DDL that creates
+    / alters tables in tenant schemas.  This invalidates asyncpg prepared
+    statements cached on pooled connections from prior test modules (e.g. I2A).
+
+    Disposing the engine closes every pooled connection so that subsequent
+    sessions obtain fresh connections with empty prepared-statement caches.
+    """
+    from database.session import async_engine
+    await async_engine.dispose()
+    yield
 
 
 # ---------------------------------------------------------------------------
@@ -82,74 +102,117 @@ async def _login_retailer(client: AsyncClient, two_tenants) -> str:
 
 
 # ---------------------------------------------------------------------------
-# S6: Authentic Admin/Cashier Harness (function-scoped, no module-level cache)
+# S6: Authentic Admin/Cashier Harness — canonical owner lifecycle (R2-R1)
 # ---------------------------------------------------------------------------
 
 _CASHIER_PW = "CashierTestPass99!"
 
 
 @pytest_asyncio.fixture
-async def cashier_identity(s2_clean_db) -> dict:
-    """Function-scoped cashier identity.
+async def cashier_identity(s2_clean_db, provisioned_pool) -> dict:
+    """Function-scoped cashier identity via canonical owner lifecycle.
 
-    Creates a fresh admin/cashier user per test with an explicit UUID.
-    The user is registered with the ownership registry so ``s2_clean_db``
-    cleans it up automatically. No module-level cache, no ordering dependency.
+    Uses ``OwnerCredentialSetupService.create_first_admin_rbac`` to obtain
+    the full ``ADMIN_PERMISSION_CODES`` set through the production onboarding
+    path — no hand-written INSERT into permissions/role_permissions.
+
+    The naked-bootstrap admin role has only 3 permissions
+    (``EXPECTED_PRE_OWNER_SETUP_STATE``).  After owner setup it has the
+    complete canonical set including ``payments:create`` and
+    ``payments:confirm_declaration``.
+
+    Cleanup: explicitly deletes the cashier ``user_roles`` and ``users``
+    rows in the fixture teardown.  The canonical permission / role /
+    role_permissions catalog is left intact (idempotent across tests).
     """
+    from core.permission_registry import ADMIN_PERMISSION_CODES
+    from database.session import AsyncSessionLocal
+    from services.owner_credential_service import OwnerCredentialSetupService
+
     db, reg = s2_clean_db
-    a = _pool_a()
+    a = provisioned_pool.tenants["a"]
     schema_a = a["schema"]
     ws_a = a["ws_id"]
+    reg_id = uuid.UUID(a["reg_id"])
 
-    cashier_uid = uuid.uuid4()
-    email = f"cashier.{cashier_uid.hex[:12]}@test.mpango"
-    pw_hash = hash_password(_CASHIER_PW)
+    svc = OwnerCredentialSetupService(db)
 
-    # Register BEFORE insert so s2_clean_db cleanup tracks this user.
-    reg.register_tenant_user(schema_a, str(cashier_uid))
+    # Pre-clean any stale tokens left by a crashed prior test so that
+    # issue_setup_token always returns action="issued".
+    await db.execute(
+        text(
+            "DELETE FROM public.owner_credential_setup_tokens "
+            "WHERE registration_id = :rid"
+        ),
+        {"rid": reg_id},
+    )
+    await db.flush()
 
-    await db.execute(
-        text(
-            f'INSERT INTO "{schema_a}".users (id, email, password_hash, full_name, is_active) '
-            "VALUES (:uid, :email, :pw, :name, true)"
-        ),
-        {"uid": cashier_uid, "email": email, "pw": pw_hash, "name": "Cashier Admin"},
-    )
-    # Assign ONLY the bootstrap-created admin role — never retailer_operator.
-    await db.execute(
-        text(
-            f'INSERT INTO "{schema_a}".user_roles (user_id, role_id) '
-            f"SELECT :uid, r.id FROM \"{schema_a}\".roles r WHERE r.name = 'admin'"
-        ),
-        {"uid": cashier_uid},
-    )
-    # Ensure admin has payments:create for namespace-isolation tests.
-    await db.execute(
-        text(
-            f"INSERT INTO \"{schema_a}\".permissions (code, description) "
-            "VALUES ('payments:create', 'Create payments') ON CONFLICT (code) DO NOTHING"
-        ),
-    )
-    await db.execute(
-        text(
-            f"INSERT INTO \"{schema_a}\".role_permissions (role_id, permission_id) "
-            f"SELECT r.id, p.id FROM \"{schema_a}\".roles r, \"{schema_a}\".permissions p "
-            f"WHERE r.name = 'admin' AND p.code = 'payments:create' "
-            f"AND NOT EXISTS ("
-            f"  SELECT 1 FROM \"{schema_a}\".role_permissions rp "
-            f"  WHERE rp.role_id = r.id AND rp.permission_id = p.id"
-            f")"
-        ),
-    )
+    # 1. Issue + consume setup token (canonical owner credential flow)
+    issue = await svc.issue_setup_token(reg_id)
+    assert issue.action == "issued", f"setup token issue failed: {issue}"
+
+    consume = await svc.consume_setup_token(issue.raw_token, _CASHIER_PW)
+
+    # 2. Create first admin RBAC via canonical service
+    result = await svc.create_first_admin_rbac(consume)
     await db.commit()
 
-    return {
-        "email": email,
-        "password": _CASHIER_PW,
-        "user_id": cashier_uid,
-        "schema": schema_a,
-        "ws_id": ws_a,
-    }
+    cashier_uid = result.user_id
+    cashier_email = result.owner_email
+
+    # Register for ownership-registry backup cleanup (user_roles + users)
+    reg.register_tenant_user(schema_a, str(cashier_uid))
+
+    # 3. Fail-closed assertions on the canonical permission set
+    assert result.permission_count == len(ADMIN_PERMISSION_CODES), (
+        f"permission_count {result.permission_count} != "
+        f"len(ADMIN_PERMISSION_CODES) {len(ADMIN_PERMISSION_CODES)}"
+    )
+
+    admin_codes = (await db.execute(
+        text(
+            f'SELECT p.code FROM "{schema_a}".permissions p '
+            f'JOIN "{schema_a}".role_permissions rp ON rp.permission_id = p.id '
+            f'WHERE rp.role_id = :rid ORDER BY p.code'
+        ),
+        {"rid": result.role_id},
+    )).fetchall()
+    code_set = {r.code for r in admin_codes}
+
+    for required in ("payments:create", "payments:confirm_declaration"):
+        assert required in code_set, f"admin missing canonical permission: {required}"
+
+    client_perms = {c for c in code_set if c.startswith("client:")}
+    assert not client_perms, f"admin has client:* permissions: {sorted(client_perms)}"
+
+    try:
+        yield {
+            "email": cashier_email,
+            "password": _CASHIER_PW,
+            "user_id": cashier_uid,
+            "schema": schema_a,
+            "ws_id": ws_a,
+        }
+    finally:
+        # 4. Explicit cleanup — user_roles + users + setup token
+        async with AsyncSessionLocal() as cleanup_db:
+            await cleanup_db.execute(
+                text(f'DELETE FROM "{schema_a}".user_roles WHERE user_id = :uid'),
+                {"uid": cashier_uid},
+            )
+            await cleanup_db.execute(
+                text(f'DELETE FROM "{schema_a}".users WHERE id = :uid'),
+                {"uid": cashier_uid},
+            )
+            await cleanup_db.execute(
+                text(
+                    "DELETE FROM public.owner_credential_setup_tokens "
+                    "WHERE registration_id = :rid"
+                ),
+                {"rid": reg_id},
+            )
+            await cleanup_db.commit()
 
 
 async def _cashier_token(i2b_client, cashier_identity: dict) -> str:

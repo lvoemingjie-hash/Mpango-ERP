@@ -1,3 +1,5 @@
+<!-- SUPERSEDED: See 2026-08-03_dc12r1_s3_s2b_i2b_r2_r3_r2_r1_exact_gate_closure.md -->
+
 # DC-12R1-S3-S2B-I2B-R2-R3-R1: Test Infrastructure Isolation Fix — Final Gate Report
 
 **Date**: 2026-08-03

@@ -56,6 +56,29 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _flush_rate_limiter():
+    """Per-test Redis rate-limiter reset.
+
+    The login-driven authentic harness issues many HTTP requests per test.
+    The global rate limiter (100 req / 60 s keyed on ``rate_limit:*`` in Redis)
+    would otherwise trip partway through the module and surface as spurious
+    429 / 401 cascades.  Flushing the counters before each test keeps the
+    declared matrix honest: every assertion sees the real API contract, not
+    a rate-limit artefact.
+    """
+    from core.config import get_settings
+    _settings = get_settings()
+    from redis.asyncio import Redis as _AsyncRedis
+    _r = _AsyncRedis.from_url(_settings.REDIS_URL, decode_responses=False)
+    try:
+        async for _k in _r.scan_iter(match="rate_limit:*"):
+            await _r.delete(_k)
+    finally:
+        await _r.aclose()
+    yield
+
+
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def _h5_flush_stmt_cache(provisioned_pool):
     """H5: Dispose engine pool after provisioning DDL.

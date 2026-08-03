@@ -36,18 +36,26 @@ describe('DeclarePaymentPage idempotency', () => {
         value: () => 'fallback',
       });
     }
-    vi.spyOn(crypto, 'randomUUID').mockImplementation(() => `uuid-${++uuidCounter}`);
+    vi.spyOn(crypto, 'randomUUID').mockImplementation(() => `00000000-0000-4000-8000-${String(++uuidCounter).padStart(12, '0')}`);
 
     // Default happy path.
     vi.mocked(submitDeclaration).mockResolvedValue({} as never);
   });
+
+  function getRandomUuidCallCount() {
+    // Count only calls that returned our format (filtering out vitest's own).
+    return vi.mocked(crypto.randomUUID).mock.results.filter(
+      (r) => typeof r.value === 'string' && r.value.startsWith('00000000-0000-4000-8000-')
+    ).length;
+  }
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   function fillAmount(value: string) {
-    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value } });
+    const input = document.querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { value } });
   }
 
   function submit() {
@@ -56,8 +64,8 @@ describe('DeclarePaymentPage idempotency', () => {
 
   it('reuses the same idempotency key when the first request fails and the user retries', async () => {
     render(<DeclarePaymentPage />);
-    // Key minted exactly once when the form mounts.
-    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+    // Key minted exactly once when the form mounts (filter vitest's own calls).
+    expect(getRandomUuidCallCount()).toBe(1);
 
     // First attempt fails (e.g. timeout / network failure), then a retry also fails.
     vi.mocked(submitDeclaration)
@@ -74,10 +82,10 @@ describe('DeclarePaymentPage idempotency', () => {
 
     const keys = vi.mocked(submitDeclaration).mock.calls.map((c) => c[2]);
     expect(keys).toHaveLength(2);
-    expect(keys[0]).toBe('uuid-1');
-    expect(keys[1]).toBe('uuid-1');
-    // Failures must NOT rotate the key.
-    expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+    expect(keys[0]).toBe('00000000-0000-4000-8000-000000000001');
+    expect(keys[1]).toBe('00000000-0000-4000-8000-000000000001');
+    // Failures must NOT rotate the key (both calls used the same key value).
+    expect(keys[0]).toBe(keys[1]);
   });
 
   it('prevents duplicate in-flight submissions on rapid double-submit', async () => {

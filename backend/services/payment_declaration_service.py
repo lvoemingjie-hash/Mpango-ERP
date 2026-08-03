@@ -311,7 +311,7 @@ class PaymentDeclarationService:
                 "Confirmed declaration is missing its canonical payment link",
             )
         payment_id = uuid.UUID(str(payment_id_raw))
-        payment = await self._payment_repo.get_by_id(db, payment_id=payment_id)
+        payment = await self._payment_repo.get_by_id_with_receipt(db, payment_id=payment_id)
         if payment is None:
             raise _declaration_error(
                 status.HTTP_409_CONFLICT,

@@ -19,7 +19,7 @@ class PaymentRepository:
         result = await db.execute(
             text(
                 """
-                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, receipt_number, created_at, updated_at
+                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, created_at, updated_at
                 FROM payments
                 WHERE idempotency_key = :idempotency_key AND is_deleted IS FALSE
                 LIMIT 1
@@ -30,6 +30,25 @@ class PaymentRepository:
         row = result.mappings().first()
         return row
 
+    async def get_by_idempotency_key_with_receipt(
+        self,
+        db: AsyncSession,
+        *,
+        idempotency_key: str,
+    ) -> Mapping[str, Any] | None:
+        result = await db.execute(
+            text(
+                """
+                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, receipt_number, created_at, updated_at
+                FROM payments
+                WHERE idempotency_key = :idempotency_key AND is_deleted IS FALSE
+                LIMIT 1
+                """
+            ),
+            {"idempotency_key": idempotency_key},
+        )
+        return result.mappings().first()
+
     async def get_by_transaction_id(
         self,
         db: AsyncSession,
@@ -39,7 +58,7 @@ class PaymentRepository:
         result = await db.execute(
             text(
                 """
-                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, receipt_number, created_at, updated_at
+                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, created_at, updated_at
                 FROM payments
                 WHERE transaction_id = :transaction_id AND is_deleted IS FALSE
                 LIMIT 1
@@ -86,7 +105,7 @@ class PaymentRepository:
         result = await db.execute(
             text(
                 f"SELECT id, order_id, retailer_id, transaction_id, "
-                f"idempotency_key, amount, method, status, receipt_number, created_at, updated_at "
+                f"idempotency_key, amount, method, status, created_at, updated_at "
                 f"FROM payments WHERE {where} "
                 f"ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
             ),
@@ -104,7 +123,26 @@ class PaymentRepository:
         result = await db.execute(
             text(
                 "SELECT id, order_id, retailer_id, transaction_id, "
-                "idempotency_key, amount, method, status, receipt_number, created_at, updated_at "
+                "idempotency_key, amount, method, status, created_at, updated_at "
+                "FROM payments WHERE id = :pid AND is_deleted IS FALSE LIMIT 1"
+            ),
+            {"pid": payment_id},
+        )
+        return result.mappings().first()
+
+    async def get_by_id_with_receipt(
+        self,
+        db: AsyncSession,
+        *,
+        payment_id: uuid.UUID,
+    ) -> Mapping[str, Any] | None:
+        """Like ``get_by_id`` but also selects ``receipt_number``.
+        Safe to call ONLY when the column exists (post-037 schemas)."""
+        result = await db.execute(
+            text(
+                "SELECT id, order_id, retailer_id, transaction_id, "
+                "idempotency_key, amount, method, status, receipt_number, "
+                "created_at, updated_at "
                 "FROM payments WHERE id = :pid AND is_deleted IS FALSE LIMIT 1"
             ),
             {"pid": payment_id},
@@ -248,56 +286,50 @@ class PaymentRepository:
         receipt_number: str | None = None,
     ) -> Mapping[str, Any]:
         now = datetime.utcnow()
+        cols = [
+            "order_id", "retailer_id", "transaction_id",
+            "idempotency_key", "amount", "method", "status",
+        ]
+        vals = [
+            ":order_id", ":retailer_id", ":transaction_id",
+            ":idempotency_key", ":amount", ":method", ":status",
+        ]
+        returning = (
+            "id, order_id, retailer_id, transaction_id, idempotency_key, "
+            "amount, method, status, created_at, updated_at"
+        )
+        params: dict[str, Any] = {
+            "order_id": order_id,
+            "retailer_id": retailer_id,
+            "transaction_id": transaction_id,
+            "idempotency_key": idempotency_key,
+            "amount": amount,
+            "method": method,
+            "status": status,
+            "created_at": now,
+            "updated_at": now,
+            "created_by": created_by,
+            "updated_by": created_by,
+        }
+        if receipt_number is not None:
+            cols.append("receipt_number")
+            vals.append(":receipt_number")
+            returning = (
+                "id, order_id, retailer_id, transaction_id, idempotency_key, "
+                "amount, method, status, receipt_number, created_at, updated_at"
+            )
+            params["receipt_number"] = receipt_number
+
+        cols.extend(["created_at", "updated_at", "is_deleted", "created_by", "updated_by"])
+        vals.extend([":created_at", ":updated_at", "FALSE", ":created_by", ":updated_by"])
+
         result = await db.execute(
             text(
-                """
-                INSERT INTO payments (
-                    order_id,
-                    retailer_id,
-                    transaction_id,
-                    idempotency_key,
-                    amount,
-                    method,
-                    status,
-                    receipt_number,
-                    created_at,
-                    updated_at,
-                    is_deleted,
-                    created_by,
-                    updated_by
-                )
-                VALUES (
-                    :order_id,
-                    :retailer_id,
-                    :transaction_id,
-                    :idempotency_key,
-                    :amount,
-                    :method,
-                    :status,
-                    :receipt_number,
-                    :created_at,
-                    :updated_at,
-                    FALSE,
-                    :created_by,
-                    :updated_by
-                )
-                RETURNING id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, receipt_number, created_at, updated_at
-                """
+                f"INSERT INTO payments ({', '.join(cols)}) "
+                f"VALUES ({', '.join(vals)}) "
+                f"RETURNING {returning}"
             ),
-            {
-                "order_id": order_id,
-                "retailer_id": retailer_id,
-                "transaction_id": transaction_id,
-                "idempotency_key": idempotency_key,
-                "amount": amount,
-                "method": method,
-                "status": status,
-                "receipt_number": receipt_number,
-                "created_at": now,
-                "updated_at": now,
-                "created_by": created_by,
-                "updated_by": created_by,
-            },
+            params,
         )
         return result.mappings().one()
 

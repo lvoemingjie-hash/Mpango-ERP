@@ -152,7 +152,13 @@ class CanonicalPaymentService:
         current = _payment_mapping_or_none(
             await self._repo.get_by_id(db, payment_id=payment_id)
         )
-        return current or payment_record
+        result = current or payment_record
+        # Preserve receipt_number from the original record even when the
+        # re-fetched row (pre-037 schema) doesn't carry the column.
+        if result is not payment_record and payment_record.get("receipt_number"):
+            result = dict(result)
+            result.setdefault("receipt_number", payment_record["receipt_number"])
+        return result
 
     async def confirm_payment(
         self,
@@ -183,8 +189,16 @@ class CanonicalPaymentService:
                 raise ValueError("skip_prechecks requires locked_order, target_state, and is_credit_collection")
             order = locked_order
         else:
+            # Use the receipt-aware lookup when receipt allocation is needed
+            # so that replay enforcement can see receipt_number (present only
+            # in post-037 schemas).
+            get_existing = (
+                self._repo.get_by_idempotency_key_with_receipt
+                if allocate_receipt
+                else self._repo.get_by_idempotency_key
+            )
             existing_payment = _payment_mapping_or_none(
-                await self._repo.get_by_idempotency_key(db, idempotency_key=idempotency_key)
+                await get_existing(db, idempotency_key=idempotency_key)
             )
             if existing_payment:
                 if _same_payment_request(
@@ -207,7 +221,7 @@ class CanonicalPaymentService:
                 )
 
             existing_payment = _payment_mapping_or_none(
-                await self._repo.get_by_idempotency_key(db, idempotency_key=idempotency_key)
+                await get_existing(db, idempotency_key=idempotency_key)
             )
             if existing_payment:
                 if _same_payment_request(

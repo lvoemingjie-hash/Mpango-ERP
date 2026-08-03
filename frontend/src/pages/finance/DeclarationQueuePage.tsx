@@ -78,7 +78,7 @@ export default function DeclarationQueuePage() {
       <h1 className="text-lg font-semibold text-gray-900 mb-4">Payment Declarations — Pending</h1>
       {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-3">{error}</div>}
       {declarations.length === 0 ? (
-        <EmptyState icon={BanknotesIcon} title="No pending declarations" message="All declarations have been processed." />
+        <EmptyState icon={BanknotesIcon} title="No pending declarations" description="All declarations have been processed." />
       ) : (
         <div className="space-y-3">
           {declarations.map((d) => (

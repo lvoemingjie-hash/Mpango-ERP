@@ -61,7 +61,7 @@ export default function DeclarationHistoryPage() {
     <div className="min-h-screen bg-gray-50 p-4">
       <h1 className="text-lg font-semibold text-gray-900 mb-4">My Declarations</h1>
       {declarations.length === 0 ? (
-        <EmptyState icon={BanknotesIcon} title="No declarations" message="You haven't submitted any payment declarations yet." />
+        <EmptyState icon={BanknotesIcon} title="No declarations" description="You haven't submitted any payment declarations yet." />
       ) : (
         <div className="space-y-3">
           {declarations.map((d) => (

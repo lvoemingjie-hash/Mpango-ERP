@@ -4,6 +4,7 @@ import type {
   PaymentDeclaration,
   StatementLine,
   DeclarationConfirmResponse,
+  DeclarationStatus,
 } from '@/types/declaration';
 import type { ApiResponse, PaginatedData } from '@/types/api';
 

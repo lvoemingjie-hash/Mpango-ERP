@@ -22,6 +22,7 @@ import { RetailerPricingPage } from '@/pages/pricing/RetailerPricingPage';
 import { InvitePage } from '@/pages/invite/InvitePage';
 import { FinancePage } from '@/pages/finance/FinancePage';
 import { PaymentListPage } from '@/pages/finance/PaymentListPage';
+import { DeclarationQueuePage } from '@/pages/finance/DeclarationQueuePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 // Client App pages (Retailer-facing)
 import { ClientLoginPage } from '@/pages/client/ClientLoginPage';
@@ -32,6 +33,8 @@ import { ClientOrderListPage } from '@/pages/client/OrderListPage';
 import { OrderDetailPage } from '@/pages/client/OrderDetailPage';
 import { ClientPaymentHistoryPage } from '@/pages/client/PaymentHistoryPage';
 import { ClientFinanceBalancePage } from '@/pages/client/FinanceBalancePage';
+import { DeclarationHistoryPage } from '@/pages/client/DeclarationHistoryPage';
+import { DeclarePaymentPage } from '@/pages/client/DeclarePaymentPage';
 // DC-12R1-S1: retailer credential setup/reset pages (fragment-only token transport)
 import { RetailerSetupCredentialPage } from '@/pages/retailer/RetailerSetupCredentialPage';
 import { RetailerResetPasswordPage } from '@/pages/retailer/RetailerResetPasswordPage';
@@ -115,6 +118,7 @@ const router = createBrowserRouter([
               { path: '/tenants', element: <TenantListPage /> },
               { path: '/finance', element: <FinancePage /> },
               { path: '/payments', element: <PaymentListPage /> },
+              { path: '/declarations', element: <DeclarationQueuePage /> },
             ],
           },
         ],
@@ -134,6 +138,8 @@ const router = createBrowserRouter([
               { path: '/client/orders/:orderId', element: <OrderDetailPage /> },
               { path: '/client/payments', element: <ClientPaymentHistoryPage /> },
               { path: '/client/finance', element: <ClientFinanceBalancePage /> },
+              { path: '/client/declarations', element: <DeclarationHistoryPage /> },
+              { path: '/client/orders/:orderId/declare', element: <DeclarePaymentPage /> },
             ],
           },
         ],

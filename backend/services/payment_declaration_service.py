@@ -101,11 +101,17 @@ class PaymentDeclarationService:
         if transfer_reference is not None:
             normalized_ref = transfer_reference.strip()
         if method == "transfer":
-            if not normalized_ref or len(normalized_ref) > MAX_TRANSFER_REFERENCE_LENGTH:
+            if not normalized_ref:
                 raise _declaration_error(
                     status.HTTP_400_BAD_REQUEST,
                     "DECLARATION_TRANSFER_REFERENCE_REQUIRED",
-                    "Transfer reference is required for transfer declarations (1-128 chars)",
+                    "Transfer reference is required for transfer declarations",
+                )
+            if len(normalized_ref) > MAX_TRANSFER_REFERENCE_LENGTH:
+                raise _declaration_error(
+                    status.HTTP_400_BAD_REQUEST,
+                    "DECLARATION_TRANSFER_REFERENCE_TOO_LONG",
+                    "Transfer reference must not exceed 128 characters",
                 )
         else:
             # cash: reference must be NULL

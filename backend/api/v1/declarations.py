@@ -37,6 +37,7 @@ from schemas.declaration import (
     DeclarationRejectRequest,
     DeclarationView,
 )
+from schemas.order import validate_no_html_tags
 from services.canonical_payment_service import CanonicalPaymentMutationHttpError
 from services.payment_declaration_service import PaymentDeclarationService
 
@@ -222,12 +223,26 @@ async def reject_declaration(
     token: TokenPayload = Depends(RequirePermission("payments:confirm_declaration")),
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
-    # Backend-owned reason validation (Pydantic enforces 1-256; sanitize here).
+    # Backend-owned reason validation (Pydantic enforces 1-256; centralised HTML validator).
     reason = (body.reason or "").strip()
     if not reason or len(reason) > 256:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "INVALID_REJECTION_REASON", "message": "Rejection reason must be 1-256 characters"},
+        )
+    try:
+        reason = validate_no_html_tags(reason)
+        if not reason.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "INVALID_REJECTION_REASON", "message": "Rejection reason is required"},
+            )
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_REJECTION_REASON", "message": "Rejection reason contains forbidden content"},
         )
     try:
         did = uuid.UUID(declaration_id)

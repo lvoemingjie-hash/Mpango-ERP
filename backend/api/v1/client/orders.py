@@ -477,9 +477,19 @@ async def declare_payment(
             transfer_reference=body.transfer_reference,
             idempotency_key=idempotency_key,
         )
-    except IntegrityError:
-        # Concurrent race on (retailer_id, idempotency_key). Only this unique
-        # conflict is reclassified; any other IntegrityError is re-raised.
+    except IntegrityError as exc:
+        # Only the (retailer_id, idempotency_key) unique constraint is
+        # reclassified. Inspect the PostgreSQL constraint name; any FK, CHECK,
+        # or unrelated UNIQUE violation must rollback and re-raise.
+        constraint_name: str = ""
+        try:
+            constraint_name = (exc.orig.diag.constraint_name or "") if hasattr(exc, "orig") and hasattr(exc.orig, "diag") else ""
+        except Exception:
+            pass
+        if constraint_name != "ux_payment_declarations_retailer_idem":
+            await db.rollback()
+            await _restore_tenant_search_path_after_rollback(db)
+            raise
         await db.rollback()
         await _restore_tenant_search_path_after_rollback(db)
         repo = PaymentDeclarationRepository()

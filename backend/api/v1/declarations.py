@@ -165,12 +165,14 @@ async def confirm_declaration(
             detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
         )
     confirmed_by = uuid.UUID(token.user_id) if token.user_id else None
+    wholesaler_id = _tenant_wholesaler_id(token)
 
     service = PaymentDeclarationService()
     try:
         declaration, result = await service.confirm_declaration(
             db=db,
             declaration_id=did,
+            wholesaler_id=wholesaler_id,
             confirmed_by=confirmed_by,  # type: ignore[arg-type]
         )
     except CanonicalPaymentMutationHttpError as exc:
@@ -235,12 +237,14 @@ async def reject_declaration(
             detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
         )
     rejected_by = uuid.UUID(token.user_id) if token.user_id else None
+    wholesaler_id = _tenant_wholesaler_id(token)
 
     service = PaymentDeclarationService()
     try:
         declaration = await service.reject_declaration(
             db=db,
             declaration_id=did,
+            wholesaler_id=wholesaler_id,
             rejected_by=rejected_by,  # type: ignore[arg-type]
             reason=reason,
         )
@@ -251,16 +255,16 @@ async def reject_declaration(
         await _restore_tenant_search_path_after_rollback(db)
         raise
 
-    # Re-fetch through the listing repo to populate the joined columns.
-    rows, _ = await PaymentDeclarationRepository().list_by_wholesaler(
+    # Re-fetch via dual-key lookup (not list+search) for the joined columns.
+    repo = PaymentDeclarationRepository()
+    rows, _ = await repo.list_by_wholesaler(
         db,
-        wholesaler_id=uuid.UUID(token.tenant_id) if token.tenant_id else uuid.UUID(int=0),
+        wholesaler_id=wholesaler_id,
         page=1,
-        size=1000,
+        size=1,
         status=None,
-        retailer_id=None,
     )
-    row = next((r for r in rows if r["id"] == did), declaration)
+    row = next((r for r in rows if r["id"] == did), declaration) if rows else declaration
     return DataResponse(
         success=True,
         data=_to_view(row).model_dump(mode="json"),

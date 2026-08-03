@@ -17,6 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class PaymentDeclarationRepository:
+    # ------------------------------------------------------------------
+    # Scoped single-declaration fetches (dual-key for ownership enforcement)
+    # ------------------------------------------------------------------
     async def get_by_id(
         self,
         db: AsyncSession,
@@ -39,6 +42,55 @@ class PaymentDeclarationRepository:
         )
         return result.mappings().first()
 
+    async def get_by_wholesaler_dual_key(
+        self,
+        db: AsyncSession,
+        *,
+        declaration_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
+    ) -> Mapping[str, Any] | None:
+        """Fetch one declaration by (id, wholesaler_id) — cashier read."""
+        result = await db.execute(
+            text(
+                """
+                SELECT id, order_id, retailer_id, wholesaler_id, declared_amount,
+                       method, transfer_reference, status, idempotency_key,
+                       submitted_by, submitted_at, confirmed_by, confirmed_at,
+                       confirmation_payment_id, rejected_by, rejected_at, reason
+                FROM payment_declarations
+                WHERE id = :did AND wholesaler_id = :wid
+                LIMIT 1
+                """
+            ),
+            {"did": declaration_id, "wid": wholesaler_id},
+        )
+        return result.mappings().first()
+
+    async def get_by_retailer_dual_key(
+        self,
+        db: AsyncSession,
+        *,
+        declaration_id: uuid.UUID,
+        retailer_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
+    ) -> Mapping[str, Any] | None:
+        """Fetch one declaration by (id, retailer_id, wholesaler_id) — retailer read."""
+        result = await db.execute(
+            text(
+                """
+                SELECT id, order_id, retailer_id, wholesaler_id, declared_amount,
+                       method, transfer_reference, status, idempotency_key,
+                       submitted_by, submitted_at, confirmed_by, confirmed_at,
+                       confirmation_payment_id, rejected_by, rejected_at, reason
+                FROM payment_declarations
+                WHERE id = :did AND retailer_id = :rid AND wholesaler_id = :wid
+                LIMIT 1
+                """
+            ),
+            {"did": declaration_id, "rid": retailer_id, "wid": wholesaler_id},
+        )
+        return result.mappings().first()
+
     async def get_for_update(
         self,
         db: AsyncSession,
@@ -58,6 +110,30 @@ class PaymentDeclarationRepository:
                 """
             ),
             {"did": declaration_id},
+        )
+        return result.mappings().first()
+
+    async def get_for_update_by_wholesaler(
+        self,
+        db: AsyncSession,
+        *,
+        declaration_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
+    ) -> Mapping[str, Any] | None:
+        """Lock one declaration by (id, wholesaler_id) — ownership enforcement."""
+        result = await db.execute(
+            text(
+                """
+                SELECT id, order_id, retailer_id, wholesaler_id, declared_amount,
+                       method, transfer_reference, status, idempotency_key,
+                       submitted_by, submitted_at, confirmed_by, confirmed_at,
+                       confirmation_payment_id, rejected_by, rejected_at, reason
+                FROM payment_declarations
+                WHERE id = :did AND wholesaler_id = :wid
+                FOR UPDATE
+                """
+            ),
+            {"did": declaration_id, "wid": wholesaler_id},
         )
         return result.mappings().first()
 
@@ -135,10 +211,11 @@ class PaymentDeclarationRepository:
         db: AsyncSession,
         *,
         declaration_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
         confirmed_by: uuid.UUID,
         confirmation_payment_id: uuid.UUID,
     ) -> None:
-        await db.execute(
+        result = await db.execute(
             text(
                 """
                 UPDATE payment_declarations
@@ -146,25 +223,29 @@ class PaymentDeclarationRepository:
                     confirmed_by = :confirmed_by,
                     confirmed_at = now(),
                     confirmation_payment_id = :confirmation_payment_id
-                WHERE id = :did AND status = 'pending'
+                WHERE id = :did AND wholesaler_id = :wid AND status = 'pending'
                 """
             ),
             {
                 "did": declaration_id,
+                "wid": wholesaler_id,
                 "confirmed_by": confirmed_by,
                 "confirmation_payment_id": confirmation_payment_id,
             },
         )
+        if result.rowcount != 1:
+            raise RuntimeError("mark_confirmed: expected exactly 1 row updated")
 
     async def mark_rejected(
         self,
         db: AsyncSession,
         *,
         declaration_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
         rejected_by: uuid.UUID,
         reason: str,
     ) -> None:
-        await db.execute(
+        result = await db.execute(
             text(
                 """
                 UPDATE payment_declarations
@@ -172,15 +253,18 @@ class PaymentDeclarationRepository:
                     rejected_by = :rejected_by,
                     rejected_at = now(),
                     reason = :reason
-                WHERE id = :did AND status = 'pending'
+                WHERE id = :did AND wholesaler_id = :wid AND status = 'pending'
                 """
             ),
             {
                 "did": declaration_id,
+                "wid": wholesaler_id,
                 "rejected_by": rejected_by,
                 "reason": reason,
             },
         )
+        if result.rowcount != 1:
+            raise RuntimeError("mark_rejected: expected exactly 1 row updated")
 
     async def list_by_retailer(
         self,

@@ -163,23 +163,24 @@ class PaymentDeclarationService:
         *,
         db: AsyncSession,
         declaration_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
         confirmed_by: uuid.UUID,
     ) -> tuple[Mapping[str, Any], CanonicalPaymentResult]:
-        # Lock the declaration row for concurrency control on the declaration
-        # (the canonical service separately locks the order row).
-        declaration = await self._repo.get_for_update(db, declaration_id=declaration_id)
+        # Lock by (declaration_id, wholesaler_id) for ownership enforcement.
+        # A wrong wholesaler gets a neutral 404, never a 403.
+        declaration = await self._repo.get_for_update_by_wholesaler(
+            db, declaration_id=declaration_id, wholesaler_id=wholesaler_id
+        )
         if declaration is None:
             raise _declaration_error(
                 status.HTTP_404_NOT_FOUND,
                 "DECLARATION_NOT_FOUND",
-                f"Declaration with ID '{declaration_id}' not found",
+                "Declaration not found",
             )
 
         decl_status = declaration["status"]
         if decl_status == "confirmed":
-            # Replay: return the existing declaration + resolved payment/receipt.
-            # Zero new writes. HTTP 200 is set by the route layer.
-            existing_result = await self._resolve_confirmed_replay(db, declaration)
+            existing_result = await self._resolve_confirmed_replay(db, declaration, wholesaler_id)
             return declaration, existing_result
         if decl_status == "rejected":
             raise _declaration_error(
@@ -187,6 +188,14 @@ class PaymentDeclarationService:
                 "DECLARATION_NOT_PENDING",
                 "Cannot confirm a declaration that has already been rejected",
             )
+
+        # Verify order ownership and active binding under the same transaction.
+        await self._verify_ownership_and_binding(
+            db,
+            order_id=uuid.UUID(str(declaration["order_id"])),
+            retailer_id=uuid.UUID(str(declaration["retailer_id"])),
+            wholesaler_id=wholesaler_id,
+        )
 
         # pending -> proceed.
         canonical_key = f"{DECLARATION_CONFIRMATION_KEY_PREFIX}{declaration_id.hex}"
@@ -209,11 +218,13 @@ class PaymentDeclarationService:
         await self._repo.mark_confirmed(
             db,
             declaration_id=declaration_id,
+            wholesaler_id=wholesaler_id,
             confirmed_by=confirmed_by,
             confirmation_payment_id=payment_id,
         )
-        # Re-fetch the declaration so the returned row reflects the new status.
-        declaration = await self._repo.get_by_id(db, declaration_id=declaration_id)
+        declaration = await self._repo.get_by_wholesaler_dual_key(
+            db, declaration_id=declaration_id, wholesaler_id=wholesaler_id
+        )
         return declaration, result
 
     # ------------------------------------------------------------------
@@ -224,15 +235,18 @@ class PaymentDeclarationService:
         *,
         db: AsyncSession,
         declaration_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
         rejected_by: uuid.UUID,
         reason: str,
     ) -> Mapping[str, Any]:
-        declaration = await self._repo.get_for_update(db, declaration_id=declaration_id)
+        declaration = await self._repo.get_for_update_by_wholesaler(
+            db, declaration_id=declaration_id, wholesaler_id=wholesaler_id
+        )
         if declaration is None:
             raise _declaration_error(
                 status.HTTP_404_NOT_FOUND,
                 "DECLARATION_NOT_FOUND",
-                f"Declaration with ID '{declaration_id}' not found",
+                "Declaration not found",
             )
 
         decl_status = declaration["status"]
@@ -246,15 +260,127 @@ class PaymentDeclarationService:
         await self._repo.mark_rejected(
             db,
             declaration_id=declaration_id,
+            wholesaler_id=wholesaler_id,
             rejected_by=rejected_by,
             reason=reason,
         )
-        declaration = await self._repo.get_by_id(db, declaration_id=declaration_id)
+        declaration = await self._repo.get_by_wholesaler_dual_key(
+            db, declaration_id=declaration_id, wholesaler_id=wholesaler_id
+        )
         return declaration
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    async def _verify_ownership_and_binding(
+        self,
+        db: AsyncSession,
+        *,
+        order_id: uuid.UUID,
+        retailer_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
+    ) -> None:
+        """Verify the order exists, is not soft-deleted, belongs to the same
+        (wholesaler, retailer), and the binding is active. Fails closed with
+        a neutral 404 on any mismatch."""
+        order = await self._get_order_by_id(db, order_id)
+        if order is None or getattr(order, "is_deleted", False):
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND, "ORDER_NOT_FOUND",
+                "Order not found",
+            )
+        if (
+            getattr(order, "wholesaler_id", None) != wholesaler_id
+            or getattr(order, "retailer_id", None) != retailer_id
+        ):
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND, "DECLARATION_NOT_FOUND",
+                "Declaration not found",
+            )
+        # Verify active binding.
+        result = await db.execute(
+            text(
+                "SELECT status FROM public.wholesaler_retailer_bindings "
+                "WHERE wholesaler_id = :wid AND retailer_id = :rid "
+                "AND is_deleted IS FALSE LIMIT 1"
+            ),
+            {"wid": str(wholesaler_id), "rid": str(retailer_id)},
+        )
+        binding = result.fetchone()
+        if binding is None or binding.status != "active":
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND, "DECLARATION_NOT_FOUND",
+                "Declaration not found",
+            )
+
+    async def _resolve_confirmed_replay(
+        self,
+        db: AsyncSession,
+        declaration: Mapping[str, Any],
+        wholesaler_id: uuid.UUID,
+    ) -> CanonicalPaymentResult:
+        """Build a CanonicalPaymentResult for an already-confirmed declaration.
+
+        Zero new writes. Fails closed if the linked order is missing,
+        soft-deleted, or does not match the declaration's wholesaler/retailer.
+        Never returns order=None or empty order_state.
+        """
+        payment_id_raw = declaration.get("confirmation_payment_id")
+        if payment_id_raw is None:
+            raise _declaration_error(
+                status.HTTP_409_CONFLICT,
+                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
+                "Confirmed declaration is missing its canonical payment link",
+            )
+        payment_id = uuid.UUID(str(payment_id_raw))
+        payment = await self._payment_repo.get_by_id_with_receipt(db, payment_id=payment_id)
+        if payment is None:
+            raise _declaration_error(
+                status.HTTP_409_CONFLICT,
+                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
+                "Confirmed declaration links to a missing payment",
+            )
+        receipt = payment.get("receipt_number")
+        if not _is_valid_receipt_number(receipt):
+            raise _declaration_error(
+                status.HTTP_409_CONFLICT,
+                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
+                "Confirmed declaration links to a payment without a valid receipt",
+            )
+
+        order = await self._get_order_by_id(db, uuid.UUID(str(declaration["order_id"])))
+        if order is None or getattr(order, "is_deleted", False):
+            raise _declaration_error(
+                status.HTTP_409_CONFLICT,
+                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
+                "Order for confirmed declaration no longer exists",
+            )
+        if (
+            getattr(order, "wholesaler_id", None) != uuid.UUID(str(declaration["wholesaler_id"]))
+            or getattr(order, "retailer_id", None) != uuid.UUID(str(declaration["retailer_id"]))
+        ):
+            raise _declaration_error(
+                status.HTTP_409_CONFLICT,
+                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
+                "Order ownership does not match confirmed declaration",
+            )
+
+        order_state = getattr(order.status, "value", "")
+        return CanonicalPaymentResult(
+            order=order,
+            payment_record=payment,
+            replayed=True,
+            order_state=str(order_state),
+        )
+
+    async def _get_order_by_id(self, db: AsyncSession, order_id: uuid.UUID) -> OrderModel | None:
+        result = await db.execute(
+            select(OrderModel)
+            .where(OrderModel.id == order_id)
+            .where(OrderModel.is_deleted == False)  # noqa: E712
+        )
+        return result.scalar_one_or_none()
+
     async def _get_order_for_declaration(
         self,
         db: AsyncSession,
@@ -291,56 +417,3 @@ class PaymentDeclarationService:
             and str(existing["method"]) == method
             and (existing.get("transfer_reference") or None) == (transfer_reference or None)
         )
-
-    async def _resolve_confirmed_replay(
-        self,
-        db: AsyncSession,
-        declaration: Mapping[str, Any],
-    ) -> CanonicalPaymentResult:
-        """Build a CanonicalPaymentResult for an already-confirmed declaration.
-
-        Zero new writes: the canonical payment was created at confirmation time.
-        We re-fetch the linked payment (for its receipt number) and the order
-        (for its current status) through the tenant session.
-        """
-        payment_id_raw = declaration.get("confirmation_payment_id")
-        if payment_id_raw is None:
-            # Defensive: a confirmed declaration must have a payment link.
-            raise _declaration_error(
-                status.HTTP_409_CONFLICT,
-                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
-                "Confirmed declaration is missing its canonical payment link",
-            )
-        payment_id = uuid.UUID(str(payment_id_raw))
-        payment = await self._payment_repo.get_by_id_with_receipt(db, payment_id=payment_id)
-        if payment is None:
-            raise _declaration_error(
-                status.HTTP_409_CONFLICT,
-                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
-                "Confirmed declaration links to a missing payment",
-            )
-        # Fail-closed on receipt integrity even on replay.
-        receipt = payment.get("receipt_number")
-        if not _is_valid_receipt_number(receipt):
-            raise _declaration_error(
-                status.HTTP_409_CONFLICT,
-                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
-                "Confirmed declaration links to a payment without a valid receipt",
-            )
-
-        order = await self._get_order_by_id(db, uuid.UUID(str(declaration["order_id"])))
-        order_state = getattr(order.status, "value", "") if order else ""
-        return CanonicalPaymentResult(
-            order=order,  # type: ignore[arg-type]
-            payment_record=payment,
-            replayed=True,
-            order_state=str(order_state),
-        )
-
-    async def _get_order_by_id(self, db: AsyncSession, order_id: uuid.UUID) -> OrderModel | None:
-        result = await db.execute(
-            select(OrderModel)
-            .where(OrderModel.id == order_id)
-            .where(OrderModel.is_deleted == False)  # noqa: E712
-        )
-        return result.scalar_one_or_none()

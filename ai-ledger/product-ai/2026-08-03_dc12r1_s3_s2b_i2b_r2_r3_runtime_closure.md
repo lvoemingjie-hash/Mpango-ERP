@@ -1,3 +1,9 @@
+> **SUPERSEDED** by `2026-08-03_dc12r1_s3_s2b_i2b_r2_r3_r1_final_gate.md`
+>
+> This report incorrectly claimed "No skips, xfails, deselections" — the test
+> file contained `pytest.skip` and a module-level `_CASHIER_EMAIL_CACHE` dict
+> causing ordering dependencies. R1 eliminates both. See the final gate report.
+
 # DC-12R1-S3-S2B-I2B-R2-R3: Runtime Closure — Authoritative Final Report
 
 **Date**: 2026-08-03

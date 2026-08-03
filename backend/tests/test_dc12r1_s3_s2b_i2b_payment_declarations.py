@@ -82,54 +82,46 @@ async def _login_retailer(client: AsyncClient, two_tenants) -> str:
 
 
 # ---------------------------------------------------------------------------
-# S6: Authentic Admin/Cashier Harness
+# S6: Authentic Admin/Cashier Harness (function-scoped, no module-level cache)
 # ---------------------------------------------------------------------------
 
-_CASHIER_EMAIL_CACHE: dict[str, str] = {}
 _CASHIER_PW = "CashierTestPass99!"
 
 
-async def _provision_admin_user(s2_clean_db) -> str:
-    """Create a SEPARATE admin/cashier user in tenant A.
+@pytest_asyncio.fixture
+async def cashier_identity(s2_clean_db) -> dict:
+    """Function-scoped cashier identity.
 
-    This user:
-    - Has a different email and user_id from the retailer user.
-    - Has ONLY the admin role (which includes payments:confirm_declaration).
-    - Does NOT have retailer_operator or any client:* permissions.
-    - Is registered through the real tenant schema users table.
-
-    Returns the admin user's email.
+    Creates a fresh admin/cashier user per test with an explicit UUID.
+    The user is registered with the ownership registry so ``s2_clean_db``
+    cleans it up automatically. No module-level cache, no ordering dependency.
     """
-    db, _reg = s2_clean_db
+    db, reg = s2_clean_db
     a = _pool_a()
     schema_a = a["schema"]
     ws_a = a["ws_id"]
 
-    cache_key = f"{schema_a}:{ws_a}"
-    if cache_key in _CASHIER_EMAIL_CACHE:
-        return _CASHIER_EMAIL_CACHE[cache_key]
-
-    email = f"admin.cashier.{uuid.uuid4().hex[:8]}@test.mpango"
+    cashier_uid = uuid.uuid4()
+    email = f"cashier.{cashier_uid.hex[:12]}@test.mpango"
     pw_hash = hash_password(_CASHIER_PW)
+
+    # Register BEFORE insert so s2_clean_db cleanup tracks this user.
+    reg.register_tenant_user(schema_a, str(cashier_uid))
+
     await db.execute(
         text(
-            f'INSERT INTO "{schema_a}".users (email, password_hash, full_name, is_active) '
-            "VALUES (:email, :pw, :name, true)"
+            f'INSERT INTO "{schema_a}".users (id, email, password_hash, full_name, is_active) '
+            "VALUES (:uid, :email, :pw, :name, true)"
         ),
-        {"email": email, "pw": pw_hash, "name": "Cashier Admin"},
+        {"uid": cashier_uid, "email": email, "pw": pw_hash, "name": "Cashier Admin"},
     )
-    # Assign ONLY the admin role — never retailer_operator.
+    # Assign ONLY the bootstrap-created admin role — never retailer_operator.
     await db.execute(
         text(
             f'INSERT INTO "{schema_a}".user_roles (user_id, role_id) '
-            f"SELECT u.id, r.id FROM \"{schema_a}\".users u, \"{schema_a}\".roles r "
-            f"WHERE u.email = :email AND r.name = 'admin' "
-            f"AND NOT EXISTS ("
-            f"  SELECT 1 FROM \"{schema_a}\".user_roles ur "
-            f"  WHERE ur.user_id = u.id AND ur.role_id = r.id"
-            f")"
+            f"SELECT :uid, r.id FROM \"{schema_a}\".roles r WHERE r.name = 'admin'"
         ),
-        {"email": email},
+        {"uid": cashier_uid},
     )
     # Ensure admin has payments:create for namespace-isolation tests.
     await db.execute(
@@ -150,48 +142,34 @@ async def _provision_admin_user(s2_clean_db) -> str:
         ),
     )
     await db.commit()
-    _CASHIER_EMAIL_CACHE[cache_key] = email
-    return email
+
+    return {
+        "email": email,
+        "password": _CASHIER_PW,
+        "user_id": cashier_uid,
+        "schema": schema_a,
+        "ws_id": ws_a,
+    }
 
 
-async def _cashier_token(i2b_client, s2_clean_db) -> str:
-    """Return an admin-capable token for a SEPARATE cashier user.
+async def _cashier_token(i2b_client, cashier_identity: dict) -> str:
+    """Return an admin-capable token for the fixture-provisioned cashier.
 
-    Authentic flow: provision a dedicated admin user, then login via
-    /auth/login (identity) + /auth/select-tenant.
+    Authentic flow: /auth/login (identity) + /auth/select-tenant.
     """
-    email = await _provision_admin_user(s2_clean_db)
-    a = _pool_a()
-    tenant_id = a["ws_id"]
-
     resp = await i2b_client.post(
         "/api/v1/auth/login",
-        json={"email": email, "password": _CASHIER_PW},
+        json={"email": cashier_identity["email"], "password": cashier_identity["password"]},
     )
     assert resp.status_code == HTTPStatus.OK, resp.text
     identity_token = resp.json()["data"]["access_token"]
     resp2 = await i2b_client.post(
         "/api/v1/auth/select-tenant",
-        json={"tenant_id": tenant_id},
+        json={"tenant_id": cashier_identity["ws_id"]},
         headers={"Authorization": f"Bearer {identity_token}"},
     )
     assert resp2.status_code == HTTPStatus.OK, resp2.text
     return resp2.json()["data"]["access_token"]
-
-
-async def _admin_user_id(s2_clean_db) -> uuid.UUID:
-    """Return the admin user's UUID for assertion checks."""
-    db, _reg = s2_clean_db
-    a = _pool_a()
-    schema_a = a["schema"]
-    cache_key = f"{schema_a}:{a['ws_id']}"
-    email = _CASHIER_EMAIL_CACHE[cache_key]
-    row = (await db.execute(
-        text(f'SELECT id FROM "{schema_a}".users WHERE email = :email'),
-        {"email": email},
-    )).fetchone()
-    assert row is not None, "admin user not found"
-    return uuid.UUID(str(row.id))
 
 
 def _pool_a(provisioned_pool=None) -> dict:
@@ -327,9 +305,11 @@ class TestAuthenticHarness:
     """S6: verify the admin/cashier harness uses a separate user with
     canonical authorization — never grants admin to the retailer identity."""
 
-    async def test_admin_user_id_differs_from_retailer(self, i2b_client, two_tenants, s2_clean_db):
-        await _cashier_token(i2b_client, s2_clean_db)
-        admin_uid = await _admin_user_id(s2_clean_db)
+    async def test_admin_user_id_differs_from_retailer(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        await _cashier_token(i2b_client, cashier_identity)
+        admin_uid = cashier_identity["user_id"]
         _code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
         retailer_uid = uuid.UUID(str(uid_a))
         assert admin_uid != retailer_uid, "admin and retailer must be different users"
@@ -351,13 +331,14 @@ class TestAuthenticHarness:
         )
         assert r.status_code == HTTPStatus.FORBIDDEN, r.text
 
-    async def test_admin_lacks_client_permissions(self, s2_clean_db):
-        """Admin user must NOT have any client:* permissions."""
+    async def test_admin_lacks_client_permissions(
+        self, s2_clean_db, cashier_identity
+    ):
+        """Admin user must NOT have any client:* permissions.
+        Uses fixture directly — no ordering dependency."""
         db, _reg = s2_clean_db
-        sch_a = _pool_a()["schema"]
-        admin_uid = await _admin_user_id(s2_clean_db) if _CASHIER_EMAIL_CACHE else None
-        if admin_uid is None:
-            pytest.skip("admin not provisioned yet in this test order")
+        sch_a = cashier_identity["schema"]
+        admin_uid = cashier_identity["user_id"]
         rows = (await db.execute(
             text(
                 f'SELECT p.code FROM "{sch_a}".permissions p '
@@ -370,7 +351,7 @@ class TestAuthenticHarness:
         assert len(rows) == 0, f"admin has client:* permissions: {[r.code for r in rows]}"
 
     async def test_cashier_executes_confirm_successfully(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """Cashier token (admin role) must execute confirm successfully."""
         db, _reg = s2_clean_db
@@ -380,7 +361,7 @@ class TestAuthenticHarness:
         ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a)
         did = await _seed_declaration(db, sch_a, oid, ws_a, ret_a, uid_a)
-        token = await _cashier_token(i2b_client, s2_clean_db)
+        token = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/confirm", headers=_headers(token),
         )
@@ -552,14 +533,14 @@ class TestSubmitDeclaration:
 
 
 class TestNamespaceIsolation:
-    async def test_direct_pay_rejects_reserved_prefix(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_direct_pay_rejects_reserved_prefix(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         db, reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
         sch_a = _pool_a()["schema"]
         code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
         ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
-        token = await _cashier_token(i2b_client, s2_clean_db)
+        token = await _cashier_token(i2b_client, cashier_identity)
         before = await _snapshot(db, sch_a, oid, ws_a, ret_a)
         r = await i2b_client.post(
             f"/api/v1/orders/{oid}/pay",
@@ -571,7 +552,7 @@ class TestNamespaceIsolation:
         after = await _snapshot(db, sch_a, oid, ws_a, ret_a)
         assert after == before
 
-    async def test_confirm_bare_payment_conflict_fail_closed(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_confirm_bare_payment_conflict_fail_closed(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         db, reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
         sch_a = _pool_a()["schema"]
@@ -599,7 +580,7 @@ class TestNamespaceIsolation:
         )
         await db.commit()
 
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{decl_id}/confirm",
             headers=_headers(token_admin),
@@ -632,9 +613,9 @@ class TestConfirmDeclaration:
         assert decl.status_code == HTTPStatus.CREATED, decl.text
         return decl.json()["data"]["id"], oid, ws_a, sch_a, ret_a
 
-    async def test_confirm_full_creates_receipt_and_paid_order(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_confirm_full_creates_receipt_and_paid_order(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         decl_id, oid, ws_a, sch_a, ret_a = await self._submit(i2b_client, two_tenants, s2_clean_db, "100.00")
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(f"/api/v1/declarations/{decl_id}/confirm", headers=_headers(token_admin))
         assert r.status_code == HTTPStatus.OK, r.text
         data = r.json()["data"]
@@ -642,9 +623,9 @@ class TestConfirmDeclaration:
         assert data["receipt_number"].startswith("RCT-")
         assert data["order_status"] == "paid"
 
-    async def test_confirm_replay_returns_same_payment_and_receipt(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_confirm_replay_returns_same_payment_and_receipt(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         decl_id, oid, ws_a, sch_a, ret_a = await self._submit(i2b_client, two_tenants, s2_clean_db, "100.00")
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r1 = await i2b_client.post(f"/api/v1/declarations/{decl_id}/confirm", headers=_headers(token_admin))
         assert r1.status_code == HTTPStatus.OK, r1.text
         first = r1.json()["data"]
@@ -662,9 +643,9 @@ class TestConfirmDeclaration:
         ), {"oid": oid})).scalar()
         assert payments_after == payments_before
 
-    async def test_confirm_partial_yields_completed_payment_and_partially_paid(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_confirm_partial_yields_completed_payment_and_partially_paid(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         decl_id, oid, ws_a, sch_a, ret_a = await self._submit(i2b_client, two_tenants, s2_clean_db, "40.00")
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(f"/api/v1/declarations/{decl_id}/confirm", headers=_headers(token_admin))
         assert r.status_code == HTTPStatus.OK, r.text
         data = r.json()["data"]
@@ -672,24 +653,24 @@ class TestConfirmDeclaration:
         assert data["receipt_number"].startswith("RCT-")
         assert data["order_status"] == "partially_paid"
 
-    async def test_confirm_overpayment_returns_400_pay_exceeds_remaining(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_confirm_overpayment_returns_400_pay_exceeds_remaining(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         decl_id, oid, ws_a, sch_a, ret_a = await self._submit(i2b_client, two_tenants, s2_clean_db, "150.00")
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(f"/api/v1/declarations/{decl_id}/confirm", headers=_headers(token_admin))
         assert r.status_code == HTTPStatus.BAD_REQUEST, r.text
         assert _errcode(r) == "PAYMENT_EXCEEDS_REMAINING"
 
-    async def test_confirm_overpayment_leaves_declaration_pending_and_zero_writes(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_confirm_overpayment_leaves_declaration_pending_and_zero_writes(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         decl_id, oid, ws_a, sch_a, ret_a = await self._submit(i2b_client, two_tenants, s2_clean_db, "150.00")
         db, _reg = s2_clean_db
         before = await _snapshot(db, sch_a, oid, ws_a, ret_a)
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         await i2b_client.post(f"/api/v1/declarations/{decl_id}/confirm", headers=_headers(token_admin))
         after = await _snapshot(db, sch_a, oid, ws_a, ret_a)
         assert after == before
 
-    async def test_confirm_malformed_declaration_id_returns_404(self, i2b_client, two_tenants, s2_clean_db):
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+    async def test_confirm_malformed_declaration_id_returns_404(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post("/api/v1/declarations/not-a-uuid/confirm", headers=_headers(token_admin))
         assert r.status_code == HTTPStatus.NOT_FOUND, r.text
         assert _errcode(r) == "DECLARATION_NOT_FOUND"
@@ -701,7 +682,7 @@ class TestConfirmDeclaration:
 
 
 class TestRejectDeclaration:
-    async def test_reject_is_terminal_and_zero_financial_effect(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_reject_is_terminal_and_zero_financial_effect(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         db, reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
         sch_a = _pool_a()["schema"]
@@ -716,7 +697,7 @@ class TestRejectDeclaration:
         )
         decl_id = decl.json()["data"]["id"]
         before = await _snapshot(db, sch_a, oid, ws_a, ret_a)
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{decl_id}/reject",
             json={"reason": "Could not verify funds"},
@@ -728,7 +709,7 @@ class TestRejectDeclaration:
         after = await _snapshot(db, sch_a, oid, ws_a, ret_a)
         assert after == before
 
-    async def test_reject_then_confirm_returns_not_pending(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_reject_then_confirm_returns_not_pending(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         db, reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
         sch_a = _pool_a()["schema"]
@@ -742,7 +723,7 @@ class TestRejectDeclaration:
             headers={**_headers(token), "X-Declaration-Idempotency-Key": f"i2b-rjc-{uuid.uuid4().hex}"},
         )
         decl_id = decl.json()["data"]["id"]
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         await i2b_client.post(
             f"/api/v1/declarations/{decl_id}/reject",
             json={"reason": "Rejected"},
@@ -752,7 +733,7 @@ class TestRejectDeclaration:
         assert r.status_code == HTTPStatus.CONFLICT, r.text
         assert _errcode(r) == "DECLARATION_NOT_PENDING"
 
-    async def test_reject_reason_validated_1_to_256(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_reject_reason_validated_1_to_256(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         db, reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
         sch_a = _pool_a()["schema"]
@@ -766,7 +747,7 @@ class TestRejectDeclaration:
             headers={**_headers(token), "X-Declaration-Idempotency-Key": f"i2b-rjv-{uuid.uuid4().hex}"},
         )
         decl_id = decl.json()["data"]["id"]
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{decl_id}/reject",
             json={"reason": "   "},
@@ -775,7 +756,7 @@ class TestRejectDeclaration:
         assert r.status_code == HTTPStatus.BAD_REQUEST, r.text
         assert _errcode(r) == "INVALID_REJECTION_REASON"
 
-    async def test_reject_reason_missing_returns_400(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_reject_reason_missing_returns_400(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         """S7: missing reason must return 400, not 422/500."""
         db, reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
@@ -784,7 +765,7 @@ class TestRejectDeclaration:
         ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
         did = await _seed_declaration(db, sch_a, oid, ws_a, ret_a, uid_a)
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/reject",
             json={},
@@ -792,7 +773,7 @@ class TestRejectDeclaration:
         )
         assert r.status_code == HTTPStatus.BAD_REQUEST, r.text
 
-    async def test_reject_reason_oversized_returns_400(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_reject_reason_oversized_returns_400(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         """S7: oversized reason must return 400, not 422/500."""
         db, reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
@@ -801,7 +782,7 @@ class TestRejectDeclaration:
         ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
         did = await _seed_declaration(db, sch_a, oid, ws_a, ret_a, uid_a)
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/reject",
             json={"reason": "x" * 257},
@@ -809,7 +790,7 @@ class TestRejectDeclaration:
         )
         assert r.status_code == HTTPStatus.BAD_REQUEST, r.text
 
-    async def test_reject_reason_forbidden_html_returns_400(self, i2b_client, two_tenants, s2_clean_db):
+    async def test_reject_reason_forbidden_html_returns_400(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         """S7: HTML tags in reason must return 400, not 422/500."""
         db, reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
@@ -818,7 +799,7 @@ class TestRejectDeclaration:
         ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
         did = await _seed_declaration(db, sch_a, oid, ws_a, ret_a, uid_a)
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/reject",
             json={"reason": "<script>alert('xss')</script>"},
@@ -837,7 +818,7 @@ class TestNonLatestRejection:
     KeyError or 500. The older declaration must be rejected correctly."""
 
     async def test_reject_older_declaration_with_newer_present(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         db, _reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
@@ -854,7 +835,7 @@ class TestNonLatestRejection:
         newer_did = await _seed_declaration(db, sch_a, oid, ws_a, ret_a, uid_a, "70.00")
 
         before = await _snapshot(db, sch_a, oid, ws_a, ret_a)
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
 
         # Reject the OLDER declaration.
         r = await i2b_client.post(
@@ -900,7 +881,7 @@ class TestRuntimeMatrix:
     # --- Ownership / fail-closed tests ---
 
     async def test_wrong_wholesaler_confirm_returns_neutral_404(
-        self, i2b_client, two_tenants, s2_clean_db, provisioned_pool
+        self, i2b_client, two_tenants, s2_clean_db, provisioned_pool, cashier_identity
     ):
         """S7: confirming a declaration from a different wholesaler must 404
         without leaking existence."""
@@ -919,7 +900,7 @@ class TestRuntimeMatrix:
 
         before_b = await _snapshot(db, sch_b, oid_b, ws_b, ret_b)
         # Confirm using tenant A's admin token.
-        token_a = await _cashier_token(i2b_client, s2_clean_db)
+        token_a = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did_b}/confirm",
             headers=_headers(token_a),
@@ -931,7 +912,7 @@ class TestRuntimeMatrix:
         assert after_b == before_b
 
     async def test_wrong_retailer_declaration_ownership_fail_closed(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: declaration with wrong retailer/wholesaler must fail closed."""
         db, _reg = s2_clean_db
@@ -952,7 +933,7 @@ class TestRuntimeMatrix:
         )
         did = await _seed_declaration(db, sch_a, oid, ws_a, str(wrong_ret), uid_a)
 
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/confirm",
             headers=_headers(token_admin),
@@ -960,7 +941,7 @@ class TestRuntimeMatrix:
         assert r.status_code in (HTTPStatus.NOT_FOUND, HTTPStatus.CONFLICT), r.text
 
     async def test_inactive_binding_confirmation_fail_closed(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: confirming with an inactive binding must fail closed."""
         db, _reg = s2_clean_db
@@ -981,7 +962,7 @@ class TestRuntimeMatrix:
         await db.commit()
 
         before = await _snapshot(db, sch_a, oid, ws_a, ret_a)
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/confirm",
             headers=_headers(token_admin),
@@ -993,7 +974,7 @@ class TestRuntimeMatrix:
         assert after == before
 
     async def test_soft_deleted_binding_confirmation_fail_closed(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: confirming with a soft-deleted binding must fail closed."""
         db, _reg = s2_clean_db
@@ -1013,7 +994,7 @@ class TestRuntimeMatrix:
         await db.commit()
 
         before = await _snapshot(db, sch_a, oid, ws_a, ret_a)
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/confirm",
             headers=_headers(token_admin),
@@ -1090,7 +1071,7 @@ class TestRuntimeMatrix:
         )
 
     async def test_concurrent_confirmation_one_payment_one_receipt(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: concurrent confirmation produces exactly one canonical payment,
         one ledger effect, one receivable effect, one receipt."""
@@ -1102,7 +1083,7 @@ class TestRuntimeMatrix:
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
         did = await _seed_declaration(db, sch_a, oid, ws_a, ret_a, uid_a, "100.00")
 
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r1, r2 = await asyncio.gather(
             i2b_client.post(f"/api/v1/declarations/{did}/confirm", headers=_headers(token_admin)),
             i2b_client.post(f"/api/v1/declarations/{did}/confirm", headers=_headers(token_admin)),
@@ -1124,7 +1105,7 @@ class TestRuntimeMatrix:
     # --- Confirmation replay ---
 
     async def test_confirmation_replay_same_payment_and_receipt_zero_writes(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: confirmation replay returns same payment+receipt with zero writes."""
         db, _reg = s2_clean_db
@@ -1135,7 +1116,7 @@ class TestRuntimeMatrix:
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
         did = await _seed_declaration(db, sch_a, oid, ws_a, ret_a, uid_a, "100.00")
 
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r1 = await i2b_client.post(f"/api/v1/declarations/{did}/confirm", headers=_headers(token_admin))
         assert r1.status_code == HTTPStatus.OK, r1.text
         first = r1.json()["data"]
@@ -1157,7 +1138,7 @@ class TestRuntimeMatrix:
         assert pay_after == pay_before
 
     async def test_malformed_replay_receipt_returns_409(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: malformed or missing replay receipt must return controlled 409."""
         db, _reg = s2_clean_db
@@ -1188,7 +1169,7 @@ class TestRuntimeMatrix:
         )
         await db.commit()
 
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/confirm", headers=_headers(token_admin),
         )
@@ -1197,7 +1178,7 @@ class TestRuntimeMatrix:
     # --- Overpayment / financial snapshot ---
 
     async def test_overpayment_rejection_leaves_declaration_pending(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: overpayment rejection must leave declaration pending and
         complete financial snapshot unchanged."""
@@ -1210,7 +1191,7 @@ class TestRuntimeMatrix:
         did = await _seed_declaration(db, sch_a, oid, ws_a, ret_a, uid_a, "150.00")
 
         before = await _snapshot(db, sch_a, oid, ws_a, ret_a)
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/confirm", headers=_headers(token_admin),
         )
@@ -1229,7 +1210,7 @@ class TestRuntimeMatrix:
     # --- Namespace isolation ---
 
     async def test_direct_payment_reserved_namespace_rejected(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: direct payment reserved namespace remains rejected."""
         db, _reg = s2_clean_db
@@ -1238,7 +1219,7 @@ class TestRuntimeMatrix:
         code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
         ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
-        token = await _cashier_token(i2b_client, s2_clean_db)
+        token = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/orders/{oid}/pay",
             json={"amount": "10.00", "method": "cash"},
@@ -1283,7 +1264,7 @@ class TestRuntimeMatrix:
     # --- Rollback proof ---
 
     async def test_receipt_allocation_rollback_zero_residue(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: failed confirmation leaves zero payment/declaration-terminal/
         ledger/receivable residue."""
@@ -1302,7 +1283,7 @@ class TestRuntimeMatrix:
             f'SELECT COUNT(*) FROM "{sch_a}".ledger_entries'
         ))).scalar()
 
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         r = await i2b_client.post(
             f"/api/v1/declarations/{did}/confirm", headers=_headers(token_admin),
         )
@@ -1324,7 +1305,7 @@ class TestRuntimeMatrix:
         assert decl_status == "pending", "declaration should remain pending"
 
     async def test_rollback_leaves_sequence_transactionally_reusable(
-        self, i2b_client, two_tenants, s2_clean_db
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         """S7: after a failed confirmation, the receipt sequence can still
         produce a valid receipt for a subsequent successful confirmation."""
@@ -1341,7 +1322,7 @@ class TestRuntimeMatrix:
         oid2 = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
         did2 = await _seed_declaration(db, sch_a, oid2, ws_a, ret_a, uid_a, "100.00")
 
-        token_admin = await _cashier_token(i2b_client, s2_clean_db)
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
         # First: failed confirm.
         r1 = await i2b_client.post(
             f"/api/v1/declarations/{did1}/confirm", headers=_headers(token_admin),

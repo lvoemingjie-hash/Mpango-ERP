@@ -35,6 +35,7 @@ from services.canonical_payment_service import (
     CanonicalPaymentMutationHttpError,
     CanonicalPaymentResult,
     CanonicalPaymentService,
+    _is_valid_receipt_number,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -320,7 +321,7 @@ class PaymentDeclarationService:
             )
         # Fail-closed on receipt integrity even on replay.
         receipt = payment.get("receipt_number")
-        if not isinstance(receipt, str) or not receipt.startswith("RCT-"):
+        if not _is_valid_receipt_number(receipt):
             raise _declaration_error(
                 status.HTTP_409_CONFLICT,
                 "DECLARATION_CONFIRMATION_KEY_CONFLICT",

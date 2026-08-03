@@ -1,5 +1,9 @@
 # DC-12R1-S3-S2B-I2B-R1: Payment Declaration and Cashier Confirmation Runtime
 
+> **SUPERSEDED** — This report describes the R1 baseline state. The authoritative
+> final report is `2026-08-03_dc12r1_s3_s2b_i2b_r2_r3_runtime_closure.md`.
+> Historical evidence below is preserved for audit trail.
+
 **Date**: 2026-08-03
 **Base SHA**: `76fb345c9054530cb0e6abccf35f0cc1863d2bef`
 **Branch**: `codex/dc12r1-s3-s2b-i2b-payment-declaration-runtime-2026-08-03`

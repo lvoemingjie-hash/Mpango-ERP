@@ -106,6 +106,25 @@ async def _grant_admin_role(s2_clean_db) -> None:
              f"ON CONFLICT DO NOTHING"),
         {"uid": uid},
     )
+    # Ensure admin has payments:create so namespace-isolation tests can reach the
+    # idempotency-key rejection path (not blocked by permission check).
+    await db.execute(
+        text(
+            f"INSERT INTO \"{schema_a}\".permissions (code, description) "
+            "VALUES ('payments:create', 'Create payments') ON CONFLICT (code) DO NOTHING"
+        ),
+    )
+    await db.execute(
+        text(
+            f"INSERT INTO \"{schema_a}\".role_permissions (role_id, permission_id) "
+            f"SELECT r.id, p.id FROM \"{schema_a}\".roles r, \"{schema_a}\".permissions p "
+            f"WHERE r.name = 'admin' AND p.code = 'payments:create' "
+            f"AND NOT EXISTS ("
+            f"  SELECT 1 FROM \"{schema_a}\".role_permissions rp "
+            f"  WHERE rp.role_id = r.id AND rp.permission_id = p.id"
+            f")"
+        ),
+    )
     await db.commit()
 
 
@@ -162,6 +181,25 @@ async def _admin_token(i2b_client, two_tenants, s2_clean_db) -> str:
              f"SELECT :uid, id FROM \"{schema_a}\".roles WHERE name = 'admin' "
              f"ON CONFLICT DO NOTHING"),
         {"uid": uid},
+    )
+    # Ensure admin has payments:create so namespace-isolation tests can reach the
+    # idempotency-key rejection path (not blocked by permission check).
+    await db.execute(
+        text(
+            f"INSERT INTO \"{schema_a}\".permissions (code, description) "
+            "VALUES ('payments:create', 'Create payments') ON CONFLICT (code) DO NOTHING"
+        ),
+    )
+    await db.execute(
+        text(
+            f"INSERT INTO \"{schema_a}\".role_permissions (role_id, permission_id) "
+            f"SELECT r.id, p.id FROM \"{schema_a}\".roles r, \"{schema_a}\".permissions p "
+            f"WHERE r.name = 'admin' AND p.code = 'payments:create' "
+            f"AND NOT EXISTS ("
+            f"  SELECT 1 FROM \"{schema_a}\".role_permissions rp "
+            f"  WHERE rp.role_id = r.id AND rp.permission_id = p.id"
+            f")"
+        ),
     )
     await db.commit()
 

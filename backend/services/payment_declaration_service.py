@@ -37,7 +37,7 @@ from services.canonical_payment_service import (
     CanonicalPaymentService,
     _is_valid_receipt_number,
 )
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 

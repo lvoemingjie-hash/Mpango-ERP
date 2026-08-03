@@ -91,28 +91,6 @@ class PaymentDeclarationRepository:
         )
         return result.mappings().first()
 
-    async def get_for_update(
-        self,
-        db: AsyncSession,
-        *,
-        declaration_id: uuid.UUID,
-    ) -> Mapping[str, Any] | None:
-        result = await db.execute(
-            text(
-                """
-                SELECT id, order_id, retailer_id, wholesaler_id, declared_amount,
-                       method, transfer_reference, status, idempotency_key,
-                       submitted_by, submitted_at, confirmed_by, confirmed_at,
-                       confirmation_payment_id, rejected_by, rejected_at, reason
-                FROM payment_declarations
-                WHERE id = :did
-                FOR UPDATE
-                """
-            ),
-            {"did": declaration_id},
-        )
-        return result.mappings().first()
-
     async def get_for_update_by_wholesaler(
         self,
         db: AsyncSession,

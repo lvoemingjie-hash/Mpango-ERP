@@ -27,7 +27,8 @@ export default function DeclarationQueuePage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [actionId, setActionId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
+  const [editingReasonId, setEditingReasonId] = useState<string | null>(null);
+  const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,11 +59,13 @@ export default function DeclarationQueuePage() {
   };
 
   const handleReject = async (id: string) => {
-    if (!rejectReason.trim()) return;
+    const reason = (rejectReasons[id] || '').trim();
+    if (!reason) return;
     setActionId(id);
     try {
-      await rejectDeclaration(id, rejectReason.trim());
-      setRejectReason('');
+      await rejectDeclaration(id, reason);
+      setRejectReasons(prev => { const n = { ...prev }; delete n[id]; return n; });
+      setEditingReasonId(null);
       load();
     } catch (err: unknown) {
       setError((err as { response?: { data?: { message?: string } } }).response?.data?.message || (err as Error).message || 'Reject failed');
@@ -97,16 +100,17 @@ export default function DeclarationQueuePage() {
                   <div className="flex gap-2">
                     <button onClick={() => handleConfirm(d.id)} disabled={actionId === d.id}
                       className="bg-green-600 text-white text-xs px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50">
-                      Confirm
+                      {actionId === d.id ? '...' : 'Confirm'}
                     </button>
                     <div className="flex flex-col gap-1">
                       <input type="text" placeholder="Reason" maxLength={256}
-                        value={(actionId === d.id || !actionId) ? rejectReason : ''}
-                        onChange={e => { setRejectReason(e.target.value); setActionId(d.id); }}
-                        className="text-xs border rounded px-1 py-0.5 w-28" />
-                      <button onClick={() => handleReject(d.id)} disabled={actionId === d.id}
+                        value={rejectReasons[d.id] || ''}
+                        onFocus={() => { setEditingReasonId(d.id); }}
+                        onChange={e => setRejectReasons(prev => ({ ...prev, [d.id]: e.target.value }))}
+                        className={`text-xs border rounded px-1 py-0.5 w-28 ${editingReasonId === d.id ? 'ring-1 ring-indigo-500' : ''}`} />
+                      <button onClick={() => handleReject(d.id)} disabled={actionId === d.id || !(rejectReasons[d.id] || '').trim()}
                         className="bg-red-600 text-white text-xs px-3 py-1 rounded hover:bg-red-700 disabled:opacity-50">
-                        Reject
+                        {actionId === d.id ? '...' : 'Reject'}
                       </button>
                     </div>
                   </div>

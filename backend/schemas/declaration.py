@@ -39,7 +39,6 @@ class DeclarationSubmitRequest(CamelModel):
     )
     transfer_reference: Optional[str] = Field(
         None,
-        max_length=128,
         description="External transfer reference (required for transfer, NULL for cash)",
     )
 
@@ -47,14 +46,14 @@ class DeclarationSubmitRequest(CamelModel):
 
 
 class DeclarationRejectRequest(CamelModel):
-    """Cashier rejection body. The reason is backend-validated (1-256 chars,
-    sanitized) and is the single source of truth rendered to the retailer."""
+    """Cashier rejection body. Validation (1-256 chars, sanitized, no HTML) is
+    performed by the route via the authoritative server-side validator. Pydantic
+    constraints are intentionally omitted to prevent 422 from preempting the
+    controlled 400 INVALID_REJECTION_REASON."""
 
     reason: str = Field(
         ...,
-        min_length=1,
-        max_length=256,
-        description="Sanitized rejection reason (1-256 characters)",
+        description="Sanitized rejection reason (route-validated 1-256 characters)",
     )
 
     model_config = {"from_attributes": True}

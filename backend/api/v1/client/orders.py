@@ -395,6 +395,37 @@ async def cancel_order(
 # (DC-12R1-S3-S2B-I2B). Zero financial effect. Retailer identity from JWT only.
 # ---------------------------------------------------------------------------
 
+def _extract_constraint_name(exc) -> str:
+    """Traverse the asyncpg IntegrityError chain for a constraint name.
+
+    Handles ``exc.orig.diag.constraint_name``, bare ``exc.orig.constraint_name``,
+    ``__cause__``, and ``__context__`` with cycle protection. Never parses
+    human-readable exception messages.
+    """
+    visited: set[int] = set()
+    stack = [exc]
+    while stack:
+        cur = stack.pop()
+        cur_id = id(cur)
+        if cur_id in visited:
+            continue
+        visited.add(cur_id)
+        for attr in ("diag",):
+            diag = getattr(cur, attr, None)
+            if diag is not None:
+                name = getattr(diag, "constraint_name", None)
+                if isinstance(name, str) and name:
+                    return name
+        name = getattr(cur, "constraint_name", None)
+        if isinstance(name, str) and name:
+            return name
+        for link in ("__cause__", "__context__"):
+            linked = getattr(cur, link, None)
+            if linked is not None and linked is not cur:
+                stack.append(linked)
+    return ""
+
+
 def _validate_declaration_idempotency_key(value: str | None) -> str:
     """Declaration submission idempotency key (same charset/length rules as the
     canonical payment key). Rejects the reserved ``decl-confirm-`` namespace."""
@@ -478,24 +509,24 @@ async def declare_payment(
             idempotency_key=idempotency_key,
         )
     except IntegrityError as exc:
-        # Only the (retailer_id, idempotency_key) unique constraint is
-        # reclassified. Inspect the PostgreSQL constraint name; any FK, CHECK,
-        # or unrelated UNIQUE violation must rollback and re-raise.
-        constraint_name: str = ""
-        try:
-            constraint_name = (exc.orig.diag.constraint_name or "") if hasattr(exc, "orig") and hasattr(exc.orig, "diag") else ""
-        except Exception:
-            pass
-        if constraint_name != "ux_payment_declarations_retailer_idem":
-            await db.rollback()
-            await _restore_tenant_search_path_after_rollback(db)
-            raise
+        # Always rollback and restore search_path first.
         await db.rollback()
         await _restore_tenant_search_path_after_rollback(db)
+
+        # Traverse the asyncpg exception chain for the constraint name.
+        # Never parse human-readable messages.
+        constraint_name = _extract_constraint_name(exc)
+        if constraint_name != "ux_payment_declarations_retailer_idem":
+            # FK, CHECK, or unrelated UNIQUE — re-raise unchanged.
+            raise
+
         repo = PaymentDeclarationRepository()
         existing = await repo.get_by_retailer_idempotency(
             db, retailer_id=uuid.UUID(client.retailer_id), idempotency_key=idempotency_key
         )
+        if existing is None:
+            # Constraint was reported but no row found — re-raise original.
+            raise
         if existing is not None:
             # Resolve the same way submit would, then classify.
             same = (

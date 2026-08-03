@@ -303,12 +303,13 @@ class PaymentDeclarationService:
                 status.HTTP_404_NOT_FOUND, "DECLARATION_NOT_FOUND",
                 "Declaration not found",
             )
-        # Verify active binding.
+        # Verify active binding with row-level protection.
         result = await db.execute(
             text(
                 "SELECT status FROM public.wholesaler_retailer_bindings "
                 "WHERE wholesaler_id = :wid AND retailer_id = :rid "
-                "AND is_deleted IS FALSE LIMIT 1"
+                "AND is_deleted IS FALSE "
+                "FOR UPDATE LIMIT 1"
             ),
             {"wid": str(wholesaler_id), "rid": str(retailer_id)},
         )

@@ -1,5 +1,5 @@
 /** Retailer payment declaration submission (DC-12R1-S3-S2B-I2B). */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { submitDeclaration } from '@/services/declarationService';
 
@@ -12,13 +12,24 @@ export default function DeclarePaymentPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Stable idempotency key: generated ONCE per mounted form, reused across
+  // retries (timeout / network failure / controlled API error) so the backend
+  // can deduplicate. Kept in a ref (not state) because it must not trigger
+  // re-renders. Rotated only after a confirmed successful submission so the
+  // next fresh declaration gets a new key.
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+  // Mutex to prevent duplicate clicks while a request is in flight.
+  const submittingRef = useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!orderId || !amount) return;
+    // Prevent duplicate clicks while a submission is already in flight.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     setError('');
     try {
-      const key = `decl-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       const body: { declared_amount: string; method: string; transfer_reference?: string | null } = {
         declared_amount: amount,
         method,
@@ -26,14 +37,18 @@ export default function DeclarePaymentPage() {
       if (method === 'transfer' && transferRef) {
         body.transfer_reference = transferRef.trim();
       }
-      await submitDeclaration(orderId, body, key);
+      await submitDeclaration(orderId, body, idempotencyKeyRef.current);
+      // Success: rotate the key so a completely new declaration gets a fresh one.
+      idempotencyKeyRef.current = crypto.randomUUID();
       navigate(`/client/orders/${orderId}`);
     } catch (err: unknown) {
+      // Error: keep the SAME key so a retry hits the same idempotency slot.
       const msg = (err as { response?: { data?: { message?: string; code?: string } } })?.response?.data?.message
         || (err as Error).message || 'Submission failed';
       setError(msg);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   };
 

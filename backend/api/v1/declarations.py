@@ -131,15 +131,11 @@ async def get_declaration(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
         )
-    rows, _ = await PaymentDeclarationRepository().list_by_wholesaler(
+    row = await PaymentDeclarationRepository().get_detail_by_wholesaler(
         db,
+        declaration_id=did,
         wholesaler_id=wholesaler_id,
-        page=1,
-        size=1000,
-        status=None,
-        retailer_id=None,
     )
-    row = next((r for r in rows if r["id"] == did), None)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -270,19 +266,17 @@ async def reject_declaration(
         await _restore_tenant_search_path_after_rollback(db)
         raise
 
-    # Re-fetch via dual-key lookup (not list+search) for the joined columns.
+    # Re-fetch via exact dual-key lookup for joined columns.
     repo = PaymentDeclarationRepository()
-    rows, _ = await repo.list_by_wholesaler(
+    row = await repo.get_detail_by_wholesaler(
         db,
+        declaration_id=did,
         wholesaler_id=wholesaler_id,
-        page=1,
-        size=1,
-        status=None,
     )
-    row = next((r for r in rows if r["id"] == did), declaration) if rows else declaration
+    view_row = row if row is not None else declaration
     return DataResponse(
         success=True,
-        data=_to_view(row).model_dump(mode="json"),
+        data=_to_view(view_row).model_dump(mode="json"),
         message="Declaration rejected",
         timestamp=datetime.now(timezone.utc),
     )

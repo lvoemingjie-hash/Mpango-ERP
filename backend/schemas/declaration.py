@@ -51,8 +51,8 @@ class DeclarationRejectRequest(CamelModel):
     constraints are intentionally omitted to prevent 422 from preempting the
     controlled 400 INVALID_REJECTION_REASON."""
 
-    reason: str = Field(
-        ...,
+    reason: str | None = Field(
+        None,
         description="Sanitized rejection reason (route-validated 1-256 characters)",
     )
 

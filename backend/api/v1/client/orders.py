@@ -549,17 +549,16 @@ async def declare_payment(
             raise
 
     # Always resolve the joined view columns (receipt_number, order_status)
-    # through the listing repo so the response is consistent for create+replay.
+    # via exact dual-key lookup so the response is consistent for create+replay.
     repo = PaymentDeclarationRepository()
-    rows, _ = await repo.list_by_retailer(
+    detail = await repo.get_detail_by_retailer(
         db,
+        declaration_id=record["id"],
         retailer_id=uuid.UUID(client.retailer_id),
         wholesaler_id=uuid.UUID(client.tenant_id),
-        page=1,
-        size=50,
-        status=None,
     )
-    record = next((r for r in rows if str(r["id"]) == str(record["id"])), record)
+    if detail is not None:
+        record = detail
 
     if is_replay:
         response.status_code = status.HTTP_200_OK

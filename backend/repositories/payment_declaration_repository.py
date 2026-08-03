@@ -91,6 +91,71 @@ class PaymentDeclarationRepository:
         )
         return result.mappings().first()
 
+    async def get_detail_by_wholesaler(
+        self,
+        db: AsyncSession,
+        *,
+        declaration_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
+    ) -> Mapping[str, Any] | None:
+        """Fetch one declaration by (id, wholesaler_id) with joined columns.
+
+        Returns the same column set as ``list_by_wholesaler`` (including
+        ``order_status`` and ``receipt_number``) but via an exact dual-key
+        WHERE clause — no pagination, no list+search.
+        """
+        result = await db.execute(
+            text(
+                "SELECT d.id, d.order_id, d.retailer_id, d.wholesaler_id, "
+                "d.declared_amount, d.method, d.transfer_reference, d.status, "
+                "d.idempotency_key, d.submitted_by, d.submitted_at, "
+                "d.confirmed_by, d.confirmed_at, d.rejected_by, d.rejected_at, "
+                "d.reason, d.confirmation_payment_id, "
+                "o.status AS order_status, "
+                "p.receipt_number AS receipt_number "
+                "FROM payment_declarations d "
+                "LEFT JOIN orders o ON o.id = d.order_id "
+                "LEFT JOIN payments p ON p.id = d.confirmation_payment_id "
+                "WHERE d.id = :did AND d.wholesaler_id = :wid "
+                "LIMIT 1"
+            ),
+            {"did": declaration_id, "wid": wholesaler_id},
+        )
+        return result.mappings().first()
+
+    async def get_detail_by_retailer(
+        self,
+        db: AsyncSession,
+        *,
+        declaration_id: uuid.UUID,
+        retailer_id: uuid.UUID,
+        wholesaler_id: uuid.UUID,
+    ) -> Mapping[str, Any] | None:
+        """Fetch one declaration by (id, retailer_id, wholesaler_id) with joined columns.
+
+        Returns the same column set as ``list_by_retailer`` (including
+        ``order_status`` and ``receipt_number``) but via an exact triple-key
+        WHERE clause — no pagination, no list+search.
+        """
+        result = await db.execute(
+            text(
+                "SELECT d.id, d.order_id, d.retailer_id, d.wholesaler_id, "
+                "d.declared_amount, d.method, d.transfer_reference, d.status, "
+                "d.idempotency_key, d.submitted_by, d.submitted_at, "
+                "d.confirmed_by, d.confirmed_at, d.rejected_by, d.rejected_at, "
+                "d.reason, d.confirmation_payment_id, "
+                "o.status AS order_status, "
+                "p.receipt_number AS receipt_number "
+                "FROM payment_declarations d "
+                "LEFT JOIN orders o ON o.id = d.order_id "
+                "LEFT JOIN payments p ON p.id = d.confirmation_payment_id "
+                "WHERE d.id = :did AND d.retailer_id = :rid AND d.wholesaler_id = :wid "
+                "LIMIT 1"
+            ),
+            {"did": declaration_id, "rid": retailer_id, "wid": wholesaler_id},
+        )
+        return result.mappings().first()
+
     async def get_for_update_by_wholesaler(
         self,
         db: AsyncSession,

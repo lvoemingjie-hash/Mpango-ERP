@@ -81,15 +81,12 @@ async def get_client_declaration(
             detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
         )
 
-    rows, _ = await PaymentDeclarationRepository().list_by_retailer(
+    row = await PaymentDeclarationRepository().get_detail_by_retailer(
         db,
+        declaration_id=did,
         retailer_id=uuid.UUID(client.retailer_id),
         wholesaler_id=uuid.UUID(client.tenant_id),
-        page=1,
-        size=1000,
-        status=None,
     )
-    row = next((r for r in rows if r["id"] == did), None)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

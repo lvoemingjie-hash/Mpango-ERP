@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
@@ -55,6 +56,36 @@ def _duplicate_transfer_reference() -> HTTPException:
         "DUPLICATE_TRANSFER_REFERENCE",
         "Transfer transaction_id has already been recorded",
     )
+
+
+#: Authoritative receipt number format: RCT-YYYYMMDD-NNNNNN (tenant-local sequence).
+_RECEIPT_NUMBER_PATTERN = re.compile(r"^RCT-[0-9]{8}-[0-9]{6}$")
+
+
+def _is_valid_receipt_number(value: Any) -> bool:
+    """True only when ``value`` is a non-empty string matching the receipt format."""
+    return isinstance(value, str) and bool(_RECEIPT_NUMBER_PATTERN.match(value))
+
+
+def _declaration_confirmation_key_conflict() -> HTTPException:
+    """Raised when a declaration-confirmation replay hits a payment row that is
+    missing a well-formed receipt number (e.g. the canonical key slot was
+    occupied by a non-cashier payment). Fail-closed: never reuse that payment,
+    never re-allocate a receipt, never mark the declaration confirmed."""
+    return _payment_error(
+        status.HTTP_409_CONFLICT,
+        "DECLARATION_CONFIRMATION_KEY_CONFLICT",
+        "Declaration confirmation key collides with a non-receipt payment",
+    )
+
+
+def _enforce_receipt_on_replay(existing_payment: Mapping[str, Any], allocate_receipt: bool) -> None:
+    """When the caller requested receipt allocation (declaration confirmation),
+    a replayed payment must carry a well-formed receipt number. A NULL or
+    malformed receipt means the canonical key slot was occupied by a payment
+    that was not produced by a cashier confirmation — refuse to reuse it."""
+    if allocate_receipt and not _is_valid_receipt_number(existing_payment.get("receipt_number")):
+        raise _declaration_confirmation_key_conflict()
 
 
 @dataclass(frozen=True)
@@ -138,6 +169,7 @@ class CanonicalPaymentService:
         target_state: OrderState | None = None,
         is_credit_collection: bool | None = None,
         skip_prechecks: bool = False,
+        allocate_receipt: bool = False,
     ) -> CanonicalPaymentResult:
         if amount.is_nan() or amount.is_infinite() or amount <= 0:
             raise _payment_error(
@@ -162,6 +194,7 @@ class CanonicalPaymentService:
                     method=method,
                     transaction_id=transaction_id,
                 ):
+                    _enforce_receipt_on_replay(existing_payment, allocate_receipt)
                     return await self._replay_result(db, existing_payment)
                 raise _idempotency_conflict()
 
@@ -184,6 +217,7 @@ class CanonicalPaymentService:
                     method=method,
                     transaction_id=transaction_id,
                 ):
+                    _enforce_receipt_on_replay(existing_payment, allocate_receipt)
                     return await self._replay_result(db, existing_payment)
                 raise _idempotency_conflict()
 
@@ -264,6 +298,13 @@ class CanonicalPaymentService:
             else "pending"
         )
 
+        # Receipt allocation is opt-in. Only the declaration-confirmation flow
+        # passes allocate_receipt=True; the direct pay_order path leaves the
+        # default False so its behavior (and the I2A tests) is unchanged.
+        receipt_number: str | None = None
+        if allocate_receipt and payment_status == "completed":
+            receipt_number = await self._repo.allocate_receipt_number(db)
+
         payment_record = await self._repo.create(
             db,
             order_id=order.id,
@@ -274,6 +315,7 @@ class CanonicalPaymentService:
             method=method,
             status=payment_status,
             created_by=created_by,
+            receipt_number=receipt_number,
         )
 
         payment_service = payment_service_module.PaymentService()

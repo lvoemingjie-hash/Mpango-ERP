@@ -19,7 +19,7 @@ class PaymentRepository:
         result = await db.execute(
             text(
                 """
-                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, created_at, updated_at
+                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, receipt_number, created_at, updated_at
                 FROM payments
                 WHERE idempotency_key = :idempotency_key AND is_deleted IS FALSE
                 LIMIT 1
@@ -39,7 +39,7 @@ class PaymentRepository:
         result = await db.execute(
             text(
                 """
-                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, created_at, updated_at
+                SELECT id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, receipt_number, created_at, updated_at
                 FROM payments
                 WHERE transaction_id = :transaction_id AND is_deleted IS FALSE
                 LIMIT 1
@@ -86,7 +86,7 @@ class PaymentRepository:
         result = await db.execute(
             text(
                 f"SELECT id, order_id, retailer_id, transaction_id, "
-                f"idempotency_key, amount, method, status, created_at, updated_at "
+                f"idempotency_key, amount, method, status, receipt_number, created_at, updated_at "
                 f"FROM payments WHERE {where} "
                 f"ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
             ),
@@ -104,7 +104,7 @@ class PaymentRepository:
         result = await db.execute(
             text(
                 "SELECT id, order_id, retailer_id, transaction_id, "
-                "idempotency_key, amount, method, status, created_at, updated_at "
+                "idempotency_key, amount, method, status, receipt_number, created_at, updated_at "
                 "FROM payments WHERE id = :pid AND is_deleted IS FALSE LIMIT 1"
             ),
             {"pid": payment_id},
@@ -245,6 +245,7 @@ class PaymentRepository:
         method: str,
         status: str,
         created_by: uuid.UUID | None,
+        receipt_number: str | None = None,
     ) -> Mapping[str, Any]:
         now = datetime.utcnow()
         result = await db.execute(
@@ -258,6 +259,7 @@ class PaymentRepository:
                     amount,
                     method,
                     status,
+                    receipt_number,
                     created_at,
                     updated_at,
                     is_deleted,
@@ -272,13 +274,14 @@ class PaymentRepository:
                     :amount,
                     :method,
                     :status,
+                    :receipt_number,
                     :created_at,
                     :updated_at,
                     FALSE,
                     :created_by,
                     :updated_by
                 )
-                RETURNING id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, created_at, updated_at
+                RETURNING id, order_id, retailer_id, transaction_id, idempotency_key, amount, method, status, receipt_number, created_at, updated_at
                 """
             ),
             {
@@ -289,6 +292,7 @@ class PaymentRepository:
                 "amount": amount,
                 "method": method,
                 "status": status,
+                "receipt_number": receipt_number,
                 "created_at": now,
                 "updated_at": now,
                 "created_by": created_by,
@@ -296,3 +300,32 @@ class PaymentRepository:
             },
         )
         return result.mappings().one()
+
+    async def allocate_receipt_number(self, db: AsyncSession) -> str:
+        """Atomically allocate the next tenant-local receipt number.
+
+        Uses the ``receipt_sequences`` allocator table within the caller's
+        transaction. The increment is rolled back together with the payment if
+        the surrounding transaction fails, so a failed confirmation never leaks
+        a receipt gap.
+
+        Format: ``RCT-YYYYMMDD-NNNNNN`` where the date is the aware UTC business
+        date at allocation time.
+        """
+        from datetime import datetime, timezone
+
+        business_date = datetime.now(timezone.utc).strftime("%Y%m%d")
+        result = await db.execute(
+            text(
+                """
+                INSERT INTO receipt_sequences (business_date, next_seq)
+                VALUES (:business_date, 1)
+                ON CONFLICT (business_date) DO UPDATE
+                SET next_seq = receipt_sequences.next_seq + 1
+                RETURNING next_seq
+                """
+            ),
+            {"business_date": business_date},
+        )
+        seq = int(result.scalar() or 1)
+        return f"RCT-{business_date}-{seq:06d}"

@@ -71,6 +71,11 @@ IDEMPOTENCY_KEY_ALLOWED_CHARS = set(
     "0123456789"
     ".:-_"
 )
+# I2B: prefix reserved for the internal declaration-confirmation canonical key
+# (decl-confirm-{declaration_id.hex}). User-submitted keys in this namespace are
+# rejected at the public pay_order boundary so a direct payment can never
+# pre-occupy the declaration-confirmation idempotency slot.
+RESERVED_IDEMPOTENCY_KEY_PREFIX = "decl-confirm-"
 
 
 def _payment_error(status_code: int, code: str, message: str) -> HTTPException:
@@ -101,6 +106,12 @@ def _validate_idempotency_key(value: str | None) -> str:
             status.HTTP_400_BAD_REQUEST,
             "INVALID_IDEMPOTENCY_KEY",
             "X-Idempotency-Key contains invalid characters",
+        )
+    if key.startswith(RESERVED_IDEMPOTENCY_KEY_PREFIX):
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "RESERVED_IDEMPOTENCY_KEY",
+            "This idempotency-key prefix is reserved for internal declaration confirmation",
         )
     return key
 

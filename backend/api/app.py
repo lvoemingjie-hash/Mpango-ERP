@@ -129,6 +129,10 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(retailers.router, prefix="/api/v1", tags=["retailers"])
     app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 
+    # DC-12R1-S3-S2B-I2B: wholesaler cashier declaration confirm/reject + list/read
+    from api.v1.declarations import router as declarations_router
+    app.include_router(declarations_router, prefix="/api/v1/declarations", tags=["declarations"])
+
     # GAP 2: Finance — Invoices, AR, Financial Summary
     from api.v1.finance import router as finance_router
     # Invoice endpoint lives under /orders (it's an order projection)
@@ -243,10 +247,15 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.v1.client.payments import router as client_payments_router
     from api.v1.client.finance import router as client_finance_router
     from api.v1.client.auth import router as client_auth_router
+    # DC-12R1-S3-S2B-I2B: retailer declaration views + statement
+    from api.v1.client.declarations import router as client_declarations_router
+    from api.v1.client.statements import router as client_statements_router
     app.include_router(client_products_router, prefix="/api/v1/client/products", tags=["client-products"])
     app.include_router(client_orders_router, prefix="/api/v1/client/orders", tags=["client-orders"])
     app.include_router(client_payments_router, prefix="/api/v1/client/payments", tags=["client-payments"])
     app.include_router(client_finance_router, prefix="/api/v1/client/finance", tags=["client-finance"])
+    app.include_router(client_declarations_router, prefix="/api/v1/client/declarations", tags=["client-declarations"])
+    app.include_router(client_statements_router, prefix="/api/v1/client/statements", tags=["client-statements"])
     # DC-12R1-S1: retailer self-service credential recovery (forgot/reset). Public.
     app.include_router(client_auth_router, prefix="/api/v1/client/auth", tags=["client-auth"])
 

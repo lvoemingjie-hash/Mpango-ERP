@@ -22,18 +22,27 @@ Internal mapping:
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from math import ceil
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_tenant_db_session
 from api.middleware.rbac import RequirePermission
 from api.v1.client.dependencies import ClientIdentity, resolve_client_identity
+from api.v1.orders import (
+    IDEMPOTENCY_KEY_ALLOWED_CHARS,
+    IDEMPOTENCY_KEY_MAX_LENGTH,
+    IDEMPOTENCY_KEY_MIN_LENGTH,
+    RESERVED_IDEMPOTENCY_KEY_PREFIX,
+    _restore_tenant_search_path_after_rollback,
+)
 from core.security import TokenPayload
 from crud.order import (
     create_order as crud_create_order,
@@ -41,6 +50,7 @@ from crud.order import (
     get_orders_for_retailer,
     cancel_order as crud_cancel_order,
 )
+from repositories.payment_declaration_repository import PaymentDeclarationRepository
 from schemas.client import (
     ClientCreateOrderRequest,
     ClientOrderView,
@@ -48,6 +58,8 @@ from schemas.client import (
     map_order_status_for_client,
 )
 from schemas.common import DataResponse, Pagination
+from schemas.declaration import ClientDeclarationView, DeclarationSubmitRequest
+from services.payment_declaration_service import PaymentDeclarationService
 
 
 router = APIRouter()
@@ -374,5 +386,146 @@ async def cancel_order(
         success=True,
         data=_order_to_client_view(order),
         message="Order cancelled",
+        timestamp=datetime.utcnow(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /client/orders/{order_id}/declare — Submit a payment declaration
+# (DC-12R1-S3-S2B-I2B). Zero financial effect. Retailer identity from JWT only.
+# ---------------------------------------------------------------------------
+
+def _validate_declaration_idempotency_key(value: str | None) -> str:
+    """Declaration submission idempotency key (same charset/length rules as the
+    canonical payment key). Rejects the reserved ``decl-confirm-`` namespace."""
+    key = (value or "").strip()
+    if not key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "MISSING_DECLARATION_IDEMPOTENCY_KEY", "message": "X-Declaration-Idempotency-Key is required"},
+        )
+    if not (IDEMPOTENCY_KEY_MIN_LENGTH <= len(key) <= IDEMPOTENCY_KEY_MAX_LENGTH):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_DECLARATION_IDEMPOTENCY_KEY", "message": "X-Declaration-Idempotency-Key must be 8 to 64 visible ASCII characters"},
+        )
+    if any(char not in IDEMPOTENCY_KEY_ALLOWED_CHARS for char in key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_DECLARATION_IDEMPOTENCY_KEY", "message": "X-Declaration-Idempotency-Key contains invalid characters"},
+        )
+    if key.startswith(RESERVED_IDEMPOTENCY_KEY_PREFIX):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "RESERVED_IDEMPOTENCY_KEY", "message": "This idempotency-key prefix is reserved for internal declaration confirmation"},
+        )
+    return key
+
+
+def _declaration_to_client_view(row) -> ClientDeclarationView:
+    return ClientDeclarationView(
+        id=str(row["id"]),
+        order_id=str(row["order_id"]),
+        declared_amount=row["declared_amount"],
+        method=row["method"],
+        transfer_reference=row.get("transfer_reference"),
+        status=row["status"],
+        submitted_at=row["submitted_at"],
+        confirmed_at=row.get("confirmed_at"),
+        rejected_at=row.get("rejected_at"),
+        reason=row.get("reason"),
+        receipt_number=row.get("receipt_number"),
+        order_status=str(row["order_status"]) if row.get("order_status") is not None else None,
+    )
+
+
+@router.post(
+    "/{order_id}/declare",
+    response_model=DataResponse[ClientDeclarationView],
+    status_code=status.HTTP_201_CREATED,
+)
+async def declare_payment(
+    order_id: str,
+    body: DeclarationSubmitRequest,
+    response: Response,
+    client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:payments:declare")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+    x_declaration_idempotency_key: Annotated[Optional[str], Header(alias="X-Declaration-Idempotency-Key")] = None,
+):
+    """Submit a payment declaration. This is NOT a payment: zero effect on
+    payments, ledger, receivables, or order status until a cashier confirms."""
+    idempotency_key = _validate_declaration_idempotency_key(x_declaration_idempotency_key)
+
+    # Controlled body validation (fields optional at schema level).
+    if body.declared_amount is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"code": "DECLARATION_AMOUNT_REQUIRED", "message": "declared_amount is required"})
+    if body.method is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"code": "DECLARATION_METHOD_INVALID", "message": "method is required (cash or transfer)"})
+
+    service = PaymentDeclarationService()
+    is_replay = False
+    try:
+        record, is_replay = await service.submit_declaration(
+            db=db,
+            order_id=order_id,
+            retailer_id=uuid.UUID(client.retailer_id),
+            wholesaler_id=uuid.UUID(client.tenant_id),
+            submitted_by=uuid.UUID(client.user_id),
+            declared_amount=body.declared_amount,
+            method=body.method,
+            transfer_reference=body.transfer_reference,
+            idempotency_key=idempotency_key,
+        )
+    except IntegrityError:
+        # Concurrent race on (retailer_id, idempotency_key). Only this unique
+        # conflict is reclassified; any other IntegrityError is re-raised.
+        await db.rollback()
+        await _restore_tenant_search_path_after_rollback(db)
+        repo = PaymentDeclarationRepository()
+        existing = await repo.get_by_retailer_idempotency(
+            db, retailer_id=uuid.UUID(client.retailer_id), idempotency_key=idempotency_key
+        )
+        if existing is not None:
+            # Resolve the same way submit would, then classify.
+            same = (
+                str(existing["order_id"]) == str(order_id)
+                and Decimal(str(existing["declared_amount"])) == body.declared_amount
+                and str(existing["method"]) == body.method
+                and (existing.get("transfer_reference") or None) == ((body.transfer_reference.strip() if body.transfer_reference else None) or None)
+            )
+            if same:
+                record = existing
+                is_replay = True
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"code": "DECLARATION_IDEMPOTENCY_KEY_CONFLICT", "message": "Declaration idempotency key was already used with a different request"},
+                )
+        else:
+            # Not the (retailer, key) unique conflict we expected. Re-raise so
+            # the structured exception boundary handles it; never fake a 409.
+            raise
+
+    # Always resolve the joined view columns (receipt_number, order_status)
+    # through the listing repo so the response is consistent for create+replay.
+    repo = PaymentDeclarationRepository()
+    rows, _ = await repo.list_by_retailer(
+        db,
+        retailer_id=uuid.UUID(client.retailer_id),
+        wholesaler_id=uuid.UUID(client.tenant_id),
+        page=1,
+        size=50,
+        status=None,
+    )
+    record = next((r for r in rows if str(r["id"]) == str(record["id"])), record)
+
+    if is_replay:
+        response.status_code = status.HTTP_200_OK
+
+    return DataResponse(
+        success=True,
+        data=_declaration_to_client_view(record),
+        message="Payment declaration replayed" if is_replay else "Payment declaration submitted",
         timestamp=datetime.utcnow(),
     )

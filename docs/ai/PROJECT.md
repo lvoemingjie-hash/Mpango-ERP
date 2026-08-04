@@ -1,9 +1,9 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-08-03
+**Last updated:** 2026-08-04
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `b03a3b5c078a3824d333b541ccacf19b668c9f9c`
+**Accepted product merge:** `753048f029c4eede86fb11857677db57b865900e`
 **Current database head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
@@ -16,13 +16,14 @@ evidence belongs in `ai-ledger/`. Durable product philosophy belongs in
 
 Mpango is beyond prototype stage. The wholesaler ERP, tenant isolation,
 financial invariants, credential lifecycle, deterministic test gate, retailer
-identity, supplier-scoped retailer login, catalog/order workspace, and
-read-only retailer finance visibility are materially implemented.
+identity, supplier-scoped retailer login, catalog/order workspace, read-only
+retailer finance visibility, and the payment-declaration maker-checker loop are
+materially implemented.
 
-The current product is still pre-pilot because the retailer payment declaration
-and confirmation loop, printable business documents, final workspace polish,
-real-mailbox browser journey, customer HTTPS deployment, formal DB-OPS package,
-tenant branding, and current user manuals are not all closed.
+The current product is still pre-pilot because printable business documents,
+final workspace polish, the real-mailbox browser journey, customer HTTPS
+deployment, the formal DB-OPS package, tenant branding, and current user
+manuals are not all closed.
 
 Current engineering truth:
 
@@ -31,8 +32,10 @@ Current engineering truth:
 - Mpango does not expose a cross-supplier comparison workspace.
 - Retailer catalog, negotiated price, orders, payments, and balances are scoped
   by the contextual JWT, active binding, and tenant schema.
-- Retailer finance is currently read-only. No client route can settle a
-  payment, mutate a ledger, or alter receivables.
+- Retailer finance reads remain server-authoritative and relationship-scoped.
+  A retailer may submit a non-authoritative payment declaration, but no client
+  route can settle it, mutate a ledger, or alter receivables; only cashier
+  confirmation may enter the canonical payment transaction.
 - A merged SHA is not a deployed SHA. Runtime delivery requires exact-SHA
   deployment evidence.
 
@@ -74,7 +77,7 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product code baseline | `origin/product-dev-recovered` includes I2A merge `b03a3b5c` |
+| Product code baseline | `origin/product-dev-recovered@753048f0` includes the accepted I2B runtime merge |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `037_payment_declarations_schema` |
@@ -103,10 +106,11 @@ deployment state from a merged branch.
 | Retailer private login S2 | Merged | One supplier portal, one contextual JWT, no `available_tenants` |
 | Retailer workspace S3-S1 | Merged | Catalog/order ownership hardening and exact route/RBAC contracts |
 | Retailer finance S3-S2 | Merged | Read-only payment history and server-authoritative relationship balance |
-| Retailer payment declaration schema foundation | Merged | Migration `037` is present; runtime confirmation flow not implemented |
+| Retailer payment declaration schema foundation | Merged | Migration `037` provides declarations, receipt sequences, and receipt numbers |
 | Canonical payment transaction extraction I2A | Merged | `CanonicalPaymentService` owns the reusable mutation core; direct pay behavior is preserved and invalid amounts fail before DB access |
+| Payment declaration and cashier confirmation I2B | Merged | Retailer declaration remains non-authoritative; cashier confirm/reject is supplier-scoped; confirmation uses the canonical atomic payment path and allocates a receipt |
 | Printable business records | Incomplete | Payment declaration, confirmed receipt, order, and statement print contracts remain |
-| Retailer workspace closure | In progress | Payment workflow and final responsive/brand UX remain |
+| Retailer workspace closure | In progress | Printable records and final responsive/brand UX remain |
 | Retailer end-to-end S4 | Not closed | Real mailbox and browser journey on deployed latest SHA remains |
 | Platform operator schema | Foundation merged | Migration `034` tables exist |
 | Platform operator runtime | Incomplete | Dedicated login/JWT/guard/frontend lifecycle remains |
@@ -138,6 +142,9 @@ deployment state from a merged branch.
 - Structured public error contract and rate-limit 429 boundary.
 - Catalog/order dual-key hardening and exact client route allowlist.
 - Read-only retailer payment history and authoritative relationship balance.
+- Non-authoritative retailer payment declarations with idempotent replay.
+- Supplier-scoped cashier confirmation/rejection through the canonical payment
+  transaction, including atomic receipt allocation and retailer-visible status.
 
 ### DC-12R1-H4 post-merge test-contract forensics and repair
 
@@ -159,29 +166,34 @@ zero red, zero errors (two identical runs on independent stacks).
 
 ## 6. Latest Validation Snapshot
 
-I2A-R3 validation ran twice on independent fresh PostgreSQL 16 and Redis 7
-stacks after reconciliation with the H4 baseline:
+I2B-R5-R1 validation ran twice on independent fresh PostgreSQL 16 and Redis 7
+stacks after the final test-evidence integrity correction:
 
 | Metric | Run A | Run B |
 |---|---:|---:|
-| Passed | 3134 | 3134 |
+| Passed | 3180 | 3180 |
 | Skipped | 48 | 48 |
 | XFailed | 15 | 15 |
 | Failed | 0 | 0 |
 | Errors | 0 | 0 |
 
-The H4 chain was merged as `45899145`. I2A-R3 source `f7bd75c1` was then
-merged with `--no-ff` into `origin/product-dev-recovered` as:
+The final source `c65c87cb` was independently runtime-verified by Lubuntu and
+independently source-reviewed by OpenCode, then merged with `--no-ff` into
+`origin/product-dev-recovered` as:
 
-`b03a3b5c078a3824d333b541ccacf19b668c9f9c`
+`753048f029c4eede86fb11857677db57b865900e`
 
-Alembic sole head after I2A validation: `037_payment_declarations_schema`.
+Alembic sole head remains `037_payment_declarations_schema`. The merge tree is
+byte-identical to the reviewed source. Focused post-merge evidence includes the
+I2A/I2B/H5 bundle at `64 passed` in both orders, lifecycle regressions at
+`30 passed`, frontend Vitest at `160 passed`, and a successful production
+frontend build. The independent source review recorded five INFO findings,
+zero blocking findings, and an accounting gap of zero.
 
-The merge tree is byte-identical to the independently reviewed I2A-R3 source.
-The amount boundary rejects negative, zero, NaN, and infinite values before
-any DB read or write. Focused evidence includes I2A `18 passed`, payment/order/
-receivable/ledger `101 passed`, H4 `7 passed`, R4-R1 `29 passed`, and S1-R5
-`41 passed`.
+The accepted runtime now proves that declaration submission has zero financial
+effect before confirmation; supplier-scoped cashier confirmation/rejection is
+available; confirmation enters the existing canonical transaction atomically;
+and confirmed payments receive replay-safe receipt numbers.
 
 This proves the merged source tree. It does not prove customer deployment or a
 real browser/mailbox journey.
@@ -190,14 +202,10 @@ real browser/mailbox journey.
 
 ### P1 product journey blockers
 
-1. A retailer cannot yet submit a non-authoritative payment declaration for
-   wholesaler review.
-2. A wholesaler cashier cannot yet confirm or reject that declaration through a
-   dedicated maker-checker workflow.
-3. A retailer cannot yet see a confirmed receipt/rejection result and print the
-   related business record.
-4. The complete retailer workspace is not yet closed on mobile and desktop.
-5. The latest SHA has not passed the full invitation/setup/reset/login/order/
+1. Printable order, declaration, confirmed receipt, and account-statement
+   contracts and UX are not yet closed.
+2. The complete retailer workspace is not yet closed on mobile and desktop.
+3. The latest SHA has not passed the full invitation/setup/reset/login/order/
    payment/finance journey through a real mailbox and browser.
 
 ### P1 operational blockers
@@ -288,18 +296,32 @@ source passed exact full-suite validation on two independent fresh stacks:
 totals both runs). The canonical service rejects non-positive and non-finite
 amounts before any financial read or mutation.
 
-#### DC-12R1-S3-S2B-I2B - declaration runtime and confirmation closure (active)
+#### DC-12R1-S3-S2B-I2B - declaration runtime and confirmation closure (completed)
 
-Implement retailer declaration submission, cashier confirmation/rejection,
-confirmed receipt allocation and visibility, and maker-checker runtime closure.
-A declaration remains non-authoritative until confirmation commits through
-`CanonicalPaymentService` in the same caller-owned transaction.
+Merged as `753048f029c4eede86fb11857677db57b865900e`.
 
-#### DC-12R1-S3-S2B-I2C - print and notification-event closure (pending)
+Delivered:
 
-Deliver printable declaration, receipt, order, and statement contracts after
-I2B financial runtime semantics are accepted. Define event hooks for future
-SMS/WhatsApp delivery without implementing external messaging in this slice.
+- relationship-scoped retailer declaration submission with stable idempotency;
+- zero financial effect before cashier action;
+- supplier-scoped cashier confirmation/rejection;
+- canonical atomic payment, order, ledger, receivable, and settlement effects;
+- rollback-safe, replay-safe confirmed receipt allocation;
+- retailer-visible pending, confirmed, and rejected states;
+- two identical independent full backend gates at `3180 passed`, `48 skipped`,
+  `15 xfailed`, zero failures, and zero errors.
+
+#### DC-12R1-S3-S2B-I2C - print and notification-event closure (active)
+
+Define the authoritative printable contracts for orders, unconfirmed payment
+declarations, confirmed receipts, and relationship account statements. Every
+document must be server-authoritative, dual-key scoped, status-explicit, and
+must never label an unconfirmed declaration as received or settled.
+
+Define durable event contracts for future SMS/WhatsApp delivery, including
+event identity, tenant/relationship scope, committed-state timing, redaction,
+replay, and audit semantics. Do not integrate an external messaging provider
+or introduce a new financial mutation path in this slice.
 
 #### DC-12R1-S3-S3 - workspace and print closure
 

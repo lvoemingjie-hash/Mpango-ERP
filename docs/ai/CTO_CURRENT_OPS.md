@@ -1,9 +1,9 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-03
+**Last updated:** 2026-08-04
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `b03a3b5c078a3824d333b541ccacf19b668c9f9c`
+**Accepted product merge:** `753048f029c4eede86fb11857677db57b865900e`
 **Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
@@ -13,13 +13,15 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered` includes accepted I2A merge `b03a3b5c`.
+- `origin/product-dev-recovered` includes accepted I2B merge `753048f0`.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
 - Retailers operate inside one selected supplier relationship at a time.
 - Mpango is not a cross-supplier price-comparison marketplace.
-- Retailer finance is read-only at the current baseline.
+- Retailer finance reads are relationship-scoped. Retailers may submit
+  non-authoritative declarations, but only supplier cashier confirmation can
+  invoke the canonical financial write path.
 - Merged code is not considered deployed without exact-SHA runtime proof.
 
 ## What Is Closed
@@ -45,23 +47,28 @@ in `ai-ledger/`.
   `036`, evidence ledger corrected.
 - I2A canonical payment transaction service extraction is merged at
   `b03a3b5c`, including the fail-closed positive finite amount boundary.
+- I2B payment declaration and cashier confirmation runtime is merged at
+  `753048f0`, including idempotent declaration submission, confirmation/
+  rejection, atomic canonical payment, receipt allocation, and relationship-
+  scoped status visibility.
 
 ## Latest Accepted Evidence
 
-I2A-R3 controlled merge:
+I2B-R5-R1 controlled merge:
 
-`origin/product-dev-recovered` includes `b03a3b5c`
+`origin/product-dev-recovered` includes `753048f0`
 
-- Approved source: `f7bd75c1`; merge tree equals source tree.
-- Backend Run A: `3134 passed`, `48 skipped`, `15 xfailed`, zero red, zero errors.
-- Backend Run B: identical totals.
-- I2A service and amount-boundary suite: `18 passed`.
-- Payment/order/receivable/ledger bundle: `101 passed`.
-- H4 regression suite: `7 passed`.
+- Approved source: `c65c87cb`; merge tree equals source tree.
+- Independent backend Run A: `3180 passed`, `48 skipped`, `15 xfailed`, zero
+  failures and zero errors.
+- Independent backend Run B: identical totals.
+- I2A/I2B/H5 bundle: `64 passed` in both orders.
+- Post-merge lifecycle regressions: `30 passed`.
+- Frontend: `160 passed`; production build succeeded.
 - Alembic sole head: `037_payment_declarations_schema`.
-- S1-R5 migration preflight: `41 passed`.
-- I1 real-Alembic upgrade: `29 passed`.
-- Zcode independent final review: 43 PASS, 2 INFO, 0 FAIL.
+- Lubuntu independent runtime report: `34220d0f`.
+- OpenCode independent source review: five INFO findings, zero blockers,
+  accounting gap zero, report `df25e67b`.
 
 Earlier accepted evidence:
 
@@ -97,11 +104,10 @@ Post-merge validation:
 
 ## What Is Not Closed
 
-- Wholesaler cashier confirmation/rejection is not implemented as a dedicated
-  maker-checker workflow.
-- Retailer-visible confirmed receipt and rejection result are not closed.
 - Print contracts for orders, declarations, receipts, and statements are not
   closed.
+- Future notification-event contracts are not closed; SMS/WhatsApp delivery is
+  not implemented.
 - Final responsive/brand retailer workspace polish remains.
 - Real-mailbox and real-browser end-to-end proof on the latest deployed SHA
   remains.
@@ -111,37 +117,36 @@ Post-merge validation:
 ## Active Phase
 
 **Active product gate:**
-`DC-12R1-S3-S2B-I2B Payment Declaration and Cashier Confirmation Runtime`
+`DC-12R1-S3-S2B-I2C Printable Records and Notification-Event Contract`
 
-The design gate, schema foundation, and canonical payment transaction service
-are complete. I2B may now implement declaration submission and maker-checker
-confirmation/rejection without duplicating the financial mutation path.
+I2B is merged and independently verified. I2C now defines the authoritative
+print and future-notification contracts without changing financial semantics or
+integrating an external messaging provider.
 
 Required business boundary:
 
-1. A retailer may submit a payment declaration.
-2. Submission is not a canonical payment and has zero accounting effect.
-3. A wholesaler cashier may confirm or reject the declaration.
-4. Confirmation may invoke only the approved canonical payment write path.
-5. Confirmation must atomically preserve payment, order, ledger, and receivable
-   invariants.
-6. The retailer sees pending, confirmed, or rejected status in the selected
-   supplier relationship.
-7. Only a confirmed payment may be called received and rendered as a receipt.
-8. Printable business documents must clearly show status and never imply an
-   unconfirmed declaration was settled.
-9. Future SMS/WhatsApp integration is event-contract-only in this phase.
-10. The design must explicitly remove, retain, or replace the currently unused
-    `client:payments:create` permission; it must not become active by accident.
+1. Print data must be server-authoritative and scoped by supplier plus retailer.
+2. An order printout must preserve authoritative item, price, total, and status.
+3. An unconfirmed declaration must be labelled pending, never paid or received.
+4. Only a confirmed canonical payment may produce a receipt.
+5. A rejected declaration must show controlled status and reason without
+   exposing internal errors or unrelated supplier data.
+6. A statement must reconcile relationship-scoped orders, confirmed payments,
+   and authoritative balance without frontend recomputation.
+7. Print actions must be read-only and must not mutate financial state.
+8. Future notification events must be emitted only from committed state and
+   must define idempotency, replay, tenant scope, redaction, and audit rules.
+9. I2C must not deliver SMS/WhatsApp or add provider credentials/configuration.
+10. No new migration or payment mutation is allowed without a separate CTO gate.
 
 ## Ordered Delivery Plan
 
 1. **S3-S2B-I2A (completed):** reusable canonical payment mutation service,
    behavior-preserving parity, amount-integrity guard, and independent review.
-2. **S3-S2B-I2B (active):** declaration submission, cashier confirmation/
+2. **S3-S2B-I2B (completed):** declaration submission, cashier confirmation/
    rejection, atomic canonical payment, receipt allocation, and relationship-
    scoped status visibility.
-3. **S3-S2B-I2C (pending):** printable records and future notification-event
+3. **S3-S2B-I2C (active):** printable records and future notification-event
    contracts without external messaging delivery.
 4. **S3-S3 (pending):** complete responsive branded retailer workspace and print UX.
 5. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
@@ -152,9 +157,10 @@ Required business boundary:
 
 ## Agent Assignment
 
-- **Primary coding agent:** implement bounded I2B slices from the accepted
-  contract in a clean worktree.
-- **Zcode:** perform independent source review after implementation is frozen.
+- **Primary design agent:** complete the bounded I2C contract and evidence
+  matrix in a clean worktree before implementation begins.
+- **Independent reviewer:** perform adversarial contract/source review after
+  the I2C design is frozen.
 - **Codex CTO:** own scope, financial blast radius, and merge decision.
 - **Lubuntu Codex:** independently validate implementation on fresh
   PostgreSQL 16 and Redis 7.
@@ -166,15 +172,16 @@ Required business boundary:
 
 Stop and report to the CTO if:
 
-- fetched `origin/product-dev-recovered` does not descend from accepted I2A
-  merge `b03a3b5c078a3824d333b541ccacf19b668c9f9c`;
-- the design permits a declaration to mutate a payment, ledger, order status, or
-  receivable before cashier confirmation;
-- the design reuses generic wholesaler routes for retailer writes;
+- fetched `origin/product-dev-recovered` does not descend from accepted I2B
+  merge `753048f029c4eede86fb11857677db57b865900e`;
+- print data is accepted from client-calculated financial fields;
 - supplier or retailer authority comes from request-supplied IDs;
 - an unconfirmed declaration can be labelled received or printed as a receipt;
-- overpayment, concurrency, replay, idempotency, rejection, audit, or rollback
-  semantics remain unresolved;
+- printing or event generation can mutate a payment, ledger, order, receivable,
+  settlement, declaration, or receipt;
+- an event may be emitted before the related transaction is committed;
+- the slice adds external SMS/WhatsApp delivery, provider credentials, or a new
+  migration without separate authorization;
 - the task changes product code, migrations, permissions, config, deployment,
   or protected refs;
 - evidence relies on skip, xfail, deselection, or assertion weakening.

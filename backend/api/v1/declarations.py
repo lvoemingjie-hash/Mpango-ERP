@@ -29,7 +29,7 @@ from core.domain.order_state import (
     OrderInvariantViolation,
 )
 from core.security import TokenPayload
-from crud.order import InvalidStateTransitionError, get_order_by_id
+from crud.order import InvalidStateTransitionError, get_order_by_id, get_order_for_wholesaler
 from repositories.payment_declaration_repository import PaymentDeclarationRepository
 from repositories.payment_repository import PaymentRepository
 from schemas.common import DataResponse, Pagination
@@ -278,7 +278,7 @@ async def get_receipt(
     payment = await PaymentRepository().get_by_id_with_receipt(
         db, payment_id=uuid.UUID(str(cpid)),
     )
-    order = await get_order_by_id(db, str(row["order_id"]))
+    order = await get_order_for_wholesaler(db, str(row["order_id"]), str(wholesaler_id))
     view = await build_receipt_print(
         db, row=row, payment=payment, order=order, wholesaler_id=wholesaler_id,
     )

@@ -88,73 +88,86 @@ fixture and asserts identical fingerprints before/after across:
 `orders`, `order_items`, `payments`, `payment_declarations`,
 `ledger_entries`, `receipt_sequences`, and `binding.outstanding_balance`.
 
-## 5. Test Coverage (18 tests)
+## 5. Test Coverage (34 tests — R2)
 
 - Retailer + supplier happy paths for all A-C records.
 - Server-authoritative order price/total (unit_price, subtotal, total_amount).
 - Pending/rejected declaration non-receipt rendering + non_receipt_notice.
 - Confirmed valid receipt (receipt_number, confirmed_amount, EAT timestamp).
 - Pending/rejected receipt fail-closed 404 `RECEIPT_NOT_AVAILABLE`.
+- Confirmed-but-ineligible declaration print fail-closed 404 (R1).
 - Repeated receipt GET returns same identity.
-- Wrong supplier/retailer neutral 404.
-- Cross-supplier receipt denial.
+- Cross-retailer order/declaration print denial — real tenant-B records (R1).
+- Cross-supplier order print + receipt denial — real tenant-B records (R1).
+- Confirmed null-payment fail-closed (R1).
+- Confirmed soft-deleted-payment fail-closed (R1).
+- Confirmed malformed-receipt-number fail-closed (R1).
+- Confirmed wrong-order-payment fail-closed (R1).
+- Inactive binding denies supplier receipt 404 + client route 403
+  `BINDING_NOT_ACTIVE` (R2: precise code, not vague 403-or-404).
+- Same-schema wrong-wholesaler order rejected by DB-level predicate (R2).
+- Same-schema wrong-wholesaler order receipt fail-closed (R2).
+- Same-schema wrong-retailer payment fail-closed (R2).
+- Soft-deleted order receipt fail-closed (R2).
+- Deleted binding denies supplier receipt (R2).
 - Malformed UUID controlled 404 (never 500).
 - Zero SQL writes + zero financial fingerprints.
 - No internal-identifier leakage (no `confirmation_payment_id`,
   `tenant_user_id`, cashier user ids in responses).
 
-## 6. Gate Results (R1)
+### Contract B vs Contract C clarification
 
-### CTO STOP_AND_REPORT blockers resolved
+A confirmed declaration's `/print` (Contract B) returns a
+`DeclarationPrintView` with `is_receipt=True` **only** when the full receipt
+eligibility predicate passes. It does **not** include `receipt_number` or
+`confirmed_amount` — those fields are on `ReceiptPrintView` (Contract C)
+only. The `is_receipt=True` flag is a **navigation signal** indicating "this
+declaration has a valid receipt available via the `/receipt` route." It is
+not a claim that the print view itself contains receipt content. If the
+declaration is confirmed but ineligible (missing/invalid payment, bad receipt,
+inactive binding), the print route returns 404 — never a partial receipt.
+
+## 6. Gate Results (R2)
+
+### CTO R2 blockers resolved
 
 | Blocker | Fix |
 |---|---|
-| P1-1: confirmed declaration falsely marked is_receipt | `build_declaration_print` now accepts `receipt_eligible`; confirmed-but-ineligible returns None → 404 |
-| P1-2: receipt not validated against same order/retailer | `check_receipt_eligibility` now asserts `payment.order_id == row.order_id` and `payment.retailer_id == row.retailer_id` |
-| P1-3: supplier routes lack ownership + binding | Added explicit `order.wholesaler_id == token.tenant_id` predicate + `_supplier_binding_active` check on supplier order/declaration print routes |
-| P1-4: fake negative tests (random UUIDs) | Replaced with real cross-supplier, cross-retailer, wrong-order-payment, null-payment, soft-deleted-payment, malformed-receipt, inactive-binding tests |
-| Fingerprint helper returns -1 on error | Now raises (hard failure) |
+| P1-1: supplier order not DB-level dual-key | New `get_order_for_wholesaler(order_id, wholesaler_id)` — SQL predicate `(order_id, wholesaler_id, is_deleted=false)`; replaces load-then-compare |
+| P1-2: receipt chain doesn't validate order ownership | `check_receipt_eligibility` now loads the order via `get_order_for_wholesaler` and validates `order.retailer_id == payment.retailer_id`; `build_receipt_print` returns None if order is None or wrong-ownership → no partial receipt |
+| P1-3: fake cross-tenant tests don't prove predicates | Added 5 same-schema tests: wrong-wholesaler order, wrong-wholesaler order receipt, wrong-retailer payment, soft-deleted order, deleted binding — all insert corrupt records in tenant A's own schema |
+| Binding assertion vague 403-or-404 | Tightened to precise 403 `BINDING_NOT_ACTIVE` (client) / 404 (supplier) |
+| Report count wrong (18 vs 29) | Corrected to 34 (R2) |
+| Final verdict name stale | Updated to `PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R2_REVIEW` |
+| naive `datetime.utcnow()` | Supplier order print uses `datetime.now(timezone.utc)` (aware UTC) |
+| Contract B/C wording | Clarified: confirmed `/print` returns navigation signal `is_receipt=True`, not receipt content; receipt fields are on Contract C only |
 
-### R1 gate runs
+### R2 gate runs
 
 | Gate | Stack | Result |
 |---|---|---|
-| I2C-I1 R1 suite | A (PG 52281, Redis 52282) | 29 passed, 0 failed |
-| **Gate A (R1, full backend)** | A (PG 52281, Redis 52282) | **3209 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1058s) |
-| **Gate B (R1, full backend)** | B (PG 56442, Redis 56443) | **3209 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1070s) |
+| I2C-I1 R2 suite | A (PG 50558, Redis 50559) | 34 passed, 0 failed |
+| **Gate A (R2, full backend)** | A (PG 50558, Redis 50559) | **3214 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1046s) |
+| **Gate B (R2, full backend)** | B (PG 53148, Redis 53149) | **3214 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1066s) |
 
-### Pass/skip reconciliation
+Both gates use identical env configuration. Pass/skip nodes are reconciled
+precisely: **3214 passed, 48 skipped** on both stacks (node-for-node equivalent).
 
-The original (pre-R1) gate runs showed a 19-test pass/skip delta (3217p/29s
-vs 3198p/48s). R1 Gate A shows 3209p/48s. The delta is caused by the I2B
-temp-DB harness: some tests that create temporary databases (P17DC/P21
-platform tests) **skip** when the temp-DB source port is explicitly allowed
-(via `MPANGO_TEMP_DB_ALLOWED_PORTS`) but **pass** when it is not (they skip
-the DB-creation path). The exact node set that flips:
-
-- **48 skipped (R1 Gate A, with `MPANGO_TEMP_DB_ALLOWED_PORTS`):** the temp-DB
-  platform tests skip because the allowed-port guard changes their execution
-  path.
-- **29 skipped (original Gate A, without the env var on some paths):** fewer
-  skip because the guard path differs.
-
-Both gates achieve **0 failed, 0 errors, exit 0** — the pass/skip variance is
-a test-infrastructure artifact, not a product-code regression. R1 Gate B uses
-the identical env configuration to produce an equivalent node set.
-
-## 7. Adversarial Self-Review
+## 7. Adversarial Self-Review (R2)
 
 | Threat | Closure |
 |---|---|
-| False receipt | Fail-closed eligibility predicate; pending/rejected → 404 |
+| False receipt | Fail-closed eligibility predicate; pending/rejected → 404; confirmed-but-ineligible → 404 |
+| False receipt association | payment.order_id/retailer_id match declaration; order.wholesaler_id/retailer_id match binding |
 | Price recomputation | Server-authoritative order rows only; no request prices |
-| Cross-tenant access | Dual-key scoping + JWT-derived search_path → neutral 404 |
-| Soft-delete bypass | N/A (read-only; no mutation paths added) |
+| Cross-tenant access | DB-level dual-key SQL predicate (`get_order_for_wholesaler`); same-schema wrong-wholesaler test proves it |
+| Soft-delete bypass | Soft-deleted order → `get_order_for_wholesaler` returns None → 404 (tested) |
+| Partial receipt | `build_receipt_print` returns None if order is None → 404, never null totals |
 | GET mutation | Zero-fingerprint test proves zero writes |
-| Timestamp fabrication | Authoritative UTC from DB + fixed EAT display; no tenant-config |
+| Timestamp fabrication | Authoritative UTC `datetime.now(timezone.utc)` + fixed EAT display |
 | Internal ID leakage | No-leakage tests; response models omit internal IDs |
 | Route-permission drift | Exact permission per route; inventory tests updated |
 
 ## 8. Verdict
 
-**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_REVIEW**
+**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R2_REVIEW**

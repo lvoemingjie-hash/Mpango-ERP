@@ -134,6 +134,35 @@ async def get_order_by_id(
     return result.scalar_one_or_none()
 
 
+async def get_order_for_wholesaler(
+    db: AsyncSession,
+    order_id: str,
+    wholesaler_id: str,
+) -> Optional[Order]:
+    """
+    DC-12R1-S3-S2B-I2C-I1-R2: supplier-scoped order fetch.
+
+    Loads an order ONLY if it matches ``order_id`` AND ``wholesaler_id`` AND
+    is not soft-deleted — a database-level dual-key predicate (not a
+    load-then-compare). A wrong-supplier request returns ``None`` -> neutral
+    404, without first fetching the row and disclosing its existence.
+    """
+    try:
+        order_uuid = UUID(order_id)
+        ws_uuid = UUID(wholesaler_id)
+    except (ValueError, TypeError):
+        return None
+
+    result = await db.execute(
+        select(Order)
+        .where(Order.id == order_uuid)
+        .where(Order.wholesaler_id == ws_uuid)
+        .where(Order.is_deleted == False)
+        .options(selectinload(Order.items))
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_order_for_retailer(
     db: AsyncSession,
     order_id: str,

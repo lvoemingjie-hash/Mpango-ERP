@@ -325,6 +325,18 @@ async def check_receipt_eligibility(
     if not await _binding_active(db, wholesaler_id=ws_uuid, retailer_id=rt_uuid):
         return False
 
+    # R2: the ORDER itself must belong to the same wholesaler + retailer.
+    # This closes the four-way consistency: declaration, payment, order, and
+    # binding must all share the same (wholesaler_id, retailer_id, order_id).
+    # A missing or mismatched order -> False (no partial receipt).
+    from crud.order import get_order_for_wholesaler
+
+    order = await get_order_for_wholesaler(db, str(decl_order_id), str(ws_uuid))
+    if order is None:
+        return False
+    if str(order.retailer_id) != str(rt_uuid):
+        return False
+
     return True
 
 
@@ -342,8 +354,12 @@ async def build_receipt_print(
     receipt identity comes from the canonical payment (``receipt_number``,
     ``amount``, ``method``, ``created_at``); the declaration supplies context
     (``declared_amount``, ``order_id``); the order supplies the total.
+
+    R2: if ``order`` is ``None`` (missing or wrong-ownership), this returns
+    ``None`` -> the route emits 404. A partial receipt with null order total
+    is never produced.
     """
-    if row is None or payment is None:
+    if row is None or payment is None or order is None:
         return None
 
     rt_id = row["retailer_id"]
@@ -354,16 +370,19 @@ async def build_receipt_print(
     except (TypeError, ValueError):
         return None
 
+    # R2: the order must belong to the same wholesaler + retailer.
+    if str(order.wholesaler_id) != str(ws_uuid):
+        return None
+    if str(order.retailer_id) != str(rt_uuid):
+        return None
+
     supplier_name, retailer_name = await _resolve_business_names(
         db, wholesaler_id=ws_uuid, retailer_id=rt_uuid
     )
 
     confirmed_at = payment.get("created_at")
-    order_total = None
-    order_status = None
-    if order is not None:
-        order_total = order.total_amount
-        order_status = map_order_status_for_client(order.status.value)
+    order_total = order.total_amount
+    order_status = map_order_status_for_client(order.status.value)
 
     return ReceiptPrintView(
         declaration_id=str(row["id"]),

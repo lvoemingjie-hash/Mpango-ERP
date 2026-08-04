@@ -11,7 +11,7 @@ State Machine:
 - Cancel only allowed in Draft or Confirmed
 - Return only allowed in Fulfilled
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from math import ceil
 from typing import Annotated, Mapping, Optional
 import uuid
@@ -34,6 +34,7 @@ from core.domain.order_state import (
 from models.order import Order as OrderModel
 from crud.order import (
     get_order_by_id,
+    get_order_for_wholesaler,
     get_orders_paginated,
     create_order as crud_create_order,
     confirm_order as crud_confirm_order,
@@ -538,17 +539,11 @@ async def print_order(
     """
     Printable order document (supplier side) — server-authoritative.
 
-    I2C-I1: read-only. ``wholesaler_id`` is derived from ``token.tenant_id``
-    (never client-supplied). R1: explicit dual-key ownership predicate
-    (``order.wholesaler_id == token.tenant_id``) plus active/non-deleted
-    binding check — the session search_path alone is insufficient.
+    R2: uses ``get_order_for_wholesaler`` — a database-level
+    ``(order_id, wholesaler_id)`` SQL predicate (not load-then-compare).
+    ``wholesaler_id`` is derived from ``token.tenant_id`` (never
+    client-supplied). Also checks active/non-deleted binding.
     """
-    order = await get_order_by_id(db, order_id)
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
-        )
     try:
         ws_uuid = uuid.UUID(token.tenant_id)
     except (TypeError, ValueError):
@@ -556,13 +551,14 @@ async def print_order(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
         )
-    # R1: explicit wholesaler ownership predicate — not just search_path.
-    if str(order.wholesaler_id) != str(ws_uuid):
+    # R2: DB-level dual-key predicate — wrong supplier never loads the row.
+    order = await get_order_for_wholesaler(db, order_id, str(ws_uuid))
+    if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
         )
-    # R1: retailer_id must be present (never substitute wholesaler UUID).
+    # retailer_id must be present (never substitute wholesaler UUID).
     if not order.retailer_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -586,7 +582,7 @@ async def print_order(
     return DataResponse(
         success=True,
         data=view,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 

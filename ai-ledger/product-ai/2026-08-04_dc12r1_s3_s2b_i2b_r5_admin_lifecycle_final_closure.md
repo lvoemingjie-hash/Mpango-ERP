@@ -1,6 +1,11 @@
 # DC-12R1-S3-S2B-I2B-R5 — Admin Lifecycle and Final Gate Closure
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2B_R5_FINAL_MERGE_REVIEW
+> **SUPERSEDED_BY_R5_R1** — see `2026-08-04_dc12r1_s3_s2b_i2b_r5_r1_test_evidence_integrity.md`.
+> The R5 3180/48/15 evidence and all five corrections stand. R5-R1 closes
+> three evidence-integrity defects: (1) frontend false-green risk, (2) H5
+> swallowed cleanup, (3) report cleanup "pending" inaccuracy.
+
+**Status:** PASS (superseded by R5-R1 for evidence integrity)
 **Executor:** local Zcode (real execution, no static analysis)
 **Date:** 2026-08-04
 **Branch:** `codex/dc12r1-s3-s2b-i2b-r5-admin-lifecycle-final-closure-2026-08-04`

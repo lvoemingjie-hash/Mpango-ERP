@@ -3,9 +3,10 @@
 Root Cause
 ==========
 asyncpg maintains a per-connection prepared-statement cache.  When DDL alters
-a table's structure, PostgreSQL invalidates the cached plan.  In a test
-session where I2A runs before I2B, pooled connections carry stale plans that
-raise ``InvalidCachedStatementError`` on the next query to an affected table.
+a table's structure (especially a column type change), PostgreSQL invalidates
+the cached plan.  In a test session where I2A runs before I2B, pooled
+connections carry stale plans that raise ``InvalidCachedStatementError`` on
+the next query to an affected table.
 
 Repair
 ======
@@ -17,7 +18,10 @@ Causal Proof
 ============
 These tests prove RED (without dispose → error) and GREEN (with dispose →
 success) using the actual global engine boundary.  No mocks, no conditional
-pass, no silent-re-prepare escape.
+pass, no silent-re-prepare acceptance.
+
+Cleanup is fail-closed: every created schema is dropped in a finally block
+with a ``pg_namespace`` assertion verifying zero residue.
 """
 from __future__ import annotations
 
@@ -48,6 +52,18 @@ def _unique_app_name() -> str:
     return f"h5_causal_{uuid.uuid4().hex[:12]}"
 
 
+async def _assert_schema_absent(session: AsyncSession, schema: str) -> None:
+    """Assert that ``schema`` does not exist in pg_catalog.pg_namespace."""
+    result = await session.execute(
+        text("SELECT count(*) FROM pg_catalog.pg_namespace WHERE nspname = :nsp"),
+        {"nsp": schema},
+    )
+    count = result.scalar()
+    assert count == 0, (
+        f"schema '{schema}' still exists after cleanup: pg_namespace count={count}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Test 1: RED — DDL invalidates cached plan WITHOUT dispose
 # ---------------------------------------------------------------------------
@@ -55,21 +71,11 @@ def _unique_app_name() -> str:
 async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
     """CAUSAL RED: cache a plan on engine-A → DDL on engine-B → re-execute on
     engine-A WITHOUT dispose → MUST raise InvalidCachedStatementError.
-
-    This reproduces the real I2A→provisioning→I2B scenario: the DDL happens
-    on a DIFFERENT connection (the provisioning/bootstrap path) than the one
-    that cached the SELECT plan (the I2A test connection).
-
-    The trigger is a column type change (int → text) which changes the result
-    column's OID.  asyncpg caches the plan with the original OID; when PG
-    changes it, asyncpg detects the mismatch and raises
-    ``InvalidCachedStatementError``.
     """
     url = _async_db_url()
     schema = f"h5_red_{uuid.uuid4().hex[:8]}"
     select_sql = f'SELECT val FROM "{schema}".t_red WHERE id = 1'
 
-    # Engine A: the "I2A" engine that caches the plan.
     engine_a = create_async_engine(
         url,
         pool_size=1,
@@ -79,7 +85,6 @@ async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
             "server_settings": {"application_name": _unique_app_name(), "jit": "off"},
         },
     )
-    # Engine B: the "provisioning/bootstrap" engine that performs DDL.
     engine_b = create_async_engine(
         url,
         pool_size=1,
@@ -102,7 +107,6 @@ async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
             )
             await session.commit()
 
-        # Cache the SELECT plan on engine A's pooled connection.
         async with AsyncSession(engine_a) as session:
             result = await session.execute(text(select_sql))
             assert result.scalar() == 42
@@ -122,7 +126,7 @@ async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
             )
             await session.commit()
 
-        # Phase 3 (engine A): re-execute the SAME cached SQL WITHOUT dispose.
+        # Phase 3 (engine A): re-execute WITHOUT dispose.
         stale_error: Exception | None = None
         try:
             async with AsyncSession(engine_a) as session:
@@ -132,7 +136,6 @@ async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
         except Exception as exc:
             stale_error = exc
 
-        # Record the __cause__ / __context__ chain.
         chain: list[str] = []
         cur: BaseException | None = stale_error
         seen: set[int] = set()
@@ -141,25 +144,31 @@ async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
             chain.append(f"{type(cur).__module__}.{type(cur).__name__}")
             cur = cur.__cause__ or cur.__context__
 
-        # HARD ASSERTIONS — no conditional pass, no "silent re-prepare is OK".
         assert stale_error is not None, (
-            "Expected InvalidCachedStatementError but query succeeded — "
-            "the cached plan was NOT invalidated."
+            "Expected InvalidCachedStatementError but query succeeded."
         )
         chain_str = " -> ".join(chain)
         assert any(
             "InvalidCachedStatement" in c or "CachedStatement" in c
             for c in chain
         ), f"Expected InvalidCachedStatementError in chain, got: {chain_str}"
+
     finally:
+        # Fail-closed cleanup: schema drop + pg_namespace assertion.
+        # Engine disposal must still execute even if schema cleanup fails.
+        cleanup_error: Exception | None = None
         try:
             async with AsyncSession(engine_b) as session:
                 await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
                 await session.commit()
-        except Exception:
-            pass
-        await engine_a.dispose()
-        await engine_b.dispose()
+                await _assert_schema_absent(session, schema)
+        except Exception as exc:
+            cleanup_error = exc
+        finally:
+            await engine_a.dispose()
+            await engine_b.dispose()
+        if cleanup_error is not None:
+            raise cleanup_error
 
 
 # ---------------------------------------------------------------------------
@@ -167,69 +176,69 @@ async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
 # ---------------------------------------------------------------------------
 
 async def test_green_dispose_via_global_engine_clears_stale_plans():
-    """CAUSAL GREEN: Use the ACTUAL global engine from database.session.
-
-    After DDL that would invalidate cached plans, ``async_engine.dispose()``
-    drains the pool so the next session gets a fresh connection with an empty
-    statement cache.  The same query that would have raised RED now succeeds.
-    """
+    """CAUSAL GREEN: Use the ACTUAL global engine from database.session."""
     from database.session import async_engine, AsyncSessionLocal
 
     schema = f"h5_green_{uuid.uuid4().hex[:8]}"
 
-    # Phase 1: create table + cache a SELECT on the GLOBAL engine.
-    async with AsyncSessionLocal() as session:
-        session.info["tenant_schema"] = "public"
-        await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-        await session.execute(
-            text(f'CREATE TABLE "{schema}".t_green (id int, label text)')
-        )
-        await session.execute(
-            text(f'INSERT INTO "{schema}".t_green VALUES (1, :lbl)'),
-            {"lbl": "before"},
-        )
-        await session.commit()
-
-    # Cache the plan.
-    async with AsyncSessionLocal() as session:
-        session.info["tenant_schema"] = "public"
-        result = await session.execute(
-            text(f'SELECT label FROM "{schema}".t_green WHERE id = 1')
-        )
-        assert result.scalar() == "before"
-        await session.commit()
-
-    # Phase 2: DDL.
-    async with AsyncSessionLocal() as session:
-        session.info["tenant_schema"] = "public"
-        await session.execute(
-            text(f'ALTER TABLE "{schema}".t_green ADD COLUMN extra int DEFAULT 0')
-        )
-        await session.commit()
-
-    # Phase 3: DISPOSE the global engine (the H5 repair).
-    await async_engine.dispose()
-
-    # Phase 4: re-execute on a FRESH connection — must succeed.
-    async with AsyncSessionLocal() as session:
-        session.info["tenant_schema"] = "public"
-        result = await session.execute(
-            text(f'SELECT label, extra FROM "{schema}".t_green WHERE id = 1')
-        )
-        row = result.fetchone()
-        assert row is not None
-        assert row.label == "before"
-        assert row.extra == 0
-        await session.commit()
-
-    # Cleanup.
     try:
+        # Phase 1: create table + cache a SELECT on the GLOBAL engine.
         async with AsyncSessionLocal() as session:
             session.info["tenant_schema"] = "public"
-            await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+            await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+            await session.execute(
+                text(f'CREATE TABLE "{schema}".t_green (id int, label text)')
+            )
+            await session.execute(
+                text(f'INSERT INTO "{schema}".t_green VALUES (1, :lbl)'),
+                {"lbl": "before"},
+            )
             await session.commit()
-    except Exception:
-        pass
+
+        async with AsyncSessionLocal() as session:
+            session.info["tenant_schema"] = "public"
+            result = await session.execute(
+                text(f'SELECT label FROM "{schema}".t_green WHERE id = 1')
+            )
+            assert result.scalar() == "before"
+            await session.commit()
+
+        # Phase 2: DDL.
+        async with AsyncSessionLocal() as session:
+            session.info["tenant_schema"] = "public"
+            await session.execute(
+                text(f'ALTER TABLE "{schema}".t_green ADD COLUMN extra int DEFAULT 0')
+            )
+            await session.commit()
+
+        # Phase 3: DISPOSE the global engine (the H5 repair).
+        await async_engine.dispose()
+
+        # Phase 4: re-execute on a FRESH connection — must succeed.
+        async with AsyncSessionLocal() as session:
+            session.info["tenant_schema"] = "public"
+            result = await session.execute(
+                text(f'SELECT label, extra FROM "{schema}".t_green WHERE id = 1')
+            )
+            row = result.fetchone()
+            assert row is not None
+            assert row.label == "before"
+            assert row.extra == 0
+            await session.commit()
+
+    finally:
+        # Fail-closed cleanup: schema drop + pg_namespace assertion.
+        cleanup_error: Exception | None = None
+        try:
+            async with AsyncSessionLocal() as session:
+                session.info["tenant_schema"] = "public"
+                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                await session.commit()
+                await _assert_schema_absent(session, schema)
+        except Exception as exc:
+            cleanup_error = exc
+        if cleanup_error is not None:
+            raise cleanup_error
 
 
 # ---------------------------------------------------------------------------
@@ -237,8 +246,7 @@ async def test_green_dispose_via_global_engine_clears_stale_plans():
 # ---------------------------------------------------------------------------
 
 async def test_dispose_changes_backend_pid():
-    """After ``engine.dispose()``, the backend PID changes — proving the old
-    pooled connection was closed and a new one was established."""
+    """After ``engine.dispose()``, the backend PID changes."""
     from database.session import AsyncSessionLocal, async_engine
 
     pid_before = 0
@@ -289,7 +297,6 @@ async def test_event_loop_and_pg_stat_activity_after_dispose():
         ).scalar()
         await session.commit()
 
-    # Verify the connection is visible BEFORE dispose.
     async with AsyncSessionLocal() as session:
         session.info["tenant_schema"] = "public"
         count_before = (
@@ -305,10 +312,8 @@ async def test_event_loop_and_pg_stat_activity_after_dispose():
         f"got count_before={count_before} for pid={old_pid}"
     )
 
-    # Dispose.
     await async_engine.dispose()
 
-    # After dispose: old PID must be GONE (exact assertion).
     async with AsyncSessionLocal() as session:
         session.info["tenant_schema"] = "public"
         count_after = (

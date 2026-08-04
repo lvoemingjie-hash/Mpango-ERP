@@ -1,6 +1,25 @@
 # DC-12R1-S3-S2B-I2B-R3 — H5 Final Gate
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2B_R3_H5_FINAL_GATE
+> **⚠️ STOP_AND_REPORT_CTO_SUPERSEDED_BY_R4**
+>
+> The R3 PASS verdict is **invalid** and is corrected by R4
+> (`2026-08-04_dc12r1_s3_s2b_i2b_r4_h5_causal_regression.md`).
+>
+> **Why invalid:**
+> 1. Stack A had 25 failed + 29 errors; Stack B had 25 failed + 29 errors.
+>    A gate with `failed>0` or `errors>0` cannot be PASS.
+> 2. passed/skipped totals differed between stacks (3124/50 vs 3105/69).
+> 3. The H5 tests did not prove that removing the fixture causes RED
+>    (no causal regression — tests used private engines and different SQL
+>    before/after DDL).
+> 4. The I2B rate-limiter fix used prefix-wide Redis `SCAN rate_limit:* →
+>    DELETE` which modifies shared state.
+> 5. `DeclarePaymentPage.test.tsx` was changed outside the H5 scope.
+>
+> The execution results below are preserved as historical evidence.
+> They are **not** a valid PASS.
+
+**Status:** STOP_AND_REPORT_CTO_SUPERSEDED_BY_R4 (originally issued as PASS — invalid)
 **Executor:** local Zcode (real execution, no static analysis)
 **Date:** 2026-08-03
 **Branch:** `codex/dc12r1-s3-s2b-r3-h5-final-gate-2026-08-03`

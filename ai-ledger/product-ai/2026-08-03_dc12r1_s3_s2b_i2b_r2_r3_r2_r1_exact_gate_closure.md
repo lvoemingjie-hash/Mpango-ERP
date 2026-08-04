@@ -1,10 +1,11 @@
 # DC-12R1-S3-S2B-I2B-R2-R3-R2-R1: Exact Gate Closure
 
-> **⚠️ SUPERSEDED** by `2026-08-03_dc12r1_s3_s2b_i2b_r3_h5_final_gate.md` (R3 H5 Final Gate).
-> This report covered the R2-R3-R2-R1 closure on the I2B branch; the R3 H5 Final Gate
-> supersedes it with the executable H5 regression + two independent full backend gates.
+> **Historical evidence preserved.** The R3 report that superseded this one was
+> itself invalidated (`STOP_AND_REPORT_CTO_SUPERSEDED_BY_R4`). This report's
+> execution results stand on their own merits; the R3 supersede marker is
+> withdrawn because the R3 PASS was invalid.
 
-**Status**: COMPLETE — all gates green (superseded)
+**Status**: COMPLETE — all gates green
 **Branch**: `codex/dc12r1-s3-s2b-i2b-payment-declaration-runtime-2026-08-03`
 **Prior commit**: `665e534` (R1 — removed `_CASHIER_EMAIL_CACHE`, added `cashier_identity` fixture)
 **This commit**: R2-R1 — replaced test-harness cashier INSERTs with canonical owner lifecycle

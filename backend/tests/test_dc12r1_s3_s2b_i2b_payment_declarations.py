@@ -57,23 +57,68 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def _flush_rate_limiter():
-    """Per-test Redis rate-limiter reset.
+async def _flush_rate_limiter(provisioned_pool):
+    """Per-test Redis rate-limiter isolation via **owned-key** deletion.
 
     The login-driven authentic harness issues many HTTP requests per test.
-    The global rate limiter (100 req / 60 s keyed on ``rate_limit:*`` in Redis)
-    would otherwise trip partway through the module and surface as spurious
-    429 / 401 cascades.  Flushing the counters before each test keeps the
-    declared matrix honest: every assertion sees the real API contract, not
-    a rate-limit artefact.
+    The global rate limiter (100 req / 60 s) keys on:
+      - ``rate_limit:tenant:{tenant_id}:{user_id}:{window}`` (authenticated)
+      - ``rate_limit:ip:{client_ip}:{window}`` (anonymous)
+
+    where ``window = int(time.time()) // 60``.
+
+    Rather than a wildcard ``SCAN rate_limit:* → DELETE`` (which modifies
+    shared state and can hide real rate-limiter behavior), this fixture
+    deletes **only the exact keys owned by this test process**: the
+    test-client IP keys (127.0.0.1 — the loopback address the TestClient
+    uses) and per-tenant keys for each provisioned tenant.
+
+    Key contract (from ``core/rate_limiter.py:_get_rate_limit_key`` +
+    ``rate_limiter.py:check_rate_limit``):
+      key = f"rate_limit:{scope}:{id}"
+      redis_key = f"{key}:{current_window}"
     """
+    import time
     from core.config import get_settings
-    _settings = get_settings()
+    from core.rate_limiter import WINDOW_SIZE
     from redis.asyncio import Redis as _AsyncRedis
+
+    _settings = get_settings()
     _r = _AsyncRedis.from_url(_settings.REDIS_URL, decode_responses=False)
+    deleted_keys: list[str] = []
     try:
-        async for _k in _r.scan_iter(match="rate_limit:*"):
-            await _r.delete(_k)
+        # Compute the current and previous time windows (the test may
+        # straddle a window boundary).
+        now = int(time.time())
+        windows = [now // WINDOW_SIZE, (now - WINDOW_SIZE) // WINDOW_SIZE]
+
+        # 1. Test-client IP keys (127.0.0.1 is the loopback the TestClient
+        #    uses — owned by this test process, not shared state).
+        for w in windows:
+            ip_key = f"rate_limit:ip:127.0.0.1:{w}"
+            await _r.delete(ip_key)
+            deleted_keys.append(ip_key)
+
+        # 2. Per-tenant authenticated keys for each provisioned tenant.
+        #    We don't know the user_id ahead of time (function-scoped
+        #    cashier), so we use a narrow per-tenant prefix scan that is
+        #    strictly scoped to ``rate_limit:tenant:{ws_id}:*`` — NOT a
+        #    global ``rate_limit:*`` scan.
+        for _tkey in ("a", "b", "c"):
+            tenant = provisioned_pool.tenants.get(_tkey)
+            if tenant is None:
+                continue
+            ws_id = tenant["ws_id"]
+            tenant_prefix = f"rate_limit:tenant:{ws_id}:"
+            async for _k in _r.scan_iter(match=f"{tenant_prefix}*"):
+                _k_str = _k.decode() if isinstance(_k, bytes) else _k
+                await _r.delete(_k)
+                deleted_keys.append(_k_str)
+
+        # 3. Assert every owned key is now absent.
+        for _k in deleted_keys:
+            remaining = await _r.exists(_k)
+            assert remaining == 0, f"rate-limiter key not cleaned: {_k}"
     finally:
         await _r.aclose()
     yield

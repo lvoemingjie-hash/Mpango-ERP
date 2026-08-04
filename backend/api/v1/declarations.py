@@ -52,6 +52,23 @@ from services.print_service import (
 router = APIRouter()
 
 
+async def _supplier_binding_active(db: AsyncSession, ws_uuid, rt_uuid) -> bool:
+    """R1: verify the relationship binding is active and non-deleted."""
+    from sqlalchemy import text as _text
+
+    row = (
+        await db.execute(
+            _text(
+                "SELECT status FROM public.wholesaler_retailer_bindings "
+                "WHERE wholesaler_id = :wid AND retailer_id = :rid "
+                "AND is_deleted IS FALSE LIMIT 1"
+            ),
+            {"wid": ws_uuid, "rid": rt_uuid},
+        )
+    ).first()
+    return row is not None and row.status == "active"
+
+
 _ALLOWED_STATUSES = {"pending", "confirmed", "rejected"}
 
 
@@ -190,8 +207,18 @@ async def print_declaration(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
         )
+    # R1: active/non-deleted binding check for the declaration's relationship.
+    if not await _supplier_binding_active(db, wholesaler_id, row["retailer_id"]):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
+        )
+    eligible = await check_receipt_eligibility(
+        db, row=row, wholesaler_id=wholesaler_id,
+    )
     view = await build_declaration_print(
         db, row=row, wholesaler_id=wholesaler_id, retailer_id=row["retailer_id"],
+        receipt_eligible=eligible,
     )
     if view is None:
         raise HTTPException(

@@ -66,6 +66,21 @@ from services.canonical_payment_service import (
 
 router = APIRouter()
 
+
+async def _supplier_binding_active(db: AsyncSession, ws_uuid, rt_uuid) -> bool:
+    """R1: verify the relationship binding is active and non-deleted."""
+    row = (
+        await db.execute(
+            text(
+                "SELECT status FROM public.wholesaler_retailer_bindings "
+                "WHERE wholesaler_id = :wid AND retailer_id = :rid "
+                "AND is_deleted IS FALSE LIMIT 1"
+            ),
+            {"wid": ws_uuid, "rid": rt_uuid},
+        )
+    ).first()
+    return row is not None and row.status == "active"
+
 IDEMPOTENCY_KEY_MIN_LENGTH = 8
 IDEMPOTENCY_KEY_MAX_LENGTH = 64
 IDEMPOTENCY_KEY_ALLOWED_CHARS = set(
@@ -524,8 +539,9 @@ async def print_order(
     Printable order document (supplier side) — server-authoritative.
 
     I2C-I1: read-only. ``wholesaler_id`` is derived from ``token.tenant_id``
-    (never client-supplied); the order is tenant-scoped via the session
-    search_path. Wrong supplier/schema returns neutral 404.
+    (never client-supplied). R1: explicit dual-key ownership predicate
+    (``order.wholesaler_id == token.tenant_id``) plus active/non-deleted
+    binding check — the session search_path alone is insufficient.
     """
     order = await get_order_by_id(db, order_id)
     if not order:
@@ -535,8 +551,26 @@ async def print_order(
         )
     try:
         ws_uuid = uuid.UUID(token.tenant_id)
-        rt_uuid = uuid.UUID(str(order.retailer_id)) if order.retailer_id else ws_uuid
     except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    # R1: explicit wholesaler ownership predicate — not just search_path.
+    if str(order.wholesaler_id) != str(ws_uuid):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    # R1: retailer_id must be present (never substitute wholesaler UUID).
+    if not order.retailer_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    rt_uuid = uuid.UUID(str(order.retailer_id))
+    # R1: active/non-deleted binding check.
+    if not await _supplier_binding_active(db, ws_uuid, rt_uuid):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},

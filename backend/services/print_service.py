@@ -189,6 +189,7 @@ async def build_declaration_print(
     row: Mapping[str, Any],
     wholesaler_id: uuid.UUID,
     retailer_id: uuid.UUID,
+    receipt_eligible: bool = False,
 ) -> Optional[DeclarationPrintView]:
     """Assemble a printable payment declaration document.
 
@@ -196,6 +197,14 @@ async def build_declaration_print(
     ``PaymentDeclarationRepository.get_detail_by_*``. Pending/rejected carry a
     prominent non-receipt notice; confirmed delegates receipt rendering to the
     caller (receipt eligibility is checked separately).
+
+    R1 correction: a confirmed declaration is **not** automatically a receipt.
+    The caller must pass ``receipt_eligible`` (computed via
+    ``check_receipt_eligibility``). If the declaration is confirmed but NOT
+    receipt-eligible (missing/invalid/deleted payment, bad receipt number,
+    inactive binding), this function returns ``None`` so the route emits a
+    neutral 404 — it never renders a confirmed declaration with
+    ``is_receipt=True`` unless the full eligibility predicate passes.
     """
     if row is None:
         return None
@@ -207,7 +216,12 @@ async def build_declaration_print(
     )
 
     status = row["status"]
-    is_receipt = status == "confirmed"
+
+    # R1: confirmed-but-ineligible must fail closed (return None -> 404).
+    if status == "confirmed" and not receipt_eligible:
+        return None
+
+    is_receipt = status == "confirmed" and receipt_eligible
     non_receipt_notice: Optional[str] = None
     rejection_reason: Optional[str] = None
     if status == "pending":
@@ -284,6 +298,19 @@ async def check_receipt_eligibility(
         return False
     if payment.get("status") != "completed":
         return False
+
+    # R1: the payment must belong to the SAME order and retailer as the
+    # declaration. Without this, a corrupted confirmation_payment_id could
+    # cross-associate declaration A with payment B's amount/receipt.
+    decl_order_id = str(row["order_id"])
+    decl_retailer_id = str(row["retailer_id"])
+    pay_order_id = str(payment["order_id"]) if payment.get("order_id") is not None else None
+    pay_retailer_id = str(payment["retailer_id"]) if payment.get("retailer_id") is not None else None
+    if pay_order_id is None or pay_order_id != decl_order_id:
+        return False
+    if pay_retailer_id is None or pay_retailer_id != decl_retailer_id:
+        return False
+
     receipt_number = payment.get("receipt_number")
     if not receipt_number or not _RECEIPT_NUMBER_PATTERN.match(str(receipt_number)):
         return False

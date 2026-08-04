@@ -1,6 +1,13 @@
 # DC-12R1-S3-S2B-I2C-I1 — Printable Order Declaration Receipt Backend
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_REVIEW
+**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R1_REVIEW
+**R1 correction:** Fixes 4 P1 merge blockers from CTO STOP_AND_REPORT: (1) confirmed
+declaration print now runs the receipt eligibility predicate (fail-closed 404, not
+just is_receipt=true); (2) receipt eligibility validates payment.order_id/retailer_id
+match the declaration; (3) supplier print routes add explicit wholesaler ownership
+predicate + active/non-deleted binding check; (4) real cross-supplier/cross-retailer/
+wrong-payment/missing-receipt/inactive-binding tests replace fake random-UUID tests;
+fingerprint helper fails on exception.
 **Task type:** Backend implementation (read-only print Contracts A-C only).
 **Base:** `origin/zcode/dc12r1-s3-s2b-i2c-d-print-notification-contract-2026-08-04` @ `94d9243b`
 **Branch:** `zcode/dc12r1-s3-s2b-i2c-i1-printable-records-backend-2026-08-04`
@@ -96,20 +103,44 @@ fixture and asserts identical fingerprints before/after across:
 - No internal-identifier leakage (no `confirmation_payment_id`,
   `tenant_user_id`, cashier user ids in responses).
 
-## 6. Gate Results
+## 6. Gate Results (R1)
+
+### CTO STOP_AND_REPORT blockers resolved
+
+| Blocker | Fix |
+|---|---|
+| P1-1: confirmed declaration falsely marked is_receipt | `build_declaration_print` now accepts `receipt_eligible`; confirmed-but-ineligible returns None → 404 |
+| P1-2: receipt not validated against same order/retailer | `check_receipt_eligibility` now asserts `payment.order_id == row.order_id` and `payment.retailer_id == row.retailer_id` |
+| P1-3: supplier routes lack ownership + binding | Added explicit `order.wholesaler_id == token.tenant_id` predicate + `_supplier_binding_active` check on supplier order/declaration print routes |
+| P1-4: fake negative tests (random UUIDs) | Replaced with real cross-supplier, cross-retailer, wrong-order-payment, null-payment, soft-deleted-payment, malformed-receipt, inactive-binding tests |
+| Fingerprint helper returns -1 on error | Now raises (hard failure) |
+
+### R1 gate runs
 
 | Gate | Stack | Result |
 |---|---|---|
-| I2C-I1 suite (natural) | A (PG 56468, Redis 56469) | 18 passed, 0 failed |
-| I2C-I1 suite (with I2B prefix) | A | 18 passed, 0 failed (H5 fix) |
-| Route-auth + H5 + I2B regression | A | 81 passed, 0 failed |
-| I2B + I2C-I1 + inventory tests | A | 110 passed, 0 failed |
-| **Gate A (full backend)** | A (PG 56468, Redis 56469) | **3217 passed, 29 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1059s) |
-| **Gate B (full backend)** | B (PG 60060, Redis 60061) | **3198 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1050s) |
+| I2C-I1 R1 suite | A (PG 52281, Redis 52282) | 29 passed, 0 failed |
+| **Gate A (R1, full backend)** | A (PG 52281, Redis 52282) | **3209 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1058s) |
+| **Gate B (R1, full backend)** | B (PG 56442, Redis 56443) | **3209 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1070s) |
 
-Both gates: exit 0, 0 failed, 0 errors. The pass/skip delta (3217/29 vs 3198/48)
-is the known pre-existing I2B temp-DB harness variance on fresh stacks (some
-tests skip when provisioning state differs) — not a regression.
+### Pass/skip reconciliation
+
+The original (pre-R1) gate runs showed a 19-test pass/skip delta (3217p/29s
+vs 3198p/48s). R1 Gate A shows 3209p/48s. The delta is caused by the I2B
+temp-DB harness: some tests that create temporary databases (P17DC/P21
+platform tests) **skip** when the temp-DB source port is explicitly allowed
+(via `MPANGO_TEMP_DB_ALLOWED_PORTS`) but **pass** when it is not (they skip
+the DB-creation path). The exact node set that flips:
+
+- **48 skipped (R1 Gate A, with `MPANGO_TEMP_DB_ALLOWED_PORTS`):** the temp-DB
+  platform tests skip because the allowed-port guard changes their execution
+  path.
+- **29 skipped (original Gate A, without the env var on some paths):** fewer
+  skip because the guard path differs.
+
+Both gates achieve **0 failed, 0 errors, exit 0** — the pass/skip variance is
+a test-infrastructure artifact, not a product-code regression. R1 Gate B uses
+the identical env configuration to produce an equivalent node set.
 
 ## 7. Adversarial Self-Review
 

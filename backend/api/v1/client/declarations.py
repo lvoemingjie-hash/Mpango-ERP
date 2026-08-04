@@ -146,11 +146,18 @@ async def print_client_declaration(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
         )
+    # R1: confirmed declarations must pass the receipt eligibility predicate;
+    # if ineligible (missing/invalid/deleted payment, bad receipt, inactive
+    # binding), fail closed with a neutral 404.
+    eligible = await check_receipt_eligibility(
+        db, row=row, wholesaler_id=uuid.UUID(client.tenant_id)
+    )
     view = await build_declaration_print(
         db,
         row=row,
         wholesaler_id=uuid.UUID(client.tenant_id),
         retailer_id=uuid.UUID(client.retailer_id),
+        receipt_eligible=eligible,
     )
     if view is None:
         raise HTTPException(

@@ -23,7 +23,7 @@ Internal mapping:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from math import ceil
 from typing import Annotated, Optional
@@ -59,7 +59,9 @@ from schemas.client import (
 )
 from schemas.common import DataResponse, Pagination
 from schemas.declaration import ClientDeclarationView, DeclarationSubmitRequest
+from schemas.print import OrderPrintView
 from services.payment_declaration_service import PaymentDeclarationService
+from services.print_service import build_order_print
 
 
 router = APIRouter()
@@ -312,6 +314,58 @@ async def get_order(
         success=True,
         data=_order_to_client_view(order),
         timestamp=datetime.utcnow(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /client/orders/{order_id}/print — Printable order document (Contract A)
+# I2C-I1: 100% read-only, server-authoritative prices/totals, dual-key scoped.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{order_id}/print",
+    response_model=DataResponse[OrderPrintView],
+    status_code=status.HTTP_200_OK,
+)
+async def print_order(
+    order_id: str,
+    client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:orders:read")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    """
+    Printable order document — server-authoritative prices, subtotals, totals.
+
+    Dual-key scoped (order_id + wholesaler_id + retailer_id); wrong
+    retailer/supplier returns neutral 404 without existence disclosure.
+    Read-only: no writes, no financial fingerprints changed.
+    """
+    order = await get_order_for_retailer(
+        db,
+        order_id=order_id,
+        wholesaler_id=client.tenant_id,
+        retailer_id=client.retailer_id,
+    )
+    if order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    view = await build_order_print(
+        db,
+        order=order,
+        wholesaler_id=uuid.UUID(client.tenant_id),
+        retailer_id=uuid.UUID(client.retailer_id),
+    )
+    if view is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    return DataResponse(
+        success=True,
+        data=view,
+        timestamp=datetime.now(timezone.utc),
     )
 
 

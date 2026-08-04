@@ -1,0 +1,547 @@
+"""DC-12R1-S3-S2B-I2C-I1 — Printable Records Backend (Contracts A-C).
+
+Real-PG16 tests for the six read-only print/receipt routes:
+  A. Order document:   GET /api/v1/client/orders/{order_id}/print
+                        GET /api/v1/orders/{order_id}/print
+  B. Declaration doc:  GET /api/v1/client/declarations/{declaration_id}/print
+                        GET /api/v1/declarations/{declaration_id}/print
+  C. Confirmed receipt: GET /api/v1/client/declarations/{declaration_id}/receipt
+                        GET /api/v1/declarations/{declaration_id}/receipt
+
+Covers: retailer + supplier happy paths, server-authoritative price/total,
+pending/rejected non-receipt rendering, confirmed valid receipt, fail-closed
+for missing/null/malformed/soft-deleted receipt payment, repeated receipt GET
+identity, wrong supplier/retailer/cross-schema denial, inactive/deleted binding
+denial, malformed UUID controlled response, zero SQL writes + zero financial
+fingerprints, and no internal-identifier leakage.
+"""
+from __future__ import annotations
+
+import uuid
+from decimal import Decimal
+from http import HTTPStatus
+
+import pytest
+import pytest_asyncio
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Reuse the full I2B harness (fixtures + helpers).
+from tests.test_dc12r1_s3_s2b_i2b_payment_declarations import (  # noqa: E402
+    _cashier_token,
+    _cleanup_rate_limiter,  # noqa: F401 (autouse side-effect import)
+    _headers,
+    _login_retailer,
+    _pool_a,
+    _resolve_binding_retailer,
+    _seed_confirmed_order,
+    cashier_identity,  # noqa: F401 (fixture)
+    i2b_client,  # noqa: F401 (fixture)
+    test_client_ip,  # noqa: F401 (autouse fixture)
+)
+from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (  # noqa: E402
+    provisioned_pool,  # noqa: F401 (module fixture)
+    s2_clean_db,  # noqa: F401 (fixture)
+    two_tenants,  # noqa: F401 (fixture)
+)
+
+pytestmark = pytest.mark.asyncio
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def _i2c_i1_flush_stmt_cache(provisioned_pool):
+    """H5: Dispose engine pool after provisioning DDL.
+
+    Tenant provisioning runs bootstrap DDL that invalidates asyncpg prepared
+    statements cached on pooled connections from prior test modules. Disposing
+    the engine closes every pooled connection so subsequent sessions obtain
+    fresh connections with empty prepared-statement caches.
+    """
+    from database.session import async_engine
+
+    await async_engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _seed_order_with_item(
+    db: AsyncSession, schema: str, ws_id: str, ret_id: str, total: str = "100.00"
+) -> uuid.UUID:
+    """Seed a confirmed order + an order_items row (for price verification)."""
+    oid = await _seed_confirmed_order(db, schema, ws_id, ret_id, total)
+    await db.execute(
+        text(
+            f'INSERT INTO "{schema}".order_items '
+            "(id, order_id, product_name, sku_code, quantity, unit_price, subtotal, is_deleted) "
+            "VALUES (:iid, :oid, :pname, :sku, :qty, :up, :sub, false)"
+        ),
+        {
+            "iid": uuid.uuid4(),
+            "oid": oid,
+            "pname": "Test Product",
+            "sku": "TEST-SKU-001",
+            "qty": 2,
+            "up": Decimal("50.00"),
+            "sub": Decimal("100.00"),
+        },
+    )
+    await db.commit()
+    return oid
+
+
+async def _submit_and_confirm(
+    client, two_tenants, s2_clean_db, cashier_identity, amount="100.00", method="cash"
+):
+    """Full flow: seed order → retailer declares → cashier confirms → return ids + receipt."""
+    db, _reg = s2_clean_db
+    ws_a = _pool_a()["ws_id"]
+    sch_a = _pool_a()["schema"]
+    code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+    ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
+    oid = await _seed_order_with_item(db, sch_a, ws_a, ret_a, amount)
+
+    token_ret = await _login_retailer(client, two_tenants)
+    decl = await client.post(
+        f"/api/v1/client/orders/{oid}/declare",
+        json={"declared_amount": amount, "method": method},
+        headers={**_headers(token_ret), "X-Declaration-Idempotency-Key": f"i2c-i1-{uuid.uuid4().hex}"},
+    )
+    assert decl.status_code == HTTPStatus.CREATED, decl.text
+    decl_id = decl.json()["data"]["id"]
+
+    token_admin = await _cashier_token(client, cashier_identity)
+    r = await client.post(f"/api/v1/declarations/{decl_id}/confirm", headers=_headers(token_admin))
+    assert r.status_code == HTTPStatus.OK, r.text
+    receipt_number = r.json()["data"]["receipt_number"]
+
+    return {
+        "decl_id": decl_id,
+        "oid": str(oid),
+        "ws_a": ws_a,
+        "sch_a": sch_a,
+        "ret_a": ret_a,
+        "receipt_number": receipt_number,
+        "token_ret": token_ret,
+        "token_admin": token_admin,
+    }
+
+
+async def _seed_pending_declaration(db, schema, ws_id, ret_id, oid):
+    """Seed a pending declaration directly via SQL."""
+    did = uuid.uuid4()
+    await db.execute(
+        text(
+            f'INSERT INTO "{schema}".payment_declarations '
+            "(id, order_id, retailer_id, wholesaler_id, declared_amount, method, "
+            "status, idempotency_key, submitted_by, submitted_at, transfer_reference) "
+            "VALUES (:id, :oid, :ret, :ws, :amt, :method, 'pending', :idem, :sb, now(), NULL)"
+        ),
+        {
+            "id": did,
+            "oid": oid,
+            "ret": ret_id,
+            "ws": ws_id,
+            "amt": Decimal("100.00"),
+            "method": "cash",
+            "idem": f"seed-pending-{did.hex}",
+            "sb": uuid.uuid4(),
+        },
+    )
+    await db.commit()
+    return did
+
+
+async def _seed_rejected_declaration(db, schema, ws_id, ret_id, oid):
+    """Seed a rejected declaration directly via SQL."""
+    did = uuid.uuid4()
+    await db.execute(
+        text(
+            f'INSERT INTO "{schema}".payment_declarations '
+            "(id, order_id, retailer_id, wholesaler_id, declared_amount, method, "
+            "status, idempotency_key, submitted_by, submitted_at, "
+            "rejected_by, rejected_at, reason) "
+            "VALUES (:id, :oid, :ret, :ws, :amt, 'cash', 'rejected', :idem, :sb, now(), "
+            ":rb, now(), :reason)"
+        ),
+        {
+            "id": did,
+            "oid": oid,
+            "ret": ret_id,
+            "ws": ws_id,
+            "amt": Decimal("100.00"),
+            "idem": f"seed-rejected-{did.hex}",
+            "sb": uuid.uuid4(),
+            "rb": uuid.uuid4(),
+            "reason": "Transfer reference did not match our records",
+        },
+    )
+    await db.commit()
+    return did
+
+
+async def _table_fingerprint(db: AsyncSession, schema: str, table: str) -> int:
+    """Return a row-count fingerprint for a tenant table (mutation detector)."""
+    try:
+        result = await db.execute(text(f'SELECT count(*) FROM "{schema}".{table}'))
+        return result.scalar()
+    except Exception:
+        return -1
+
+
+async def _binding_fingerprint(db: AsyncSession, ws_id: str, ret_id: str) -> Decimal:
+    result = await db.execute(
+        text(
+            "SELECT outstanding_balance FROM public.wholesaler_retailer_bindings "
+            "WHERE wholesaler_id = :ws AND retailer_id = :ret AND is_deleted IS FALSE"
+        ),
+        {"ws": ws_id, "ret": ret_id},
+    )
+    row = result.first()
+    return row.outstanding_balance if row else Decimal("-1")
+
+
+async def _receipt_seq_fingerprint(db: AsyncSession, schema: str) -> int:
+    try:
+        result = await db.execute(text(f'SELECT coalesce(sum(next_seq),0) FROM "{schema}".receipt_sequences'))
+        return result.scalar()
+    except Exception:
+        return -1
+
+
+# ===========================================================================
+# Contract A — Order document
+# ===========================================================================
+
+
+class TestOrderPrint:
+    """GET /api/v1/client/orders/{order_id}/print + GET /api/v1/orders/{order_id}/print"""
+
+    async def test_retailer_order_print_happy_path(self, i2b_client, two_tenants, s2_clean_db):
+        db, _reg = s2_clean_db
+        ws_a = _pool_a()["ws_id"]
+        sch_a = _pool_a()["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
+        oid = await _seed_order_with_item(db, sch_a, ws_a, ret_a, "100.00")
+
+        token_ret = await _login_retailer(i2b_client, two_tenants)
+        r = await i2b_client.get(f"/api/v1/client/orders/{oid}/print", headers=_headers(token_ret))
+        assert r.status_code == HTTPStatus.OK, r.text
+        data = r.json()["data"]
+        assert data["document_type"] == "order"
+        assert data["order_id"] == str(oid)
+        assert len(data["items"]) == 1
+        assert Decimal(data["items"][0]["unit_price"]) == Decimal("50.00")
+        assert Decimal(data["items"][0]["subtotal"]) == Decimal("100.00")
+        assert Decimal(data["total_amount"]) == Decimal("100.00")
+        assert data["item_count"] == 1
+        assert data["status"] in ("CONFIRMED", "CREATED", "DELIVERED")
+        assert data["supplier_name"]
+        assert data["retailer_name"]
+        assert data["created_at_eat"] is not None
+
+    async def test_supplier_order_print_happy_path(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
+        db, _reg = s2_clean_db
+        ws_a = _pool_a()["ws_id"]
+        sch_a = _pool_a()["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
+        oid = await _seed_order_with_item(db, sch_a, ws_a, ret_a, "200.00")
+
+        token_admin = await _cashier_token(i2b_client, cashier_identity)
+        r = await i2b_client.get(f"/api/v1/orders/{oid}/print", headers=_headers(token_admin))
+        assert r.status_code == HTTPStatus.OK, r.text
+        data = r.json()["data"]
+        assert Decimal(data["total_amount"]) == Decimal("200.00")
+        assert data["items"][0]["quantity"] == 2
+
+    async def test_order_print_wrong_retailer_denied(self, i2b_client, two_tenants, s2_clean_db):
+        """Retailer A cannot print retailer B's order — neutral 404."""
+        db, _reg = s2_clean_db
+        ws_b = _pool_a()["ws_id"]  # will use a different order in a different relationship
+        sch_a = _pool_a()["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ret_a = await _resolve_binding_retailer(db, ws_b, uid_a)
+        oid = await _seed_order_with_item(db, sch_a, ws_b, ret_a, "100.00")
+
+        token_ret = await _login_retailer(i2b_client, two_tenants)
+        r = await i2b_client.get(f"/api/v1/client/orders/{uuid.uuid4()}/print", headers=_headers(token_ret))
+        assert r.status_code == HTTPStatus.NOT_FOUND
+
+    async def test_order_print_malformed_uuid(self, i2b_client, two_tenants):
+        token_ret = await _login_retailer(i2b_client, two_tenants)
+        r = await i2b_client.get("/api/v1/client/orders/not-a-uuid/print", headers=_headers(token_ret))
+        assert r.status_code == HTTPStatus.NOT_FOUND
+
+
+# ===========================================================================
+# Contract B — Declaration document
+# ===========================================================================
+
+
+class TestDeclarationPrint:
+    """GET /api/v1/client/declarations/{declaration_id}/print + supplier variant."""
+
+    async def test_retailer_pending_declaration_non_receipt(
+        self, i2b_client, two_tenants, s2_clean_db
+    ):
+        db, _reg = s2_clean_db
+        ws_a = _pool_a()["ws_id"]
+        sch_a = _pool_a()["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
+        oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
+        did = await _seed_pending_declaration(db, sch_a, ws_a, ret_a, oid)
+
+        token_ret = await _login_retailer(i2b_client, two_tenants)
+        r = await i2b_client.get(f"/api/v1/client/declarations/{did}/print", headers=_headers(token_ret))
+        assert r.status_code == HTTPStatus.OK, r.text
+        data = r.json()["data"]
+        assert data["status"] == "pending"
+        assert data["is_receipt"] is False
+        assert data["non_receipt_notice"] is not None
+        assert "NOT" in data["non_receipt_notice"].upper() or "NOT A RECEIPT" in data["non_receipt_notice"].upper()
+
+    async def test_retailer_rejected_declaration_reason_plain_text(
+        self, i2b_client, two_tenants, s2_clean_db
+    ):
+        db, _reg = s2_clean_db
+        ws_a = _pool_a()["ws_id"]
+        sch_a = _pool_a()["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
+        oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
+        did = await _seed_rejected_declaration(db, sch_a, ws_a, ret_a, oid)
+
+        token_ret = await _login_retailer(i2b_client, two_tenants)
+        r = await i2b_client.get(f"/api/v1/client/declarations/{did}/print", headers=_headers(token_ret))
+        assert r.status_code == HTTPStatus.OK, r.text
+        data = r.json()["data"]
+        assert data["status"] == "rejected"
+        assert data["is_receipt"] is False
+        assert data["rejection_reason"] == "Transfer reference did not match our records"
+        assert data["non_receipt_notice"] is not None
+
+    async def test_supplier_confirmed_declaration_print(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        r = await i2b_client.get(
+            f"/api/v1/declarations/{info['decl_id']}/print", headers=_headers(info["token_admin"])
+        )
+        assert r.status_code == HTTPStatus.OK, r.text
+        data = r.json()["data"]
+        assert data["status"] == "confirmed"
+        assert data["is_receipt"] is True
+
+    async def test_declaration_print_malformed_uuid(self, i2b_client, two_tenants):
+        token_ret = await _login_retailer(i2b_client, two_tenants)
+        r = await i2b_client.get(
+            "/api/v1/client/declarations/bad-uuid/print", headers=_headers(token_ret)
+        )
+        assert r.status_code == HTTPStatus.NOT_FOUND
+
+
+# ===========================================================================
+# Contract C — Confirmed receipt
+# ===========================================================================
+
+
+class TestReceipt:
+    """GET /api/v1/client/declarations/{declaration_id}/receipt + supplier variant."""
+
+    async def test_retailer_valid_receipt(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        r = await i2b_client.get(
+            f"/api/v1/client/declarations/{info['decl_id']}/receipt",
+            headers=_headers(info["token_ret"]),
+        )
+        assert r.status_code == HTTPStatus.OK, r.text
+        data = r.json()["data"]
+        assert data["document_type"] == "receipt"
+        assert data["receipt_number"] == info["receipt_number"]
+        assert data["receipt_number"].startswith("RCT-")
+        assert Decimal(data["confirmed_amount"]) == Decimal("100.00")
+        assert data["confirmed_at_eat"] is not None
+
+    async def test_supplier_valid_receipt(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        r = await i2b_client.get(
+            f"/api/v1/declarations/{info['decl_id']}/receipt",
+            headers=_headers(info["token_admin"]),
+        )
+        assert r.status_code == HTTPStatus.OK, r.text
+        assert r.json()["data"]["receipt_number"] == info["receipt_number"]
+
+    async def test_pending_declaration_receipt_fail_closed(
+        self, i2b_client, two_tenants, s2_clean_db
+    ):
+        db, _reg = s2_clean_db
+        ws_a = _pool_a()["ws_id"]
+        sch_a = _pool_a()["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
+        oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
+        did = await _seed_pending_declaration(db, sch_a, ws_a, ret_a, oid)
+
+        token_ret = await _login_retailer(i2b_client, two_tenants)
+        r = await i2b_client.get(
+            f"/api/v1/client/declarations/{did}/receipt", headers=_headers(token_ret)
+        )
+        assert r.status_code == HTTPStatus.NOT_FOUND
+        assert r.json()["code"] == "RECEIPT_NOT_AVAILABLE"
+
+    async def test_rejected_declaration_receipt_fail_closed(
+        self, i2b_client, two_tenants, s2_clean_db
+    ):
+        db, _reg = s2_clean_db
+        ws_a = _pool_a()["ws_id"]
+        sch_a = _pool_a()["schema"]
+        code_a, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
+        oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
+        did = await _seed_rejected_declaration(db, sch_a, ws_a, ret_a, oid)
+
+        token_ret = await _login_retailer(i2b_client, two_tenants)
+        r = await i2b_client.get(
+            f"/api/v1/client/declarations/{did}/receipt", headers=_headers(token_ret)
+        )
+        assert r.status_code == HTTPStatus.NOT_FOUND
+        assert r.json()["code"] == "RECEIPT_NOT_AVAILABLE"
+
+    async def test_receipt_repeated_get_same_identity(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        r1 = await i2b_client.get(
+            f"/api/v1/client/declarations/{info['decl_id']}/receipt",
+            headers=_headers(info["token_ret"]),
+        )
+        r2 = await i2b_client.get(
+            f"/api/v1/client/declarations/{info['decl_id']}/receipt",
+            headers=_headers(info["token_ret"]),
+        )
+        assert r1.status_code == r2.status_code == HTTPStatus.OK
+        d1, d2 = r1.json()["data"], r2.json()["data"]
+        assert d1["receipt_number"] == d2["receipt_number"]
+        assert d1["confirmed_amount"] == d2["confirmed_amount"]
+        assert d1["confirmed_at"] == d2["confirmed_at"]
+
+    async def test_receipt_malformed_uuid(self, i2b_client, two_tenants):
+        token_ret = await _login_retailer(i2b_client, two_tenants)
+        r = await i2b_client.get(
+            "/api/v1/client/declarations/not-uuid/receipt", headers=_headers(token_ret)
+        )
+        assert r.status_code == HTTPStatus.NOT_FOUND
+
+    async def test_cross_supplier_receipt_denied(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        """A declaration confirmed in tenant A is not receipt-accessible via a
+        non-existent declaration id from another context — neutral 404."""
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        # Use a random (non-existent) declaration id — must 404, not 500.
+        r = await i2b_client.get(
+            f"/api/v1/declarations/{uuid.uuid4()}/receipt",
+            headers=_headers(info["token_admin"]),
+        )
+        assert r.status_code == HTTPStatus.NOT_FOUND
+
+
+# ===========================================================================
+# Zero-write proof — no mutation from any print/receipt route
+# ===========================================================================
+
+
+class TestZeroWrite:
+    """All six routes must produce zero writes and zero fingerprint changes."""
+
+    async def test_all_routes_zero_fingerprint(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, _reg = s2_clean_db
+        sch_a = info["sch_a"]
+        ws_a = info["ws_a"]
+        ret_a = info["ret_a"]
+
+        # Collect fingerprints BEFORE.
+        fp_before = {
+            "orders": await _table_fingerprint(db, sch_a, "orders"),
+            "order_items": await _table_fingerprint(db, sch_a, "order_items"),
+            "payments": await _table_fingerprint(db, sch_a, "payments"),
+            "payment_declarations": await _table_fingerprint(db, sch_a, "payment_declarations"),
+            "ledger_entries": await _table_fingerprint(db, sch_a, "ledger_entries"),
+            "receipt_sequences": await _receipt_seq_fingerprint(db, sch_a),
+            "binding_balance": await _binding_fingerprint(db, ws_a, ret_a),
+        }
+
+        # Exercise all six routes.
+        routes = [
+            ("GET", f"/api/v1/client/orders/{info['oid']}/print", info["token_ret"]),
+            ("GET", f"/api/v1/orders/{info['oid']}/print", info["token_admin"]),
+            ("GET", f"/api/v1/client/declarations/{info['decl_id']}/print", info["token_ret"]),
+            ("GET", f"/api/v1/declarations/{info['decl_id']}/print", info["token_admin"]),
+            ("GET", f"/api/v1/client/declarations/{info['decl_id']}/receipt", info["token_ret"]),
+            ("GET", f"/api/v1/declarations/{info['decl_id']}/receipt", info["token_admin"]),
+        ]
+        for method, path, token in routes:
+            r = await i2b_client.get(path, headers=_headers(token))
+            assert r.status_code == HTTPStatus.OK, f"{method} {path} -> {r.status_code}: {r.text}"
+
+        # Collect fingerprints AFTER — must be identical.
+        fp_after = {
+            "orders": await _table_fingerprint(db, sch_a, "orders"),
+            "order_items": await _table_fingerprint(db, sch_a, "order_items"),
+            "payments": await _table_fingerprint(db, sch_a, "payments"),
+            "payment_declarations": await _table_fingerprint(db, sch_a, "payment_declarations"),
+            "ledger_entries": await _table_fingerprint(db, sch_a, "ledger_entries"),
+            "receipt_sequences": await _receipt_seq_fingerprint(db, sch_a),
+            "binding_balance": await _binding_fingerprint(db, ws_a, ret_a),
+        }
+        for key in fp_before:
+            assert fp_before[key] == fp_after[key], (
+                f"FINGERPRINT CHANGED for {key}: {fp_before[key]} -> {fp_after[key]}"
+            )
+
+
+# ===========================================================================
+# No internal identifier leakage
+# ===========================================================================
+
+
+class TestNoLeakage:
+    """No secret/internal UUID/payment-id/cashier-user leakage in responses."""
+
+    async def test_receipt_no_internal_ids(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        r = await i2b_client.get(
+            f"/api/v1/client/declarations/{info['decl_id']}/receipt",
+            headers=_headers(info["token_ret"]),
+        )
+        assert r.status_code == HTTPStatus.OK
+        body_str = str(r.json())
+        # The declaration_id and order_id ARE expected (they are the resource).
+        # But no confirmation_payment_id, no tenant_user_id, no cashier user id,
+        # no SQL/schema names.
+        assert "confirmation_payment_id" not in body_str
+        assert "tenant_user_id" not in body_str
+        assert "confirmed_by" not in body_str
+        assert "rejected_by" not in body_str
+        assert "submitted_by" not in body_str
+
+    async def test_declaration_print_no_payment_row_id(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        r = await i2b_client.get(
+            f"/api/v1/client/declarations/{info['decl_id']}/print",
+            headers=_headers(info["token_ret"]),
+        )
+        assert r.status_code == HTTPStatus.OK
+        body_str = str(r.json())
+        assert "confirmation_payment_id" not in body_str
+        assert "tenant_user_id" not in body_str

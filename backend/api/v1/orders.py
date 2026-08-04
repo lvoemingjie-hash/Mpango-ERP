@@ -14,6 +14,7 @@ State Machine:
 from datetime import datetime
 from math import ceil
 from typing import Annotated, Mapping, Optional
+import uuid
 from uuid import UUID
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
@@ -54,7 +55,9 @@ from schemas.order import (
     OrderItem as OrderItemSchema,
     PayOrderRequest,
 )
-from schemas.common import Pagination
+from schemas.common import DataResponse, Pagination
+from schemas.print import OrderPrintView
+from services.print_service import build_order_print
 from schemas.payment import PaymentMethod
 from services.canonical_payment_service import (
     CanonicalPaymentMutationHttpError,
@@ -508,6 +511,48 @@ async def get_order(
         success=True,
         data=order_to_schema(order, retailer_name=name_map.get(str(order.retailer_id))),
         timestamp=datetime.utcnow()
+    )
+
+
+@router.get("/{order_id}/print", response_model=DataResponse[OrderPrintView], status_code=status.HTTP_200_OK)
+async def print_order(
+    order_id: str,
+    token: TokenPayload = Depends(RequirePermission("orders:read")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    """
+    Printable order document (supplier side) — server-authoritative.
+
+    I2C-I1: read-only. ``wholesaler_id`` is derived from ``token.tenant_id``
+    (never client-supplied); the order is tenant-scoped via the session
+    search_path. Wrong supplier/schema returns neutral 404.
+    """
+    order = await get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    try:
+        ws_uuid = uuid.UUID(token.tenant_id)
+        rt_uuid = uuid.UUID(str(order.retailer_id)) if order.retailer_id else ws_uuid
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    view = await build_order_print(
+        db, order=order, wholesaler_id=ws_uuid, retailer_id=rt_uuid
+    )
+    if view is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    return DataResponse(
+        success=True,
+        data=view,
+        timestamp=datetime.utcnow(),
     )
 
 

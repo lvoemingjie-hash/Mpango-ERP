@@ -1,7 +1,7 @@
 # DC-12R1-S3-S2B-I2C-D — Printable Records and Notification-Event Contract
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING_R1
-**Revision:** R1 — Financial Statement Truth and Contract Exactness (statement arithmetic resourced from immutable receivable ledger; deterministic dedup; timezone truth; exact permissions; receipt regex).
+**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING_R2
+**Revision:** R2 — Historical Ledger Scope and Receipt-Link Truth (historical scope ignores `orders.is_deleted`; movements and settled payments are two independent lists with no amount/timestamp/order-only correlation; one customer-facing ledger-derived balance; binding cache is internal-only; orphan-ledger fail-closed). Preserves all R1 corrections.
 **Task type:** Design / audit gate only. No implementation, no product code, no migration, no provider integration.
 **Base:** `origin/product-dev-recovered` @ `044f7c5cb6ebcb6efbda1d14729c432ea743f1d7`
 **Branch:** `zcode/dc12r1-s3-s2b-i2c-d-print-notification-contract-2026-08-04`
@@ -45,6 +45,17 @@ authoritative data**, not new financial machinery.
 > on persisted transition timestamps; timezone display is a **fixed** EAT zone
 > (no unsupported tenant-config claim); statement permissions are exactly
 > `client:finance:read` / `finance:read`.
+>
+> **R2 correction note.** (a) Historical scope **ignores `orders.is_deleted`** —
+> a soft-deleted order's immutable ledger movements always remain. (b) The
+> statement renders **two independent lists**: `movements[]` (ledger only, no
+> method/receipt) and `settled_payments[]` (canonical payments only, with
+> receipt) — never correlated by amount/timestamp/order_id alone, because **no
+> persisted key links a ledger movement to a payment** (audit: `post_payment_received`
+> writes `reference_id=order_id` only). (c) **One** customer-facing balance
+> (ledger-derived); the binding cache is an **internal diagnostic**, never on
+> the document. (d) Orphan ledger reference → 409
+> `STATEMENT_LEDGER_SCOPE_INCOMPLETE`, zero partial document.
 
 The single most important integrity rule carried through every contract below:
 
@@ -625,6 +636,14 @@ non-accounting section if shown at all).
 > driven by **immutable `ledger_entries`** (charges and collections), not by
 > `payments` alone. `payments` are the display/receipt source; the
 > authoritative balance path is the receivable ledger. See §8.3.
+>
+> **R2 truth correction (binding).** (1) Accounting scope ignores
+> `orders.is_deleted` — a soft-deleted order's immutable ledger movements are
+> always included. (2) Movements and settled payments are **two separate
+> lists**; they are never correlated by amount, timestamp, or `order_id` alone.
+> (3) The customer document shows **exactly one** authoritative balance (the
+> ledger-derived value); the binding cache is an internal diagnostic, never a
+> second customer-facing balance. See §8.1.1, §8.2, §8.3.4, §8.5.
 
 ### 8.1 Source tables / services (audited source truth)
 - **`ledger_entries` (tenant schema)** — the authoritative, **immutable**
@@ -634,30 +653,57 @@ non-accounting section if shown at all).
   DELETE, plus a balanced-transaction app check (`ledger_service.py:141-157`).
   Columns used: `account_type` (`receivable`/`revenue`/`cash`),
   `amount` (`Numeric(20,4)`, **positive = debit, negative = credit**;
-  `ledger.py:88-92`), `reference_type` (`'order'`/`'payment'`/`'refund'`),
-  `reference_id` (UUID), `transaction_date` (`TIMESTAMPTZ`), `is_deleted`.
+  `ledger.py:88-92`), `reference_type` (`'order'`/`'refund'`),
+  `reference_id` (UUID — the **order** id; see §8.1.1), `transaction_date`
+  (`TIMESTAMPTZ`), `is_deleted`.
   **There is no `wholesaler_id`/`retailer_id`/`order_id` column and no FK** —
   per-counterparty scoping requires a JOIN through `orders` (§8.5).
 - **`orders` (tenant schema)** — for relationship scoping
   (`orders.wholesaler_id`, `orders.retailer_id`, `models/order.py:56-67`) and
   order context on each line. Note these FKs are soft/un-enforced (skeleton).
+  **R2:** `orders.is_deleted` is **not filtered** for accounting scope (§8.5).
 - **`payments` (tenant schema, `status='completed'`, `is_deleted IS FALSE`)** —
-  the **display/receipt source** for payment lines (amount, method,
+  the **display/receipt source** for settled-payment lines (amount, method,
   `receipt_number`), via the existing `list_statement_lines`
   (`payment_declaration_repository.py:421`). Payments are NOT the balance
-  trajectory.
+  trajectory and NOT a source of ledger movements.
 - **`public.wholesaler_retailer_bindings.outstanding_balance`**
-  (`models/binding.py:75`, `Numeric(12,2)`) — the **current reconciliation
-  anchor only** (§8.3.4). It is a mutable cache mutated by deltas
+  (`models/binding.py:75`, `Numeric(12,2)`) — an **internal credit-exposure
+  diagnostic only** (§8.3.4). It is a mutable cache mutated by deltas
   (`payment_service.py:169-216`); it tracks **credit exposure** (credit sales
-  +, credit collections −; **cash/transfer never touch it**) and is **not** a
-  general receivable balance. It is **not** a historical balance by itself.
+  +, credit collections −; **cash/transfer never touch it**). It is **not** a
+  customer-facing balance and is **never rendered** as a balance on the
+  printable statement.
 - `public.wholesalers`/`public.retailers` for business names.
 - **NEW server-side computation (gap):** opening/closing balance and signed
   movement arithmetic from `ledger_entries` (§8.3). Read-only; no new write
   path, no new table.
 
-### 8.2 Server-side route and response contract
+#### 8.1.1 Ledger ↔ payment association truth (R2, binding)
+The audit established that **there is no persisted key linking a ledger
+collection movement to the specific `payments` row or `receipt_number`:**
+- `LedgerService.post_payment_received` (`ledger_service.py:281-317`) writes
+  `reference_type='order', reference_id=<order_id>` — the **order** id, never
+  the payment id. There is **no `payment_id`/`receipt_number` column** on
+  `ledger_entries` (`models/ledger.py:46-123`; confirmed across all migrations),
+  and `post_payment_received` has no `payment_id` parameter. The canonical
+  service creates the `payments` row (`canonical_payment_service.py:322-333`)
+  but does **not** thread its id into the ledger post.
+- Therefore a receipt and its ledger movement share **only `order_id`**. For a
+  single-payment order this is an unambiguous 1:1 by `order_id`; for a
+  **multi-payment order** (partial payments, credit + collection) a specific
+  receipt cannot be unambiguously tied to a specific ledger movement except by
+  amount/timestamp inference — which this contract **forbids** (§8.2).
+- **Binding consequence:** the statement therefore renders **two independent
+  lists** — `movements[]` (ledger, no method/receipt) and `settled_payments[]`
+  (canonical payments, with method/receipt) — and **never** attaches payment
+  method or `receipt_number` to a ledger movement unless a real persisted key
+  proves the association. Because no such key exists for multi-payment orders,
+  ledger movements carry **no** `method`/`receipt_number`. This is the only
+  honest representation; it avoids false receipt association (test
+  `T-STMT-NOCROSSASSOC-01`).
+
+### 8.2 Server-side route and response contract (R2 — two independent lists)
 - **Retailer:** `GET /api/v1/client/statements/print?from=&to=` — permission
   **`client:finance:read`** (decision D5-R1). `retailer_id` from binding;
   `wholesaler_id` from token.
@@ -668,30 +714,37 @@ non-accounting section if shown at all).
   the already-scoped relationship.
 - Response: `StatementPrintView`:
   - `supplier_name`, `retailer_name`, `from`, `to` (UTC + EAT display)
-  - `opening_balance` (`Numeric(12,2)`, server-computed from ledger, §8.3.1)
-  - `lines[]` each: `date` (UTC + EAT), `order_id`, `description`,
-    `kind` (`charge` | `collection`), `signed_amount` (`Numeric(20,4)`:
-    positive for charge, negative for collection), `display_amount`
-    (`Numeric(12,2)` absolute), `method` (collections only),
-    `receipt_number` (collections only), `ledger_reference_type`
-  - `charge_total` (sum of positive signed movements in range)
-  - `collection_total` (sum of |negative| signed movements in range)
-  - `net_movement` (`charge_total - collection_total`)
-  - `settled_total` (sum of **completed payments** in range — display/receipt
-    identity only, distinct from `net_movement`)
-  - `closing_balance` (`Numeric(12,2)`, server-computed from ledger, §8.3.2)
-  - `reconciliation` (`{ anchor: binding.outstanding_balance, ledger_current:
-    SUM(RECEIVABLE) scoped, matched: bool }`, §8.3.4)
+  - `opening_balance` (`Numeric(12,2)`, ledger-derived, §8.3.2) — **the single
+    authoritative customer-facing opening balance**
+  - `movements[]` — **from `ledger_entries` only.** Each: `date` (UTC + EAT),
+    `order_id`, `description`, `kind` (`charge` | `collection`),
+    `signed_amount` (`Numeric(20,4)`: positive charge, negative collection),
+    `display_amount` (`Numeric(12,2)` absolute).
+    **No `method`, no `receipt_number`** on movements (§8.1.1).
+  - `charge_total` (sum of positive signed movements in range, from `movements[]`)
+  - `collection_total` (sum of |negative| signed movements in range, from `movements[]`)
+  - `net_movement` (`charge_total - collection_total`, from `movements[]`)
+  - `closing_balance` (`Numeric(12,2)`, ledger-derived, §8.3.2) — **the single
+    authoritative customer-facing closing balance**
+  - `settled_payments[]` — **from canonical completed `payments` only.** Each:
+    `payment_date` (UTC + EAT), `order_id`, `amount` (`Numeric(12,2)`),
+    `method`, `receipt_number`.
+  - `settled_total` (sum of `settled_payments[].amount` in range — from
+    `settled_payments[]` only, distinct from `net_movement`)
   - `pending_declarations[]` (separate, clearly-labelled **non-accounting**
     section: `declaration_id`, `declared_amount`, `submitted_at`) — included
     only if requested (`?include_pending=1`), never folded into
     `opening_balance`/`closing_balance`/`net_movement`/`settled_total`.
+- **The `StatementPrintView` does NOT contain `binding.outstanding_balance`
+  or any `reconciliation`/`matched` field.** Those are internal diagnostics
+  evaluated server-side (§8.3.4) and never serialized to the customer document
+  (test `T-STMT-CACHE-ABSENT-01`).
 
 ### 8.3 Balance arithmetic — receivable-ledger-sourced (binding, R1)
 
-#### 8.3.1 Scope and signed movement source
-- Relationship movements are sourced from **immutable `ledger_entries`** rows
-  where `account_type = 'receivable'`, scoped through `orders` by
+#### 8.3.1 Scope and signed movement source (R2 — ledger only, no payment enrichment)
+- Relationship `movements[]` are sourced from **immutable `ledger_entries`**
+  rows where `account_type = 'receivable'`, scoped through `orders` by
   `(wholesaler_id, retailer_id)` (§8.5). A **charge** (order confirmed) is a
   receivable row with `amount > 0` (posted by
   `LedgerService.post_order_confirmation`, `ledger_service.py:243-279`,
@@ -701,11 +754,11 @@ non-accounting section if shown at all).
   reference_type `'order'`; also the credit-collection path in
   `canonical_payment_service.py:337-348`). Returns post `reference_type
   'refund'` (`ledger_service.py:319`).
-- Each statement line carries a **signed amount** with a `kind`:
-  `charge` (signed_amount `+T`) or `collection` (signed_amount `-P`). The line
-  set is the receivable ledger rows in range, enriched with order/payment
-  display fields. **Payments are a display/receipt source, not the balance
-  trajectory.**
+- Each movement carries a **signed amount** with a `kind`: `charge`
+  (signed_amount `+T`) or `collection` (signed_amount `-P`). **Movements carry
+  no `method` and no `receipt_number`** (§8.1.1) — they are ledger records,
+  not payment records. The balance path (`opening`/`closing`/`net_movement`)
+  uses `movements[]` only.
 
 #### 8.3.2 Exact date boundaries (inclusive/exclusive)
 - `from` is **inclusive** (`transaction_date >= from`).
@@ -721,56 +774,70 @@ non-accounting section if shown at all).
   `closing_balance` must equal `opening_balance + net_movement`
   (test `T-STMT-ARITH-02`).
 
-#### 8.3.3 settled_total vs net_movement (do not conflate)
-- `settled_total` is the sum of **completed payments** in range
-  (`payments.status='completed'`) — it is the receipt/display identity and is
-  reported separately. `net_movement` is the signed receivable-ledger sum
-  (charges minus collections). These measure **different things**: a charge
-  increases the receivable (and `net_movement`) but is not a payment; a
-  completed payment is a collection (it appears in both `collection_total` and
-  `settled_total` **only if** its ledger posting falls in range). The
-  statement renders both, clearly labelled, and never substitutes one for the
-  other.
+#### 8.3.3 settled_total vs net_movement (do not conflate; independent lists)
+- `settled_total` is the sum of `settled_payments[].amount` in range
+  (`payments.status='completed'`) — sourced from the **payments list only**.
+  `net_movement` is the signed sum of `movements[]` (charges minus
+  collections) — sourced from the **ledger list only**. These measure
+  **different things** and are computed from **independent** source sets: a
+  charge increases the receivable (and `net_movement`) but is not a payment; a
+  completed payment appears in `settled_total` and its collection appears in
+  `collection_total`/`net_movement` **only if** the ledger posting falls in
+  range. The two lists are **never cross-populated** and totals are never
+  substituted for one another. Movements and settled payments reconcile
+  independently (test `T-STMT-INDEP-RECON-01`).
 - **pending declarations** are never included in `opening_balance`,
   `closing_balance`, `net_movement`, `charge_total`, `collection_total`, or
   `settled_total`. They appear only in the separate non-accounting section
   (decision D4).
 
-#### 8.3.4 Reconciliation anchor and fail-closed mismatch (binding)
-- `binding.outstanding_balance` is the **current reconciliation anchor**, not a
-  historical balance. Because it tracks **credit exposure only** (credit sales
+#### 8.3.4 Customer-facing balance truth and internal reconciliation (R2, binding)
+- **Exactly one authoritative customer-facing balance.** The printable
+  statement shows **one** opening and **one** closing balance — both
+  **receivable-ledger-derived** (`movements[]` arithmetic, §8.3.2). This is the
+  only balance the customer/supplier reads on the document.
+- **`binding.outstanding_balance` is an internal credit-exposure diagnostic,
+  not a customer balance.** It is **never rendered** on the printable document
+  (not as a balance, not as a second comparable figure, not in a
+  "reconciliation" block). `StatementPrintView` contains no
+  `outstanding_balance`, no `anchor`, no `matched` field
+  (test `T-STMT-CACHE-ABSENT-01`). The customer sees the ledger truth only.
+- **Internal reconciliation (server-side, not serialized).** Because
+  `binding.outstanding_balance` tracks **credit exposure only** (credit sales
   +, credit collections −; cash/transfer ignored) while the ledger receivable
-  tracks **all confirmed orders net of all collections**, the two **diverge in
-  general** for relationships with partially-paid cash orders, and **no
-  reconciliation exists today** (audited: not found in `ReceivablesService`,
-  no integrity test, no scheduled job).
-- The statement therefore computes, server-side, a **ledger-derived current
-  balance** = `SUM(signed amount) WHERE account_type='receivable' AND scoped`
-  (all dates, not just the range), and compares it to
-  `binding.outstanding_balance`. The comparison is informational for cash-heavy
-  relationships (expected divergence) but **fail-closed for credit-only
-  relationships**: if the relationship has had **only credit movements** (no
-  cash/transfer orders), the ledger current balance and the binding cache
-  **must agree**; any disagreement means a write-path bug.
-- **Fail-closed rule (binding):** the statement **never prints an unbalanced
-  statement**. Concretely:
-  1. Compute `ledger_opening`, `ledger_closing`, and `ledger_current` (all-dates
+  tracks **all confirmed orders net of all collections**, the two **diverge for
+  mixed relationships** and **no reconciliation exists today** (audited). The
+  statement route computes a server-side internal check but **does not expose
+  it to the customer**:
+  1. Compute `ledger_opening`, `ledger_closing`, `ledger_current` (all-dates
      scoped receivable sum).
   2. Assert `ledger_closing == ledger_opening + net_movement` (internal
      consistency); else 409 `STATEMENT_INTERNAL_INCONSISTENT`.
-  3. Read `anchor = binding.outstanding_balance`.
-  4. If the relationship is **credit-only** (no cash/transfer ledger
-     collections exist for it) and `ledger_current != anchor` (beyond a 0.01
-     tolerance), the statement **refuses to render**: 409
-     `STATEMENT_RECONCILIATION_FAILED` with no balances printed. This is the
-     cache/ledger mismatch fail-closed (test `T-STMT-MISMATCH-01`).
-  5. For **mixed** relationships (any cash/transfer collection), the divergence
-     is expected and documented on the statement as a labelled note; the
-     statement still prints but shows both `ledger_current` and `anchor` in the
-     `reconciliation` block so the reader is never misled.
-- The MVP does **not** attempt to "fix" the binding cache from the statement
-  path (read-only, §3.1). Reconciliation repair is a separate, future
-  gated concern.
+  3. **Credit-only relationships:** if there are **no cash/transfer ledger
+     collections** for the relationship (classification per §8.3.5) and
+     `ledger_current != binding.outstanding_balance` (beyond 0.01 tolerance),
+     the statement **refuses to render**: 409 `STATEMENT_RECONCILIATION_FAILED`
+     with no document emitted (test `T-STMT-MISMATCH-01`).
+  4. **Mixed relationships:** the statement **prints the single ledger-derived
+     balance and nothing else.** It does **not** claim the ledger balance and
+     the credit-exposure cache "are expected to be equal" — they are different
+     measures. No comparison, no note, no second number is shown to the
+     customer. (The divergence is an internal operator concern, surfaced via
+     separate ops tooling, not the customer statement.)
+- The MVP does **not** mutate the binding cache from the statement path
+  (read-only, §3.1).
+
+#### 8.3.5 Credit/mixed classification (R2, binding)
+- **Payment method is determined from canonical `payments`, never from
+  `ledger_entries`.** `ledger_entries` carries no method (`models/ledger.py`).
+  A relationship is **credit-only** iff **every** completed payment for it has
+  `payments.method = 'credit'`; it is **mixed** iff **any** completed payment
+  has `method IN ('cash','transfer')`. The classification query is:
+  `SELECT COUNT(*) FROM payments p JOIN orders o ON o.id = p.order_id WHERE
+  o.wholesaler_id = :w AND o.retailer_id = :r AND p.is_deleted IS FALSE AND
+  p.status = 'completed' AND p.method IN ('cash','transfer')` — `> 0` ⇒ mixed.
+  This drives the §8.3.4 reconciliation decision (credit-only is fail-closed
+  on mismatch; mixed is not reconciled against the cache).
 
 ### 8.4 Required permission
 - Retailer: **`client:finance:read`**. Supplier: **`finance:read`**. Reuse
@@ -778,23 +845,44 @@ non-accounting section if shown at all).
   permission. Declaration/receipt routes remain `client:payments:read` /
   `payments:read` (§6.3, §7.4).
 
-### 8.5 Ownership predicate / ledger scoping
+### 8.5 Ownership predicate / ledger scoping (R2 — historical scope, binding)
 - Retailer: `wholesaler_id` (token) + `retailer_id` (binding). Supplier:
   `wholesaler_id` (token) + `retailer_id` (validated against active binding).
   Mismatch → neutral 404 / empty.
-- **Ledger scoping (binding):** because `ledger_entries` has no
+- **Ledger scoping query (binding):** because `ledger_entries` has no
   `wholesaler_id`/`retailer_id`/`order_id` column, relationship scoping is:
+  resolve the order-id set `O` for the relationship, then read the receivable
+  ledger for those orders. **R2 historical-scope rule:** the order-id
+  resolution does **NOT** filter `orders.is_deleted`:
   resolve the set `O = { orders.id | orders.wholesaler_id = :w AND
-  orders.retailer_id = :r AND orders.is_deleted IS FALSE }`, then read
+  orders.retailer_id = :r }` — **no `is_deleted` predicate** — then read
   `ledger_entries WHERE account_type = 'receivable' AND reference_type IN
-  ('order','refund') AND reference_id IN (O)`. This mirrors the join shape used
-  by `ReceivablesService` (`receivables_service.py:113-129`) and
-  `api/v1/finance.py:103-109`.
+  ('order','refund') AND reference_id IN (O)`. The join shape mirrors
+  `api/v1/finance.py:103-109`; note `ReceivablesService`
+  (`receivables_service.py:113-129`) **does** filter `is_deleted` and
+  aggregates from `payments`, so it is **not** reused for the ledger path.
+- **Historical retention rule (R2, binding):** soft-deleting an order **must
+  never** remove its immutable ledger movements from the statement. Because
+  the scope omits the `is_deleted` filter, a soft-deleted order's charges and
+  collections remain in `movements[]` and in `opening`/`closing`/`net_movement`
+  exactly as before deletion (tests `T-STMT-SOFTDELETE-RETAIN-01`,
+  `T-STMT-ACTIVE-DELETED-EQUAL-01`). (Audit note: no production code path sets
+  `orders.is_deleted = true` today — cancel/void is status-only — but this rule
+  is binding regardless, so a future soft-delete cannot silently drop history.)
+- **Orphan-ledger fail-closed (R2, binding):** if a `ledger_entries` row has
+  `reference_type IN ('order','refund')` but its `reference_id` does **not**
+  resolve to a row in `orders` (physical order missing/deleted-hard), the
+  statement **refuses to render**: 409 `STATEMENT_LEDGER_SCOPE_INCOMPLETE` with
+  **zero partial document** emitted (test `T-STMT-ORPHAN-01`). The movement is
+  **never silently omitted** — an unresolvable reference is an integrity
+  breach, not a display gap. The error does not leak the orphan id or any
+  cross-tenant detail.
 
 ### 8.6 Status terminology
-- Each line carries `kind` (`charge`/`collection`) and a signed amount.
-  Collections carry `receipt_number` + `method`. No pending/rejected terms in
-  the accounting section.
+- `movements[]` lines carry `kind` (`charge`/`collection`) and a signed amount,
+  **no method, no receipt_number** (§8.1.1). `settled_payments[]` lines carry
+  `method` + `receipt_number`. No pending/rejected terms in the accounting
+  section.
 
 ### 8.7 Currency / timezone
 - KES, 2 dp (display); ledger arithmetic is `Numeric(20,4)` then rounded to
@@ -817,9 +905,10 @@ non-accounting section if shown at all).
   print filename `statement-{retailer_short}-{from}-{to}.pdf`.
 - Empty/error: empty range → "No receivable movements in this range" (still
   shows opening = closing, both ledger-derived). Malformed date → 400
-  `INVALID_DATE_RANGE`. **Fail-closed:** if §8.3.4 reconciliation fails for a
-  credit-only relationship → 409 `STATEMENT_RECONCILIATION_FAILED`, no
-  balances printed.
+  `INVALID_DATE_RANGE`. **Fail-closed:** (a) §8.3.4 credit-only reconciliation
+  mismatch → 409 `STATEMENT_RECONCILIATION_FAILED`, no document;
+  (b) §8.5 orphan ledger reference → 409 `STATEMENT_LEDGER_SCOPE_INCOMPLETE`,
+  **zero partial document**.
 - Redaction: no UUIDs in the rendered statement (internal ids redacted to
   short forms); no payment row ids; no `tenant_user_id`.
 - Cross-tenant: relationship scoped to `(wholesaler_id, retailer_id)`; a
@@ -982,6 +1071,19 @@ Restating §3 in the exact form required by the task, for explicit traceability:
    tokens**, and vice versa. (Route guards + `RequirePermission`.)
 8. **No SQL, schema name, internal exception, or unrelated supplier identity
    leaks.** (Redaction rules §3.6; tests `PRINT-LEAK-01`, `PRINT-INJ-01`.)
+9. **R2 — No false receipt association.** A ledger movement and a payment
+   receipt are never correlated by amount, timestamp, or `order_id` alone. No
+   `method`/`receipt_number` is attached to a movement unless a real persisted
+   key proves the association — and none exists today (`post_payment_received`
+   writes `reference_id=order_id` only). The statement renders two independent
+   lists (`movements[]`, `settled_payments[]`). (Test
+   `T-STMT-NOCROSSASSOC-01`.)
+10. **R2 — Historical retention.** Soft-deleting an order never removes its
+    immutable ledger movements from the statement; accounting scope does not
+    filter `orders.is_deleted`. An unresolvable (orphan) ledger reference
+    fails closed (409 `STATEMENT_LEDGER_SCOPE_INCOMPLETE`), never silently
+    omitted. (Tests `T-STMT-SOFTDELETE-RETAIN-01`,
+    `T-STMT-ACTIVE-DELETED-EQUAL-01`, `T-STMT-ORPHAN-01`.)
 
 ---
 
@@ -1024,7 +1126,7 @@ contracts** for the accepted wholesaler-to-retailer MVP.
 
 ## 13. Verdict
 
-**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING_R1**
+**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING_R2**
 
 - Base proof gate PASS (exact base, I2B ancestor, clean isolated worktree).
 - Source truth audit complete; every cited `file:line` verified.
@@ -1033,6 +1135,12 @@ contracts** for the accepted wholesaler-to-retailer MVP.
   ledger (`ledger_entries`), not from `payments`/`binding.outstanding_balance`;
   fail-closed reconciliation; deterministic dedup; fixed-EAT timezone; exact
   permissions.
+- **R2:** Contract D historical scope ignores `orders.is_deleted`;
+  `movements[]` (ledger) and `settled_payments[]` (canonical payments) are two
+  independent lists with no amount/timestamp/order-only correlation (no
+  persisted ledger↔payment key exists); one customer-facing ledger-derived
+  balance (binding cache is internal-only, never on the document); orphan
+  ledger reference fail-closed 409 `STATEMENT_LEDGER_SCOPE_INCOMPLETE`.
 - Four notification-event contracts defined with versioned envelope, redacted
   payloads, committed-state semantics, and **deterministic dedup** on persisted
   transition columns.
@@ -1042,9 +1150,10 @@ contracts** for the accepted wholesaler-to-retailer MVP.
   contract, implementation slice, and required test IDs — accounting gap zero.
 - Decision register records all binding decisions including the explicit
   non-expansions.
-- No unresolved decision could produce a false receipt, incorrect balance,
-  cross-tenant leak, unstable dedup, unsupported timezone claim, ambiguous
-  permission, or pre-commit notification.
+- No unresolved decision could produce a false receipt, false receipt
+  association, duplicate-payment ambiguity, incorrect balance, historical
+  deletion, orphan-ledger omission, cross-tenant leak, unstable dedup,
+  unsupported timezone claim, ambiguous permission, or pre-commit notification.
 
 No merge, no protected-branch push, no I2C implementation started. Awaiting CTO
 directive to proceed to I2C implementation against this contract.

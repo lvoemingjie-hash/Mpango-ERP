@@ -88,46 +88,67 @@ existence.
 
 ---
 
-## D4 — Statement accounting boundary (R1 — receivable-ledger-sourced)
+## D4 — Statement accounting boundary (R2 — historical scope, two lists, one balance)
 
-**Decision (R1 truth correction):**
+**Decision (R1+R2 truth corrections):**
 - The relationship balance trajectory is sourced from **immutable
   `ledger_entries`** (`account_type='receivable'`), scoped through `orders` by
   `(wholesaler_id, retailer_id)`. **Charges** (order confirmed) are receivable
   rows `amount > 0` (`post_order_confirmation`); **collections** (payment
   received) are receivable rows `amount < 0` (`post_payment_received`).
   **`payments` are the display/receipt source, not the balance trajectory.**
+- **R2 — historical scope:** the order-id set resolution does **NOT** filter
+  `orders.is_deleted`. A soft-deleted order's immutable ledger movements
+  **always** remain in the statement. Active and soft-deleted orders produce
+  **identical** ledger totals. (Tests `T-STMT-SOFTDELETE-RETAIN-01`,
+  `T-STMT-ACTIVE-DELETED-EQUAL-01`.)
+- **R2 — two independent lists:** `movements[]` comes from `ledger_entries`
+  only (date, order, description, kind, signed_amount; **no method, no
+  receipt**); `settled_payments[]` comes from canonical completed `payments`
+  only (payment date, order, amount, method, receipt_number). They are
+  **never** correlated by amount, timestamp, or `order_id` alone — and **no
+  persisted key links a ledger movement to a payment** (`post_payment_received`
+  writes `reference_id=order_id` only; no `payment_id`/`receipt_number` column
+  on `ledger_entries`). `opening`/`closing`/`net_movement` use `movements[]`
+  only; `settled_total`/receipt presentation use `settled_payments[]` only.
+  (Tests `T-STMT-NOCROSSASSOC-01`, `T-STMT-INDEP-RECON-01`.)
+- **R2 — one customer-facing balance:** the document shows **exactly one**
+  opening and **one** closing balance, both **ledger-derived**.
+  `binding.outstanding_balance` is an **internal credit-exposure diagnostic**,
+  never rendered on the customer document (no second comparable balance, no
+  reconciliation block). (Test `T-STMT-CACHE-ABSENT-01`.)
 - `opening_balance` = `SUM(signed receivable amount) WHERE transaction_date <
-  from` (scoped) — i.e. the balance **immediately before** `from`. `from` is
-  inclusive, `to` is inclusive; range is `[from, to]`.
+  from` (scoped) — immediately before `from`. `from` inclusive, `to`
+  inclusive; range `[from, to]`.
 - `closing_balance = opening_balance + SUM(signed receivable movement in
-  [from, to])`. Equivalently `closing_balance = SUM(signed amount) WHERE
-  transaction_date <= to` (scoped). Both formulations must agree.
-- `net_movement = charge_total − collection_total` (in-range signed sum);
-  `closing_balance == opening_balance + net_movement`.
-- `settled_total` = sum of **completed payments** in range — a distinct
-  display/receipt identity, **never** substituted for `net_movement`.
-- **Pending declarations are never included** in `opening_balance`,
-  `closing_balance`, `net_movement`, `charge_total`, `collection_total`, or
-  `settled_total`. They appear only in a clearly-labelled **separate
-  non-accounting section** (`?include_pending=1`).
-- **`binding.outstanding_balance` is the current reconciliation anchor only,
-  not a historical balance.** It tracks credit exposure (credit sales +,
-  credit collections −; cash/transfer ignored) and diverges from the ledger
-  receivable for cash relationships. **Fail-closed:** for credit-only
-  relationships, `ledger_current` must equal `binding.outstanding_balance`;
-  any mismatch → 409 `STATEMENT_RECONCILIATION_FAILED`, **no balances printed.
-  The statement never prints an unbalanced statement.** (§8.3.4.)
+  [from, to])`. Both formulations must agree.
+- `net_movement = charge_total − collection_total`; `closing_balance ==
+  opening_balance + net_movement`.
+- **Pending declarations are never included** in any accounting total. Separate
+  non-accounting section only.
+- **R2 — orphan fail-closed:** an unresolvable ledger reference (reference_id
+  not in `orders`) → 409 `STATEMENT_LEDGER_SCOPE_INCOMPLETE`, **zero partial
+  document** — never silently omitted. (Test `T-STMT-ORPHAN-01`.)
+- **Internal reconciliation (not serialized):** credit-only relationships
+  (classification from `payments`, §8.3.5) must have `ledger_current ==
+  binding.outstanding_balance` else 409 `STATEMENT_RECONCILIATION_FAILED`.
+  Mixed relationships print the single ledger balance and **do not claim**
+  ledger == credit-exposure. (Test `T-STMT-MISMATCH-01`.)
 
-**Rationale:** the audit established that `binding.outstanding_balance` and
-`SUM(ledger_entries)` measure different things and no reconciliation exists;
-sourcing the trajectory from the immutable ledger and fail-closing on
-credit-only mismatch prevents printing a wrong balance. Pending declarations
-excluded from totals prevents mistaking them for settled funds.
+**Rationale:** the audit established (a) `binding.outstanding_balance` and the
+ledger receivable measure different things with no reconciliation; (b) no
+persisted key links a ledger movement to a payment, so receipt↔movement
+correlation by amount/timestamp/order_id would create false associations. R2
+splits the two lists, renders one ledger-derived balance, keeps the cache
+internal, and retains soft-deleted history.
 
-**Risk closed:** wrong balance — closed. Tests `T-STMT-OPEN-01`,
+**Risk closed:** wrong balance, false receipt association, historical
+deletion, orphan omission — all closed. Tests `T-STMT-OPEN-01`,
 `T-STMT-CLOSE-01`, `T-STMT-ARITH-01`, `T-STMT-ARITH-02`,
 `T-STMT-CHARGE-COLLECT-01`, `T-STMT-POSTRANGE-01`, `T-STMT-MISMATCH-01`,
+`T-STMT-SOFTDELETE-RETAIN-01`, `T-STMT-ACTIVE-DELETED-EQUAL-01`,
+`T-STMT-ORPHAN-01`, `T-STMT-NOCROSSASSOC-01`, `T-STMT-INDEP-RECON-01`,
+`T-STMT-CACHE-ABSENT-01`, `T-STMT-CLASS-01`,
 `T-STMT-PENDING-EXCL-01`.
 
 ---
@@ -285,11 +306,16 @@ exist. A fixed display zone is honest and sufficient for the Kenyan MVP.
 | F-RCPT-REPLAY | D3 | §7.3 | T-RCPT-REPLAY-01 |
 | F-RCPT-FAILCLOSED | D3 | §3.7, §7.1 | T-RCPT-FAILCLOSED-01 |
 | F-STMT-LEDGER-SOURCE | D4 | §8.1, §8.3.1, §8.5 | T-STMT-LEDGER-01, T-STMT-LEDGER-IMMUTABLE-01 |
+| F-STMT-LEDGER-PAYMENT-NOKEY | D4 | §8.1.1, §8.2 | T-STMT-NOCROSSASSOC-01 |
 | F-STMT-SIGNED-MOVEMENTS | D4 | §8.2, §8.3.1 | T-STMT-SIGNED-01, T-STMT-CHARGE-COLLECT-01 |
-| F-STMT-BALANCE-CACHE | D4 | §8.1, §8.3.4 | T-STMT-BALANCE-01 |
+| F-STMT-BALANCE-CACHE | D4 | §8.1, §8.3.4 | T-STMT-CACHE-ABSENT-01 |
 | F-STMT-OPEN-CLOSE | D4 | §8.3.2 | T-STMT-OPEN-01, T-STMT-CLOSE-01, T-STMT-ARITH-01, T-STMT-ARITH-02 |
 | F-STMT-POSTRANGE | D4 | §8.3.2 | T-STMT-POSTRANGE-01 |
+| F-STMT-HISTORICAL-SCOPE | D4 | §8.5 | T-STMT-SOFTDELETE-RETAIN-01, T-STMT-ACTIVE-DELETED-EQUAL-01 |
+| F-STMT-ORPHAN-FAILCLOSED | D4 | §8.5 | T-STMT-ORPHAN-01 |
 | F-STMT-RECON-FAILCLOSED | D4 | §8.3.4 | T-STMT-MISMATCH-01 |
+| F-STMT-CREDIT-MIXED-CLASS | D4 | §8.3.5 | T-STMT-CLASS-01 |
+| F-STMT-INDEP-RECON | D4 | §8.3.3 | T-STMT-INDEP-RECON-01 |
 | F-STMT-PENDING-EXCLUDED | D4 | §8.3.3 | T-STMT-PENDING-EXCL-01 |
 | F-TZ-TRUTH | D-tz | §3.5, §8.7 | T-TZ-TRUTH-01 |
 | F-EVT-COMMITTED | D6 | §9.4 | T-EVT-ROLLBACK-01 |
@@ -310,12 +336,15 @@ finding. **No finding is unaccounted; no test ID is dangling. Accounting gap
 
 ## Unresolved decisions
 
-**None.** No open item could produce a false receipt, incorrect balance,
-cross-tenant leak, unstable dedup, unsupported timezone claim, ambiguous
-permission, or pre-commit notification. All such risks are closed by D3
-(receipt eligibility), D4 (receivable-ledger-sourced statement boundary +
-fail-closed reconciliation), D5 (exact single permission per route), D6
-(deterministic dedup on persisted columns), D-tz (fixed EAT display, no
-tenant-config claim), and the isolation rules (§3 / report §10).
+**None.** No open item could produce a false receipt, false receipt
+association, duplicate-payment ambiguity, incorrect balance, historical
+deletion, orphan-ledger omission, cross-tenant leak, unstable dedup,
+unsupported timezone claim, ambiguous permission, or pre-commit notification.
+All such risks are closed by D3 (receipt eligibility), D4 (R2: receivable-ledger
+sourced statement boundary, two independent lists, one customer-facing balance,
+historical scope ignoring `is_deleted`, orphan fail-closed, fail-closed
+reconciliation), D5 (exact single permission per route), D6 (deterministic dedup
+on persisted columns), D-tz (fixed EAT display, no tenant-config claim), and the
+isolation rules (§3 / report §10).
 
-**Verdict:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING_R1.
+**Verdict:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING_R2.

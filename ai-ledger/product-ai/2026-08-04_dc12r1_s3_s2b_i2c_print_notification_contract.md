@@ -1,6 +1,7 @@
 # DC-12R1-S3-S2B-I2C-D — Printable Records and Notification-Event Contract
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING
+**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING_R1
+**Revision:** R1 — Financial Statement Truth and Contract Exactness (statement arithmetic resourced from immutable receivable ledger; deterministic dedup; timezone truth; exact permissions; receipt regex).
 **Task type:** Design / audit gate only. No implementation, no product code, no migration, no provider integration.
 **Base:** `origin/product-dev-recovered` @ `044f7c5cb6ebcb6efbda1d14729c432ea743f1d7`
 **Branch:** `zcode/dc12r1-s3-s2b-i2c-d-print-notification-contract-2026-08-04`
@@ -26,10 +27,24 @@ required for all four printable documents already exists and is enforced.**
 Order unit prices and totals are resolved server-side and never accepted from
 the client (`api/v1/client/orders.py:164-186`). Canonical receipt numbers are
 allocated atomically in a single transaction with a partial unique index
-(`payment_repository.py:336-363`, migration `037:753-764`). Tenant isolation is
-dual-layer (JWT-derived `search_path` + explicit dual-key SQL predicates). The
-remaining work is **read-only print rendering and statement arithmetic on top
-of authoritative data**, not new financial machinery.
+(`payment_repository.py:336-363`, migration `037:753-764`). The receivable
+ledger (`ledger_entries`) is **immutable** (DB trigger
+`prevent_ledger_modification`) and is the authoritative source for the
+relationship balance trajectory. Tenant isolation is dual-layer (JWT-derived
+`search_path` + explicit dual-key SQL predicates). The remaining work is
+**read-only print rendering and ledger-sourced statement arithmetic on top of
+authoritative data**, not new financial machinery.
+
+> **R1 correction note.** The original §8 sourced statement balance from
+> `payments`/`binding.outstanding_balance`. R1 corrects this: the balance
+> trajectory is sourced from **immutable `ledger_entries`** (charges `+T` and
+> collections `-P`, scoped through `orders`); `binding.outstanding_balance` is
+> a credit-exposure cache that **diverges** from the ledger for cash
+> relationships, so the statement now performs a **fail-closed reconciliation**
+> and never prints an unbalanced statement. Dedup keys are now **deterministic**
+> on persisted transition timestamps; timezone display is a **fixed** EAT zone
+> (no unsupported tenant-config claim); statement permissions are exactly
+> `client:finance:read` / `finance:read`.
 
 The single most important integrity rule carried through every contract below:
 
@@ -161,11 +176,17 @@ dedicated receipt endpoint. It exists only as a returned field joined from
 `payments.receipt_number` via `confirmation_payment_id`. **Contract C (confirmed
 receipt) requires a new read-only receipt route** (see §6.C).
 
-**Statement arithmetic gap.** `GET /api/v1/client/statements` returns completed
-payment lines (`list_statement_lines`, `payment_declaration_repository.py:421`)
-but computes **no opening or closing balance** (file docstring explicitly defers
-this, "contract DD-06"). **Contract D (account statement) requires server-side
-opening/closing computation** (see §6.D).
+**Statement arithmetic gap (R1 truth).** `GET /api/v1/client/statements` returns
+completed payment lines (`list_statement_lines`,
+`payment_declaration_repository.py:421`) but computes **no opening or closing
+balance** (file docstring explicitly defers this, "contract DD-06"). The audit
+(R1) established that the balance trajectory must be sourced from the
+**immutable `ledger_entries`** (receivable charges `+T` and collections `-P`,
+scoped through `orders`), **not** from `payments` alone; and that
+`binding.outstanding_balance` tracks credit-exposure only and is **not** a
+general receivable balance, with **no reconciliation** to the ledger today.
+**Contract D (account statement) therefore requires server-side ledger-sourced
+opening/closing arithmetic + a fail-closed reconciliation check** (see §8).
 
 ### 2.4 Frontend
 
@@ -258,13 +279,16 @@ implementation slice that violates one is a contract breach.
   grouping, prefixed by the `KES` label (matching the existing `Amount (KES)`
   UI label).
 - **Stored timestamps are aware UTC** (`TIMESTAMPTZ`). The printable document
-  shows two things, clearly separated: (a) the authoritative UTC timestamp
-  (machine truth, used for replay/dedup) and (b) a **clearly-labelled
-  local-time display** derived **server-side** from a tenant-configured
-  timezone (defaulting to `Africa/Nairobi`). The client must not recompute the
-  timezone offset. (Timezone config is an existing platform concern; if no
-  tenant timezone is configured, the MVP default is `Africa/Nairobi` and the
-  document labels it "EAT".)
+  shows two things, clearly separated: (a) the **authoritative UTC timestamp**
+  (machine truth, used for replay/dedup, displayed verbatim) and (b) a
+  **clearly-labelled fixed `Africa/Nairobi` (EAT) display** derived
+  **server-side**. The client must not recompute the timezone offset.
+  **Truth correction (D-tz):** no tenant-configurable timezone setting exists in
+  the platform today (no tenant timezone column/field was found in the audit).
+  The MVP therefore uses a **single fixed display zone `Africa/Nairobi`**,
+  labelled "EAT", computed server-side. A tenant-configurable timezone is
+  **post-MVP**; this contract makes no claim that such configuration already
+  exists.
 - The receipt number's date component (`RCT-YYYYMMDD-…`) is the **UTC business
   date** of allocation (`payment_repository.py:349`), which may differ from the
   local display date near midnight. The contract renders the receipt number
@@ -358,8 +382,8 @@ total, with supplier and retailer business identity and the order date.
 ### 5.2 Server-side route and response contract
 - **Retailer route:** `GET /api/v1/client/orders/{order_id}/print` — returns
   the existing `ClientOrderView` payload (`schemas/client.py:104`) **plus**
-  supplier/retailer business names and a server-formatted local display
-  timestamp. Permission `client:orders:read` (reuse). Reuses
+  supplier/retailer business names and a server-formatted `Africa/Nairobi`
+  (EAT) display timestamp. Permission `client:orders:read` (reuse). Reuses
   `resolve_client_identity` for `retailer_id`.
 - **Supplier route:** `GET /api/v1/orders/{order_id}/print` — wholesaler-scoped,
   permission `orders:read`. `wholesaler_id = token.tenant_id`.
@@ -385,8 +409,9 @@ total, with supplier and retailer business identity and the order date.
   receipt/statement instead).
 
 ### 5.6 Currency / timezone
-- KES, `NUMERIC(12,2)`, 2 dp, `KES` label. Order date shown as UTC
-  (authoritative) + local display (server-formatted, `Africa/Nairobi` default).
+- KES, `NUMERIC(12,2)`, 2 dp, `KES` label. Order date shown as authoritative
+  UTC + fixed `Africa/Nairobi` (EAT) display (truth correction D-tz; no
+  tenant-configurable timezone in MVP).
 
 ### 5.7 Pagination / range
 - N/A — single order. No pagination.
@@ -444,7 +469,7 @@ and does not prove settlement.**
   permission `client:payments:read`. **Supplier:** `GET
   /api/v1/declarations/{declaration_id}/print` — permission `payments:read`.
 - Response: `ClientDeclarationView` / `DeclarationView` payload **plus**
-  business names + local display timestamps + a `is_receipt` boolean (true only
+  business names + `Africa/Nairobi` (EAT) display timestamps + a `is_receipt` boolean (true only
   when confirmed AND receipt-eligible per §7.4). The view uses `is_receipt` to
   decide whether to render the receipt block or the "not a receipt" notice.
 
@@ -472,8 +497,9 @@ and does not prove settlement.**
     (§3.7) rather than showing a confirmed declaration without a receipt.
 
 ### 6.6 Currency / timezone
-- KES, 2 dp. `submitted_at`/`confirmed_at`/`rejected_at` shown as UTC +
-  server-formatted local. Receipt number rendered verbatim.
+- KES, 2 dp. `submitted_at`/`confirmed_at`/`rejected_at` shown as authoritative
+  UTC + fixed `Africa/Nairobi` (EAT) display (D-tz). Receipt number rendered
+  verbatim.
 
 ### 6.7–6.13
 - Pagination: N/A (single declaration).
@@ -534,7 +560,7 @@ UI hiding.
   - `confirmed_amount` (= `payments.amount`, `NUMERIC(12,2)`)
   - `method` (= `payments.method`)
   - `confirmed_at` (= `payments.created_at` / declaration `confirmed_at`,
-    aware UTC) + `confirmed_at_local` (server-formatted)
+    aware UTC) + `confirmed_at_local` (server-formatted `Africa/Nairobi`/EAT)
   - `order_id`, `order_total_amount`, `order_status_client_mapped`
   - `declaration_id`, `declared_amount`
   - `supplier_name`, `retailer_name`
@@ -542,7 +568,7 @@ UI hiding.
 - **Replay returns the same identity:** because `payment_declarations` is
   immutable post-confirmation and the receipt number is stored on `payments`
   (not recomputed), repeated `GET …/receipt` calls return byte-identical
-  receipt identity. Required test (`RCPT-RP-01`) asserts two calls return the
+  receipt identity. Required test (`T-RCPT-REPLAY-01`) asserts two calls return the
   same `receipt_number`, `confirmed_amount`, and `confirmed_at`.
 
 ### 7.4 Required permission
@@ -559,7 +585,8 @@ UI hiding.
   received and confirmed by {supplier_name}".
 
 ### 7.7 Currency / timezone
-- KES, 2 dp. `confirmed_at` UTC + local. Receipt number verbatim (its date
+- KES, 2 dp. `confirmed_at` UTC + fixed `Africa/Nairobi` (EAT) display
+  (D-tz). Receipt number verbatim (its date
   component is the UTC business date of allocation and must not be
   "corrected").
 
@@ -589,76 +616,192 @@ UI hiding.
 
 **Purpose:** a printable account statement for **one supplier ↔ one retailer
 relationship**, over a controlled date range, with an authoritative opening
-balance, itemised orders and confirmed payments, and an authoritative closing
-balance. Pending declarations are **excluded from settled totals** (shown in a
-separate non-accounting section if shown at all).
+balance, itemised **receivable movements** (charges and collections) and
+confirmed payments, and an authoritative closing balance. Pending declarations
+are **excluded from settled/accounting totals** (shown in a separate
+non-accounting section if shown at all).
 
-### 8.1 Source tables / services
-- `payments` (tenant schema, `status='completed'`, `is_deleted IS FALSE`) —
-  settled payment lines, via the existing `list_statement_lines`
-  (`payment_declaration_repository.py:421`).
-- `orders` (tenant schema) — for order context per payment line.
-- `public.wholesaler_retailer_bindings.outstanding_balance` — the
-  authoritative relationship balance cache (`models/binding.py:75`).
-- `public.wholesalers`/`public.retailers` for names.
-- **NEW server-side computation (gap):** opening and closing balance
-  arithmetic (§8.3). This is read-only arithmetic over authoritative columns;
-  no new write path, no new table.
+> **R1 truth correction (binding).** The relationship balance trajectory is
+> driven by **immutable `ledger_entries`** (charges and collections), not by
+> `payments` alone. `payments` are the display/receipt source; the
+> authoritative balance path is the receivable ledger. See §8.3.
+
+### 8.1 Source tables / services (audited source truth)
+- **`ledger_entries` (tenant schema)** — the authoritative, **immutable**
+  receivable ledger (`backend/models/ledger.py:46`, table `ledger_entries`).
+  Immutability is enforced by a DB trigger `prevent_ledger_modification`
+  (`backend/alembic/versions/010_s5_5_ledger_hardening.py:40-116`) on UPDATE OR
+  DELETE, plus a balanced-transaction app check (`ledger_service.py:141-157`).
+  Columns used: `account_type` (`receivable`/`revenue`/`cash`),
+  `amount` (`Numeric(20,4)`, **positive = debit, negative = credit**;
+  `ledger.py:88-92`), `reference_type` (`'order'`/`'payment'`/`'refund'`),
+  `reference_id` (UUID), `transaction_date` (`TIMESTAMPTZ`), `is_deleted`.
+  **There is no `wholesaler_id`/`retailer_id`/`order_id` column and no FK** —
+  per-counterparty scoping requires a JOIN through `orders` (§8.5).
+- **`orders` (tenant schema)** — for relationship scoping
+  (`orders.wholesaler_id`, `orders.retailer_id`, `models/order.py:56-67`) and
+  order context on each line. Note these FKs are soft/un-enforced (skeleton).
+- **`payments` (tenant schema, `status='completed'`, `is_deleted IS FALSE`)** —
+  the **display/receipt source** for payment lines (amount, method,
+  `receipt_number`), via the existing `list_statement_lines`
+  (`payment_declaration_repository.py:421`). Payments are NOT the balance
+  trajectory.
+- **`public.wholesaler_retailer_bindings.outstanding_balance`**
+  (`models/binding.py:75`, `Numeric(12,2)`) — the **current reconciliation
+  anchor only** (§8.3.4). It is a mutable cache mutated by deltas
+  (`payment_service.py:169-216`); it tracks **credit exposure** (credit sales
+  +, credit collections −; **cash/transfer never touch it**) and is **not** a
+  general receivable balance. It is **not** a historical balance by itself.
+- `public.wholesalers`/`public.retailers` for business names.
+- **NEW server-side computation (gap):** opening/closing balance and signed
+  movement arithmetic from `ledger_entries` (§8.3). Read-only; no new write
+  path, no new table.
 
 ### 8.2 Server-side route and response contract
 - **Retailer:** `GET /api/v1/client/statements/print?from=&to=` — permission
-  `client:payments:read`. `retailer_id` from binding; `wholesaler_id` from
-  token.
+  **`client:finance:read`** (decision D5-R1). `retailer_id` from binding;
+  `wholesaler_id` from token.
 - **Supplier:** `GET /api/v1/statements/print?retailer_id=&from=&to=` —
-  permission `finance:read` or `payments:read`. **`retailer_id` is validated
-  against an active binding for `wholesaler_id = token.tenant_id`** — it is
-  not trusted as authority, only as a filter within the already-scoped
-  relationship.
-- Both reuse `list_statement_lines` and add opening/closing computation.
+  permission **`finance:read`** (decision D5-R1; no "or" wording).
+  **`retailer_id` is validated against an active binding for `wholesaler_id =
+  token.tenant_id`** — it is not trusted as authority, only as a filter within
+  the already-scoped relationship.
 - Response: `StatementPrintView`:
-  - `supplier_name`, `retailer_name`, `from`, `to` (UTC + local)
-  - `opening_balance` (`NUMERIC(12,2)`, server-computed)
-  - `lines[]` each: `date`, `order_id`, `description`, `amount`, `method`,
-    `receipt_number`, `direction` (settled-payment)
-  - `settled_total` (sum of confirmed payments in range)
-  - `closing_balance` (`NUMERIC(12,2)`, server-computed)
+  - `supplier_name`, `retailer_name`, `from`, `to` (UTC + EAT display)
+  - `opening_balance` (`Numeric(12,2)`, server-computed from ledger, §8.3.1)
+  - `lines[]` each: `date` (UTC + EAT), `order_id`, `description`,
+    `kind` (`charge` | `collection`), `signed_amount` (`Numeric(20,4)`:
+    positive for charge, negative for collection), `display_amount`
+    (`Numeric(12,2)` absolute), `method` (collections only),
+    `receipt_number` (collections only), `ledger_reference_type`
+  - `charge_total` (sum of positive signed movements in range)
+  - `collection_total` (sum of |negative| signed movements in range)
+  - `net_movement` (`charge_total - collection_total`)
+  - `settled_total` (sum of **completed payments** in range — display/receipt
+    identity only, distinct from `net_movement`)
+  - `closing_balance` (`Numeric(12,2)`, server-computed from ledger, §8.3.2)
+  - `reconciliation` (`{ anchor: binding.outstanding_balance, ledger_current:
+    SUM(RECEIVABLE) scoped, matched: bool }`, §8.3.4)
   - `pending_declarations[]` (separate, clearly-labelled **non-accounting**
     section: `declaration_id`, `declared_amount`, `submitted_at`) — included
     only if requested (`?include_pending=1`), never folded into
-    `opening_balance`/`closing_balance`/`settled_total`.
+    `opening_balance`/`closing_balance`/`net_movement`/`settled_total`.
 
-### 8.3 Opening / closing balance arithmetic (server-authoritative)
-- **Opening balance** = the relationship's authoritative outstanding balance at
-  `from` (exclusive). Computed server-side. The MVP definition (decision D4):
-  `opening_balance = binding.outstanding_balance` adjusted by the signed sum of
-  completed payments in `[from, to]` reversed — i.e. the statement reconstructs
-  the balance trajectory from the authoritative current balance and the
-  in-range settled payments. **The client never computes this.**
-- **Closing balance** = `opening_balance` − (net settled payments in range
-  affecting the relationship balance). The arithmetic runs over
-  server-authoritative `payments.amount` rows only.
-- **Decision D4 binding rule:** pending declarations are **never** included in
-  `opening_balance`, `closing_balance`, or `settled_total`. They appear only in
-  the clearly-separated pending section. This prevents a pending declaration
-  from being mistaken for settled funds.
+### 8.3 Balance arithmetic — receivable-ledger-sourced (binding, R1)
+
+#### 8.3.1 Scope and signed movement source
+- Relationship movements are sourced from **immutable `ledger_entries`** rows
+  where `account_type = 'receivable'`, scoped through `orders` by
+  `(wholesaler_id, retailer_id)` (§8.5). A **charge** (order confirmed) is a
+  receivable row with `amount > 0` (posted by
+  `LedgerService.post_order_confirmation`, `ledger_service.py:243-279`,
+  reference_type `'order'`). A **collection** (payment received) is a
+  receivable row with `amount < 0` (posted by
+  `LedgerService.post_payment_received`, `ledger_service.py:281-317`,
+  reference_type `'order'`; also the credit-collection path in
+  `canonical_payment_service.py:337-348`). Returns post `reference_type
+  'refund'` (`ledger_service.py:319`).
+- Each statement line carries a **signed amount** with a `kind`:
+  `charge` (signed_amount `+T`) or `collection` (signed_amount `-P`). The line
+  set is the receivable ledger rows in range, enriched with order/payment
+  display fields. **Payments are a display/receipt source, not the balance
+  trajectory.**
+
+#### 8.3.2 Exact date boundaries (inclusive/exclusive)
+- `from` is **inclusive** (`transaction_date >= from`).
+- `to` is **inclusive** (`transaction_date <= to`), to a whole-day boundary.
+  The range is therefore `[from, to]` inclusive on both ends.
+- `opening_balance` is the balance **immediately before `from`**, i.e.
+  `SUM(signed amount) WHERE account_type='receivable' AND scoped AND
+  transaction_date < from`.
+- `closing_balance = opening_balance + SUM(signed amount in [from, to])`.
+  Equivalently `closing_balance = SUM(signed amount) WHERE transaction_date
+  <= to` (scoped). The two formulations must agree (test `T-STMT-ARITH-01`).
+- `net_movement = charge_total - collection_total` (the in-range signed sum);
+  `closing_balance` must equal `opening_balance + net_movement`
+  (test `T-STMT-ARITH-02`).
+
+#### 8.3.3 settled_total vs net_movement (do not conflate)
+- `settled_total` is the sum of **completed payments** in range
+  (`payments.status='completed'`) — it is the receipt/display identity and is
+  reported separately. `net_movement` is the signed receivable-ledger sum
+  (charges minus collections). These measure **different things**: a charge
+  increases the receivable (and `net_movement`) but is not a payment; a
+  completed payment is a collection (it appears in both `collection_total` and
+  `settled_total` **only if** its ledger posting falls in range). The
+  statement renders both, clearly labelled, and never substitutes one for the
+  other.
+- **pending declarations** are never included in `opening_balance`,
+  `closing_balance`, `net_movement`, `charge_total`, `collection_total`, or
+  `settled_total`. They appear only in the separate non-accounting section
+  (decision D4).
+
+#### 8.3.4 Reconciliation anchor and fail-closed mismatch (binding)
+- `binding.outstanding_balance` is the **current reconciliation anchor**, not a
+  historical balance. Because it tracks **credit exposure only** (credit sales
+  +, credit collections −; cash/transfer ignored) while the ledger receivable
+  tracks **all confirmed orders net of all collections**, the two **diverge in
+  general** for relationships with partially-paid cash orders, and **no
+  reconciliation exists today** (audited: not found in `ReceivablesService`,
+  no integrity test, no scheduled job).
+- The statement therefore computes, server-side, a **ledger-derived current
+  balance** = `SUM(signed amount) WHERE account_type='receivable' AND scoped`
+  (all dates, not just the range), and compares it to
+  `binding.outstanding_balance`. The comparison is informational for cash-heavy
+  relationships (expected divergence) but **fail-closed for credit-only
+  relationships**: if the relationship has had **only credit movements** (no
+  cash/transfer orders), the ledger current balance and the binding cache
+  **must agree**; any disagreement means a write-path bug.
+- **Fail-closed rule (binding):** the statement **never prints an unbalanced
+  statement**. Concretely:
+  1. Compute `ledger_opening`, `ledger_closing`, and `ledger_current` (all-dates
+     scoped receivable sum).
+  2. Assert `ledger_closing == ledger_opening + net_movement` (internal
+     consistency); else 409 `STATEMENT_INTERNAL_INCONSISTENT`.
+  3. Read `anchor = binding.outstanding_balance`.
+  4. If the relationship is **credit-only** (no cash/transfer ledger
+     collections exist for it) and `ledger_current != anchor` (beyond a 0.01
+     tolerance), the statement **refuses to render**: 409
+     `STATEMENT_RECONCILIATION_FAILED` with no balances printed. This is the
+     cache/ledger mismatch fail-closed (test `T-STMT-MISMATCH-01`).
+  5. For **mixed** relationships (any cash/transfer collection), the divergence
+     is expected and documented on the statement as a labelled note; the
+     statement still prints but shows both `ledger_current` and `anchor` in the
+     `reconciliation` block so the reader is never misled.
+- The MVP does **not** attempt to "fix" the binding cache from the statement
+  path (read-only, §3.1). Reconciliation repair is a separate, future
+  gated concern.
 
 ### 8.4 Required permission
-- Retailer `client:payments:read`; supplier `finance:read` (or `payments:read`).
-  Reuse (D5).
+- Retailer: **`client:finance:read`**. Supplier: **`finance:read`**. Reuse
+  (decision D5-R1). **No "or" wording** — each route has exactly one
+  permission. Declaration/receipt routes remain `client:payments:read` /
+  `payments:read` (§6.3, §7.4).
 
-### 8.5 Ownership predicate
+### 8.5 Ownership predicate / ledger scoping
 - Retailer: `wholesaler_id` (token) + `retailer_id` (binding). Supplier:
   `wholesaler_id` (token) + `retailer_id` (validated against active binding).
   Mismatch → neutral 404 / empty.
+- **Ledger scoping (binding):** because `ledger_entries` has no
+  `wholesaler_id`/`retailer_id`/`order_id` column, relationship scoping is:
+  resolve the set `O = { orders.id | orders.wholesaler_id = :w AND
+  orders.retailer_id = :r AND orders.is_deleted IS FALSE }`, then read
+  `ledger_entries WHERE account_type = 'receivable' AND reference_type IN
+  ('order','refund') AND reference_id IN (O)`. This mirrors the join shape used
+  by `ReceivablesService` (`receivables_service.py:113-129`) and
+  `api/v1/finance.py:103-109`.
 
 ### 8.6 Status terminology
-- Each line uses the settled-payment identity: `receipt_number` + method. No
-  pending/rejected terms in the accounting section.
+- Each line carries `kind` (`charge`/`collection`) and a signed amount.
+  Collections carry `receipt_number` + `method`. No pending/rejected terms in
+  the accounting section.
 
 ### 8.7 Currency / timezone
-- KES, 2 dp. All line dates UTC + local. Date range `from`/`to` interpreted in
-  the tenant timezone (default `Africa/Nairobi`), with the UTC boundary shown
-  for audit.
+- KES, 2 dp (display); ledger arithmetic is `Numeric(20,4)` then rounded to
+  `Numeric(12,2)` for display. All line dates shown as **authoritative UTC +
+  fixed `Africa/Nairobi` (EAT) display** (truth correction D-tz). Date range
+  `from`/`to` are interpreted against the **fixed `Africa/Nairobi`** zone for
+  the day boundary, with the UTC boundary also shown for audit.
 
 ### 8.8 Pagination / range
 - `from`/`to` required (controlled range, max span 365 days for MVP to bound
@@ -672,8 +815,11 @@ separate non-accounting section if shown at all).
   contrast, mobile. Totals row clearly labelled.
 - Filename/title: `Statement {supplier_name} ↔ {retailer_name} {from}-{to}`;
   print filename `statement-{retailer_short}-{from}-{to}.pdf`.
-- Empty/error: empty range → "No settled payments in this range" (still shows
-  opening = closing). Malformed date → 400 `INVALID_DATE_RANGE`.
+- Empty/error: empty range → "No receivable movements in this range" (still
+  shows opening = closing, both ledger-derived). Malformed date → 400
+  `INVALID_DATE_RANGE`. **Fail-closed:** if §8.3.4 reconciliation fails for a
+  credit-only relationship → 409 `STATEMENT_RECONCILIATION_FAILED`, no
+  balances printed.
 - Redaction: no UUIDs in the rendered statement (internal ids redacted to
   short forms); no payment row ids; no `tenant_user_id`.
 - Cross-tenant: relationship scoped to `(wholesaler_id, retailer_id)`; a
@@ -722,7 +868,34 @@ Every event is a JSON document with exactly these fields:
 | `correlation` | `{ correlation_id, idempotency_key }` | `correlation_id` links the four events of one declaration lifecycle; `idempotency_key` = the declaration's idempotency key |
 | `payload` | redacted, type-specific (§9.3) | minimal; no credentials, no JWT, no raw rows, no other-supplier identity |
 | `committed_state_requirement` | `true` (constant) | the event MAY NOT be emitted unless the state change is committed |
-| `replay_dedup` | `{ dedup_key, dedup_strategy }` | `dedup_key` = `(event_type, aggregate_id, occurred_at)`; `dedup_strategy = "drop_duplicates"` |
+| `transition` | `{ transition_ts, transition_version }` | the **persisted** transition timestamp/version; see §9.2.1 for which column feeds each event type |
+| `replay_dedup` | `{ dedup_key, dedup_strategy }` | `dedup_key` = `(tenant_id, event_type, aggregate_type, aggregate_id, transition_ts, transition_version)`; `dedup_strategy = "drop_duplicates"` |
+
+#### 9.2.1 Deterministic transition timestamp per event type (binding, R1)
+The dedup key is **deterministic** — it is built only from **persisted**
+columns (not from emit-time `now()`), so a replay can never generate a fresh
+logical transition timestamp and therefore never a fresh dedup key:
+- **`payment_declaration_submitted`** → `transition_ts =
+  payment_declarations.submitted_at` (NOT NULL, set at create); `transition_version = 1` (single transition into `pending`).
+- **`payment_declaration_confirmed`** → `transition_ts =
+  payment_declarations.confirmed_at` (the persisted timestamp set by
+  `mark_confirmed`, `payment_declaration_repository.py:252`); `transition_version = 1`. On replay, `confirm_declaration`'s replay path
+  (`payment_declaration_service.py:189,323`) performs **zero new writes**, so
+  `confirmed_at` is unchanged → identical dedup key.
+- **`payment_receipt_issued`** → `transition_ts =
+  payment_declarations.confirmed_at` (same persisted column as confirmed; the
+  receipt is allocated in the same committed transaction, so they share the
+  transition anchor); `transition_version = 1`. No receipt event if §7.1 fails.
+- **`payment_declaration_rejected`** → `transition_ts =
+  payment_declarations.rejected_at` (persisted, set by `mark_rejected`,
+  `payment_declaration_repository.py:282`); `transition_version = 1`.
+
+Because each declaration transition is **terminal and write-once** (CHECK
+`status IN ('pending','confirmed','rejected')`, immutability of the
+lifecycle), a given `(aggregate_id, transition_ts)` pair is stable for the life
+of the row. A replay that does not write cannot change `transition_ts`, so the
+dedup key is stable and a replayed transition is **always** deduplicated.
+Required test: `T-EVT-DEDUP-01`.
 
 ### 9.3 Per-type redacted payload
 - **`payment_declaration_submitted`**: `{ declaration_id, order_id,
@@ -745,12 +918,17 @@ Every event is a JSON document with exactly these fields:
    `reject_declaration`), never the pre-commit phase.
 2. **Rollback emits nothing.** If the transaction rolls back (e.g. confirm
    fails the canonical-payment prechecks, or `mark_confirmed` rowcount != 1),
-   **zero events** are emitted. Required test (`EVT-RB-01`).
+   **zero events** are emitted. Required test (`T-EVT-ROLLBACK-01`).
 3. **Replay must not duplicate logical notifications.** Because
    `payment_declarations` confirmation is idempotent (replay returns the same
-   canonical payment), a replayed confirm must **not** emit a second
-   `payment_declaration_confirmed` / `payment_receipt_issued`. Dedup on
-   `(event_type, aggregate_id, occurred_at)`. Required test (`EVT-DUP-01`).
+   canonical payment, **zero new writes**), a replayed confirm must **not**
+   emit a second `payment_declaration_confirmed` / `payment_receipt_issued`.
+   Dedup is **deterministic** on the persisted transition columns
+   (`§9.2.1`): `dedup_key = (tenant_id, event_type, aggregate_type,
+   aggregate_id, transition_ts, transition_version)`. A replay that does not
+   write cannot change the persisted `confirmed_at`/`rejected_at`/`submitted_at`,
+   so it cannot generate a fresh logical transition timestamp and therefore
+   cannot generate a fresh dedup key. Required test (`T-EVT-DEDUP-01`).
 4. **Receipt-issued requires a valid canonical receipt** (§7.1). No receipt
    event for a pending/rejected/missing-receipt state.
 5. **Payload must not expose** another supplier's identity, credentials, JWTs,
@@ -761,7 +939,13 @@ Every event is a JSON document with exactly these fields:
    this design task. A future transactional outbox is explicitly flagged as a
    **separately gated prerequisite** (decision D6) — it is NOT part of I2C-D
    and NOT part of I2C implementation.
-8. **Printing does not emit a financial event.** A print request (Contracts
+8. **I2C implementation remains print-only.** Event **emission** (actually
+   writing/transmitting these events) is **out of scope** for I2C
+   implementation and waits for the separately gated transactional-outbox
+   workstream. I2C delivers only the four **printable records** (Contracts
+   A–D). These event contracts are shape-only so the future outbox layer can be
+   built against a stable, deterministic schema.
+9. **Printing does not emit a financial event.** A print request (Contracts
    A–D) emits nothing (§3.1, §7.6).
 
 ### 9.5 Audit and retention boundary
@@ -771,7 +955,7 @@ Every event is a JSON document with exactly these fields:
   append-only. A future retention policy is a separate governance concern.
 - Cross-tenant event leakage is rejected: a consumer scoped to tenant A must
   never receive an event whose `tenant_id` != A. Required test
-  (`EVT-XTEN-01`).
+  (`T-EVT-XTENANT-01`).
 
 ---
 
@@ -840,13 +1024,18 @@ contracts** for the accepted wholesaler-to-retailer MVP.
 
 ## 13. Verdict
 
-**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING**
+**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING_R1**
 
 - Base proof gate PASS (exact base, I2B ancestor, clean isolated worktree).
 - Source truth audit complete; every cited `file:line` verified.
 - Four printable-document contracts defined with all 13 decision points each.
+- **R1:** Contract D balance trajectory sourced from the immutable receivable
+  ledger (`ledger_entries`), not from `payments`/`binding.outstanding_balance`;
+  fail-closed reconciliation; deterministic dedup; fixed-EAT timezone; exact
+  permissions.
 - Four notification-event contracts defined with versioned envelope, redacted
-  payloads, committed-state/replay/dedup semantics.
+  payloads, committed-state semantics, and **deterministic dedup** on persisted
+  transition columns.
 - Read-only, dual-key, binding-liveness, redaction, and cross-tenant rules
   binding.
 - Capability/test matrix (CSV) maps every finding to status, evidence, proposed
@@ -854,7 +1043,8 @@ contracts** for the accepted wholesaler-to-retailer MVP.
 - Decision register records all binding decisions including the explicit
   non-expansions.
 - No unresolved decision could produce a false receipt, incorrect balance,
-  cross-tenant leak, or pre-commit notification.
+  cross-tenant leak, unstable dedup, unsupported timezone claim, ambiguous
+  permission, or pre-commit notification.
 
 No merge, no protected-branch push, no I2C implementation started. Awaiting CTO
 directive to proceed to I2C implementation against this contract.

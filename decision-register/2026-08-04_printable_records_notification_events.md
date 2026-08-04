@@ -73,7 +73,7 @@ non-receipt notice (D3) and the eligibility predicate (D4).
 **Decision:** A declaration is receipt-eligible **iff all** hold (§7.1):
 `status='confirmed'` AND `confirmation_payment_id IS NOT NULL` AND the joined
 `payments` row exists, `is_deleted IS FALSE`, `status='completed'`, AND
-`receipt_number IS NOT NULL` matching `^RCT-[0-9]{8}-[[0-9]{6}$` AND the binding
+`receipt_number IS NOT NULL` matching `^RCT-[0-9]{8}-[0-9]{6}$` AND the binding
 is active/non-deleted at request time. **Any failure → 404
 `RECEIPT_NOT_AVAILABLE`, render nothing.** No pending/rejected declaration is
 ever receipt-eligible.
@@ -88,37 +88,61 @@ existence.
 
 ---
 
-## D4 — Statement accounting boundary
+## D4 — Statement accounting boundary (R1 — receivable-ledger-sourced)
 
-**Decision:**
-- `opening_balance` and `closing_balance` are **server-computed** from the
-  authoritative current `binding.outstanding_balance` and the in-range settled
-  (`payments.status='completed'`) payments. The client never computes them.
+**Decision (R1 truth correction):**
+- The relationship balance trajectory is sourced from **immutable
+  `ledger_entries`** (`account_type='receivable'`), scoped through `orders` by
+  `(wholesaler_id, retailer_id)`. **Charges** (order confirmed) are receivable
+  rows `amount > 0` (`post_order_confirmation`); **collections** (payment
+  received) are receivable rows `amount < 0` (`post_payment_received`).
+  **`payments` are the display/receipt source, not the balance trajectory.**
+- `opening_balance` = `SUM(signed receivable amount) WHERE transaction_date <
+  from` (scoped) — i.e. the balance **immediately before** `from`. `from` is
+  inclusive, `to` is inclusive; range is `[from, to]`.
+- `closing_balance = opening_balance + SUM(signed receivable movement in
+  [from, to])`. Equivalently `closing_balance = SUM(signed amount) WHERE
+  transaction_date <= to` (scoped). Both formulations must agree.
+- `net_movement = charge_total − collection_total` (in-range signed sum);
+  `closing_balance == opening_balance + net_movement`.
+- `settled_total` = sum of **completed payments** in range — a distinct
+  display/receipt identity, **never** substituted for `net_movement`.
 - **Pending declarations are never included** in `opening_balance`,
-  `closing_balance`, or `settled_total`. They appear only in a clearly-labelled
-  **separate non-accounting section** (`?include_pending=1`), never folded into
-  accounting totals.
-- `closing_balance = opening_balance − (net settled payments in range)`.
+  `closing_balance`, `net_movement`, `charge_total`, `collection_total`, or
+  `settled_total`. They appear only in a clearly-labelled **separate
+  non-accounting section** (`?include_pending=1`).
+- **`binding.outstanding_balance` is the current reconciliation anchor only,
+  not a historical balance.** It tracks credit exposure (credit sales +,
+  credit collections −; cash/transfer ignored) and diverges from the ledger
+  receivable for cash relationships. **Fail-closed:** for credit-only
+  relationships, `ledger_current` must equal `binding.outstanding_balance`;
+  any mismatch → 409 `STATEMENT_RECONCILIATION_FAILED`, **no balances printed.
+  The statement never prints an unbalanced statement.** (§8.3.4.)
 
-**Rationale:** prevents a pending declaration from being mistaken for settled
-funds; keeps the accounting identity over authoritative columns only; matches
-the existing "not recalculated on this device" convention
-(`FinanceBalancePage.tsx:66`).
+**Rationale:** the audit established that `binding.outstanding_balance` and
+`SUM(ledger_entries)` measure different things and no reconciliation exists;
+sourcing the trajectory from the immutable ledger and fail-closing on
+credit-only mismatch prevents printing a wrong balance. Pending declarations
+excluded from totals prevents mistaking them for settled funds.
 
-**Risk closed:** incorrect balance — closed. Tests `T-STMT-OPEN-01`,
-`T-STMT-CLOSE-01`, `T-STMT-ARITH-01`, `T-STMT-PENDING-EXCL-01`.
+**Risk closed:** wrong balance — closed. Tests `T-STMT-OPEN-01`,
+`T-STMT-CLOSE-01`, `T-STMT-ARITH-01`, `T-STMT-ARITH-02`,
+`T-STMT-CHARGE-COLLECT-01`, `T-STMT-POSTRANGE-01`, `T-STMT-MISMATCH-01`,
+`T-STMT-PENDING-EXCL-01`.
 
 ---
 
 ## D5 — Permission reuse vs separate print permission
 
-**Decision:** **Reuse existing read permissions** for print:
+**Decision:** **Reuse existing read permissions** for print, each route with
+**exactly one** permission (no "or" wording — R1 correction):
 - Order print: `client:orders:read` (retailer), `orders:read` (supplier).
 - Declaration print: `client:payments:read` (retailer), `payments:read`
   (supplier).
-- Receipt: `client:payments:read` / `payments:read`.
-- Statement print: `client:payments:read` (retailer), `finance:read` or
-  `payments:read` (supplier).
+- Receipt: `client:payments:read` (retailer), `payments:read` (supplier).
+- **Statement print (R1): `client:finance:read` (retailer), `finance:read`
+  (supplier).** The statement is a finance view, so it uses the finance read
+  permission on both sides — not `payments:read`.
 
 A **separate `*:print` permission is deferred to post-MVP.** No new permission
 is created in I2C-D or I2C implementation.
@@ -127,36 +151,53 @@ is created in I2C-D or I2C implementation.
 doesn't already grant. Adding a permission would require a migration/RBAC
 change (out of scope) and would risk temporarily breaking print for existing
 users. Ownership is already enforced by the dual-key predicate, not by a
-distinct permission.
+distinct permission. **Ambiguous "or" permission wording is removed (R1):** a
+single permission per route removes the risk of a route being granted under an
+unintended weaker permission.
 
 **Risk closed:** none — read permission cannot create a false receipt (the
 eligibility predicate is independent of permission).
 
 ---
 
-## D6 — Event timing, replay semantics, and the outbox prerequisite
+## D6 — Event timing, replay semantics, and the outbox prerequisite (R1 — deterministic dedup)
 
 **Decision:**
 - Events represent **committed state only**; the emitter hooks the
   **post-commit** phase of `submit_declaration` / `confirm_declaration` /
   `reject_declaration`. Rollback emits **nothing**.
-- Replay (idempotent confirm) must **not** duplicate logical notifications; dedup
-  on `(event_type, aggregate_id, occurred_at)`.
+- **Dedup is deterministic (R1 correction).** The dedup key is built **only
+  from persisted columns**, never from emit-time `now()`:
+  `dedup_key = (tenant_id, event_type, aggregate_type, aggregate_id,
+  transition_ts, transition_version)`. The `transition_ts` source per event
+  type is: `submitted` → `payment_declarations.submitted_at`; `confirmed` and
+  `receipt_issued` → `payment_declarations.confirmed_at`; `rejected` →
+  `payment_declarations.rejected_at`. `transition_version = 1` (each transition
+  is terminal and write-once). A replay that performs **zero new writes**
+  cannot change the persisted transition timestamp, so it **can never generate
+  a fresh logical transition timestamp or a fresh dedup key** — replayed
+  transitions are always deduplicated.
 - `payment_receipt_issued` requires a valid canonical receipt (§7.1); no
   receipt → no receipt event, even if a confirmation event was emitted.
 - **A transactional outbox (table + migration + dispatcher) is a separately
   gated future prerequisite.** I2C-D defines the event **shape** only; it does
   **not** add an outbox table, a migration, a queue, a dispatcher, or a
   delivery worker. The post-commit hook itself is also future work.
+- **I2C implementation remains print-only.** Event **emission** is out of scope
+  for I2C implementation and waits for the separately gated transactional-outbox
+  workstream. I2C delivers only the four printable records.
 
 **Rationale:** defining the contract now lets a future delivery layer be built
 against a stable schema, without coupling it to the financial write path. The
-"committed only / rollback silent / replay dedup" rules are the three invariants
-that prevent false or duplicate notifications.
+"committed only / rollback silent / deterministic replay dedup" rules are the
+three invariants that prevent false or duplicate notifications. Building the
+dedup key on persisted (not emit-time) timestamps removes the failure mode
+where a replay mints a new timestamp and a duplicate logical notification
+sneaks through.
 
 **Risk closed:** pre-commit notification — closed by the post-commit rule
-(`T-EVT-ROLLBACK-01`); duplicate notification — closed by dedup
-(`T-EVT-DEDUP-01`).
+(`T-EVT-ROLLBACK-01`); duplicate notification — closed by deterministic dedup
+(`T-EVT-DEDUP-01`); unstable dedup key — closed (R1).
 
 ---
 
@@ -211,6 +252,28 @@ into an unbounded generalization.
 
 ---
 
+## D-tz — Timezone truth (R1 correction)
+
+**Decision (R1):**
+- **No tenant-configurable timezone setting exists in the platform today.** The
+  audit found no tenant timezone column/field. The prior draft's implication
+  that timezone config "is an existing platform concern" is **withdrawn**.
+- The MVP uses **authoritative UTC** (stored/`TIMESTAMPTZ`, displayed verbatim)
+  plus a **single fixed display zone `Africa/Nairobi`**, labelled **"EAT"**,
+  computed server-side. The client never recomputes the offset.
+- **Tenant-configurable timezone is post-MVP.** This contract makes no claim
+  that such configuration already exists.
+- Date-range `from`/`to` day boundaries are interpreted against the fixed
+  `Africa/Nairobi` zone, with the UTC boundary also shown for audit.
+
+**Rationale:** avoids an unsupported claim (a non-existent config) that would
+mislead the I2C implementer into querying a timezone setting that does not
+exist. A fixed display zone is honest and sufficient for the Kenyan MVP.
+
+**Risk closed:** unsupported timezone claim — closed (R1). Test `T-TZ-TRUTH-01`.
+
+---
+
 ## Reconciliation (accounting gap zero)
 
 | CSV finding_id | Decision ref | Report section | Test IDs |
@@ -221,10 +284,16 @@ into an unbounded generalization.
 | F-RCPT-ELIGIBILITY | D3 | §7.1 | T-RCPT-ELIG-01, T-RCPT-PENDING-DENIED-01, T-RCPT-REJECTED-DENIED-01, T-RCPT-MALFORMED-01 |
 | F-RCPT-REPLAY | D3 | §7.3 | T-RCPT-REPLAY-01 |
 | F-RCPT-FAILCLOSED | D3 | §3.7, §7.1 | T-RCPT-FAILCLOSED-01 |
-| F-STMT-OPEN-CLOSE | D4 | §8.3 | T-STMT-OPEN-01, T-STMT-CLOSE-01, T-STMT-ARITH-01 |
-| F-STMT-PENDING-EXCLUDED | D4 | §8.3 | T-STMT-PENDING-EXCL-01 |
+| F-STMT-LEDGER-SOURCE | D4 | §8.1, §8.3.1, §8.5 | T-STMT-LEDGER-01, T-STMT-LEDGER-IMMUTABLE-01 |
+| F-STMT-SIGNED-MOVEMENTS | D4 | §8.2, §8.3.1 | T-STMT-SIGNED-01, T-STMT-CHARGE-COLLECT-01 |
+| F-STMT-BALANCE-CACHE | D4 | §8.1, §8.3.4 | T-STMT-BALANCE-01 |
+| F-STMT-OPEN-CLOSE | D4 | §8.3.2 | T-STMT-OPEN-01, T-STMT-CLOSE-01, T-STMT-ARITH-01, T-STMT-ARITH-02 |
+| F-STMT-POSTRANGE | D4 | §8.3.2 | T-STMT-POSTRANGE-01 |
+| F-STMT-RECON-FAILCLOSED | D4 | §8.3.4 | T-STMT-MISMATCH-01 |
+| F-STMT-PENDING-EXCLUDED | D4 | §8.3.3 | T-STMT-PENDING-EXCL-01 |
+| F-TZ-TRUTH | D-tz | §3.5, §8.7 | T-TZ-TRUTH-01 |
 | F-EVT-COMMITTED | D6 | §9.4 | T-EVT-ROLLBACK-01 |
-| F-EVT-DEDUP | D6 | §9.4 | T-EVT-DEDUP-01 |
+| F-EVT-DEDUP | D6 | §9.2.1, §9.4 | T-EVT-DEDUP-01 |
 | F-EVT-XTENANT | D6 | §9.5 | T-EVT-XTENANT-01 |
 | F-EVT-PROVIDER | D7, D8 | §11 | N/A |
 | F-MVP-PARTY | D9 | §11 | N/A |
@@ -233,16 +302,20 @@ into an unbounded generalization.
 
 Every `finding_id` in the CSV maps to exactly one report section and a
 non-empty set of test IDs (or an explicit `NOT_IN_SCOPE`/`FORBIDDEN` with
-`N/A`). Every decision `D1`–`D9` is referenced by at least one finding. **No
-finding is unaccounted; no test ID is dangling. Accounting gap = 0.**
+`N/A`). Every decision `D1`–`D9`, `D-tz` is referenced by at least one
+finding. **No finding is unaccounted; no test ID is dangling. Accounting gap
+= 0.**
 
 ---
 
 ## Unresolved decisions
 
 **None.** No open item could produce a false receipt, incorrect balance,
-cross-tenant leak, or pre-commit notification. All such risks are closed by
-D3 (receipt eligibility), D4 (statement boundary), the isolation rules (§3 /
-report §10), and D6 (committed-state events).
+cross-tenant leak, unstable dedup, unsupported timezone claim, ambiguous
+permission, or pre-commit notification. All such risks are closed by D3
+(receipt eligibility), D4 (receivable-ledger-sourced statement boundary +
+fail-closed reconciliation), D5 (exact single permission per route), D6
+(deterministic dedup on persisted columns), D-tz (fixed EAT display, no
+tenant-config claim), and the isolation rules (§3 / report §10).
 
-**Verdict:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING.
+**Verdict:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_IMPLEMENTATION_PLANNING_R1.

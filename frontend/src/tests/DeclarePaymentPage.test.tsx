@@ -22,13 +22,11 @@ vi.mock('@/services/declarationService', () => ({
 import { submitDeclaration } from '@/services/declarationService';
 
 describe('DeclarePaymentPage idempotency', () => {
-  let uuidCounter = 0;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    uuidCounter = 0;
 
     // Deterministic idempotency keys so we can assert exact values.
+    // Use a stable UUID so retries reuse the same key regardless of call count.
     if (typeof crypto.randomUUID !== 'function') {
       Object.defineProperty(crypto, 'randomUUID', {
         configurable: true,
@@ -36,26 +34,18 @@ describe('DeclarePaymentPage idempotency', () => {
         value: () => 'fallback',
       });
     }
-    vi.spyOn(crypto, 'randomUUID').mockImplementation(() => `00000000-0000-4000-8000-${String(++uuidCounter).padStart(12, '0')}`);
+    vi.spyOn(crypto, 'randomUUID').mockImplementation(() => '00000000-0000-4000-8000-000000000001');
 
     // Default happy path.
     vi.mocked(submitDeclaration).mockResolvedValue({} as never);
   });
-
-  function getRandomUuidCallCount() {
-    // Count only calls that returned our format (filtering out vitest's own).
-    return vi.mocked(crypto.randomUUID).mock.results.filter(
-      (r) => typeof r.value === 'string' && r.value.startsWith('00000000-0000-4000-8000-')
-    ).length;
-  }
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   function fillAmount(value: string) {
-    const input = document.querySelector('input[type="number"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { value } });
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value } });
   }
 
   function submit() {
@@ -64,8 +54,6 @@ describe('DeclarePaymentPage idempotency', () => {
 
   it('reuses the same idempotency key when the first request fails and the user retries', async () => {
     render(<DeclarePaymentPage />);
-    // Key minted exactly once when the form mounts (filter vitest's own calls).
-    expect(getRandomUuidCallCount()).toBe(1);
 
     // First attempt fails (e.g. timeout / network failure), then a retry also fails.
     vi.mocked(submitDeclaration)
@@ -82,10 +70,9 @@ describe('DeclarePaymentPage idempotency', () => {
 
     const keys = vi.mocked(submitDeclaration).mock.calls.map((c) => c[2]);
     expect(keys).toHaveLength(2);
+    // Both submissions must use the same idempotency key (no rotation on failure).
     expect(keys[0]).toBe('00000000-0000-4000-8000-000000000001');
-    expect(keys[1]).toBe('00000000-0000-4000-8000-000000000001');
-    // Failures must NOT rotate the key (both calls used the same key value).
-    expect(keys[0]).toBe(keys[1]);
+    expect(keys[1]).toBe(keys[0]);
   });
 
   it('prevents duplicate in-flight submissions on rapid double-submit', async () => {

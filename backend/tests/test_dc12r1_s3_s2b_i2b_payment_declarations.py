@@ -57,26 +57,33 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def _flush_rate_limiter(provisioned_pool):
-    """Per-test Redis rate-limiter isolation via **owned-key** deletion.
+async def test_client_ip():
+    """Unique per-test client IP for rate-limiter isolation.
 
-    The login-driven authentic harness issues many HTTP requests per test.
-    The global rate limiter (100 req / 60 s) keys on:
-      - ``rate_limit:tenant:{tenant_id}:{user_id}:{window}`` (authenticated)
-      - ``rate_limit:ip:{client_ip}:{window}`` (anonymous)
+    Each test gets a deterministic-but-unique IP in the 10.x.y.z range.
+    The ``i2b_client`` fixture sends this as ``X-Forwarded-For`` so the
+    rate limiter keys on it.  After the test, ``_cleanup_rate_limiter``
+    deletes only the exact keys derived from this IP + the cashier's
+    tenant/user identity.
+    """
+    import uuid as _uuid
+    _hex = _uuid.uuid4().int
+    ip = f"10.{(_hex >> 16) & 0xFF}.{(_hex >> 8) & 0xFF}.{_hex & 0xFF}"
+    yield ip
 
-    where ``window = int(time.time()) // 60``.
 
-    Rather than a wildcard ``SCAN rate_limit:* → DELETE`` (which modifies
-    shared state and can hide real rate-limiter behavior), this fixture
-    deletes **only the exact keys owned by this test process**: the
-    test-client IP keys (127.0.0.1 — the loopback address the TestClient
-    uses) and per-tenant keys for each provisioned tenant.
+@pytest_asyncio.fixture(autouse=True)
+async def _cleanup_rate_limiter(test_client_ip, cashier_identity):
+    """Per-test Redis rate-limiter cleanup via **exact owned-key** deletion.
 
-    Key contract (from ``core/rate_limiter.py:_get_rate_limit_key`` +
-    ``rate_limiter.py:check_rate_limit``):
-      key = f"rate_limit:{scope}:{id}"
-      redis_key = f"{key}:{current_window}"
+    No wildcard scans (no ``rate_limit:*``, no ``rate_limit:tenant:{id}:*``).
+    We derive the EXACT keys this test could have created:
+
+    1. Anonymous IP key: ``rate_limit:ip:{test_client_ip}:{window}``
+    2. Authenticated key: ``rate_limit:tenant:{ws_id}:{uid}:{window}``
+
+    for both current and previous 60-second windows.  Cleanup runs AFTER
+    the test (post-yield) in try/finally with absence assertions.
     """
     import time
     from core.config import get_settings
@@ -84,44 +91,30 @@ async def _flush_rate_limiter(provisioned_pool):
     from redis.asyncio import Redis as _AsyncRedis
 
     _settings = get_settings()
+    # Pre-yield: nothing to clean (test hasn't run yet).
+    yield
+
+    # Post-yield: derive and delete exact owned keys.
+    ws_id = cashier_identity["ws_id"]
+    uid = str(cashier_identity["user_id"])
+    now = int(time.time())
+    windows = [now // WINDOW_SIZE, (now - WINDOW_SIZE) // WINDOW_SIZE]
+
+    owned_keys: list[str] = []
+    for w in windows:
+        owned_keys.append(f"rate_limit:ip:{test_client_ip}:{w}")
+        owned_keys.append(f"rate_limit:tenant:{ws_id}:{uid}:{w}")
+
     _r = _AsyncRedis.from_url(_settings.REDIS_URL, decode_responses=False)
-    deleted_keys: list[str] = []
     try:
-        # Compute the current and previous time windows (the test may
-        # straddle a window boundary).
-        now = int(time.time())
-        windows = [now // WINDOW_SIZE, (now - WINDOW_SIZE) // WINDOW_SIZE]
-
-        # 1. Test-client IP keys (127.0.0.1 is the loopback the TestClient
-        #    uses — owned by this test process, not shared state).
-        for w in windows:
-            ip_key = f"rate_limit:ip:127.0.0.1:{w}"
-            await _r.delete(ip_key)
-            deleted_keys.append(ip_key)
-
-        # 2. Per-tenant authenticated keys for each provisioned tenant.
-        #    We don't know the user_id ahead of time (function-scoped
-        #    cashier), so we use a narrow per-tenant prefix scan that is
-        #    strictly scoped to ``rate_limit:tenant:{ws_id}:*`` — NOT a
-        #    global ``rate_limit:*`` scan.
-        for _tkey in ("a", "b", "c"):
-            tenant = provisioned_pool.tenants.get(_tkey)
-            if tenant is None:
-                continue
-            ws_id = tenant["ws_id"]
-            tenant_prefix = f"rate_limit:tenant:{ws_id}:"
-            async for _k in _r.scan_iter(match=f"{tenant_prefix}*"):
-                _k_str = _k.decode() if isinstance(_k, bytes) else _k
-                await _r.delete(_k)
-                deleted_keys.append(_k_str)
-
-        # 3. Assert every owned key is now absent.
-        for _k in deleted_keys:
+        for _k in owned_keys:
+            await _r.delete(_k)
+        # Assert each owned key is absent after cleanup.
+        for _k in owned_keys:
             remaining = await _r.exists(_k)
             assert remaining == 0, f"rate-limiter key not cleaned: {_k}"
     finally:
         await _r.aclose()
-    yield
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -146,7 +139,7 @@ async def _h5_flush_stmt_cache(provisioned_pool):
 
 
 @pytest_asyncio.fixture
-async def i2b_client():
+async def i2b_client(test_client_ip):
     fresh_app = FastAPI()
     with mock.patch("auth.factory.get_auth_strategy", return_value=JwtAuthStrategy()):
         configure_app(fresh_app, get_settings())
@@ -154,7 +147,10 @@ async def i2b_client():
     async with AsyncClient(
         transport=ASGITransport(app=fresh_app),
         base_url="http://testserver",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-Forwarded-For": test_client_ip,
+        },
     ) as ac:
         yield ac
 

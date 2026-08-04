@@ -2,45 +2,22 @@
 
 Root Cause
 ==========
-asyncpg maintains a per-connection prepared-statement cache (default 100
-entries).  When DDL alters a table's structure, PostgreSQL invalidates the
-cached plan for any prepared statement referencing that table.
-
-In a test session where I2A runs before I2B, the following happens:
-
-1. I2A tests create/alter tenant-schema tables (via reconcile/bootstrap DDL).
-2. The asyncpg connections used by I2A now have cached statements referencing
-   the *pre-DDL* table structure.
-3. ``provisioned_pool`` (module-scoped, shared with I2B) runs additional
-   bootstrap DDL for its 3 tenants, further invalidating statements.
-4. When I2B's function-scoped tests acquire a pooled connection, that
-   connection may still carry stale prepared statements from step 1.
-5. The first query to an affected table raises
-   ``InvalidCachedStatementError``.
+asyncpg maintains a per-connection prepared-statement cache.  When DDL alters
+a table's structure, PostgreSQL invalidates the cached plan.  In a test
+session where I2A runs before I2B, pooled connections carry stale plans that
+raise ``InvalidCachedStatementError`` on the next query to an affected table.
 
 Repair
 ======
-Dispose the engine pool after module-scoped DDL completes but before
-function-scoped tests begin.  The ``_h5_flush_stmt_cache`` autouse fixture in
-``test_dc12r1_s3_s2b_i2b_payment_declarations.py`` implements this by calling
-``async_engine.dispose()`` on the **actual global engine** from
-``database/session.py``.
+``_h5_flush_stmt_cache`` (in ``test_dc12r1_s3_s2b_i2b_payment_declarations.py``)
+calls ``async_engine.dispose()`` on the **actual global engine** after
+module-scoped provisioning DDL completes.
 
 Causal Proof
 ============
-These tests use the **actual global engine boundary** (``database.session.
-async_engine`` / ``AsyncSessionLocal``) — not a private engine.  They prove:
-
-- **RED**: Without ``engine.dispose()`` after DDL, re-executing the same SQL
-  on a pooled connection that cached the pre-DDL plan raises a real
-  ``InvalidCachedStatementError`` (or its SQLAlchemy-wrapped form).
-
-- **GREEN**: With ``engine.dispose()``, the stale pool is drained and the
-  same query succeeds on a fresh connection.
-
-All evidence (event-loop identity, backend PID, connection identity,
-``pg_stat_activity`` counts, ``__cause__``/``__context__`` chain) is captured
-from real PG16 — no mocks.
+These tests prove RED (without dispose → error) and GREEN (with dispose →
+success) using the actual global engine boundary.  No mocks, no conditional
+pass, no silent-re-prepare escape.
 """
 from __future__ import annotations
 
@@ -54,12 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 pytestmark = pytest.mark.asyncio
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _async_db_url() -> str:
-    """Return a DATABASE_URL compatible with asyncpg, or raise."""
     url = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL", "")
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
@@ -67,136 +39,143 @@ def _async_db_url() -> str:
         pass
     else:
         raise RuntimeError(
-            "TEST_DATABASE_URL or DATABASE_URL must be set for the H5 "
-            "prepared-statement-cache isolation regression."
+            "TEST_DATABASE_URL or DATABASE_URL must be set for H5 regression."
         )
     return url
 
 
 def _unique_app_name() -> str:
-    """Generate a unique application_name for pg_stat_activity tracking."""
     return f"h5_causal_{uuid.uuid4().hex[:12]}"
 
 
 # ---------------------------------------------------------------------------
-# Test 1: RED — stale prepared statement after DDL WITHOUT dispose
+# Test 1: RED — DDL invalidates cached plan WITHOUT dispose
 # ---------------------------------------------------------------------------
 
-async def test_red_ddl_without_dispose_raises_stale_plan():
-    """CAUSAL RED: Execute SQL → cache plan → DDL → re-execute WITHOUT dispose.
+async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
+    """CAUSAL RED: cache a plan on engine-A → DDL on engine-B → re-execute on
+    engine-A WITHOUT dispose → MUST raise InvalidCachedStatementError.
 
-    Without pool disposal the cached prepared statement references the
-    pre-DDL table structure.  PostgreSQL detects the plan invalidation and
-    asyncpg raises ``InvalidCachedStatementError`` (or the SQLAlchemy-wrapped
-    ``asyncpg.exceptions.DuplicatePreparedStatementError`` /
-    ``InterfaceError``).
+    This reproduces the real I2A→provisioning→I2B scenario: the DDL happens
+    on a DIFFERENT connection (the provisioning/bootstrap path) than the one
+    that cached the SELECT plan (the I2A test connection).
 
-    This test proves the bug exists on the real engine boundary.
+    The trigger is a column type change (int → text) which changes the result
+    column's OID.  asyncpg caches the plan with the original OID; when PG
+    changes it, asyncpg detects the mismatch and raises
+    ``InvalidCachedStatementError``.
     """
     url = _async_db_url()
-    app_name = _unique_app_name()
     schema = f"h5_red_{uuid.uuid4().hex[:8]}"
-    table = "t_red"
+    select_sql = f'SELECT val FROM "{schema}".t_red WHERE id = 1'
 
-    # Use a dedicated engine so we control the pool precisely.
-    engine = create_async_engine(
+    # Engine A: the "I2A" engine that caches the plan.
+    engine_a = create_async_engine(
         url,
         pool_size=1,
         max_overflow=0,
         connect_args={
-            "server_settings": {"application_name": app_name, "jit": "off"},
+            "statement_cache_size": 100,
+            "server_settings": {"application_name": _unique_app_name(), "jit": "off"},
+        },
+    )
+    # Engine B: the "provisioning/bootstrap" engine that performs DDL.
+    engine_b = create_async_engine(
+        url,
+        pool_size=1,
+        max_overflow=0,
+        connect_args={
+            "server_settings": {"application_name": _unique_app_name(), "jit": "off"},
         },
     )
 
     try:
-        # Phase 1: create table + INSERT + cache a SELECT plan.
-        async with AsyncSession(engine) as session:
+        # Phase 1 (engine A): create table (val is int), insert, cache plan.
+        async with AsyncSession(engine_a) as session:
             await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
             await session.execute(
-                text(f'CREATE TABLE "{schema}".{table} (id int, label text)')
+                text(f'CREATE TABLE "{schema}".t_red (id int, val int)')
             )
             await session.execute(
-                text(f'INSERT INTO "{schema}".{table} VALUES (1, :lbl)'),
-                {"lbl": "before"},
+                text(f'INSERT INTO "{schema}".t_red VALUES (1, :v)'),
+                {"v": 42},
             )
             await session.commit()
 
-        # Cache the SELECT plan on the pooled connection.
-        async with AsyncSession(engine) as session:
-            result = await session.execute(
-                text(f'SELECT label FROM "{schema}".{table} WHERE id = 1')
-            )
-            assert result.scalar() == "before"
+        # Cache the SELECT plan on engine A's pooled connection.
+        async with AsyncSession(engine_a) as session:
+            result = await session.execute(text(select_sql))
+            assert result.scalar() == 42
             await session.commit()
-            # Connection returned to pool with cached plan.
 
-        # Phase 2: DDL that changes the table structure.
-        async with AsyncSession(engine) as session:
+        # Phase 2 (engine B): ALTER COLUMN TYPE (int → text) — changes OID.
+        async with AsyncSession(engine_b) as session:
             await session.execute(
-                text(f'ALTER TABLE "{schema}".{table} ADD COLUMN extra int DEFAULT 0')
+                text(
+                    f'ALTER TABLE "{schema}".t_red '
+                    f'ALTER COLUMN val TYPE text USING val::text'
+                )
+            )
+            await session.execute(
+                text(f'UPDATE "{schema}".t_red SET val = :v WHERE id = 1'),
+                {"v": "changed"},
             )
             await session.commit()
 
-        # Phase 3: re-execute the SAME cached SQL WITHOUT dispose.
-        # asyncpg should detect the plan invalidation.
+        # Phase 3 (engine A): re-execute the SAME cached SQL WITHOUT dispose.
         stale_error: Exception | None = None
         try:
-            async with AsyncSession(engine) as session:
-                # This is the exact same SQL that was cached in Phase 1.
-                result = await session.execute(
-                    text(f'SELECT label FROM "{schema}".{table} WHERE id = 1')
-                )
-                # If we get here, asyncpg recovered (re-prepared).
+            async with AsyncSession(engine_a) as session:
+                result = await session.execute(text(select_sql))
                 _ = result.scalar()
                 await session.commit()
         except Exception as exc:
             stale_error = exc
 
-        # Record the __cause__ / __context__ chain for evidence.
+        # Record the __cause__ / __context__ chain.
         chain: list[str] = []
         cur: BaseException | None = stale_error
         seen: set[int] = set()
         while cur is not None and id(cur) not in seen:
             seen.add(id(cur))
-            chain.append(f"{type(cur).__module__}.{type(cur).__name__}: {cur}")
+            chain.append(f"{type(cur).__module__}.{type(cur).__name__}")
             cur = cur.__cause__ or cur.__context__
 
-        # The DDL invalidation may or may not surface as an error depending on
-        # asyncpg's statement_cache_size and PG's plan invalidation behavior.
-        # We assert that EITHER we got a stale-plan error OR asyncpg silently
-        # re-prepared (which is also valid — the key proof is in test_green
-        # that dispose ALWAYS works).
-        # For a genuine RED, we document what happened.
-        if stale_error is not None:
-            # RED confirmed: stale plan error raised.
-            assert len(chain) >= 1, "error chain empty"
-        # If no error, asyncpg re-prepared silently — still valid evidence.
+        # HARD ASSERTIONS — no conditional pass, no "silent re-prepare is OK".
+        assert stale_error is not None, (
+            "Expected InvalidCachedStatementError but query succeeded — "
+            "the cached plan was NOT invalidated."
+        )
+        chain_str = " -> ".join(chain)
+        assert any(
+            "InvalidCachedStatement" in c or "CachedStatement" in c
+            for c in chain
+        ), f"Expected InvalidCachedStatementError in chain, got: {chain_str}"
     finally:
-        # Cleanup.
         try:
-            async with AsyncSession(engine) as session:
+            async with AsyncSession(engine_b) as session:
                 await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
                 await session.commit()
         except Exception:
             pass
-        await engine.dispose()
+        await engine_a.dispose()
+        await engine_b.dispose()
 
 
 # ---------------------------------------------------------------------------
-# Test 2: GREEN — dispose clears stale plans (actual global engine)
+# Test 2: GREEN — dispose clears stale plans via the actual global engine
 # ---------------------------------------------------------------------------
 
 async def test_green_dispose_via_global_engine_clears_stale_plans():
     """CAUSAL GREEN: Use the ACTUAL global engine from database.session.
 
-    This is the real boundary used by I2A and I2B.  After DDL that would
-    invalidate cached plans, ``async_engine.dispose()`` drains the pool so
-    the next session gets a fresh connection with an empty statement cache.
+    After DDL that would invalidate cached plans, ``async_engine.dispose()``
+    drains the pool so the next session gets a fresh connection with an empty
+    statement cache.  The same query that would have raised RED now succeeds.
     """
     from database.session import async_engine, AsyncSessionLocal
 
     schema = f"h5_green_{uuid.uuid4().hex[:8]}"
-    app_name = _unique_app_name()
 
     # Phase 1: create table + cache a SELECT on the GLOBAL engine.
     async with AsyncSessionLocal() as session:
@@ -254,16 +233,16 @@ async def test_green_dispose_via_global_engine_clears_stale_plans():
 
 
 # ---------------------------------------------------------------------------
-# Test 3: dispose changes backend PID (connection identity)
+# Test 3: dispose changes backend PID (connection identity proof)
 # ---------------------------------------------------------------------------
 
 async def test_dispose_changes_backend_pid():
     """After ``engine.dispose()``, the backend PID changes — proving the old
-    connection was closed and a new one was established."""
+    pooled connection was closed and a new one was established."""
     from database.session import AsyncSessionLocal, async_engine
 
-    pid_before: int = 0
-    pid_after: int = 0
+    pid_before = 0
+    pid_after = 0
 
     async with AsyncSessionLocal() as session:
         session.info["tenant_schema"] = "public"
@@ -287,23 +266,21 @@ async def test_dispose_changes_backend_pid():
 
 
 # ---------------------------------------------------------------------------
-# Test 4: event-loop identity preserved + pg_stat_activity exact assertion
+# Test 4: event-loop identity + pg_stat_activity exact assertions
 # ---------------------------------------------------------------------------
 
 async def test_event_loop_and_pg_stat_activity_after_dispose():
-    """After dispose: (a) the same event loop is still running, (b) the old
-    PID is gone from pg_stat_activity (exact count assertion), (c) SELECT 1
-    succeeds on the fresh connection."""
+    """After dispose: (a) same event loop, (b) old PID gone from
+    pg_stat_activity (exact assertion), (c) SELECT 1 succeeds."""
     import asyncio
 
     from database.session import AsyncSessionLocal, async_engine
 
     app_name = _unique_app_name()
     loop_before = asyncio.get_running_loop()
-    old_pid: int = 0
-    count_before: int = 0
+    old_pid = 0
+    count_before = 0
 
-    # Set a unique application_name and capture the PID.
     async with AsyncSessionLocal() as session:
         session.info["tenant_schema"] = "public"
         await session.execute(text(f"SET application_name TO '{app_name}'"))
@@ -312,7 +289,7 @@ async def test_event_loop_and_pg_stat_activity_after_dispose():
         ).scalar()
         await session.commit()
 
-    # Verify the connection is visible in pg_stat_activity (count_before).
+    # Verify the connection is visible BEFORE dispose.
     async with AsyncSessionLocal() as session:
         session.info["tenant_schema"] = "public"
         count_before = (
@@ -323,10 +300,9 @@ async def test_event_loop_and_pg_stat_activity_after_dispose():
         ).scalar()
         await session.commit()
 
-    # count_before MUST be asserted (not ignored).
     assert count_before >= 1, (
-        f"expected the pooled connection to be visible in pg_stat_activity "
-        f"before dispose, got count_before={count_before} for pid={old_pid}"
+        f"expected pooled connection visible before dispose, "
+        f"got count_before={count_before} for pid={old_pid}"
     )
 
     # Dispose.
@@ -341,7 +317,6 @@ async def test_event_loop_and_pg_stat_activity_after_dispose():
                 {"pid": old_pid},
             )
         ).scalar()
-        # SELECT 1 must succeed on the fresh connection.
         one = (await session.execute(text("SELECT 1"))).scalar()
         await session.commit()
 
@@ -351,8 +326,5 @@ async def test_event_loop_and_pg_stat_activity_after_dispose():
     )
     assert one == 1
 
-    # Event loop must be the same.
     loop_after = asyncio.get_running_loop()
-    assert loop_before is loop_after, (
-        "event loop changed across dispose — this would break async fixtures"
-    )
+    assert loop_before is loop_after, "event loop changed across dispose"

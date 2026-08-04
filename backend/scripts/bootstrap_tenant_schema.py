@@ -1287,15 +1287,6 @@ async def _reconcile_rbac_s1(db, ts: str) -> None:
         "description": "Retailer self-service operator (MVP)",
     })
 
-    # S2B-I1: ensure admin role exists BEFORE granting permissions.
-    await db.execute(text(
-        f"INSERT INTO {roles_t} (name, description) "
-        "VALUES (:name, :description) ON CONFLICT (name) DO NOTHING"
-    ), {
-        "name": ADMIN_ROLE,
-        "description": "Tenant administrator with full access",
-    })
-
     async def _grant(role_name: str, codes: tuple[str, ...]) -> None:
         role_exists = await db.execute(
             text(f"SELECT 1 FROM {roles_t} WHERE name = :name"), {"name": role_name}

@@ -59,8 +59,8 @@ export default function DeclarePaymentPage() {
       <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6 space-y-4">
         {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded">{error}</div>}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Amount (KES)</label>
-          <input type="number" step="0.01" min="0.01" required value={amount} onChange={e => setAmount(e.target.value)}
+          <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">Amount (KES)</label>
+          <input id="amount" type="number" step="0.01" min="0.01" required value={amount} onChange={e => setAmount(e.target.value)}
             className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
         </div>
         <div>

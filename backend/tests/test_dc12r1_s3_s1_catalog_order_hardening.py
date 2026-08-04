@@ -567,7 +567,7 @@ class TestGap07GovernanceFreeze:
         mutation_methods = {"POST", "PUT", "PATCH", "DELETE"}
         unexpected = {
             (m, p) for m, p in perms
-            if m & mutation_methods and p not in ("client:orders:create",)
+            if m & mutation_methods and p not in ("client:orders:create", "client:payments:declare")
         }
         assert not unexpected, f"unexpected client mutation: {unexpected}"
 
@@ -648,6 +648,11 @@ class TestClientRouteAllowlist:
             ("GET", "/api/v1/client/finance/balance"): "client:finance:read",
             ("GET", "/api/v1/client/products"): "client:catalog:read",
             ("GET", "/api/v1/client/products/{product_id}"): "client:catalog:read",
+            # DC-12R1-S3-S2B-I2B: declaration submission + retailer views + statement.
+            ("POST", "/api/v1/client/orders/{order_id}/declare"): "client:payments:declare",
+            ("GET", "/api/v1/client/declarations"): "client:payments:read",
+            ("GET", "/api/v1/client/declarations/{declaration_id}"): "client:payments:read",
+            ("GET", "/api/v1/client/statements"): "client:payments:read",
         }
 
         actual: dict[tuple[str, str], str | None] = {}

@@ -23,6 +23,63 @@ Long chat histories are useful, but they are not a reliable operating substrate 
 - Sustainable user growth, ongoing system usage, and real market utility are strategic goals because they create the conditions for long-term product relevance
 - The African internet growth window is a strategic timing factor, so delivery speed matters, but not at the expense of tenant safety, correctness, or architectural discipline
 
+## Post-MVP Direction: Recursive Private Commerce Relationship Kernel
+
+**Status:** Strategic direction only. This is not part of the current MVP scope
+and does not authorize a schema, role, API, or product expansion.
+
+- The durable pattern beneath the current wholesaler-to-retailer product is a
+  tenant-owned private commerce relationship: one party operates the channel,
+  another party participates as its customer, and catalog, negotiated price,
+  order, payment, receivable, document, permission, and audit data remain
+  scoped to that relationship.
+- The same commercial pattern may later be reused upstream, where a supplier
+  operates a tenant channel and a wholesaler participates as its customer.
+- It may also later be adapted downstream, where a retailer operates a tenant
+  channel and an end customer participates as its customer. Consumer workflows
+  require a separate adapter because public discovery, payment gateways,
+  returns, promotions, consent, privacy, and consumer-protection rules are not
+  equivalent to the current invited B2B relationship.
+- Wholesaler, retailer, supplier, and end customer must not become permanent
+  global identity roles. A legal person or organization may be a buyer in one
+  relationship and a seller/tenant in another; authority is contextual to the
+  selected tenant and commercial relationship.
+- "One core" means one platform control plane, one shared set of audited
+  relationship contracts, and reusable operational services. It does not mean
+  an unrestricted shared database or a shared financial book. Public identity
+  and registration data may be authoritative across the platform, while
+  private catalog, price, order, payment, receivable, and ledger data remain
+  tenant- and relationship-isolated.
+- A transaction seen by two businesses must remain two accounting views: for
+  example, the supplier's receivable and the wholesaler's payable must not be
+  collapsed into one mutable ledger row. Any later cross-business
+  synchronization requires explicit, replayable, auditable event contracts.
+- The potential strategic moat is the verified relationship kernel itself:
+  tenant isolation, contextual identity, private pricing, canonical financial
+  mutation, idempotency, audit, rollback, and controlled documents. Generic ERP
+  or low-code components may still be integrated, but they must not become the
+  authority for these boundaries.
+- If the current MVP earns real usage, the preferred expansion order is to
+  evaluate supplier-to-wholesaler B2B reuse first, because it is closest to the
+  proven operating model, and evaluate retailer-to-consumer adaptation only
+  through a separately approved B2C contract.
+
+### Current MVP Non-Expansion Guardrail
+
+- Finish the accepted wholesaler-to-retailer loop, printable records, workspace
+  closure, real-browser journey, deployment, DB operations, branding, and
+  manuals before beginning an upstream or downstream expansion.
+- Do not refactor current wholesaler/retailer tables or routes into a generalized
+  party graph merely to anticipate future reuse.
+- Do not add supplier-portal or consumer-portal runtime, shared cross-tenant
+  catalogs, cross-supplier price comparison, shared financial books, or
+  cross-layer automatic settlement during the MVP.
+- I2C may define relationship-scoped print and future notification-event
+  contracts, but it must not silently turn those contracts into a generalized
+  ecosystem platform.
+- Promote this direction into a formal architecture decision only after pilot
+  evidence justifies a bounded post-MVP design gate.
+
 ## Product Boundary
 
 - Mpango is not currently an open marketplace product

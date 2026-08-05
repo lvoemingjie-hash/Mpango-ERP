@@ -658,45 +658,55 @@ async def _soft_delete_payment(db: AsyncSession, schema: str, pay_id):
 
 
 # ---------------------------------------------------------------------------
-# R3: Cleanup + binding-restore helpers
+# R3/R4: Cleanup + binding-restore helpers (fail-closed)
 # ---------------------------------------------------------------------------
 
 
 async def _cleanup_seeded_rows(db: AsyncSession, schema: str, ids: dict):
-    """Delete test-seeded rows in FK-safe order.
+    """Delete test-seeded rows in FK-safe order on a FRESH session.
 
     ``ids`` is a dict with optional keys: declaration_ids, payment_ids,
-    order_item_ids, order_ids. Each value is a list of UUIDs. This ensures
-    no cross-test pollution from unregistered seeded rows.
+    order_item_ids, order_ids. Each value is a list of UUIDs (or None).
 
-    R3: rolls back any aborted transaction before cleanup so the session is
-    usable even if the test body triggered a SQL error.
+    R4: fail-closed — rollback errors propagate; None IDs are skipped; the
+    cleanup uses a fresh session so a broken test session does not block
+    cleanup.
     """
-    try:
-        await db.rollback()
-    except Exception:
-        pass
-    for did in ids.get("declaration_ids", []):
-        await db.execute(
-            text(f'DELETE FROM "{schema}".payment_declarations WHERE id = :id'),
-            {"id": did},
-        )
-    for pid in ids.get("payment_ids", []):
-        await db.execute(
-            text(f'DELETE FROM "{schema}".payments WHERE id = :id'),
-            {"id": pid},
-        )
-    for oi in ids.get("order_item_ids", []):
-        await db.execute(
-            text(f'DELETE FROM "{schema}".order_items WHERE id = :id'),
-            {"id": oi},
-        )
-    for oid in ids.get("order_ids", []):
-        await db.execute(
-            text(f'DELETE FROM "{schema}".orders WHERE id = :id'),
-            {"id": oid},
-        )
-    await db.commit()
+    from database.session import AsyncSessionLocal
+
+    # Rollback the (possibly aborted) test session so it does not block.
+    await db.rollback()
+
+    async with AsyncSessionLocal() as clean_db:
+        for did in ids.get("declaration_ids") or []:
+            if did is None:
+                continue
+            await clean_db.execute(
+                text(f'DELETE FROM "{schema}".payment_declarations WHERE id = :id'),
+                {"id": did},
+            )
+        for pid in ids.get("payment_ids") or []:
+            if pid is None:
+                continue
+            await clean_db.execute(
+                text(f'DELETE FROM "{schema}".payments WHERE id = :id'),
+                {"id": pid},
+            )
+        for oi in ids.get("order_item_ids") or []:
+            if oi is None:
+                continue
+            await clean_db.execute(
+                text(f'DELETE FROM "{schema}".order_items WHERE id = :id'),
+                {"id": oi},
+            )
+        for oid in ids.get("order_ids") or []:
+            if oid is None:
+                continue
+            await clean_db.execute(
+                text(f'DELETE FROM "{schema}".orders WHERE id = :id'),
+                {"id": oid},
+            )
+        await clean_db.commit()
 
 
 async def _snapshot_binding(db: AsyncSession, ws_id: str, ret_id: str) -> dict:
@@ -715,19 +725,56 @@ async def _snapshot_binding(db: AsyncSession, ws_id: str, ret_id: str) -> dict:
 
 
 async def _restore_binding(db: AsyncSession, snapshot: dict):
-    """Restore binding to its pre-test state (status + is_deleted)."""
-    await db.execute(
-        text(
-            "UPDATE public.wholesaler_retailer_bindings "
-            "SET status = :status, is_deleted = :is_deleted WHERE id = :id"
-        ),
-        {
-            "status": snapshot["status"],
-            "is_deleted": snapshot["is_deleted"],
-            "id": snapshot["id"],
-        },
-    )
-    await db.commit()
+    """Restore binding to its pre-test state (status + is_deleted).
+
+    R4: fail-closed — asserts UPDATE rowcount == 1, then re-reads on a fresh
+    session and asserts exact match with the snapshot. A zero-row update
+    (missing binding) or a mismatch is a hard failure.
+    """
+    from database.session import AsyncSessionLocal
+
+    await db.rollback()
+
+    async with AsyncSessionLocal() as restore_db:
+        result = await restore_db.execute(
+            text(
+                "UPDATE public.wholesaler_retailer_bindings "
+                "SET status = :status, is_deleted = :is_deleted WHERE id = :id"
+            ),
+            {
+                "status": snapshot["status"],
+                "is_deleted": snapshot["is_deleted"],
+                "id": snapshot["id"],
+            },
+        )
+        assert result.rowcount == 1, (
+            f"binding restore updated {result.rowcount} rows, expected 1 "
+            f"(binding_id={snapshot['id']})"
+        )
+        await restore_db.commit()
+
+    # Re-read on a fresh session and verify exact match.
+    async with AsyncSessionLocal() as verify_db:
+        row = (
+            await verify_db.execute(
+                text(
+                    "SELECT status, is_deleted FROM public.wholesaler_retailer_bindings "
+                    "WHERE id = :id"
+                ),
+                {"id": snapshot["id"]},
+            )
+        ).first()
+        assert row is not None, (
+            f"binding not found after restore (binding_id={snapshot['id']})"
+        )
+        assert row.status == snapshot["status"], (
+            f"binding status mismatch after restore: got {row.status!r}, "
+            f"expected {snapshot['status']!r}"
+        )
+        assert row.is_deleted == snapshot["is_deleted"], (
+            f"binding is_deleted mismatch after restore: got {row.is_deleted}, "
+            f"expected {snapshot['is_deleted']}"
+        )
 
 
 async def _tenant_table_fingerprint(db: AsyncSession, schema: str) -> dict:
@@ -1041,6 +1088,8 @@ class TestSameSchemaPredicateProof:
         fp_before = await _tenant_table_fingerprint(db, sch_a)
         wrong_ws = uuid.uuid4()
         oid_bad = uuid.uuid4()
+        pay_id = None
+        did = None
         try:
             await db.execute(
                 text(
@@ -1081,6 +1130,7 @@ class TestSameSchemaPredicateProof:
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
         wrong_ret = uuid.uuid4()
         pay_id = uuid.uuid4()
+        did = None
         try:
             await db.execute(
                 text(
@@ -1121,6 +1171,8 @@ class TestSameSchemaPredicateProof:
         ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
         fp_before = await _tenant_table_fingerprint(db, sch_a)
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
+        pay_id = None
+        did = None
         try:
             await db.execute(
                 text(f'UPDATE "{sch_a}".orders SET is_deleted = true WHERE id = :oid'),
@@ -1196,6 +1248,8 @@ class TestCheckReceiptEligibilityDirect:
         fp_before = await _tenant_table_fingerprint(db, sch_a)
         wrong_ws = uuid.uuid4()
         oid_bad = uuid.uuid4()
+        pay_id = None
+        did = None
         try:
             await db.execute(
                 text(
@@ -1232,3 +1286,54 @@ class TestCheckReceiptEligibilityDirect:
             })
             fp_after = await _tenant_table_fingerprint(db, sch_a)
             assert fp_before == fp_after, f"residue: {fp_before} != {fp_after}"
+
+
+# ===========================================================================
+# R4: Forced-seed-failure cleanup regression
+# Proves that _cleanup_seeded_rows correctly cleans up when a seed step
+# fails mid-way (first INSERT committed, second seed raises). Without the
+# None-init + fresh-session cleanup, this would UnboundLocalError and leave
+# the committed row as pollution.
+# ===========================================================================
+
+
+class TestForcedSeedFailureCleanup:
+    """R4: prove cleanup works when seed fails mid-way."""
+
+    async def test_cleanup_after_partial_seed_failure(
+        self, i2b_client, two_tenants, s2_clean_db
+    ):
+        """R4: insert an order successfully, then force the payment seed to
+        fail. The finally block must clean up the committed order without
+        UnboundLocalError, and the fingerprint must return to baseline."""
+        db, _reg = s2_clean_db
+        ws_a = _pool_a()["ws_id"]
+        sch_a = _pool_a()["schema"]
+        _ca, _b, _sb, _e, _p, uid_a, _ub = two_tenants
+        ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
+        fp_before = await _tenant_table_fingerprint(db, sch_a)
+        oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
+        pay_id = None
+        did = None
+        try:
+            pay_id = await _seed_completed_payment(
+                db, sch_a, ws_a, ret_a, oid, "100.00",
+                receipt_number="RCT-20260804-999998",
+            )
+            await _seed_completed_payment(
+                db, sch_a, ws_a, ret_a, oid, "50.00",
+                receipt_number="RCT-20260804-999998",
+            )
+            raise AssertionError("Expected unique-constraint violation did not occur")
+        except Exception:
+            pass
+        finally:
+            await _cleanup_seeded_rows(db, sch_a, {
+                "declaration_ids": [did],
+                "payment_ids": [pay_id],
+                "order_ids": [oid],
+            })
+            fp_after = await _tenant_table_fingerprint(db, sch_a)
+            assert fp_before == fp_after, (
+                f"residue after forced-failure cleanup: {fp_before} != {fp_after}"
+            )

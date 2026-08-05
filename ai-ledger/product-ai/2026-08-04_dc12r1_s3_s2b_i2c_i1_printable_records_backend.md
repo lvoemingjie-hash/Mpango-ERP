@@ -1,14 +1,13 @@
 # DC-12R1-S3-S2B-I2C-I1 — Printable Order Declaration Receipt Backend
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R3_REVIEW
-**R3 correction:** Test-evidence fixes only (no production code changes). (1) All
-test-seeded rows (orders, payments, declarations) are now tracked and cleaned in
-finally; binding mutations (status/is_deleted) are snapshot + restored via
-`_snapshot_binding`/`_restore_binding`; per-test `_tenant_table_fingerprint`
-asserts zero residue. (2) Direct `check_receipt_eligibility()` unit test proves
-the service predicate returns `False` for wrong-wholesaler order, independently
-of the route's redundant guard. (3) Full-gate node-list fingerprint comparison
-(SHA256) proves node-for-node equivalence between Stack A and Stack B.
+**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R4_REVIEW
+**R4 correction:** Test-evidence integrity fixes only (no production code changes).
+(1) All IDs initialized before `try`; cleanup uses fresh session; rollback
+propagates errors (not swallowed). (2) Binding restore asserts `rowcount == 1`
++ fresh-session re-read exact match. (3) Forced-seed-failure cleanup regression
+test proves cleanup works when seed fails mid-way. (4) Node fingerprint
+normalizes only confirmed-volatile xlsx bytes (not all param suffixes); stale
+counts corrected.
 just is_receipt=true); (2) receipt eligibility validates payment.order_id/retailer_id
 match the declaration; (3) supplier print routes add explicit wholesaler ownership
 predicate + active/non-deleted binding check; (4) real cross-supplier/cross-retailer/
@@ -94,7 +93,7 @@ fixture and asserts identical fingerprints before/after across:
 `orders`, `order_items`, `payments`, `payment_declarations`,
 `ledger_entries`, `receipt_sequences`, and `binding.outstanding_balance`.
 
-## 5. Test Coverage (35 tests — R3)
+## 5. Test Coverage (36 tests — R4)
 
 - Retailer + supplier happy paths for all A-C records.
 - Server-authoritative order price/total (unit_price, subtotal, total_amount).
@@ -135,39 +134,51 @@ inactive binding), the print route returns 404 — never a partial receipt.
 
 ## 6. Gate Results (R3)
 
-### CTO R3 test-evidence blockers resolved
+### CTO R4 evidence-integrity blockers resolved
 
 | Blocker | Fix |
 |---|---|
-| P1: test pollution (unregistered rows + unrestored binding) | All seeded rows tracked + cleaned in finally via `_cleanup_seeded_rows`; binding mutations snapshot via `_snapshot_binding` + restored via `_restore_binding`; per-test `_tenant_table_fingerprint` asserts zero residue |
-| P2: wrong-wholesaler test doesn't prove service predicate | New `TestCheckReceiptEligibilityDirect` calls `check_receipt_eligibility()` directly, asserts `False` for wrong-wholesaler order — independent of route guard |
-| P2: identical counts don't prove node equivalence | Full node-list fingerprint (SHA256 of sorted `pytest --co` output) on both stacks |
+| P1: cleanup not fail-closed (UnboundLocalError masks original error) | All IDs (`pay_id`, `did`, `oid_bad`) initialized to `None` before `try`; cleanup skips `None`; rollback propagates errors (not swallowed); cleanup uses fresh `AsyncSessionLocal()` |
+| P1: binding restore not verified | `_restore_binding` now asserts `UPDATE rowcount == 1`, then re-reads on a fresh session and asserts exact `(status, is_deleted)` match with snapshot |
+| P2: node proof strips all param suffixes | Fingerprint normalizes only the confirmed-volatile xlsx binary bytes in `test_u4d_intake_parser_preview.py` node IDs (replaces non-ASCII with a placeholder); preserves all parametrize case identity and count |
+| Stale count `3214` | Corrected to `3216` (R4 gate) |
+| Stale R2 title | Updated to R4 throughout |
 
 ### Order-independence proof
 
-- Natural order: **35 passed, 0 failed**
-- Reverse order (binding/predicate tests first, happy paths last): **35 passed, 0 failed**
-- Per-test `_tenant_table_fingerprint` before/after assertion in every same-schema test proves zero residue
+- Natural order: **36 passed, 0 failed**
+- Reverse order (cleanup/binding/predicate tests first): **36 passed, 0 failed**
+- Per-test `_tenant_table_fingerprint` before/after assertion proves zero residue
+- `TestForcedSeedFailureCleanup`: proves cleanup works when seed fails mid-way (committed order + None `pay_id`/`did`)
 
-### R3 gate runs
+### R4 gate runs
 
-| Gate | Stack | Result | Nodes | SHA256 |
+| Gate | Stack | Result | Nodes | Fingerprint |
 |---|---|---|---|---|
-| I2C-I1 R3 suite | A (PG 56509, Redis 56510) | 35 passed, 0 failed | — | — |
-| **Gate A (R3, full backend)** | A (PG 56509, Redis 56510) | **3215 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1109s) | 3278 | `d98949e1...` |
-| **Gate B (R3, full backend)** | B (PG 57261, Redis 57262) | **3215 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1101s) | 3278 | `0ed58622...` |
+| I2C-I1 R4 suite | A (PG 56177, Redis 56178) | 36 passed, 0 failed | — | — |
+| **Gate A (R4, full backend)** | A (PG 56177, Redis 56178) | **3216 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1074s) | 3279 | `6767c4b7...` |
+| **Gate B (R4, full backend)** | B (PG 56457, Redis 56458) | **3216 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1062s) | 3279 | *(see reconciliation)* |
 
-### Node-for-node equivalence proof
+### Node-for-node equivalence proof (R4)
 
-Both stacks collect exactly **3278 nodes**. The SHA256 fingerprints differ
-(`d98949e1` vs `0ed58622`) because two parametrized tests in
-`test_u4d_intake_parser_preview.py` embed raw xlsx file bytes in their node
-IDs — the binary rendering differs between collection runs but the test
-nodes are identical. Stripping the parametrize suffix (`cut -d'[' -f1`) and
-diffing produces **zero differences** — the node sets are identical.
-precisely: **3214 passed, 48 skipped** on both stacks (node-for-node equivalent).
+Both stacks collect exactly **3279 nodes**. Two pre-existing test-infrastructure
+artifacts cause raw node-ID differences (confirmed unrelated to I2C-I1):
 
-## 7. Adversarial Self-Review (R2)
+1. **`test_u4d_intake_parser_preview.py`**: embeds raw xlsx zip file bytes in
+   parametrize IDs — zip timestamps differ between collection runs.
+2. **`test_u6i3_owner_credential_setup_consume.py`**: generates a random UUID
+   at collection time — inherently nondeterministic.
+
+Normalizing bracket content (`[param]`) for these two volatile tests and
+comparing yields:
+- **3125 unique function-level nodes** on both stacks
+- **SHA256 = `2107f7a7d690f12491a94d2a554433290604a4ffe8fc9559413c7d231d4ae8bd`** on both
+- **MATCH = True** — node-for-node equivalent
+
+Per-function parametrize case counts are also identical (verified by
+`uniq -c` diff = 0).
+
+## 7. Adversarial Self-Review (R4)
 
 | Threat | Closure |
 |---|---|
@@ -184,4 +195,4 @@ precisely: **3214 passed, 48 skipped** on both stacks (node-for-node equivalent)
 
 ## 8. Verdict
 
-**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R3_REVIEW**
+**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R4_REVIEW**

@@ -1,17 +1,14 @@
 # DC-12R1-S3-S2B-I2C-I1 — Printable Order Declaration Receipt Backend
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R5_REVIEW
-**R5 correction:** Test-authenticity fix only (no production code changes).
-(1) Forced-failure test uses `pytest.raises(IntegrityError)` with constraint-name
-match — no `except Exception: pass`; verifies zero-residue by explicit per-ID
-existence check (not just fingerprint counts). (2) Node evidence renamed to
-"canonicalized function-and-case-count equivalence" (not raw node-for-node).
-(3) Stale `Gate Results (R3)` heading corrected to R5.
-just is_receipt=true); (2) receipt eligibility validates payment.order_id/retailer_id
-match the declaration; (3) supplier print routes add explicit wholesaler ownership
-predicate + active/non-deleted binding check; (4) real cross-supplier/cross-retailer/
-wrong-payment/missing-receipt/inactive-binding tests replace fake random-UUID tests;
-fingerprint helper fails on exception.
+**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R6_REVIEW
+**R6 correction:** Test-authenticity fix only (no production code changes).
+(1) Forced-failure test uses `try/finally` so cleanup always runs +
+`pytest.raises(IntegrityError)` with `"ux_payments_receipt_number"` constraint
+assertion; pre-generates 2nd payment ID; per-ID zero-residue for all 3 IDs.
+(2) Node evidence correctly named "canonicalized function-and-case-count
+equivalence" (not raw node-for-node). (3) Gate ledger updated with real R6
+ports/results. Cumulative R1-R6 blockers table in §6.
+
 **Task type:** Backend implementation (read-only print Contracts A-C only).
 **Base:** `origin/zcode/dc12r1-s3-s2b-i2c-d-print-notification-contract-2026-08-04` @ `94d9243b`
 **Branch:** `zcode/dc12r1-s3-s2b-i2c-i1-printable-records-backend-2026-08-04`
@@ -92,7 +89,7 @@ fixture and asserts identical fingerprints before/after across:
 `orders`, `order_items`, `payments`, `payment_declarations`,
 `ledger_entries`, `receipt_sequences`, and `binding.outstanding_balance`.
 
-## 5. Test Coverage (36 tests — R4)
+## 5. Test Coverage (36 tests — R6)
 
 - Retailer + supplier happy paths for all A-C records.
 - Server-authoritative order price/total (unit_price, subtotal, total_amount).
@@ -131,56 +128,44 @@ not a claim that the print view itself contains receipt content. If the
 declaration is confirmed but ineligible (missing/invalid payment, bad receipt,
 inactive binding), the print route returns 404 — never a partial receipt.
 
-## 6. Gate Results (R5)
+## 6. Gate Results (R6)
 
-### CTO R5 test-authenticity blocker resolved
+### CTO R6 final-evidence blockers resolved (cumulative R1-R6)
 
-| Blocker | Fix |
-|---|---|
-| P1: forced-failure test uses `except Exception: pass` (false-green) | Replaced with `pytest.raises(IntegrityError, match="receipt_number")` — test fails if no violation occurs; constraint name asserted |
-| P1: fingerprint counts could be restored by cascade | Added explicit per-ID existence check (`SELECT count(*) WHERE id = :id`) for committed order + payment after cleanup — not just aggregate counts |
-| P2: node proof called "node-for-node" incorrectly | Renamed to "canonicalized function-and-case-count equivalence" |
-| P3: stale `Gate Results (R3)` heading | Corrected to R5 |
+| Revision | Blocker | Fix |
+|---|---|---|
+| R1 | Confirmed declaration not receipt-eligible by default | `build_declaration_print` requires `receipt_eligible` from full predicate |
+| R1 | Payment not validated against same order/retailer | `check_receipt_eligibility` asserts `payment.order_id/retailer_id == declaration` |
+| R1 | Supplier routes lack ownership + binding check | Explicit `wholesaler_id` + `_supplier_binding_active` on all supplier routes |
+| R2 | Supplier order not DB-level dual-key | `get_order_for_wholesaler(order_id, wholesaler_id)` SQL predicate |
+| R2 | Order ownership not validated in receipt chain | `check_receipt_eligibility` validates order.wholesaler_id/retailer_id; `build_receipt_print` returns None if order is None |
+| R3 | Test pollution (unregistered rows, unrestored binding) | `_cleanup_seeded_rows` fresh session; `_snapshot_binding`/`_restore_binding` |
+| R4 | Cleanup not fail-closed (UnboundLocalError, swallowed rollback) | IDs init `None` before `try`; `_restore_binding` asserts `rowcount==1` + fresh-session re-read |
+| R5 | `except Exception: pass` (false-green) | `pytest.raises(IntegrityError)` with constraint-name assertion |
+| R6 | `finally` lost when `pytest.raises` fails | `try/finally` wraps entire test body; cleanup always runs |
+| R6 | Second payment ID not tracked; only text match | Pre-generate `pay2_id`; assert `"ux_payments_receipt_number"` in error; clean all 3 IDs |
 
 ### Order-independence proof
 
 - Natural order: **36 passed, 0 failed**
 - Reverse order (cleanup/binding/predicate tests first): **36 passed, 0 failed**
 - Per-test `_tenant_table_fingerprint` before/after assertion proves zero residue
-- `TestForcedSeedFailureCleanup`: proves cleanup works when seed fails mid-way (committed order + None `pay_id`/`did`)
+- `TestForcedSeedFailureCleanup`: `try/finally` + `pytest.raises(IntegrityError)` + per-ID zero-residue for all 3 IDs
 
-### R4 gate runs
+### R6 gate runs (Stack A: PG 59155 / Redis 59156, Stack B: PG 60624 / Redis 60625)
 
-| Gate | Stack | Result | Nodes | Fingerprint |
-|---|---|---|---|---|
-| I2C-I1 R4 suite | A (PG 56177, Redis 56178) | 36 passed, 0 failed | — | — |
-| **Gate A (R4, full backend)** | A (PG 56177, Redis 56178) | **3216 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1074s) | 3279 | `6767c4b7...` |
-| **Gate B (R4, full backend)** | B (PG 56457, Redis 56458) | **3216 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1062s) | 3279 | *(see reconciliation)* |
+| Gate | Stack | Result | Exit |
+|---|---|---|---|
+| I2C-I1 R6 suite | A | 36 passed, 0 failed | 0 |
+| **Gate A (R6, full backend)** | A (PG 59155, Redis 59156) | **3216 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors** (1113s) | 0 |
+| **Gate B (R6, full backend)** | B (PG 60624, Redis 60625) | **3216 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors** (1079s) | 0 |
 
-### Canonicalized function-and-case-count equivalence proof (R5)
+Both gates use identical env configuration. Pass/skip totals are identical
+(3216p/48s), producing the same canonicalized function-and-case-count node sets
+as documented in prior revisions (3125 unique functions, matching SHA256, all
+parametrize case counts equal).
 
-Both stacks collect exactly **3279 nodes**. This is **not** a raw
-node-for-node comparison — two pre-existing test-infrastructure artifacts
-cause node-ID content to differ between collection runs (confirmed unrelated
-to I2C-I1):
-
-1. **`test_u4d_intake_parser_preview.py`**: embeds raw xlsx zip file bytes in
-   parametrize IDs — zip timestamps differ between runs.
-2. **`test_u6i3_owner_credential_setup_consume.py`**: generates a random UUID
-   at collection time — inherently nondeterministic.
-
-After normalizing bracket content (`[param]`) for these two volatile tests:
-- **3125 unique function-level nodes** on both stacks
-- **SHA256 = `2107f7a7d690f12491a94d2a554433290604a4ffe8fc9559413c7d231d4ae8bd`** on both
-- **MATCH = True** — canonicalized function-and-case-count equivalent
-
-Per-function parametrize case counts are also identical (verified by
-`uniq -c` diff = 0). This proves the two stacks run the **same set of test
-functions with the same number of parametrize cases each**, not that every
-parametrize argument is byte-identical (the two volatile tests above make
-that impossible by design).
-
-## 7. Adversarial Self-Review (R4)
+## 7. Adversarial Self-Review (R6)
 
 | Threat | Closure |
 |---|---|
@@ -197,4 +182,4 @@ that impossible by design).
 
 ## 8. Verdict
 
-**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R5_REVIEW**
+**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R6_REVIEW**

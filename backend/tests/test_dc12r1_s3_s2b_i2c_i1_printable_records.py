@@ -24,6 +24,7 @@ from http import HTTPStatus
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Reuse the full I2B harness (fixtures + helpers).
@@ -1298,14 +1299,21 @@ class TestCheckReceiptEligibilityDirect:
 
 
 class TestForcedSeedFailureCleanup:
-    """R4: prove cleanup works when seed fails mid-way."""
+    """R5: prove cleanup works when seed fails mid-way — fail-closed.
+
+    Uses ``pytest.raises(IntegrityError)`` so the test cannot pass unless the
+    expected unique-constraint violation actually occurs. After cleanup,
+    verifies zero residue by explicitly querying for each committed ID (not
+    just fingerprint counts, which could be restored by cascade).
+    """
 
     async def test_cleanup_after_partial_seed_failure(
         self, i2b_client, two_tenants, s2_clean_db
     ):
-        """R4: insert an order successfully, then force the payment seed to
-        fail. The finally block must clean up the committed order without
-        UnboundLocalError, and the fingerprint must return to baseline."""
+        """R5: insert an order + first payment successfully, then force a
+        second payment with a duplicate receipt_number to raise
+        IntegrityError. Cleanup must remove all committed rows. Zero residue
+        is verified by explicit per-ID existence check, not just counts."""
         db, _reg = s2_clean_db
         ws_a = _pool_a()["ws_id"]
         sch_a = _pool_a()["schema"]
@@ -1315,25 +1323,52 @@ class TestForcedSeedFailureCleanup:
         oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
         pay_id = None
         did = None
-        try:
-            pay_id = await _seed_completed_payment(
-                db, sch_a, ws_a, ret_a, oid, "100.00",
-                receipt_number="RCT-20260804-999998",
-            )
+
+        # Step 1: commit the first payment (succeeds).
+        pay_id = await _seed_completed_payment(
+            db, sch_a, ws_a, ret_a, oid, "100.00",
+            receipt_number="RCT-20260804-999998",
+        )
+
+        # Step 2: second payment with the SAME receipt_number must raise
+        # IntegrityError (ux_payments_receipt_number unique constraint).
+        # R5: pytest.raises ensures the test FAILS if no violation occurs
+        # (no except-Exception-pass that could swallow a missing failure).
+        with pytest.raises(IntegrityError, match="receipt_number"):
             await _seed_completed_payment(
                 db, sch_a, ws_a, ret_a, oid, "50.00",
                 receipt_number="RCT-20260804-999998",
             )
-            raise AssertionError("Expected unique-constraint violation did not occur")
-        except Exception:
-            pass
-        finally:
-            await _cleanup_seeded_rows(db, sch_a, {
-                "declaration_ids": [did],
-                "payment_ids": [pay_id],
-                "order_ids": [oid],
-            })
-            fp_after = await _tenant_table_fingerprint(db, sch_a)
-            assert fp_before == fp_after, (
-                f"residue after forced-failure cleanup: {fp_before} != {fp_after}"
-            )
+
+        # Step 3: cleanup — must remove the committed order and payment.
+        await _cleanup_seeded_rows(db, sch_a, {
+            "declaration_ids": [did],
+            "payment_ids": [pay_id],
+            "order_ids": [oid],
+        })
+
+        # Step 4: fingerprint must return to baseline.
+        fp_after = await _tenant_table_fingerprint(db, sch_a)
+        assert fp_before == fp_after, (
+            f"residue after forced-failure cleanup: {fp_before} != {fp_after}"
+        )
+
+        # Step 5: R5 — explicit per-ID zero-residue check (not just counts).
+        # This catches rows that might be hidden by cascade or count
+        # coincidences.
+        from database.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as check_db:
+            for table, ident in [
+                (f'"{sch_a}".orders', oid),
+                (f'"{sch_a}".payments', pay_id),
+            ]:
+                row = (
+                    await check_db.execute(
+                        text(f"SELECT count(*) FROM {table} WHERE id = :id"),
+                        {"id": ident},
+                    )
+                ).scalar()
+                assert row == 0, (
+                    f"residue: {table} still contains id={ident} (count={row})"
+                )

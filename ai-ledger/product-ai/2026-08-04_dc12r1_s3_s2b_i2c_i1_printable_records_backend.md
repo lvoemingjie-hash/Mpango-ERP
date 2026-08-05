@@ -1,13 +1,12 @@
 # DC-12R1-S3-S2B-I2C-I1 — Printable Order Declaration Receipt Backend
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R4_REVIEW
-**R4 correction:** Test-evidence integrity fixes only (no production code changes).
-(1) All IDs initialized before `try`; cleanup uses fresh session; rollback
-propagates errors (not swallowed). (2) Binding restore asserts `rowcount == 1`
-+ fresh-session re-read exact match. (3) Forced-seed-failure cleanup regression
-test proves cleanup works when seed fails mid-way. (4) Node fingerprint
-normalizes only confirmed-volatile xlsx bytes (not all param suffixes); stale
-counts corrected.
+**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R5_REVIEW
+**R5 correction:** Test-authenticity fix only (no production code changes).
+(1) Forced-failure test uses `pytest.raises(IntegrityError)` with constraint-name
+match — no `except Exception: pass`; verifies zero-residue by explicit per-ID
+existence check (not just fingerprint counts). (2) Node evidence renamed to
+"canonicalized function-and-case-count equivalence" (not raw node-for-node).
+(3) Stale `Gate Results (R3)` heading corrected to R5.
 just is_receipt=true); (2) receipt eligibility validates payment.order_id/retailer_id
 match the declaration; (3) supplier print routes add explicit wholesaler ownership
 predicate + active/non-deleted binding check; (4) real cross-supplier/cross-retailer/
@@ -132,17 +131,16 @@ not a claim that the print view itself contains receipt content. If the
 declaration is confirmed but ineligible (missing/invalid payment, bad receipt,
 inactive binding), the print route returns 404 — never a partial receipt.
 
-## 6. Gate Results (R3)
+## 6. Gate Results (R5)
 
-### CTO R4 evidence-integrity blockers resolved
+### CTO R5 test-authenticity blocker resolved
 
 | Blocker | Fix |
 |---|---|
-| P1: cleanup not fail-closed (UnboundLocalError masks original error) | All IDs (`pay_id`, `did`, `oid_bad`) initialized to `None` before `try`; cleanup skips `None`; rollback propagates errors (not swallowed); cleanup uses fresh `AsyncSessionLocal()` |
-| P1: binding restore not verified | `_restore_binding` now asserts `UPDATE rowcount == 1`, then re-reads on a fresh session and asserts exact `(status, is_deleted)` match with snapshot |
-| P2: node proof strips all param suffixes | Fingerprint normalizes only the confirmed-volatile xlsx binary bytes in `test_u4d_intake_parser_preview.py` node IDs (replaces non-ASCII with a placeholder); preserves all parametrize case identity and count |
-| Stale count `3214` | Corrected to `3216` (R4 gate) |
-| Stale R2 title | Updated to R4 throughout |
+| P1: forced-failure test uses `except Exception: pass` (false-green) | Replaced with `pytest.raises(IntegrityError, match="receipt_number")` — test fails if no violation occurs; constraint name asserted |
+| P1: fingerprint counts could be restored by cascade | Added explicit per-ID existence check (`SELECT count(*) WHERE id = :id`) for committed order + payment after cleanup — not just aggregate counts |
+| P2: node proof called "node-for-node" incorrectly | Renamed to "canonicalized function-and-case-count equivalence" |
+| P3: stale `Gate Results (R3)` heading | Corrected to R5 |
 
 ### Order-independence proof
 
@@ -159,24 +157,28 @@ inactive binding), the print route returns 404 — never a partial receipt.
 | **Gate A (R4, full backend)** | A (PG 56177, Redis 56178) | **3216 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1074s) | 3279 | `6767c4b7...` |
 | **Gate B (R4, full backend)** | B (PG 56457, Redis 56458) | **3216 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1062s) | 3279 | *(see reconciliation)* |
 
-### Node-for-node equivalence proof (R4)
+### Canonicalized function-and-case-count equivalence proof (R5)
 
-Both stacks collect exactly **3279 nodes**. Two pre-existing test-infrastructure
-artifacts cause raw node-ID differences (confirmed unrelated to I2C-I1):
+Both stacks collect exactly **3279 nodes**. This is **not** a raw
+node-for-node comparison — two pre-existing test-infrastructure artifacts
+cause node-ID content to differ between collection runs (confirmed unrelated
+to I2C-I1):
 
 1. **`test_u4d_intake_parser_preview.py`**: embeds raw xlsx zip file bytes in
-   parametrize IDs — zip timestamps differ between collection runs.
+   parametrize IDs — zip timestamps differ between runs.
 2. **`test_u6i3_owner_credential_setup_consume.py`**: generates a random UUID
    at collection time — inherently nondeterministic.
 
-Normalizing bracket content (`[param]`) for these two volatile tests and
-comparing yields:
+After normalizing bracket content (`[param]`) for these two volatile tests:
 - **3125 unique function-level nodes** on both stacks
 - **SHA256 = `2107f7a7d690f12491a94d2a554433290604a4ffe8fc9559413c7d231d4ae8bd`** on both
-- **MATCH = True** — node-for-node equivalent
+- **MATCH = True** — canonicalized function-and-case-count equivalent
 
 Per-function parametrize case counts are also identical (verified by
-`uniq -c` diff = 0).
+`uniq -c` diff = 0). This proves the two stacks run the **same set of test
+functions with the same number of parametrize cases each**, not that every
+parametrize argument is byte-identical (the two volatile tests above make
+that impossible by design).
 
 ## 7. Adversarial Self-Review (R4)
 
@@ -195,4 +197,4 @@ Per-function parametrize case counts are also identical (verified by
 
 ## 8. Verdict
 
-**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R4_REVIEW**
+**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R5_REVIEW**

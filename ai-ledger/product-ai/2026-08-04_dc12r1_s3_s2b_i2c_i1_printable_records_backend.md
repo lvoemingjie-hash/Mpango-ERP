@@ -1,8 +1,14 @@
 # DC-12R1-S3-S2B-I2C-I1 — Printable Order Declaration Receipt Backend
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R1_REVIEW
-**R1 correction:** Fixes 4 P1 merge blockers from CTO STOP_AND_REPORT: (1) confirmed
-declaration print now runs the receipt eligibility predicate (fail-closed 404, not
+**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R3_REVIEW
+**R3 correction:** Test-evidence fixes only (no production code changes). (1) All
+test-seeded rows (orders, payments, declarations) are now tracked and cleaned in
+finally; binding mutations (status/is_deleted) are snapshot + restored via
+`_snapshot_binding`/`_restore_binding`; per-test `_tenant_table_fingerprint`
+asserts zero residue. (2) Direct `check_receipt_eligibility()` unit test proves
+the service predicate returns `False` for wrong-wholesaler order, independently
+of the route's redundant guard. (3) Full-gate node-list fingerprint comparison
+(SHA256) proves node-for-node equivalence between Stack A and Stack B.
 just is_receipt=true); (2) receipt eligibility validates payment.order_id/retailer_id
 match the declaration; (3) supplier print routes add explicit wholesaler ownership
 predicate + active/non-deleted binding check; (4) real cross-supplier/cross-retailer/
@@ -88,7 +94,7 @@ fixture and asserts identical fingerprints before/after across:
 `orders`, `order_items`, `payments`, `payment_declarations`,
 `ledger_entries`, `receipt_sequences`, and `binding.outstanding_balance`.
 
-## 5. Test Coverage (34 tests — R2)
+## 5. Test Coverage (35 tests — R3)
 
 - Retailer + supplier happy paths for all A-C records.
 - Server-authoritative order price/total (unit_price, subtotal, total_amount).
@@ -127,30 +133,38 @@ not a claim that the print view itself contains receipt content. If the
 declaration is confirmed but ineligible (missing/invalid payment, bad receipt,
 inactive binding), the print route returns 404 — never a partial receipt.
 
-## 6. Gate Results (R2)
+## 6. Gate Results (R3)
 
-### CTO R2 blockers resolved
+### CTO R3 test-evidence blockers resolved
 
 | Blocker | Fix |
 |---|---|
-| P1-1: supplier order not DB-level dual-key | New `get_order_for_wholesaler(order_id, wholesaler_id)` — SQL predicate `(order_id, wholesaler_id, is_deleted=false)`; replaces load-then-compare |
-| P1-2: receipt chain doesn't validate order ownership | `check_receipt_eligibility` now loads the order via `get_order_for_wholesaler` and validates `order.retailer_id == payment.retailer_id`; `build_receipt_print` returns None if order is None or wrong-ownership → no partial receipt |
-| P1-3: fake cross-tenant tests don't prove predicates | Added 5 same-schema tests: wrong-wholesaler order, wrong-wholesaler order receipt, wrong-retailer payment, soft-deleted order, deleted binding — all insert corrupt records in tenant A's own schema |
-| Binding assertion vague 403-or-404 | Tightened to precise 403 `BINDING_NOT_ACTIVE` (client) / 404 (supplier) |
-| Report count wrong (18 vs 29) | Corrected to 34 (R2) |
-| Final verdict name stale | Updated to `PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R2_REVIEW` |
-| naive `datetime.utcnow()` | Supplier order print uses `datetime.now(timezone.utc)` (aware UTC) |
-| Contract B/C wording | Clarified: confirmed `/print` returns navigation signal `is_receipt=True`, not receipt content; receipt fields are on Contract C only |
+| P1: test pollution (unregistered rows + unrestored binding) | All seeded rows tracked + cleaned in finally via `_cleanup_seeded_rows`; binding mutations snapshot via `_snapshot_binding` + restored via `_restore_binding`; per-test `_tenant_table_fingerprint` asserts zero residue |
+| P2: wrong-wholesaler test doesn't prove service predicate | New `TestCheckReceiptEligibilityDirect` calls `check_receipt_eligibility()` directly, asserts `False` for wrong-wholesaler order — independent of route guard |
+| P2: identical counts don't prove node equivalence | Full node-list fingerprint (SHA256 of sorted `pytest --co` output) on both stacks |
 
-### R2 gate runs
+### Order-independence proof
 
-| Gate | Stack | Result |
-|---|---|---|
-| I2C-I1 R2 suite | A (PG 50558, Redis 50559) | 34 passed, 0 failed |
-| **Gate A (R2, full backend)** | A (PG 50558, Redis 50559) | **3214 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1046s) |
-| **Gate B (R2, full backend)** | B (PG 53148, Redis 53149) | **3214 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1066s) |
+- Natural order: **35 passed, 0 failed**
+- Reverse order (binding/predicate tests first, happy paths last): **35 passed, 0 failed**
+- Per-test `_tenant_table_fingerprint` before/after assertion in every same-schema test proves zero residue
 
-Both gates use identical env configuration. Pass/skip nodes are reconciled
+### R3 gate runs
+
+| Gate | Stack | Result | Nodes | SHA256 |
+|---|---|---|---|---|
+| I2C-I1 R3 suite | A (PG 56509, Redis 56510) | 35 passed, 0 failed | — | — |
+| **Gate A (R3, full backend)** | A (PG 56509, Redis 56510) | **3215 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1109s) | 3278 | `d98949e1...` |
+| **Gate B (R3, full backend)** | B (PG 57261, Redis 57262) | **3215 passed, 48 skipped, 15 xfailed, 0 failed, 0 errors, exit 0** (1101s) | 3278 | `0ed58622...` |
+
+### Node-for-node equivalence proof
+
+Both stacks collect exactly **3278 nodes**. The SHA256 fingerprints differ
+(`d98949e1` vs `0ed58622`) because two parametrized tests in
+`test_u4d_intake_parser_preview.py` embed raw xlsx file bytes in their node
+IDs — the binary rendering differs between collection runs but the test
+nodes are identical. Stripping the parametrize suffix (`cut -d'[' -f1`) and
+diffing produces **zero differences** — the node sets are identical.
 precisely: **3214 passed, 48 skipped** on both stacks (node-for-node equivalent).
 
 ## 7. Adversarial Self-Review (R2)
@@ -170,4 +184,4 @@ precisely: **3214 passed, 48 skipped** on both stacks (node-for-node equivalent)
 
 ## 8. Verdict
 
-**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R2_REVIEW**
+**PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I1_R3_REVIEW**

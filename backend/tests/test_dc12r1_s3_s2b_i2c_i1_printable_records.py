@@ -27,6 +27,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# R7: reuse the production chain-safe constraint-name diagnostic helper
+# (traverses exc.orig.diag.constraint_name / __cause__ / __context__ with cycle
+# protection). Never parses human-readable exception text.
+from api.v1.client.orders import _extract_constraint_name  # noqa: E402
+
 # Reuse the full I2B harness (fixtures + helpers).
 from tests.test_dc12r1_s3_s2b_i2b_payment_declarations import (  # noqa: E402
     _cashier_token,
@@ -1298,16 +1303,19 @@ class TestCheckReceiptEligibilityDirect:
 
 
 class TestForcedSeedFailureCleanup:
-    """R6: prove cleanup works when seed fails mid-way — fail-closed.
+    """R7: prove cleanup works when seed fails mid-way — fail-closed.
 
-    The entire test body is wrapped in ``try/finally`` so cleanup **always**
-    runs, regardless of whether ``pytest.raises`` succeeds or fails.
+    Every mutating seed step (order + payments) is wrapped in ``try/finally``
+    so cleanup **always** runs, regardless of whether ``pytest.raises``
+    succeeds or fails. The IntegrityError constraint name is verified via the
+    chain-safe PostgreSQL diagnostic (``_extract_constraint_name``), never by
+    substring-matching human-readable exception text.
     """
 
     async def test_cleanup_after_partial_seed_failure(
         self, i2b_client, two_tenants, s2_clean_db
     ):
-        """R6: insert an order + first payment successfully, then force a
+        """R7: insert an order + first payment successfully, then force a
         second payment with a duplicate receipt_number to raise
         IntegrityError. Cleanup must remove all committed rows. Zero residue
         is verified by explicit per-ID existence check for all three IDs."""
@@ -1317,13 +1325,21 @@ class TestForcedSeedFailureCleanup:
         _ca, _b, _sb, _e, _p, uid_a, _ub = two_tenants
         ret_a = await _resolve_binding_retailer(db, ws_a, uid_a)
         fp_before = await _tenant_table_fingerprint(db, sch_a)
-        oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
-        # R6: pre-generate BOTH payment IDs so we can track + clean both.
+
+        # R7: init ALL mutable IDs to None before try so the finally block
+        # always has a valid cleanup payload regardless of where the test
+        # body fails. Pre-generate the two payment IDs so both are tracked
+        # even if the duplicate insert never reaches the assignment.
+        oid: uuid.UUID | None = None
         pay1_id = uuid.uuid4()
         pay2_id = uuid.uuid4()
         did = None
 
         try:
+            # R7: order creation is INSIDE try — a failure here still triggers
+            # cleanup (which skips the None oid).
+            oid = await _seed_confirmed_order(db, sch_a, ws_a, ret_a, "100.00")
+
             # Step 1: commit the first payment (succeeds).
             pay1_id = await _seed_completed_payment(
                 db, sch_a, ws_a, ret_a, oid, "100.00",
@@ -1338,20 +1354,20 @@ class TestForcedSeedFailureCleanup:
                     receipt_number="RCT-20260804-999998", pay_id=pay2_id,
                 )
 
-            # R6: assert the constraint name appears in the exception.
-            # SQLAlchemy wraps asyncpg's UniqueViolationError in its own
-            # IntegrityError; the constraint name is in the message text.
-            # We assert the full constraint name, not just a substring.
-            err_msg = str(exc_info.value)
-            assert "ux_payments_receipt_number" in err_msg, (
-                f"Expected constraint ux_payments_receipt_number in error, "
-                f"got: {err_msg}"
+            # R7: exact PostgreSQL diagnostic — chain-safe helper traverses
+            # exc.orig.diag.constraint_name (asyncpg) / bare constraint_name /
+            # __cause__ / __context__ with cycle protection. Never parses
+            # human-readable exception text.
+            constraint = _extract_constraint_name(exc_info.value)
+            assert constraint == "ux_payments_receipt_number", (
+                f"Expected constraint ux_payments_receipt_number, got: {constraint!r}"
             )
 
             # Rollback the failed transaction so the session is usable.
             await db.rollback()
         finally:
-            # R6: cleanup ALWAYS runs — even if pytest.raises failed.
+            # R7: cleanup ALWAYS runs — even if pytest.raises failed or the
+            # order/payment seed raised. None IDs are skipped by the helper.
             await _cleanup_seeded_rows(db, sch_a, {
                 "declaration_ids": [did],
                 "payment_ids": [pay1_id, pay2_id],
@@ -1364,7 +1380,8 @@ class TestForcedSeedFailureCleanup:
             f"residue after forced-failure cleanup: {fp_before} != {fp_after}"
         )
 
-        # Step 4: R6 — explicit per-ID zero-residue check for ALL THREE IDs.
+        # Step 4: R7 — explicit fresh-session per-ID zero-residue check for
+        # ALL THREE IDs (order + both payments).
         from database.session import AsyncSessionLocal
 
         async with AsyncSessionLocal() as check_db:

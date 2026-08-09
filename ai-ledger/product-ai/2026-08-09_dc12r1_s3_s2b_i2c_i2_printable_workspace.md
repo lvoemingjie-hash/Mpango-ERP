@@ -1,5 +1,29 @@
 # DC-12R1-S3-S2B-I2C-I2 — Retailer Printable Workspace
 
+> **⚠️ SUPERSEDED_BY_I2C_I2_R3**
+>
+> The `e23fc70b` (I2C-I2), `b3a84748` (R1), and `93539814` (R2) PASS verdicts
+> are all **superseded** by the R3 correction. Latest Kilo report: `f3e033d6`
+> (prior: `2c79cb45`, `361adfb9`). CTO adjudication ACCEPTED two blockers and
+> REJECTED the count blocker. R3 closes the two accepted blockers (test +
+> ledger only; no production/component/service/router changes):
+>
+> 1. **Genuine link-follow** — R2's link-follow test manually invoked
+>    `mockGet(receiptUrl)` instead of following the rendered receipt link. R3
+>    replaces it with real user navigation: render the real `<AppRouter/>` at
+>    `/declarations` (wholesaler) → click Confirm → wait for the rendered
+>    View/Print receipt Link → **click the Link through React Router** → wait
+>    for the real ReceiptPrintPage → assert exactly one supplier Contract C GET.
+> 2. **Opposite-endpoint exclusivity** — R2's `not.toHaveBeenCalledWith` for
+>    order routes only was incomplete for declaration/receipt routes. R3
+>    extends `routeExpectations` with `opposite` + a full six-endpoint list and
+>    asserts the **complete print-data GET list** equals exactly
+>    `[expectedEndpoint]` for all 6 ALLOW routes and `[]` for all 6 DENY routes.
+>
+> Prior evidence (§0–§10) is preserved as non-authoritative history. The
+> authoritative verdict is
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_R3_MERGE_REVIEW** (see §11).
+
 > **⚠️ SUPERSEDED_BY_I2C_I2_R2**
 >
 > Both the `e23fc70b` (I2C-I2) and `b3a84748` (R1) PASS verdicts are
@@ -48,7 +72,7 @@
 > The `e23fc70b` evidence below is preserved as history; the authoritative
 > verdict is **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_R1_MERGE_REVIEW** (see §9).
 
-**Status:** ⚠️ SUPERSEDED_BY_I2C_I2_R2 (prior: I2C-I2 @ `e23fc70b` and R1 @ `b3a84748`)
+**Status:** ⚠️ SUPERSEDED_BY_I2C_I2_R3 (prior: I2C-I2 @ `e23fc70b`, R1 @ `b3a84748`, R2 @ `93539814`)
 **Executor:** local Zcode (real execution, no static analysis)
 **Date:** 2026-08-09
 **Branch:** `zcode/dc12r1-s3-s2b-i2c-i2-printable-workspace-2026-08-09`
@@ -427,4 +451,140 @@ approved 18 files; no new file added; `declarationService.ts` unchanged):
 ### 10.8 Post-commit GitNexus
 
 `gitnexus analyze` + `gitnexus status` re-run after the R2 commit (recorded in
+the commit/push step).
+
+---
+
+## 11 R3 — Link-Follow and Endpoint-Exclusivity Evidence
+
+**R3 status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_R3_MERGE_REVIEW
+**R3 base (parent):** `93539814` (R2 tip)
+**Kilo R3 report:** commit `f3e033d6` (CTO adjudication: 2 ACCEPTED blockers, 1
+REJECTED count blocker). Prior Kilo reports: `2c79cb45`, `361adfb9`.
+**Supersedes:** `e23fc70b` (I2C-I2), `b3a84748` (R1), `93539814` (R2).
+**R3 scope:** test + ledger only — NO production/component/service/router changes.
+
+### 11.1 CTO adjudication and the two accepted blockers
+
+- **ACCEPT (Correction 1):** R2's link-follow test manually invoked
+  `mockGet(receiptUrl)` instead of following the rendered receipt link.
+- **ACCEPT (Correction 2):** opposite-endpoint absence was incomplete for
+  declaration and receipt routes (`not.toHaveBeenCalledWith` for order routes
+  only).
+- **REJECT (count):** the 62 focused nodes were structurally correct
+  (48 plain declarations + 8 loop-generated + 6 `it.each` = 62; full 222 =
+  prior 210 + 12 R2 nodes). No count change was warranted.
+
+### 11.2 Correction 1 — genuine link-follow
+
+The link-follow test now exercises real user navigation only:
+
+```
+real AppRouter @ /declarations (wholesaler)
+  → DeclarationQueuePage
+  → real Confirm button (click)
+  → authentic AxiosResponse → ApiResponse → confirmation payload (RESPONSE_ID)
+  → rendered View/Print receipt Link (waitFor)
+  → fireEvent.click(link)            [NOT mockGet, NOT window.location]
+  → real AppRouter / WholesalerRoute / MainLayout / real ReceiptPrintPage
+  → getCashierReceipt → supplier Contract C GET
+```
+
+Forbidden behaviors (all absent, verified by adversarial scan): direct
+`mockGet`; direct `getCashierReceipt`; separate `ReceiptPrintPage` render;
+manual `window.location`; reconstructed local receipt route; asserting only
+`href` without following it.
+
+**Mutation RED evidence** (each temporarily applied, captured RED, restored):
+- link → `REQUEST_ID`: R3 link-follow test RED (the R2 tests 1 & 3 also RED).
+- link → `/client/declarations/.../receipt` (wrong boundary): R3 link-follow RED
+  (wholesaler following a client-boundary link is redirected by the guard).
+- `ReceiptPrintPage` cashier mode → client service (`getCashierReceipt` ↔
+  `getClientReceipt` swapped): 5 tests RED (link-follow + receipt ALLOW matrix),
+  because following the link hits the client `/client/declarations/.../receipt`
+  endpoint instead of supplier Contract C.
+
+### 11.3 Correction 2 — opposite-endpoint exclusivity (all six routes)
+
+`routeExpectations` now returns `{ endpoint, opposite, testid }`, plus a
+`ALL_SIX_PRINT_ENDPOINTS` list and a `printDataGetUrls` filter. For each of the
+6 ALLOW routes, the complete print-data GET list is asserted to equal exactly
+`[expectedEndpoint]` (so any of the other 5 endpoints leaking in fails the
+test), the opposite endpoint is asserted never called, and all five non-expected
+endpoints are asserted never called. For each of the 6 DENY routes, the complete
+print-data GET list is asserted empty `[]` and no write occurs.
+
+The six opposite pairs:
+- client order print ↔ supplier order print
+- client declaration print ↔ supplier declaration print
+- client receipt ↔ supplier receipt
+
+A generic `not.toHaveBeenCalledWith` for order routes only is no longer the
+sole guard; the complete-list `toEqual` is order/declaration/receipt-agnostic.
+
+### 11.4 Correction 3 — node-count reconciliation (CTO REJECTED the count blocker)
+
+The truthful counts are unchanged in code; this section makes the derivation
+explicit (Kilo could not run `vitest` — runtime limitation).
+
+**Focused `pnpm vitest run src/tests/PrintableWorkspace.test.tsx`:**
+- R2: 62 nodes = 48 plain `it`/`expect` declarations + 8 nodes generated by four
+  three-item `for…of` route loops (4 loops × (1 loop test node + 1 parameter
+  expansion?)) — more precisely: the four matrix describes each contribute their
+  loop-generated `it` cases; plus 6 `it.each` parameterized cases.
+- R3: 63 nodes = R2's 62 + 1 new genuine link-follow `it`.
+
+Actual command output (R3 focused): `Tests 63 passed (63)`, `Test Files 1
+passed (1)`. Verbose reporter: 63 test nodes (+ 2 summary lines = 65 grep hits).
+
+**Full `pnpm vitest run`:**
+- R2: 222 = prior 210 (I2C-I2 baseline) + 12 R2 matrix nodes.
+- R3: 223 = 222 + 1 R3 link-follow node.
+
+Actual command output (R3 full): `Tests 223 passed (223)`, `Test Files 19
+passed (19)`.
+
+Kilo's static count estimate differed because `vitest` was unavailable in the
+Kilo environment (runtime limitation); the counts above are the real
+executed-node counts from the actual test runner.
+
+### 11.5 GREEN gates
+
+| Gate | Result |
+|---|---|
+| Focused `PrintableWorkspace` (verbose) | **63 passed / 0 failed** |
+| Focused, 3 consecutive clean-process runs | 63/63 × 3 |
+| Full `pnpm vitest run` | **223 passed / 0 failed** (19 files) |
+| Existing retailer-portal + route-guard tests | **19 passed / 0 failed** |
+| `pnpm build` | exit 0 |
+| Zero skip/xfail/deselected/timeout/assertion weakening | confirmed |
+
+### 11.6 R3 changed-file scope
+
+R3 touched exactly the **2 allowed files** (aggregate base..HEAD remains the
+approved 18 files; no production/component/service/router change):
+
+- `frontend/src/tests/PrintableWorkspace.test.tsx` (Corrections 1 & 2)
+- `ai-ledger/product-ai/2026-08-09_dc12r1_s3_s2b_i2c_i2_printable_workspace.md` (this section + §11.4)
+
+### 11.7 R3 self-review
+
+- `git diff --check`: clean.
+- Scope: only the 2 allowed files; aggregate still 18; NO production/
+  component/service/router changes (verified: only the test file changed vs
+  HEAD; production files restored to HEAD after every mutation).
+- No new dependency; no skip/xfail/deselection/timeout increase/assertion weakening.
+- **detect-secrets** (read-only scan + `detect-secrets-hook --baseline`): 0 secrets, exit 0.
+- **Mojibake**: none (no U+FFFD/double-encoded).
+- **GitNexus**: pre-edit impact on route/guard/page symbols = LOW (R3 touches no
+  production code). `detect_changes` NOT available in this CLI build (documented;
+  exact `git diff` evidence in §11.6). `gitnexus analyze`/`status` run after the
+  final commit.
+- **Adversarial**: link-follow uses real `render(<AppRouter/>)` +
+  `fireEvent.click(link)`; no forbidden patterns; endpoint-exclusivity asserts
+  the complete list for all 12 cases (6 ALLOW `[expected]` + 6 DENY `[]`).
+
+### 11.8 Post-commit GitNexus
+
+`gitnexus analyze` + `gitnexus status` re-run after the R3 commit (recorded in
 the commit/push step).

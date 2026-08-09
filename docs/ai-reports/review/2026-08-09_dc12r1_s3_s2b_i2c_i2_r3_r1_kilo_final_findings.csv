@@ -1,0 +1,2 @@
+severity,id,summary,file,line,evidence,stop_condition
+INFO,R3C-001,Local Vitest runtime unavailable for independent mutation and collection execution,frontend runtime,NA,"pnpm vitest run src/tests/PrintableWorkspace.test.tsx failed with Command 'vitest' not found; review conclusions are source-based only.",no

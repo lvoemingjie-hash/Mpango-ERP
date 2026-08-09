@@ -1,0 +1,5 @@
+severity,id,summary,file,line,evidence,stop_condition
+P1,F001,Cashier receipt link falls back to request-supplied declaration ID,frontend/src/pages/finance/DeclarationQueuePage.tsx,61,"setConfirmedReceiptId(resp?.data?.id ?? id);",yes
+P1,F002,PrintableWorkspace tests do not cover confirm-to-receipt-link cashier flow,frontend/src/tests/PrintableWorkspace.test.tsx,"18-37;65-77","No DeclarationQueuePage import/render or confirmDeclaration exercise; required fixed-ID mutation would stay green.",yes
+P1,F003,PrintableWorkspace route tests bypass AppRouter and guard ownership,frontend/src/tests/PrintableWorkspace.test.tsx,65-77,"Ad-hoc MemoryRouter routes mount print pages directly; tests cannot detect print routes escaping RetailerRoute/WholesalerRoute.",yes
+INFO,F004,Local runtime evidence unavailable in isolated review worktree,frontend/package.json; frontend runtime,NA,"pnpm vitest run src/tests/PrintableWorkspace.test.tsx failed with 'Command "vitest" not found' before dependency installation.",no

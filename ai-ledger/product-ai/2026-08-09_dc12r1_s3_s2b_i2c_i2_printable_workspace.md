@@ -1,11 +1,38 @@
 # DC-12R1-S3-S2B-I2C-I2 — Retailer Printable Workspace
 
-**Status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_REVIEW (pending independent Lubuntu validation before merge)
+> **⚠️ SUPERSEDED_BY_I2C_I2_R1**
+>
+> The `e23fc70b` PASS verdict below is **superseded** by the R1 correction.
+> Three Kilo merge blockers were identified (Kilo report commit `2c79cb45`)
+> and closed by the R1 delta on this same isolated branch:
+>
+> 1. **Receipt-link authority** — the cashier confirmation response ID had a
+>    `?? id` fallback to the request/row declaration ID. R1 removes every
+>    fallback; the receipt link is now built ONLY from the successful
+>    confirmation response ID, rendered only when it is a non-empty string,
+>    and `encodeURIComponent`-encoded. Missing/malformed response IDs fail
+>    closed (controlled neutral copy, no link), without claiming payment
+>    failure.
+> 2. **Authentic cashier RED/GREEN tests** — R1 adds tests using distinct
+>    request vs response IDs, fail-closed cases for missing/null/empty/
+>    non-string IDs, rejection no-link, encoding, and proves a `?? id`/
+>    fixed/stale mutation goes RED (8/9 fail against `e23fc70b`).
+> 3. **Real route-guard evidence** — R1 replaces the local test-only harness
+>    with tests that render the **actual `<AppRouter/>`** route tree and the
+>    real `RetailerRoute`/`WholesalerRoute` guards (no source scanning, no
+>    reconstructed guard substitutes). Guards are NOT edited.
+>
+> The `e23fc70b` evidence below is preserved as history; the authoritative
+> verdict is **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_R1_MERGE_REVIEW** (see §9).
+
+**Status:** ⚠️ SUPERSEDED_BY_I2C_I2_R1 (original: PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_REVIEW @ `e23fc70b`)
 **Executor:** local Zcode (real execution, no static analysis)
 **Date:** 2026-08-09
 **Branch:** `zcode/dc12r1-s3-s2b-i2c-i2-printable-workspace-2026-08-09`
 **Base:** `origin/product-dev-recovered` @ `4d97df5963a391a8d16d19988868234fd0d86648`
 **Required code ancestor:** `e923fd8567637ecc87b40d775caa8860b10821a0` (confirmed ancestor)
+**I2C-I2 tip:** `e23fc70bf0339b16f1850a9ebe07f3d7b731f357`
+**Kilo report:** commit `2c79cb45`
 
 ---
 
@@ -150,3 +177,100 @@ Cashier (under existing `WholesalerRoute` → `MainLayout`):
 
 Push only the isolated Zcode branch. Do not merge, deploy, or start I2C-I3.
 Independent Lubuntu frontend/runtime validation precedes any controlled merge.
+
+---
+
+## 9 R1 — Receipt-Link Authority and Route-Guard Evidence
+
+**R1 status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_R1_MERGE_REVIEW
+**R1 base (parent):** `e23fc70bf0339b16f1850a9ebe07f3d7b731f357` (I2C-I2 tip)
+**Kilo report:** commit `2c79cb45` (three merge blockers)
+
+### 9.1 The three Kilo blockers and exact closure
+
+**Blocker 1 — response-authoritative receipt link.** The `e23fc70b` cashier
+confirmation derived the receipt id with `resp?.data?.id ?? id`, falling back to
+the request/row declaration id when the response lacked one. **R1 closure:**
+removed every fallback (`?? id`, `|| id`, any cached/stale id). The receipt id is
+now read ONLY from the successful confirmation response; the receipt link is
+rendered only when that id is a non-empty string and is `encodeURIComponent`-
+encoded. Missing/null/empty/non-string response ids fail closed: controlled
+neutral copy ("The receipt link is unavailable.") and NO receipt link — but the
+message does NOT claim payment failure (confirmation itself succeeded; only the
+receipt-link rendering fails closed). The confirmation transaction is unchanged
+(exactly one `POST /declarations/{id}/confirm`; no retry, no alteration).
+
+**Blocker 2 — authentic cashier RED/GREEN tests.** R1 adds tests with distinct
+request and response IDs. Required cases all covered: POST receives REQUEST_ID
+exactly once; RESPONSE_ID ≠ REQUEST_ID yields link
+`/declarations/{RESPONSE_ID}/receipt`; no link containing REQUEST_ID; missing/
+null/empty/non-string response IDs expose no link; rejection/error exposes no
+link; a `?? id`/fixed/stale mutation makes the tests RED; following the link
+invokes only the supplier Contract C GET; no extra POST/PUT/PATCH/DELETE.
+
+**Blocker 3 — real route-guard evidence.** R1 supplements the local test-only
+harness with tests that render the **actual `<AppRouter/>`** (the real
+`createBrowserRouter` route tree, the real `RetailerRoute`/`WholesalerRoute`
+guard components, the real layouts, and the real print pages). No source-string
+scanning; no locally reconstructed guard substitutes; guards are NOT edited.
+Because `createBrowserRouter` snapshots the URL at construction, the tests render
+once and then drive the singleton data router via `history.pushState` +
+`popstate`, which the real router reacts to.
+
+### 9.2 RED evidence (against `e23fc70b`, pre-correction)
+
+With only `DeclarationQueuePage.tsx` reverted to `e23fc70b` (the new tests kept),
+**8 of 9** Correction-2 tests failed RED:
+
+| RED test (fails against e23fc70b) | Root cause |
+|---|---|
+| confirmation POST receives REQUEST_ID exactly once; link uses RESPONSE_ID | link `href="/declarations/dec-request-aaa/receipt"` (REQUEST_ID via `?? id`) instead of RESPONSE_ID `dec-response-bbb` |
+| response with missing/null/empty/non-string id exposes NO link | `?? id` fallback exposes a link using the request id |
+| encodes the response id | link built from request id, not encoded response id |
+| a second POST never occurs | asserts the response-authoritative link which the old version renders differently |
+
+(The 9th — "confirmation rejection exposes no link" — passes both ways: both
+versions correctly hide the link on error, so it is not a discriminator.)
+
+Correction-3 route-guard tests did not exist at `e23fc70b` (no RED baseline
+possible); they are net-new authentic evidence.
+
+### 9.3 GREEN gates
+
+| Gate | Result |
+|---|---|
+| Focused `PrintableWorkspace` | **50 passed / 0 failed** |
+| Full `pnpm vitest run` | **210 passed / 0 failed** (19 files) |
+| `pnpm build` (tsc + vite) | exit 0 |
+| Existing retailer-portal + route-guard tests | **19 passed / 0 failed** (unaffected) |
+| Reversed focused order | vitest 1.6.1 has no `--reverse` flag → limitation documented; sequential run 50/0 |
+| Zero skipped/deselected/xfail | confirmed (no `.skip`/`xit`/`todo`) |
+
+### 9.4 R1 changed-file scope
+
+R1 touched exactly the **3 allowed files** (the aggregate candidate delta remains
+the same approved 18 files; no new file added):
+
+- `frontend/src/pages/finance/DeclarationQueuePage.tsx` (Correction 1)
+- `frontend/src/tests/PrintableWorkspace.test.tsx` (Corrections 2 & 3)
+- `ai-ledger/product-ai/2026-08-09_dc12r1_s3_s2b_i2c_i2_printable_workspace.md` (this section)
+
+### 9.5 R1 self-review
+
+- `git diff --check`: clean (no whitespace/conflict-marker errors).
+- Scope: only the 3 allowed files; aggregate still 18; no forbidden paths.
+- No new dependency; no skip/xfail/deselection/timeout increase/weakened assertion.
+- **detect-secrets** (read-only scan + `detect-secrets-hook --baseline`): 0 secrets, exit 0.
+- **Mojibake**: no U+FFFD/double-encoded; non-ASCII is intentional em-dash (convention).
+- **GitNexus**: pre-edit impact on `DeclarationQueuePage`/`handleConfirm`/`confirmDeclaration` = LOW.
+  `detect_changes` NOT available in this CLI build (documented); direct `git diff` used.
+  `gitnexus analyze`/`status` run after the final commit (§9.6).
+- **Adversarial**: verified no `?? id`/`|| id`/request-id/stale-id fallback in code;
+  `confirmDeclaration` called exactly once (no retry); link `encodeURIComponent`-encoded;
+  the confirmation transaction is not altered (single POST, response id read-only).
+
+### 9.6 Post-commit GitNexus
+
+`gitnexus analyze` + `gitnexus status` to be re-run after the R1 commit (recorded
+in the commit/push step). `detect_changes` remains unavailable in this CLI build
+(limitation documented; exact `git diff` evidence in §9.4).

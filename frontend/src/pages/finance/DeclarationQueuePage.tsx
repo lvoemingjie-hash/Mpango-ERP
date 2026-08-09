@@ -67,13 +67,16 @@ export default function DeclarationQueuePage() {
       // Confirmation transaction is unchanged: exactly one POST with the
       // request declaration id. We only READ the returned id afterwards.
       const resp = await confirmDeclaration(id);
-      // R1 Correction 1: derive the receipt id ONLY from the response. No
-      // fallback to the request id (no `?? id`). A non-empty string is the
-      // sole authority for rendering the Contract C receipt link.
+      // R2 Correction 1: derive the receipt id ONLY from the real
+      // ApiResponse<DeclarationConfirmResponse> envelope, i.e. resp.data.id.
+      // confirmDeclaration's declared contract is
+      // Promise<ApiResponse<DeclarationConfirmResponse>> where ApiResponse is
+      // { success, data: { id, ... }, timestamp }. No request/row/cached/fixed
+      // id fallback (no `?? id`, no `|| id`); no shape guessing beyond the
+      // declared envelope.
+      const dataObj = resp && typeof resp === 'object' ? (resp as { data?: unknown }).data : undefined;
       const responseId =
-        resp && typeof resp === 'object' && 'id' in resp
-          ? (resp as { id?: unknown }).id
-          : undefined;
+        dataObj && typeof dataObj === 'object' ? (dataObj as { id?: unknown }).id : undefined;
       if (typeof responseId === 'string' && responseId.length > 0) {
         setConfirmedReceiptId(responseId);
       } else {

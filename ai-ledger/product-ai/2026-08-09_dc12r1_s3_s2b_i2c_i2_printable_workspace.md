@@ -1,5 +1,28 @@
 # DC-12R1-S3-S2B-I2C-I2 — Retailer Printable Workspace
 
+> **⚠️ SUPERSEDED_BY_I2C_I2_R2**
+>
+> Both the `e23fc70b` (I2C-I2) and `b3a84748` (R1) PASS verdicts are
+> **superseded** by the R2 correction. Kilo R2 report: commit `361adfb9`
+> (in addition to the R1 report `2c79cb45`). R2 closes three further blockers:
+>
+> 1. **Real response envelope** — R1 read the receipt id at the wrong envelope
+>    layer (`resp.id`). R2 derives it ONLY from `resp.data.id`, matching the
+>    declared `confirmDeclaration` contract
+>    `Promise<ApiResponse<DeclarationConfirmResponse>>` (ApiResponse =
+>    `{success, data:{id,...}, timestamp}`). Full runtime validation; no
+>    `resp.id`, no `resp.data.data.id`, no fallback; `encodeURIComponent`-encoded.
+> 2. **Authentic three-layer mocks** — R2 eliminates the flattened false-green
+>    mock `{data:{id}}` and reproduces the real boundary exactly
+>    (AxiosResponse → ApiResponse → DeclarationConfirmResponse → id) via named
+>    helpers `confirmResponsePayload` / `confirmApiEnvelope` / `axiosResponse`.
+> 3. **Complete AppRouter matrix** — R2 parameterizes all six routes for both
+>    retailer and wholesaler (12 cases) with static endpoint ownership.
+>
+> Prior evidence (§0–§9) is preserved as non-authoritative history. The
+> authoritative verdict is
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_R2_MERGE_REVIEW** (see §10).
+
 > **⚠️ SUPERSEDED_BY_I2C_I2_R1**
 >
 > The `e23fc70b` PASS verdict below is **superseded** by the R1 correction.
@@ -25,7 +48,7 @@
 > The `e23fc70b` evidence below is preserved as history; the authoritative
 > verdict is **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_R1_MERGE_REVIEW** (see §9).
 
-**Status:** ⚠️ SUPERSEDED_BY_I2C_I2_R1 (original: PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_REVIEW @ `e23fc70b`)
+**Status:** ⚠️ SUPERSEDED_BY_I2C_I2_R2 (prior: I2C-I2 @ `e23fc70b` and R1 @ `b3a84748`)
 **Executor:** local Zcode (real execution, no static analysis)
 **Date:** 2026-08-09
 **Branch:** `zcode/dc12r1-s3-s2b-i2c-i2-printable-workspace-2026-08-09`
@@ -274,3 +297,134 @@ the same approved 18 files; no new file added):
 `gitnexus analyze` + `gitnexus status` to be re-run after the R1 commit (recorded
 in the commit/push step). `detect_changes` remains unavailable in this CLI build
 (limitation documented; exact `git diff` evidence in §9.4).
+
+---
+
+## 10 R2 — Real API Envelope and Complete Guard Matrix
+
+**R2 status:** PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2_R2_MERGE_REVIEW
+**R2 base (parent):** `b3a84748` (R1 tip)
+**Kilo R2 report:** commit `361adfb9` (R1 report: `2c79cb45`)
+**Supersedes:** `e23fc70b` (I2C-I2) and `b3a84748` (R1)
+
+### 10.1 The three R2 blockers and exact closure
+
+**Blocker 1 — real response envelope.** R1 read the receipt id at the wrong
+envelope layer (`resp.id` via `'id' in resp`). The declared
+`confirmDeclaration` contract is
+`Promise<ApiResponse<DeclarationConfirmResponse>>`, and `ApiResponse<T>` is
+`{ success, data: T, timestamp }`, so the receipt id lives at `resp.data.id`.
+R2 derives it ONLY from `resp.data.id` with full runtime validation: `resp` is
+an object; `resp.data` is a non-null object; `resp.data.id` is a non-empty
+string; then `encodeURIComponent(resp.data.id)` before constructing the link.
+Forbidden and absent: `resp.id`, `resp.data.data.id`, request/row/cached/fixed/
+route id fallback, `?? id`/`|| id`, and any shape guessing beyond the declared
+`ApiResponse` contract. `declarationService.ts` was NOT changed (its public
+contract is unchanged).
+
+**Blocker 2 — authentic three-layer mocks.** R2 eliminates the flattened
+false-green mock `{ data: { id } }` and reproduces the real boundary exactly:
+
+```
+AxiosResponse
+  .data = ApiResponse<DeclarationConfirmResponse>   ({ success, data, timestamp })
+    .data = DeclarationConfirmResponse               ({ id, ... })
+      .id = RESPONSE_ID
+```
+
+via clearly named helpers `confirmResponsePayload(id)`,
+`confirmApiEnvelope(payload)`, `axiosResponse(body)`, and
+`authenticConfirmSuccess(id)`. The successful `api.post` mock is equivalent to
+`{ data: { success: true, data: { id: RESPONSE_ID, ... }, timestamp } }`.
+
+**Blocker 3 — complete AppRouter matrix.** R2 parameterizes all six routes for
+both retailer and wholesaler (12 cases) against the real `<AppRouter/>`,
+`RetailerRoute`, `WholesalerRoute`, `ClientLayout`, `MainLayout`, and real print
+pages. Static endpoint ownership is proven for all six routes.
+
+### 10.2 Final envelope shape (explicit)
+
+The cashier confirmation receipt identity is derived exclusively as:
+
+```ts
+const dataObj = resp && typeof resp === 'object' ? resp.data : undefined;
+const responseId = dataObj && typeof dataObj === 'object' ? dataObj.id : undefined;
+if (typeof responseId === 'string' && responseId.length > 0) {
+  setConfirmedReceiptId(responseId);  // → link /declarations/{encodeURIComponent(responseId)}/receipt
+} else {
+  // fail closed: neutral copy, no link, NOT a payment-failure message
+}
+```
+
+### 10.3 Complete 12-case guard matrix (explicit)
+
+| # | Session | Route | Result |
+|---|---|---|---|
+| 1 | retailer | `/client/orders/:id/print` | ALLOW → GET `/client/orders/:id/print` once |
+| 2 | retailer | `/client/declarations/:id/print` | ALLOW → GET `/client/declarations/:id/print` once |
+| 3 | retailer | `/client/declarations/:id/receipt` | ALLOW → GET `/client/declarations/:id/receipt` once |
+| 4 | retailer | `/orders/:id/print` | DENY/redirect; no print-data GET |
+| 5 | retailer | `/declarations/:id/print` | DENY/redirect; no print-data GET |
+| 6 | retailer | `/declarations/:id/receipt` | DENY/redirect; no print-data GET |
+| 7 | wholesaler | `/orders/:id/print` | ALLOW → GET `/orders/:id/print` once |
+| 8 | wholesaler | `/declarations/:id/print` | ALLOW → GET `/declarations/:id/print` once |
+| 9 | wholesaler | `/declarations/:id/receipt` | ALLOW → GET `/declarations/:id/receipt` once |
+| 10 | wholesaler | `/client/orders/:id/print` | DENY/redirect; no print-data GET |
+| 11 | wholesaler | `/client/declarations/:id/print` | DENY/redirect; no print-data GET |
+| 12 | wholesaler | `/client/declarations/:id/receipt` | DENY/redirect; no print-data GET |
+
+Plus static endpoint ownership: each allowed route calls exactly its own GET
+endpoint once, never the opposite client/supplier endpoint, and issues no
+POST/PUT/PATCH/DELETE.
+
+### 10.4 RED proof (against `b3a84748`, pre-R2)
+
+With only `DeclarationQueuePage.tsx` reverted to `b3a84748` (R2 tests kept),
+**5 of 12** authentic-envelope Correction-2 tests fail RED, including the
+authoritative success case. Root cause: `b3a84748` reads `resp.id`, but the
+authentic `ApiResponse` envelope has no top-level `id`, so the link is not built
+from `RESPONSE_ID` (assertion on `href=.../RESPONSE_ID/receipt` fails). RED
+tests: 1 (POST/link), 2 (no extra mutation — depends on link), 3 (encoded
+RESPONSE_ID), 11/12 (Contract C GET), 9 (flattened legacy). Additionally, the
+`encodeURIComponent`-removal mutation makes test 3 RED (verified).
+
+### 10.5 GREEN gates
+
+| Gate | Result |
+|---|---|
+| Authentic-envelope RED on `b3a84748` | 5/12 RED (captured) |
+| Focused `PrintableWorkspace` | **62 passed / 0 failed** |
+| Focused, 3 consecutive clean-process runs | 62/62 × 3 |
+| Full `pnpm vitest run` | **222 passed / 0 failed** (19 files) |
+| Existing retailer-portal + route-guard tests | **19 passed / 0 failed** |
+| `pnpm build` | exit 0 |
+| Zero skip/xfail/deselected/timeout/assertion weakening | confirmed |
+
+### 10.6 R2 changed-file scope
+
+R2 touched exactly the **3 allowed files** (aggregate base..HEAD remains the
+approved 18 files; no new file added; `declarationService.ts` unchanged):
+
+- `frontend/src/pages/finance/DeclarationQueuePage.tsx` (Correction 1)
+- `frontend/src/tests/PrintableWorkspace.test.tsx` (Corrections 2 & 3)
+- `ai-ledger/product-ai/2026-08-09_dc12r1_s3_s2b_i2c_i2_printable_workspace.md` (this section)
+
+### 10.7 R2 self-review
+
+- `git diff --check`: clean.
+- Scope: only the 3 allowed files; aggregate still 18; `declarationService.ts`
+  unchanged; no forbidden paths.
+- No new dependency; no skip/xfail/deselection/timeout increase/assertion weakening.
+- **detect-secrets** (read-only scan + `detect-secrets-hook --baseline`): 0 secrets, exit 0.
+- **Mojibake**: no U+FFFD/double-encoded; non-ASCII is intentional em-dash (convention).
+- **GitNexus**: pre-edit impact on `handleConfirm`/`confirmDeclaration`/`DeclarationQueuePage` = LOW.
+  `detect_changes` NOT available in this CLI build (documented); direct `git diff` used.
+  `gitnexus analyze`/`status` run after the final commit.
+- **Adversarial**: verified the code reads `resp.data.id` (not `resp.id`/`resp.data.data.id`);
+  no `?? id`/`|| id`/fixed/stale fallback; `confirmDeclaration` called once; link
+  `encodeURIComponent`-encoded; confirmation transaction unaltered.
+
+### 10.8 Post-commit GitNexus
+
+`gitnexus analyze` + `gitnexus status` re-run after the R2 commit (recorded in
+the commit/push step).

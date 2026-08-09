@@ -11,9 +11,10 @@ State Machine:
 - Cancel only allowed in Draft or Confirmed
 - Return only allowed in Fulfilled
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from math import ceil
 from typing import Annotated, Mapping, Optional
+import uuid
 from uuid import UUID
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
@@ -33,6 +34,7 @@ from core.domain.order_state import (
 from models.order import Order as OrderModel
 from crud.order import (
     get_order_by_id,
+    get_order_for_wholesaler,
     get_orders_paginated,
     create_order as crud_create_order,
     confirm_order as crud_confirm_order,
@@ -54,7 +56,9 @@ from schemas.order import (
     OrderItem as OrderItemSchema,
     PayOrderRequest,
 )
-from schemas.common import Pagination
+from schemas.common import DataResponse, Pagination
+from schemas.print import OrderPrintView
+from services.print_service import build_order_print
 from schemas.payment import PaymentMethod
 from services.canonical_payment_service import (
     CanonicalPaymentMutationHttpError,
@@ -62,6 +66,21 @@ from services.canonical_payment_service import (
 )
 
 router = APIRouter()
+
+
+async def _supplier_binding_active(db: AsyncSession, ws_uuid, rt_uuid) -> bool:
+    """R1: verify the relationship binding is active and non-deleted."""
+    row = (
+        await db.execute(
+            text(
+                "SELECT status FROM public.wholesaler_retailer_bindings "
+                "WHERE wholesaler_id = :wid AND retailer_id = :rid "
+                "AND is_deleted IS FALSE LIMIT 1"
+            ),
+            {"wid": ws_uuid, "rid": rt_uuid},
+        )
+    ).first()
+    return row is not None and row.status == "active"
 
 IDEMPOTENCY_KEY_MIN_LENGTH = 8
 IDEMPOTENCY_KEY_MAX_LENGTH = 64
@@ -508,6 +527,62 @@ async def get_order(
         success=True,
         data=order_to_schema(order, retailer_name=name_map.get(str(order.retailer_id))),
         timestamp=datetime.utcnow()
+    )
+
+
+@router.get("/{order_id}/print", response_model=DataResponse[OrderPrintView], status_code=status.HTTP_200_OK)
+async def print_order(
+    order_id: str,
+    token: TokenPayload = Depends(RequirePermission("orders:read")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    """
+    Printable order document (supplier side) — server-authoritative.
+
+    R2: uses ``get_order_for_wholesaler`` — a database-level
+    ``(order_id, wholesaler_id)`` SQL predicate (not load-then-compare).
+    ``wholesaler_id`` is derived from ``token.tenant_id`` (never
+    client-supplied). Also checks active/non-deleted binding.
+    """
+    try:
+        ws_uuid = uuid.UUID(token.tenant_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    # R2: DB-level dual-key predicate — wrong supplier never loads the row.
+    order = await get_order_for_wholesaler(db, order_id, str(ws_uuid))
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    # retailer_id must be present (never substitute wholesaler UUID).
+    if not order.retailer_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    rt_uuid = uuid.UUID(str(order.retailer_id))
+    # R1: active/non-deleted binding check.
+    if not await _supplier_binding_active(db, ws_uuid, rt_uuid):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    view = await build_order_print(
+        db, order=order, wholesaler_id=ws_uuid, retailer_id=rt_uuid
+    )
+    if view is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
+        )
+    return DataResponse(
+        success=True,
+        data=view,
+        timestamp=datetime.now(timezone.utc),
     )
 
 

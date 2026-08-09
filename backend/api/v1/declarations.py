@@ -29,8 +29,9 @@ from core.domain.order_state import (
     OrderInvariantViolation,
 )
 from core.security import TokenPayload
-from crud.order import InvalidStateTransitionError
+from crud.order import InvalidStateTransitionError, get_order_by_id, get_order_for_wholesaler
 from repositories.payment_declaration_repository import PaymentDeclarationRepository
+from repositories.payment_repository import PaymentRepository
 from schemas.common import DataResponse, Pagination
 from schemas.declaration import (
     DeclarationConfirmResponse,
@@ -38,11 +39,34 @@ from schemas.declaration import (
     DeclarationView,
 )
 from schemas.order import validate_no_html_tags
+from schemas.print import DeclarationPrintView, ReceiptPrintView
 from services.canonical_payment_service import CanonicalPaymentMutationHttpError
 from services.payment_declaration_service import PaymentDeclarationService
+from services.print_service import (
+    build_declaration_print,
+    build_receipt_print,
+    check_receipt_eligibility,
+)
 
 
 router = APIRouter()
+
+
+async def _supplier_binding_active(db: AsyncSession, ws_uuid, rt_uuid) -> bool:
+    """R1: verify the relationship binding is active and non-deleted."""
+    from sqlalchemy import text as _text
+
+    row = (
+        await db.execute(
+            _text(
+                "SELECT status FROM public.wholesaler_retailer_bindings "
+                "WHERE wholesaler_id = :wid AND retailer_id = :rid "
+                "AND is_deleted IS FALSE LIMIT 1"
+            ),
+            {"wid": ws_uuid, "rid": rt_uuid},
+        )
+    ).first()
+    return row is not None and row.status == "active"
 
 
 _ALLOWED_STATUSES = {"pending", "confirmed", "rejected"}
@@ -144,6 +168,128 @@ async def get_declaration(
     return DataResponse(
         success=True,
         data=_to_view(row).model_dump(mode="json"),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /declarations/{declaration_id}/print — Contract B (supplier side)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{declaration_id}/print",
+    response_model=DataResponse[DeclarationPrintView],
+    status_code=status.HTTP_200_OK,
+)
+async def print_declaration(
+    declaration_id: str,
+    token: TokenPayload = Depends(RequirePermission("payments:read")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    """Printable payment declaration document (supplier side).
+
+    Pending/rejected marked NOT A RECEIPT; confirmed exposes receipt content
+    only when eligibility passes. Dual-key scoped; wrong supplier -> 404.
+    """
+    wholesaler_id = _tenant_wholesaler_id(token)
+    try:
+        did = uuid.UUID(declaration_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
+        )
+    row = await PaymentDeclarationRepository().get_detail_by_wholesaler(
+        db, declaration_id=did, wholesaler_id=wholesaler_id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
+        )
+    # R1: active/non-deleted binding check for the declaration's relationship.
+    if not await _supplier_binding_active(db, wholesaler_id, row["retailer_id"]):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
+        )
+    eligible = await check_receipt_eligibility(
+        db, row=row, wholesaler_id=wholesaler_id,
+    )
+    view = await build_declaration_print(
+        db, row=row, wholesaler_id=wholesaler_id, retailer_id=row["retailer_id"],
+        receipt_eligible=eligible,
+    )
+    if view is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"},
+        )
+    return DataResponse(
+        success=True,
+        data=view,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /declarations/{declaration_id}/receipt — Contract C (supplier side)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{declaration_id}/receipt",
+    response_model=DataResponse[ReceiptPrintView],
+    status_code=status.HTTP_200_OK,
+)
+async def get_receipt(
+    declaration_id: str,
+    token: TokenPayload = Depends(RequirePermission("payments:read")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    """Confirmed receipt (supplier side). Fail-closed 404 if ineligible.
+
+    Never allocates or repairs. Replayed GET returns same identity.
+    """
+    wholesaler_id = _tenant_wholesaler_id(token)
+    try:
+        did = uuid.UUID(declaration_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "RECEIPT_NOT_AVAILABLE", "message": "Receipt not available"},
+        )
+    row = await PaymentDeclarationRepository().get_detail_by_wholesaler(
+        db, declaration_id=did, wholesaler_id=wholesaler_id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "RECEIPT_NOT_AVAILABLE", "message": "Receipt not available"},
+        )
+    eligible = await check_receipt_eligibility(
+        db, row=row, wholesaler_id=wholesaler_id,
+    )
+    if not eligible:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "RECEIPT_NOT_AVAILABLE", "message": "Receipt not available"},
+        )
+    cpid = row.get("confirmation_payment_id")
+    payment = await PaymentRepository().get_by_id_with_receipt(
+        db, payment_id=uuid.UUID(str(cpid)),
+    )
+    order = await get_order_for_wholesaler(db, str(row["order_id"]), str(wholesaler_id))
+    view = await build_receipt_print(
+        db, row=row, payment=payment, order=order, wholesaler_id=wholesaler_id,
+    )
+    if view is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "RECEIPT_NOT_AVAILABLE", "message": "Receipt not available"},
+        )
+    return DataResponse(
+        success=True,
+        data=view,
         timestamp=datetime.now(timezone.utc),
     )
 

@@ -332,7 +332,7 @@ class TestReadOnlyClientFinanceRoutePolicy:
             for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
                 actual[(method, route.path)] = perm
 
-        assert len(actual) == 15
+        assert len(actual) == 18
         assert actual[("GET", "/api/v1/client/payments")] == "client:payments:read"
         assert actual[("GET", "/api/v1/client/finance/balance")] == "client:finance:read"
         assert not [key for key in actual if key[1].startswith("/api/v1/client/payments") and key[0] != "GET"]
@@ -343,6 +343,10 @@ class TestReadOnlyClientFinanceRoutePolicy:
         assert actual[("GET", "/api/v1/client/declarations")] == "client:payments:read"
         assert actual[("GET", "/api/v1/client/declarations/{declaration_id}")] == "client:payments:read"
         assert actual[("GET", "/api/v1/client/statements")] == "client:payments:read"
+        # DC-12R1-S3-S2B-I2C-I1: printable records (+3 client GET routes).
+        assert actual[("GET", "/api/v1/client/orders/{order_id}/print")] == "client:orders:read"
+        assert actual[("GET", "/api/v1/client/declarations/{declaration_id}/print")] == "client:payments:read"
+        assert actual[("GET", "/api/v1/client/declarations/{declaration_id}/receipt")] == "client:payments:read"
 
     async def test_generic_wholesaler_payment_and_finance_routes_remain_denied(self, s3_s2_client, two_tenants):
         token = await _login_retailer(s3_s2_client, two_tenants)

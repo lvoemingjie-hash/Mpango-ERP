@@ -1,9 +1,9 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-08-04
+**Last updated:** 2026-08-09
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product merge:** `753048f029c4eede86fb11857677db57b865900e`
+**Accepted product code merge:** `e923fd8567637ecc87b40d775caa8860b10821a0`
 **Current database head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
@@ -20,10 +20,10 @@ identity, supplier-scoped retailer login, catalog/order workspace, read-only
 retailer finance visibility, and the payment-declaration maker-checker loop are
 materially implemented.
 
-The current product is still pre-pilot because printable business documents,
-final workspace polish, the real-mailbox browser journey, customer HTTPS
-deployment, the formal DB-OPS package, tenant branding, and current user
-manuals are not all closed.
+The current product is still pre-pilot because the browser-printable workspace,
+Contract D relationship statements, final workspace polish, the real-mailbox
+browser journey, customer HTTPS deployment, the formal DB-OPS package, tenant
+branding, and current user manuals are not all closed.
 
 Current engineering truth:
 
@@ -77,7 +77,7 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product code baseline | `origin/product-dev-recovered@753048f0` includes the accepted I2B runtime merge |
+| Product code baseline | `origin/product-dev-recovered@e923fd85` includes accepted I2B runtime and I2C-I1 Contracts A-C |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `037_payment_declarations_schema` |
@@ -109,8 +109,8 @@ deployment state from a merged branch.
 | Retailer payment declaration schema foundation | Merged | Migration `037` provides declarations, receipt sequences, and receipt numbers |
 | Canonical payment transaction extraction I2A | Merged | `CanonicalPaymentService` owns the reusable mutation core; direct pay behavior is preserved and invalid amounts fail before DB access |
 | Payment declaration and cashier confirmation I2B | Merged | Retailer declaration remains non-authoritative; cashier confirm/reject is supplier-scoped; confirmation uses the canonical atomic payment path and allocates a receipt |
-| Printable business records | Incomplete | Payment declaration, confirmed receipt, order, and statement print contracts remain |
-| Retailer workspace closure | In progress | Printable records and final responsive/brand UX remain |
+| Printable business records | Backend A-C merged | Read-only order, declaration, and eligible receipt print data are available; browser-print UI and Contract D statements remain |
+| Retailer workspace closure | In progress | Browser printing, final responsive/brand UX, and Contract D statements remain |
 | Retailer end-to-end S4 | Not closed | Real mailbox and browser journey on deployed latest SHA remains |
 | Platform operator schema | Foundation merged | Migration `034` tables exist |
 | Platform operator runtime | Incomplete | Dedicated login/JWT/guard/frontend lifecycle remains |
@@ -145,6 +145,8 @@ deployment state from a merged branch.
 - Non-authoritative retailer payment declarations with idempotent replay.
 - Supplier-scoped cashier confirmation/rejection through the canonical payment
   transaction, including atomic receipt allocation and retailer-visible status.
+- Read-only, server-authoritative print-data Contracts A-C for orders,
+  declarations, and eligible confirmed receipts.
 
 ### DC-12R1-H4 post-merge test-contract forensics and repair
 
@@ -163,6 +165,25 @@ event-loop state leakage from a prior session:
 
 Full suite after H4 repair: `3116 passed`, `48 skipped`, `15 xfailed`,
 zero red, zero errors (two identical runs on independent stacks).
+
+### DC-12R1-S3-S2B-I2C-I1 printable records backend
+
+Merged as `e923fd8567637ecc87b40d775caa8860b10821a0`.
+
+Delivered:
+
+- six read-only supplier and retailer routes for order, declaration, and
+  receipt print data;
+- server-authoritative money, status, and UTC/EAT display fields;
+- fail-closed receipt eligibility across declaration, payment, order, and
+  active relationship binding;
+- no client-calculated financial fields and no print-path mutation.
+
+I2C-I1 deliberately excludes browser print UI, Contract D relationship
+statements, events/outbox, SMS/WhatsApp delivery, migration `038`, and
+deployment. Lubuntu independently validated the exact source in a full clone:
+two fresh-stack backend gates each reported `3216 passed`, `48 skipped`,
+`15 xfailed`, zero failures, and zero errors.
 
 ## 6. Latest Validation Snapshot
 
@@ -202,8 +223,8 @@ real browser/mailbox journey.
 
 ### P1 product journey blockers
 
-1. Printable order, declaration, confirmed receipt, and account-statement
-   contracts and UX are not yet closed.
+1. Browser-printable order, declaration, and eligible receipt UX is not yet
+   closed; Contract D relationship statements are not implemented.
 2. The complete retailer workspace is not yet closed on mobile and desktop.
 3. The latest SHA has not passed the full invitation/setup/reset/login/order/
    payment/finance journey through a real mailbox and browser.
@@ -311,23 +332,37 @@ Delivered:
 - two identical independent full backend gates at `3180 passed`, `48 skipped`,
   `15 xfailed`, zero failures, and zero errors.
 
-#### DC-12R1-S3-S2B-I2C - print and notification-event closure (active)
+#### DC-12R1-S3-S2B-I2C-I1 - printable records backend (completed)
 
-Define the authoritative printable contracts for orders, unconfirmed payment
-declarations, confirmed receipts, and relationship account statements. Every
-document must be server-authoritative, dual-key scoped, status-explicit, and
-must never label an unconfirmed declaration as received or settled.
+I2C-I1 merged as `e923fd8567637ecc87b40d775caa8860b10821a0` after independent
+full-clone validation. It delivers read-only backend Contracts A-C for supplier
+and retailer order, declaration, and receipt print data. Receipt rendering
+fails closed unless the declaration, canonical payment, order, and active
+binding are consistent and receipt-eligible.
 
-Define durable event contracts for future SMS/WhatsApp delivery, including
-event identity, tenant/relationship scope, committed-state timing, redaction,
-replay, and audit semantics. Do not integrate an external messaging provider
-or introduce a new financial mutation path in this slice.
+#### DC-12R1-S3-S2B-I2C-I2 - browser-printable workspace (active)
 
-#### DC-12R1-S3-S3 - workspace and print closure
+Implement the frontend views and browser-print behavior for the existing
+read-only Contracts A-C. The frontend must render server-authoritative fields,
+must not recalculate finance, and must not issue a financial mutation. It must
+show pending and rejected declarations as declarations, never as receipts.
+
+This slice excludes Contract D statements, events/outbox, SMS/WhatsApp delivery,
+new migrations, dependencies, backend financial changes, and deployment.
+
+#### DC-12R1-S3-S2B-I2C-I3 - future notification-event closure (pending)
+
+Define and implement committed-state notification-event/outbox boundaries only
+after I2C-I2 is independently reviewed and merged. The scope must define event
+identity, tenant/relationship scope, committed-state timing, redaction, replay,
+and audit semantics. It must not integrate SMS/WhatsApp delivery or introduce a
+financial mutation path without a separate approval.
+
+#### DC-12R1-S3-S3 - responsive branded workspace closure
 
 Deliver responsive retailer navigation, branded relationship context, clear
-financial state language, printable documents, empty/error states, logout
-recovery, and focused accessibility tests.
+financial state language, empty/error states, logout recovery, and focused
+accessibility tests. It builds on I2C-I2 rather than duplicating print views.
 
 #### DC-12R1-S4 - end-to-end delivery closure
 
@@ -369,6 +404,11 @@ Start only after reliable operational data and action boundaries exist.
 Initial capabilities should be read-only assistance, guided data entry,
 anomaly summaries, and approval-required typed actions. No unrestricted SQL,
 shell, payment mutation, or tenant impersonation.
+
+The long-term architecture should extend the same private tenant-to-customer
+relationship kernel upward to supplier networks and downward to retailer
+consumer channels. That is a post-MVP design direction, not authorization to
+expand the current product scope or weaken isolation boundaries.
 
 ## 9. Role and Ownership Model
 

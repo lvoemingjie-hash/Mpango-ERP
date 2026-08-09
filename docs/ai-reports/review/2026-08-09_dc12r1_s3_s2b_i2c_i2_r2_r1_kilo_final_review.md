@@ -9,7 +9,7 @@
   - `2c79cb45e8bbe77179954c4e790011adaab1383c`
   - `361adfb94345b1c37a4b62416e6ff07b63f9fe39`
 - **Report branch:** `reports/dc12r1-s3-s2b-i2c-i2-r2-r1-kilo-final-review-2026-08-09`
-- **Report SHA:** `06c2537e024f3e6191a0ffbf3409a15ac8e64b14`
+- **Report SHA:** `55826729ad1b08b4e7a556785ee4d0dba62ae264`
 - **Runtime evidence:** Not claimed. `pnpm vitest run src/tests/PrintableWorkspace.test.tsx` failed with `Command "vitest" not found`.
 
 ## 1. Final determination
@@ -273,8 +273,8 @@ It also maps both prior Kilo reports to R2 narrative text, but two closure claim
 
 ## 11. Local/remote report-branch equality
 
-- **Local report SHA:** `06c2537e024f3e6191a0ffbf3409a15ac8e64b14`
-- **Remote report SHA:** `06c2537e024f3e6191a0ffbf3409a15ac8e64b14`
+- **Local report SHA:** `55826729ad1b08b4e7a556785ee4d0dba62ae264`
+- **Remote report SHA:** `55826729ad1b08b4e7a556785ee4d0dba62ae264`
 - **Equality:** equal
 
 ## 12. Final verdict

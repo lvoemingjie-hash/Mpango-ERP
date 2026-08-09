@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { orderService } from '@/services/orderService';
 import type { PayOrderData } from '@/services/orderService';
 import { financeService } from '@/services/financeService';
@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
+import { PrinterIcon } from '@heroicons/react/24/outline';
 import type { PaymentData } from '@/services/paymentService';
 
 function buildFinanceCollectionReturnPath(returnPath: string, orderId: string): string {
@@ -488,6 +489,15 @@ export function OrderListPage() {
                           Invoice
                         </button>
                       )}
+                      {/* DC-12R1-S3-S2B-I2C-I2: printable order (Contract A, cashier). */}
+                      <Link
+                        to={`/orders/${o.id}/print`}
+                        className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900"
+                        title="Print order"
+                      >
+                        <PrinterIcon className="h-4 w-4" />
+                        Print
+                      </Link>
                     </div>
                   </td>
                 </tr>

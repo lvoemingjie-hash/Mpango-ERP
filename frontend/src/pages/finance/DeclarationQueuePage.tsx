@@ -1,6 +1,7 @@
 /** Wholesaler cashier declaration queue (DC-12R1-S3-S2B-I2B). */
 import { useCallback, useEffect, useState } from 'react';
-import { BanknotesIcon } from '@heroicons/react/24/outline';
+import { Link } from 'react-router-dom';
+import { BanknotesIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { listDeclarations, confirmDeclaration, rejectDeclaration } from '@/services/declarationService';
@@ -29,6 +30,11 @@ export default function DeclarationQueuePage() {
   const [actionId, setActionId] = useState<string | null>(null);
   const [editingReasonId, setEditingReasonId] = useState<string | null>(null);
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
+  // DC-12R1-S3-S2B-I2C-I2: the declaration id most recently confirmed, taken
+  // from the confirm response (not a hand-typed URL). Used only to surface a
+  // "View/Print receipt" link that reads Contract C; the confirm transaction
+  // itself is unchanged (still a single POST /declarations/{id}/confirm).
+  const [confirmedReceiptId, setConfirmedReceiptId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,7 +55,10 @@ export default function DeclarationQueuePage() {
   const handleConfirm = async (id: string) => {
     setActionId(id);
     try {
-      await confirmDeclaration(id);
+      const resp = await confirmDeclaration(id);
+      // Capture the confirmed declaration id from the (unchanged) confirm
+      // response so a receipt link can navigate to Contract C only.
+      setConfirmedReceiptId(resp?.data?.id ?? id);
       load();
     } catch (err: unknown) {
       setError((err as Error).message || 'Confirm failed');
@@ -80,6 +89,21 @@ export default function DeclarationQueuePage() {
     <div className="min-h-screen bg-gray-50 p-4">
       <h1 className="text-lg font-semibold text-gray-900 mb-4">Payment Declarations — Pending</h1>
       {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-3">{error}</div>}
+      {/* DC-12R1-S3-S2B-I2C-I2: after a successful confirm, surface a receipt
+          link that navigates ONLY to Contract C using the confirmed id from
+          the confirm response. The confirm transaction itself is unchanged. */}
+      {confirmedReceiptId && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm p-3 rounded mb-3 flex items-center justify-between">
+          <span>Declaration confirmed. A receipt is available.</span>
+          <Link
+            to={`/declarations/${confirmedReceiptId}/receipt`}
+            className="inline-flex items-center gap-1 bg-green-600 text-white text-xs px-3 py-1 rounded hover:bg-green-700"
+          >
+            <PrinterIcon className="h-3.5 w-3.5" />
+            View / Print receipt
+          </Link>
+        </div>
+      )}
       {declarations.length === 0 ? (
         <EmptyState icon={BanknotesIcon} title="No pending declarations" description="All declarations have been processed." />
       ) : (
@@ -95,6 +119,16 @@ export default function DeclarationQueuePage() {
                   <span className={`inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded ${STATUS_BADGE[d.status] ?? 'bg-gray-100'}`}>
                     {d.status}
                   </span>
+                  {/* DC-12R1-S3-S2B-I2C-I2: printable declaration (Contract B, cashier). */}
+                  <div className="no-print mt-2">
+                    <Link
+                      to={`/declarations/${d.id}/print`}
+                      className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900"
+                    >
+                      <PrinterIcon className="h-3.5 w-3.5" />
+                      Print declaration
+                    </Link>
+                  </div>
                 </div>
                 {d.status === 'pending' && (
                   <div className="flex gap-2">

@@ -1,6 +1,7 @@
 import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
 import type { Order, WholesalerOrderCreateRequest } from '@/types/order';
+import type { OrderPrintView } from '@/types/print';
 
 export type PaymentMethod = 'cash' | 'transfer' | 'credit';
 
@@ -49,4 +50,11 @@ export const orderService = {
 
   returnOrder: (id: string) =>
     api.post<ApiResponse<{ order_id: string; status: string }>>(`/orders/${id}/return`),
+
+  /**
+   * DC-12R1-S3-S2B-I2C-I2 (Contract A, cashier/wholesaler side): read-only
+   * printable order document. Server-authoritative; no client recomputation.
+   */
+  getPrint: (id: string) =>
+    api.get<ApiResponse<OrderPrintView>>(`/orders/${encodeURIComponent(id)}/print`),
 };

@@ -1,0 +1,66 @@
+/*
+ * DC-12R1-S3-S2B-I2C-I2 — Focused print styles for printable workspace.
+ *
+ * Browser print is window.print() + this CSS only. No PDF library, upload,
+ * server-side print mutation, or new external dependency.
+ *
+ * Goals:
+ *   - Hide app chrome (headers, bottom nav, buttons, "no-print" elements).
+ *   - Reset to black-on-white, page-friendly layout.
+ *   - Keep money/numbers exact (no transform that could affect rendering).
+ */
+
+@media print {
+  /* Hide everything flagged as non-printable (back links, print buttons, etc.). */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Hide the app shells' chrome that wraps print routes. */
+  header.no-print,
+  nav.no-print,
+  .app-chrome {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Constrain to a clean page-width document; remove outer chrome spacing. */
+  .print\:max-w-none,
+  .print\:px-0,
+  .print\:py-0,
+  .print\:p-0,
+  .print\:border-0,
+  .print\:shadow-none {
+    /* Tailwind print: variants already handle these; this is a safety net. */
+  }
+
+  /* Avoid breaking inside line rows / the document card. */
+  article,
+  tr,
+  tbody {
+    page-break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  /* Ensure links don't print their href and stay black text. */
+  a {
+    color: #000000 !important;
+    text-decoration: none !important;
+  }
+
+  /* Remove shadows/borders that waste ink. */
+  .shadow-sm {
+    box-shadow: none !important;
+  }
+}

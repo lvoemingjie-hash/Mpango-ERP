@@ -350,14 +350,15 @@ class StatementRepository:
         return list(rows)
 
     # ------------------------------------------------------------------
-    # Completed-payment ownership-integrity precheck (R1 rule 1; R1-R1-R1
-    # wrong-wholesaler closure). Uses a LEFT JOIN + IS NULL so an unresolvable
-    # order is also treated as corruption, and pins the AUTHORITATIVE
-    # wholesaler_id (the server-derived statement identity) — so a payment
-    # whose order belongs to a DIFFERENT wholesaler is corruption, not merely
-    # another relationship's data. Corruption -> 409
-    # STATEMENT_INTERNAL_INCONSISTENT, zero partial document, so corrupt rows
-    # neither leak into the document nor silently disappear.
+    # Completed-payment ownership-integrity precheck (R1 rule 1; R1-R1-R2
+    # relationship-scoped closure). Scans ONLY the payments that BELONG to THIS
+    # (wholesaler_id, retailer_id) relationship — a payment belongs to it when
+    # EITHER the payment's retailer is ``retailer_id`` OR its order's retailer
+    # is ``retailer_id`` — so a corrupt payment in another relationship never
+    # faults this relationship's statement (R1-R1-R2 P1). Within that set, any
+    # payment whose retailer differs from ``retailer_id``, whose order belongs
+    # to a different wholesaler or retailer, or whose order is unresolvable is
+    # corruption -> 409 STATEMENT_INTERNAL_INCONSISTENT, zero partial document.
     # ------------------------------------------------------------------
     async def count_completed_payment_ownership_mismatch(
         self,
@@ -365,6 +366,7 @@ class StatementRepository:
         *,
         schema: str,
         wholesaler_id: uuid.UUID,
+        retailer_id: uuid.UUID,
     ) -> int:
         row = (
             await db.execute(
@@ -376,13 +378,18 @@ class StatementRepository:
                     WHERE p.status = 'completed'
                       AND p.is_deleted IS FALSE
                       AND (
+                        p.retailer_id = :rid
+                        OR o.retailer_id = :rid
+                      )
+                      AND (
                         o.id IS NULL
-                        OR o.retailer_id IS DISTINCT FROM p.retailer_id
+                        OR p.retailer_id IS DISTINCT FROM :rid
+                        OR o.retailer_id IS DISTINCT FROM :rid
                         OR o.wholesaler_id IS DISTINCT FROM :wid
                       )
                     """
                 ),
-                {"wid": wholesaler_id},
+                {"wid": wholesaler_id, "rid": retailer_id},
             )
         ).first()
         return int(row.n if row and row.n is not None else 0)

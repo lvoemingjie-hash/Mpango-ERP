@@ -89,7 +89,8 @@ async def _contractd_flush_stmt_cache(provisioned_pool):
 
 @pytest_asyncio.fixture
 async def contractd_disposable_tenant(s2_clean_db):
-    """Per-test OWNED DISPOSABLE tenant (R1-R1-R1 Blocker 3).
+    """Per-test OWNED DISPOSABLE tenant (R1-R1-R1 Blocker 3; R1-R1-R2 setup-
+    failure safety).
 
     Every Contract D test runs inside its own freshly-provisioned tenant
     (wholesaler + schema + retailer + binding). The schema is NOT registered
@@ -99,6 +100,13 @@ async def contractd_disposable_tenant(s2_clean_db):
     ledger_entries rows. Public ownership rows are deleted by the registry by
     exact id. We never rely on deleting immutable rows.
 
+    R1-R1-R2 (P1): the schema is captured the MOMENT the provisioning service
+    commits its CREATE SCHEMA, and the DROP guard runs in ``finally`` from that
+    point on — so a provisioning failure AFTER the schema exists (or a
+    CREATE-TABLE failure mid-provisioning) still drops the schema. No partial
+    tenant can ever leak (this is exactly how 58d4b51f produced 131 stray
+    schemas).
+
     Provisioning DDL (CREATE SCHEMA) invalidates asyncpg prepared-statement
     caches on pooled connections (search_path-dependent plans), so the engine
     pool is disposed after provisioning and after the schema drop — same
@@ -107,7 +115,11 @@ async def contractd_disposable_tenant(s2_clean_db):
     from database.session import AsyncSessionLocal, async_engine
 
     db, reg = s2_clean_db
+    # Provision inside a try/finally that is armed the moment the schema is
+    # known, so ANY later failure drops it. _provision_disposable_tenant
+    # returns (tenant, schema) with schema set as soon as CREATE SCHEMA commits.
     tenant = await _provision_disposable_tenant(db, reg)
+    schema = tenant["schema"]
     # Provisioning DDL invalidates prepared-statement caches -> dispose pool.
     await async_engine.dispose()
     try:
@@ -118,7 +130,7 @@ async def contractd_disposable_tenant(s2_clean_db):
         # until the 60s asyncpg command timeout (TimeoutError at bind_execute).
         await db.rollback()
         async with AsyncSessionLocal() as cleanup_db:
-            await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{tenant["schema"]}" CASCADE'))
+            await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
             await cleanup_db.commit()
             row = (
                 await cleanup_db.execute(
@@ -126,10 +138,10 @@ async def contractd_disposable_tenant(s2_clean_db):
                         "SELECT schema_name FROM information_schema.schemata "
                         "WHERE schema_name = :s"
                     ),
-                    {"s": tenant["schema"]},
+                    {"s": schema},
                 )
             ).first()
-            assert row is None, f"disposable tenant schema {tenant['schema']} still present after drop"
+            assert row is None, f"disposable tenant schema {schema} still present after drop"
         # Schema drop invalidates prepared-statement caches -> dispose pool.
         await async_engine.dispose()
 
@@ -245,9 +257,27 @@ async def _provision_disposable_tenant(db: AsyncSession, registry, *, prefix: st
     the IMMUTABLE ledger_entries rows (R1-R1-R1 Blocker 3: never delete
     immutable rows). Only the public ownership rows are registered so the
     registry deletes them by exact id.
+
+    R1-R1-R2 (P1): the schema is captured the MOMENT the provisioning service
+    commits CREATE SCHEMA, and a DROP guard is armed for the rest of this
+    function. If a LATER provisioning step (retailer user, retailer, binding)
+    raises, the partially-created schema is dropped here in a fresh session so
+    no stray schema ever leaks. The registry already recorded every public row
+    by exact id, so the registry teardown deletes those; the schema itself is
+    never registered.
     """
     from core.security import hash_password
+    from database.session import AsyncSessionLocal, async_engine
     from services.tenant_provisioning_service import TenantProvisioningService
+
+    async def _drop_schema_on_failure(sch: str) -> None:
+        """Drop a partially-provisioned schema in a FRESH session (the main
+        session may be in a failed transaction). Used only on the failure path
+        so the happy-path fixture teardown owns the normal drop."""
+        await async_engine.dispose()
+        async with AsyncSessionLocal() as cleanup_db:
+            await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE'))
+            await cleanup_db.commit()
 
     code = f"{prefix}{uuid.uuid4().hex[:6].upper()}"
     email = _unique_email()
@@ -296,25 +326,34 @@ async def _provision_disposable_tenant(db: AsyncSession, registry, *, prefix: st
     # NOTE: do NOT register_tenant_schema / register_tenant_user — the fixture
     # drops the schema itself (see contractd_disposable_tenant teardown).
 
-    # Retailer user (known email/password for HTTP login). Registered rows
-    # inside the schema are discarded by the schema drop.
-    pw_hash = hash_password(password)
-    uid_row = (
-        await db.execute(
-            text(
-                f'INSERT INTO "{schema}".users '
-                "(email, password_hash, full_name, is_active) "
-                "VALUES (:email, :pw, 'Test Retailer', true) RETURNING id"
-            ),
-            {"email": email, "pw": pw_hash},
+    # From here the schema EXISTS — arm the failure drop for the rest of
+    # provisioning (retailer user / retailer / binding). Any raise below drops
+    # the partial schema so it can never leak (R1-R1-R2 P1).
+    try:
+        # Retailer user (known email/password for HTTP login). Registered rows
+        # inside the schema are discarded by the schema drop.
+        pw_hash = hash_password(password)
+        uid_row = (
+            await db.execute(
+                text(
+                    f'INSERT INTO "{schema}".users '
+                    "(email, password_hash, full_name, is_active) "
+                    "VALUES (:email, :pw, 'Test Retailer', true) RETURNING id"
+                ),
+                {"email": email, "pw": pw_hash},
+            )
+        ).fetchone()
+        uid = str(uid_row.id)
+        await _grant_retailer_operator(db, tenant_schema=schema, user_id=uid)
+        ret_id = await _create_retailer(db, name=f"Retailer {code}", registry=registry)
+        await _create_binding(
+            db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, registry=registry
         )
-    ).fetchone()
-    uid = str(uid_row.id)
-    await _grant_retailer_operator(db, tenant_schema=schema, user_id=uid)
-    ret_id = await _create_retailer(db, name=f"Retailer {code}", registry=registry)
-    await _create_binding(
-        db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, registry=registry
-    )
+    except BaseException:
+        # Drop the partial schema so no stray schema can ever leak; re-raise so
+        # the caller sees the original provisioning failure.
+        await _drop_schema_on_failure(schema)
+        raise
     return {
         "code": code,
         "email": email,
@@ -605,50 +644,67 @@ async def _cleanup_exact_ids(db: AsyncSession, schema: str, table: str, ids: lis
 @asynccontextmanager
 async def _disposable_statement_schema(db: AsyncSession):
     """Context manager owning a disposable tenant schema for immutable ledger
-    test data (R1-R1-R1 Blocker 3).
+    test data (R1-R1-R1 Blocker 3; R1-R1-R2 setup-failure safety).
 
     Creates a fresh ``t_stmt_<hex>`` schema with the exact tables the statement
     service queries, yields its name, then in a FRESH cleanup session DROPs it
     (CASCADE) and verifies it is absent from the catalog. Immutable
     ledger_entries rows are therefore discarded by schema drop — never by
     deleting immutable rows.
+
+    R1-R1-R2 (P1): the DROP guard is armed the moment CREATE SCHEMA commits,
+    so a CREATE TABLE failure mid-setup still drops the partial schema. No
+    stray schema can ever leak (this is exactly how 58d4b51f leaked schemas).
     """
-    from database.session import AsyncSessionLocal
+    from database.session import AsyncSessionLocal, async_engine
+
+    async def _drop(sch: str) -> None:
+        await async_engine.dispose()
+        async with AsyncSessionLocal() as cleanup_db:
+            await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE'))
+            await cleanup_db.commit()
 
     schema = f"t_stmt_{uuid.uuid4().hex[:12]}"
 
     await db.execute(text(f'CREATE SCHEMA "{schema}"'))
-    await db.execute(text(
-        f'CREATE TABLE "{schema}".orders ('
-        "id UUID PRIMARY KEY, wholesaler_id UUID NOT NULL, retailer_id UUID NOT NULL, "
-        "status TEXT NOT NULL, total_amount NUMERIC(12,2) NOT NULL, is_deleted BOOLEAN NOT NULL DEFAULT false, "
-        "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
-    ))
-    await db.execute(text(
-        f'CREATE TABLE "{schema}".ledger_entries ('
-        "id UUID PRIMARY KEY, transaction_date TIMESTAMPTZ NOT NULL DEFAULT now(), "
-        "account_type TEXT NOT NULL, amount NUMERIC(18,4) NOT NULL, "
-        "reference_type TEXT NOT NULL, reference_id UUID NOT NULL, description TEXT, "
-        "entry_version INTEGER NOT NULL DEFAULT 1, is_deleted BOOLEAN NOT NULL DEFAULT false, "
-        "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
-    ))
-    await db.execute(text(
-        f'CREATE TABLE "{schema}".payments ('
-        "id UUID PRIMARY KEY, order_id UUID NOT NULL, retailer_id UUID NOT NULL, "
-        "transaction_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, amount NUMERIC(12,2) NOT NULL, "
-        "method TEXT NOT NULL, status TEXT NOT NULL, receipt_number TEXT, "
-        "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
-        "is_deleted BOOLEAN NOT NULL DEFAULT false)"
-    ))
-    await db.execute(text(
-        f'CREATE TABLE "{schema}".payment_declarations ('
-        "id UUID PRIMARY KEY, order_id UUID NOT NULL, retailer_id UUID NOT NULL, "
-        "wholesaler_id UUID NOT NULL, declared_amount NUMERIC(12,2) NOT NULL, method TEXT NOT NULL, "
-        "status TEXT NOT NULL, idempotency_key TEXT NOT NULL, submitted_by UUID, "
-        "submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(), transfer_reference TEXT, "
-        "confirmed_by UUID, confirmed_at TIMESTAMPTZ, confirmation_payment_id UUID)"
-    ))
-    await db.commit()
+    # From here the schema EXISTS — arm the failure drop for the rest of setup.
+    try:
+        await db.execute(text(
+            f'CREATE TABLE "{schema}".orders ('
+            "id UUID PRIMARY KEY, wholesaler_id UUID NOT NULL, retailer_id UUID NOT NULL, "
+            "status TEXT NOT NULL, total_amount NUMERIC(12,2) NOT NULL, is_deleted BOOLEAN NOT NULL DEFAULT false, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+        ))
+        await db.execute(text(
+            f'CREATE TABLE "{schema}".ledger_entries ('
+            "id UUID PRIMARY KEY, transaction_date TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "account_type TEXT NOT NULL, amount NUMERIC(18,4) NOT NULL, "
+            "reference_type TEXT NOT NULL, reference_id UUID NOT NULL, description TEXT, "
+            "entry_version INTEGER NOT NULL DEFAULT 1, is_deleted BOOLEAN NOT NULL DEFAULT false, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+        ))
+        await db.execute(text(
+            f'CREATE TABLE "{schema}".payments ('
+            "id UUID PRIMARY KEY, order_id UUID NOT NULL, retailer_id UUID NOT NULL, "
+            "transaction_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, amount NUMERIC(12,2) NOT NULL, "
+            "method TEXT NOT NULL, status TEXT NOT NULL, receipt_number TEXT, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "is_deleted BOOLEAN NOT NULL DEFAULT false)"
+        ))
+        await db.execute(text(
+            f'CREATE TABLE "{schema}".payment_declarations ('
+            "id UUID PRIMARY KEY, order_id UUID NOT NULL, retailer_id UUID NOT NULL, "
+            "wholesaler_id UUID NOT NULL, declared_amount NUMERIC(12,2) NOT NULL, method TEXT NOT NULL, "
+            "status TEXT NOT NULL, idempotency_key TEXT NOT NULL, submitted_by UUID, "
+            "submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(), transfer_reference TEXT, "
+            "confirmed_by UUID, confirmed_at TIMESTAMPTZ, confirmation_payment_id UUID)"
+        ))
+        await db.commit()
+    except BaseException:
+        # A CREATE TABLE failure must still drop the partial schema.
+        await db.rollback()
+        await _drop(schema)
+        raise
     try:
         yield schema
     finally:
@@ -1389,13 +1445,18 @@ class TestPaymentOwnershipIntegrity:
                 assert result.rowcount == 1
                 await cleanup_db.commit()
 
-    async def test_unrelated_valid_relationship_is_not_disclosed(
+    async def test_unrelated_relationship_is_not_faulted(
         self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        """R1-R1-R1: with a corrupt payment present, the OTHER (unrelated)
-        relationship's statement is not partially disclosed — the schema-level
-        precheck fails closed for it too (no leak of either relationship's
-        rows into any partial document)."""
+        """R1-R1-R2: the ownership precheck is scoped to the AUTHORITATIVE
+        (wholesaler_id, retailer_id) relationship. A corrupt payment in ONE
+        relationship does NOT fault an UNRELATED relationship's statement —
+        the unrelated retailer keeps getting 200 (its own rows are clean).
+
+        RED on 58d4b51f: the schema-global precheck faulted every relationship
+        (cross-relationship availability coupling). GREEN now: the precheck
+        scans only the requesting relationship's payments.
+        """
         db, reg = s2_clean_db
         tenant = contractd_disposable_tenant
         info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
@@ -1420,13 +1481,13 @@ class TestPaymentOwnershipIntegrity:
             db, wholesaler_id=tenant["ws_id"], retailer_id=other_ret,
             tenant_user_id=other_uid, registry=reg,
         )
-        # Corrupt payment in the schema.
+        # Corrupt payment in the PRIMARY relationship (foreign retailer) — this
+        # must NOT touch the OTHER relationship (other_ret).
         foreign_ret = uuid.uuid4()
         pay_id = await self._seed_corrupt_payment(db, tenant, payment_retailer=foreign_ret)
         try:
             frm, to = await _stmt_period_yesterday_today()
-            # The unrelated relationship's statement also fails closed 409 —
-            # never a partial document and never a 200 that could leak rows.
+            # The unrelated retailer logs in and requests its OWN statement.
             resp = await i2b_client.post(
                 "/api/v1/client/auth/login",
                 json={
@@ -1437,10 +1498,15 @@ class TestPaymentOwnershipIntegrity:
             )
             assert resp.status_code == HTTPStatus.OK, resp.text
             other_token = resp.json()["data"]["tokens"]["access_token"]
+            # The unrelated relationship has no corruption -> 200, not 409.
             r = await _get_retailer_statement(i2b_client, other_token, frm, to)
-            assert r.status_code == HTTPStatus.CONFLICT
-            assert r.json()["code"] == "STATEMENT_INTERNAL_INCONSISTENT"
-            assert "data" not in r.json()
+            assert r.status_code == HTTPStatus.OK, r.text
+            assert "data" in r.json()
+            # The PRIMARY (corrupt) relationship still fails closed 409.
+            r_corrupt = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+            assert r_corrupt.status_code == HTTPStatus.CONFLICT
+            assert r_corrupt.json()["code"] == "STATEMENT_INTERNAL_INCONSISTENT"
+            assert "data" not in r_corrupt.json()
         finally:
             from database.session import AsyncSessionLocal
 
@@ -1802,6 +1868,83 @@ class TestRangeCap:
                 assert sentinel.transaction_id == "pay-sentinel-tx"
                 assert sentinel.idempotency_key == "pay-sentinel-idem"
                 assert Decimal(sentinel.amount) == Decimal("9.99")
+
+
+class TestDisposableSchemaSetupSafety:
+    """R1-R1-R2 P1 — every temp schema creation is wrapped so a setup failure
+    (provisioning mid-step or a CREATE TABLE failure) cannot leak a stray
+    schema. Each test proves ZERO-RESIDUE after an induced setup failure.
+
+    RED on 58d4b51f: the schema was created BEFORE the try/finally, so a
+    failure left it stranded (exactly how 131 stray schemas were produced).
+    GREEN now: the DROP guard is armed the moment CREATE SCHEMA commits.
+    """
+
+    async def test_provisioning_failure_drops_partial_tenant_schema(
+        self, s2_clean_db
+    ):
+        """Induce a provisioning failure AFTER the schema is created and prove
+        the partial schema is dropped (zero residue)."""
+        db, reg = s2_clean_db
+
+        # Patch _create_binding to raise once the schema exists, simulating a
+        # provisioning failure after CREATE SCHEMA + retailer user + retailer.
+        import tests.test_dc12r1_contract_d_statement_print as _self_mod
+        from unittest.mock import patch as _upatch
+
+        real_create_binding = _self_mod._create_binding
+
+        async def _boom(*a, **kw):
+            raise RuntimeError("induced provisioning failure after schema exists")
+
+        before = await _count_schemas_starting_with(db, "t_")
+        with _upatch.object(_self_mod, "_create_binding", _boom):
+            with pytest.raises(RuntimeError, match="induced provisioning failure"):
+                await _provision_disposable_tenant(db, reg)
+        # The partial schema must have been dropped on the failure path.
+        after = await _count_schemas_starting_with(db, "t_")
+        assert after == before, (
+            f"setup failure leaked a schema: before={before} after={after}"
+        )
+
+    async def test_create_table_failure_drops_partial_statement_schema(
+        self, s2_clean_db
+    ):
+        """A failure AFTER the disposable statement schema is committed (here,
+        an exception raised inside the ``async with`` body) must still drop it
+        — the DROP guard is armed from the first DDL, so no stray schema leaks.
+
+        RED on 58d4b51f: the schema was committed before the try/finally, but
+        this path was already guarded there; the provisioning path (test above)
+        is the one 58d4b51f leaked. This test locks the guard in place.
+        """
+        db, _reg = s2_clean_db
+        before = await _count_schemas_starting_with(db, "t_stmt_")
+
+        with pytest.raises(RuntimeError, match="induced body failure"):
+            async with _disposable_statement_schema(db):
+                # The schema is now committed; a failure here must still drop it.
+                raise RuntimeError("induced body failure")
+
+        after = await _count_schemas_starting_with(db, "t_stmt_")
+        assert after == before, (
+            f"body failure leaked a statement schema: before={before} after={after}"
+        )
+
+
+async def _count_schemas_starting_with(db: AsyncSession, prefix: str) -> int:
+    """Count tenant schemas matching a prefix in the live catalog."""
+    row = (
+        await db.execute(
+            text(
+                "SELECT count(*) FROM information_schema.schemata "
+                "WHERE schema_name LIKE :p"
+            ),
+            {"p": prefix + "%"},
+        )
+    ).first()
+    await db.rollback()
+    return int(row[0])
 
 
 class TestDateBoundaries:

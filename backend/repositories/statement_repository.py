@@ -23,6 +23,7 @@ map to exclusive UTC bounds unambiguously.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -37,13 +38,16 @@ _EAT_TZNAME = "Africa/Nairobi"
 _EAT_UTC_OFFSET = timedelta(hours=3)
 _MAX_SPAN_DAYS = 365
 
-# Exact aggregate statement-line cap (DC-12R1-S3-S2B-I2C-I2B-R1 rule 5).
-# Every list query fetches at most CAP+1 rows so overflow is detectable
-# (never silently truncated); combined lines above CAP fail closed.
-_STATEMENT_LINE_CAP = 1000
+# Public aggregate statement-line cap (DC-12R1-S3-S2B-I2C-I2B-R1-R1 rule 5).
+# Every list query fetches at most CAP+1 rows so overflow is detectable (never
+# silently truncated). The single authoritative constant is shared by the
+# service, the routes and the tests — no scattered literals anywhere.
+STATEMENT_LINE_CAP: int = 1000
 
-# Strict calendar-date parser shape: YYYY-MM-DD only.
-_DATE_PATTERN = "%Y-%m-%d"
+# Strict canonical calendar-date shape: exactly YYYY-MM-DD (zero-padded). The
+# R1-R1 truth contract rejects non-zero-padded variants (e.g. 2026-8-1) that
+# datetime.strptime would otherwise accept.
+_DATE_FORMAT_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 class StatementPeriodError(ValueError):
@@ -72,22 +76,28 @@ def parse_statement_date_range(
     raw_from: str | None, raw_to: str | None
 ) -> tuple[date, date]:
     """Strictly parse and validate the inclusive EAT date range from raw query
-    strings (DC-12R1-S3-S2B-I2C-I2B-R1 rule 3).
+    strings (DC-12R1-S3-S2B-I2C-I2B-R1 rule 3; R1-R1 strict shape).
 
-    Missing/blank, malformed, reversed, or >365-day ranges raise
+    Missing/blank, non-canonical, malformed, reversed, or >365-day ranges raise
     ``StatementPeriodError`` (mapped to a controlled 400 INVALID_DATE_RANGE by
     the routes — never a framework 422 or a neutral 404). No raw parser
     details ever reach the public message. Returns the validated ``date`` pair
     (the UTC half-open conversion happens inside the service).
+
+    R1-R1: the shape is enforced with ``re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")``
+    BEFORE parsing, so non-zero-padded variants that ``strptime`` would accept
+    (e.g. ``2026-8-1``) are rejected, and extra characters are rejected too.
     """
     for label, value in (("from", raw_from), ("to", raw_to)):
         if value is None or str(value).strip() == "":
             raise StatementPeriodError(f"{label} date is required.")
     f_raw = str(raw_from).strip()
     t_raw = str(raw_to).strip()
+    if not _DATE_FORMAT_RE.fullmatch(f_raw) or not _DATE_FORMAT_RE.fullmatch(t_raw):
+        raise StatementPeriodError("Invalid date format.")
     try:
-        date_from = datetime.strptime(f_raw, _DATE_PATTERN).date()
-        date_to = datetime.strptime(t_raw, _DATE_PATTERN).date()
+        date_from = datetime.strptime(f_raw, "%Y-%m-%d").date()
+        date_to = datetime.strptime(t_raw, "%Y-%m-%d").date()
     except ValueError:
         raise StatementPeriodError("Invalid date format.")
     # Reversed + >365-day validation (raises StatementPeriodError).
@@ -233,7 +243,7 @@ class StatementRepository:
                     "rid": retailer_id,
                     "start": start_utc,
                     "next_day": next_day_utc,
-                    "limit": _STATEMENT_LINE_CAP + 1,
+                    "limit": STATEMENT_LINE_CAP + 1,
                 },
             )
         ).mappings().all()
@@ -319,7 +329,7 @@ class StatementRepository:
                     "rid": retailer_id,
                     "start": start_utc,
                     "next_day": next_day_utc,
-                    "limit": _STATEMENT_LINE_CAP + 1,
+                    "limit": STATEMENT_LINE_CAP + 1,
                 },
             )
         ).mappings().all()
@@ -386,7 +396,7 @@ class StatementRepository:
                     "rid": retailer_id,
                     "start": start_utc,
                     "next_day": next_day_utc,
-                    "limit": _STATEMENT_LINE_CAP + 1,
+                    "limit": STATEMENT_LINE_CAP + 1,
                 },
             )
         ).mappings().all()

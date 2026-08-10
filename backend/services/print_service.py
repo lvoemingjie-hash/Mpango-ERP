@@ -45,6 +45,7 @@ from schemas.print import (
     StatementSettledPaymentView,
 )
 from repositories.statement_repository import (
+    STATEMENT_LINE_CAP,
     StatementInternalInconsistent,
     StatementLedgerScopeIncomplete,
     StatementPeriodError,
@@ -470,7 +471,7 @@ async def build_statement_print(
       * credit-only binding -> ledger receivable sum must equal cached
         outstanding_balance within a 0.01 tolerance
         (STATEMENT_RECONCILIATION_FAILED on mismatch; R1).
-      * aggregate statement line cap (1000) -> STATEMENT_RANGE_TOO_LARGE (R1).
+      * aggregate statement line cap (STATEMENT_LINE_CAP) -> STATEMENT_RANGE_TOO_LARGE (R1).
     """
     repo = StatementRepository()
 
@@ -515,6 +516,14 @@ async def build_statement_print(
         next_day_utc=next_day_utc,
     )
 
+    # 5b. R1-R1 rule 5 — the per-list cap MUST be checked immediately after the
+    #     read, BEFORE any sum / cross-check / assembly. Otherwise an over-cap
+    #     movement list would be compared against the full DB period sum and
+    #     surface STATEMENT_INTERNAL_INCONSISTENT instead of the required
+    #     STATEMENT_RANGE_TOO_LARGE. LIMIT cap+1 makes overflow detectable.
+    if len(movement_rows) > STATEMENT_LINE_CAP:
+        return StatementResult(error=StatementRangeTooLarge())
+
     # 6. Independent DB period sum (rule 12) — must equal the movements sum.
     db_period_sum = await repo.sum_receivable_period(
         db,
@@ -548,10 +557,13 @@ async def build_statement_print(
         start_utc=start_utc,
         next_day_utc=next_day_utc,
     )
+    # 8b. Per-list cap (R1-R1 rule 5) — checked right after the read.
+    if len(settled_rows) > STATEMENT_LINE_CAP:
+        return StatementResult(error=StatementRangeTooLarge())
     settled_total = sum((Decimal(r["amount"]) for r in settled_rows), Decimal("0"))
 
-    # 8b. Aggregate line cap (R1 rule 5) — every list is fetched with LIMIT
-    #     cap+1, so any count above the cap fails closed; no silent truncation.
+    # 8c. Optional pending declarations (R1-R1 rule 5) — per-list cap right
+    #     after the read, then the aggregate combined cap.
     pending_rows: list[Mapping[str, Any]] = []
     if include_pending:
         pending_rows = await repo.list_pending_declarations(
@@ -562,8 +574,12 @@ async def build_statement_print(
             start_utc=start_utc,
             next_day_utc=next_day_utc,
         )
+        if len(pending_rows) > STATEMENT_LINE_CAP:
+            return StatementResult(error=StatementRangeTooLarge())
+
+    # 8d. Aggregate combined-line cap (R1 rule 5) — no silent truncation.
     combined_lines = len(movement_rows) + len(settled_rows) + len(pending_rows)
-    if combined_lines > 1000:
+    if combined_lines > STATEMENT_LINE_CAP:
         return StatementResult(error=StatementRangeTooLarge())
 
     # 9. Credit/mixed classification + reconciliation (rules 11/12), using the

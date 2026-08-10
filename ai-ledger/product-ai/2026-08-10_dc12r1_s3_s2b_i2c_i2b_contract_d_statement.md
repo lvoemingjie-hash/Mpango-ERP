@@ -1,5 +1,12 @@
 # DC-12R1-S3-S2B-I2C-I2B — Contract D Printable Relationship Statement
 
+> **⚠️ SUPERSEDED_BY_I2C_I2B_R1_R1**
+>
+> The `d66c749c` R1 PASS verdict is **superseded** by the R1-R1 correction
+> (two deterministic gaps closed: P1 cap-check ordering, P2 strict
+> YYYY-MM-DD). The authoritative verdict is
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2B_R1_R1_MERGE_REVIEW** (see §R1-R1).
+>
 > **⚠️ SUPERSEDED_BY_I2C_I2B_R1**
 >
 > The `f9456bd` PASS verdict below is **superseded** by the R1 correction
@@ -335,3 +342,101 @@ overflow is detectable rather than truncated; EAT helpers are pure and
 frozen-time tested; soft-delete evidence follows snapshot→mutate→fresh-session
 restore→rowcount→reread. No migration, permission, config, dependency,
 lockfile, deployment, payment/ledger mutation, or protected-branch push.
+
+---
+
+## §R1-R1 Cap-check ordering + strict date shape (SUPERSEDES R1)
+
+Starting SHA `d66c749c6c3ff74132173e5947eeb561ae6d5a47` (verified); protected
+baseline `origin/product-dev-recovered` = `d45b5020` (unchanged). **3 files
+edited** (all within the existing Contract D file set; no new files, no
+migrations, no permissions/config/dependencies, no financial writes).
+
+### R1-R1.1 P1 — cap check ordering (blocker)
+
+`d66c749c` read each list with `LIMIT cap+1` but checked the cap only AFTER
+the cross-check. An over-cap movement list would be compared against the full
+DB period sum first and surface `STATEMENT_INTERNAL_INCONSISTENT` (the
+truncated sum ≠ the full sum) instead of the required
+`STATEMENT_RANGE_TOO_LARGE`.
+
+**Fix:** every list is checked **immediately after the read**, before any sum,
+cross-check, or assembly:
+- step 5b: `if len(movement_rows) > STATEMENT_LINE_CAP` right after
+  `list_movements` (before `sum_receivable_period`);
+- step 8b: `if len(settled_rows) > STATEMENT_LINE_CAP` right after
+  `list_settled_payments`;
+- step 8c: `if len(pending_rows) > STATEMENT_LINE_CAP` right after
+  `list_pending_declarations`;
+- step 8d: combined-line aggregate check retained.
+
+The previously private `_STATEMENT_LINE_CAP = 1000` literal is replaced by the
+**single authoritative public constant `STATEMENT_LINE_CAP`** in
+`statement_repository.py`, imported by the service and used by all three
+queries + the service checks. No scattered `1000`/`1001` literals remain in
+the statement code.
+
+### R1-R1.2 P2 — strict canonical YYYY-MM-DD shape (blocker)
+
+`d66c749c` parsed with `datetime.strptime(..., "%Y-%m-%d")`, which accepts
+non-zero-padded variants like `2026-8-1`. The truth contract requires exact
+`YYYY-MM-DD`.
+
+**Fix:** the parser enforces the shape with
+`re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")` BEFORE strptime, then still
+catches impossible calendar dates (Feb 30, month 13) via the strptime
+fallback. Bare whitespace is stripped (legitimate input hygiene); trailing /
+leading / embedded characters that survive strip are rejected.
+
+### R1-R1.3 RED/GREEN evidence (real PG)
+
+`TestRangeCap` (5 cases) — over-cap returns the precise 400 code, never the
+internal-inconsistent 409, never a partial document:
+- movements 1001 → 400 `STATEMENT_RANGE_TOO_LARGE` (the P1 RED case: would
+  have returned 409 on `d66c749c`);
+- movements 1002 → 400;
+- settled 1001 → 400 (deletable residue cleaned in `finally`);
+- pending 1001 → 400 (neutral message, no internal counts; cleaned in
+  `finally`);
+- combined 1001 across lists (600 movements + 1 settled + 400 pending) → 400
+  (aggregate cap);
+- at-cap exactly 1000 (998 pending + 1 settled + 1 movement) → 200 (boundary).
+
+`TestDateRangeContract` (3 new cases) — P2 RED:
+- non-zero-padded (`2026-8-01`, `2026-08-1`, `2026-8-1`) → 400;
+- extra characters surviving strip (`2026-08-010`, `2026-08-01T00:00`,
+  `x2026-08-01`, `2026-08-01X`, `2026--08-01`) → 400;
+- impossible calendar dates (`2026-02-30`, `2026-13-01`, `2026-00-10`,
+  `0000-08-10`) → 400.
+
+### R1-R1.4 Gates (exact commands + counts)
+
+| Gate | Result |
+|---|---|
+| Focused Contract D natural | `pytest tests/test_dc12r1_contract_d_statement_print.py -q` → **39 passed** |
+| Focused reverse | `-p _reverse_r1r1` → **39 passed** |
+| Regressions (I2C-I1, I2B, I2A, route-inventory, read-only retailer finance, financial schema, orders) | **192 passed** |
+| Full backend run #1 (independent fresh PG16 :5433 + Redis7 :6380) | **3274 passed, 29 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Full backend run #2 (independent fresh PG16 :5434 + Redis7 :6381) | **3274 passed, 29 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Frontend full vitest | `pnpm vitest run` → **270 passed / 0 failed** (20 files) |
+| Frontend build | `pnpm build` exit 0 |
+| Self-review | `py_compile` clean; `git diff --check` clean; scoped pre-commit all hooks passed; detect-secrets 0 new; UTF-8/mojibake scan clean; GitNexus `analyze` + `status` up-to-date post-commit |
+
+One pytest process per run; no exclusions/reruns/deselection. The two full
+runs are identical (warnings 2975 vs 2976 — non-deterministic
+DeprecationWarning counts only). No skip/xfail/deselection/mocks/timeout
+increase/assertion weakening was introduced.
+
+### R1-R1.5 Adversarial self-review
+
+- The per-list cap is now provably BEFORE the movements cross-check (reading
+  top-to-bottom: read movements → cap → DB period sum → cross-check). The
+  1001-movement test exercises exactly the path that previously mis-reported.
+- `STATEMENT_LINE_CAP` is the only cap constant in the statement code path;
+  `grep` confirms no remaining `1000`/`1001` literals in the service.
+- The date parser regex + strptime together reject both shape violations
+  (non-zero-padded, extra chars) and calendar impossibilities; the fullmatch
+  runs before strptime so non-canonical shapes never reach it.
+- No migration, permission, config, dependency, lockfile, deployment,
+  payment/ledger mutation, or protected-branch push. The branch still tracks
+  `d45b5020` as the protected baseline.

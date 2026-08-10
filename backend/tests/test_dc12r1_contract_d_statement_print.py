@@ -204,6 +204,97 @@ async def _insert_payment_row(
     return pay_id
 
 
+async def _bulk_orders_with_charges(
+    db: AsyncSession, schema: str, ws_id, ret_id, n: int, amount: str = "1.00"
+) -> list[uuid.UUID]:
+    """Seed ``n`` confirmed orders, each with a distinct non-zero +RECEIVABLE
+    charge ledger row (=> ``n`` movements). Orders are left in place (the
+    harness never deletes orders), so the charges never become orphans and
+    never trip the schema-level orphan precheck for other tests.
+    """
+    oids = [uuid.uuid4() for _ in range(n)]
+    await db.execute(
+        text(
+            f'INSERT INTO "{schema}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
+            "VALUES (:id, :ws, :ret, 'confirmed', :total, false)"
+        ),
+        [{"id": o, "ws": ws_id, "ret": ret_id, "total": Decimal(amount)} for o in oids],
+    )
+    await db.execute(
+        text(
+            f'INSERT INTO "{schema}".ledger_entries '
+            "(id, transaction_date, account_type, amount, reference_type, reference_id, "
+            "description, entry_version, is_deleted, created_at, updated_at) "
+            "VALUES (:id, now(), 'receivable', :amt, 'order', :ref, :desc, 1, false, now(), now())"
+        ),
+        [
+            {"id": uuid.uuid4(), "amt": Decimal(amount), "ref": o, "desc": f"charge {o}"}
+            for o in oids
+        ],
+    )
+    await db.commit()
+    return oids
+
+
+async def _bulk_payments(
+    db: AsyncSession, schema: str, order_id, ret_id, n: int, amount: str = "1.00"
+) -> None:
+    """Seed ``n`` completed payments on one order (same retailer). Deletable."""
+    rows = [
+        {
+            "id": uuid.uuid4(),
+            "oid": order_id,
+            "ret": ret_id,
+            "txid": f"tx-{uuid.uuid4().hex[:12]}",
+            "idem": f"pay-{uuid.uuid4().hex}",
+            "amt": Decimal(amount),
+            "rno": f"RCT-20260804-{(i % 900000) + 100000:06d}",
+        }
+        for i in range(n)
+    ]
+    await db.execute(
+        text(
+            f'INSERT INTO "{schema}".payments '
+            "(id, order_id, retailer_id, transaction_id, idempotency_key, amount, "
+            "method, status, receipt_number, created_at, updated_at, is_deleted) "
+            "VALUES (:id, :oid, :ret, :txid, :idem, :amt, 'cash', 'completed', "
+            ":rno, now(), now(), false)"
+        ),
+        rows,
+    )
+    await db.commit()
+
+
+async def _bulk_pending_declarations(
+    db: AsyncSession, schema: str, ws_id, ret_id, order_id, n: int, prefix: str = "r1r1cap"
+) -> str:
+    """Seed ``n`` pending declarations on one order. Returns the idempotency-key
+    prefix used so the caller can DELETE them in finally."""
+    rows = [
+        {
+            "id": uuid.uuid4(),
+            "oid": order_id,
+            "ret": ret_id,
+            "ws": ws_id,
+            "amt": Decimal("10.00"),
+            "idem": f"{prefix}-{uuid.uuid4().hex}",
+            "sb": uuid.uuid4(),
+        }
+        for _ in range(n)
+    ]
+    await db.execute(
+        text(
+            f'INSERT INTO "{schema}".payment_declarations '
+            "(id, order_id, retailer_id, wholesaler_id, declared_amount, method, "
+            "status, idempotency_key, submitted_by, submitted_at, transfer_reference) "
+            "VALUES (:id, :oid, :ret, :ws, :amt, 'cash', 'pending', :idem, :sb, now(), NULL)"
+        ),
+        rows,
+    )
+    await db.commit()
+    return prefix
+
+
 # ===========================================================================
 # §1 Happy paths + dual-key isolation
 # ===========================================================================
@@ -376,6 +467,41 @@ class TestDateRangeContract:
         r3 = await _get_supplier_statement(i2b_client, info["token_admin"], info["ret_a"], "2025-01-01", "2026-08-10")
         assert r3.status_code == HTTPStatus.BAD_REQUEST
         assert r3.json()["code"] == "INVALID_DATE_RANGE"
+
+    async def test_non_zero_padded_date_is_rejected(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        """R1-R1 P2: strptime would accept ``2026-8-1``; the strict YYYY-MM-DD
+        contract (regex fullmatch before parse) must reject it."""
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        for bad in (("2026-8-01", "2026-08-10"), ("2026-08-1", "2026-08-10"),
+                    ("2026-8-1", "2026-8-2")):
+            r = await _get_retailer_statement(i2b_client, info["token_ret"], bad[0], bad[1])
+            assert r.status_code == HTTPStatus.BAD_REQUEST, bad
+            assert r.json()["code"] == "INVALID_DATE_RANGE"
+
+    async def test_extra_characters_in_date_are_rejected(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        """R1-R1 P2: trailing/leading/embedded characters (that survive strip)
+        must not pass (fullmatch). Bare whitespace is stripped by the parser
+        and therefore legitimately accepted."""
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        for bad in ("2026-08-010", "2026-08-01T00:00", "x2026-08-01", "2026-08-01X", "2026--08-01"):
+            r = await _get_retailer_statement(i2b_client, info["token_ret"], bad, "2026-08-10")
+            assert r.status_code == HTTPStatus.BAD_REQUEST, bad
+            assert r.json()["code"] == "INVALID_DATE_RANGE"
+
+    async def test_invalid_calendar_date_is_rejected(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        """R1-R1: regex-valid but impossible calendar dates (Feb 30, month 13)
+        are rejected by the strict parser too."""
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        for bad in ("2026-02-30", "2026-13-01", "2026-00-10", "0000-08-10"):
+            r = await _get_retailer_statement(i2b_client, info["token_ret"], bad, "2026-08-10")
+            assert r.status_code == HTTPStatus.BAD_REQUEST, bad
+            assert r.json()["code"] == "INVALID_DATE_RANGE"
 
     async def test_malformed_retailer_uuid_supplier(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
         info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
@@ -783,12 +909,67 @@ class TestReconciliationTolerance:
 
 
 class TestRangeCap:
-    """Aggregate statement-line cap of 1000: over-cap periods fail closed with
-    400 STATEMENT_RANGE_TOO_LARGE — never a silent truncation and never a
-    partial document. Lists are queried with LIMIT cap+1 so overflow is
-    detectable."""
+    """Aggregate statement-line cap of 1000 (R1-R1 rule 5).
 
-    async def test_over_cap_pending_declarations_return_400_range_too_large(
+    The per-list cap MUST be checked immediately after each read, BEFORE any
+    sum / cross-check / assembly — otherwise an over-cap movement list would
+    surface STATEMENT_INTERNAL_INCONSISTENT (the truncated sum vs the full DB
+    period sum) instead of the required STATEMENT_RANGE_TOO_LARGE. LIMIT cap+1
+    makes overflow detectable; combined lines > cap also fail closed. Over-cap
+    returns 400 STATEMENT_RANGE_TOO_LARGE with zero partial document; at-cap
+    (exactly 1000 combined) is accepted.
+    """
+
+    async def test_movements_1001_return_400_range_too_large_before_internal_inconsistent(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, _reg = s2_clean_db
+        sch_a = info["sch_a"]
+        ws_a = uuid.UUID(info["ws_a"])
+        ret_a = uuid.UUID(info["ret_a"])
+        # 1001 movements (distinct orders) -> per-list cap fires.
+        await _bulk_orders_with_charges(db, sch_a, ws_a, ret_a, n=1001)
+        frm, to = await _stmt_period_yesterday_today()
+        r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+        assert r.status_code == HTTPStatus.BAD_REQUEST
+        assert r.json()["code"] == "STATEMENT_RANGE_TOO_LARGE"
+        assert "data" not in r.json()
+
+    async def test_movements_1002_return_400_range_too_large(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, _reg = s2_clean_db
+        sch_a = info["sch_a"]
+        ws_a = uuid.UUID(info["ws_a"])
+        ret_a = uuid.UUID(info["ret_a"])
+        await _bulk_orders_with_charges(db, sch_a, ws_a, ret_a, n=1002)
+        frm, to = await _stmt_period_yesterday_today()
+        r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+        assert r.status_code == HTTPStatus.BAD_REQUEST
+        assert r.json()["code"] == "STATEMENT_RANGE_TOO_LARGE"
+
+    async def test_settled_1001_return_400_range_too_large(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, _reg = s2_clean_db
+        sch_a = info["sch_a"]
+        oid = uuid.UUID(info["oid"])
+        ret_a = uuid.UUID(info["ret_a"])
+        await _bulk_payments(db, sch_a, oid, ret_a, n=1001)
+        try:
+            frm, to = await _stmt_period_yesterday_today()
+            r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+            assert r.status_code == HTTPStatus.BAD_REQUEST
+            assert r.json()["code"] == "STATEMENT_RANGE_TOO_LARGE"
+            assert "data" not in r.json()
+        finally:
+            await db.execute(text(f'DELETE FROM "{sch_a}".payments WHERE idempotency_key LIKE \'pay-%\''))
+            await db.commit()
+
+    async def test_pending_1001_return_400_range_too_large(
         self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
         info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
@@ -797,79 +978,61 @@ class TestRangeCap:
         ws_a = uuid.UUID(info["ws_a"])
         ret_a = uuid.UUID(info["ret_a"])
         oid = uuid.UUID(info["oid"])
-        # Seed 1001 pending declarations (LIMIT cap+1 -> 1001 rows -> overflow).
-        rows = []
-        for _ in range(1001):
-            rows.append(
-                {
-                    "id": uuid.uuid4(),
-                    "oid": oid,
-                    "ret": ret_a,
-                    "ws": ws_a,
-                    "amt": Decimal("10.00"),
-                    "idem": f"cap-{uuid.uuid4().hex}",
-                    "sb": uuid.uuid4(),
-                }
-            )
-        await db.execute(
-            text(
-                f'INSERT INTO "{sch_a}".payment_declarations '
-                "(id, order_id, retailer_id, wholesaler_id, declared_amount, method, "
-                "status, idempotency_key, submitted_by, submitted_at, transfer_reference) "
-                "VALUES (:id, :oid, :ret, :ws, :amt, 'cash', 'pending', :idem, :sb, now(), NULL)"
-            ),
-            rows,
-        )
-        await db.commit()
+        prefix = await _bulk_pending_declarations(db, sch_a, ws_a, ret_a, oid, n=1001)
         try:
             frm, to = await _stmt_period_yesterday_today()
             r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to, include_pending=True)
             assert r.status_code == HTTPStatus.BAD_REQUEST
             assert r.json()["code"] == "STATEMENT_RANGE_TOO_LARGE"
             assert "data" not in r.json()
-            # The public message is neutral (no internal counts).
             assert "1001" not in r.text
             assert "1000" not in r.text
         finally:
             await db.execute(
-                text(f'DELETE FROM "{sch_a}".payment_declarations WHERE idempotency_key LIKE \'cap-%\''),
+                text(f'DELETE FROM "{sch_a}".payment_declarations WHERE idempotency_key LIKE :p'),
+                {"p": f"{prefix}-%"},
             )
             await db.commit()
 
-    async def test_at_cap_is_accepted(
+    async def test_combined_1001_across_lists_return_400_range_too_large(
         self, i2b_client, two_tenants, s2_clean_db, cashier_identity
     ):
+        """Per-list counts are each <= cap but their combined total exceeds it:
+        the aggregate combined cap fires (R1-R1 rule 5)."""
         info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
         db, _reg = s2_clean_db
         sch_a = info["sch_a"]
         ws_a = uuid.UUID(info["ws_a"])
         ret_a = uuid.UUID(info["ret_a"])
         oid = uuid.UUID(info["oid"])
-        # combined = movements(1 collection) + settled(1 payment) + pending(998)
-        #           = 1000 == cap -> accepted.
-        rows = []
-        for _ in range(998):
-            rows.append(
-                {
-                    "id": uuid.uuid4(),
-                    "oid": oid,
-                    "ret": ret_a,
-                    "ws": ws_a,
-                    "amt": Decimal("10.00"),
-                    "idem": f"cap-{uuid.uuid4().hex}",
-                    "sb": uuid.uuid4(),
-                }
+        # 600 movements + 1 settled + 400 pending = 1001 combined.
+        await _bulk_orders_with_charges(db, sch_a, ws_a, ret_a, n=600)
+        prefix = await _bulk_pending_declarations(db, sch_a, ws_a, ret_a, oid, n=400)
+        try:
+            frm, to = await _stmt_period_yesterday_today()
+            r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to, include_pending=True)
+            assert r.status_code == HTTPStatus.BAD_REQUEST
+            assert r.json()["code"] == "STATEMENT_RANGE_TOO_LARGE"
+            assert "data" not in r.json()
+        finally:
+            await db.execute(
+                text(f'DELETE FROM "{sch_a}".payment_declarations WHERE idempotency_key LIKE :p'),
+                {"p": f"{prefix}-%"},
             )
-        await db.execute(
-            text(
-                f'INSERT INTO "{sch_a}".payment_declarations '
-                "(id, order_id, retailer_id, wholesaler_id, declared_amount, method, "
-                "status, idempotency_key, submitted_by, submitted_at, transfer_reference) "
-                "VALUES (:id, :oid, :ret, :ws, :amt, 'cash', 'pending', :idem, :sb, now(), NULL)"
-            ),
-            rows,
-        )
-        await db.commit()
+            await db.commit()
+
+    async def test_at_cap_1000_is_accepted(
+        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+    ):
+        """Exactly 1000 combined lines is accepted (boundary)."""
+        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, _reg = s2_clean_db
+        sch_a = info["sch_a"]
+        ws_a = uuid.UUID(info["ws_a"])
+        ret_a = uuid.UUID(info["ret_a"])
+        oid = uuid.UUID(info["oid"])
+        # 998 pending + 1 settled payment + 1 movement = 1000 == cap.
+        prefix = await _bulk_pending_declarations(db, sch_a, ws_a, ret_a, oid, n=998)
         try:
             frm, to = await _stmt_period_yesterday_today()
             r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to, include_pending=True)
@@ -877,7 +1040,8 @@ class TestRangeCap:
             assert len(r.json()["data"]["pending_declarations"]) == 998
         finally:
             await db.execute(
-                text(f'DELETE FROM "{sch_a}".payment_declarations WHERE idempotency_key LIKE \'cap-%\''),
+                text(f'DELETE FROM "{sch_a}".payment_declarations WHERE idempotency_key LIKE :p'),
+                {"p": f"{prefix}-%"},
             )
             await db.commit()
 

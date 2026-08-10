@@ -243,11 +243,17 @@ async def _get_supplier_statement(client, token: str, retailer_id: str, frm: str
 _DISPOSABLE_PW = "CorrectPass99"
 
 
-async def _provision_disposable_tenant(db: AsyncSession, registry, *, prefix: str = "CDR1R1R1") -> dict:
+async def _provision_disposable_tenant(
+    db: AsyncSession, registry, *, prefix: str = "CDR1R1R1", reg_id: uuid.UUID | None = None
+) -> dict:
     """Provision a fresh, disposable Contract D tenant.
 
     Creates registration -> claim -> provision (wholesaler + schema) ->
     retailer user -> retailer -> binding.
+
+    When ``reg_id`` is supplied (R1-R1-R6 exact-ownership), the caller owns
+    that exact id and may clean up by ``WHERE id = :reg_id`` (never a LIKE /
+    prefix / latest-row scan). When omitted, a fresh uuid is generated.
 
     The schema is intentionally NOT registered in the ownership registry
     (registry teardown would DROP it and then the registry's own
@@ -276,7 +282,8 @@ async def _provision_disposable_tenant(db: AsyncSession, registry, *, prefix: st
     code = f"{prefix}{uuid.uuid4().hex[:6].upper()}"
     email = _unique_email()
     password = _DISPOSABLE_PW
-    reg_id = uuid.uuid4()
+    if reg_id is None:
+        reg_id = uuid.uuid4()
     registry.register_registration(str(reg_id))
 
     try:
@@ -2196,41 +2203,84 @@ class TestDisposableSchemaSetupSafety:
     async def test_cleanup_failure_preserves_both_original_and_cleanup_errors(
         self, s2_clean_db
     ):
-        """R1-R1-R5: provisioning fails AND cleanup/DROP fails. The raised
+        """R1-R1-R6: provisioning fails AND cleanup/DROP fails. The raised
         ``BaseExceptionGroup.exceptions`` must PRECISELY contain BOTH the
         original provisioning error and the cleanup DROP error.
 
-        This exercises the FULL ``_provision_disposable_tenant`` path (the
-        original error is induced via ``_create_binding`` raising). The
-        cleanup DROP is selectively failed by wrapping ``AsyncSessionLocal``
-        so the produced session delegates everything to a real session EXCEPT
-        ``DROP SCHEMA`` statements (which raise). Schema-resolution queries
-        (pg_namespace, tenant_registrations, wholesalers) run normally."""
+        R1-R1-R6 exact ownership: the test PRE-GENERATES ``reg_id``, passes it
+        to ``_provision_disposable_tenant``, and the finally cleanup locates
+        the schema by EXACT owned id (``WHERE id = :reg_id``) — never a LIKE /
+        prefix / latest-row scan. A SENTINEL registration + schema with the
+        SAME prefix is seeded beforehand; after the fault cleanup the sentinel
+        schema must be byte-for-byte unchanged (proving the cleanup did not
+        touch an unrelated same-prefix registration)."""
         db, reg = s2_clean_db
         import tests.test_dc12r1_contract_d_statement_print as _self_mod
         from unittest.mock import patch as _upatch
         from database import session as _session_mod
         from database.session import AsyncSessionLocal as _RealSessionLocal, async_engine
         from sqlalchemy.ext.asyncio import AsyncSession as _AS
+        from models.wholesaler import Wholesaler
+        from db.sql_safety import validate_identifier
+
+        # Pre-generate the owned registration id (R1-R1-R6 exact ownership).
+        owned_reg_id = uuid.uuid4()
+
+        # Seed a SENTINEL registration + schema with the SAME prefix, to prove
+        # the fault cleanup does not touch an unrelated same-prefix row.
+        sentinel_reg_id = uuid.uuid4()
+        sentinel_ws_id = uuid.uuid4()
+        sentinel_schema = Wholesaler.derive_schema_from_id(str(sentinel_ws_id))
+        sentinel_code = f"CDR1R1R1S{uuid.uuid4().hex[:4].upper()}"
+        await db.execute(
+            text(
+                "INSERT INTO public.tenant_registrations "
+                "(id, company_name, tenant_code, country, owner_email, status, "
+                " tenant_schema, expires_at, created_at, updated_at) "
+                "VALUES (:id, :company, :code, 'TZ', :email, 'email_verified', :schema, "
+                " now() + interval '365 days', now(), now())"
+            ),
+            {
+                "id": sentinel_reg_id,
+                "company": f"Sentinel {sentinel_code}",
+                "code": sentinel_code,
+                "email": f"sentinel.{sentinel_code.lower()}@example.com",
+                "schema": sentinel_schema,
+            },
+        )
+        await db.execute(
+            text(
+                "INSERT INTO public.wholesalers "
+                "(id, code, name, contact, status, created_at, updated_at) "
+                "VALUES (:id, :code, :name, :contact, 'active', now(), now())"
+            ),
+            {
+                "id": sentinel_ws_id,
+                "code": sentinel_code,
+                "name": f"Sentinel {sentinel_code}",
+                "contact": f"sentinel.{sentinel_code.lower()}@example.com",
+            },
+        )
+        await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{sentinel_schema}"'))
+        # Put a marker table in the sentinel schema so byte-equality is checkable.
+        await db.execute(
+            text(
+                f'CREATE TABLE "{sentinel_schema}".sentinel_marker '
+                "(id INT PRIMARY KEY, payload TEXT NOT NULL)"
+            )
+        )
+        await db.execute(
+            text(
+                f'INSERT INTO "{sentinel_schema}".sentinel_marker '
+                "(id, payload) VALUES (1, 'sentinel-byte-unchanged')"
+            )
+        )
+        await db.commit()
 
         async def _original_boom(*a, **kw):
             raise RuntimeError("ORIGINAL provisioning failure")
 
         class _SelectiveSessionWrapper:
-            """A context-manager factory whose instances delegate to a REAL
-            AsyncSession but intercept ``execute``:
-
-              * the pre-DROP existence probe (``SELECT 1 FROM pg_namespace``)
-                delegates to the real session so the schema is found and DROP
-                is attempted;
-              * ``DROP SCHEMA`` statements raise (the cleanup failure under
-                test — recorded as the SOLE cleanup error);
-              * everything else delegates to the real session.
-
-            The zero-residue probe runs in the SAME try-block as DROP, so when
-            DROP raises the probe is skipped (the cleanup error is exactly
-            one: the DROP failure)."""
-
             def __init__(self, *args, **kwargs):
                 self._real = _AS(async_engine, expire_on_commit=False)
 
@@ -2260,25 +2310,25 @@ class TestDisposableSchemaSetupSafety:
                     _session_mod, "AsyncSessionLocal", _SelectiveSessionWrapper
                 ):
                     with pytest.raises(BaseExceptionGroup) as ei:
-                        await _provision_disposable_tenant(db, reg)
+                        # Pass the pre-generated owned reg_id (R1-R1-R6).
+                        await _provision_disposable_tenant(db, reg, reg_id=owned_reg_id)
         finally:
-            # The DROP failed, so the disposable schema still exists. Resolve
-            # it from the registration row and clean ONLY it (not the pool
-            # sentinel) via a validated fresh session.
-            from db.sql_safety import validate_identifier
+            # The DROP failed, so the OWNED schema still exists. Locate it by
+            # EXACT owned id (R1-R1-R6) — never LIKE / prefix / latest-row.
             await async_engine.dispose()
             async with _RealSessionLocal() as cdb:
                 row = (
                     await cdb.execute(
                         text(
                             "SELECT tenant_schema FROM public.tenant_registrations "
-                            "WHERE tenant_code LIKE 'CDR1R1R1%' ORDER BY created_at DESC LIMIT 1"
-                        )
+                            "WHERE id = :rid"
+                        ),
+                        {"rid": owned_reg_id},
                     )
                 ).first()
                 if row is not None and row.tenant_schema:
                     sch = row.tenant_schema
-                    validate_identifier(sch, "test-residual schema")
+                    validate_identifier(sch, "owned test-residual schema")
                     await cdb.execute(text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE'))
                 await cdb.commit()
 
@@ -2290,8 +2340,66 @@ class TestDisposableSchemaSetupSafety:
         clean = [e for e in excs if isinstance(e, RuntimeError) and "CLEANUP drop failure" in str(e)]
         assert len(orig) == 1, [str(e) for e in excs]
         assert len(clean) == 1, [str(e) for e in excs]
-        after = await _count_schemas_starting_with(db, "t_")
-        assert after == before, f"residue: before={before} after={after}"
+
+        # SENTINEL byte-equality: the sentinel schema + its marker row must be
+        # unchanged after the fault cleanup (proving exact-id cleanup did not
+        # touch the unrelated same-prefix registration).
+        await async_engine.dispose()
+        async with _RealSessionLocal() as vdb:
+            still = (
+                await vdb.execute(
+                    text("SELECT 1 FROM pg_namespace WHERE nspname = :s"),
+                    {"s": sentinel_schema},
+                )
+            ).first()
+            assert still is not None, "sentinel schema was dropped by cleanup"
+            marker = (
+                await vdb.execute(
+                    text(
+                        f'SELECT payload FROM "{sentinel_schema}".sentinel_marker '
+                        "WHERE id = 1"
+                    )
+                )
+            ).first()
+            assert marker is not None and marker.payload == "sentinel-byte-unchanged", (
+                f"sentinel marker changed: {marker}"
+            )
+            # Clean up the sentinel (exact id).
+            validate_identifier(sentinel_schema, "sentinel cleanup schema")
+            await vdb.execute(text(f'DROP SCHEMA IF EXISTS "{sentinel_schema}" CASCADE'))
+            await vdb.execute(
+                text("DELETE FROM public.tenant_registrations WHERE id = :rid"),
+                {"rid": sentinel_reg_id},
+            )
+            await vdb.execute(
+                text("DELETE FROM public.wholesalers WHERE id = :wid"),
+                {"wid": sentinel_ws_id},
+            )
+            await vdb.commit()
+
+        # Exact-residue check (R1-R1-R6): verify the OWNED schema and the
+        # SENTINEL schema are BOTH absent from pg_namespace (not a fragile
+        # global t_ count that includes pool/other-test schemas).
+        await async_engine.dispose()
+        async with _RealSessionLocal() as vdb:
+            owned_row = (
+                await vdb.execute(
+                    text("SELECT tenant_schema FROM public.tenant_registrations WHERE id = :rid"),
+                    {"rid": owned_reg_id},
+                )
+            ).first()
+            owned_schema_name = owned_row.tenant_schema if owned_row else None
+            for name in (owned_schema_name, sentinel_schema):
+                if name is None:
+                    continue
+                present = (
+                    await vdb.execute(
+                        text("SELECT 1 FROM pg_namespace WHERE nspname = :s"),
+                        {"s": name},
+                    )
+                ).first()
+                assert present is None, f"schema {name} still present after cleanup"
+
 
     async def test_rollback_failure_is_visible(self, s2_clean_db
     ):

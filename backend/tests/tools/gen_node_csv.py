@@ -2,13 +2,17 @@
 standard-library csv.writer (correct quoting for node IDs containing commas,
 newlines, quotes, or binary bytes).
 
-Usage: python gen_node_csv.py <junit_a.xml> <junit_b.xml> <out.csv>
+Usage: python tests/tools/gen_node_csv.py <junit_a.xml> <junit_b.xml> <out.csv>
 
 The CSV has columns: nodeid,outcome_run_a,outcome_run_b
 Outcomes are one of: passed, skipped, xfailed, failed, error, absent.
 - ``absent`` marks a node that appeared in only one run (dynamic node IDs).
 - Every non-absent value is from {passed, skipped, xfailed, failed, error}.
-Prints an accounting reconciliation and asserts A/B node-id sets + outcomes.
+
+FAIL-CLOSED (R1-R1-R6): the generator exits NON-ZERO (SystemExit) if it detects
+any of: a duplicate node ID, an illegal outcome value, a shared-node outcome
+difference (same node, different outcome), a bad column count on round-trip,
+or a non-zero accounting gap. It prints the reconciliation summary to stdout.
 """
 import csv
 import sys
@@ -18,7 +22,7 @@ from collections import Counter
 LEGAL = {"passed", "skipped", "xfailed", "failed", "error"}
 
 
-def parse(xml_path: str) -> dict[str, str]:
+def _parse(xml_path: str) -> dict[str, str]:
     tree = ET.parse(xml_path)
     root = tree.getroot()
     outcomes: dict[str, str] = {}
@@ -58,9 +62,20 @@ def parse(xml_path: str) -> dict[str, str]:
     return outcomes
 
 
-def main(a_path: str, b_path: str, out_path: str) -> None:
-    a = parse(a_path)
-    b = parse(b_path)
+def main(a_path: str, b_path: str, out_path: str) -> int:
+    a = _parse(a_path)
+    b = _parse(b_path)
+
+    # Fail-closed: duplicate node IDs within a single run.
+    if len(a) != len(set(a)):
+        dups = [k for k, c in Counter(a).items() if c > 1]
+        print(f"FAIL: duplicate node IDs in run A: {dups[:5]}", file=sys.stderr)
+        return 1
+    if len(b) != len(set(b)):
+        dups = [k for k, c in Counter(b).items() if c > 1]
+        print(f"FAIL: duplicate node IDs in run B: {dups[:5]}", file=sys.stderr)
+        return 1
+
     all_nodes = sorted(set(a) | set(b))
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
@@ -78,22 +93,58 @@ def main(a_path: str, b_path: str, out_path: str) -> None:
     print(f"A-only={len(a_only)} B-only={len(b_only)}")
     print(f"outcomes A: {dict(ca)}")
     print(f"outcomes B: {dict(cb)}")
-    diffs = [(n, a[n], b[n]) for n in all_nodes if n in a and n in b and a[n] != b[n]]
-    print(f"outcome diffs: {len(diffs)}")
+
+    # Fail-closed: illegal outcome values.
+    for n, o in a.items():
+        if o not in LEGAL:
+            print(f"FAIL: illegal outcome in A: {n} -> {o}", file=sys.stderr)
+            return 1
+    for n, o in b.items():
+        if o not in LEGAL:
+            print(f"FAIL: illegal outcome in B: {n} -> {o}", file=sys.stderr)
+            return 1
+
+    # Fail-closed: shared-node outcome difference.
+    shared = set(a) & set(b)
+    diffs = [(n, a[n], b[n]) for n in shared if a[n] != b[n]]
+    print(f"shared-node outcome diffs: {len(diffs)}")
+    if diffs:
+        print(f"FAIL: shared-node outcome differences: {diffs[:5]}", file=sys.stderr)
+        return 1
+
+    # Fail-closed: accounting gap.
     gap = {k: ca.get(k, 0) - cb.get(k, 0) for k in set(ca) | set(cb)}
     print(f"accounting gap (A-B): {gap}")
+    if any(v != 0 for v in gap.values()):
+        print(f"FAIL: non-zero accounting gap: {gap}", file=sys.stderr)
+        return 1
 
-    # CSV round-trip validation with csv.DictReader.
+    # Fail-closed: CSV round-trip column integrity.
     with open(out_path, encoding="utf-8", newline="") as f:
-        rows = list(csv.DictReader(f))
-    bad_cols = [(i, r) for i, r in enumerate(rows) if set(r.keys()) != {"nodeid", "outcome_run_a", "outcome_run_b"}]
+        rows = list(csv.reader(f))
+    col_counts = Counter(len(r) for r in rows)
+    bad = {k: v for k, v in col_counts.items() if k != 3}
+    print(f"CSV rows (incl header): {len(rows)}; col-count dist: {dict(col_counts)}")
+    if bad:
+        print(f"FAIL: non-3-col rows: {bad}", file=sys.stderr)
+        return 1
+    # Re-read outcomes and validate allowlist.
+    with open(out_path, encoding="utf-8", newline="") as f:
+        drows = list(csv.DictReader(f))
     bad_outcomes = [
         (i, r["outcome_run_a"], r["outcome_run_b"])
-        for i, r in enumerate(rows)
-        if r["outcome_run_a"] not in LEGAL | {"absent"} or r["outcome_run_b"] not in LEGAL | {"absent"}
+        for i, r in enumerate(drows)
+        if r["outcome_run_a"] not in LEGAL | {"absent"}
+        or r["outcome_run_b"] not in LEGAL | {"absent"}
     ]
-    print(f"CSV rows (excl header): {len(rows)}; bad-col rows: {len(bad_cols)}; bad-outcome rows: {len(bad_outcomes)}")
+    print(f"bad-outcome rows: {len(bad_outcomes)}")
+    if bad_outcomes:
+        print(f"FAIL: illegal outcomes: {bad_outcomes[:5]}", file=sys.stderr)
+        return 1
+
+    print("OK: all checks passed")
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], sys.argv[3])
+    sys.exit(main(sys.argv[1], sys.argv[2], sys.argv[3]))

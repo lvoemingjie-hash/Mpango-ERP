@@ -1175,3 +1175,90 @@ file, so the gate evidence is machine-verifiable end-to-end.
 - No migration, permission, config, dependency, lockfile, deployment,
   events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
   mutation, or protected-branch push.
+
+## §R1-R1-R6 Exact ownership + generator placement (SUPERSEDES R1-R1-R5)
+
+> **⚠️ SUPERSEDED_BY_I2C_I2B_R1_R1_R6**
+>
+> The `4dee0867` R1-R1-R5 verdict is **superseded** by the R1-R1-R6
+> correction. CTO review acknowledged R5 closed the CSV-validity and
+> dual-exception issues but found one P1 (the dual-exception test's finally
+> used `LIKE 'CDR1R1R1%'` instead of exact owned-id cleanup) and two P2s
+> (the generator was an unauthorized backend-root file; it did not fail-closed).
+> All three are closed here. Product files remain frozen at `2da1bd57`.
+>
+> Starting SHA: `4dee08670672abcd0f0cc9cf65b5a27ceb8c12bf`; protected baseline
+> `d45b5020b122b13c407a1c9204b18e587f9803fc` (untouched). Verdict:
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2B_R1_R1_R6_MERGE_REVIEW** (this section).
+
+### R1-R1-R6.1 P1 — exact owned-id cleanup (no LIKE / prefix / latest-row)
+
+**Finding.** R5's dual-exception test located the residual schema via
+`WHERE tenant_code LIKE 'CDR1R1R1%' ORDER BY created_at DESC LIMIT 1` — not
+exact-owned, so a concurrent/historical same-prefix registration could be
+selected and the wrong schema dropped.
+
+**Fix:** `_provision_disposable_tenant` now accepts an optional pre-generated
+`reg_id`. The test pre-generates `owned_reg_id`, passes it in, and the finally
+locates the schema by **`WHERE id = :reg_id`** (exact). A **sentinel**
+registration + schema with the SAME prefix is seeded before the test; after
+the fault cleanup the sentinel schema + its marker row are verified
+**byte-for-byte unchanged**, proving the exact-id cleanup did not touch the
+unrelated same-prefix registration. Residue is checked by exact pg_namespace
+presence of the owned + sentinel names (not a fragile global count).
+
+### R1-R1-R6.2 P2 — generator placement + fail-closed
+
+**Finding.** `backend/gen_node_csv.py` was an unauthorized backend-root file;
+its comment claimed "asserts A/B sets + outcomes" but it only printed.
+
+**Fix:** moved to `backend/tests/tools/gen_node_csv.py`. It now **exits
+non-zero** (SystemExit) on: duplicate node IDs, illegal outcome values,
+shared-node outcome differences, non-3-col rows on round-trip, non-zero
+accounting gap, or illegal outcomes in the round-tripped file. Prints
+`OK: all checks passed` on success.
+
+### R1-R1-R6.3 — corrected node-difference wording
+
+The R5 wording "0 outcome diffs" conflated shared-node and absent-row cases.
+Corrected framing (used in the gates table and the CSV-validity test):
+
+- **0 shared-node outcome differences** — every node present in BOTH runs has
+  the identical outcome in A and B.
+- **8 expected absent-row differences** — 4 dynamic binary node IDs appear
+  only in A (outcome_run_b = `absent`) and 4 only in B (outcome_run_a =
+  `absent`), from the `test_u4d_intake_parser_preview` xlsx parametrization
+  whose raw bytes embed in the node ID. These are disclosed, preserved
+  verbatim, and are the SOLE source of A-only/B-only rows.
+
+### R1-R1-R6.4 Gates (exact commands + counts)
+
+| Gate | Result |
+|---|---|
+| Focused Contract D + CSV natural | `pytest tests/test_dc12r1_contract_d_statement_print.py tests/test_dc12r1_contract_d_r5_node_csv.py -q` → **62 passed** |
+| Focused reverse (57 Contract D node IDs, reversed) | **57 passed** |
+| Regressions (I2C-I1, I2B, I2A, route-inventory, read-only retailer finance, financial schema, orders) | **192 passed** |
+| Full backend run A (fresh PG16 :5433 + Redis7 :6380, `pytest tests/ -q -rs --junitxml`) | **3278 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Full backend run B (fresh PG16 :5434 + Redis7 :6381, identical env+cmd) | **3278 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Node-outcomes CSV (regenerated, csv.writer, fail-closed generator exit 0) | 3345 union rows; A=B=3341; 3278/48/15 each; **0 shared-node outcome differences; 8 expected absent-row differences** (4 A-only + 4 B-only, xlsx dynamic IDs); gap=0; col-count `{3: 3346}` |
+| Frontend full vitest | `pnpm vitest run` → **270 passed / 0 failed** (20 files) |
+| Frontend build | `pnpm build` exit 0 |
+| Self-review | product files byte-identical to `2da1bd57`; `py_compile` clean; `git diff --check` clean; scoped pre-commit all hooks passed; detect-secrets 0 new; mojibake clean; GitNexus `analyze` + `status` up-to-date post-commit |
+
+One pytest process per run; identical env+cmd on both stacks; no
+exclusions/reruns/deselection/no timeout increase/mocks/skip/xfail/weakened
+assertions.
+
+### R1-R1-R6.5 Adversarial self-review
+
+- The dual-exception test's finally uses `WHERE id = :reg_id` (exact); no
+  LIKE / prefix / latest-row anywhere in the test.
+- The sentinel (same prefix) is byte-for-byte unchanged after fault cleanup.
+- The generator is under `backend/tests/tools/` and exits non-zero on any
+  integrity violation.
+- Node-difference wording distinguishes 0 shared-node outcome differences from
+  8 expected absent-row differences.
+- Product files byte-identical to `2da1bd57`.
+- No migration, permission, config, dependency, lockfile, deployment,
+  events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
+  mutation, or protected-branch push.

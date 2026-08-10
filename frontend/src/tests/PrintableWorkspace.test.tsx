@@ -842,6 +842,25 @@ const RECEIPT_FIXTURE = {
   order_status: 'CONFIRMED',
   order_total_amount: '10.00',
 };
+// DC-12R1-S3-S2B-I2C-I2B (Contract D): minimal statement fixture for the
+// 8-route guard matrix.
+const STATEMENT_FIXTURE = {
+  document_type: 'statement',
+  supplier_name: 'S',
+  retailer_name: 'R',
+  period_from: '2026-08-01',
+  period_to: '2026-08-10',
+  opening_balance: '10.00',
+  closing_balance: '10.00',
+  charge_total: '0.00',
+  collection_total: '0.00',
+  net_movement: '0.00',
+  movements: [],
+  settled_payments: [],
+  pending_declarations: [],
+  generated_at: '2026-08-10T00:00:00Z',
+  generated_at_eat: '2026-08-10T00:00:00+03:00',
+};
 
 const RETAILER_USER = {
   id: 'r1', email: 'r@e.com', full_name: 'R',
@@ -860,30 +879,40 @@ function routeExpectations(path: string): { endpoint: string; opposite: string; 
   if (path === '/client/orders/:id/print') return { endpoint: '/client/orders/ord-route/print', opposite: '/orders/ord-route/print', testid: 'order-print-document' };
   if (path === '/client/declarations/:id/print') return { endpoint: '/client/declarations/ord-route/print', opposite: '/declarations/ord-route/print', testid: 'declaration-print-document' };
   if (path === '/client/declarations/:id/receipt') return { endpoint: '/client/declarations/ord-route/receipt', opposite: '/declarations/ord-route/receipt', testid: 'receipt-print-document' };
+  if (path === '/client/statements/print') return { endpoint: '/client/statements/print', opposite: '/statements/print', testid: 'statement-print-document' };
   if (path === '/orders/:id/print') return { endpoint: '/orders/ord-route/print', opposite: '/client/orders/ord-route/print', testid: 'order-print-document' };
   if (path === '/declarations/:id/print') return { endpoint: '/declarations/ord-route/print', opposite: '/client/declarations/ord-route/print', testid: 'declaration-print-document' };
   if (path === '/declarations/:id/receipt') return { endpoint: '/declarations/ord-route/receipt', opposite: '/client/declarations/ord-route/receipt', testid: 'receipt-print-document' };
+  if (path === '/statements/print') return { endpoint: '/statements/print', opposite: '/client/statements/print', testid: 'statement-print-document' };
   return null;
 }
 
-/** All six print-data GET endpoints (for exhaustive exclusivity assertions). */
-const ALL_SIX_PRINT_ENDPOINTS = [
+/** All eight print-data GET endpoints (for exhaustive exclusivity assertions). */
+const ALL_EIGHT_PRINT_ENDPOINTS = [
   '/client/orders/ord-route/print',
   '/client/declarations/ord-route/print',
   '/client/declarations/ord-route/receipt',
+  '/client/statements/print',
   '/orders/ord-route/print',
   '/declarations/ord-route/print',
   '/declarations/ord-route/receipt',
+  '/statements/print',
 ];
 
-/** Filter a call list to only print-data GET URLs (order/declaration print + receipt). */
+/** Filter a call list to only print-data GET URLs (order/declaration print + receipt + statement). */
 function printDataGetUrls(calls: unknown[][]): string[] {
   return calls
     .map((c) => String(c[0]))
-    .filter((u) => (u.includes('/print') || u.includes('/receipt')) && (u.includes('/orders/') || u.includes('/declarations/')));
+    .filter((u) => (u.includes('/print') || u.includes('/receipt')) && (u.includes('/orders/') || u.includes('/declarations/') || u.includes('/statements/print')));
 }
 
 function concretePath(template: string): string {
+  if (template === '/statements/print') {
+    return '/statements/print?retailer_id=ret-route&from=2026-08-01&to=2026-08-10';
+  }
+  if (template === '/client/statements/print') {
+    return '/client/statements/print?from=2026-08-01&to=2026-08-10';
+  }
   return template.replace(':id', 'ord-route');
 }
 
@@ -893,6 +922,9 @@ async function renderAppRouterAt(path: string) {
   cleanup();
   // Satisfy every GET the route tree may issue while navigating/printing.
   mockGet.mockImplementation(async (url: string) => {
+    if (url.includes('/statements/print')) {
+      return axiosResponse(ok(STATEMENT_FIXTURE).data) as never;
+    }
     if (url.includes('/print') && url.includes('/orders/')) {
       return axiosResponse(ok(ORDER_PRINT_FIXTURE).data) as never;
     }
@@ -933,10 +965,10 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
     });
   });
 
-  // Retailer ALLOW — all three /client routes admitted + exact endpoint list.
-  describe('retailer ALLOW (3 client routes)', () => {
-    for (const tpl of ['/client/orders/:id/print', '/client/declarations/:id/print', '/client/declarations/:id/receipt']) {
-      it(`admits ${tpl}; print-data GET list == [expected] only; opposite + 4 others never called`, async () => {
+  // Retailer ALLOW — all four /client routes admitted + exact endpoint list.
+  describe('retailer ALLOW (4 client routes)', () => {
+    for (const tpl of ['/client/orders/:id/print', '/client/declarations/:id/print', '/client/declarations/:id/receipt', '/client/statements/print']) {
+      it(`admits ${tpl}; print-data GET list == [expected] only; opposite + 7 others never called`, async () => {
         useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER, tenantCode: null, retailerPortalCode: 'SUPP42' });
         const exp = routeExpectations(tpl)!;
         await renderAppRouterAt(concretePath(tpl));
@@ -946,8 +978,8 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
         expect(printUrls).toEqual([exp.endpoint]);
         // Opposite-side endpoint never called.
         expect(mockGet).not.toHaveBeenCalledWith(exp.opposite);
-        // All other five print endpoints never called.
-        for (const other of ALL_SIX_PRINT_ENDPOINTS) {
+        // All other seven print endpoints never called.
+        for (const other of ALL_EIGHT_PRINT_ENDPOINTS) {
           if (other !== exp.endpoint) expect(mockGet).not.toHaveBeenCalledWith(other);
         }
         expect(api.post).not.toHaveBeenCalled();
@@ -958,9 +990,9 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
     }
   });
 
-  // Retailer DENY — all three supplier routes redirected; empty print-data GET list.
-  describe('retailer DENY (3 supplier routes)', () => {
-    for (const tpl of ['/orders/:id/print', '/declarations/:id/print', '/declarations/:id/receipt']) {
+  // Retailer DENY — all four supplier routes redirected; empty print-data GET list.
+  describe('retailer DENY (4 supplier routes)', () => {
+    for (const tpl of ['/orders/:id/print', '/declarations/:id/print', '/declarations/:id/receipt', '/statements/print']) {
       it(`denies ${tpl} (no document; print-data GET list empty; no writes)`, async () => {
         useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER, tenantCode: null, retailerPortalCode: 'SUPP42' });
         const exp = routeExpectations(tpl)!;
@@ -968,7 +1000,7 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
         await waitFor(() => expect(screen.queryByTestId(exp.testid)).not.toBeInTheDocument(), { timeout: 3000 });
         // Denied routes execute no print-data GET at all.
         expect(printDataGetUrls(mockGet.mock.calls)).toEqual([]);
-        for (const ep of ALL_SIX_PRINT_ENDPOINTS) expect(mockGet).not.toHaveBeenCalledWith(ep);
+        for (const ep of ALL_EIGHT_PRINT_ENDPOINTS) expect(mockGet).not.toHaveBeenCalledWith(ep);
         expect(api.post).not.toHaveBeenCalled();
         expect(api.put).not.toHaveBeenCalled();
         expect(api.patch).not.toHaveBeenCalled();
@@ -977,10 +1009,10 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
     }
   });
 
-  // Wholesaler ALLOW — all three supplier routes admitted + exact endpoint list.
-  describe('wholesaler ALLOW (3 supplier routes)', () => {
-    for (const tpl of ['/orders/:id/print', '/declarations/:id/print', '/declarations/:id/receipt']) {
-      it(`admits ${tpl}; print-data GET list == [expected] only; opposite + 4 others never called`, async () => {
+  // Wholesaler ALLOW — all four supplier routes admitted + exact endpoint list.
+  describe('wholesaler ALLOW (4 supplier routes)', () => {
+    for (const tpl of ['/orders/:id/print', '/declarations/:id/print', '/declarations/:id/receipt', '/statements/print']) {
+      it(`admits ${tpl}; print-data GET list == [expected] only; opposite + 7 others never called`, async () => {
         useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: WHOLESALER_USER, tenantCode: 'TENA', retailerPortalCode: null });
         const exp = routeExpectations(tpl)!;
         await renderAppRouterAt(concretePath(tpl));
@@ -988,7 +1020,7 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
         const printUrls = printDataGetUrls(mockGet.mock.calls);
         expect(printUrls).toEqual([exp.endpoint]);
         expect(mockGet).not.toHaveBeenCalledWith(exp.opposite);
-        for (const other of ALL_SIX_PRINT_ENDPOINTS) {
+        for (const other of ALL_EIGHT_PRINT_ENDPOINTS) {
           if (other !== exp.endpoint) expect(mockGet).not.toHaveBeenCalledWith(other);
         }
         expect(api.post).not.toHaveBeenCalled();
@@ -999,16 +1031,16 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
     }
   });
 
-  // Wholesaler DENY — all three /client routes redirected; empty print-data GET list.
-  describe('wholesaler DENY (3 client routes)', () => {
-    for (const tpl of ['/client/orders/:id/print', '/client/declarations/:id/print', '/client/declarations/:id/receipt']) {
+  // Wholesaler DENY — all four /client routes redirected; empty print-data GET list.
+  describe('wholesaler DENY (4 client routes)', () => {
+    for (const tpl of ['/client/orders/:id/print', '/client/declarations/:id/print', '/client/declarations/:id/receipt', '/client/statements/print']) {
       it(`denies ${tpl} (no document; print-data GET list empty; no writes)`, async () => {
         useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: WHOLESALER_USER, tenantCode: 'TENA', retailerPortalCode: null });
         const exp = routeExpectations(tpl)!;
         await renderAppRouterAt(concretePath(tpl));
         await waitFor(() => expect(screen.queryByTestId(exp.testid)).not.toBeInTheDocument(), { timeout: 3000 });
         expect(printDataGetUrls(mockGet.mock.calls)).toEqual([]);
-        for (const ep of ALL_SIX_PRINT_ENDPOINTS) expect(mockGet).not.toHaveBeenCalledWith(ep);
+        for (const ep of ALL_EIGHT_PRINT_ENDPOINTS) expect(mockGet).not.toHaveBeenCalledWith(ep);
         expect(api.post).not.toHaveBeenCalled();
         expect(api.put).not.toHaveBeenCalled();
         expect(api.patch).not.toHaveBeenCalled();

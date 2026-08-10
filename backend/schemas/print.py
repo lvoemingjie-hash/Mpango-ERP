@@ -19,7 +19,7 @@ Truth contract (I2C-D/R2):
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
 
@@ -111,5 +111,99 @@ class ReceiptPrintView(BaseModel):
     declared_amount: Decimal = Field(..., description="Originally declared amount (KES)")
     order_status: Optional[str] = Field(None, description="Client-mapped order status")
     order_total_amount: Optional[Decimal] = Field(None, description="Server-authoritative order total (KES)")
+
+    model_config = {"from_attributes": True}
+
+
+# ===========================================================================
+# Contract D — relationship account statement (printable, read-only)
+# ===========================================================================
+
+
+class StatementMovementView(BaseModel):
+    """A single receivable ledger movement on the statement.
+
+    ``signed_amount`` is the verbatim ledger ``amount`` (positive = charge,
+    negative = collection). The ``reference_type``/``reference_id`` expose the
+    ledger reference (always an order_id for receivable rows); no payment id is
+    ever exposed or associated here.
+    """
+
+    movement_id: str = Field(..., description="Ledger entry identifier")
+    date: datetime = Field(..., description="Authoritative UTC transaction date")
+    date_eat: datetime = Field(..., description="Fixed Africa/Nairobi (EAT) display timestamp")
+    signed_amount: Decimal = Field(..., description="Signed amount: +charge / -collection (KES)")
+    description: Optional[str] = Field(None, description="Ledger entry description (sanitized)")
+    reference_type: str = Field(..., description="Ledger reference type: order|refund")
+    reference_id: str = Field(..., description="Order identifier referenced by the movement")
+
+    model_config = {"from_attributes": True}
+
+
+class StatementSettledPaymentView(BaseModel):
+    """A canonical completed settlement on the statement.
+
+    Independent of movements (rule 6): never associated by amount, timestamp or
+    order_id. Carries the canonical receipt number verbatim.
+    """
+
+    payment_id: str = Field(..., description="Canonical payment identifier")
+    date: datetime = Field(..., description="Authoritative UTC payment created_at")
+    date_eat: datetime = Field(..., description="Fixed Africa/Nairobi (EAT) display timestamp")
+    order_id: str = Field(..., description="Order identifier of the settled payment")
+    amount: Decimal = Field(..., description="Settled amount (KES)")
+    method: str = Field(..., description="Payment method: cash|transfer")
+    receipt_number: Optional[str] = Field(None, description="Canonical receipt number, if present")
+
+    model_config = {"from_attributes": True}
+
+
+class StatementPendingDeclarationView(BaseModel):
+    """A non-accounting pending/rejected declaration (only when explicitly requested).
+
+    Never enters any balance or settled total.
+    """
+
+    declaration_id: str = Field(..., description="Declaration identifier")
+    order_id: str = Field(..., description="Order identifier")
+    declared_amount: Decimal = Field(..., description="Declared amount (KES)")
+    method: str = Field(..., description="Declared method: cash|transfer")
+    status: str = Field(..., description="Declaration status: pending|rejected")
+    submitted_at: datetime = Field(..., description="Authoritative UTC submission timestamp")
+    submitted_at_eat: datetime = Field(..., description="Fixed Africa/Nairobi (EAT) display timestamp")
+    transfer_reference: Optional[str] = Field(None, description="Transfer reference, if present")
+
+    model_config = {"from_attributes": True}
+
+
+class StatementPrintView(BaseModel):
+    """Contract D — printable relationship account statement.
+
+    Ledger-derived, server-authoritative. ``opening_balance`` and
+    ``closing_balance`` are receivable ledger sums; ``charge_total``,
+    ``collection_total`` and ``net_movement`` derive ONLY from ``movements[]``;
+    ``settled_payments[]`` is an independent canonical-completed-payment list.
+    Money is ``Decimal`` end-to-end (Postgres/Python); the frontend renders the
+    server strings verbatim.
+    """
+
+    document_type: str = Field("statement", description="Document discriminator")
+    supplier_name: str = Field(..., description="Wholesaler/supplier business name")
+    retailer_name: str = Field(..., description="Retailer business name")
+    period_from: date = Field(..., description="Inclusive period start (EAT calendar day)")
+    period_to: date = Field(..., description="Inclusive period end (EAT calendar day)")
+    opening_balance: Decimal = Field(..., description="Receivable sum strictly before the period (KES)")
+    closing_balance: Decimal = Field(..., description="opening + net_movement (KES)")
+    charge_total: Decimal = Field(..., description="Sum of positive movements (KES)")
+    collection_total: Decimal = Field(..., description="Absolute sum of negative movements (KES)")
+    net_movement: Decimal = Field(..., description="charge_total - collection_total, signed (KES)")
+    movements: List[StatementMovementView] = Field(default_factory=list)
+    settled_payments: List[StatementSettledPaymentView] = Field(default_factory=list)
+    pending_declarations: List[StatementPendingDeclarationView] = Field(
+        default_factory=list,
+        description="Non-accounting pending/rejected declarations (only when requested).",
+    )
+    generated_at: datetime = Field(..., description="Authoritative UTC generation timestamp")
+    generated_at_eat: datetime = Field(..., description="Fixed Africa/Nairobi (EAT) display timestamp")
 
     model_config = {"from_attributes": True}

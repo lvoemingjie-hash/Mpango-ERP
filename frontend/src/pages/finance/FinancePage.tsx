@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { financeService } from '@/services/financeService';
 import type { FinancialSummary, CreditReceivableItem, ReceivablesSummary } from '@/services/financeService';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -59,6 +59,15 @@ function agingLabel(days: number): string {
     if (days >= 15) return `${days}d aging`;
     if (days === 0) return 'New';
     return `${days}d`;
+}
+
+/** Current calendar month (local date) for a supplier statement link. */
+function statementHref(retailerId: string): string {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const from = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
+    const to = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    return `/statements/print?retailer_id=${encodeURIComponent(retailerId)}&from=${from}&to=${to}`;
 }
 
 function PaymentBar({ paid, total }: { paid: number; total: number }) {
@@ -397,6 +406,16 @@ export function FinancePage() {
                                         <td className="px-6 py-4 text-gray-700">
                                             <div className="font-medium">{r.retailer_name || 'Unknown retailer'}</div>
                                             <div className="font-mono text-xs text-gray-400">{r.retailer_id?.slice(0, 8) ?? '--'}...</div>
+                                            {/* DC-12R1-S3-S2B-I2C-I2B: Contract D statement entry. retailer_id is
+                                                only a target selector; the active binding under the token tenant is
+                                                the server-side authority. */}
+                                            <Link
+                                                to={statementHref(r.retailer_id)}
+                                                className="mt-1 inline-block text-xs font-medium text-primary-600 hover:text-primary-700"
+                                                data-testid={`statement-link-${r.retailer_id}`}
+                                            >
+                                                Statement
+                                            </Link>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${

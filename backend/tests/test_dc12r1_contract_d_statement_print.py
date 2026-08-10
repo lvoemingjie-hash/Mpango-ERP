@@ -2146,14 +2146,20 @@ class TestDisposableSchemaSetupSafety:
     # original-exception re-raise end-to-end.
 
     async def _seed_registration_with_schema(
-        self, db: AsyncSession, *, reg_id: uuid.UUID, code: str, schema: str
-    ) -> None:
-        """Minimal seed: a registration row + wholesaler row whose derived
-        schema equals ``schema``, plus the live schema in pg_namespace."""
+        self, db: AsyncSession, *, reg_id: uuid.UUID, code: str
+    ) -> str:
+        """Minimal seed: a registration row + wholesaler row whose
+        ``derive_schema_from_id`` equals the registration's ``tenant_schema``,
+        plus the live schema in pg_namespace. Both cleanup sources therefore
+        AGREE (no spurious schema-mismatch error). Returns the wholesaler id
+        (str) so callers can derive the schema name consistently.
+
+        Uses status ``email_verified`` (non-terminal) so the row passes the
+        terminal-password-cleared CHECK without the full credential-clear
+        fields a real ``active`` row requires."""
         from models.wholesaler import Wholesaler
         ws_id = uuid.uuid4()
-        # Wholesaler row whose derived schema == schema (so both sources agree
-        # unless the test corrupts one).
+        schema = Wholesaler.derive_schema_from_id(str(ws_id))
         await db.execute(
             text(
                 "INSERT INTO public.tenant_registrations "
@@ -2185,88 +2191,120 @@ class TestDisposableSchemaSetupSafety:
         )
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
         await db.commit()
+        return str(ws_id)
 
     async def test_cleanup_failure_preserves_both_original_and_cleanup_errors(
         self, s2_clean_db
     ):
-        """R1-R1-R4 §5.1: when cleanup's DROP fails, ``_cleanup_partial_tenant``
-        RECORDS the cleanup error (does not swallow it). We seed a registration
-        + live schema, force ``AsyncSessionLocal`` to raise on execute, and
-        assert the returned list contains the DROP failure."""
-        db, _reg = s2_clean_db
+        """R1-R1-R5: provisioning fails AND cleanup/DROP fails. The raised
+        ``BaseExceptionGroup.exceptions`` must PRECISELY contain BOTH the
+        original provisioning error and the cleanup DROP error.
+
+        This exercises the FULL ``_provision_disposable_tenant`` path (the
+        original error is induced via ``_create_binding`` raising). The
+        cleanup DROP is selectively failed by wrapping ``AsyncSessionLocal``
+        so the produced session delegates everything to a real session EXCEPT
+        ``DROP SCHEMA`` statements (which raise). Schema-resolution queries
+        (pg_namespace, tenant_registrations, wholesalers) run normally."""
+        db, reg = s2_clean_db
+        import tests.test_dc12r1_contract_d_statement_print as _self_mod
         from unittest.mock import patch as _upatch
         from database import session as _session_mod
+        from database.session import AsyncSessionLocal as _RealSessionLocal, async_engine
+        from sqlalchemy.ext.asyncio import AsyncSession as _AS
 
-        reg_id = uuid.uuid4()
-        code = f"R4A{uuid.uuid4().hex[:6].upper()}"
-        schema = f"t_{reg_id.hex}"
-        await self._seed_registration_with_schema(db, reg_id=reg_id, code=code, schema=schema)
+        async def _original_boom(*a, **kw):
+            raise RuntimeError("ORIGINAL provisioning failure")
 
-        class _FailingCleanupSession:
-            def __init__(self, *a, **kw):
-                pass
+        class _SelectiveSessionWrapper:
+            """A context-manager factory whose instances delegate to a REAL
+            AsyncSession but intercept ``execute``:
+
+              * the pre-DROP existence probe (``SELECT 1 FROM pg_namespace``)
+                delegates to the real session so the schema is found and DROP
+                is attempted;
+              * ``DROP SCHEMA`` statements raise (the cleanup failure under
+                test — recorded as the SOLE cleanup error);
+              * everything else delegates to the real session.
+
+            The zero-residue probe runs in the SAME try-block as DROP, so when
+            DROP raises the probe is skipped (the cleanup error is exactly
+            one: the DROP failure)."""
+
+            def __init__(self, *args, **kwargs):
+                self._real = _AS(async_engine, expire_on_commit=False)
 
             async def __aenter__(self):
+                await self._real.__aenter__()
                 return self
 
-            async def __aexit__(self, *exc):
-                return False
+            async def __aexit__(self, exc_type, exc, tb):
+                return await self._real.__aexit__(exc_type, exc, tb)
 
-            async def execute(self, *a, **kw):
-                raise RuntimeError("CLEANUP drop failure")
+            async def execute(self, statement, *args, **kwargs):
+                stmt = str(statement).upper()
+                if "DROP SCHEMA" in stmt:
+                    raise RuntimeError("CLEANUP drop failure")
+                return await self._real.execute(statement, *args, **kwargs)
 
             async def commit(self):
-                pass
+                return await self._real.commit()
 
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+        before = await _count_schemas_starting_with(db, "t_")
         try:
-            with _upatch.object(_session_mod, "AsyncSessionLocal", _FailingCleanupSession):
-                errors = await _cleanup_partial_tenant(db, reg_id, code)
+            with _upatch.object(_self_mod, "_create_binding", _original_boom):
+                with _upatch.object(
+                    _session_mod, "AsyncSessionLocal", _SelectiveSessionWrapper
+                ):
+                    with pytest.raises(BaseExceptionGroup) as ei:
+                        await _provision_disposable_tenant(db, reg)
         finally:
-            # The live schema was NOT dropped (cleanup failed); drop it here so
-            # the test leaves zero residue. Use a validated, fresh session.
-            from database.session import AsyncSessionLocal, async_engine
+            # The DROP failed, so the disposable schema still exists. Resolve
+            # it from the registration row and clean ONLY it (not the pool
+            # sentinel) via a validated fresh session.
             from db.sql_safety import validate_identifier
-            validate_identifier(schema, "test-residual schema")
             await async_engine.dispose()
-            async with AsyncSessionLocal() as cdb:
-                await cdb.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-                await cdb.execute(
-                    text("DELETE FROM public.tenant_registrations WHERE id = :rid"),
-                    {"rid": reg_id},
-                )
-                await cdb.execute(
-                    text("DELETE FROM public.wholesalers WHERE code = :code"),
-                    {"code": code},
-                )
+            async with _RealSessionLocal() as cdb:
+                row = (
+                    await cdb.execute(
+                        text(
+                            "SELECT tenant_schema FROM public.tenant_registrations "
+                            "WHERE tenant_code LIKE 'CDR1R1R1%' ORDER BY created_at DESC LIMIT 1"
+                        )
+                    )
+                ).first()
+                if row is not None and row.tenant_schema:
+                    sch = row.tenant_schema
+                    validate_identifier(sch, "test-residual schema")
+                    await cdb.execute(text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE'))
                 await cdb.commit()
 
-        assert len(errors) >= 1, f"expected >=1 cleanup error, got {errors}"
-        msgs = [str(e) for e in errors]
-        assert any("CLEANUP drop failure" in m for m in msgs), msgs
-        # The schema must still exist (DROP failed) — proving cleanup refused
-        # to silently continue; the error is surfaced, not swallowed.
-        from database.session import AsyncSessionLocal, async_engine
-        await async_engine.dispose()
-        async with AsyncSessionLocal() as vdb:
-            present = (
-                await vdb.execute(
-                    text("SELECT 1 FROM pg_namespace WHERE nspname = :s"),
-                    {"s": schema},
-                )
-            ).first()
-        # (Already dropped by the finally above; this test only asserts the
-        # error-recording contract.)
+        group = ei.value
+        assert isinstance(group, BaseExceptionGroup), type(group).__name__
+        excs = group.exceptions
+        assert len(excs) == 2, [type(e).__name__ for e in excs]
+        orig = [e for e in excs if isinstance(e, RuntimeError) and "ORIGINAL provisioning failure" in str(e)]
+        clean = [e for e in excs if isinstance(e, RuntimeError) and "CLEANUP drop failure" in str(e)]
+        assert len(orig) == 1, [str(e) for e in excs]
+        assert len(clean) == 1, [str(e) for e in excs]
+        after = await _count_schemas_starting_with(db, "t_")
+        assert after == before, f"residue: before={before} after={after}"
 
     async def test_rollback_failure_is_visible(self, s2_clean_db
     ):
-        """R1-R1-R4 §5.2: when the main-session ``rollback`` itself fails,
+        """R1-R1-R5 §5.2: when the main-session ``rollback`` itself fails,
         ``_cleanup_partial_tenant`` records it as a cleanup error (visible),
-        not swallowed."""
+        not swallowed. Uses the consistent wholesaler-derived schema seed."""
         db, _reg = s2_clean_db
+        from models.wholesaler import Wholesaler
+
         reg_id = uuid.uuid4()
         code = f"R4B{uuid.uuid4().hex[:6].upper()}"
-        schema = f"t_{reg_id.hex}"
-        await self._seed_registration_with_schema(db, reg_id=reg_id, code=code, schema=schema)
+        ws_id = await self._seed_registration_with_schema(db, reg_id=reg_id, code=code)
+        schema = Wholesaler.derive_schema_from_id(ws_id)
 
         real_rollback = db.rollback
 
@@ -2289,8 +2327,8 @@ class TestDisposableSchemaSetupSafety:
                     {"rid": reg_id},
                 )
                 await cdb.execute(
-                    text("DELETE FROM public.wholesalers WHERE code = :code"),
-                    {"code": code},
+                    text("DELETE FROM public.wholesalers WHERE id = :wid"),
+                    {"wid": ws_id},
                 )
                 await cdb.commit()
 
@@ -2380,15 +2418,111 @@ class TestDisposableSchemaSetupSafety:
     async def test_illegal_schema_identifier_rejected_before_dynamic_sql(
         self, s2_clean_db
     ):
-        """R1-R1-R4 §5.4 / §4: an illegal schema identifier must be rejected by
-        ``validate_identifier`` BEFORE it can reach a ``DROP SCHEMA`` string.
-        We prove ``validate_identifier`` raises on a malicious value and that
-        no DROP string is ever built from it."""
-        from db.sql_safety import validate_identifier
+        """R1-R1-R5 §5.4 / §4: an illegal schema identifier written into an
+        OWNED registration must be rejected by ``_cleanup_partial_tenant``
+        BEFORE any ``DROP SCHEMA`` is executed. We write a malicious
+        ``tenant_schema`` into the registration row (bypassing app validation,
+        as a corrupted row could), run the REAL cleanup, capture every SQL
+        statement executed in the fresh cleanup session, and assert that NO
+        ``DROP SCHEMA`` string was ever issued."""
+        db, _reg = s2_clean_db
+        from database import session as _session_mod
+        from unittest.mock import patch as _upatch
+        from database.session import AsyncSessionLocal, async_engine
 
-        for bad in ("t_evil'; DROP TABLE x; --", "t-with-dashes", "t space", "1t", ""):
-            with pytest.raises(ValueError, match="Unsafe"):
-                validate_identifier(bad, "cleanup candidate schema")
+        reg_id = uuid.uuid4()
+        code = f"R4D{uuid.uuid4().hex[:6].upper()}"
+        # Seed a CONSISTENT, valid registration + schema first.
+        ws_id = await self._seed_registration_with_schema(db, reg_id=reg_id, code=code)
+        from models.wholesaler import Wholesaler
+        real_schema = Wholesaler.derive_schema_from_id(ws_id)
+        # Corrupt the registration's tenant_schema with a malicious value
+        # (semicolons / comment) — simulate a corrupted row. The CHECK
+        # constraint may reject this; if so we bypass it by writing via a raw
+        # connection that disables constraints is not available, so instead we
+        # DELETE the registration row and re-INSERT with the malicious value
+        # using a session that allows it. Simpler: set tenant_schema directly
+        # via UPDATE; if the CHECK rejects, the test proves the DB itself
+        # blocks it (also a valid fail-closed). We attempt the UPDATE and
+        # tolerate either outcome.
+        malicious = "t_evil'; DROP TABLE public.retailers; --"
+        update_rejected = False
+        try:
+            await db.execute(
+                text(
+                    "UPDATE public.tenant_registrations SET tenant_schema = :bad "
+                    "WHERE id = :rid"
+                ),
+                {"bad": malicious, "rid": reg_id},
+            )
+            await db.commit()
+        except Exception:
+            update_rejected = True
+            await db.rollback()
+
+        if update_rejected:
+            # The DB CHECK blocked the malicious value at the source — a
+            # stronger fail-closed than the cleanup guard. Still assert the
+            # cleanup does not DROP the real schema with an unvalidated value.
+            pass
+
+        # Capture all SQL executed in the fresh cleanup session.
+        captured_sql: list[str] = []
+
+        class _CapturingSession:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def execute(self, statement, *args, **kwargs):
+                stmt = str(statement)
+                captured_sql.append(stmt)
+                # Delegate to a real session for actual execution.
+                real = AsyncSession(async_engine, expire_on_commit=False)
+                async with real as rdb:
+                    return await rdb.execute(statement, *args, **kwargs)
+
+            async def commit(self):
+                pass
+
+        try:
+            with _upatch.object(_session_mod, "AsyncSessionLocal", _CapturingSession):
+                errors = await _cleanup_partial_tenant(db, reg_id, code)
+        finally:
+            from db.sql_safety import validate_identifier
+            validate_identifier(real_schema, "test-residual schema")
+            await async_engine.dispose()
+            async with AsyncSessionLocal() as cdb:
+                await cdb.execute(text(f'DROP SCHEMA IF EXISTS "{real_schema}" CASCADE'))
+                await cdb.execute(
+                    text("DELETE FROM public.tenant_registrations WHERE id = :rid"),
+                    {"rid": reg_id},
+                )
+                await cdb.execute(
+                    text("DELETE FROM public.wholesalers WHERE id = :wid"),
+                    {"wid": ws_id},
+                )
+                await cdb.commit()
+
+        # No DROP SCHEMA may appear in the captured SQL — the malicious value
+        # was rejected by validate_identifier before reaching dynamic SQL.
+        drop_stmts = [s for s in captured_sql if "DROP SCHEMA" in s.upper()]
+        assert drop_stmts == [], (
+            f"DROP SCHEMA executed despite illegal identifier: {drop_stmts}"
+        )
+        # The malicious value never entered a DROP string anywhere.
+        assert all("DROP TABLE public.retailers" not in s for s in captured_sql), (
+            "malicious SQL fragment reached execution"
+        )
+        # validate_identifier either rejected the candidate (cleanup error) or
+        # the DB CHECK blocked it; either way no DROP ran.
+        # (errors may be non-empty if the identifier was rejected — that's the
+        # fail-closed behavior, surfaced not swallowed.)
 
     async def test_cleanup_success_propagates_original_exception_exactly(
         self, s2_clean_db

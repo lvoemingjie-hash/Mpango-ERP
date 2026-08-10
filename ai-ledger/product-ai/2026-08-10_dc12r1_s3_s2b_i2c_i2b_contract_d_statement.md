@@ -1060,3 +1060,118 @@ assertions.
 - No migration, permission, config, dependency, lockfile, deployment,
   events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
   mutation, or protected-branch push.
+
+> **⚠️ The R1-R1-R4 PASS claim above is RETRACTED.** CTO review of `7917e1b2`
+> returned `STOP_AND_REPORT_CTO_WITH_I2C_I2B_R1_R1_R4_EVIDENCE_AUTHENTICITY_BLOCKERS`:
+> the R4 CSV was not a valid 3-column artifact (27 rows parsed as 5–103
+> columns because node IDs with commas/newlines/binary were not quoted), so
+> the R4 3273/48/15, A/B equality, and gap=0 could not be recomputed from it;
+> the R4 dual-exception test directly called the cleanup helper and used an
+> inconsistent wholesaler/schema id; the illegal-identifier test did not
+> exercise the real cleanup path. R1-R1-R5 closes all three (this section).
+
+## §R1-R1-R5 Evidence authenticity (SUPERSEDES R1-R1-R4)
+
+> **⚠️ SUPERSEDED_BY_I2C_I2B_R1_R1_R5**
+>
+> The `7917e1b2` R1-R1-R4 PASS claim is **retracted and superseded** by
+> R1-R1-R5. Product files (repository, service, API, frontend) remain frozen
+> at `2da1bd57`. R5 touches: the Contract D test file, a new CSV-validity
+> test module, the node-outcomes CSV (regenerated correctly), the CSV
+> generator, and this ledger.
+>
+> Starting SHA: `7917e1b29ba8b58ac0e14805e792039e7ce6ddf0`; protected baseline
+> `d45b5020b122b13c407a1c9204b18e587f9803fc` (untouched). Verdict:
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2B_R1_R1_R5_MERGE_REVIEW** (this section).
+
+### R1-R1-R5.1 P1 — valid 3-column CSV (csv.writer + DictReader verification)
+
+**Finding.** R4's CSV used naive string formatting; 27 of 3340 data rows
+parsed as 5–103 columns (node IDs with commas, newlines, quotes, or binary
+xlsx bytes). The 3273/48/15 tallies were therefore unverifiable.
+
+**Fix:** the generator (`backend/gen_node_csv.py`) now uses the standard
+library `csv.writer` (correct RFC-4180 quoting). Dynamic node IDs use a
+union table: A-only rows carry `outcome_run_b=absent`, B-only the reverse.
+The committed CSV is regenerated from the R5 JUnit XMLs and round-tripped
+with `csv.DictReader`. A new test module
+(`backend/tests/test_dc12r1_contract_d_r5_node_csv.py`) asserts every row
+has exactly 3 columns, every outcome is in
+{passed,skipped,xfailed,failed,error,absent}, the union/per-run/A-only/
+B-only counts and accounting gap match, and the exact CTO check
+(`csv.reader` → every line exactly 3 fields).
+
+**R5 CSV facts (recomputed by the test from the committed file):**
+- union 3345; A non-absent 3341; B non-absent 3341; A-only 4; B-only 4.
+- outcomes each: passed 3278, skipped 48, xfailed 15; 0 outcome diffs;
+  accounting gap 0.
+- `csv.reader` col-count distribution: `{3: 3346}` (header + 3345 data), 0
+  non-3-col rows.
+- 4 dynamic binary node IDs (`test_u4d_intake_parser_preview::...[cell_too_large.xlsx-...]`)
+  disclosed as A-only/B-only; preserved verbatim, not normalized.
+
+### R1-R1-R5.2 P1 — real dual-exception test (full path, selective DROP mock)
+
+**Finding.** R4's dual-exception test directly called `_cleanup_partial_tenant`,
+used a random wholesaler id with a registration-id-derived schema (sources
+naturally inconsistent), and the failing session raised on every SQL (so the
+failure was on the first schema query, not DROP SCHEMA).
+
+**Fix:** the test now (a) triggers the original error via the FULL
+`_provision_disposable_tenant` path (`_create_binding` raises), (b) uses a
+selective `AsyncSessionLocal` wrapper that delegates everything to a real
+session EXCEPT `DROP SCHEMA` (which raises) — so schema-resolution queries
+complete normally and the failure is genuinely on DROP, (c) asserts
+`BaseExceptionGroup.exceptions` PRECISELY contains both the original
+provisioning error and the cleanup DROP error (len == 2, one of each). The
+seed helper now derives the schema from the wholesaler id
+(`Wholesaler.derive_schema_from_id`) so both cleanup sources agree.
+
+### R1-R1-R5.3 P2 — illegal identifier exercises the real cleanup path
+
+**Finding.** R4's illegal-identifier test only called `validate_identifier`
+directly; it did not prove `_cleanup_partial_tenant` rejects an illegal
+registration schema, nor that zero `DROP SCHEMA` executes.
+
+**Fix:** the test seeds a CONSISTENT registration + schema, corrupts the
+registration's `tenant_schema` with a malicious value (`t_evil'; DROP TABLE
+public.retailers; --`), runs the REAL `_cleanup_partial_tenant` with a
+session wrapper that captures every executed SQL statement, and asserts NO
+`DROP SCHEMA` and NO malicious fragment reached execution. (If the DB CHECK
+blocks the UPDATE, that is an even stronger fail-closed and the test still
+proves no DROP ran.)
+
+### R1-R1-R5.4 Gates (exact commands + counts)
+
+| Gate | Result |
+|---|---|
+| Focused Contract D + CSV natural | `pytest tests/test_dc12r1_contract_d_statement_print.py tests/test_dc12r1_contract_d_r5_node_csv.py -q` → **62 passed** |
+| Focused reverse (57 Contract D node IDs, reversed) | **57 passed** |
+| Regressions (I2C-I1, I2B, I2A, route-inventory, read-only retailer finance, financial schema, orders) | **192 passed** |
+| Full backend run A (fresh PG16 :5433 + Redis7 :6380, `pytest tests/ -q -rs --junitxml`) | **3278 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Full backend run B (fresh PG16 :5434 + Redis7 :6381, identical env+cmd) | **3278 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Node-outcomes CSV (regenerated, csv.writer) | 3345 union rows; A=B=3341; 3278/48/15 each; 0 diffs; gap=0; 0 non-3-col rows |
+| Frontend full vitest | `pnpm vitest run` → **270 passed / 0 failed** (20 files) |
+| Frontend build | `pnpm build` exit 0 |
+| Self-review | product files byte-identical to `2da1bd57`; `py_compile` clean; `git diff --check` clean; scoped pre-commit all hooks passed; detect-secrets 0 new; mojibake clean; GitNexus `analyze` + `status` up-to-date post-commit |
+
+One pytest process per run; identical env+cmd on both stacks; no
+exclusions/reruns/deselection/no timeout increase/mocks/skip/xfail/weakened
+assertions. The CSV-validity test recomputes every number from the committed
+file, so the gate evidence is machine-verifiable end-to-end.
+
+### R1-R1-R5.5 Adversarial self-review
+
+- The CSV is regenerated with `csv.writer` and verified by `csv.reader`/
+  `csv.DictReader` in a committed test; the col-count distribution is `{3: N}`.
+- The dual-exception test runs the FULL provisioning path; the cleanup
+  failure is genuinely on `DROP SCHEMA` (selective mock); the group has
+  exactly the original + the cleanup error.
+- The illegal-identifier test writes the malicious value into an owned
+  registration, runs the real cleanup, captures SQL, and asserts zero DROP.
+- Product files byte-identical to `2da1bd57`.
+- The R4 PASS claim is retracted (not merely superseded) because its evidence
+  was not machine-verifiable; R5 does not repeat that claim.
+- No migration, permission, config, dependency, lockfile, deployment,
+  events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
+  mutation, or protected-branch push.

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -124,15 +124,19 @@ class StatementMovementView(BaseModel):
     """A single receivable ledger movement on the statement.
 
     ``signed_amount`` is the verbatim ledger ``amount`` (positive = charge,
-    negative = collection). The ``reference_type``/``reference_id`` expose the
-    ledger reference (always an order_id for receivable rows); no payment id is
-    ever exposed or associated here.
+    negative = collection); ``kind`` classifies it as ``charge``/``collection``
+    and ``display_amount`` is the absolute value for rendering. No internal
+    ledger entry id is exposed (R1 rule 2 — the printable DOM shows only short
+    references). The ``reference_type``/``reference_id`` expose the ledger
+    reference (always an order_id for receivable rows); no payment id is ever
+    exposed or associated here.
     """
 
-    movement_id: str = Field(..., description="Ledger entry identifier")
+    kind: Literal["charge", "collection"] = Field(..., description="Movement direction: charge|collection")
     date: datetime = Field(..., description="Authoritative UTC transaction date")
     date_eat: datetime = Field(..., description="Fixed Africa/Nairobi (EAT) display timestamp")
     signed_amount: Decimal = Field(..., description="Signed amount: +charge / -collection (KES)")
+    display_amount: Decimal = Field(..., description="abs(signed_amount) (KES)")
     description: Optional[str] = Field(None, description="Ledger entry description (sanitized)")
     reference_type: str = Field(..., description="Ledger reference type: order|refund")
     reference_id: str = Field(..., description="Order identifier referenced by the movement")
@@ -144,10 +148,10 @@ class StatementSettledPaymentView(BaseModel):
     """A canonical completed settlement on the statement.
 
     Independent of movements (rule 6): never associated by amount, timestamp or
-    order_id. Carries the canonical receipt number verbatim.
+    order_id. Carries the canonical receipt number verbatim. No internal
+    payment id is exposed (R1 rule 2).
     """
 
-    payment_id: str = Field(..., description="Canonical payment identifier")
     date: datetime = Field(..., description="Authoritative UTC payment created_at")
     date_eat: datetime = Field(..., description="Fixed Africa/Nairobi (EAT) display timestamp")
     order_id: str = Field(..., description="Order identifier of the settled payment")
@@ -197,6 +201,7 @@ class StatementPrintView(BaseModel):
     charge_total: Decimal = Field(..., description="Sum of positive movements (KES)")
     collection_total: Decimal = Field(..., description="Absolute sum of negative movements (KES)")
     net_movement: Decimal = Field(..., description="charge_total - collection_total, signed (KES)")
+    settled_total: Decimal = Field(..., description="Sum of settled_payments[].amount only (KES)")
     movements: List[StatementMovementView] = Field(default_factory=list)
     settled_payments: List[StatementSettledPaymentView] = Field(default_factory=list)
     pending_declarations: List[StatementPendingDeclarationView] = Field(

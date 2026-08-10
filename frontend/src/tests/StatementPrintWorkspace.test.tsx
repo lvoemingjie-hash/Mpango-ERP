@@ -20,7 +20,7 @@
  *    A–D): retailer/wholesaler ALLOW + DENY with exact endpoint ownership.
  *  - Genuine entry links from the real finance pages (retailer + supplier).
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { api } from '@/services/api';
@@ -33,7 +33,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { AppRouter } from '@/router/AppRouter';
 import { ClientFinanceBalancePage } from '@/pages/client/FinanceBalancePage';
 import { FinancePage } from '@/pages/finance/FinancePage';
-import { formatKes } from '@/utils/printFormat';
+import { formatKes, eatDateFromUtc, eatToday, eatMonthRange, eatDefaultRange } from '@/utils/printFormat';
 import { sanitizePrintError } from '@/utils/printError';
 import type { AxiosError } from 'axios';
 import type { StatementPrintView } from '@/types/statement';
@@ -79,41 +79,44 @@ const STATEMENT: StatementPrintView = {
   charge_total: '1050.50',
   collection_total: '700.00',
   net_movement: '350.50',
+  settled_total: '700.00',
   movements: [
     {
-      movement_id: 'mv-1',
+      kind: 'charge',
       date: '2026-08-03T08:00:00Z',
       date_eat: '2026-08-03T11:00:00+03:00',
       signed_amount: '600.00',
+      display_amount: '600.00',
       description: 'Order confirmation',
       reference_type: 'order',
-      reference_id: 'ord-1',
+      reference_id: 'aaaa1111-0000-0000-0000-000000000001',
     },
     {
-      movement_id: 'mv-2',
+      kind: 'collection',
       date: '2026-08-05T08:00:00Z',
       date_eat: '2026-08-05T11:00:00+03:00',
       signed_amount: '-700.00',
+      display_amount: '700.00',
       description: 'Collection received',
       reference_type: 'order',
-      reference_id: 'ord-1',
+      reference_id: 'aaaa1111-0000-0000-0000-000000000001',
     },
     {
-      movement_id: 'mv-3',
+      kind: 'charge',
       date: '2026-08-07T08:00:00Z',
       date_eat: '2026-08-07T11:00:00+03:00',
       signed_amount: '450.50',
+      display_amount: '450.50',
       description: null,
       reference_type: 'refund',
-      reference_id: 'ref-9',
+      reference_id: 'bbbb2222-0000-0000-0000-000000000002',
     },
   ],
   settled_payments: [
     {
-      payment_id: 'pay-1',
       date: '2026-08-05T08:00:00Z',
       date_eat: '2026-08-05T11:00:00+03:00',
-      order_id: 'ord-1',
+      order_id: 'aaaa1111-0000-0000-0000-000000000001',
       amount: '700.00',
       method: 'cash',
       receipt_number: 'RCT-20260805-000001',
@@ -135,13 +138,14 @@ const STATEMENT_BIG: StatementPrintView = {
   net_movement: '9007199254740993.124999',
   movements: [
     {
-      movement_id: 'mv-big',
+      kind: 'collection',
       date: '2026-08-03T08:00:00Z',
       date_eat: '2026-08-03T11:00:00+03:00',
       signed_amount: '-1250.50',
+      display_amount: '1250.50',
       description: 'High-precision collection',
       reference_type: 'order',
-      reference_id: 'ord-big',
+      reference_id: 'cccc3333-0000-0000-0000-000000000003',
     },
   ],
   settled_payments: [],
@@ -153,8 +157,8 @@ const STATEMENT_WITH_PENDING: StatementPrintView = {
   ...STATEMENT,
   pending_declarations: [
     {
-      declaration_id: 'dec-pend-1',
-      order_id: 'ord-2',
+      declaration_id: 'dddd4444-0000-0000-0000-000000000004',
+      order_id: 'aaaa1111-0000-0000-0000-000000000002',
       declared_amount: '1500.00',
       method: 'mpesa',
       status: 'pending',
@@ -164,6 +168,9 @@ const STATEMENT_WITH_PENDING: StatementPrintView = {
     },
   ],
 };
+
+/** Full-UUID pattern — the printable DOM must never contain one (R1). */
+const FULL_UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 function renderAt(path: string) {
   return render(
@@ -242,6 +249,17 @@ describe('StatementPrintPage', () => {
     expect(screen.getByTestId('statement-charge-total')).toHaveTextContent('KES 1,050.50');
     expect(screen.getByTestId('statement-collection-total')).toHaveTextContent('KES 700.00');
     expect(screen.getByTestId('statement-net-movement')).toHaveTextContent('KES 350.50');
+    // R1: settled_total rendered from the independent settled list.
+    expect(screen.getByTestId('statement-settled-total')).toHaveTextContent('KES 700.00');
+    // R1: movements render server-classified kind + display_amount verbatim.
+    const movements = screen.getByTestId('statement-movements-section');
+    expect(movements).toHaveTextContent('charge');
+    expect(movements).toHaveTextContent('collection');
+    expect(movements).toHaveTextContent('KES 600.00');
+    expect(movements).toHaveTextContent('KES 450.50');
+    // R1: no full UUID in the printable DOM (short references only).
+    expect(screen.queryByText(FULL_UUID_RE)).not.toBeInTheDocument();
+    expect(doc.textContent).not.toMatch(FULL_UUID_RE);
     // Exactly one GET, no writes.
     expect(mockGet).toHaveBeenCalledTimes(1);
     expect(mockGet).toHaveBeenCalledWith('/client/statements/print', {
@@ -275,12 +293,13 @@ describe('StatementPrintPage', () => {
     // Movement rows live in their own section; payment rows in theirs.
     expect(movements).toHaveTextContent('Order confirmation');
     expect(movements).toHaveTextContent('KES 600.00');
-    expect(movements).toHaveTextContent('KES -700.00');
     expect(settled).toHaveTextContent('RCT-20260805-000001');
     expect(settled).toHaveTextContent('KES 700.00');
     // The payment row is NOT duplicated inside the movements section.
     expect(movements).not.toHaveTextContent('RCT-20260805-000001');
     expect(movements).not.toHaveTextContent('RCT-');
+    // R1: no full UUID anywhere in the document.
+    expect(screen.getByTestId('statement-print-document').textContent).not.toMatch(FULL_UUID_RE);
   });
 
   it('pending declarations render ONLY when explicitly requested', async () => {
@@ -327,9 +346,13 @@ describe('StatementPrintPage', () => {
     expect(screen.getByTestId('statement-net-movement')).toHaveTextContent(
       'KES 9,007,199,254,740,993.124999',
     );
-    // Signed movement rendered verbatim (string grouping keeps the sign).
-    expect(screen.getByText('KES -1,250.50')).toBeInTheDocument();
-    expect(screen.queryByText('KES 1,250.50')).not.toBeInTheDocument();
+    // R1: the movement renders display_amount=abs(signed_amount) verbatim with
+    // the server-classified kind — never the raw signed value.
+    const movements = screen.getByTestId('statement-movements-section');
+    expect(movements).toHaveTextContent('collection');
+    expect(movements).toHaveTextContent('KES 1,250.50');
+    expect(movements).not.toHaveTextContent('KES -1,250.50');
+    expect(movements).not.toHaveTextContent('-1,250.50');
   });
 
   it('cashier view without retailer_id fails closed: neutral copy, ZERO GETs', async () => {
@@ -396,8 +419,7 @@ describe('StatementPrintPage — status-only neutral copy', () => {
   });
 
   it('sanitizePrintError(409) is neutral and identical to other unavailable cases', () => {
-    const msg = sanitizePrintError(
-      rejectWith(409, {
+    const msg = sanitizePrintError(      rejectWith(409, {
         detail: { code: 'STATEMENT_RECONCILIATION_FAILED', message: 'ledger vs cached balance' },
       }) as unknown as AxiosError,
     );
@@ -405,6 +427,31 @@ describe('StatementPrintPage — status-only neutral copy', () => {
     expect(msg).not.toContain('STATEMENT_RECONCILIATION_FAILED');
     expect(msg).not.toContain('ledger');
     expect(msg).not.toContain('cached');
+  });
+
+  // R1 rule 5: a 400 (INVALID_DATE_RANGE / STATEMENT_RANGE_TOO_LARGE) shows
+  // the fixed neutral "Choose a shorter date range." — status-only, never
+  // echoing the body.
+  it.each([
+    [
+      'INVALID_DATE_RANGE',
+      rejectWith(400, { detail: { code: 'INVALID_DATE_RANGE', message: 'Invalid date range.' } }),
+    ],
+    [
+      'STATEMENT_RANGE_TOO_LARGE',
+      rejectWith(400, {
+        detail: { code: 'STATEMENT_RANGE_TOO_LARGE', message: 'Statement range is too large. Choose a shorter date range.' },
+      }),
+    ],
+  ])('400 %s → fixed shorter-range copy; never echoes the body', async (_label, rejection) => {
+    mockGet.mockRejectedValueOnce(rejection as never);
+    renderAt('/client/statements/print?from=2026-08-01&to=2026-08-10');
+    const err = await screen.findByTestId('statement-print-error');
+    expect(err).toHaveTextContent('Choose a shorter date range.');
+    expect(err.textContent).not.toContain('INVALID_DATE_RANGE');
+    expect(err.textContent).not.toContain('STATEMENT_RANGE_TOO_LARGE');
+    expect(err.textContent).not.toContain('Invalid date range');
+    expect(screen.queryByTestId('statement-print-document')).not.toBeInTheDocument();
   });
 });
 
@@ -790,5 +837,69 @@ describe('statement money — formatKes string-only', () => {
     expect(formatKes('-700.00')).toBe('KES -700.00');
     expect(formatKes('9007199254740993.124999')).toBe('KES 9,007,199,254,740,993.124999');
     expect(formatKes('0.000001')).toBe('KES 0.000001');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R1 rule 6 — fixed Africa/Nairobi (EAT) calendar dates.
+//
+// Statement default/monthly ranges must NEVER use browser-local dates. These
+// tests freeze "now" at 2026-08-10T22:30:00Z — an instant where the UTC
+// calendar date (2026-08-10) differs from the EAT calendar date
+// (2026-08-11, 01:30) — and prove the helpers return the EAT date.
+// Date.now is stubbed (never fake timers, which would stall waitFor).
+// ---------------------------------------------------------------------------
+
+describe('R1 rule 6 — EAT calendar dates (never browser-local)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('eatDateFromUtc converts a UTC instant to the Africa/Nairobi calendar date', () => {
+    // 2026-08-10T22:30:00Z == 2026-08-11 01:30 EAT.
+    expect(eatDateFromUtc('2026-08-10T22:30:00Z')).toBe('2026-08-11');
+    // Late EAT evening is still the same EAT calendar day.
+    expect(eatDateFromUtc('2026-08-11T20:59:59Z')).toBe('2026-08-11');
+    // The EAT day boundary: 21:00 UTC == next EAT midnight.
+    expect(eatDateFromUtc('2026-08-11T21:00:00Z')).toBe('2026-08-12');
+  });
+
+  it('frozen time: the UTC calendar date differs from EAT; eatToday picks EAT', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-10T22:30:00Z'));
+    // At this frozen instant the UTC calendar date is still 2026-08-10, while
+    // Africa/Nairobi is already 2026-08-11 — the boundary that browser-local
+    // date handling would get wrong.
+    const utcDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    expect(utcDate).toBe('2026-08-10');
+
+    expect(eatToday()).toBe('2026-08-11');
+    expect(eatToday()).not.toBe(utcDate);
+
+    // Month + default ranges anchor on EAT dates.
+    expect(eatMonthRange()).toEqual({ from: '2026-08-01', to: '2026-08-11' });
+    expect(eatDefaultRange().to).toBe('2026-08-11');
+  });
+
+  it('entry links and the print page use EAT anchors (render path)', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-10T22:30:00Z'));
+    // The retailer page link must carry EAT dates (from=2026-08-01, to=2026-08-11).
+    mockGet.mockResolvedValueOnce(
+      data(ok({ outstanding_balance: '1000.00', has_outstanding_balance: true, updated_at: '2026-08-10T08:00:00Z' }).data) as never,
+    );
+    render(
+      <MemoryRouter initialEntries={['/client/finance']}>
+        <Routes>
+          <Route path="/client/finance" element={<ClientFinanceBalancePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const link = await screen.findByTestId('retailer-statement-print-link');
+    const href = link.getAttribute('href') ?? '';
+    expect(href).toBe('/client/statements/print?from=2026-08-01&to=2026-08-11');
   });
 });

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { financeService } from '@/services/financeService';
+import { eatMonthRange } from '@/utils/printFormat';
 import type { FinancialSummary, CreditReceivableItem, ReceivablesSummary } from '@/services/financeService';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -61,12 +62,10 @@ function agingLabel(days: number): string {
     return `${days}d`;
 }
 
-/** Current calendar month (local date) for a supplier statement link. */
+/** Current calendar month in Africa/Nairobi (EAT) — R1 rule 6: never
+ *  browser-local dates for statement ranges. */
 function statementHref(retailerId: string): string {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const from = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
-    const to = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const { from, to } = eatMonthRange();
     return `/statements/print?retailer_id=${encodeURIComponent(retailerId)}&from=${from}&to=${to}`;
 }
 

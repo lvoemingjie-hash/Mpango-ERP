@@ -6,15 +6,24 @@
  * Python `Decimal` as a JSON string; the frontend renders these verbatim
  * (string-only grouping; never Number/parseFloat/Intl parsing — see
  * utils/printFormat.ts). No client financial arithmetic ever occurs.
+ *
+ * R1 (truth closure): no internal ids are exposed — there is no movement_id or
+ * payment_id anywhere in the view model; movements carry a server-classified
+ * `kind` and a `display_amount` (abs of the signed ledger amount); the
+ * statement exposes `settled_total` derived server-side ONLY from
+ * settled_payments[].amount.
  */
 
-/** A single receivable ledger movement (signed: +charge / -collection). */
+/** A single receivable ledger movement (kind: charge|collection). */
 export interface StatementMovementView {
-  movement_id: string;
+  /** 'charge' (positive) or 'collection' (negative) — server-classified. */
+  kind: 'charge' | 'collection';
   date: string;
   date_eat: string;
-  /** Signed amount: +charge / -collection (KES) as a decimal string. */
+  /** Signed ledger amount: +charge / -collection (KES) as a decimal string. */
   signed_amount: string;
+  /** abs(signed_amount) (KES) as a decimal string — rendered verbatim. */
+  display_amount: string;
   description: string | null;
   reference_type: string;
   reference_id: string;
@@ -22,7 +31,6 @@ export interface StatementMovementView {
 
 /** A canonical completed settlement (independent list; never cross-associated). */
 export interface StatementSettledPaymentView {
-  payment_id: string;
   date: string;
   date_eat: string;
   order_id: string;
@@ -60,6 +68,8 @@ export interface StatementPrintView {
   collection_total: string;
   /** charge - collection, signed (KES) as a decimal string. */
   net_movement: string;
+  /** Sum of settled_payments[].amount only (KES) as a decimal string. */
+  settled_total: string;
   movements: StatementMovementView[];
   settled_payments: StatementSettledPaymentView[];
   pending_declarations: StatementPendingDeclarationView[];

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ScaleIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { clientFinanceService } from '@/services/clientFinanceService';
+import { eatMonthRange } from '@/utils/printFormat';
 import type { ClientFinanceBalance } from '@/types/client';
 
 function formatMoney(amount: string) {
@@ -12,12 +13,10 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-/** Current calendar month (EAT-ish local date) for the statement default link. */
+/** Current calendar month in Africa/Nairobi (EAT) — R1 rule 6: never
+ *  browser-local dates for statement ranges. */
 function monthRangeHref(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const from = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
-  const to = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const { from, to } = eatMonthRange();
   return `/client/statements/print?from=${from}&to=${to}`;
 }
 

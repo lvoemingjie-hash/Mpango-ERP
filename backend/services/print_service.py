@@ -48,6 +48,7 @@ from repositories.statement_repository import (
     StatementInternalInconsistent,
     StatementLedgerScopeIncomplete,
     StatementPeriodError,
+    StatementRangeTooLarge,
     StatementReconciliationFailed,
     StatementRepository,
     eat_date_range_to_utc_half_open,
@@ -460,14 +461,22 @@ async def build_statement_print(
       * closing_balance = opening + net_movement; independently re-checked
         against a DB period sum (STATEMENT_INTERNAL_INCONSISTENT on mismatch).
       * charge_total / collection_total / net_movement derive ONLY from movements.
-      * settled_payments[] = canonical completed payments (independent list).
+      * settled_payments[] = canonical completed payments (independent list);
+        settled_total derives ONLY from settled_payments[].amount (R1).
       * orphan receivable refs -> STATEMENT_LEDGER_SCOPE_INCOMPLETE (checked first).
+      * completed-payment ownership mismatch (payment retailer != order
+        retailer) -> STATEMENT_INTERNAL_INCONSISTENT (R1).
+      * zero-valued receivable movement -> STATEMENT_INTERNAL_INCONSISTENT (R1).
       * credit-only binding -> ledger receivable sum must equal cached
-        outstanding_balance (STATEMENT_RECONCILIATION_FAILED on mismatch).
+        outstanding_balance within a 0.01 tolerance
+        (STATEMENT_RECONCILIATION_FAILED on mismatch; R1).
+      * aggregate statement line cap (1000) -> STATEMENT_RANGE_TOO_LARGE (R1).
     """
     repo = StatementRepository()
 
     # 1. Validate + convert the EAT date range to a UTC half-open interval.
+    #    (The routes parse/validate raw query strings via the shared
+    #    parse_statement_date_range; this call is the defensive second line.)
     try:
         start_utc, next_day_utc = eat_date_range_to_utc_half_open(date_from, date_to)
     except StatementPeriodError as exc:
@@ -483,6 +492,13 @@ async def build_statement_print(
     )
     if orphan_count > 0:
         return StatementResult(error=StatementLedgerScopeIncomplete())
+
+    # 3b. Completed-payment ownership-integrity precheck (R1 rule 1) — a payment
+    #     whose retailer differs from its order's retailer makes the payment
+    #     scope inconsistent. Fail closed so corrupt rows neither leak into the
+    #     document nor silently disappear.
+    if await repo.count_completed_payment_ownership_mismatch(db, schema=schema) > 0:
+        return StatementResult(error=StatementInternalInconsistent())
 
     # 4. Opening balance (strictly before the period start).
     opening = await repo.sum_receivable_before(
@@ -511,6 +527,10 @@ async def build_statement_print(
     if db_period_sum != movements_period_sum:
         return StatementResult(error=StatementInternalInconsistent())
 
+    # 6b. Zero-valued receivable movement -> internal inconsistency (R1 rule 2).
+    if any(Decimal(r["amount"]) == 0 for r in movement_rows):
+        return StatementResult(error=StatementInternalInconsistent())
+
     # 7. Derived totals from movements only.
     charge_total = sum((Decimal(r["amount"]) for r in movement_rows if Decimal(r["amount"]) > 0), Decimal("0"))
     collection_total = abs(
@@ -528,27 +548,10 @@ async def build_statement_print(
         start_utc=start_utc,
         next_day_utc=next_day_utc,
     )
+    settled_total = sum((Decimal(r["amount"]) for r in settled_rows), Decimal("0"))
 
-    # 9. Credit/mixed classification + reconciliation (rules 11/12), using the
-    #    relationship's FULL history of completed payments (not just the range).
-    has_non_credit = await repo.relationship_has_non_credit_payment(
-        db, schema=schema, wholesaler_id=wholesaler_id, retailer_id=retailer_id
-    )
-    if not has_non_credit:
-        # Credit-only binding: ledger receivable total must reconcile to the
-        # cached binding outstanding_balance.
-        ledger_total = await repo.ledger_receivable_total(
-            db, schema=schema, wholesaler_id=wholesaler_id, retailer_id=retailer_id
-        )
-        cached = await repo.cached_binding_balance(
-            db, wholesaler_id=wholesaler_id, retailer_id=retailer_id
-        )
-        if cached is None or ledger_total != cached:
-            return StatementResult(error=StatementReconciliationFailed())
-    # Mixed relationships: print the ledger-derived balance; do NOT expose or
-    # reconcile binding.outstanding_balance in the public document (rule 12).
-
-    # 10. Optional pending/rejected declarations (non-accounting; rule 7/11).
+    # 8b. Aggregate line cap (R1 rule 5) — every list is fetched with LIMIT
+    #     cap+1, so any count above the cap fails closed; no silent truncation.
     pending_rows: list[Mapping[str, Any]] = []
     if include_pending:
         pending_rows = await repo.list_pending_declarations(
@@ -559,18 +562,42 @@ async def build_statement_print(
             start_utc=start_utc,
             next_day_utc=next_day_utc,
         )
+    combined_lines = len(movement_rows) + len(settled_rows) + len(pending_rows)
+    if combined_lines > 1000:
+        return StatementResult(error=StatementRangeTooLarge())
 
-    # 11. Resolve names + assemble the view.
+    # 9. Credit/mixed classification + reconciliation (rules 11/12), using the
+    #    relationship's FULL history of completed payments (not just the range).
+    has_non_credit = await repo.relationship_has_non_credit_payment(
+        db, schema=schema, wholesaler_id=wholesaler_id, retailer_id=retailer_id
+    )
+    if not has_non_credit:
+        # Credit-only binding: ledger receivable total must reconcile to the
+        # cached binding outstanding_balance within a 0.01 KES tolerance (R1
+        # rule 4) — floating dust from Decimal arithmetic is tolerated.
+        ledger_total = await repo.ledger_receivable_total(
+            db, schema=schema, wholesaler_id=wholesaler_id, retailer_id=retailer_id
+        )
+        cached = await repo.cached_binding_balance(
+            db, wholesaler_id=wholesaler_id, retailer_id=retailer_id
+        )
+        if cached is None or abs(ledger_total - cached) > Decimal("0.01"):
+            return StatementResult(error=StatementReconciliationFailed())
+    # Mixed relationships: print the ledger-derived balance; do NOT expose or
+    # reconcile binding.outstanding_balance in the public document (rule 12).
+
+    # 10. Resolve names + assemble the view.
     supplier_name, retailer_name = await _resolve_business_names(
         db, wholesaler_id=wholesaler_id, retailer_id=retailer_id
     )
     now_utc = datetime.now(timezone.utc)
     movements = [
         StatementMovementView(
-            movement_id=str(r["id"]),
+            kind=("charge" if Decimal(r["amount"]) > 0 else "collection"),
             date=r["transaction_date"],
             date_eat=_to_eat(r["transaction_date"]),
             signed_amount=Decimal(r["amount"]),
+            display_amount=abs(Decimal(r["amount"])),
             description=r.get("description"),
             reference_type=r["reference_type"],
             reference_id=str(r["reference_id"]),
@@ -579,7 +606,6 @@ async def build_statement_print(
     ]
     settled = [
         StatementSettledPaymentView(
-            payment_id=str(r["id"]),
             date=r["created_at"],
             date_eat=_to_eat(r["created_at"]),
             order_id=str(r["order_id"]),
@@ -613,6 +639,7 @@ async def build_statement_print(
         charge_total=charge_total,
         collection_total=collection_total,
         net_movement=net_movement,
+        settled_total=settled_total,
         movements=movements,
         settled_payments=settled,
         pending_declarations=pending,

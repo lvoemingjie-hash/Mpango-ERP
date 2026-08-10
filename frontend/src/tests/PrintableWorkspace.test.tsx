@@ -855,6 +855,7 @@ const STATEMENT_FIXTURE = {
   charge_total: '0.00',
   collection_total: '0.00',
   net_movement: '0.00',
+  settled_total: '0.00',
   movements: [],
   settled_payments: [],
   pending_declarations: [],

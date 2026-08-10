@@ -24,13 +24,25 @@
  * service. Failures (401/403/404/409/5xx) collapse to fixed neutral copy via
  * sanitizePrintError — never internal codes, schema names, or another party's
  * data. Browser print is window.print() + print CSS.
+ *
+ * R1 (truth closure):
+ *  - Default/monthly ranges use Africa/Nairobi (EAT) calendar dates, never
+ *    browser-local dates (utils/printFormat eat* helpers).
+ *  - A 400 (INVALID_DATE_RANGE / STATEMENT_RANGE_TOO_LARGE) shows the fixed
+ *    neutral "Choose a shorter date range." — status-only, no body echo.
+ *  - The printable DOM never shows a full UUID: order/declaration references
+ *    are truncated to short 8-char references. receipt_number (RCT-…) is a
+ *    canonical identifier, not a UUID, and is rendered verbatim.
+ *  - Movements render the server-classified kind (charge/collection) and
+ *    display_amount=abs(signed_amount) verbatim; settled_total is rendered
+ *    server-side-only. No client financial arithmetic anywhere.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { PrinterIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { getRetailerStatementPrint, getSupplierStatementPrint } from '@/services/statementService';
 import { sanitizePrintError } from '@/utils/printError';
-import { formatKes, formatPrintDate } from '@/utils/printFormat';
+import { formatKes, formatPrintDate, eatDefaultRange } from '@/utils/printFormat';
 import type { StatementPrintView } from '@/types/statement';
 
 interface StatementPrintPageProps {
@@ -38,17 +50,14 @@ interface StatementPrintPageProps {
   mode: 'client' | 'cashier';
 }
 
-/** Local-date default range (display-only convenience; not financial data). */
-function defaultRange(): { from: string; to: string } {
-  const to = new Date();
-  const from = new Date(to);
-  from.setDate(from.getDate() - 29);
-  const fmt = (d: Date) => {
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  };
-  return { from: fmt(from), to: fmt(to) };
+/** Short display reference (R1): never expose a full UUID in the DOM. */
+function shortRef(id: string | null | undefined): string {
+  if (!id) return '—';
+  return id.length > 8 ? id.slice(0, 8) : id;
 }
+
+/** Fixed neutral copy for a 400 (INVALID_DATE_RANGE / STATEMENT_RANGE_TOO_LARGE). */
+const SHORTER_RANGE_COPY = 'Choose a shorter date range.';
 
 export function StatementPrintPage({ mode }: StatementPrintPageProps) {
   const [searchParams] = useSearchParams();
@@ -64,7 +73,9 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
   const retailerId = mode === 'cashier' ? searchParams.get('retailer_id') ?? '' : '';
 
   const load = useCallback(async () => {
-    const { from: f, to: t } = from && to ? { from, to } : defaultRange();
+    // R1 rule 6: the default range is Africa/Nairobi calendar dates (never
+    // browser-local dates).
+    const { from: f, to: t } = from && to ? { from, to } : eatDefaultRange();
     if (mode === 'cashier' && !retailerId) {
       setDoc(null);
       setError('This document is not available.');
@@ -83,8 +94,11 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
       setDoc(null);
       // 401/403/404/409/5xx all collapse to fixed neutral strings; a 409
       // (period/ledger/reconciliation) is deliberately indistinguishable
-      // from any other not-available case in the UI.
-      setError(sanitizePrintError(err));
+      // from any other not-available case in the UI. A 400 (invalid date
+      // range / range too large) shows the fixed shorter-range copy —
+      // status-only, never echoing the body.
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setError(status === 400 ? SHORTER_RANGE_COPY : sanitizePrintError(err));
     } finally {
       setLoading(false);
     }
@@ -200,6 +214,15 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                 {formatKes(doc.net_movement)}
               </dd>
             </div>
+            <div className="rounded-lg bg-gray-50 p-3">
+              <dt className="text-xs text-gray-500">Settled this period</dt>
+              <dd
+                className="mt-1 text-base font-bold text-gray-900"
+                data-testid="statement-settled-total"
+              >
+                {formatKes(doc.settled_total)}
+              </dd>
+            </div>
             <div className="rounded-lg bg-primary-50 p-3">
               <dt className="text-xs text-primary-600">Closing balance</dt>
               <dd
@@ -211,7 +234,9 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
             </div>
           </dl>
 
-          {/* Movements — receivable ledger entries in the inclusive period. */}
+          {/* Movements — receivable ledger entries in the inclusive period.
+              R1: server-classified kind + display_amount rendered verbatim;
+              references are short (never a full UUID). */}
           <section className="mt-8" data-testid="statement-movements-section">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
               Movements
@@ -223,21 +248,33 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
                     <th className="py-2 pr-2 font-medium">Date</th>
+                    <th className="py-2 px-2 font-medium">Kind</th>
                     <th className="py-2 px-2 font-medium">Description</th>
                     <th className="py-2 px-2 font-medium">Reference</th>
                     <th className="py-2 pl-2 text-right font-medium">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {doc.movements.map((m) => (
-                    <tr key={m.movement_id} className="border-b border-gray-100 align-top">
+                  {doc.movements.map((m, idx) => (
+                    <tr key={idx} className="border-b border-gray-100 align-top">
                       <td className="py-2 pr-2 text-gray-900">{m.date_eat}</td>
+                      <td className="py-2 px-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                            m.kind === 'charge'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}
+                        >
+                          {m.kind}
+                        </span>
+                      </td>
                       <td className="py-2 px-2 text-gray-700">{m.description || '—'}</td>
                       <td className="py-2 px-2 font-mono text-xs text-gray-500">
-                        {m.reference_type}
+                        {shortRef(m.reference_id)}
                       </td>
                       <td className="py-2 pl-2 text-right text-gray-900">
-                        {formatKes(m.signed_amount)}
+                        {formatKes(m.display_amount)}
                       </td>
                     </tr>
                   ))}
@@ -247,7 +284,8 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
           </section>
 
           {/* Settled payments — independent canonical list; never cross-linked
-              to a movement row above. */}
+              to a movement row above. R1: settled_total derives ONLY from this
+              list server-side; order references are short (never a full UUID). */}
           <section
             className="mt-8"
             data-testid="statement-settled-payments-section"
@@ -269,11 +307,11 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {doc.settled_payments.map((p) => (
-                    <tr key={p.payment_id} className="border-b border-gray-100 align-top">
+                  {doc.settled_payments.map((p, idx) => (
+                    <tr key={idx} className="border-b border-gray-100 align-top">
                       <td className="py-2 pr-2 text-gray-900">{p.date_eat}</td>
                       <td className="py-2 px-2 font-mono text-xs text-gray-500">
-                        {p.order_id}
+                        {shortRef(p.order_id)}
                       </td>
                       <td className="py-2 px-2 text-gray-700">{p.method}</td>
                       <td className="py-2 px-2 text-gray-700">{p.receipt_number || '—'}</td>
@@ -313,11 +351,11 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {doc.pending_declarations.map((d) => (
-                    <tr key={d.declaration_id} className="border-b border-gray-100 align-top">
+                  {doc.pending_declarations.map((d, idx) => (
+                    <tr key={idx} className="border-b border-gray-100 align-top">
                       <td className="py-2 pr-2 text-gray-900">{d.submitted_at_eat}</td>
                       <td className="py-2 px-2 font-mono text-xs text-gray-500">
-                        {d.order_id}
+                        {shortRef(d.order_id)}
                       </td>
                       <td className="py-2 px-2 text-gray-700">{d.method}</td>
                       <td className="py-2 px-2 text-gray-700">{d.transfer_reference || '—'}</td>

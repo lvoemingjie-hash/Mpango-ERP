@@ -37,9 +37,17 @@ _EAT_TZNAME = "Africa/Nairobi"
 _EAT_UTC_OFFSET = timedelta(hours=3)
 _MAX_SPAN_DAYS = 365
 
+# Exact aggregate statement-line cap (DC-12R1-S3-S2B-I2C-I2B-R1 rule 5).
+# Every list query fetches at most CAP+1 rows so overflow is detectable
+# (never silently truncated); combined lines above CAP fail closed.
+_STATEMENT_LINE_CAP = 1000
+
+# Strict calendar-date parser shape: YYYY-MM-DD only.
+_DATE_PATTERN = "%Y-%m-%d"
+
 
 class StatementPeriodError(ValueError):
-    """Raised when the requested period is malformed/out-of-range."""
+    """Raised when the requested period is missing/blank/malformed/out-of-range."""
 
 
 class StatementLedgerScopeIncomplete(Exception):
@@ -47,11 +55,44 @@ class StatementLedgerScopeIncomplete(Exception):
 
 
 class StatementInternalInconsistent(Exception):
-    """Recomputed closing balance disagrees with the DB period sum (rule 10)."""
+    """Recomputed closing balance disagrees with the DB period sum (rule 10),
+    a receivable movement is zero-valued, or completed-payment ownership is
+    inconsistent (R1 rules 2/1)."""
 
 
 class StatementReconciliationFailed(Exception):
     """Credit-only binding: ledger receivable sum != cached outstanding_balance (rule 11)."""
+
+
+class StatementRangeTooLarge(Exception):
+    """The aggregate statement line count exceeds the exact cap (R1 rule 5)."""
+
+
+def parse_statement_date_range(
+    raw_from: str | None, raw_to: str | None
+) -> tuple[date, date]:
+    """Strictly parse and validate the inclusive EAT date range from raw query
+    strings (DC-12R1-S3-S2B-I2C-I2B-R1 rule 3).
+
+    Missing/blank, malformed, reversed, or >365-day ranges raise
+    ``StatementPeriodError`` (mapped to a controlled 400 INVALID_DATE_RANGE by
+    the routes — never a framework 422 or a neutral 404). No raw parser
+    details ever reach the public message. Returns the validated ``date`` pair
+    (the UTC half-open conversion happens inside the service).
+    """
+    for label, value in (("from", raw_from), ("to", raw_to)):
+        if value is None or str(value).strip() == "":
+            raise StatementPeriodError(f"{label} date is required.")
+    f_raw = str(raw_from).strip()
+    t_raw = str(raw_to).strip()
+    try:
+        date_from = datetime.strptime(f_raw, _DATE_PATTERN).date()
+        date_to = datetime.strptime(t_raw, _DATE_PATTERN).date()
+    except ValueError:
+        raise StatementPeriodError("Invalid date format.")
+    # Reversed + >365-day validation (raises StatementPeriodError).
+    eat_date_range_to_utc_half_open(date_from, date_to)
+    return date_from, date_to
 
 
 def eat_date_range_to_utc_half_open(
@@ -156,6 +197,8 @@ class StatementRepository:
     # ------------------------------------------------------------------
     # Movements (rule 2) — receivable ledger entries in [start, next_day).
     # Also returns the DB period sum for the arithmetic consistency check.
+    # LIMIT cap+1 so an over-cap period is detectable, never silently
+    # truncated (R1 rule 5).
     # ------------------------------------------------------------------
     async def list_movements(
         self,
@@ -182,6 +225,7 @@ class StatementRepository:
                       AND le.transaction_date >= :start
                       AND le.transaction_date < :next_day
                     ORDER BY le.transaction_date ASC, le.id ASC
+                    LIMIT :limit
                     """
                 ),
                 {
@@ -189,6 +233,7 @@ class StatementRepository:
                     "rid": retailer_id,
                     "start": start_utc,
                     "next_day": next_day_utc,
+                    "limit": _STATEMENT_LINE_CAP + 1,
                 },
             )
         ).mappings().all()
@@ -236,7 +281,9 @@ class StatementRepository:
 
     # ------------------------------------------------------------------
     # Settled payments (rule 5) — canonical completed payments, independent list.
-    # Never associated with movements (rule 6).
+    # Never associated with movements (rule 6). R1: ownership is fully pinned —
+    # payment retailer, order retailer AND order wholesaler must all match the
+    # statement pair.
     # ------------------------------------------------------------------
     async def list_settled_payments(
         self,
@@ -257,12 +304,14 @@ class StatementRepository:
                     FROM "{schema}".payments p
                     JOIN "{schema}".orders o ON o.id = p.order_id
                     WHERE p.retailer_id = :rid
+                      AND o.retailer_id = :rid
                       AND o.wholesaler_id = :wid
                       AND p.is_deleted IS FALSE
                       AND p.status = 'completed'
                       AND p.created_at >= :start
                       AND p.created_at < :next_day
                     ORDER BY p.created_at ASC, p.id ASC
+                    LIMIT :limit
                     """
                 ),
                 {
@@ -270,13 +319,41 @@ class StatementRepository:
                     "rid": retailer_id,
                     "start": start_utc,
                     "next_day": next_day_utc,
+                    "limit": _STATEMENT_LINE_CAP + 1,
                 },
             )
         ).mappings().all()
         return list(rows)
 
     # ------------------------------------------------------------------
+    # Completed-payment ownership-integrity precheck (R1 rule 1).
+    # Any completed payment in this tenant schema whose retailer differs from
+    # its order's retailer makes the ledger/payment scope inconsistent. The
+    # statement fails closed (409 STATEMENT_INTERNAL_INCONSISTENT) so corrupt
+    # rows neither leak into the document nor silently disappear.
+    # ------------------------------------------------------------------
+    async def count_completed_payment_ownership_mismatch(
+        self, db: AsyncSession, *, schema: str
+    ) -> int:
+        row = (
+            await db.execute(
+                text(
+                    f"""
+                    SELECT COUNT(*) AS n
+                    FROM "{schema}".payments p
+                    JOIN "{schema}".orders o ON o.id = p.order_id
+                    WHERE p.status = 'completed'
+                      AND p.is_deleted IS FALSE
+                      AND p.retailer_id IS DISTINCT FROM o.retailer_id
+                    """
+                ),
+            )
+        ).first()
+        return int(row.n if row and row.n is not None else 0)
+
+    # ------------------------------------------------------------------
     # Pending/rejected declarations (non-accounting; only when explicitly requested).
+    # LIMIT cap+1 so over-cap periods fail closed (R1 rule 5).
     # ------------------------------------------------------------------
     async def list_pending_declarations(
         self,
@@ -301,6 +378,7 @@ class StatementRepository:
                       AND pd.submitted_at >= :start
                       AND pd.submitted_at < :next_day
                     ORDER BY pd.submitted_at ASC, pd.id ASC
+                    LIMIT :limit
                     """
                 ),
                 {
@@ -308,6 +386,7 @@ class StatementRepository:
                     "rid": retailer_id,
                     "start": start_utc,
                     "next_day": next_day_utc,
+                    "limit": _STATEMENT_LINE_CAP + 1,
                 },
             )
         ).mappings().all()
@@ -316,7 +395,8 @@ class StatementRepository:
     # ------------------------------------------------------------------
     # Credit/mixed classification + reconciliation (rules 11/12).
     # Inspects the relationship's FULL history of completed payments (not just
-    # the print range) to classify credit-only vs mixed.
+    # the print range) to classify credit-only vs mixed. R1: ownership fully
+    # pinned (payment retailer + order retailer + order wholesaler).
     # ------------------------------------------------------------------
     async def relationship_has_non_credit_payment(
         self,
@@ -338,6 +418,7 @@ class StatementRepository:
                       SELECT 1 FROM "{schema}".payments p
                       JOIN "{schema}".orders o ON o.id = p.order_id
                       WHERE p.retailer_id = :rid
+                        AND o.retailer_id = :rid
                         AND o.wholesaler_id = :wid
                         AND p.is_deleted IS FALSE
                         AND p.status = 'completed'

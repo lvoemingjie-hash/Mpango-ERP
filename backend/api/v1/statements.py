@@ -7,7 +7,8 @@ selector; the active binding under the token tenant remains the authority.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
@@ -20,7 +21,9 @@ from repositories.statement_repository import (
     StatementInternalInconsistent,
     StatementLedgerScopeIncomplete,
     StatementPeriodError,
+    StatementRangeTooLarge,
     StatementReconciliationFailed,
+    parse_statement_date_range,
 )
 from schemas.common import DataResponse
 from schemas.print import StatementPrintView
@@ -74,9 +77,19 @@ def _map_statement_result(res: StatementResult) -> StatementPrintView:
         )
     err = res.error
     if isinstance(err, StatementPeriodError):
+        # Defensive: routes pre-validate via the shared parser (R1 rule 3).
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "STATEMENT_NOT_AVAILABLE", "message": "Statement not available"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_DATE_RANGE", "message": "Invalid date range."},
+        )
+    if isinstance(err, StatementRangeTooLarge):
+        # Aggregate line cap exceeded — controlled 400, zero partial document.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "STATEMENT_RANGE_TOO_LARGE",
+                "message": "Statement range is too large. Choose a shorter date range.",
+            },
         )
     if isinstance(err, StatementLedgerScopeIncomplete):
         raise HTTPException(
@@ -115,8 +128,8 @@ def _map_statement_result(res: StatementResult) -> StatementPrintView:
 )
 async def print_supplier_statement(
     retailer_id: str = Query(..., description="Target retailer id (selector only)"),
-    date_from: date = Query(..., alias="from", description="Inclusive period start (EAT day)"),
-    date_to: date = Query(..., alias="to", description="Inclusive period end (EAT day)"),
+    from_raw: Optional[str] = Query(None, alias="from", description="Inclusive period start (EAT day, YYYY-MM-DD)"),
+    to_raw: Optional[str] = Query(None, alias="to", description="Inclusive period end (EAT day, YYYY-MM-DD)"),
     include_pending: bool = Query(False, description="Include non-accounting pending/rejected declarations"),
     token: TokenPayload = Depends(RequirePermission("finance:read")),
     db: AsyncSession = Depends(get_tenant_db_session),
@@ -125,9 +138,18 @@ async def print_supplier_statement(
 
     ``retailer_id`` is only a target selector; the active binding under the token
     tenant remains the authority. Zero database mutations. Integrity failures
-    surface precise 409s.
+    surface precise 409s; date-range failures surface a controlled 400 via the
+    shared strict parser (R1 rule 3).
     """
     wholesaler_id = _tenant_wholesaler_id(token)
+    # Shared strict date-range parser (R1 rule 3) — identical on both routes.
+    try:
+        date_from, date_to = parse_statement_date_range(from_raw, to_raw)
+    except StatementPeriodError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_DATE_RANGE", "message": "Invalid date range."},
+        )
     # Validate + scope the retailer selector. A malformed UUID or a retailer not
     # bound to this supplier yields a neutral 404 (no existence disclosure).
     try:

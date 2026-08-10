@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 from math import ceil
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +28,9 @@ from repositories.statement_repository import (
     StatementInternalInconsistent,
     StatementLedgerScopeIncomplete,
     StatementPeriodError,
+    StatementRangeTooLarge,
     StatementReconciliationFailed,
+    parse_statement_date_range,
 )
 from schemas.common import DataResponse, Pagination
 from schemas.print import StatementPrintView
@@ -99,10 +102,20 @@ def _map_statement_result(res: StatementResult) -> StatementPrintView:
         )
     err = res.error
     if isinstance(err, StatementPeriodError):
-        # Malformed/out-of-range period: controlled failure, no internal leak.
+        # Defensive: a period error reaching this map is an internal invariant
+        # breach (routes pre-validate via the shared parser). Controlled 400.
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "STATEMENT_NOT_AVAILABLE", "message": "Statement not available"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_DATE_RANGE", "message": "Invalid date range."},
+        )
+    if isinstance(err, StatementRangeTooLarge):
+        # Aggregate line cap exceeded — controlled 400, zero partial document.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "STATEMENT_RANGE_TOO_LARGE",
+                "message": "Statement range is too large. Choose a shorter date range.",
+            },
         )
     if isinstance(err, StatementLedgerScopeIncomplete):
         raise HTTPException(
@@ -141,8 +154,8 @@ def _map_statement_result(res: StatementResult) -> StatementPrintView:
     status_code=status.HTTP_200_OK,
 )
 async def print_client_statement(
-    date_from: date = Query(..., alias="from", description="Inclusive period start (EAT day)"),
-    date_to: date = Query(..., alias="to", description="Inclusive period end (EAT day)"),
+    from_raw: Optional[str] = Query(None, alias="from", description="Inclusive period start (EAT day, YYYY-MM-DD)"),
+    to_raw: Optional[str] = Query(None, alias="to", description="Inclusive period end (EAT day, YYYY-MM-DD)"),
     include_pending: bool = Query(False, description="Include non-accounting pending/rejected declarations"),
     client: ClientIdentity = Depends(resolve_client_identity),
     _perm: TokenPayload = Depends(RequirePermission("client:finance:read")),
@@ -153,7 +166,21 @@ async def print_client_statement(
     Retailer identity is server-derived from the contextual JWT + active binding.
     Zero database mutations; the response carries ledger-derived balances and an
     independent settled-payments list. Integrity failures surface precise 409s.
+
+    The date range is parsed by the shared strict parser shared with the
+    supplier route (R1 rule 3): missing/blank/malformed/reversed/>365-day
+    ranges return a controlled 400 INVALID_DATE_RANGE — never a framework 422
+    or a neutral 404.
     """
+    # Shared strict date-range parser (R1 rule 3) — identical on both routes.
+    try:
+        date_from, date_to = parse_statement_date_range(from_raw, to_raw)
+    except StatementPeriodError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_DATE_RANGE", "message": "Invalid date range."},
+        )
+
     res = await build_statement_print(
         db,
         schema=client.token.tenant_schema or "",

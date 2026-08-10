@@ -1262,3 +1262,94 @@ assertions.
 - No migration, permission, config, dependency, lockfile, deployment,
   events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
   mutation, or protected-branch push.
+
+## §R1-R1-R7 Generator fail-closed + atomic publish (SUPERSEDES R1-R1-R6)
+
+> **⚠️ SUPERSEDED_BY_I2C_I2B_R1_R1_R7**
+>
+> The `d6a0d377` R1-R1-R6 verdict is **superseded** by the R1-R1-R7
+> correction. CTO review acknowledged R6's exact-owned cleanup, sentinel
+> isolation, and CSV format, but found the generator's duplicate detection
+> was inert (it compared `len(dict)` to `len(set(dict))` AFTER the dict had
+> already collapsed duplicates — always equal) and that the CSV was written
+> BEFORE validation completed (a failed diff case left a `bad.csv` behind).
+> Both are closed here. R7 is a NARROW generator-only fix: the Contract D
+> test file, the cleanup tests, the CSV content, and all product files are
+> FROZEN at `d6a0d377` (byte-identical, verified).
+>
+> Starting SHA: `d6a0d377e4f69736118151b2e7b2b89a93e3268c`; protected baseline
+> `d45b5020b122b13c407a1c9204b18e587f9803fc` (untouched). Verdict:
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2B_R1_R1_R7_MERGE_REVIEW** (this section).
+
+### R1-R1-R7.1 P1 — parse-time duplicate detection (was inert)
+
+**Finding.** R6's `_parse()` inserted `outcomes[nodeid] = outcome` (overwriting
+any duplicate) and only afterwards compared `len(a)` to `len(set(a))` — always
+equal, because dict keys are unique. A minimal two-identical-testcase XML
+returned exit 0 with the duplicate silently collapsed.
+
+**Fix:** `_parse()` now checks `if nodeid in outcomes: raise ValueError(...)`
+BEFORE insertion, so a duplicate fails immediately at parse time (before any
+dict collapse). `main()` catches the `ValueError` and returns 1.
+
+### R1-R1-R7.2 P1 — validate before publish + atomic os.replace
+
+**Finding.** R6 wrote the target CSV before running shared-outcome-diff
+validation; a failed diff left a `bad.csv` on disk that downstream tooling
+could consume.
+
+**Fix:** all A/B validation (`_validate`: illegal outcomes, shared-node diffs,
+accounting gap) runs BEFORE the target is touched. The CSV is written to a
+task-owned temp file (`tempfile.mkstemp` in the target's directory), round-trip
+validated (column count + outcome allowlist), and only then atomically
+published via `os.replace(tmp, out)`. On ANY failure the temp file is removed
+and the target is left byte-unchanged (or, if it did not previously exist,
+left non-existent).
+
+### R1-R1-R7.3 — three pure unit tests (+ a fourth for the absent-target case)
+
+New module `backend/tests/test_dc12r1_contract_d_r7_gen_fail_closed.py`
+runs the generator as a subprocess over minimal JUnit XML fixtures:
+
+1. `test_duplicate_node_id_fails_and_produces_no_output` — two identical
+   testcases → exit 1, NO output file.
+2. `test_shared_outcome_diff_fails_and_leaves_existing_target_unchanged` —
+   same node, passed vs skipped → exit 1, a pre-existing target file is
+   byte-for-byte unchanged.
+3. `test_shared_outcome_diff_fails_and_produces_no_output_when_target_absent`
+   — outcome diff, target absent beforehand → exit 1, target NOT created.
+4. `test_legal_dynamic_a_only_b_only_publishes_exit0` — A has one node, B a
+   different node → exit 0, CSV published, round-trips as 3-column with
+   `absent` markers.
+
+All four GREEN.
+
+### R1-R1-R7.4 Gates
+
+| Gate | Result |
+|---|---|
+| Generator unit tests (dup / diff-existing / diff-absent / legal-dynamic) | **4 passed** |
+| CSV-validity tests (unchanged from R5/R6) | **5 passed** |
+| Generator on real R6 JUnit XMLs (regenerate committed CSV) | exit 0, `OK: all checks passed` |
+| Self-review | frozen files byte-identical to `d6a0d377`; `py_compile` clean; `git diff --check` clean; scoped pre-commit all hooks passed; detect-secrets 0 new; mojibake clean; GitNexus `analyze` + `status` up-to-date post-commit |
+
+R7 does NOT re-run the focused/192/full gates because the Contract D test
+file, cleanup tests, CSV content, and product files are frozen at `d6a0d377`
+(byte-identical, verified) — those gate results stand unchanged from R6:
+focused 62/62 natural + 57/57 reverse; 192-node regression 192/192; two full
+backend runs 3278 passed / 48 skipped / 15 xfailed each, 0 failed/errors;
+frontend vitest 270/270 + build exit 0.
+
+### R1-R1-R7.5 Adversarial self-review
+
+- Duplicate detection is at parse time (before insertion), not a post-hoc
+  `len(dict) != len(set(dict))` comparison.
+- The target CSV is never written until ALL validations pass; on failure the
+  temp file is removed and the target is byte-unchanged (or non-existent).
+- The four unit tests cover the duplicate, the shared-outcome diff (both the
+  existing-target and absent-target cases), and the legal-dynamic publish.
+- The Contract D test file, cleanup tests, CSV content, and all product files
+  are byte-identical to `d6a0d377`.
+- No migration, permission, config, dependency, lockfile, deployment,
+  events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
+  mutation, or protected-branch push.

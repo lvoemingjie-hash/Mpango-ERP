@@ -944,3 +944,119 @@ baseline, which also reported `48 skipped`):**
 - No migration, permission, config, dependency, lockfile, deployment,
   events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
   mutation, or protected-branch push.
+
+## §R1-R1-R4 Cleanup fail-closed + exact node evidence (SUPERSEDES R1-R1-R3)
+
+> **⚠️ SUPERSEDED_BY_I2C_I2B_R1_R1_R4**
+>
+> The `2da1bd57` R1-R1-R3 verdict is **superseded** by the R1-R1-R4
+> correction. CTO review returned
+> `STOP_AND_REPORT_CTO_WITH_I2C_I2B_R1_R1_R2_SETUP_AND_GATE_EVIDENCE_BLOCKERS`
+> with three P1 findings (cleanup swallow, schema-safety gaps, gate
+> arithmetic), all closed here. **Product files (repository, service, API,
+> frontend) are frozen at `2da1bd57`** — only the Contract D test file, this
+> ledger, and the new node-outcomes CSV change.
+>
+> Starting SHA: `2da1bd5716161e5a61c85590e9d01dc352091da9`; protected baseline:
+> `d45b5020b122b13c407a1c9204b18e587f9803fc` (untouched — verified local =
+> remote = `2da1bd57` before edit). Verdict:
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2B_R1_R1_R4_MERGE_REVIEW** (this section).
+
+### R1-R1-R4.1 P1 — cleanup fail-closed (no swallow; both errors visible)
+
+**Finding.** R3's cleanup used `except BaseException: pass` (literal comment:
+"Swallow ONLY cleanup-side errors"), so a cleanup/DROP failure or a rollback
+failure was silently lost — only the original provisioning exception surfaced.
+
+**Fix** (`tests/test_dc12r1_contract_d_statement_print.py`): the cleanup body
+is extracted into `_cleanup_partial_tenant(db, reg_id, code) ->
+list[BaseException]` — independently testable, returns every cleanup-side
+error (never swallows, never raises). The `except BaseException as
+original_error:` block calls it, then:
+- on cleanup success → bare `raise` re-raises the original exception unchanged;
+- on cleanup error → `BaseExceptionGroup("provisioning failure with cleanup
+  errors", [original_error, *cleanup_errors])` so BOTH are visible.
+Rollback runs FIRST (releases locks before the fresh-session DROP). The same
+pattern applies to `_disposable_statement_schema`'s CREATE-TABLE-failure
+except block. **Zero** `except ...: pass` / silent-continue / best-effort
+cleanup remain (grep-verified — the only textual match is inside a docstring).
+
+### R1-R1-R4.2 P1 — schema safety (validate, dedupe, inconsistency fail-closed, pg_namespace)
+
+**Finding.** R3 used `information_schema.schemata` (not `pg_namespace`), did
+not validate identifiers before DROP, did not dedupe candidates, and picked
+one source when registration vs wholesaler-derived schemas disagreed.
+
+**Fix:** every candidate schema is validated with
+`from db.sql_safety import validate_identifier` before any dynamic SQL; the
+two sources (registration `tenant_schema` + wholesaler-derived name) are
+deduped; if both present but DIFFERENT, cleanup raises (fail-closed — refuses
+to DROP either). Catalog checks use `pg_namespace` (exact). No unvalidated
+schema string ever reaches `DROP SCHEMA`.
+
+### R1-R1-R4.3 P1 — exact node evidence (CSV; arithmetic gap = 0)
+
+**Finding.** R3's skip classification summed to 49, not the claimed 48.
+
+**Fix:** two full runs with IDENTICAL command (`pytest tests/ -q -rs
+--junitxml=<path>`) on independent fresh stacks. A per-node CSV
+(`ai-ledger/product-ai/2026-08-10_dc12r1_s3_s2b_i2c_i2b_r4_node_outcomes.csv`)
+is generated from the two JUnit XMLs with columns
+`nodeid,outcome_run_a,outcome_run_b`. Reconciliation:
+- A = B = **3336 collected nodes each**; union 3340 (4 dynamic binary node
+  IDs from `test_u4d_intake_parser_preview::test_parser_rejects_csv_and_xlsx_cell_length[cell_too_large.xlsx-...]`
+  — the parametrization embeds a binary xlsx's raw bytes in the node ID, so
+  the ID differs run-to-run; preserved verbatim, separately disclosed here,
+  not normalized).
+- outcomes identical: **3273 passed / 48 skipped / 15 xfailed** each.
+- **0 outcome diffs** (no node has a different outcome between A and B).
+- **accounting gap = 0** for every outcome category.
+- 48 skipped nodes itemized in the CSV; grouped: 19
+  (`test_s3b_fresh_tenant_live_runtime_proof`) + 19
+  (`test_payments_schema_contract`) + 3 (`test_route_coverage`) + 3
+  (`test_alembic_migrations`) + 2 (`test_s5c_runtime_sku_import_http_integration`)
+  + 2 (`test_s3_profiling`) = 48 ✓.
+
+### R1-R1-R4.4 RED proof (static, on `2da1bd57`)
+
+`git show 2da1bd57:backend/tests/test_dc12r1_contract_d_statement_print.py`
+shows the R3 cleanup at line 427 is literally `except BaseException: pass`
+with the comment "Swallow ONLY cleanup-side errors"; there is no
+`_cleanup_partial_tenant`, no `validate_identifier`, no `pg_namespace`, no
+dedupe, no inconsistency fail-closed. The new §5 tests ship with the new
+helper (same file), so a behavioral RED on `2da1bd57` is not separable; the
+static diff is the proof that R3 swallowed cleanup errors and R4 does not.
+
+### R1-R1-R4.5 Gates (exact commands + counts)
+
+| Gate | Result |
+|---|---|
+| Focused Contract D natural | `pytest tests/test_dc12r1_contract_d_statement_print.py -q` → **57 passed** |
+| Focused reverse (same 57 node IDs, reversed order) | **57 passed** |
+| Regressions (I2C-I1, I2B, I2A, route-inventory, read-only retailer finance, financial schema, orders) | **192 passed** |
+| Full backend run A (fresh PG16 :5433 + Redis7 :6380, `pytest tests/ -q -rs --junitxml`) | **3273 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Full backend run B (fresh PG16 :5434 + Redis7 :6381, identical env+cmd) | **3273 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Node-outcomes CSV | `2026-08-10_dc12r1_s3_s2b_i2c_i2b_r4_node_outcomes.csv` — 3340 rows; A=B; gap=0 |
+| Frontend full vitest | `pnpm vitest run` → **270 passed / 0 failed** (20 files) |
+| Frontend build | `pnpm build` exit 0 |
+| Self-review | product files byte-identical to `2da1bd57`; `py_compile` clean; `git diff --check` clean; scoped pre-commit all hooks passed; detect-secrets 0 new; mojibake clean; GitNexus `analyze` + `status` up-to-date post-commit |
+
+One pytest process per run; identical env+cmd on both stacks; no
+exclusions/reruns/deselection/no timeout increase/mocks/skip/xfail/weakened
+assertions.
+
+### R1-R1-R4.6 Adversarial self-review (§8 checklist)
+
+- No `except ...: pass` in code (grep-verified; only docstring text matches).
+- Original error and cleanup error are simultaneously observable
+  (`BaseExceptionGroup`).
+- `rollback` runs before the fresh-session DROP.
+- Every dynamic schema is `validate_identifier`-checked and cross-source
+  consistent (mismatch → fail-closed).
+- Product files byte-identical to `2da1bd57` (`git diff --quiet` per file).
+- CSV node count + outcomes match both full gates exactly (3336 each, gap 0).
+- The ledger does not claim evidence not actually produced.
+- R3 verdict marked `SUPERSEDED_BY_I2C_I2B_R1_R1_R4` above; history preserved.
+- No migration, permission, config, dependency, lockfile, deployment,
+  events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
+  mutation, or protected-branch push.

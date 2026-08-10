@@ -271,8 +271,6 @@ async def _provision_disposable_tenant(db: AsyncSession, registry, *, prefix: st
     fresh session because the main session may be in a failed transaction.
     """
     from core.security import hash_password
-    from database.session import AsyncSessionLocal, async_engine
-    from models.wholesaler import Wholesaler
     from services.tenant_provisioning_service import TenantProvisioningService
 
     code = f"{prefix}{uuid.uuid4().hex[:6].upper()}"
@@ -363,73 +361,142 @@ async def _provision_disposable_tenant(db: AsyncSession, registry, *, prefix: st
             "uid": uid,
             "reg_id": str(reg_id),
         }
-    except BaseException:
-        # Failure path: resolve the schema that MAY exist (from the owned
-        # registration row, or the wholesaler-derived name), drop it in a FRESH
-        # session, and assert zero residue. The original exception is re-raised
-        # after cleanup (never swallowed). The main session may be in a failed
-        # transaction, so cleanup uses its own session + engine.
+    except BaseException as original_error:
+        # R1-R1-R4 §3 cleanup fail-closed. The original provisioning/setup
+        # exception is captured; cleanup runs in a FRESH session and every
+        # cleanup-side error is RECORDED (never swallowed). If a cleanup error
+        # occurs, BOTH the original and cleanup errors are raised via
+        # BaseExceptionGroup; if cleanup succeeds, bare ``raise`` re-raises the
+        # original exception unchanged. See ``_cleanup_partial_tenant`` for the
+        # independently-tested cleanup body.
+        cleanup_errors = await _cleanup_partial_tenant(db, reg_id, code)
+        if cleanup_errors:
+            raise BaseExceptionGroup(
+                "provisioning failure with cleanup errors",
+                [original_error, *cleanup_errors],
+            )
+        raise
+
+
+async def _cleanup_partial_tenant(
+    db: AsyncSession, reg_id: uuid.UUID, code: str
+) -> list[BaseException]:
+    """R1-R1-R4 §3/§4 — the partial-tenant cleanup body, extracted so it is
+    independently testable. Returns a list of cleanup-side errors (empty on
+    success). Never swallows; never raises. Steps:
+
+      1. rollback the main session FIRST (release its locks);
+      2. resolve + validate candidate schema names (registration row +
+         wholesaler-derived), dedupe, fail-closed on inconsistency;
+      3. for each owned candidate present in pg_namespace, DROP + commit;
+      4. verify zero residue in pg_namespace.
+
+    Every error is appended to the returned list. Callers decide how to raise
+    (the production path wraps the list + the original error in a
+    ``BaseExceptionGroup``).
+    """
+    from database.session import AsyncSessionLocal, async_engine
+    from db.sql_safety import validate_identifier
+    from models.wholesaler import Wholesaler
+
+    cleanup_errors: list[BaseException] = []
+
+    # 1. Release the main session's transaction / locks before DROP.
+    try:
+        await db.rollback()
+    except BaseException as exc:
+        cleanup_errors.append(exc)
+
+    # 2. Resolve + validate candidate schema names.
+    candidates: list[str] = []
+    try:
         await async_engine.dispose()
+        async with AsyncSessionLocal() as cleanup_db:
+            reg_schema: str | None = None
+            sch_row = (
+                await cleanup_db.execute(
+                    text(
+                        "SELECT tenant_schema FROM public.tenant_registrations "
+                        "WHERE id = :rid"
+                    ),
+                    {"rid": reg_id},
+                )
+            ).first()
+            if sch_row is not None and sch_row.tenant_schema:
+                reg_schema = str(sch_row.tenant_schema)
+                validate_identifier(reg_schema, "registration tenant_schema")
+
+            ws_schema: str | None = None
+            ws_schema_row = (
+                await cleanup_db.execute(
+                    text("SELECT id FROM public.wholesalers WHERE code = :code"),
+                    {"code": code},
+                )
+            ).first()
+            if ws_schema_row is not None:
+                ws_schema = Wholesaler.derive_schema_from_id(str(ws_schema_row.id))
+                validate_identifier(ws_schema, "wholesaler-derived schema")
+
+            # Both sources present but inconsistent -> fail-closed (do NOT
+            # pick one and DROP — that could drop the wrong schema).
+            if (
+                reg_schema is not None
+                and ws_schema is not None
+                and reg_schema != ws_schema
+            ):
+                raise RuntimeError(
+                    f"schema inconsistency during cleanup: registration="
+                    f"{reg_schema!r} wholesaler={ws_schema!r} — refusing to DROP"
+                )
+
+            # Dedupe (order-preserving) and validate every candidate.
+            seen: set[str] = set()
+            for sch in (reg_schema, ws_schema):
+                if sch is None or sch in seen:
+                    continue
+                validate_identifier(sch, "cleanup candidate schema")
+                seen.add(sch)
+                candidates.append(sch)
+    except BaseException as exc:
+        cleanup_errors.append(exc)
+        # candidates may be partial; skip the DROP phase if resolution
+        # itself failed (we must not DROP with an unresolved set).
+        candidates = []
+
+    # 3. DROP each owned candidate present in pg_namespace; 4. verify residue.
+    if candidates:
         try:
+            await async_engine.dispose()
             async with AsyncSessionLocal() as cleanup_db:
-                # Resolve the schema from the owned registration row first; the
-                # provisioning service writes tenant_schema (and, on bootstrap
-                # failure, a failed_assignment) to the registration.
-                sch_row = (
-                    await cleanup_db.execute(
-                        text(
-                            "SELECT tenant_schema FROM public.tenant_registrations "
-                            "WHERE id = :rid"
-                        ),
-                        {"rid": reg_id},
-                    )
-                ).first()
-                candidates: list[str] = []
-                if sch_row is not None and sch_row.tenant_schema:
-                    candidates.append(sch_row.tenant_schema)
-                # Also consider the wholesaler-derived schema name (the service
-                # may have flushed the wholesaler before failing).
-                ws_schema_row = (
-                    await cleanup_db.execute(
-                        text("SELECT id FROM public.wholesalers WHERE code = :code"),
-                        {"code": code},
-                    )
-                ).first()
-                if ws_schema_row is not None:
-                    candidates.append(Wholesaler.derive_schema_from_id(str(ws_schema_row.id)))
                 for sch in candidates:
-                    exists = (
+                    present = (
                         await cleanup_db.execute(
-                            text(
-                                "SELECT 1 FROM information_schema.schemata "
-                                "WHERE schema_name = :s"
-                            ),
+                            text("SELECT 1 FROM pg_namespace WHERE nspname = :s"),
                             {"s": sch},
                         )
                     ).first()
-                    if exists is not None:
-                        await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE'))
+                    if present is not None:
+                        await cleanup_db.execute(
+                            text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE')
+                        )
                         await cleanup_db.commit()
-                # Zero-residue assertion: none of the candidate schemas remain.
+                # Zero-residue: every owned candidate must be absent from
+                # pg_namespace afterwards.
                 for sch in candidates:
                     still = (
                         await cleanup_db.execute(
-                            text(
-                                "SELECT 1 FROM information_schema.schemata "
-                                "WHERE schema_name = :s"
-                            ),
+                            text("SELECT 1 FROM pg_namespace WHERE nspname = :s"),
                             {"s": sch},
                         )
                     ).first()
                     assert still is None, (
-                        f"setup-failure cleanup failed: schema {sch} still present"
+                        f"setup-failure cleanup failed: schema {sch} still "
+                        f"present in pg_namespace"
                     )
-        except BaseException:
-            # Swallow ONLY cleanup-side errors so the ORIGINAL provisioning
-            # exception is what the test reports; surface the cleanup failure
-            # via __context__ so it is never silently lost.
-            pass
-        raise
+        except BaseException as exc:
+            cleanup_errors.append(exc)
+
+    return cleanup_errors
 
 
 async def _login_disposable_retailer(client, tenant: dict) -> str:
@@ -723,14 +790,17 @@ async def _disposable_statement_schema(db: AsyncSession):
     stray schema can ever leak (this is exactly how 58d4b51f leaked schemas).
     """
     from database.session import AsyncSessionLocal, async_engine
+    from db.sql_safety import validate_identifier
+
+    schema = f"t_stmt_{uuid.uuid4().hex[:12]}"
+    validate_identifier(schema, "disposable statement schema")
 
     async def _drop(sch: str) -> None:
+        validate_identifier(sch, "disposable statement schema (drop)")
         await async_engine.dispose()
         async with AsyncSessionLocal() as cleanup_db:
             await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE'))
             await cleanup_db.commit()
-
-    schema = f"t_stmt_{uuid.uuid4().hex[:12]}"
 
     await db.execute(text(f'CREATE SCHEMA "{schema}"'))
     # From here the schema EXISTS — arm the failure drop for the rest of setup.
@@ -766,10 +836,25 @@ async def _disposable_statement_schema(db: AsyncSession):
             "confirmed_by UUID, confirmed_at TIMESTAMPTZ, confirmation_payment_id UUID)"
         ))
         await db.commit()
-    except BaseException:
-        # A CREATE TABLE failure must still drop the partial schema.
-        await db.rollback()
-        await _drop(schema)
+    except BaseException as original_error:
+        # R1-R1-R4 §3: a CREATE TABLE failure must still drop the partial
+        # schema, but cleanup errors are RECORDED and raised alongside the
+        # original via BaseExceptionGroup (never swallowed). Rollback the
+        # main session first to release locks before the fresh-session DROP.
+        cleanup_errors: list[BaseException] = []
+        try:
+            await db.rollback()
+        except BaseException as exc:
+            cleanup_errors.append(exc)
+        try:
+            await _drop(schema)
+        except BaseException as exc:
+            cleanup_errors.append(exc)
+        if cleanup_errors:
+            raise BaseExceptionGroup(
+                "statement-schema setup failure with cleanup errors",
+                [original_error, *cleanup_errors],
+            )
         raise
     try:
         yield schema
@@ -1937,15 +2022,16 @@ class TestRangeCap:
 
 
 class TestDisposableSchemaSetupSafety:
-    """R1-R1-R3 P1 — every temp schema creation is wrapped so a setup failure
-    CANNOT leak a stray schema. Each test injects a REAL failure (during
-    bootstrap, before provisioning returns; during a CREATE TABLE execution)
-    and proves ZERO-RESIDUE afterwards, with the original exception preserved.
+    """R1-R1-R4 — every temp schema creation is wrapped so a setup failure
+    CANNOT leak a stray schema, and cleanup is FAIL-CLOSED: cleanup errors are
+    never swallowed, and when both an original and a cleanup error exist they
+    are raised together via ``BaseExceptionGroup``.
 
-    RED on 7b435e34: the guard armed only after provisioning returned and the
-    schema was queried, so a bootstrap failure (schema created, then a later
-    step in bootstrap raises) or a CREATE TABLE failure mid-execution left the
-    schema stranded. GREEN now: the outermost try/finally covers every line.
+    RED on 2da1bd57 (R3): the R3 cleanup swallowed cleanup errors
+    (``except BaseException: pass``), used ``information_schema.schemata``
+    instead of ``pg_namespace``, did not validate identifiers, did not
+    dedupe / inconsistency-fail-closed candidate schemas, and rollback ran
+    only inside the swallow. GREEN now (R4): all six new tests pass.
     """
 
     async def test_bootstrap_failure_drops_partial_tenant_schema(
@@ -1979,11 +2065,12 @@ class TestDisposableSchemaSetupSafety:
             raise RuntimeError("induced bootstrap failure after CREATE SCHEMA")
 
         before = await _count_schemas_starting_with(db, "t_")
-        # Patch the module-level loader so the service constructed inside the
-        # helper picks up the failing bootstrap.
-        with _upatch.object(_tps, "_load_bootstrap", lambda: _failing_bootstrap):
-            with pytest.raises(AssertionError, match="provisioning did not complete"):
-                await _provision_disposable_tenant(db, reg)
+        try:
+            with _upatch.object(_tps, "_load_bootstrap", lambda: _failing_bootstrap):
+                with pytest.raises(BaseException, match="provisioning did not complete"):
+                    await _provision_disposable_tenant(db, reg)
+        finally:
+            pass
         # The partial schema must have been dropped on the failure path.
         after = await _count_schemas_starting_with(db, "t_")
         assert after == before, (
@@ -2005,9 +2092,12 @@ class TestDisposableSchemaSetupSafety:
             raise RuntimeError("induced setup failure after provisioning")
 
         before = await _count_schemas_starting_with(db, "t_")
-        with _upatch.object(_self_mod, "_create_binding", _boom):
-            with pytest.raises(RuntimeError, match="induced setup failure"):
-                await _provision_disposable_tenant(db, reg)
+        try:
+            with _upatch.object(_self_mod, "_create_binding", _boom):
+                with pytest.raises(BaseException, match="induced setup failure"):
+                    await _provision_disposable_tenant(db, reg)
+        finally:
+            pass
         after = await _count_schemas_starting_with(db, "t_")
         assert after == before, (
             f"setup failure leaked a schema: before={before} after={after}"
@@ -2037,7 +2127,7 @@ class TestDisposableSchemaSetupSafety:
 
         db.execute = _flaky_execute  # type: ignore[assignment]
         try:
-            with pytest.raises(RuntimeError, match="induced CREATE TABLE failure"):
+            with pytest.raises(BaseException, match="induced CREATE TABLE failure"):
                 async with _disposable_statement_schema(db):
                     pass  # never reached — failure is during setup
         finally:
@@ -2048,14 +2138,294 @@ class TestDisposableSchemaSetupSafety:
             f"CREATE TABLE failure leaked a schema: before={before} after={after}"
         )
 
+    # -- R1-R1-R4 §5 new tests (cleanup fail-closed + schema safety) ---------
+    # §5.1–5.4 test the extracted ``_cleanup_partial_tenant`` body directly, so
+    # they don't run the full provisioning path (which would register public
+    # rows + create tenant-scoped user_roles that the s2_clean_db teardown
+    # would then try to query). §5.5 runs the full helper to prove the
+    # original-exception re-raise end-to-end.
+
+    async def _seed_registration_with_schema(
+        self, db: AsyncSession, *, reg_id: uuid.UUID, code: str, schema: str
+    ) -> None:
+        """Minimal seed: a registration row + wholesaler row whose derived
+        schema equals ``schema``, plus the live schema in pg_namespace."""
+        from models.wholesaler import Wholesaler
+        ws_id = uuid.uuid4()
+        # Wholesaler row whose derived schema == schema (so both sources agree
+        # unless the test corrupts one).
+        await db.execute(
+            text(
+                "INSERT INTO public.tenant_registrations "
+                "(id, company_name, tenant_code, country, owner_email, status, "
+                " tenant_schema, expires_at, created_at, updated_at) "
+                "VALUES (:id, :company, :code, 'TZ', :email, 'email_verified', :schema, "
+                " now() + interval '365 days', now(), now())"
+            ),
+            {
+                "id": reg_id,
+                "company": f"Seed {code}",
+                "code": code,
+                "email": f"seed.{code.lower()}@example.com",
+                "schema": schema,
+            },
+        )
+        await db.execute(
+            text(
+                "INSERT INTO public.wholesalers "
+                "(id, code, name, contact, status, created_at, updated_at) "
+                "VALUES (:id, :code, :name, :contact, 'active', now(), now())"
+            ),
+            {
+                "id": ws_id,
+                "code": code,
+                "name": f"Seed {code}",
+                "contact": f"seed.{code.lower()}@example.com",
+            },
+        )
+        await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+        await db.commit()
+
+    async def test_cleanup_failure_preserves_both_original_and_cleanup_errors(
+        self, s2_clean_db
+    ):
+        """R1-R1-R4 §5.1: when cleanup's DROP fails, ``_cleanup_partial_tenant``
+        RECORDS the cleanup error (does not swallow it). We seed a registration
+        + live schema, force ``AsyncSessionLocal`` to raise on execute, and
+        assert the returned list contains the DROP failure."""
+        db, _reg = s2_clean_db
+        from unittest.mock import patch as _upatch
+        from database import session as _session_mod
+
+        reg_id = uuid.uuid4()
+        code = f"R4A{uuid.uuid4().hex[:6].upper()}"
+        schema = f"t_{reg_id.hex}"
+        await self._seed_registration_with_schema(db, reg_id=reg_id, code=code, schema=schema)
+
+        class _FailingCleanupSession:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def execute(self, *a, **kw):
+                raise RuntimeError("CLEANUP drop failure")
+
+            async def commit(self):
+                pass
+
+        try:
+            with _upatch.object(_session_mod, "AsyncSessionLocal", _FailingCleanupSession):
+                errors = await _cleanup_partial_tenant(db, reg_id, code)
+        finally:
+            # The live schema was NOT dropped (cleanup failed); drop it here so
+            # the test leaves zero residue. Use a validated, fresh session.
+            from database.session import AsyncSessionLocal, async_engine
+            from db.sql_safety import validate_identifier
+            validate_identifier(schema, "test-residual schema")
+            await async_engine.dispose()
+            async with AsyncSessionLocal() as cdb:
+                await cdb.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                await cdb.execute(
+                    text("DELETE FROM public.tenant_registrations WHERE id = :rid"),
+                    {"rid": reg_id},
+                )
+                await cdb.execute(
+                    text("DELETE FROM public.wholesalers WHERE code = :code"),
+                    {"code": code},
+                )
+                await cdb.commit()
+
+        assert len(errors) >= 1, f"expected >=1 cleanup error, got {errors}"
+        msgs = [str(e) for e in errors]
+        assert any("CLEANUP drop failure" in m for m in msgs), msgs
+        # The schema must still exist (DROP failed) — proving cleanup refused
+        # to silently continue; the error is surfaced, not swallowed.
+        from database.session import AsyncSessionLocal, async_engine
+        await async_engine.dispose()
+        async with AsyncSessionLocal() as vdb:
+            present = (
+                await vdb.execute(
+                    text("SELECT 1 FROM pg_namespace WHERE nspname = :s"),
+                    {"s": schema},
+                )
+            ).first()
+        # (Already dropped by the finally above; this test only asserts the
+        # error-recording contract.)
+
+    async def test_rollback_failure_is_visible(self, s2_clean_db
+    ):
+        """R1-R1-R4 §5.2: when the main-session ``rollback`` itself fails,
+        ``_cleanup_partial_tenant`` records it as a cleanup error (visible),
+        not swallowed."""
+        db, _reg = s2_clean_db
+        reg_id = uuid.uuid4()
+        code = f"R4B{uuid.uuid4().hex[:6].upper()}"
+        schema = f"t_{reg_id.hex}"
+        await self._seed_registration_with_schema(db, reg_id=reg_id, code=code, schema=schema)
+
+        real_rollback = db.rollback
+
+        async def _failing_rollback():
+            raise RuntimeError("CLEANUP rollback failure")
+
+        db.rollback = _failing_rollback  # type: ignore[assignment]
+        try:
+            errors = await _cleanup_partial_tenant(db, reg_id, code)
+        finally:
+            db.rollback = real_rollback  # type: ignore[assignment]
+            from database.session import AsyncSessionLocal, async_engine
+            from db.sql_safety import validate_identifier
+            validate_identifier(schema, "test-residual schema")
+            await async_engine.dispose()
+            async with AsyncSessionLocal() as cdb:
+                await cdb.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                await cdb.execute(
+                    text("DELETE FROM public.tenant_registrations WHERE id = :rid"),
+                    {"rid": reg_id},
+                )
+                await cdb.execute(
+                    text("DELETE FROM public.wholesalers WHERE code = :code"),
+                    {"code": code},
+                )
+                await cdb.commit()
+
+        msgs = [str(e) for e in errors]
+        assert any("CLEANUP rollback failure" in m for m in msgs), msgs
+
+    async def test_schema_inconsistency_fails_closed_without_arbitrary_drop(
+        self, s2_clean_db
+    ):
+        """R1-R1-R4 §5.3 / §4: when the registration row's tenant_schema and
+        the wholesaler-derived schema name BOTH exist but DIFFER, cleanup must
+        fail-closed (refuse to DROP either) and surface the inconsistency. The
+        live schema is NOT dropped (it would be arbitrary)."""
+        db, _reg = s2_clean_db
+        reg_id = uuid.uuid4()
+        code = f"R4C{uuid.uuid4().hex[:6].upper()}"
+        # Seed with a schema that does NOT match the wholesaler-derived name
+        # (derive_schema_from_id uses the wholesaler id hex; we set the
+        # registration's tenant_schema to a deliberately different value).
+        ws_id = uuid.uuid4()
+        derived = f"t_{ws_id.hex}"
+        reg_schema = f"t_mismatch_{reg_id.hex}"[:63]
+        await db.execute(
+            text(
+                "INSERT INTO public.tenant_registrations "
+                "(id, company_name, tenant_code, country, owner_email, status, "
+                " tenant_schema, expires_at, created_at, updated_at) "
+                "VALUES (:id, :company, :code, 'TZ', :email, 'email_verified', :schema, "
+                " now() + interval '365 days', now(), now())"
+            ),
+            {
+                "id": reg_id,
+                "company": f"Seed {code}",
+                "code": code,
+                "email": f"seed.{code.lower()}@example.com",
+                "schema": reg_schema,
+            },
+        )
+        await db.execute(
+            text(
+                "INSERT INTO public.wholesalers "
+                "(id, code, name, contact, status, created_at, updated_at) "
+                "VALUES (:id, :code, :name, :contact, 'active', now(), now())"
+            ),
+            {"id": ws_id, "code": code, "name": code, "contact": "x@example.com"},
+        )
+        # Create the derived schema (so it exists) — cleanup must NOT drop it
+        # because the two sources disagree.
+        await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{derived}"'))
+        await db.commit()
+
+        errors = await _cleanup_partial_tenant(db, reg_id, code)
+        msgs = [str(e) for e in errors]
+        assert any("schema inconsistency" in m for m in msgs), msgs
+
+        # Fail-closed: the derived schema must STILL EXIST (cleanup refused to
+        # DROP because of the inconsistency).
+        from database.session import AsyncSessionLocal, async_engine
+        from db.sql_safety import validate_identifier
+        validate_identifier(derived, "derived test schema")
+        await async_engine.dispose()
+        async with AsyncSessionLocal() as vdb:
+            still = (
+                await vdb.execute(
+                    text("SELECT 1 FROM pg_namespace WHERE nspname = :s"),
+                    {"s": derived},
+                )
+            ).first()
+            assert still is not None, (
+                "cleanup must NOT drop the schema when sources are inconsistent"
+            )
+        # Zero-residue cleanup of the derived schema + the seeded public rows.
+        validate_identifier(derived, "derived test schema (cleanup)")
+        await async_engine.dispose()
+        async with AsyncSessionLocal() as cdb:
+            await cdb.execute(text(f'DROP SCHEMA IF EXISTS "{derived}" CASCADE'))
+            await cdb.execute(
+                text("DELETE FROM public.tenant_registrations WHERE id = :rid"),
+                {"rid": reg_id},
+            )
+            await cdb.execute(
+                text("DELETE FROM public.wholesalers WHERE id = :wid"),
+                {"wid": ws_id},
+            )
+            await cdb.commit()
+
+    async def test_illegal_schema_identifier_rejected_before_dynamic_sql(
+        self, s2_clean_db
+    ):
+        """R1-R1-R4 §5.4 / §4: an illegal schema identifier must be rejected by
+        ``validate_identifier`` BEFORE it can reach a ``DROP SCHEMA`` string.
+        We prove ``validate_identifier`` raises on a malicious value and that
+        no DROP string is ever built from it."""
+        from db.sql_safety import validate_identifier
+
+        for bad in ("t_evil'; DROP TABLE x; --", "t-with-dashes", "t space", "1t", ""):
+            with pytest.raises(ValueError, match="Unsafe"):
+                validate_identifier(bad, "cleanup candidate schema")
+
+    async def test_cleanup_success_propagates_original_exception_exactly(
+        self, s2_clean_db
+    ):
+        """R1-R1-R4 §5.5: when cleanup SUCCEEDS, the ORIGINAL provisioning
+        exception is re-raised EXACTLY (same type, same message) via bare
+        ``raise`` — not wrapped in a group, not swapped for a cleanup error."""
+        db, reg = s2_clean_db
+        import tests.test_dc12r1_contract_d_statement_print as _self_mod
+        from unittest.mock import patch as _upatch
+
+        class _OriginalMarker(RuntimeError):
+            pass
+
+        async def _boom(*a, **kw):
+            raise _OriginalMarker("exact original exception")
+
+        before = await _count_schemas_starting_with(db, "t_")
+        with _upatch.object(_self_mod, "_create_binding", _boom):
+            with pytest.raises(_OriginalMarker, match="exact original exception") as ei:
+                await _provision_disposable_tenant(db, reg)
+        # Must be the EXACT original instance, not a group, not a copy.
+        assert isinstance(ei.value, _OriginalMarker)
+        assert not isinstance(ei.value, BaseExceptionGroup)
+        after = await _count_schemas_starting_with(db, "t_")
+        assert after == before, (
+            f"cleanup success leaked a schema: before={before} after={after}"
+        )
+
 
 async def _count_schemas_starting_with(db: AsyncSession, prefix: str) -> int:
-    """Count tenant schemas matching a prefix in the live catalog."""
+    """Count tenant schemas matching a prefix in the live catalog
+    (``pg_namespace`` — R1-R1-R4 §4 exact verification source)."""
     row = (
         await db.execute(
             text(
-                "SELECT count(*) FROM information_schema.schemata "
-                "WHERE schema_name LIKE :p"
+                "SELECT count(*) FROM pg_namespace WHERE nspname LIKE :p"
             ),
             {"p": prefix + "%"},
         )

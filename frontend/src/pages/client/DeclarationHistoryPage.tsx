@@ -1,6 +1,7 @@
 /** Retailer declaration history (DC-12R1-S3-S2B-I2B). */
 import { useCallback, useEffect, useState } from 'react';
-import { BanknotesIcon } from '@heroicons/react/24/outline';
+import { Link } from 'react-router-dom';
+import { BanknotesIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { listClientDeclarations } from '@/services/declarationService';
@@ -73,6 +74,26 @@ export default function DeclarationHistoryPage() {
               {d.reason && d.status === 'rejected' && (
                 <p className="mt-1 text-xs text-red-600">Reason: {d.reason}</p>
               )}
+              {/* DC-12R1-S3-S2B-I2C-I2: printable declaration (Contract B).
+                  Receipt link (Contract C) is shown ONLY when confirmed. */}
+              <div className="no-print mt-2 flex flex-wrap gap-2">
+                <Link
+                  to={`/client/declarations/${d.id}/print`}
+                  className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <PrinterIcon className="h-3.5 w-3.5" />
+                  Print
+                </Link>
+                {d.status === 'confirmed' && (
+                  <Link
+                    to={`/client/declarations/${d.id}/receipt`}
+                    className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    <PrinterIcon className="h-3.5 w-3.5" />
+                    Receipt
+                  </Link>
+                )}
+              </div>
             </div>
           ))}
           {totalPages > 1 && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />}

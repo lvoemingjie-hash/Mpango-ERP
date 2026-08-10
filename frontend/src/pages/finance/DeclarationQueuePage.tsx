@@ -1,6 +1,7 @@
 /** Wholesaler cashier declaration queue (DC-12R1-S3-S2B-I2B). */
 import { useCallback, useEffect, useState } from 'react';
-import { BanknotesIcon } from '@heroicons/react/24/outline';
+import { Link } from 'react-router-dom';
+import { BanknotesIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { listDeclarations, confirmDeclaration, rejectDeclaration } from '@/services/declarationService';
@@ -29,6 +30,17 @@ export default function DeclarationQueuePage() {
   const [actionId, setActionId] = useState<string | null>(null);
   const [editingReasonId, setEditingReasonId] = useState<string | null>(null);
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
+  // DC-12R1-S3-S2B-I2C-I2-R1: the confirmed declaration id, taken ONLY from the
+  // successful confirmation response. There is NO fallback to the request/row
+  // declaration id (no `?? id`, no `|| id`, no cached/stale id). The receipt
+  // link is rendered only when this value is a non-empty string. Used solely to
+  // surface a "View/Print receipt" link that reads Contract C; the confirm
+  // transaction itself is unchanged (still a single POST /declarations/{id}/confirm).
+  const [confirmedReceiptId, setConfirmedReceiptId] = useState<string | null>(null);
+  // Set true only when confirmation succeeded but the response carried no valid
+  // receipt id. We then show controlled neutral copy and expose NO receipt link.
+  // We do NOT claim the payment failed; confirmation itself succeeded.
+  const [receiptLinkUnavailable, setReceiptLinkUnavailable] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,8 +60,30 @@ export default function DeclarationQueuePage() {
 
   const handleConfirm = async (id: string) => {
     setActionId(id);
+    // Reset prior receipt-link state before each confirmation.
+    setConfirmedReceiptId(null);
+    setReceiptLinkUnavailable(false);
     try {
-      await confirmDeclaration(id);
+      // Confirmation transaction is unchanged: exactly one POST with the
+      // request declaration id. We only READ the returned id afterwards.
+      const resp = await confirmDeclaration(id);
+      // R2 Correction 1: derive the receipt id ONLY from the real
+      // ApiResponse<DeclarationConfirmResponse> envelope, i.e. resp.data.id.
+      // confirmDeclaration's declared contract is
+      // Promise<ApiResponse<DeclarationConfirmResponse>> where ApiResponse is
+      // { success, data: { id, ... }, timestamp }. No request/row/cached/fixed
+      // id fallback (no `?? id`, no `|| id`); no shape guessing beyond the
+      // declared envelope.
+      const dataObj = resp && typeof resp === 'object' ? (resp as { data?: unknown }).data : undefined;
+      const responseId =
+        dataObj && typeof dataObj === 'object' ? (dataObj as { id?: unknown }).id : undefined;
+      if (typeof responseId === 'string' && responseId.length > 0) {
+        setConfirmedReceiptId(responseId);
+      } else {
+        // Malformed/missing response id: fail closed for the receipt link only.
+        setConfirmedReceiptId(null);
+        setReceiptLinkUnavailable(true);
+      }
       load();
     } catch (err: unknown) {
       setError((err as Error).message || 'Confirm failed');
@@ -80,6 +114,41 @@ export default function DeclarationQueuePage() {
     <div className="min-h-screen bg-gray-50 p-4">
       <h1 className="text-lg font-semibold text-gray-900 mb-4">Payment Declarations — Pending</h1>
       {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-3">{error}</div>}
+      {/* DC-12R1-S3-S2B-I2C-I2-R1: after a successful confirm, surface a receipt
+          link that navigates ONLY to Contract C using the confirmed id taken
+          ONLY from the confirmation response (no request/row id fallback). The
+          link is rendered only when that id is a non-empty string; it is encoded
+          before being placed in the URL. The confirm transaction itself is
+          unchanged (single POST). */}
+      {confirmedReceiptId && (
+        <div
+          className="bg-green-50 border border-green-200 text-green-800 text-sm p-3 rounded mb-3 flex items-center justify-between"
+          data-testid="confirmed-receipt-banner"
+        >
+          <span>Declaration confirmed. A receipt is available.</span>
+          <Link
+            to={`/declarations/${encodeURIComponent(confirmedReceiptId)}/receipt`}
+            data-testid="confirmed-receipt-link"
+            className="inline-flex items-center gap-1 bg-green-600 text-white text-xs px-3 py-1 rounded hover:bg-green-700"
+          >
+            <PrinterIcon className="h-3.5 w-3.5" />
+            View / Print receipt
+          </Link>
+        </div>
+      )}
+      {/* R1 Correction 1: confirmation succeeded but the response carried no
+          valid receipt id. Fail closed for the receipt link only — show
+          controlled neutral copy and expose NO receipt link. This is NOT a
+          payment-failure message (confirmation itself succeeded); it is only a
+          receipt-link rendering fail-closed. */}
+      {receiptLinkUnavailable && !confirmedReceiptId && (
+        <div
+          className="bg-gray-100 border border-gray-200 text-gray-700 text-sm p-3 rounded mb-3"
+          data-testid="receipt-link-unavailable"
+        >
+          Declaration confirmed. The receipt link is unavailable.
+        </div>
+      )}
       {declarations.length === 0 ? (
         <EmptyState icon={BanknotesIcon} title="No pending declarations" description="All declarations have been processed." />
       ) : (
@@ -95,6 +164,16 @@ export default function DeclarationQueuePage() {
                   <span className={`inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded ${STATUS_BADGE[d.status] ?? 'bg-gray-100'}`}>
                     {d.status}
                   </span>
+                  {/* DC-12R1-S3-S2B-I2C-I2: printable declaration (Contract B, cashier). */}
+                  <div className="no-print mt-2">
+                    <Link
+                      to={`/declarations/${d.id}/print`}
+                      className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900"
+                    >
+                      <PrinterIcon className="h-3.5 w-3.5" />
+                      Print declaration
+                    </Link>
+                  </div>
                 </div>
                 {d.status === 'pending' && (
                   <div className="flex gap-2">

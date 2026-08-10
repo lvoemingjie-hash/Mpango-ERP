@@ -35,6 +35,10 @@ import { ClientPaymentHistoryPage } from '@/pages/client/PaymentHistoryPage';
 import { ClientFinanceBalancePage } from '@/pages/client/FinanceBalancePage';
 import DeclarationHistoryPage from '@/pages/client/DeclarationHistoryPage';
 import DeclarePaymentPage from '@/pages/client/DeclarePaymentPage';
+// DC-12R1-S3-S2B-I2C-I2: printable workspace views (Contracts A–C).
+import { OrderPrintPage } from '@/pages/print/OrderPrintPage';
+import { DeclarationPrintPage } from '@/pages/print/DeclarationPrintPage';
+import { ReceiptPrintPage } from '@/pages/print/ReceiptPrintPage';
 // DC-12R1-S1: retailer credential setup/reset pages (fragment-only token transport)
 import { RetailerSetupCredentialPage } from '@/pages/retailer/RetailerSetupCredentialPage';
 import { RetailerResetPasswordPage } from '@/pages/retailer/RetailerResetPasswordPage';
@@ -119,6 +123,11 @@ const router = createBrowserRouter([
               { path: '/finance', element: <FinancePage /> },
               { path: '/payments', element: <PaymentListPage /> },
               { path: '/declarations', element: <DeclarationQueuePage /> },
+              // DC-12R1-S3-S2B-I2C-I2: cashier printable workspace (Contracts A–C).
+              // mode is fixed by static route config (never a query param).
+              { path: '/orders/:orderId/print', element: <OrderPrintPage mode="cashier" /> },
+              { path: '/declarations/:declarationId/print', element: <DeclarationPrintPage mode="cashier" /> },
+              { path: '/declarations/:declarationId/receipt', element: <ReceiptPrintPage mode="cashier" /> },
             ],
           },
         ],
@@ -140,6 +149,11 @@ const router = createBrowserRouter([
               { path: '/client/finance', element: <ClientFinanceBalancePage /> },
               { path: '/client/declarations', element: <DeclarationHistoryPage /> },
               { path: '/client/orders/:orderId/declare', element: <DeclarePaymentPage /> },
+              // DC-12R1-S3-S2B-I2C-I2: retailer printable workspace (Contracts A–C).
+              // mode is fixed by static route config (never a query param).
+              { path: '/client/orders/:orderId/print', element: <OrderPrintPage mode="client" /> },
+              { path: '/client/declarations/:declarationId/print', element: <DeclarationPrintPage mode="client" /> },
+              { path: '/client/declarations/:declarationId/receipt', element: <ReceiptPrintPage mode="client" /> },
             ],
           },
         ],

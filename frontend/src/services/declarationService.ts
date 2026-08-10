@@ -7,6 +7,7 @@ import type {
   DeclarationStatus,
 } from '@/types/declaration';
 import type { ApiResponse, PaginatedData } from '@/types/api';
+import type { DeclarationPrintView, ReceiptPrintView } from '@/types/print';
 
 /** Retailer: submit a payment declaration. */
 export const submitDeclaration = async (
@@ -75,5 +76,43 @@ export const rejectDeclaration = async (
   reason: string
 ): Promise<ApiResponse<PaymentDeclaration>> => {
   const resp = await api.post(`/declarations/${id}/reject`, { reason });
+  return resp.data;
+};
+
+// ---------------------------------------------------------------------------
+// DC-12R1-S3-S2B-I2C-I2: read-only printable declaration + receipt documents.
+// All four are GET-only; no financial/state mutation. Money is server-
+// authoritative and rendered verbatim (no client recomputation).
+// ---------------------------------------------------------------------------
+
+/** Retailer: printable payment declaration document (Contract B). */
+export const getClientDeclarationPrint = async (
+  id: string
+): Promise<ApiResponse<DeclarationPrintView>> => {
+  const resp = await api.get(`/client/declarations/${encodeURIComponent(id)}/print`);
+  return resp.data;
+};
+
+/** Retailer: confirmed receipt (Contract C; receipt-eligible only). */
+export const getClientReceipt = async (
+  id: string
+): Promise<ApiResponse<ReceiptPrintView>> => {
+  const resp = await api.get(`/client/declarations/${encodeURIComponent(id)}/receipt`);
+  return resp.data;
+};
+
+/** Cashier: printable payment declaration document (Contract B). */
+export const getCashierDeclarationPrint = async (
+  id: string
+): Promise<ApiResponse<DeclarationPrintView>> => {
+  const resp = await api.get(`/declarations/${encodeURIComponent(id)}/print`);
+  return resp.data;
+};
+
+/** Cashier: confirmed receipt (Contract C; receipt-eligible only). */
+export const getCashierReceipt = async (
+  id: string
+): Promise<ApiResponse<ReceiptPrintView>> => {
+  const resp = await api.get(`/declarations/${encodeURIComponent(id)}/receipt`);
   return resp.data;
 };

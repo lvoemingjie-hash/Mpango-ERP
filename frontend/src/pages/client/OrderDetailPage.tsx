@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { ArrowLeftIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { clientOrderService } from '@/services/clientOrderService';
 import { normalizeApiError } from '@/utils/errorHandling';
 import type { ClientOrder } from '@/types/client';
@@ -127,6 +127,17 @@ export function OrderDetailPage() {
           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>
             {badge.label}
           </span>
+        </div>
+
+        {/* DC-12R1-S3-S2B-I2C-I2: printable order (Contract A, retailer). */}
+        <div className="no-print mt-3">
+          <Link
+            to={`/client/orders/${order.id}/print`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
+          >
+            <PrinterIcon className="h-4 w-4" />
+            Print order
+          </Link>
         </div>
 
         <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">

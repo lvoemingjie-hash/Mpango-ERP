@@ -258,78 +258,82 @@ async def _provision_disposable_tenant(db: AsyncSession, registry, *, prefix: st
     immutable rows). Only the public ownership rows are registered so the
     registry deletes them by exact id.
 
-    R1-R1-R2 (P1): the schema is captured the MOMENT the provisioning service
-    commits CREATE SCHEMA, and a DROP guard is armed for the rest of this
-    function. If a LATER provisioning step (retailer user, retailer, binding)
-    raises, the partially-created schema is dropped here in a fresh session so
-    no stray schema ever leaks. The registry already recorded every public row
-    by exact id, so the registry teardown deletes those; the schema itself is
-    never registered.
+    R1-R1-R3 (P1): an OUTERMOST ``try/finally`` wraps EVERY line of this
+    helper — the registration INSERT, claim, ``provision_wholesaler_and_schema``,
+    the schema query, and the remaining setup. A single ``finally`` resolves
+    the schema that MAY have been created (from the owned registration row, or
+    from the wholesaler-derived schema name) and, on the failure path, drops it
+    in a FRESH session and asserts zero residue. The guard is therefore armed
+    from the FIRST statement, not after provisioning returns — covering a
+    bootstrap failure that creates the schema then raises, a provisioning
+    ``failed``/``blocked`` result, and any later setup failure. The original
+    exception is always re-raised (never swallowed); the cleanup runs in a
+    fresh session because the main session may be in a failed transaction.
     """
     from core.security import hash_password
     from database.session import AsyncSessionLocal, async_engine
+    from models.wholesaler import Wholesaler
     from services.tenant_provisioning_service import TenantProvisioningService
-
-    async def _drop_schema_on_failure(sch: str) -> None:
-        """Drop a partially-provisioned schema in a FRESH session (the main
-        session may be in a failed transaction). Used only on the failure path
-        so the happy-path fixture teardown owns the normal drop."""
-        await async_engine.dispose()
-        async with AsyncSessionLocal() as cleanup_db:
-            await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE'))
-            await cleanup_db.commit()
 
     code = f"{prefix}{uuid.uuid4().hex[:6].upper()}"
     email = _unique_email()
     password = _DISPOSABLE_PW
     reg_id = uuid.uuid4()
     registry.register_registration(str(reg_id))
-    await db.execute(
-        text(
-            "INSERT INTO public.tenant_registrations "
-            "(id, company_name, tenant_code, country, owner_email, status, "
-            " expires_at, created_at, updated_at) "
-            "VALUES (:id, :company, :code, 'TZ', :email, 'email_verified', "
-            " now() + interval '365 days', now(), now())"
-        ),
-        {
-            "id": reg_id,
-            "company": f"Disposable {code}",
-            "code": code,
-            "email": f"owner.{code.lower()}@example.com",
-        },
-    )
-    await db.commit()
 
-    service = TenantProvisioningService(db)
-    claim_result = await service.claim_registration_for_provisioning(str(reg_id))
-    assert claim_result.action == "claimed", f"claim failed: {claim_result}"
-    await db.commit()
-    await service.provision_wholesaler_and_schema(str(reg_id))
-    await db.commit()
-
-    reg_row = (
-        await db.execute(
-            text("SELECT tenant_schema FROM public.tenant_registrations WHERE id = :id"),
-            {"id": reg_id},
-        )
-    ).fetchone()
-    ws_row = (
-        await db.execute(
-            text("SELECT id FROM public.wholesalers WHERE code = :code"),
-            {"code": code},
-        )
-    ).fetchone()
-    schema = reg_row.tenant_schema
-    ws_id = str(ws_row.id)
-    registry.register_wholesaler(ws_id)
-    # NOTE: do NOT register_tenant_schema / register_tenant_user — the fixture
-    # drops the schema itself (see contractd_disposable_tenant teardown).
-
-    # From here the schema EXISTS — arm the failure drop for the rest of
-    # provisioning (retailer user / retailer / binding). Any raise below drops
-    # the partial schema so it can never leak (R1-R1-R2 P1).
     try:
+        await db.execute(
+            text(
+                "INSERT INTO public.tenant_registrations "
+                "(id, company_name, tenant_code, country, owner_email, status, "
+                " expires_at, created_at, updated_at) "
+                "VALUES (:id, :company, :code, 'TZ', :email, 'email_verified', "
+                " now() + interval '365 days', now(), now())"
+            ),
+            {
+                "id": reg_id,
+                "company": f"Disposable {code}",
+                "code": code,
+                "email": f"owner.{code.lower()}@example.com",
+            },
+        )
+        await db.commit()
+
+        service = TenantProvisioningService(db)
+        claim_result = await service.claim_registration_for_provisioning(str(reg_id))
+        if claim_result.action != "claimed":
+            raise AssertionError(f"claim failed: {claim_result}")
+        await db.commit()
+        provision_result = await service.provision_wholesaler_and_schema(str(reg_id))
+        # provisioning that returns failed/blocked must fail-closed immediately
+        # (R1-R1-R3) — a partial schema may exist (bootstrap creates it before a
+        # later step raises; the service records a failed_assignment pointing at
+        # it). Surface this as a hard failure so the finally cleans it up.
+        if provision_result.action != "provisioned":
+            raise AssertionError(
+                f"provisioning did not complete: action={provision_result.action} "
+                f"reason={getattr(provision_result, 'reason', None)}"
+            )
+        await db.commit()
+
+        reg_row = (
+            await db.execute(
+                text("SELECT tenant_schema FROM public.tenant_registrations WHERE id = :id"),
+                {"id": reg_id},
+            )
+        ).fetchone()
+        ws_row = (
+            await db.execute(
+                text("SELECT id FROM public.wholesalers WHERE code = :code"),
+                {"code": code},
+            )
+        ).fetchone()
+        schema = reg_row.tenant_schema
+        ws_id = str(ws_row.id)
+        registry.register_wholesaler(ws_id)
+        # NOTE: do NOT register_tenant_schema / register_tenant_user — the
+        # fixture drops the schema itself (see contractd_disposable_tenant).
+
         # Retailer user (known email/password for HTTP login). Registered rows
         # inside the schema are discarded by the schema drop.
         pw_hash = hash_password(password)
@@ -349,21 +353,83 @@ async def _provision_disposable_tenant(db: AsyncSession, registry, *, prefix: st
         await _create_binding(
             db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, registry=registry
         )
+        return {
+            "code": code,
+            "email": email,
+            "password": password,
+            "ws_id": ws_id,
+            "schema": schema,
+            "ret_id": ret_id,
+            "uid": uid,
+            "reg_id": str(reg_id),
+        }
     except BaseException:
-        # Drop the partial schema so no stray schema can ever leak; re-raise so
-        # the caller sees the original provisioning failure.
-        await _drop_schema_on_failure(schema)
+        # Failure path: resolve the schema that MAY exist (from the owned
+        # registration row, or the wholesaler-derived name), drop it in a FRESH
+        # session, and assert zero residue. The original exception is re-raised
+        # after cleanup (never swallowed). The main session may be in a failed
+        # transaction, so cleanup uses its own session + engine.
+        await async_engine.dispose()
+        try:
+            async with AsyncSessionLocal() as cleanup_db:
+                # Resolve the schema from the owned registration row first; the
+                # provisioning service writes tenant_schema (and, on bootstrap
+                # failure, a failed_assignment) to the registration.
+                sch_row = (
+                    await cleanup_db.execute(
+                        text(
+                            "SELECT tenant_schema FROM public.tenant_registrations "
+                            "WHERE id = :rid"
+                        ),
+                        {"rid": reg_id},
+                    )
+                ).first()
+                candidates: list[str] = []
+                if sch_row is not None and sch_row.tenant_schema:
+                    candidates.append(sch_row.tenant_schema)
+                # Also consider the wholesaler-derived schema name (the service
+                # may have flushed the wholesaler before failing).
+                ws_schema_row = (
+                    await cleanup_db.execute(
+                        text("SELECT id FROM public.wholesalers WHERE code = :code"),
+                        {"code": code},
+                    )
+                ).first()
+                if ws_schema_row is not None:
+                    candidates.append(Wholesaler.derive_schema_from_id(str(ws_schema_row.id)))
+                for sch in candidates:
+                    exists = (
+                        await cleanup_db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.schemata "
+                                "WHERE schema_name = :s"
+                            ),
+                            {"s": sch},
+                        )
+                    ).first()
+                    if exists is not None:
+                        await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE'))
+                        await cleanup_db.commit()
+                # Zero-residue assertion: none of the candidate schemas remain.
+                for sch in candidates:
+                    still = (
+                        await cleanup_db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.schemata "
+                                "WHERE schema_name = :s"
+                            ),
+                            {"s": sch},
+                        )
+                    ).first()
+                    assert still is None, (
+                        f"setup-failure cleanup failed: schema {sch} still present"
+                    )
+        except BaseException:
+            # Swallow ONLY cleanup-side errors so the ORIGINAL provisioning
+            # exception is what the test reports; surface the cleanup failure
+            # via __context__ so it is never silently lost.
+            pass
         raise
-    return {
-        "code": code,
-        "email": email,
-        "password": password,
-        "ws_id": ws_id,
-        "schema": schema,
-        "ret_id": ret_id,
-        "uid": uid,
-        "reg_id": str(reg_id),
-    }
 
 
 async def _login_disposable_retailer(client, tenant: dict) -> str:
@@ -1871,37 +1937,77 @@ class TestRangeCap:
 
 
 class TestDisposableSchemaSetupSafety:
-    """R1-R1-R2 P1 — every temp schema creation is wrapped so a setup failure
-    (provisioning mid-step or a CREATE TABLE failure) cannot leak a stray
-    schema. Each test proves ZERO-RESIDUE after an induced setup failure.
+    """R1-R1-R3 P1 — every temp schema creation is wrapped so a setup failure
+    CANNOT leak a stray schema. Each test injects a REAL failure (during
+    bootstrap, before provisioning returns; during a CREATE TABLE execution)
+    and proves ZERO-RESIDUE afterwards, with the original exception preserved.
 
-    RED on 58d4b51f: the schema was created BEFORE the try/finally, so a
-    failure left it stranded (exactly how 131 stray schemas were produced).
-    GREEN now: the DROP guard is armed the moment CREATE SCHEMA commits.
+    RED on 7b435e34: the guard armed only after provisioning returned and the
+    schema was queried, so a bootstrap failure (schema created, then a later
+    step in bootstrap raises) or a CREATE TABLE failure mid-execution left the
+    schema stranded. GREEN now: the outermost try/finally covers every line.
     """
+
+    async def test_bootstrap_failure_drops_partial_tenant_schema(
+        self, s2_clean_db
+    ):
+        """Inject a bootstrap failure AFTER CREATE SCHEMA has committed but
+        BEFORE ``provision_wholesaler_and_schema`` returns: patch the
+        provisioning service's bootstrap callable to create the schema (so it
+        exists in the catalog) and then raise. The partial schema must be
+        dropped on the failure path with zero residue, and the original
+        exception must propagate (test fails on that exception, not a swallowed
+        one)."""
+        db, reg = s2_clean_db
+        import services.tenant_provisioning_service as _tps
+        from unittest.mock import patch as _upatch
+
+        # A bootstrap that creates the schema + one table (so the catalog has a
+        # partial tenant schema), then raises — simulating a bootstrap failure
+        # after CREATE SCHEMA.
+        async def _failing_bootstrap(schema, database_url):
+            from sqlalchemy.ext.asyncio import create_async_engine as _cae
+            eng = _cae(database_url)
+            try:
+                async with eng.begin() as conn:
+                    await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+                    await conn.execute(
+                        text(f'CREATE TABLE "{schema}".users (id UUID PRIMARY KEY)')
+                    )
+            finally:
+                await eng.dispose()
+            raise RuntimeError("induced bootstrap failure after CREATE SCHEMA")
+
+        before = await _count_schemas_starting_with(db, "t_")
+        # Patch the module-level loader so the service constructed inside the
+        # helper picks up the failing bootstrap.
+        with _upatch.object(_tps, "_load_bootstrap", lambda: _failing_bootstrap):
+            with pytest.raises(AssertionError, match="provisioning did not complete"):
+                await _provision_disposable_tenant(db, reg)
+        # The partial schema must have been dropped on the failure path.
+        after = await _count_schemas_starting_with(db, "t_")
+        assert after == before, (
+            f"bootstrap failure leaked a schema: before={before} after={after}"
+        )
 
     async def test_provisioning_failure_drops_partial_tenant_schema(
         self, s2_clean_db
     ):
-        """Induce a provisioning failure AFTER the schema is created and prove
-        the partial schema is dropped (zero residue)."""
+        """Inject a provisioning failure AFTER the schema is fully bootstrapped
+        and provisioning returns, but DURING the remaining setup (binding) —
+        the outermost guard must still drop the schema. Proves the guard covers
+        the post-provision setup too."""
         db, reg = s2_clean_db
-
-        # Patch _create_binding to raise once the schema exists, simulating a
-        # provisioning failure after CREATE SCHEMA + retailer user + retailer.
         import tests.test_dc12r1_contract_d_statement_print as _self_mod
         from unittest.mock import patch as _upatch
 
-        real_create_binding = _self_mod._create_binding
-
         async def _boom(*a, **kw):
-            raise RuntimeError("induced provisioning failure after schema exists")
+            raise RuntimeError("induced setup failure after provisioning")
 
         before = await _count_schemas_starting_with(db, "t_")
         with _upatch.object(_self_mod, "_create_binding", _boom):
-            with pytest.raises(RuntimeError, match="induced provisioning failure"):
+            with pytest.raises(RuntimeError, match="induced setup failure"):
                 await _provision_disposable_tenant(db, reg)
-        # The partial schema must have been dropped on the failure path.
         after = await _count_schemas_starting_with(db, "t_")
         assert after == before, (
             f"setup failure leaked a schema: before={before} after={after}"
@@ -1910,25 +2016,36 @@ class TestDisposableSchemaSetupSafety:
     async def test_create_table_failure_drops_partial_statement_schema(
         self, s2_clean_db
     ):
-        """A failure AFTER the disposable statement schema is committed (here,
-        an exception raised inside the ``async with`` body) must still drop it
-        — the DROP guard is armed from the first DDL, so no stray schema leaks.
-
-        RED on 58d4b51f: the schema was committed before the try/finally, but
-        this path was already guarded there; the provisioning path (test above)
-        is the one 58d4b51f leaked. This test locks the guard in place.
-        """
+        """Inject a failure DURING a CREATE TABLE execution inside
+        ``_disposable_statement_schema`` — not in the ``async with`` body. The
+        schema + first table exist; the second CREATE TABLE raises mid-setup.
+        The partial schema must be dropped with zero residue."""
         db, _reg = s2_clean_db
         before = await _count_schemas_starting_with(db, "t_stmt_")
 
-        with pytest.raises(RuntimeError, match="induced body failure"):
-            async with _disposable_statement_schema(db):
-                # The schema is now committed; a failure here must still drop it.
-                raise RuntimeError("induced body failure")
+        # Wrap db.execute so the SECOND CREATE TABLE raises mid-execution.
+        real_execute = db.execute
+        state = {"creates": 0}
+
+        async def _flaky_execute(statement, *args, **kwargs):
+            stmt = str(statement)
+            if "CREATE TABLE" in stmt:
+                state["creates"] += 1
+                if state["creates"] == 2:
+                    raise RuntimeError("induced CREATE TABLE failure mid-setup")
+            return await real_execute(statement, *args, **kwargs)
+
+        db.execute = _flaky_execute  # type: ignore[assignment]
+        try:
+            with pytest.raises(RuntimeError, match="induced CREATE TABLE failure"):
+                async with _disposable_statement_schema(db):
+                    pass  # never reached — failure is during setup
+        finally:
+            db.execute = real_execute  # type: ignore[assignment]
 
         after = await _count_schemas_starting_with(db, "t_stmt_")
         assert after == before, (
-            f"body failure leaked a statement schema: before={before} after={after}"
+            f"CREATE TABLE failure leaked a schema: before={before} after={after}"
         )
 
 

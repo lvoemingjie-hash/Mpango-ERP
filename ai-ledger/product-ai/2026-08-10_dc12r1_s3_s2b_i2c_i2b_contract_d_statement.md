@@ -795,3 +795,152 @@ None of the 48 are the 19 migration/bootstrap nodes that flipped to skip in
   events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
   mutation, or protected-branch push. Kilo source review and Lubuntu
   dual-stack verification are the required next steps (not claimed here).
+
+## §R1-R1-R3 Setup-guard truth + gate arithmetic (SUPERSEDES R1-R1-R2)
+
+> **⚠️ SUPERSEDED_BY_I2C_I2B_R1_R1_R3**
+>
+> The `7b435e34` R1-R1-R2 verdict is **superseded** by the R1-R1-R3
+> correction. CTO review of `7b435e34` returned
+> `STOP_AND_REPORT_CTO_WITH_I2C_I2B_R1_R1_R2_SETUP_AND_GATE_EVIDENCE_BLOCKERS`
+> with three P1 findings (all on the test file's setup guard and the gate
+> arithmetic), all closed here. Product files (repository, service, frontend)
+> are **frozen at `7b435e34`** — only the Contract D test file and this
+> ledger change.
+>
+> Starting SHA: `7b435e345524ef6a64d881f73f77e6c144fd0286`; protected baseline:
+> `d45b5020b122b13c407a1c9204b18e587f9803fc` (untouched). Verdict:
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2B_R1_R1_R3_MERGE_REVIEW** (this section),
+> pending CTO acceptance.
+
+### R1-R1-R3.1 P1 — outermost try/finally (guard armed from the FIRST statement)
+
+**Finding.** In `7b435e34`, `_provision_disposable_tenant` ran registration,
+claim, `provision_wholesaler_and_schema`, and the schema query OUTSIDE any
+guard; the `try` armed only at line 332, after the schema was already
+obtained at line 323. A bootstrap failure (CREATE SCHEMA commits, then a
+later bootstrap step raises) or a provisioning `failed`/`blocked` result left
+the schema stranded. The report's "armed the moment CREATE SCHEMA commits"
+claim was false.
+
+**Fix** (`tests/test_dc12r1_contract_d_statement_print.py`): the ENTIRE body
+of `_provision_disposable_tenant` — the registration INSERT, claim,
+`provision_wholesaler_and_schema`, the schema query, and the remaining setup
+(retailer user / retailer / binding) — is now inside ONE `try/except
+BaseException`. The guard is armed at the FIRST statement. On ANY failure
+(raise OR a provisioning result whose `action != "provisioned"`, which now
+raises an `AssertionError` immediately — fail-closed), the except block:
+1. disposes the engine pool (fresh session needed; the main session may be in
+   a failed transaction);
+2. resolves the schema that MAY exist — from the owned registration row's
+   `tenant_schema` AND the wholesaler-derived schema name (the service may
+   flush the wholesaler and record a `failed_assignment` before failing);
+3. for each candidate, checks the catalog and DROPs it (CASCADE) in a FRESH
+   session if present;
+4. asserts zero residue (no candidate schema remains in the catalog);
+5. re-raises the ORIGINAL exception (`raise`) — the cleanup never swallows
+   it; cleanup-side errors are caught only so the original exception
+   propagates (they remain visible via `__context__`).
+
+`_disposable_statement_schema` already wrapped CREATE TABLEs in their own
+try/except (R1-R1-R2) — unchanged.
+
+### R1-R1-R3.2 P1 — real failure injection
+
+**Finding.** The R1-R1-R2 setup tests were not real: one failed
+`_create_binding` (after provisioning had already completed); the other
+raised manually inside the `async with` body (after all CREATE TABLEs had
+finished). Neither exercised the bootstrap-failure or CREATE-TABLE-mid-
+execution paths.
+
+**Fix:** `TestDisposableSchemaSetupSafety` now has THREE real tests:
+- `test_bootstrap_failure_drops_partial_tenant_schema` — patches the
+  provisioning service's module-level `_load_bootstrap` to return a bootstrap
+  that CREATEs the schema + one table, THEN raises. This fails INSIDE
+  `provision_wholesaler_and_schema` (before it returns), so provisioning
+  yields `action="failed"` and the helper raises `AssertionError`. The partial
+  schema must be dropped with zero residue.
+- `test_provisioning_failure_drops_partial_tenant_schema` — fails
+  `_create_binding` AFTER provisioning returns (post-provision setup); proves
+  the guard also covers the remaining setup.
+- `test_create_table_failure_drops_partial_statement_schema` — wraps
+  `db.execute` so the SECOND `CREATE TABLE` raises MID-EXECUTION (not in the
+  body); the partial schema + first table exist, the second CREATE TABLE
+  fails. The partial schema must be dropped with zero residue.
+
+All three GREEN; original exceptions propagate in every case.
+
+### R1-R1-R3.3 P1 — gate arithmetic (exact skip + collected lists; delta = 0)
+
+**Finding.** The R1-R1-R2 report claimed "19 nodes restored" but the run was
+still 48 skipped, and the +2 passed matched the two new tests — not a
+restoration. The skip classification summed to 49, not the claimed 48.
+
+**Fix:** R1-R1-R3's two full runs (below) are invoked with the IDENTICAL
+command (`pytest tests/ -q -rs`) and IDENTICAL env on both stacks. The
+collected-node count, the passed/skipped/xfailed totals, and the exact `-rs`
+skip list are recorded. The skip list is reconciled to its total (arithmetic
+checked). Each run's totals are compared for identity.
+
+### R1-R1-R3.4 Gates (exact commands + counts)
+
+| Gate | Result |
+|---|---|
+| Focused Contract D natural | `pytest tests/test_dc12r1_contract_d_statement_print.py -q` → **52 passed** |
+| Focused reverse (same 52 node IDs, reversed order) | **52 passed** |
+| Regressions (I2C-I1, I2B, I2A, route-inventory, read-only retailer finance, financial schema, orders) | **192 passed** |
+| Full backend run #1 (fresh PG16 :5433 + Redis7 :6380, identical env+cmd) | **3268 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Full backend run #2 (fresh PG16 :5434 + Redis7 :6381, identical env+cmd) | **3268 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Frontend full vitest | `pnpm vitest run` → **270 passed / 0 failed** (20 files) |
+| Frontend build | `pnpm build` exit 0 |
+| Self-review | product files byte-identical to `7b435e34`; `py_compile` clean; `git diff --check` clean; scoped pre-commit all hooks passed; detect-secrets 0 new; UTF-8/mojibake clean; GitNexus `analyze` + `status` up-to-date post-commit |
+
+One pytest process per run; both runs invoked with the IDENTICAL command
+(`pytest tests/ -q -rs`) and IDENTICAL env (full R1-R1 temp-DB env:
+`DATABASE_URL` set via `TEST_DATABASE_URL`, `MPANGO_ALLOW_TEMP_DB_CREATE=1`,
+`REPORTING_USER_PASSWORD` set). No exclusions/reruns/deselection/no timeout
+increase/mocks/skip/xfail/weakened assertions. The two full runs are
+identical in totals (3268 passed / 48 skipped / 15 xfailed each) and in the
+exact `-rs` skip list (diff-confirmed identical).
+
+**Skip list (48, reconciled: 19 + 19 + 3 + 3 + 2 + 2 = 48 ✓):**
+- `test_s3b_fresh_tenant_live_runtime_proof.py` — 19 skips: require the
+  pre-provisioned `t_u1r1_test` tenant (S3-B prepared-tenant prerequisite).
+- `test_payments_schema_contract.py` — 19 skips: require
+  `PAYMENTS_SCHEMA_REQUIRE_LIVE=1` (prepared-schema verification).
+- `test_route_coverage.py` — 3 skips: require a generated
+  `docs/contracts/openapi.yaml`.
+- `test_alembic_migrations.py` — 3 skips: require the Alembic CLI
+  (integration test).
+- `test_s5c_runtime_sku_import_http_integration.py` — 2 skips: require
+  runtime HTTP integration env vars.
+- `test_s3_profiling.py` — 2 skips: require `ENABLE_SQL_PROFILING=true`.
+
+**Gate-arithmetic reconciliation (vs the accepted f9456bd Contract D
+baseline, which also reported `48 skipped`):**
+- Collected node total: 3268 + 48 + 15 = **3331**.
+- f9456bd baseline collected total: 3234 + 48 + 15 = **3297**.
+- Delta = +34 = the Contract D focused-suite growth (R1: 18 → R1-R1-R3: 52).
+- The 48 skips are identical in category and count to the f9456bd accepted
+  baseline (the R1-R1 `29 skipped` figure used a different, tenant-pre-
+  provisioned env; the f9456bd and R1-R1-R3 envs are the canonical test
+  env and both yield 48).
+- No pass node disappeared and no skip node appeared that is not env-gated
+  and itemized above. Arithmetic delta is fully accounted for (0 unexplained).
+
+### R1-R1-R3.5 Adversarial self-review
+
+- The outermost `try/except BaseException` wraps every statement; the schema
+  is resolved on the failure path from the owned registration row and the
+  wholesaler-derived name (covering both the bootstrap-failure case, where the
+  service records a `failed_assignment`, and the post-provision case).
+- A provisioning `failed`/`blocked` result raises immediately (fail-closed),
+  so the except path runs and cleans any partial schema.
+- The original exception is always re-raised; cleanup-side errors never mask
+  it (they remain in `__context__`).
+- Product files (repository, service, `printFormat.ts`) are byte-identical to
+  `7b435e34` — verified via `git diff --quiet 7b435e34 -- <file>` before
+  commit.
+- No migration, permission, config, dependency, lockfile, deployment,
+  events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
+  mutation, or protected-branch push.

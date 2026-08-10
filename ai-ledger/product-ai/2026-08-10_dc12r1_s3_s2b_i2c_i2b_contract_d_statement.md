@@ -440,3 +440,184 @@ increase/assertion weakening was introduced.
 - No migration, permission, config, dependency, lockfile, deployment,
   payment/ledger mutation, or protected-branch push. The branch still tracks
   `d45b5020` as the protected baseline.
+
+## §R1-R1-R1 Strict Input, Ownership and Cleanup Closure (SUPERSEDES R1-R1)
+
+> **⚠️ SUPERSEDED_BY_I2C_I2B_R1_R1_R1**
+>
+> The `1aa909ae` R1-R1 PASS verdict is **superseded** by the R1-R1-R1
+> correction (three deterministic gaps closed: exact date syntax,
+> wholesaler-authoritative payment-ownership closure, and exact test
+> ownership cleanup). The authoritative verdict is
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2B_R1_R1_R1_MERGE_REVIEW** (this section).
+>
+> Starting SHA: `1aa909ae5ba3070d3d6da149bc8c93403bdd3c7a`; protected
+> baseline: `d45b5020b122b13c407a1c9204b18e587f9803fc` (untouched — no
+> protected-branch push). Scope is strictly the three Kilo merge blockers;
+> nothing from Contract D's `f9456bd` scope was re-opened or expanded.
+
+### R1-R1-R1.1 Blocker 1 — exact date syntax (no trim before validation)
+
+**Requirement.** Validate the RAW value before any trim: when
+`raw != raw.strip()` the value is rejected; `re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")`
+is applied to the ORIGINAL value; leading/trailing spaces, tabs, newlines and
+encoding whitespace (`%20`/`%09`) return 400 `INVALID_DATE_RANGE`. All existing
+missing/blank/unpadded/impossible/reversed/>365-day behavior is preserved.
+
+**Implementation** (`repositories/statement_repository.py`,
+`parse_statement_date_range`): for each of `from`/`to` the raw string is
+checked — `None`/empty → required error; `s.strip() == ""` → required error;
+`s != s.strip()` → `Invalid date format.` (never trimmed). Only then is
+`_DATE_FORMAT_RE.fullmatch()` run on the raw value, followed by the existing
+calendar/order/span checks. Both API routes (supplier `api/v1/statements.py`
+and client `api/v1/client/statements.py`) use this shared parser, so the
+contract is identical on both routes.
+
+**Tests (all real PG/HTTP, no mocks):**
+- `test_whitespace_suffix_is_rejected` — literal trailing space (decoded by the
+  framework from `%20`) → 400 `INVALID_DATE_RANGE`.
+- `test_encoded_space_20_is_rejected` / `test_encoded_tab_09_is_rejected` —
+  raw-URL `?from=2026-08-01%20` / `%09` (so the framework genuinely decodes the
+  encoding; `httpx` `params=` would double-encode and never exercise the
+  decoded path) → 400 `INVALID_DATE_RANGE`.
+- `test_tab_and_newline_suffixes_are_rejected` — `\t` / `\n` suffixes → 400.
+- `test_parser_rejects_trimmed_input_directly` — direct parser proof for
+  space/tab/newline prefixes and suffixes → `StatementPeriodError`.
+- `test_parser_accepts_canonical_input_directly` — canonical shape passes.
+
+**RED (baseline `1aa909ae`, new tests copied onto the untouched baseline code):**
+5 failed / 1 passed — the 5 strictness tests all fail there because the baseline
+stripped before validating; only the canonical-accept test passes (as expected).
+
+### R1-R1-R1.2 Blocker 2 — wholesaler-authoritative payment ownership closure
+
+**Requirement.** `count_completed_payment_ownership_mismatch` must accept the
+authoritative `wholesaler_id`; use a `LEFT JOIN` on orders; fail closed when
+`o.id IS NULL OR p.retailer_id IS DISTINCT FROM o.retailer_id OR
+o.wholesaler_id IS DISTINCT FROM :wid`; be invoked before any balance/list
+computation; return 409 `STATEMENT_INTERNAL_INCONSISTENT` with zero partial
+view; cover both supplier and retailer routes; and never disclose an unrelated
+valid relationship.
+
+**Implementation**
+(`repositories/statement_repository.py` + `services/print_service.py`):
+`count_completed_payment_ownership_mismatch(db, *, schema, wholesaler_id)`
+now LEFT-JOINs orders and counts completed non-deleted payments where the order
+is missing, the payment retailer differs from the order retailer, or the order
+belongs to a different wholesaler than the authoritative statement identity.
+`build_statement_print` calls it (step 3b — after the orphan precheck, before
+opening balance/movements/settled/reconciliation) with the server-derived
+`wholesaler_id`. Both routes therefore fail closed 409 with zero partial
+document.
+
+**Tests (all real same-schema PG):**
+- `test_payment_retailer_mismatch_returns_409_internal_inconsistent` —
+  payment retailer ≠ order retailer → 409 both routes, zero partial view
+  (no payment id / foreign retailer id in the body).
+- `test_wrong_order_wholesaler_returns_409` — order belongs to a DIFFERENT
+  wholesaler while the payment retailer matches → 409 (the new closure).
+- `test_missing_order_returns_409` — unresolvable order: the PRODUCTION schema
+  has `payments_order_id_fkey`, so an orphan payment is not constructible there
+  (the DB already prevents it); the LEFT JOIN `o.id IS NULL` branch is proven
+  in the FK-less owned disposable schema where the orphan IS constructible →
+  direct service call → `StatementInternalInconsistent`, `view is None`.
+- `test_ownership_mismatch_also_fails_closed_on_supplier_route` — supplier
+  route also 409.
+- `test_unrelated_valid_relationship_is_not_disclosed` — with a corrupt payment
+  in the schema, the OTHER (valid, unrelated) relationship's statement also
+  fails closed 409 — schema-level precheck, no partial leak of either
+  relationship.
+
+**RED (baseline `1aa909ae`):** `test_wrong_order_wholesaler_returns_409` and
+`test_missing_order_returns_409` both FAIL on the baseline (baseline had no
+wholesaler check and used an INNER JOIN, so neither corruption was detected and
+a 200/view was produced). The pre-existing retailer-mismatch tests pass there
+(baseline already handled that case) — confirming the RED is specific to the
+two new closure branches.
+
+### R1-R1-R1.3 Blocker 3 — exact test ownership cleanup
+
+**Requirement.** Remove ALL broad `LIKE 'pay-%'` / prefix / wildcard DELETEs;
+pre-generate and register every test order/payment/declaration/ledger ID;
+cleanup ONLY via `WHERE id = ANY(:owned_ids)`; use `try/finally` with a fresh
+cleanup session; require exact rowcount or per-ID zero-residue rereads; add a
+transaction/idempotency sentinel payment whose text ALSO starts with `pay-`
+(byte-for-byte unchanged after cleanup); immutable ledger test data must live
+in owned disposable schemas (dropped and verified absent) — never delete
+immutable rows.
+
+**Implementation (test file):**
+- `contractd_disposable_tenant` fixture — every Contract D test provisions its
+  OWN tenant (wholesaler + schema + retailer + binding) via
+  `TenantProvisioningService`; the schema is NOT registered in the ownership
+  registry (whose teardown would query it after dropping); the fixture DROPs
+  the schema (CASCADE) in a FRESH cleanup session, verifies it absent from
+  `information_schema.schemata`, and disposes the engine pool after
+  provisioning and after the drop (asyncpg prepared-statement cache). Public
+  ownership rows are registered and deleted by the registry by exact id.
+- `_disposable_statement_schema` — FK-less minimal schema for the
+  not-constructible-in-production cases; dropped + verified absent in a fresh
+  session. Immutable `ledger_entries` rows are discarded by schema drop, never
+  by DELETE (the write-only trigger is never circumvented).
+- `_bulk_payments` / `_bulk_pending_declarations` / `_bulk_orders_with_charges`
+  pre-generate and RETURN their IDs; every cleanup is
+  `DELETE ... WHERE id = ANY(:ids)` in a fresh `AsyncSessionLocal` session with
+  an exact `rowcount` assertion.
+- `test_sentinel_payment_survives_exact_cleanup` — a payment whose
+  `transaction_id`/`idempotency_key` text also starts with `pay-` is left
+  byte-for-byte unchanged (verified by exact reread of every column) while the
+  test's own two payments are deleted with `rowcount == 2`.
+
+**RED (baseline `1aa909ae`, static + behavioral):** the baseline test file
+contains the banned broad deletes — `DELETE FROM ... payments WHERE
+idempotency_key LIKE 'pay-%'` and three `DELETE FROM ... payment_declarations
+WHERE idempotency_key LIKE :p` with `{prefix}-%` wildcards (lines 969/992/1019/
+1043 of the baseline file). The current file has zero LIKE/prefix/wildcard/
+table-wide DELETEs (grep-verified) and every delete is exact-ID with rowcount.
+
+### R1-R1-R1.4 Gates (exact commands + counts)
+
+| Gate | Result |
+|---|---|
+| Focused Contract D natural | `pytest tests/test_dc12r1_contract_d_statement_print.py -q` → **49 passed** |
+| Focused reverse (same 49 node IDs, reversed order) | **49 passed** |
+| Regressions (I2C-I1, I2B, I2A, route-inventory, read-only retailer finance, financial schema, orders) | **192 passed** |
+| Full backend run #1 (independent fresh PG16 :5433 + Redis7 :6380) | **3265 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Full backend run #2 (independent fresh PG16 :5434 + Redis7 :6381) | **3265 passed, 48 skipped, 15 xfailed — 0 failed, 0 errors** (exit 0) |
+| Frontend full vitest | `pnpm vitest run` → **270 passed / 0 failed** (20 files) |
+| Frontend build | `pnpm build` exit 0 |
+| Self-review | `py_compile` clean; `git diff --check` clean; detect-secrets 0 new; UTF-8/mojibake scan clean; GitNexus `analyze` + `status` up-to-date post-commit |
+
+One pytest process per run; no exclusions/reruns/deselection/no timeout
+increase/mocks/skip/xfail/weakened assertions. RED proofs on `1aa909ae` are
+documented in §R1-R1-R1.1–.3. The two full runs are identical in totals
+(3265 passed / 48 skipped / 15 xfailed each; warnings 3008 vs 3004 —
+non-deterministic DeprecationWarning counts only). Each run started on a
+freshly rebuilt DB (DROP DATABASE + CREATE + `alembic upgrade head` → 037,
+preflight "0 registered tenant schemas") — the earlier polluted-stack run
+(28 migration-preflight failures caused by registry rows orphaned by
+pre-fix teardown errors) was discarded and both official runs were executed
+on clean stacks.
+
+### R1-R1-R1.5 Adversarial self-review
+
+- The date parser validates the RAW value: `s != s.strip()` is rejected BEFORE
+  the regex, and the regex runs on the original string — whitespace can never
+  be silently trimmed into acceptance. The %20/%09 tests use the raw URL form
+  so the framework's decoding is genuinely exercised (verified RED on baseline).
+- The ownership precheck is invoked at step 3b — after the orphan precheck,
+  BEFORE opening balance / movements / settled lists / reconciliation — and the
+  LEFT JOIN plus `o.wholesaler_id IS DISTINCT FROM :wid` close the two gaps the
+  INNER-JOIN baseline left open. Both routes share the same service path.
+- Cleanup is exact-ID everywhere: pre-generated owned IDs, `id = ANY(:ids)`,
+  fresh cleanup session, exact rowcounts; the `pay-`-prefixed sentinel survives
+  byte-for-byte; immutable ledger rows are only ever discarded by dropping the
+  owned disposable schema (verified absent afterwards) — never by DELETE.
+- The disposable tenant fixture drops its schema BEFORE the registry teardown,
+  rolls back the main session first (releasing ACCESS SHARE locks so the fresh
+  session's DROP never blocks), and disposes the engine pool after
+  provisioning and after the drop (prepared-statement cache).
+- No migration, permission, config, dependency, lockfile, deployment,
+  events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
+  mutation, or protected-branch push. I2C-I3 / S3-S3 are not started. Kilo /
+  Lubuntu corrected-SHA verification remains unclaimed (out of this scope).

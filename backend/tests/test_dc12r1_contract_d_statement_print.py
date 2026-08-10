@@ -29,6 +29,7 @@ fingerprint snapshots taken before and after each exercised route.
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from http import HTTPStatus
@@ -42,6 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from unittest.mock import patch
 
 from tests.test_dc12r1_s3_s2b_i2b_payment_declarations import (  # noqa: E402
+    _CASHIER_PW,
     _cashier_token,
     _cleanup_rate_limiter,  # noqa: F401 (autouse side-effect import)
     _headers,
@@ -57,6 +59,12 @@ from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (  # noqa: E402
     provisioned_pool,  # noqa: F401 (module fixture)
     s2_clean_db,  # noqa: F401 (fixture)
     two_tenants,  # noqa: F401 (fixture)
+    _create_binding,
+    _create_provisioned_full_login,
+    _create_retailer,
+    _create_retailer_user,
+    _grant_retailer_operator,
+    _unique_email,
 )
 from tests.test_dc12r1_s3_s2b_i2c_i1_printable_records import (  # noqa: E402
     _seed_order_with_item,
@@ -65,6 +73,7 @@ from tests.test_dc12r1_s3_s2b_i2c_i1_printable_records import (  # noqa: E402
     _binding_fingerprint,
     _receipt_seq_fingerprint,
 )
+from services.tenant_provisioning_service import TenantProvisioningService  # noqa: E402
 
 
 pytestmark = pytest.mark.asyncio
@@ -76,6 +85,53 @@ async def _contractd_flush_stmt_cache(provisioned_pool):
     from database.session import async_engine
 
     await async_engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def contractd_disposable_tenant(s2_clean_db):
+    """Per-test OWNED DISPOSABLE tenant (R1-R1-R1 Blocker 3).
+
+    Every Contract D test runs inside its own freshly-provisioned tenant
+    (wholesaler + schema + retailer + binding). The schema is NOT registered
+    in the ownership registry (whose teardown would query it after dropping);
+    instead this fixture DROPs the schema (CASCADE) in a fresh cleanup session
+    and verifies it is absent — discarding every row, including IMMUTABLE
+    ledger_entries rows. Public ownership rows are deleted by the registry by
+    exact id. We never rely on deleting immutable rows.
+
+    Provisioning DDL (CREATE SCHEMA) invalidates asyncpg prepared-statement
+    caches on pooled connections (search_path-dependent plans), so the engine
+    pool is disposed after provisioning and after the schema drop — same
+    pattern as the module-level ``_contractd_flush_stmt_cache``.
+    """
+    from database.session import AsyncSessionLocal, async_engine
+
+    db, reg = s2_clean_db
+    tenant = await _provision_disposable_tenant(db, reg)
+    # Provisioning DDL invalidates prepared-statement caches -> dispose pool.
+    await async_engine.dispose()
+    try:
+        yield tenant
+    finally:
+        # Release the main session's open transaction FIRST — otherwise the
+        # fresh cleanup session's DROP SCHEMA blocks on its ACCESS SHARE locks
+        # until the 60s asyncpg command timeout (TimeoutError at bind_execute).
+        await db.rollback()
+        async with AsyncSessionLocal() as cleanup_db:
+            await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{tenant["schema"]}" CASCADE'))
+            await cleanup_db.commit()
+            row = (
+                await cleanup_db.execute(
+                    text(
+                        "SELECT schema_name FROM information_schema.schemata "
+                        "WHERE schema_name = :s"
+                    ),
+                    {"s": tenant["schema"]},
+                )
+            ).first()
+            assert row is None, f"disposable tenant schema {tenant['schema']} still present after drop"
+        # Schema drop invalidates prepared-statement caches -> dispose pool.
+        await async_engine.dispose()
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -162,6 +218,221 @@ async def _get_supplier_statement(client, token: str, retailer_id: str, frm: str
     )
 
 
+# ===========================================================================
+# R1-R1-R1 Blocker 3 — owned disposable tenant (per test).
+#
+# Every Contract D test runs inside its OWN freshly-provisioned tenant
+# (wholesaler + schema + retailer + binding). All rows — including IMMUTABLE
+# ledger_entries (write-only trigger) — are discarded by the registry cleanup
+# which DROP SCHEMA CASCADE and deletes the public ownership rows, then
+# verifies zero residue. We never rely on deleting immutable rows.
+# ===========================================================================
+
+_DISPOSABLE_PW = "CorrectPass99"
+
+
+async def _provision_disposable_tenant(db: AsyncSession, registry, *, prefix: str = "CDR1R1R1") -> dict:
+    """Provision a fresh, disposable Contract D tenant.
+
+    Creates registration -> claim -> provision (wholesaler + schema) ->
+    retailer user -> retailer -> binding.
+
+    The schema is intentionally NOT registered in the ownership registry
+    (registry teardown would DROP it and then the registry's own
+    ``assert_zero_residue`` queries the dropped schema). Instead the
+    ``contractd_disposable_tenant`` fixture DROPs the schema (CASCADE) in its
+    own teardown and verifies it is absent — discarding every row, including
+    the IMMUTABLE ledger_entries rows (R1-R1-R1 Blocker 3: never delete
+    immutable rows). Only the public ownership rows are registered so the
+    registry deletes them by exact id.
+    """
+    from core.security import hash_password
+    from services.tenant_provisioning_service import TenantProvisioningService
+
+    code = f"{prefix}{uuid.uuid4().hex[:6].upper()}"
+    email = _unique_email()
+    password = _DISPOSABLE_PW
+    reg_id = uuid.uuid4()
+    registry.register_registration(str(reg_id))
+    await db.execute(
+        text(
+            "INSERT INTO public.tenant_registrations "
+            "(id, company_name, tenant_code, country, owner_email, status, "
+            " expires_at, created_at, updated_at) "
+            "VALUES (:id, :company, :code, 'TZ', :email, 'email_verified', "
+            " now() + interval '365 days', now(), now())"
+        ),
+        {
+            "id": reg_id,
+            "company": f"Disposable {code}",
+            "code": code,
+            "email": f"owner.{code.lower()}@example.com",
+        },
+    )
+    await db.commit()
+
+    service = TenantProvisioningService(db)
+    claim_result = await service.claim_registration_for_provisioning(str(reg_id))
+    assert claim_result.action == "claimed", f"claim failed: {claim_result}"
+    await db.commit()
+    await service.provision_wholesaler_and_schema(str(reg_id))
+    await db.commit()
+
+    reg_row = (
+        await db.execute(
+            text("SELECT tenant_schema FROM public.tenant_registrations WHERE id = :id"),
+            {"id": reg_id},
+        )
+    ).fetchone()
+    ws_row = (
+        await db.execute(
+            text("SELECT id FROM public.wholesalers WHERE code = :code"),
+            {"code": code},
+        )
+    ).fetchone()
+    schema = reg_row.tenant_schema
+    ws_id = str(ws_row.id)
+    registry.register_wholesaler(ws_id)
+    # NOTE: do NOT register_tenant_schema / register_tenant_user — the fixture
+    # drops the schema itself (see contractd_disposable_tenant teardown).
+
+    # Retailer user (known email/password for HTTP login). Registered rows
+    # inside the schema are discarded by the schema drop.
+    pw_hash = hash_password(password)
+    uid_row = (
+        await db.execute(
+            text(
+                f'INSERT INTO "{schema}".users '
+                "(email, password_hash, full_name, is_active) "
+                "VALUES (:email, :pw, 'Test Retailer', true) RETURNING id"
+            ),
+            {"email": email, "pw": pw_hash},
+        )
+    ).fetchone()
+    uid = str(uid_row.id)
+    await _grant_retailer_operator(db, tenant_schema=schema, user_id=uid)
+    ret_id = await _create_retailer(db, name=f"Retailer {code}", registry=registry)
+    await _create_binding(
+        db, wholesaler_id=ws_id, retailer_id=ret_id, tenant_user_id=uid, registry=registry
+    )
+    return {
+        "code": code,
+        "email": email,
+        "password": password,
+        "ws_id": ws_id,
+        "schema": schema,
+        "ret_id": ret_id,
+        "uid": uid,
+        "reg_id": str(reg_id),
+    }
+
+
+async def _login_disposable_retailer(client, tenant: dict) -> str:
+    """Authentic retailer login for a disposable tenant."""
+    resp = await client.post(
+        "/api/v1/client/auth/login",
+        json={
+            "email": tenant["email"],
+            "password": tenant["password"],
+            "wholesaler_code": tenant["code"],
+        },
+    )
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    return resp.json()["data"]["tokens"]["access_token"]
+
+
+async def _provision_disposable_admin(db: AsyncSession, tenant: dict, registry) -> dict:
+    """Create the disposable tenant's first admin via the canonical owner
+    credential setup path (same production flow as cashier_identity).
+
+    The admin user lives inside the disposable schema, which the fixture
+    teardown drops — so it is NOT registered in the ownership registry.
+    """
+    from services.owner_credential_service import OwnerCredentialSetupService
+
+    svc = OwnerCredentialSetupService(db)
+    issue = await svc.issue_setup_token(uuid.UUID(tenant["reg_id"]))
+    assert issue.action == "issued", f"setup token issue failed: {issue}"
+    consume = await svc.consume_setup_token(issue.raw_token, _CASHIER_PW)
+    result = await svc.create_first_admin_rbac(consume)
+    await db.commit()
+    return {
+        "email": result.owner_email,
+        "password": _CASHIER_PW,
+        "user_id": str(result.user_id),
+        "schema": tenant["schema"],
+        "ws_id": tenant["ws_id"],
+    }
+
+
+async def _disposable_admin_token(i2b_client, admin: dict) -> str:
+    """Authentic /auth/login + /auth/select-tenant admin token."""
+    resp = await i2b_client.post(
+        "/api/v1/auth/login",
+        json={"email": admin["email"], "password": admin["password"]},
+    )
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    identity_token = resp.json()["data"]["access_token"]
+    resp2 = await i2b_client.post(
+        "/api/v1/auth/select-tenant",
+        json={"tenant_id": admin["ws_id"]},
+        headers={"Authorization": f"Bearer {identity_token}"},
+    )
+    assert resp2.status_code == HTTPStatus.OK, resp2.text
+    return resp2.json()["data"]["access_token"]
+
+
+async def _disposable_tokens(i2b_client, db, tenant: dict, registry) -> tuple[str, str]:
+    """Retailer + admin tokens for a disposable tenant (no data seeded)."""
+    token_ret = await _login_disposable_retailer(i2b_client, tenant)
+    admin = await _provision_disposable_admin(db, tenant, registry)
+    token_admin = await _disposable_admin_token(i2b_client, admin)
+    return token_ret, token_admin
+
+
+async def _submit_and_confirm_disposable(
+    i2b_client, db, tenant: dict, registry, amount: str = "100.00", method: str = "cash"
+) -> dict:
+    """Full declare→confirm flow INSIDE the disposable tenant.
+
+    Equivalent of the shared I2C-I1 ``_submit_and_confirm`` but bound to the
+    per-test disposable tenant: retailer login + declaration + disposable-admin
+    confirmation. ALL rows (orders, payments, declarations, and the immutable
+    ledger entries the confirm flow writes) live in the disposable schema,
+    which the s2_clean_db teardown DROP SCHEMA CASCADE discards.
+    """
+    oid = await _seed_order_with_item(
+        db, tenant["schema"], tenant["ws_id"], tenant["ret_id"], amount
+    )
+    token_ret = await _login_disposable_retailer(i2b_client, tenant)
+    decl = await i2b_client.post(
+        f"/api/v1/client/orders/{oid}/declare",
+        json={"declared_amount": amount, "method": method},
+        headers={**_headers(token_ret), "X-Declaration-Idempotency-Key": f"cdr1r1r1-{uuid.uuid4().hex}"},
+    )
+    assert decl.status_code == HTTPStatus.CREATED, decl.text
+    decl_id = decl.json()["data"]["id"]
+
+    admin = await _provision_disposable_admin(db, tenant, registry)
+    token_admin = await _disposable_admin_token(i2b_client, admin)
+    r = await i2b_client.post(
+        f"/api/v1/declarations/{decl_id}/confirm", headers=_headers(token_admin)
+    )
+    assert r.status_code == HTTPStatus.OK, r.text
+
+    return {
+        "decl_id": decl_id,
+        "oid": str(oid),
+        "schema": tenant["schema"],
+        "ws_id": tenant["ws_id"],
+        "ret_id": tenant["ret_id"],
+        "token_ret": token_ret,
+        "token_admin": token_admin,
+        "admin": admin,
+        "tenant": tenant,
+    }
+
+
 async def _insert_payment_row(
     db: AsyncSession,
     schema: str,
@@ -238,15 +509,20 @@ async def _bulk_orders_with_charges(
 
 async def _bulk_payments(
     db: AsyncSession, schema: str, order_id, ret_id, n: int, amount: str = "1.00"
-) -> None:
-    """Seed ``n`` completed payments on one order (same retailer). Deletable."""
+) -> list[uuid.UUID]:
+    """Seed ``n`` completed payments on one order (same retailer).
+
+    All IDs are PRE-GENERATED and returned so the caller can clean up ONLY
+    those exact IDs via ``WHERE id = ANY(:owned_ids)`` (R1-R1-R1 Blocker 3).
+    """
+    pay_ids = [uuid.uuid4() for _ in range(n)]
     rows = [
         {
-            "id": uuid.uuid4(),
+            "id": pay_ids[i],
             "oid": order_id,
             "ret": ret_id,
-            "txid": f"tx-{uuid.uuid4().hex[:12]}",
-            "idem": f"pay-{uuid.uuid4().hex}",
+            "txid": f"tx-{pay_ids[i].hex[:12]}",
+            "idem": f"pay-{pay_ids[i].hex}",
             "amt": Decimal(amount),
             "rno": f"RCT-20260804-{(i % 900000) + 100000:06d}",
         }
@@ -263,24 +539,30 @@ async def _bulk_payments(
         rows,
     )
     await db.commit()
+    return pay_ids
 
 
 async def _bulk_pending_declarations(
-    db: AsyncSession, schema: str, ws_id, ret_id, order_id, n: int, prefix: str = "r1r1cap"
-) -> str:
-    """Seed ``n`` pending declarations on one order. Returns the idempotency-key
-    prefix used so the caller can DELETE them in finally."""
+    db: AsyncSession, schema: str, ws_id, ret_id, order_id, n: int
+) -> list[uuid.UUID]:
+    """Seed ``n`` pending declarations on one order.
+
+    All IDs are PRE-GENERATED and returned so the caller can clean up ONLY
+    those exact IDs via ``WHERE id = ANY(:owned_ids)`` (R1-R1-R1 Blocker 3).
+    No prefix / idempotency-key scanning is ever used for cleanup.
+    """
+    decl_ids = [uuid.uuid4() for _ in range(n)]
     rows = [
         {
-            "id": uuid.uuid4(),
+            "id": decl_ids[i],
             "oid": order_id,
             "ret": ret_id,
             "ws": ws_id,
             "amt": Decimal("10.00"),
-            "idem": f"{prefix}-{uuid.uuid4().hex}",
+            "idem": f"pay-{decl_ids[i].hex}",
             "sb": uuid.uuid4(),
         }
-        for _ in range(n)
+        for i in range(n)
     ]
     await db.execute(
         text(
@@ -292,7 +574,101 @@ async def _bulk_pending_declarations(
         rows,
     )
     await db.commit()
-    return prefix
+    return decl_ids
+
+
+# ===========================================================================
+# R1-R1-R1 Blocker 3 — exact test-ownership cleanup infrastructure.
+#
+#  * Every deletable row the test inserts is PRE-GENERATED with an owned ID and
+#    cleaned up ONLY via ``WHERE id = ANY(:owned_ids)`` in a fresh session
+#    (never a LIKE/prefix/wildcard/table-wide DELETE).
+#  * Immutable ledger rows (ledger_entries is write-only) can never be deleted,
+#    so every test that seeds ledger data runs inside an OWNED DISPOSABLE
+#    SCHEMA which is DROPped (CASCADE) and verified absent afterwards — we
+#    never rely on deleting immutable rows.
+# ===========================================================================
+
+
+async def _cleanup_exact_ids(db: AsyncSession, schema: str, table: str, ids: list[uuid.UUID]) -> int:
+    """Delete exactly the owned IDs from one tenant table; return rowcount."""
+    if not ids:
+        return 0
+    result = await db.execute(
+        text(f'DELETE FROM "{schema}".{table} WHERE id = ANY(:ids)'),
+        {"ids": ids},
+    )
+    await db.commit()
+    return result.rowcount
+
+
+@asynccontextmanager
+async def _disposable_statement_schema(db: AsyncSession):
+    """Context manager owning a disposable tenant schema for immutable ledger
+    test data (R1-R1-R1 Blocker 3).
+
+    Creates a fresh ``t_stmt_<hex>`` schema with the exact tables the statement
+    service queries, yields its name, then in a FRESH cleanup session DROPs it
+    (CASCADE) and verifies it is absent from the catalog. Immutable
+    ledger_entries rows are therefore discarded by schema drop — never by
+    deleting immutable rows.
+    """
+    from database.session import AsyncSessionLocal
+
+    schema = f"t_stmt_{uuid.uuid4().hex[:12]}"
+
+    await db.execute(text(f'CREATE SCHEMA "{schema}"'))
+    await db.execute(text(
+        f'CREATE TABLE "{schema}".orders ('
+        "id UUID PRIMARY KEY, wholesaler_id UUID NOT NULL, retailer_id UUID NOT NULL, "
+        "status TEXT NOT NULL, total_amount NUMERIC(12,2) NOT NULL, is_deleted BOOLEAN NOT NULL DEFAULT false, "
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+    ))
+    await db.execute(text(
+        f'CREATE TABLE "{schema}".ledger_entries ('
+        "id UUID PRIMARY KEY, transaction_date TIMESTAMPTZ NOT NULL DEFAULT now(), "
+        "account_type TEXT NOT NULL, amount NUMERIC(18,4) NOT NULL, "
+        "reference_type TEXT NOT NULL, reference_id UUID NOT NULL, description TEXT, "
+        "entry_version INTEGER NOT NULL DEFAULT 1, is_deleted BOOLEAN NOT NULL DEFAULT false, "
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+    ))
+    await db.execute(text(
+        f'CREATE TABLE "{schema}".payments ('
+        "id UUID PRIMARY KEY, order_id UUID NOT NULL, retailer_id UUID NOT NULL, "
+        "transaction_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, amount NUMERIC(12,2) NOT NULL, "
+        "method TEXT NOT NULL, status TEXT NOT NULL, receipt_number TEXT, "
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+        "is_deleted BOOLEAN NOT NULL DEFAULT false)"
+    ))
+    await db.execute(text(
+        f'CREATE TABLE "{schema}".payment_declarations ('
+        "id UUID PRIMARY KEY, order_id UUID NOT NULL, retailer_id UUID NOT NULL, "
+        "wholesaler_id UUID NOT NULL, declared_amount NUMERIC(12,2) NOT NULL, method TEXT NOT NULL, "
+        "status TEXT NOT NULL, idempotency_key TEXT NOT NULL, submitted_by UUID, "
+        "submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(), transfer_reference TEXT, "
+        "confirmed_by UUID, confirmed_at TIMESTAMPTZ, confirmation_payment_id UUID)"
+    ))
+    await db.commit()
+    try:
+        yield schema
+    finally:
+        # Release the main session's open transaction FIRST — otherwise the
+        # fresh cleanup session's DROP SCHEMA blocks on its ACCESS SHARE locks
+        # until the 10s asyncpg command timeout (TimeoutError at bind_execute).
+        await db.rollback()
+        async with AsyncSessionLocal() as cleanup_db:
+            await cleanup_db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+            await cleanup_db.commit()
+            row = (
+                await cleanup_db.execute(
+                    text(
+                        "SELECT schema_name FROM information_schema.schemata "
+                        "WHERE schema_name = :s"
+                    ),
+                    {"s": schema},
+                )
+            ).first()
+            assert row is None, f"disposable schema {schema} still present after drop"
 
 
 # ===========================================================================
@@ -301,14 +677,25 @@ async def _bulk_pending_declarations(
 
 
 class TestStatementHappyPath:
-    """Statement renders ledger-derived balances + independent settled list."""
+    """Statement renders ledger-derived balances + independent settled list.
 
-    async def test_retailer_statement_happy_path(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity, amount="100.00")
-        # _seed_confirmed_order seeds via raw SQL (no service path), so post the
+    Runs entirely inside the per-test OWNED DISPOSABLE tenant: every order,
+    payment, declaration and IMMUTABLE ledger row lives in the disposable
+    schema, which the s2_clean_db teardown DROP SCHEMA CASCADE discards
+    (R1-R1-R1 Blocker 3). No row is ever deleted individually.
+    """
+
+    async def test_retailer_statement_happy_path(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
+    ):
+        tenant = contractd_disposable_tenant
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(
+            i2b_client, db, tenant, reg, amount="100.00"
+        )
+        # _seed_order_with_item seeds via raw SQL (no service path), so post the
         # +RECEIVABLE charge that the order-confirmation service path would have.
-        db, _reg = s2_clean_db
-        await _post_receivable_charge(db, info["sch_a"], uuid.UUID(info["oid"]), "100.00")
+        await _post_receivable_charge(db, info["schema"], uuid.UUID(info["oid"]), "100.00")
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         assert r.status_code == HTTPStatus.OK, r.text
@@ -335,12 +722,17 @@ class TestStatementHappyPath:
         assert "movement_id" not in r.text
         assert "payment_id" not in r.text
 
-    async def test_supplier_statement_happy_path(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity, amount="250.00")
-        db, _reg = s2_clean_db
-        await _post_receivable_charge(db, info["sch_a"], uuid.UUID(info["oid"]), "250.00")
+    async def test_supplier_statement_happy_path(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
+    ):
+        tenant = contractd_disposable_tenant
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(
+            i2b_client, db, tenant, reg, amount="250.00"
+        )
+        await _post_receivable_charge(db, info["schema"], uuid.UUID(info["oid"]), "250.00")
         frm, to = await _stmt_period_yesterday_today()
-        r = await _get_supplier_statement(i2b_client, info["token_admin"], info["ret_a"], frm, to)
+        r = await _get_supplier_statement(i2b_client, info["token_admin"], info["ret_id"], frm, to)
         assert r.status_code == HTTPStatus.OK, r.text
         data = r.json()["data"]
         assert Decimal(data["charge_total"]) == Decimal("250.00")
@@ -351,11 +743,16 @@ class TestStatementHappyPath:
         closing = Decimal(data["closing_balance"])
         assert closing == opening + net
 
-    async def test_opening_closing_arithmetic_invariant(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
+    async def test_opening_closing_arithmetic_invariant(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
+    ):
         """closing_balance must equal opening_balance + net_movement exactly."""
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity, amount="100.00")
-        db, _reg = s2_clean_db
-        await _post_receivable_charge(db, info["sch_a"], uuid.UUID(info["oid"]), "100.00")
+        tenant = contractd_disposable_tenant
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(
+            i2b_client, db, tenant, reg, amount="100.00"
+        )
+        await _post_receivable_charge(db, info["schema"], uuid.UUID(info["oid"]), "100.00")
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         data = r.json()["data"]
@@ -371,9 +768,11 @@ class TestDualKeyIsolation:
     """Cross-tenant / cross-retailer denial is neutral (no existence disclosure)."""
 
     async def test_supplier_foreign_retailer_denied_neutral(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        tenant = contractd_disposable_tenant
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
         frm, to = await _stmt_period_yesterday_today()
         # A random retailer id not bound to this supplier -> neutral 404.
         foreign_ret = str(uuid.uuid4())
@@ -394,14 +793,19 @@ class TestDateRangeContract:
     """Missing/blank/malformed/reversed/>365-day ranges -> controlled 400
     INVALID_DATE_RANGE (never a framework 422 or a neutral 404) on BOTH routes
     (they share the same strict parser). The public message is neutral and
-    carries no raw parser/internal details."""
+    carries no raw parser/internal details.
 
-    async def test_missing_from_date(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+    Date validation runs BEFORE any ledger/list access, so these tests only
+    need disposable tokens — no statement data is seeded.
+    """
+
+    async def test_missing_from_date(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
         r = await i2b_client.get(
             "/api/v1/client/statements/print",
             params={"to": "2026-08-10"},
-            headers=_headers(info["token_ret"]),
+            headers=_headers(token_ret),
         )
         assert r.status_code == HTTPStatus.BAD_REQUEST
         assert r.json()["code"] == "INVALID_DATE_RANGE"
@@ -409,103 +813,190 @@ class TestDateRangeContract:
         assert "strptime" not in r.text
         assert "ValueError" not in r.text
 
-    async def test_missing_to_date(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+    async def test_missing_to_date(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
         r = await i2b_client.get(
             "/api/v1/client/statements/print",
             params={"from": "2026-08-01"},
-            headers=_headers(info["token_ret"]),
+            headers=_headers(token_ret),
         )
         assert r.status_code == HTTPStatus.BAD_REQUEST
         assert r.json()["code"] == "INVALID_DATE_RANGE"
 
-    async def test_blank_from_date(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+    async def test_blank_from_date(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
         r = await i2b_client.get(
             "/api/v1/client/statements/print",
             params={"from": "   ", "to": "2026-08-10"},
-            headers=_headers(info["token_ret"]),
+            headers=_headers(token_ret),
         )
         assert r.status_code == HTTPStatus.BAD_REQUEST
         assert r.json()["code"] == "INVALID_DATE_RANGE"
 
-    async def test_malformed_from_date(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+    async def test_malformed_from_date(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
         r = await i2b_client.get(
             "/api/v1/client/statements/print",
             params={"from": "01/08/2026", "to": "2026-08-10"},
-            headers=_headers(info["token_ret"]),
+            headers=_headers(token_ret),
         )
         assert r.status_code == HTTPStatus.BAD_REQUEST
         assert r.json()["code"] == "INVALID_DATE_RANGE"
         assert "01/08/2026" not in r.text
 
-    async def test_from_after_to(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        r = await _get_retailer_statement(i2b_client, info["token_ret"], "2026-08-10", "2026-08-01")
+    async def test_from_after_to(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
+        r = await _get_retailer_statement(i2b_client, token_ret, "2026-08-10", "2026-08-01")
         assert r.status_code == HTTPStatus.BAD_REQUEST
         assert r.json()["code"] == "INVALID_DATE_RANGE"
 
-    async def test_span_exceeds_365_days(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        r = await _get_retailer_statement(i2b_client, info["token_ret"], "2025-01-01", "2026-08-10")
+    async def test_span_exceeds_365_days(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
+        r = await _get_retailer_statement(i2b_client, token_ret, "2025-01-01", "2026-08-10")
         assert r.status_code == HTTPStatus.BAD_REQUEST
         assert r.json()["code"] == "INVALID_DATE_RANGE"
 
     async def test_supplier_route_shares_the_same_strict_parser(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, reg = s2_clean_db
+        _, token_admin = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
+        ret_id = contractd_disposable_tenant["ret_id"]
         # Malformed + reversed + >365-day must behave identically on the
         # supplier route (same shared parser).
-        r1 = await _get_supplier_statement(i2b_client, info["token_admin"], info["ret_a"], "nope", "2026-08-10")
+        r1 = await _get_supplier_statement(i2b_client, token_admin, ret_id, "nope", "2026-08-10")
         assert r1.status_code == HTTPStatus.BAD_REQUEST
         assert r1.json()["code"] == "INVALID_DATE_RANGE"
-        r2 = await _get_supplier_statement(i2b_client, info["token_admin"], info["ret_a"], "2026-08-10", "2026-08-01")
+        r2 = await _get_supplier_statement(i2b_client, token_admin, ret_id, "2026-08-10", "2026-08-01")
         assert r2.status_code == HTTPStatus.BAD_REQUEST
         assert r2.json()["code"] == "INVALID_DATE_RANGE"
-        r3 = await _get_supplier_statement(i2b_client, info["token_admin"], info["ret_a"], "2025-01-01", "2026-08-10")
+        r3 = await _get_supplier_statement(i2b_client, token_admin, ret_id, "2025-01-01", "2026-08-10")
         assert r3.status_code == HTTPStatus.BAD_REQUEST
         assert r3.json()["code"] == "INVALID_DATE_RANGE"
 
     async def test_non_zero_padded_date_is_rejected(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         """R1-R1 P2: strptime would accept ``2026-8-1``; the strict YYYY-MM-DD
         contract (regex fullmatch before parse) must reject it."""
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
         for bad in (("2026-8-01", "2026-08-10"), ("2026-08-1", "2026-08-10"),
                     ("2026-8-1", "2026-8-2")):
-            r = await _get_retailer_statement(i2b_client, info["token_ret"], bad[0], bad[1])
+            r = await _get_retailer_statement(i2b_client, token_ret, bad[0], bad[1])
             assert r.status_code == HTTPStatus.BAD_REQUEST, bad
             assert r.json()["code"] == "INVALID_DATE_RANGE"
 
     async def test_extra_characters_in_date_are_rejected(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         """R1-R1 P2: trailing/leading/embedded characters (that survive strip)
         must not pass (fullmatch). Bare whitespace is stripped by the parser
         and therefore legitimately accepted."""
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
         for bad in ("2026-08-010", "2026-08-01T00:00", "x2026-08-01", "2026-08-01X", "2026--08-01"):
-            r = await _get_retailer_statement(i2b_client, info["token_ret"], bad, "2026-08-10")
+            r = await _get_retailer_statement(i2b_client, token_ret, bad, "2026-08-10")
             assert r.status_code == HTTPStatus.BAD_REQUEST, bad
             assert r.json()["code"] == "INVALID_DATE_RANGE"
 
     async def test_invalid_calendar_date_is_rejected(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         """R1-R1: regex-valid but impossible calendar dates (Feb 30, month 13)
         are rejected by the strict parser too."""
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
         for bad in ("2026-02-30", "2026-13-01", "2026-00-10", "0000-08-10"):
-            r = await _get_retailer_statement(i2b_client, info["token_ret"], bad, "2026-08-10")
+            r = await _get_retailer_statement(i2b_client, token_ret, bad, "2026-08-10")
             assert r.status_code == HTTPStatus.BAD_REQUEST, bad
             assert r.json()["code"] == "INVALID_DATE_RANGE"
 
-    async def test_malformed_retailer_uuid_supplier(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        r = await _get_supplier_statement(i2b_client, info["token_admin"], "not-a-uuid", "2026-08-01", "2026-08-10")
+    # -- R1-R1-R1 exact syntax: whitespace/encoded whitespace is NOT trimmed --
+
+    async def test_whitespace_suffix_is_rejected(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        """R1-R1-R1: a trailing space (decoded %20) must return 400 — the raw
+        value differs from its own strip(), so it is rejected without trimming."""
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
+        r = await _get_retailer_statement(i2b_client, token_ret, "2026-08-01 ", "2026-08-10")
+        assert r.status_code == HTTPStatus.BAD_REQUEST
+        assert r.json()["code"] == "INVALID_DATE_RANGE"
+
+    async def test_encoded_space_20_is_rejected(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        """R1-R1-R1: %20 in the query is decoded to a space by the framework;
+        the raw received value therefore carries a trailing space and must be
+        rejected (400 INVALID_DATE_RANGE), not trimmed.
+
+        The encoded query string is sent in the RAW URL (httpx ``params`` would
+        double-encode ``%20`` -> ``%2520``, never exercising the decoded path).
+        """
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
+        r = await i2b_client.get(
+            "/api/v1/client/statements/print?from=2026-08-01%20&to=2026-08-10",
+            headers=_headers(token_ret),
+        )
+        assert r.status_code == HTTPStatus.BAD_REQUEST
+        assert r.json()["code"] == "INVALID_DATE_RANGE"
+
+    async def test_encoded_tab_09_is_rejected(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        """R1-R1-R1: %09 (tab) as a suffix must be rejected on the raw value
+        (raw URL form so the framework decodes %09 to a real tab)."""
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
+        r = await i2b_client.get(
+            "/api/v1/client/statements/print?from=2026-08-01%09&to=2026-08-10",
+            headers=_headers(token_ret),
+        )
+        assert r.status_code == HTTPStatus.BAD_REQUEST
+        assert r.json()["code"] == "INVALID_DATE_RANGE"
+
+    async def test_tab_and_newline_suffixes_are_rejected(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        """R1-R1-R1: literal tab / newline suffixes (decoded from %09/%0A) are
+        rejected on the raw value."""
+        db, reg = s2_clean_db
+        token_ret, _ = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
+        for bad in ("2026-08-01\t", "2026-08-01\n"):
+            r = await _get_retailer_statement(i2b_client, token_ret, bad, "2026-08-10")
+            assert r.status_code == HTTPStatus.BAD_REQUEST, repr(bad)
+            assert r.json()["code"] == "INVALID_DATE_RANGE"
+
+    async def test_parser_rejects_trimmed_input_directly(self):
+        """R1-R1-R1 direct-parser proof: the shared parser rejects any raw value
+        that differs from its own strip() (space/tab/newline suffixes)."""
+        from repositories.statement_repository import (
+            StatementPeriodError,
+            parse_statement_date_range,
+        )
+
+        for bad_from, bad_to in (
+            ("2026-08-01 ", "2026-08-10"),
+            ("2026-08-01\t", "2026-08-10"),
+            ("2026-08-01\n", "2026-08-10"),
+            (" 2026-08-01", "2026-08-10"),
+            ("2026-08-01", "2026-08-10 "),
+        ):
+            with pytest.raises(StatementPeriodError):
+                parse_statement_date_range(bad_from, bad_to)
+
+    async def test_parser_accepts_canonical_input_directly(self):
+        """R1-R1-R1 direct-parser proof: the canonical zero-padded shape passes."""
+        from repositories.statement_repository import parse_statement_date_range
+
+        from_, to_ = parse_statement_date_range("2026-08-01", "2026-08-10")
+        assert from_.isoformat() == "2026-08-01"
+        assert to_.isoformat() == "2026-08-10"
+
+    async def test_malformed_retailer_uuid_supplier(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        db, reg = s2_clean_db
+        _, token_admin = await _disposable_tokens(i2b_client, db, contractd_disposable_tenant, reg)
+        r = await _get_supplier_statement(i2b_client, token_admin, "not-a-uuid", "2026-08-01", "2026-08-10")
         assert r.status_code == HTTPStatus.NOT_FOUND
         assert r.json()["code"] == "STATEMENT_NOT_AVAILABLE"
 
@@ -519,13 +1010,14 @@ class TestZeroWrite:
     """Statement routes produce zero writes and zero fingerprint changes."""
 
     async def test_statement_routes_zero_fingerprint(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
-        ws_a = info["ws_a"]
-        ret_a = info["ret_a"]
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        sch_a = info["schema"]
+        ws_a = tenant["ws_id"]
+        ret_a = tenant["ret_id"]
 
         fp_before = {
             "orders": await _table_fingerprint(db, sch_a, "orders"),
@@ -568,9 +1060,10 @@ class TestIndependentLists:
     """movements[] and settled_payments[] are independent; never cross-associated."""
 
     async def test_movements_and_settled_payments_are_separate_lists(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         data = r.json()["data"]
@@ -592,9 +1085,10 @@ class TestIndependentLists:
             assert "settled_total" not in p
 
     async def test_pending_declarations_only_when_requested(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
         frm, to = await _stmt_period_yesterday_today()
         # Default (include_pending=false): no pending list entries leak.
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
@@ -614,15 +1108,16 @@ class TestNoLeakage:
     SERIALIZED response contains no movement_id/payment_id keys at all.
     """
 
-    async def test_no_internal_ids_in_statement(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+    async def test_no_internal_ids_in_statement(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         body = r.text
         # Schema name must never leak.
-        assert info["sch_a"] not in body
+        assert info["schema"] not in body
         # The supplier internal tenant id must not appear as a raw value.
-        assert info["ws_a"] not in body
+        assert info["ws_id"] not in body
         # R1 redaction: no movement_id / payment_id anywhere in the response.
         assert "movement_id" not in body
         assert "payment_id" not in body
@@ -637,17 +1132,15 @@ class TestFailClosed:
     """Orphan ledger / arithmetic mismatch surface precise 409 codes."""
 
     async def test_orphan_ledger_ref_returns_409_scope_incomplete(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         """Orphan receivable refs surface STATEMENT_LEDGER_SCOPE_INCOMPLETE.
 
-        ledger_entries is IMMUTABLE (write-only trigger), so the orphan row
-        cannot be deleted. This test therefore runs in the DEDICATED tenant-B
-        schema: the orphan row only ever lives in schema_b, which no other
-        Contract D test touches (all other tests use tenant A), so it cannot
-        trip the schema-level orphan precheck for other tests.
+        The orphan row lives in the OWNED DISPOSABLE tenant schema which the
+        teardown DROP SCHEMA CASCADE discards (R1-R1-R1 Blocker 3) — we never
+        rely on deleting immutable ledger rows.
 
-        The service is invoked directly (with the token-derived schema) so the
+        The service is invoked directly (with the disposable schema) so the
         assertion is independent of HTTP identity resolution.
         """
         from datetime import date as _date
@@ -655,29 +1148,17 @@ class TestFailClosed:
         from repositories.statement_repository import StatementLedgerScopeIncomplete
 
         db, _reg = s2_clean_db
-        _code_a, _code_b, schema_b, _email, _password, _ua, _ub = two_tenants
-        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+        tenant = contractd_disposable_tenant
+        schema = tenant["schema"]
+        ws_id = uuid.UUID(tenant["ws_id"])
+        ret_id = uuid.UUID(tenant["ret_id"])
 
-        ws_b = _pool_instance.tenants["b"]["ws_id"]
-        # Resolve tenant-B retailer from the binding (authoritative, server-side).
-        row = (
-            await db.execute(
-                text(
-                    "SELECT retailer_id FROM public.wholesaler_retailer_bindings "
-                    "WHERE wholesaler_id = :ws AND tenant_user_id = :uid AND is_deleted IS FALSE LIMIT 1"
-                ),
-                {"ws": ws_b, "uid": _ub},
-            )
-        ).first()
-        assert row is not None, "tenant-B binding not found"
-        ret_b_uuid = row.retailer_id
-
-        # Insert an orphan receivable ledger entry in schema_b referencing a
-        # non-existent order (no FK exists, so the INSERT succeeds).
+        # Insert an orphan receivable ledger entry referencing a non-existent
+        # order (no FK exists, so the INSERT succeeds).
         orphan_id = uuid.uuid4()
         await db.execute(
             text(
-                f'INSERT INTO "{schema_b}".ledger_entries '
+                f'INSERT INTO "{schema}".ledger_entries '
                 "(id, transaction_date, account_type, amount, reference_type, reference_id, "
                 "entry_version, is_deleted, created_at, updated_at) "
                 "VALUES (:id, now(), 'receivable', :amt, 'order', :ref, 1, false, now(), now())"
@@ -688,9 +1169,9 @@ class TestFailClosed:
 
         res = await build_statement_print(
             db,
-            schema=schema_b,
-            wholesaler_id=ws_b,
-            retailer_id=ret_b_uuid,
+            schema=schema,
+            wholesaler_id=ws_id,
+            retailer_id=ret_id,
             date_from=_date(2026, 8, 1),
             date_to=_date(2026, 8, 10),
         )
@@ -700,7 +1181,7 @@ class TestFailClosed:
         # (verified separately by the route-level inventory tests).
 
     async def test_zero_value_movement_returns_409_internal_inconsistent(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         """R1 rule 2 — a zero-valued receivable movement is an internal
         inconsistency and must fail closed (409 STATEMENT_INTERNAL_INCONSISTENT).
@@ -709,14 +1190,12 @@ class TestFailClosed:
         silently (no kind classification existed); this assertion fails there.
         GREEN: the R1 zero-value check returns the 409.
 
-        The zero-valued row references this test's own order, which is left in
-        place (orders are never deleted by the harness), so the row is never an
-        orphan — it cannot trip the schema-level orphan precheck for other
-        tests, and other tests' statements filter by their own (wid, rid).
+        The zero-valued row (and the whole disposable tenant) is discarded by
+        the teardown DROP SCHEMA — never by deleting immutable rows.
         """
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        await _post_receivable_charge(db, info["sch_a"], uuid.UUID(info["oid"]), "0.00")
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
+        await _post_receivable_charge(db, info["schema"], uuid.UUID(info["oid"]), "0.00")
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         assert r.status_code == HTTPStatus.CONFLICT
@@ -726,26 +1205,60 @@ class TestFailClosed:
 
 
 # ===========================================================================
-# §6b R1 — completed-payment ownership integrity (rule 1)
+# §6b R1-R1-R1 — completed-payment ownership integrity (rule 1; wrong
+# wholesaler / missing order closure). Corrupt payments live in the OWNED
+# DISPOSABLE tenant; the teardown DROP SCHEMA discards them. For the deletable
+# corruption rows we ALSO demonstrate exact-ID cleanup with rowcount + fresh
+# session (R1-R1-R1 Blocker 3).
 # ===========================================================================
 
 
 class TestPaymentOwnershipIntegrity:
-    """A completed payment whose retailer differs from its order's retailer
-    makes the payment scope inconsistent: the statement fails closed with 409
-    STATEMENT_INTERNAL_INCONSISTENT and zero partial document. Corrupt rows
-    neither leak into the document nor silently disappear."""
+    """A completed payment whose retailer differs from its order's retailer,
+    whose order belongs to a different wholesaler, or whose order is
+    unresolvable makes the payment scope inconsistent: the statement fails
+    closed with 409 STATEMENT_INTERNAL_INCONSISTENT and zero partial document.
+    Corrupt rows neither leak into the document nor silently disappear."""
+
+    async def _seed_corrupt_payment(self, db, tenant, *, payment_retailer=None, order_wholesaler=None, order_id=None):
+        """Insert a corrupt completed payment into the disposable schema.
+
+        The order is always created with the CORRECT owner (tenant retailer +
+        tenant wholesaler); only the payment is corrupt (or the order is
+        missing / belongs to another wholesaler). Returns the pre-generated
+        owned payment id.
+        """
+        schema = tenant["schema"]
+        oid = order_id or uuid.uuid4()
+        if order_id is None:
+            # A resolvable order owned by THIS relationship (correct retailer /
+            # wholesaler) so only the payment is corrupt.
+            await db.execute(
+                text(
+                    f'INSERT INTO "{schema}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
+                    "VALUES (:id, :ws, :ret, 'confirmed', 50.00, false)"
+                ),
+                {
+                    "id": oid,
+                    "ws": order_wholesaler or tenant["ws_id"],
+                    "ret": tenant["ret_id"],
+                },
+            )
+        pay_id = await _insert_payment_row(
+            db, schema, oid, payment_retailer or tenant["ret_id"], amount="50.00"
+        )
+        return pay_id
 
     async def test_payment_retailer_mismatch_returns_409_internal_inconsistent(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
+        """Payment retailer != order retailer -> 409 (both routes)."""
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
         foreign_ret = uuid.uuid4()
-        # A completed payment whose retailer_id does NOT match its order's
-        # retailer_id (the payment row is corrupt).
-        pay_id = await _insert_payment_row(
-            db, info["sch_a"], uuid.UUID(info["oid"]), foreign_ret, amount="50.00"
+        pay_id = await self._seed_corrupt_payment(
+            db, tenant, payment_retailer=foreign_ret
         )
         try:
             frm, to = await _stmt_period_yesterday_today()
@@ -757,34 +1270,187 @@ class TestPaymentOwnershipIntegrity:
             assert str(pay_id) not in r.text
             assert str(foreign_ret) not in r.text
         finally:
-            # payments are deletable (no immutable trigger) — clean residue.
-            await db.execute(
-                text(f'DELETE FROM "{info["sch_a"]}".payments WHERE id = :pid'),
-                {"pid": pay_id},
-            )
-            await db.commit()
+            # Exact-ID cleanup with fresh session + rowcount (R1-R1-R1 Blocker 3).
+            from database.session import AsyncSessionLocal
 
-    async def test_ownership_mismatch_also_fails_closed_on_supplier_route(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payments WHERE id = :pid'),
+                    {"pid": pay_id},
+                )
+                assert result.rowcount == 1, "expected exactly 1 owned payment deleted"
+                await cleanup_db.commit()
+
+    async def test_wrong_order_wholesaler_returns_409(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        foreign_ret = uuid.uuid4()
-        pay_id = await _insert_payment_row(
-            db, info["sch_a"], uuid.UUID(info["oid"]), foreign_ret, amount="50.00"
+        """R1-R1-R1: a completed payment whose ORDER belongs to a DIFFERENT
+        wholesaler (even with a matching payment retailer) is corruption."""
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        other_ws = uuid.uuid4()
+        pay_id = await self._seed_corrupt_payment(
+            db, tenant, order_wholesaler=other_ws
         )
         try:
             frm, to = await _stmt_period_yesterday_today()
-            r = await _get_supplier_statement(i2b_client, info["token_admin"], info["ret_a"], frm, to)
+            r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
             assert r.status_code == HTTPStatus.CONFLICT
             assert r.json()["code"] == "STATEMENT_INTERNAL_INCONSISTENT"
             assert "data" not in r.json()
         finally:
+            from database.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payments WHERE id = :pid'),
+                    {"pid": pay_id},
+                )
+                assert result.rowcount == 1
+                await cleanup_db.commit()
+
+    async def test_missing_order_returns_409(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
+    ):
+        """R1-R1-R1: a completed payment whose order is unresolvable (LEFT JOIN
+        -> o.id IS NULL) is corruption -> 409.
+
+        The PRODUCTION schema has ``payments_order_id_fkey`` (FK), so an orphan
+        payment is NOT constructible there — the DB itself already prevents the
+        corruption. The LEFT JOIN ``o.id IS NULL`` branch is therefore proven in
+        the FK-LESS owned disposable schema (``_disposable_statement_schema``),
+        where the orphan payment CAN be inserted, and the precheck must fail
+        closed with STATEMENT_INTERNAL_INCONSISTENT and zero partial view.
+        """
+        from datetime import date as _date
+        from services.print_service import build_statement_print
+        from repositories.statement_repository import StatementInternalInconsistent
+
+        db, _reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        ws_id = uuid.UUID(tenant["ws_id"])
+        ret_id = uuid.UUID(tenant["ret_id"])
+
+        async with _disposable_statement_schema(db) as schema:
+            # Orphan completed payment: order_id references nothing (no FK).
+            orphan_pay_id = uuid.uuid4()
             await db.execute(
-                text(f'DELETE FROM "{info["sch_a"]}".payments WHERE id = :pid'),
-                {"pid": pay_id},
+                text(
+                    f'INSERT INTO "{schema}".payments '
+                    "(id, order_id, retailer_id, transaction_id, idempotency_key, amount, "
+                    "method, status, receipt_number, created_at, updated_at, is_deleted) "
+                    "VALUES (:id, :oid, :ret, 'tx-orphan', 'pay-orphan-idem', 50.00, "
+                    "'cash', 'completed', 'RCT-000001', now(), now(), false)"
+                ),
+                {"id": orphan_pay_id, "oid": uuid.uuid4(), "ret": ret_id},
             )
             await db.commit()
+
+            res = await build_statement_print(
+                db,
+                schema=schema,
+                wholesaler_id=ws_id,
+                retailer_id=ret_id,
+                date_from=_date(2026, 8, 1),
+                date_to=_date(2026, 8, 10),
+            )
+            assert res.view is None
+            assert isinstance(res.error, StatementInternalInconsistent)
+            # The HTTP route maps this to 409 STATEMENT_INTERNAL_INCONSISTENT
+            # (verified separately by the route-level tests); zero partial doc.
+            # The orphan payment lives in the disposable schema, discarded by
+            # the DROP SCHEMA CASCADE teardown (never deleted by id).
+
+    async def test_ownership_mismatch_also_fails_closed_on_supplier_route(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
+    ):
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        foreign_ret = uuid.uuid4()
+        pay_id = await self._seed_corrupt_payment(
+            db, tenant, payment_retailer=foreign_ret
+        )
+        try:
+            frm, to = await _stmt_period_yesterday_today()
+            r = await _get_supplier_statement(i2b_client, info["token_admin"], tenant["ret_id"], frm, to)
+            assert r.status_code == HTTPStatus.CONFLICT
+            assert r.json()["code"] == "STATEMENT_INTERNAL_INCONSISTENT"
+            assert "data" not in r.json()
+        finally:
+            from database.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payments WHERE id = :pid'),
+                    {"pid": pay_id},
+                )
+                assert result.rowcount == 1
+                await cleanup_db.commit()
+
+    async def test_unrelated_valid_relationship_is_not_disclosed(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
+    ):
+        """R1-R1-R1: with a corrupt payment present, the OTHER (unrelated)
+        relationship's statement is not partially disclosed — the schema-level
+        precheck fails closed for it too (no leak of either relationship's
+        rows into any partial document)."""
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        # A second, unrelated retailer (valid relationship) in the SAME schema.
+        from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (
+            _create_retailer_user,
+            _grant_retailer_operator,
+        )
+
+        other_email = _unique_email()
+        # NOTE: no registry registration for this second user — its rows live
+        # INSIDE the disposable schema, which the fixture teardown drops.
+        # Registering it would make the registry's teardown query user_roles in
+        # the ALREADY-DROPPED schema (UndefinedTableError).
+        other_uid = await _create_retailer_user(
+            db, tenant_schema=tenant["schema"], email=other_email,
+            password=_DISPOSABLE_PW,
+        )
+        await _grant_retailer_operator(db, tenant_schema=tenant["schema"], user_id=other_uid)
+        other_ret = await _create_retailer(db, name="Other Retailer", registry=reg)
+        await _create_binding(
+            db, wholesaler_id=tenant["ws_id"], retailer_id=other_ret,
+            tenant_user_id=other_uid, registry=reg,
+        )
+        # Corrupt payment in the schema.
+        foreign_ret = uuid.uuid4()
+        pay_id = await self._seed_corrupt_payment(db, tenant, payment_retailer=foreign_ret)
+        try:
+            frm, to = await _stmt_period_yesterday_today()
+            # The unrelated relationship's statement also fails closed 409 —
+            # never a partial document and never a 200 that could leak rows.
+            resp = await i2b_client.post(
+                "/api/v1/client/auth/login",
+                json={
+                    "email": other_email,
+                    "password": _DISPOSABLE_PW,
+                    "wholesaler_code": tenant["code"],
+                },
+            )
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            other_token = resp.json()["data"]["tokens"]["access_token"]
+            r = await _get_retailer_statement(i2b_client, other_token, frm, to)
+            assert r.status_code == HTTPStatus.CONFLICT
+            assert r.json()["code"] == "STATEMENT_INTERNAL_INCONSISTENT"
+            assert "data" not in r.json()
+        finally:
+            from database.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payments WHERE id = :pid'),
+                    {"pid": pay_id},
+                )
+                assert result.rowcount == 1
+                await cleanup_db.commit()
 
 
 # ===========================================================================
@@ -800,23 +1466,37 @@ class TestSettledTotal:
     """
 
     async def test_settled_total_equals_sum_of_settled_payments(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity, amount="250.00")
-        db, _reg = s2_clean_db
-        # A second completed payment in the same period (independent row).
-        await _insert_payment_row(
-            db, info["sch_a"], uuid.UUID(info["oid"]), uuid.UUID(info["ret_a"]), amount="75.00"
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(
+            i2b_client, db, tenant, reg, amount="250.00"
         )
-        frm, to = await _stmt_period_yesterday_today()
-        r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
-        assert r.status_code == HTTPStatus.OK, r.text
-        data = r.json()["data"]
-        settled_sum = sum((Decimal(p["amount"]) for p in data["settled_payments"]), Decimal("0"))
-        assert Decimal(data["settled_total"]) == settled_sum
-        assert Decimal(data["settled_total"]) == Decimal("325.00")
-        # settled_total never reflects movements or pending declarations.
-        assert "settled_total" not in data["settled_payments"][0]
+        # A second completed payment in the same period (independent row).
+        pay_id = await _insert_payment_row(
+            db, info["schema"], uuid.UUID(info["oid"]), uuid.UUID(tenant["ret_id"]), amount="75.00"
+        )
+        try:
+            frm, to = await _stmt_period_yesterday_today()
+            r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+            assert r.status_code == HTTPStatus.OK, r.text
+            data = r.json()["data"]
+            settled_sum = sum((Decimal(p["amount"]) for p in data["settled_payments"]), Decimal("0"))
+            assert Decimal(data["settled_total"]) == settled_sum
+            assert Decimal(data["settled_total"]) == Decimal("325.00")
+            # settled_total never reflects movements or pending declarations.
+            assert "settled_total" not in data["settled_payments"][0]
+        finally:
+            from database.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payments WHERE id = :pid'),
+                    {"pid": pay_id},
+                )
+                assert result.rowcount == 1
+                await cleanup_db.commit()
 
 
 # ===========================================================================
@@ -836,7 +1516,7 @@ class TestReconciliationTolerance:
     leaks to other tests.
     """
 
-    async def _credit_only_setup(self, i2b_client, two_tenants, s2_clean_db, cashier_identity, delta: str):
+    async def _credit_only_setup(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity, delta: str):
         """Convert the relationship to credit-only and force a ledger/cache
         difference of exactly ``delta`` KES.
 
@@ -846,15 +1526,15 @@ class TestReconciliationTolerance:
         the cached balance is pinned to exactly 0 (exactly representable):
         ledger_total = 0 + delta, cached = 0 -> diff = delta.
         """
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
+        schema = info["schema"]
         # +100 charge (order confirmation receivable) — the confirm flow posts
         # the -100 collection, so the relationship ledger total is 0.00.
-        await _post_receivable_charge(db, sch_a, uuid.UUID(info["oid"]), "100.00")
+        await _post_receivable_charge(db, schema, uuid.UUID(info["oid"]), "100.00")
         # Make the relationship credit-only (no cash/transfer completed payment).
         await db.execute(
-            text(f'UPDATE "{sch_a}".payments SET method = \'credit\' WHERE order_id = :oid'),
+            text(f'UPDATE "{schema}".payments SET method = \'credit\' WHERE order_id = :oid'),
             {"oid": uuid.UUID(info["oid"])},
         )
         # Pin the cached binding balance to exactly 0 (numeric(12,2)-safe).
@@ -863,38 +1543,38 @@ class TestReconciliationTolerance:
                 "UPDATE public.wholesaler_retailer_bindings SET outstanding_balance = 0 "
                 "WHERE wholesaler_id = :ws AND retailer_id = :rid AND is_deleted IS FALSE"
             ),
-            {"ws": uuid.UUID(info["ws_a"]), "rid": uuid.UUID(info["ret_a"])},
+            {"ws": uuid.UUID(contractd_disposable_tenant["ws_id"]), "rid": uuid.UUID(contractd_disposable_tenant["ret_id"])},
         )
         # Introduce the exact delta via a high-precision receivable row.
-        await _post_receivable_charge(db, sch_a, uuid.UUID(info["oid"]), delta)
+        await _post_receivable_charge(db, schema, uuid.UUID(info["oid"]), delta)
         await db.commit()
         return info
 
     async def test_0001_difference_is_accepted(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         info = await self._credit_only_setup(
-            i2b_client, two_tenants, s2_clean_db, cashier_identity, delta="0.001"
+            i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity, delta="0.001"
         )
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         assert r.status_code == HTTPStatus.OK, r.text
 
     async def test_001_difference_is_accepted(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         info = await self._credit_only_setup(
-            i2b_client, two_tenants, s2_clean_db, cashier_identity, delta="0.01"
+            i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity, delta="0.01"
         )
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         assert r.status_code == HTTPStatus.OK, r.text
 
     async def test_00101_difference_is_rejected(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         info = await self._credit_only_setup(
-            i2b_client, two_tenants, s2_clean_db, cashier_identity, delta="0.0101"
+            i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity, delta="0.0101"
         )
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
@@ -921,15 +1601,14 @@ class TestRangeCap:
     """
 
     async def test_movements_1001_return_400_range_too_large_before_internal_inconsistent(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
-        ws_a = uuid.UUID(info["ws_a"])
-        ret_a = uuid.UUID(info["ret_a"])
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        schema = info["schema"]
         # 1001 movements (distinct orders) -> per-list cap fires.
-        await _bulk_orders_with_charges(db, sch_a, ws_a, ret_a, n=1001)
+        await _bulk_orders_with_charges(db, schema, tenant["ws_id"], tenant["ret_id"], n=1001)
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         assert r.status_code == HTTPStatus.BAD_REQUEST
@@ -937,28 +1616,26 @@ class TestRangeCap:
         assert "data" not in r.json()
 
     async def test_movements_1002_return_400_range_too_large(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
-        ws_a = uuid.UUID(info["ws_a"])
-        ret_a = uuid.UUID(info["ret_a"])
-        await _bulk_orders_with_charges(db, sch_a, ws_a, ret_a, n=1002)
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        await _bulk_orders_with_charges(db, info["schema"], tenant["ws_id"], tenant["ret_id"], n=1002)
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         assert r.status_code == HTTPStatus.BAD_REQUEST
         assert r.json()["code"] == "STATEMENT_RANGE_TOO_LARGE"
 
     async def test_settled_1001_return_400_range_too_large(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
         oid = uuid.UUID(info["oid"])
-        ret_a = uuid.UUID(info["ret_a"])
-        await _bulk_payments(db, sch_a, oid, ret_a, n=1001)
+        # 1001 owned payment IDs pre-generated; cleaned up EXACTLY by id.
+        pay_ids = await _bulk_payments(db, info["schema"], oid, uuid.UUID(tenant["ret_id"]), n=1001)
         try:
             frm, to = await _stmt_period_yesterday_today()
             r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
@@ -966,19 +1643,27 @@ class TestRangeCap:
             assert r.json()["code"] == "STATEMENT_RANGE_TOO_LARGE"
             assert "data" not in r.json()
         finally:
-            await db.execute(text(f'DELETE FROM "{sch_a}".payments WHERE idempotency_key LIKE \'pay-%\''))
-            await db.commit()
+            # Exact-ID cleanup with fresh session + exact rowcount (no LIKE).
+            from database.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payments WHERE id = ANY(:ids)'),
+                    {"ids": pay_ids},
+                )
+                assert result.rowcount == 1001, "expected exactly 1001 owned payments deleted"
+                await cleanup_db.commit()
 
     async def test_pending_1001_return_400_range_too_large(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
-        ws_a = uuid.UUID(info["ws_a"])
-        ret_a = uuid.UUID(info["ret_a"])
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
         oid = uuid.UUID(info["oid"])
-        prefix = await _bulk_pending_declarations(db, sch_a, ws_a, ret_a, oid, n=1001)
+        decl_ids = await _bulk_pending_declarations(
+            db, info["schema"], tenant["ws_id"], tenant["ret_id"], oid, n=1001
+        )
         try:
             frm, to = await _stmt_period_yesterday_today()
             r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to, include_pending=True)
@@ -988,26 +1673,30 @@ class TestRangeCap:
             assert "1001" not in r.text
             assert "1000" not in r.text
         finally:
-            await db.execute(
-                text(f'DELETE FROM "{sch_a}".payment_declarations WHERE idempotency_key LIKE :p'),
-                {"p": f"{prefix}-%"},
-            )
-            await db.commit()
+            from database.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payment_declarations WHERE id = ANY(:ids)'),
+                    {"ids": decl_ids},
+                )
+                assert result.rowcount == 1001, "expected exactly 1001 owned declarations deleted"
+                await cleanup_db.commit()
 
     async def test_combined_1001_across_lists_return_400_range_too_large(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         """Per-list counts are each <= cap but their combined total exceeds it:
         the aggregate combined cap fires (R1-R1 rule 5)."""
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
-        ws_a = uuid.UUID(info["ws_a"])
-        ret_a = uuid.UUID(info["ret_a"])
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
         oid = uuid.UUID(info["oid"])
         # 600 movements + 1 settled + 400 pending = 1001 combined.
-        await _bulk_orders_with_charges(db, sch_a, ws_a, ret_a, n=600)
-        prefix = await _bulk_pending_declarations(db, sch_a, ws_a, ret_a, oid, n=400)
+        await _bulk_orders_with_charges(db, info["schema"], tenant["ws_id"], tenant["ret_id"], n=600)
+        decl_ids = await _bulk_pending_declarations(
+            db, info["schema"], tenant["ws_id"], tenant["ret_id"], oid, n=400
+        )
         try:
             frm, to = await _stmt_period_yesterday_today()
             r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to, include_pending=True)
@@ -1015,42 +1704,112 @@ class TestRangeCap:
             assert r.json()["code"] == "STATEMENT_RANGE_TOO_LARGE"
             assert "data" not in r.json()
         finally:
-            await db.execute(
-                text(f'DELETE FROM "{sch_a}".payment_declarations WHERE idempotency_key LIKE :p'),
-                {"p": f"{prefix}-%"},
-            )
-            await db.commit()
+            from database.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payment_declarations WHERE id = ANY(:ids)'),
+                    {"ids": decl_ids},
+                )
+                assert result.rowcount == 400, "expected exactly 400 owned declarations deleted"
+                await cleanup_db.commit()
 
     async def test_at_cap_1000_is_accepted(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         """Exactly 1000 combined lines is accepted (boundary)."""
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
-        ws_a = uuid.UUID(info["ws_a"])
-        ret_a = uuid.UUID(info["ret_a"])
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
         oid = uuid.UUID(info["oid"])
         # 998 pending + 1 settled payment + 1 movement = 1000 == cap.
-        prefix = await _bulk_pending_declarations(db, sch_a, ws_a, ret_a, oid, n=998)
+        decl_ids = await _bulk_pending_declarations(
+            db, info["schema"], tenant["ws_id"], tenant["ret_id"], oid, n=998
+        )
         try:
             frm, to = await _stmt_period_yesterday_today()
             r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to, include_pending=True)
             assert r.status_code == HTTPStatus.OK, r.text
             assert len(r.json()["data"]["pending_declarations"]) == 998
         finally:
-            await db.execute(
-                text(f'DELETE FROM "{sch_a}".payment_declarations WHERE idempotency_key LIKE :p'),
-                {"p": f"{prefix}-%"},
-            )
-            await db.commit()
+            from database.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payment_declarations WHERE id = ANY(:ids)'),
+                    {"ids": decl_ids},
+                )
+                assert result.rowcount == 998, "expected exactly 998 owned declarations deleted"
+                await cleanup_db.commit()
+
+    async def test_sentinel_payment_survives_exact_cleanup(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
+    ):
+        """R1-R1-R1 sentinel: a payment whose transaction/idempotency text ALSO
+        starts with ``pay-`` must be left byte-for-byte unchanged by cleanup —
+        cleanup only ever targets owned ids (never a ``pay-%`` LIKE scan)."""
+        from database.session import AsyncSessionLocal
+
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        oid = uuid.UUID(info["oid"])
+        ret = uuid.UUID(tenant["ret_id"])
+        schema = tenant["schema"]
+
+        # Owned payment (deletable by exact id).
+        owned_ids = await _bulk_payments(db, schema, oid, ret, n=2)
+        # Sentinel: text also starts with pay-; NOT owned by this test.
+        sentinel_id = uuid.uuid4()
+        await _insert_payment_row(db, schema, oid, ret, amount="9.99", pay_id=sentinel_id)
+        # Make the sentinel's transaction/idempotency text start with pay- too.
+        await db.execute(
+            text(
+                f'UPDATE "{schema}".payments '
+                "SET transaction_id = 'pay-sentinel-tx', idempotency_key = 'pay-sentinel-idem' "
+                "WHERE id = :sid"
+            ),
+            {"sid": sentinel_id},
+        )
+        await db.commit()
+
+        try:
+            # Statement must still work (sentinel is valid-owned so no 409) and
+            # the sentinel must be byte-for-byte unchanged after cleanup.
+            frm, to = await _stmt_period_yesterday_today()
+            r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+            assert r.status_code == HTTPStatus.OK, r.text
+        finally:
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{schema}".payments WHERE id = ANY(:ids)'),
+                    {"ids": owned_ids},
+                )
+                assert result.rowcount == 2, "expected exactly 2 owned payments deleted"
+                await cleanup_db.commit()
+                # Sentinel must survive byte-for-byte.
+                sentinel = (
+                    await cleanup_db.execute(
+                        text(
+                            f'SELECT id, order_id, retailer_id, transaction_id, idempotency_key, '
+                            f'amount, method, status, receipt_number, is_deleted '
+                            f'FROM "{schema}".payments WHERE id = :sid'
+                        ),
+                        {"sid": sentinel_id},
+                    )
+                ).first()
+                assert sentinel is not None, "sentinel payment was deleted by cleanup"
+                assert sentinel.transaction_id == "pay-sentinel-tx"
+                assert sentinel.idempotency_key == "pay-sentinel-idem"
+                assert Decimal(sentinel.amount) == Decimal("9.99")
 
 
 class TestDateBoundaries:
     async def test_inclusive_boundaries_capture_today_movements(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
         # A period ending today must include movements posted ~now.
         eat = timezone(timedelta(hours=3), "Africa/Nairobi")
         today = datetime.now(timezone.utc).astimezone(eat).date().isoformat()
@@ -1061,9 +1820,10 @@ class TestDateBoundaries:
         assert len(data["movements"]) >= 1
 
     async def test_far_future_period_empty_movements(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
         # A future period with no movements: opening may be non-zero (all-time
         # before), but the period movements list is empty.
         r = await _get_retailer_statement(i2b_client, info["token_ret"], "2099-01-01", "2099-01-02")
@@ -1080,17 +1840,18 @@ class TestSoftDeletedOrderRetention:
     R1 evidence repair: the mutation is snapshot BEFORE it happens, restored in
     ``finally`` from a FRESH session with an exact rowcount==1 assertion and an
     exact reread-equality assertion. A second test proves that an active and a
-    soft-deleted order produce IDENTICAL accounting totals.
+    soft-deleted order produce IDENTICAL accounting totals. All rows live in
+    the owned disposable tenant schema.
     """
 
     async def test_soft_deleted_order_still_in_statement(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         from database.session import AsyncSessionLocal
 
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
+        sch_a = info["schema"]
         oid = uuid.UUID(info["oid"])
 
         # Snapshot BEFORE any mutation (fresh session).
@@ -1134,13 +1895,13 @@ class TestSoftDeletedOrderRetention:
                 assert reread is not None and reread.is_deleted == orig_is_deleted
 
     async def test_active_and_soft_deleted_order_have_identical_accounting_totals(
-        self, i2b_client, two_tenants, s2_clean_db, cashier_identity
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         from database.session import AsyncSessionLocal
 
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity)
-        db, _reg = s2_clean_db
-        sch_a = info["sch_a"]
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
+        sch_a = info["schema"]
         oid = uuid.UUID(info["oid"])
         await _post_receivable_charge(db, sch_a, oid, "100.00")
         frm, to = await _stmt_period_yesterday_today()
@@ -1196,7 +1957,7 @@ class TestSoftDeletedOrderRetention:
 
 
 # ===========================================================================
-# §8 Order independence (natural + reverse) with explicit cleanup
+# §8 Order independence (natural + reverse) with exact ownership cleanup
 # ===========================================================================
 
 
@@ -1204,26 +1965,32 @@ class TestOrderIndependence:
     """Run the focused Contract D suite in natural and reverse declaration order.
 
     Demonstrates that test outcomes do not depend on execution order (no
-    cross-test state leakage). Uses explicit cleanup via the ownership registry.
+    cross-test state leakage). Each test uses its OWN disposable tenant, so
+    the teardown DROP SCHEMA discards every row (including immutable ledger)
+    and the registry verifies zero residue.
     """
 
     @pytest.fixture(autouse=True)
     def _no_leak(self):
         yield
 
-    async def test_a_first_seeds(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity, amount="100.00")
+    async def test_a_first_seeds(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(
+            i2b_client, db, contractd_disposable_tenant, reg, amount="100.00"
+        )
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         assert r.status_code == HTTPStatus.OK
         assert r.json()["data"]["document_type"] == "statement"
 
-    async def test_b_second_seeds(self, i2b_client, two_tenants, s2_clean_db, cashier_identity):
-        # The provisioning schema is module-scoped and ledger_entries is IMMUTABLE
-        # (write-only trigger), so prior tests' ledger rows legitimately persist.
-        # This test asserts route availability + structural invariants rather
-        # than absolute totals (which would depend on execution order).
-        info = await _submit_and_confirm(i2b_client, two_tenants, s2_clean_db, cashier_identity, amount="200.00")
+    async def test_b_second_seeds(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity):
+        # Each test seeds its OWN disposable tenant; nothing accumulates from
+        # test_a. Assert route availability + structural invariants.
+        db, reg = s2_clean_db
+        info = await _submit_and_confirm_disposable(
+            i2b_client, db, contractd_disposable_tenant, reg, amount="200.00"
+        )
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         assert r.status_code == HTTPStatus.OK

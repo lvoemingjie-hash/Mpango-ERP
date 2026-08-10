@@ -76,7 +76,8 @@ def parse_statement_date_range(
     raw_from: str | None, raw_to: str | None
 ) -> tuple[date, date]:
     """Strictly parse and validate the inclusive EAT date range from raw query
-    strings (DC-12R1-S3-S2B-I2C-I2B-R1 rule 3; R1-R1 strict shape).
+    strings (DC-12R1-S3-S2B-I2C-I2B-R1 rule 3; R1-R1 strict shape; R1-R1-R1
+    exact syntax).
 
     Missing/blank, non-canonical, malformed, reversed, or >365-day ranges raise
     ``StatementPeriodError`` (mapped to a controlled 400 INVALID_DATE_RANGE by
@@ -87,12 +88,25 @@ def parse_statement_date_range(
     R1-R1: the shape is enforced with ``re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")``
     BEFORE parsing, so non-zero-padded variants that ``strptime`` would accept
     (e.g. ``2026-8-1``) are rejected, and extra characters are rejected too.
+
+    R1-R1-R1: the input is NOT trimmed before validation. A raw value that
+    differs from its own ``strip()`` (leading/trailing spaces, tabs, newlines,
+    or any encoded whitespace decoded by the framework) is rejected. The
+    fullmatch is applied to the ORIGINAL value, never to a trimmed copy.
     """
     for label, value in (("from", raw_from), ("to", raw_to)):
-        if value is None or str(value).strip() == "":
+        if value is None or str(value) == "":
             raise StatementPeriodError(f"{label} date is required.")
-    f_raw = str(raw_from).strip()
-    t_raw = str(raw_to).strip()
+        s = str(value)
+        # Reject any leading/trailing whitespace (space, tab, newline, or
+        # decoded %20/%09 etc.) without trimming — the raw value must already
+        # be canonical. A fully-blank value is treated as missing below.
+        if s.strip() == "":
+            raise StatementPeriodError(f"{label} date is required.")
+        if s != s.strip():
+            raise StatementPeriodError("Invalid date format.")
+    f_raw = str(raw_from)
+    t_raw = str(raw_to)
     if not _DATE_FORMAT_RE.fullmatch(f_raw) or not _DATE_FORMAT_RE.fullmatch(t_raw):
         raise StatementPeriodError("Invalid date format.")
     try:
@@ -336,14 +350,21 @@ class StatementRepository:
         return list(rows)
 
     # ------------------------------------------------------------------
-    # Completed-payment ownership-integrity precheck (R1 rule 1).
-    # Any completed payment in this tenant schema whose retailer differs from
-    # its order's retailer makes the ledger/payment scope inconsistent. The
-    # statement fails closed (409 STATEMENT_INTERNAL_INCONSISTENT) so corrupt
-    # rows neither leak into the document nor silently disappear.
+    # Completed-payment ownership-integrity precheck (R1 rule 1; R1-R1-R1
+    # wrong-wholesaler closure). Uses a LEFT JOIN + IS NULL so an unresolvable
+    # order is also treated as corruption, and pins the AUTHORITATIVE
+    # wholesaler_id (the server-derived statement identity) — so a payment
+    # whose order belongs to a DIFFERENT wholesaler is corruption, not merely
+    # another relationship's data. Corruption -> 409
+    # STATEMENT_INTERNAL_INCONSISTENT, zero partial document, so corrupt rows
+    # neither leak into the document nor silently disappear.
     # ------------------------------------------------------------------
     async def count_completed_payment_ownership_mismatch(
-        self, db: AsyncSession, *, schema: str
+        self,
+        db: AsyncSession,
+        *,
+        schema: str,
+        wholesaler_id: uuid.UUID,
     ) -> int:
         row = (
             await db.execute(
@@ -351,12 +372,17 @@ class StatementRepository:
                     f"""
                     SELECT COUNT(*) AS n
                     FROM "{schema}".payments p
-                    JOIN "{schema}".orders o ON o.id = p.order_id
+                    LEFT JOIN "{schema}".orders o ON o.id = p.order_id
                     WHERE p.status = 'completed'
                       AND p.is_deleted IS FALSE
-                      AND p.retailer_id IS DISTINCT FROM o.retailer_id
+                      AND (
+                        o.id IS NULL
+                        OR o.retailer_id IS DISTINCT FROM p.retailer_id
+                        OR o.wholesaler_id IS DISTINCT FROM :wid
+                      )
                     """
                 ),
+                {"wid": wholesaler_id},
             )
         ).first()
         return int(row.n if row and row.n is not None else 0)

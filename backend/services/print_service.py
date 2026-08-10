@@ -494,11 +494,16 @@ async def build_statement_print(
     if orphan_count > 0:
         return StatementResult(error=StatementLedgerScopeIncomplete())
 
-    # 3b. Completed-payment ownership-integrity precheck (R1 rule 1) — a payment
-    #     whose retailer differs from its order's retailer makes the payment
-    #     scope inconsistent. Fail closed so corrupt rows neither leak into the
-    #     document nor silently disappear.
-    if await repo.count_completed_payment_ownership_mismatch(db, schema=schema) > 0:
+    # 3b. Completed-payment ownership-integrity precheck (R1 rule 1; R1-R1-R1
+    #     wrong-wholesaler closure) — invoked BEFORE any balance/list
+    #     computation. Uses the AUTHORITATIVE wholesaler_id (the server-derived
+    #     statement identity); a payment whose order belongs to a different
+    #     wholesaler, whose retailer differs from its order's retailer, or whose
+    #     order is unresolvable is corruption -> 409
+    #     STATEMENT_INTERNAL_INCONSISTENT, zero partial document.
+    if await repo.count_completed_payment_ownership_mismatch(
+        db, schema=schema, wholesaler_id=wholesaler_id
+    ) > 0:
         return StatementResult(error=StatementInternalInconsistent())
 
     # 4. Opening balance (strictly before the period start).

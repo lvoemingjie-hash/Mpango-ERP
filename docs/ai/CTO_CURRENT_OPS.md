@@ -1,9 +1,9 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-10
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product code merge:** `e923fd8567637ecc87b40d775caa8860b10821a0`
+**Accepted product code merge:** `0dc245114ec7442ebb1dea16e9332d95ddb3a6fe`
 **Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
@@ -13,8 +13,8 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered` includes accepted I2B and I2C-I1 merges at
-  `e923fd85`.
+- `origin/product-dev-recovered` includes accepted I2B, I2C-I1, and I2C-I2
+  merges at `0dc24511`.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -55,8 +55,24 @@ in `ai-ledger/`.
 - I2C-I1 Contracts A-C are merged at `e923fd85`: six read-only order,
   declaration, and receipt print-data routes. Receipt eligibility is
   fail-closed; no print request mutates financial state.
+- I2C-I2 browser-printable Contracts A-C are merged at `0dc24511`: retailer
+  and supplier order, declaration, and eligible receipt views are available;
+  money display is string-safe and print actions remain read-only.
 
 ## Latest Accepted Evidence
+
+I2C-I2 controlled merge and independent verification:
+
+`origin/product-dev-recovered` includes `0dc24511`
+
+- Approved source: `10c9158d`; merge tree equals the reviewed source tree.
+- Kilo final source/test-authenticity closure: `d1e5f518`.
+- Lubuntu independent runtime report: `12460e0c`.
+- Focused printable-workspace suite: `63 passed` across repeated runs.
+- Full frontend suite: `223 passed`; production build succeeded.
+- Eight adversarial mutations went RED and were restored byte-identically.
+- Post-merge scoped pre-commit, detect-secrets, diff, mojibake, build, and
+  GitNexus gates passed.
 
 I2C-I1 controlled merge and independent verification:
 
@@ -122,8 +138,6 @@ Post-merge validation:
 
 ## What Is Not Closed
 
-- I2C-I2 browser-printable workspace is not closed. It must consume the
-  existing read-only Contracts A-C without recomputing or mutating finance.
 - Contract D relationship statements are not implemented.
 - Future notification-event contracts are not closed; SMS/WhatsApp delivery is
   not implemented.
@@ -136,29 +150,33 @@ Post-merge validation:
 ## Active Phase
 
 **Active product gate:**
-`DC-12R1-S3-S2B-I2C-I2 Retailer Printable Workspace`
+`DC-12R1-S3-S2B-I2C-I2B Contract D Relationship Statement`
 
-I2B and I2C-I1 are merged and independently verified. I2C-I2 now adds only the
-browser-printable frontend for the existing authoritative order, declaration,
-and receipt data contracts. It must not change financial semantics or integrate
+I2B, I2C-I1, and I2C-I2 are merged and independently verified. I2C-I2B now
+closes the read-only printable relationship statement using the accepted
+Contract D ledger boundary. It must not change financial semantics or integrate
 an external messaging provider.
 
 Required business boundary:
 
-1. Print data must be server-authoritative and scoped by supplier plus retailer.
-2. An order printout must preserve authoritative item, price, total, and status.
-3. An unconfirmed declaration must be labelled pending, never paid or received.
-4. Only a confirmed canonical payment with a valid allocated receipt may
-   produce a receipt document.
-5. A rejected declaration must show controlled status and reason without
-   exposing internal errors or unrelated supplier data.
-6. I2C-I2 must not implement Contract D relationship statements or frontend
-   financial recomputation.
-7. Print actions must be read-only and must not mutate financial state.
-8. Future notification events must be emitted only from committed state and
-   must define idempotency, replay, tenant scope, redaction, and audit rules.
-9. I2C must not deliver SMS/WhatsApp or add provider credentials/configuration.
-10. No new migration or payment mutation is allowed without a separate CTO gate.
+1. Statement authority must be derived from contextual supplier and retailer
+   identity; request-supplied relationship authority is forbidden.
+2. The one customer-facing opening and closing balance must be computed from
+   immutable receivable `ledger_entries` over an inclusive date range.
+3. `movements[]` and `settled_payments[]` are independent lists. Never infer a
+   receipt-to-ledger relationship from amount, time, or order id.
+4. Soft-deleted orders remain in historical accounting scope. An orphan ledger
+   reference fails closed with `STATEMENT_LEDGER_SCOPE_INCOMPLETE`.
+5. Internal arithmetic inconsistency or required credit-only reconciliation
+   failure returns a controlled 409 and no partial document.
+6. Pending declarations never enter balance or settled-payment totals.
+7. Retailer access uses `client:finance:read`; supplier access uses
+   `finance:read`; cross-relationship access is neutral and fail-closed.
+8. The browser renders server decimal strings without `Number`, `parseFloat`,
+   rounding, or financial recomputation.
+9. Statement reads and printing are zero-write operations.
+10. No migration, permission, event/outbox, SMS/WhatsApp, provider credential,
+    PDF dependency, financial mutation, or deployment change is allowed.
 
 ## Ordered Delivery Plan
 
@@ -169,23 +187,26 @@ Required business boundary:
    scoped status visibility.
 3. **S3-S2B-I2C-I1 (completed):** read-only backend Contracts A-C for order,
    declaration, and receipt print data.
-4. **S3-S2B-I2C-I2 (active):** browser-printable frontend for Contracts A-C;
+4. **S3-S2B-I2C-I2 (completed):** browser-printable frontend for Contracts A-C;
    no Contract D, events, outbox, provider delivery, or financial writes.
-5. **S3-S2B-I2C-I3 (pending):** separately gated committed-state event/outbox
+5. **S3-S2B-I2C-I2B (active):** read-only backend and browser-print Contract D
+   relationship statement using immutable-ledger arithmetic and two independent
+   movement/payment lists.
+6. **S3-S2B-I2C-I3 (pending):** separately gated committed-state event/outbox
    design and implementation, without SMS/WhatsApp delivery unless approved.
-6. **S3-S3 (pending):** complete responsive branded retailer workspace.
-7. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
-8. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
+7. **S3-S3 (pending):** complete responsive branded retailer workspace.
+8. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
+9. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
    package.
-9. **Tenant branding and manuals:** legal profile, logo, dual branding, and
+10. **Tenant branding and manuals:** legal profile, logo, dual branding, and
    current user/operator documentation.
 
 ## Agent Assignment
 
-- **Primary coding agent (Zcode):** implement I2C-I2 in a clean worktree from
-  this merged baseline, limited to frontend consumption of Contracts A-C.
-- **Independent reviewer:** perform adversarial source review after the I2C-I2
-  candidate is frozen.
+- **Primary coding agent (Zcode):** implement I2C-I2B in a clean worktree from
+  `origin/product-dev-recovered@0dc24511`.
+- **Independent reviewer:** Kilo performs adversarial financial/source and
+  test-authenticity review after the I2C-I2B candidate is frozen.
 - **Codex CTO:** own scope, financial blast radius, and merge decision.
 - **Lubuntu Codex:** independently validate implementation on fresh
   PostgreSQL 16 and Redis 7.
@@ -197,20 +218,19 @@ Required business boundary:
 
 Stop and report to the CTO if:
 
-- fetched `origin/product-dev-recovered` does not descend from accepted I2C-I1
-  merge `e923fd8567637ecc87b40d775caa8860b10821a0`;
-- print data is accepted from client-calculated financial fields;
+- fetched `origin/product-dev-recovered` does not equal or descend from accepted
+  I2C-I2 merge `0dc245114ec7442ebb1dea16e9332d95ddb3a6fe`;
+- statement data is accepted from client-calculated financial fields;
 - supplier or retailer authority comes from request-supplied IDs;
-- an unconfirmed or receipt-ineligible declaration can be labelled received or
-  printed as a receipt;
+- ledger movements and settled payments are correlated without a persisted key;
+- a soft-deleted order loses historical movements, an orphan ledger reference
+  is silently omitted, or inconsistent arithmetic renders a document;
 - printing or event generation can mutate a payment, ledger, order, receivable,
   settlement, declaration, or receipt;
 - an event may be emitted before the related transaction is committed;
-- the slice adds Contract D statements, external SMS/WhatsApp delivery,
-  provider credentials, a new migration, or a financial write without separate
-  authorization;
-- the I2C-I2 task changes backend product code, migrations, permissions, config,
-  deployment, or protected refs;
+- the slice adds external SMS/WhatsApp delivery, provider credentials, an
+  event/outbox, a new migration, permission, dependency, or financial write;
+- the task changes deployment or protected refs;
 - evidence relies on skip, xfail, deselection, or assertion weakening.
 
 ## Update Protocol

@@ -847,11 +847,15 @@ describe('statement money — formatKes string-only', () => {
 // tests freeze "now" at 2026-08-10T22:30:00Z — an instant where the UTC
 // calendar date (2026-08-10) differs from the EAT calendar date
 // (2026-08-11, 01:30) — and prove the helpers return the EAT date.
-// Date.now is stubbed (never fake timers, which would stall waitFor).
+//
+// R1-R1-R9: both Date.now() and new Date() observe the SAME frozen instant
+// via vi.useFakeTimers() + vi.setSystemTime(), not a Date.now-only spy.
+// afterEach always restores real timers + all mocks.
 // ---------------------------------------------------------------------------
 
 describe('R1 rule 6 — EAT calendar dates (never browser-local)', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -865,10 +869,12 @@ describe('R1 rule 6 — EAT calendar dates (never browser-local)', () => {
   });
 
   it('frozen time: the UTC calendar date differs from EAT; eatToday picks EAT', () => {
-    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-10T22:30:00Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-10T22:30:00Z'));
     // At this frozen instant the UTC calendar date is still 2026-08-10, while
     // Africa/Nairobi is already 2026-08-11 — the boundary that browser-local
-    // date handling would get wrong.
+    // date handling would get wrong. Both Date.now() and new Date() observe
+    // the same frozen instant.
     const utcDate = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'UTC',
       year: 'numeric',
@@ -886,8 +892,13 @@ describe('R1 rule 6 — EAT calendar dates (never browser-local)', () => {
   });
 
   it('entry links and the print page use EAT anchors (render path)', async () => {
-    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-10T22:30:00Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-10T22:30:00Z'));
     // The retailer page link must carry EAT dates (from=2026-08-01, to=2026-08-11).
+    // The mock resolves via a microtask; render() triggers the fetch. We flush
+    // microtasks (vi.runAllTicks) and pending timers (vi.runAllTicks) so the
+    // component re-renders with the resolved data synchronously, then read the
+    // link with getByTestId — all while fake timers keep Date frozen.
     mockGet.mockResolvedValueOnce(
       data(ok({ outstanding_balance: '1000.00', has_outstanding_balance: true, updated_at: '2026-08-10T08:00:00Z' }).data) as never,
     );
@@ -898,7 +909,14 @@ describe('R1 rule 6 — EAT calendar dates (never browser-local)', () => {
         </Routes>
       </MemoryRouter>,
     );
-    const link = await screen.findByTestId('retailer-statement-print-link');
+    // Flush the async fetch microtask + any queued state-update timers inside
+    // act() so React commits the re-render synchronously.
+    await act(async () => {
+      await vi.runAllTicks();
+      vi.runAllTimers();
+    });
+
+    const link = screen.getByTestId('retailer-statement-print-link');
     const href = link.getAttribute('href') ?? '';
     expect(href).toBe('/client/statements/print?from=2026-08-01&to=2026-08-11');
   });

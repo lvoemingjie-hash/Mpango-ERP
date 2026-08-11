@@ -1433,3 +1433,73 @@ cleanup tests, CSV content, and all product files are frozen at `fce3e6d5`
 - No migration, permission, config, dependency, lockfile, deployment,
   events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
   mutation, or protected-branch push.
+
+## §R1-R1-R9 Deterministic EAT clock test closure (SUPERSEDES R1-R1-R8)
+
+> **⚠️ SUPERSEDED_BY_I2C_I2B_R1_R1_R9**
+>
+> The `f6ac69ee` R1-R1-R8 verdict is **superseded** by R1-R1-R9 **solely for
+> deterministic test closure** — no product, component, service, router,
+> backend, or CSV file changed. Only the frontend EAT test file and this
+> ledger are touched.
+>
+> Starting SHA: `f6ac69ee01cc4d30f2a34f1ef2030fd70f2e518f`; protected baseline
+> `d45b5020b122b13c407a1c9204b18e587f9803fc` (untouched). Verdict:
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2B_R1_R1_R9_MERGE_REVIEW** (this section).
+
+### R1-R1-R9.1 — deterministic frozen clock (fake timers + setSystemTime)
+
+The two EAT boundary tests that previously stubbed ONLY `Date.now`
+(`vi.spyOn(Date, 'now').mockReturnValue(...)`) now use
+`vi.useFakeTimers()` + `vi.setSystemTime(new Date('2026-08-10T22:30:00Z'))`,
+so **both `Date.now()` and `new Date()` observe the same frozen instant**.
+The `afterEach` always runs `vi.useRealTimers()` AND `vi.restoreAllMocks()`.
+
+The render-path test (entry links) keeps fake timers active while rendering,
+flushes the mocked async fetch inside `act()` via `vi.runAllTicks()` +
+`vi.runAllTimers()`, and reads the link synchronously with `getByTestId` —
+`findByTestId` polls on a timer that fake timers would freeze.
+
+All exact EAT assertions preserved (unchanged):
+- UTC date at the frozen instant = `2026-08-10`;
+- EAT date = `2026-08-11`;
+- `eatMonthRange()` = `{from: '2026-08-01', to: '2026-08-11'}` and
+  `eatDefaultRange().to = '2026-08-11'` (EAT-derived);
+- rendered entry link keeps the exact EAT range
+  (`/client/statements/print?from=2026-08-01&to=2026-08-11`).
+
+No assertion was weakened, skipped, or made conditional. No production file
+was modified (including `printFormat.ts`).
+
+### R1-R1-R9.2 Gates
+
+| Gate | Result |
+|---|---|
+| Targeted EAT tests ×5 consecutive runs | **3/3 passed ×5** |
+| StatementPrintWorkspace complete file ×3 consecutive runs | **43/43 passed ×3** |
+| `pnpm vitest run` full suite | **270 passed / 0 failed** (20 files) |
+| `pnpm build` | exit 0 |
+| `git diff --check` | clean |
+| scoped pre-commit / prettier / detect-secrets | passed / 0 new (prettier warnings pre-exist at `f6ac69ee` and were not introduced by R9) |
+| mojibake scan | clean |
+| GitNexus | `analyze` pre-commit; `status` up-to-date post-commit |
+| Frozen-scope proof | every backend + production frontend file byte-identical to `f6ac69ee` (verified via full `git ls-files` sweep); only `frontend/src/tests/StatementPrintWorkspace.test.tsx` + this ledger changed (23 insertions / 5 deletions) |
+
+No backend/full-stack rerun performed — no backend or production file
+changed (R9 requirement).
+
+### R1-R1-R9.3 Adversarial self-review
+
+- Fake timers are used exactly as required (`useFakeTimers` +
+  `setSystemTime('2026-08-10T22:30:00Z')`); both `Date.now()` and
+  `new Date()` see the same instant.
+- `afterEach` unconditionally runs `vi.useRealTimers()` + `vi.restoreAllMocks()`.
+- The render-path test avoids `findByTestId` (which polls on a frozen timer)
+  by flushing microtasks/timers inside `act()` and using `getByTestId`.
+- Assertions byte-identical in intent to the pre-R9 values (UTC 2026-08-10,
+  EAT 2026-08-11, EAT month/default ranges, EAT entry link).
+- No production/component/service/router/backend file changed; `printFormat.ts`
+  untouched.
+- No migration, permission, config, dependency, lockfile, deployment,
+  events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
+  mutation, or protected-branch push.

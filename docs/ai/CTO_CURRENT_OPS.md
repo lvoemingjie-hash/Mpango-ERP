@@ -1,9 +1,9 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-11
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product code merge:** `0dc245114ec7442ebb1dea16e9332d95ddb3a6fe`
+**Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5`
 **Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
@@ -13,8 +13,8 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered` includes accepted I2B, I2C-I1, and I2C-I2
-  merges at `0dc24511`.
+- `origin/product-dev-recovered@adcc7f28` includes accepted I2B and read-only
+  backend/browser-printable Contracts A-D.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -58,8 +58,24 @@ in `ai-ledger/`.
 - I2C-I2 browser-printable Contracts A-C are merged at `0dc24511`: retailer
   and supplier order, declaration, and eligible receipt views are available;
   money display is string-safe and print actions remain read-only.
+- I2C-I2B Contract D is merged at `adcc7f28`: retailer and supplier
+  relationship statements use immutable receivable ledger movements, keep
+  movement/payment lists independent, and remain read-only.
 
 ## Latest Accepted Evidence
+
+I2C-I2B Contract D controlled merge and independent verification:
+
+`origin/product-dev-recovered` includes `adcc7f28`
+
+- Approved source: `133ca46b`; merge tree equals the reviewed source tree.
+- Kilo final source/test-authenticity review: `a56078c6`.
+- Lubuntu independent runtime report: `b652b683`.
+- Two independent full-backend runs each reported `3285 passed`, `48 skipped`,
+  `15 xfailed`, zero failures, and zero errors.
+- Full frontend suite: `270 passed`; production build succeeded.
+- Post-merge compile, generator/CSV, frontend, build, pre-commit,
+  detect-secrets, diff, and GitNexus gates passed.
 
 I2C-I2 controlled merge and independent verification:
 
@@ -138,10 +154,9 @@ Post-merge validation:
 
 ## What Is Not Closed
 
-- Contract D relationship statements are not implemented.
-- Future notification-event contracts are not closed; SMS/WhatsApp delivery is
-  not implemented.
 - Final responsive/brand retailer workspace polish remains.
+- Transactional outbox/event emission and SMS/WhatsApp delivery are deferred
+  outside the current MVP and remain unimplemented.
 - Real-mailbox and real-browser end-to-end proof on the latest deployed SHA
   remains.
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
@@ -150,33 +165,28 @@ Post-merge validation:
 ## Active Phase
 
 **Active product gate:**
-`DC-12R1-S3-S2B-I2C-I2B Contract D Relationship Statement`
+`DC-12R1-S3-S3-D Responsive Branded Workspace Planning`
 
-I2B, I2C-I1, and I2C-I2 are merged and independently verified. I2C-I2B now
-closes the read-only printable relationship statement using the accepted
-Contract D ledger boundary. It must not change financial semantics or integrate
-an external messaging provider.
+I2B and printable Contracts A-D are merged and independently verified. S3-S3-D
+must audit the existing retailer workspace and produce a bounded implementation
+plan. It must not duplicate existing print or finance paths, change financial
+semantics, or introduce an external messaging provider.
 
-Required business boundary:
+Required planning boundary:
 
-1. Statement authority must be derived from contextual supplier and retailer
-   identity; request-supplied relationship authority is forbidden.
-2. The one customer-facing opening and closing balance must be computed from
-   immutable receivable `ledger_entries` over an inclusive date range.
-3. `movements[]` and `settled_payments[]` are independent lists. Never infer a
-   receipt-to-ledger relationship from amount, time, or order id.
-4. Soft-deleted orders remain in historical accounting scope. An orphan ledger
-   reference fails closed with `STATEMENT_LEDGER_SCOPE_INCOMPLETE`.
-5. Internal arithmetic inconsistency or required credit-only reconciliation
-   failure returns a controlled 409 and no partial document.
-6. Pending declarations never enter balance or settled-payment totals.
-7. Retailer access uses `client:finance:read`; supplier access uses
-   `finance:read`; cross-relationship access is neutral and fail-closed.
-8. The browser renders server decimal strings without `Number`, `parseFloat`,
-   rounding, or financial recomputation.
-9. Statement reads and printing are zero-write operations.
-10. No migration, permission, event/outbox, SMS/WhatsApp, provider credential,
-    PDF dependency, financial mutation, or deployment change is allowed.
+1. Inventory and reuse the existing retailer shell, guards, navigation,
+   catalog, order, finance, declaration, and Contracts A-D print views.
+2. Define desktop, tablet, and mobile behavior without introducing a parallel
+   retailer application or duplicating routes.
+3. Use only existing authoritative relationship context; tenant-configurable
+   branding remains outside this slice unless separately approved.
+4. Preserve string-safe financial rendering and server-authoritative values;
+   no client-side financial recomputation is allowed.
+5. Cover navigation, empty/error/loading states, logout recovery, keyboard
+   access, focus management, labels, and responsive tests.
+6. Keep supplier and retailer route ownership isolated and fail closed.
+7. This design task is documentation/audit only: no product implementation,
+   migration, permission, dependency, provider, deployment, or financial write.
 
 ## Ordered Delivery Plan
 
@@ -189,12 +199,13 @@ Required business boundary:
    declaration, and receipt print data.
 4. **S3-S2B-I2C-I2 (completed):** browser-printable frontend for Contracts A-C;
    no Contract D, events, outbox, provider delivery, or financial writes.
-5. **S3-S2B-I2C-I2B (active):** read-only backend and browser-print Contract D
+5. **S3-S2B-I2C-I2B (completed):** read-only backend and browser-print Contract D
    relationship statement using immutable-ledger arithmetic and two independent
    movement/payment lists.
-6. **S3-S2B-I2C-I3 (pending):** separately gated committed-state event/outbox
-   design and implementation, without SMS/WhatsApp delivery unless approved.
-7. **S3-S3 (pending):** complete responsive branded retailer workspace.
+6. **S3-S3-D (active):** audit and plan the responsive branded retailer
+   workspace closure without changing product code.
+7. **S3-S2B-I2C-I3 (deferred post-MVP):** transactional outbox, event emission,
+   and provider delivery require separate CTO authorization.
 8. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
 9. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
    package.
@@ -203,13 +214,13 @@ Required business boundary:
 
 ## Agent Assignment
 
-- **Primary coding agent (Zcode):** implement I2C-I2B in a clean worktree from
-  `origin/product-dev-recovered@0dc24511`.
-- **Independent reviewer:** Kilo performs adversarial financial/source and
-  test-authenticity review after the I2C-I2B candidate is frozen.
+- **Primary planning agent (Zcode):** audit and plan S3-S3-D in a clean
+  worktree from `origin/product-dev-recovered@adcc7f28`.
+- **Independent reviewer:** Kilo performs adversarial UX/source and
+  test-authenticity review after the S3-S3-D plan is frozen.
 - **Codex CTO:** own scope, financial blast radius, and merge decision.
-- **Lubuntu Codex:** independently validate implementation on fresh
-  PostgreSQL 16 and Redis 7.
+- **Lubuntu Codex:** independently validate runtime only after a separately
+  approved S3-S3 implementation candidate is frozen.
 - **OPS:** handle deployment/runtime work only after product merge approval.
 - **Human owner:** approve production, credentials, domains, and business/legal
   decisions.
@@ -219,7 +230,7 @@ Required business boundary:
 Stop and report to the CTO if:
 
 - fetched `origin/product-dev-recovered` does not equal or descend from accepted
-  I2C-I2 merge `0dc245114ec7442ebb1dea16e9332d95ddb3a6fe`;
+  Contract D merge `adcc7f281c661897ad050a8278686375b611edb5`;
 - statement data is accepted from client-calculated financial fields;
 - supplier or retailer authority comes from request-supplied IDs;
 - ledger movements and settled payments are correlated without a persisted key;
@@ -230,6 +241,7 @@ Stop and report to the CTO if:
 - an event may be emitted before the related transaction is committed;
 - the slice adds external SMS/WhatsApp delivery, provider credentials, an
   event/outbox, a new migration, permission, dependency, or financial write;
+- S3-S3-D edits product code instead of remaining a design/audit gate;
 - the task changes deployment or protected refs;
 - evidence relies on skip, xfail, deselection, or assertion weakening.
 

@@ -1353,3 +1353,83 @@ frontend vitest 270/270 + build exit 0.
 - No migration, permission, config, dependency, lockfile, deployment,
   events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
   mutation, or protected-branch push.
+
+## §R1-R1-R8 Generator post-temp cleanup (SUPERSEDES R1-R1-R7)
+
+> **⚠️ SUPERSEDED_BY_I2C_I2B_R1_R1_R8**
+>
+> The `fce3e6d5` R1-R1-R7 verdict is **superseded** by the R1-R1-R8
+> correction. R7's duplicate-detection and validate-before-publish fixes
+> stood, but a single post-temp defect remained: the round-trip validation
+> failures (non-3-column, illegal outcome) used bare `return 1` INSIDE a
+> `try/except BaseException` block — `return` is not an exception, so the
+> `except` cleanup never ran and the task-owned temp file leaked. Fixed here.
+> R8 is a NARROW generator-only correction; the Contract D test file, cleanup
+> tests, committed CSV, and all product/API/frontend files are FROZEN at
+> `fce3e6d5` (byte-identical, verified).
+>
+> Starting SHA: `fce3e6d58e26bf8e2071deac63050c1f5f5c9364`; protected baseline
+> `d45b5020b122b13c407a1c9204b18e587f9803fc` (untouched). Verdict:
+> **PASS_FOR_CTO_DC12R1_S3_S2B_I2C_I2B_R1_R1_R8_MERGE_REVIEW** (this section).
+
+### R1-R1-R8.1 — temp cleanup via try/finally (was try/except, missed returns)
+
+**Finding.** R7 placed the round-trip validation inside a `try/except
+BaseException` block and used `return 1` on validation failure. A `return`
+is not an exception, so the `except` handler (which removed the temp file)
+never ran — the `.gen_node_csv_*.tmp` file leaked on every post-temp
+validation failure.
+
+**Fix:** the post-`mkstemp` block is now a `try/finally`. The `finally`
+runs on EVERY exit path (return OR exception). Validation failures set a
+`publish_rc` and skip `os.replace`; the `finally` removes the temp file when
+`published` is False. `FileNotFoundError` in cleanup is handled explicitly
+(a successful `os.replace` already renamed the temp away); every other
+cleanup error propagates (no broad swallow). There are **zero** `return`
+statements between `mkstemp()` and the `finally`.
+
+### R1-R1-R8.2 — three new injection tests (post-temp validation failures)
+
+`test_dc12r1_contract_d_r7_gen_fail_closed.py` adds three tests that call
+the generator's `main()` directly and monkeypatch the round-trip readers to
+inject a failure AFTER the temp file is created:
+
+1. `test_round_trip_non3col_failure_cleans_temp_and_preserves_target` —
+   `csv.reader` returns a 4-col row → nonzero result, existing target
+   byte-unchanged, **zero** surviving temp files.
+2. `test_round_trip_illegal_outcome_failure_cleans_temp_and_preserves_target`
+   — `csv.DictReader` returns an illegal outcome → nonzero result, existing
+   target byte-unchanged, zero surviving temp files.
+3. `test_round_trip_failure_when_target_absent_leaves_no_target_no_temp` —
+   non-3-col failure, target absent beforehand → nonzero result, target NOT
+   created, zero surviving temp files.
+
+The four R7 tests are preserved and rerun. All seven GREEN.
+
+### R1-R1-R8.3 Gates
+
+| Gate | Result |
+|---|---|
+| Generator tests (4 R7 + 3 R8) | **7 passed** |
+| CSV-validity tests (unchanged) | **5 passed** |
+| Generator on real R6 JUnit XMLs | exit 0, `OK: all checks passed` |
+| Static self-review | frozen files byte-identical to `fce3e6d5`; `py_compile` clean; `git diff --check` clean; scoped pre-commit all hooks passed; detect-secrets 0 new; mojibake clean; GitNexus `analyze` + `status` up-to-date post-commit |
+
+R8 does NOT re-run the focused/192/full gates — the Contract D test file,
+cleanup tests, CSV content, and all product files are frozen at `fce3e6d5`
+(byte-identical, verified); those gate results stand unchanged from R6/R7.
+
+### R1-R1-R8.4 Adversarial self-review
+
+- No `return` between `mkstemp()` and the `finally` (grep-verified); cleanup
+  is guaranteed by `finally`, not `except`.
+- `FileNotFoundError` in cleanup is the only explicitly-handled cleanup error
+  (expected after a successful `os.replace`); all others propagate.
+- Publish happens ONLY via `os.replace()` when `publish_rc == 0`.
+- Existing targets remain byte-identical on failure; absent targets remain
+  absent; zero temp files survive any failed path (asserted by all three new
+  tests + the existing R7 tests).
+- Frozen files byte-identical to `fce3e6d5`.
+- No migration, permission, config, dependency, lockfile, deployment,
+  events/outbox, SMS/WhatsApp, PDF/QR/provider integration, payment/ledger
+  mutation, or protected-branch push.

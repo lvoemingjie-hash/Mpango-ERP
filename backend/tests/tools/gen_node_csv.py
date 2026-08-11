@@ -150,10 +150,15 @@ def main(a_path: str, b_path: str, out_path: str) -> int:
 
     # Write to a task-owned temp file in the SAME directory as the target (so
     # os.replace is atomic on the same filesystem), round-trip-validate, then
-    # atomically publish. On any failure the temp file is removed and the
-    # target is left byte-unchanged (or non-existent).
+    # atomically publish. R1-R1-R8: temp-file cleanup is guaranteed by a
+    # try/finally (runs on BOTH returns and exceptions), NOT an except block
+    # (which would miss `return` statements). Publish happens ONLY via
+    # os.replace() after every validation succeeds; on any failure the temp
+    # file is removed and the target is left byte-unchanged (or non-existent).
     target_dir = os.path.dirname(os.path.abspath(out_path)) or "."
     fd, tmp_path = tempfile.mkstemp(prefix=".gen_node_csv_", suffix=".tmp", dir=target_dir)
+    published = False
+    publish_rc = 0
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             w = csv.writer(f)
@@ -161,7 +166,10 @@ def main(a_path: str, b_path: str, out_path: str) -> int:
             for r in rows:
                 w.writerow(r)
 
-        # Round-trip validation on the temp file.
+        # Round-trip validation on the temp file (R1-R1-R8: these are the
+        # post-temp validation failures that previously leaked the temp file
+        # via bare `return 1`). Each sets publish_rc and skips publishing, so
+        # the finally cleans up the temp file.
         with open(tmp_path, encoding="utf-8", newline="") as f:
             raw_rows = list(csv.reader(f))
         col_counts = Counter(len(r) for r in raw_rows)
@@ -169,30 +177,40 @@ def main(a_path: str, b_path: str, out_path: str) -> int:
         print(f"CSV rows (incl header): {len(raw_rows)}; col-count dist: {dict(col_counts)}")
         if bad:
             print(f"FAIL: non-3-col rows: {bad}", file=sys.stderr)
-            return 1
-        with open(tmp_path, encoding="utf-8", newline="") as f:
-            drows = list(csv.DictReader(f))
-        bad_outcomes = [
-            (i, r["outcome_run_a"], r["outcome_run_b"])
-            for i, r in enumerate(drows)
-            if r["outcome_run_a"] not in LEGAL | {"absent"}
-            or r["outcome_run_b"] not in LEGAL | {"absent"}
-        ]
-        print(f"bad-outcome rows: {len(bad_outcomes)}")
-        if bad_outcomes:
-            print(f"FAIL: illegal outcomes in round-trip: {bad_outcomes[:5]}", file=sys.stderr)
-            return 1
+            publish_rc = 1
+        else:
+            with open(tmp_path, encoding="utf-8", newline="") as f:
+                drows = list(csv.DictReader(f))
+            bad_outcomes = [
+                (i, r["outcome_run_a"], r["outcome_run_b"])
+                for i, r in enumerate(drows)
+                if r["outcome_run_a"] not in LEGAL | {"absent"}
+                or r["outcome_run_b"] not in LEGAL | {"absent"}
+            ]
+            print(f"bad-outcome rows: {len(bad_outcomes)}")
+            if bad_outcomes:
+                print(f"FAIL: illegal outcomes in round-trip: {bad_outcomes[:5]}", file=sys.stderr)
+                publish_rc = 1
 
-        # Atomic publish (R1-R1-R7).
-        os.replace(tmp_path, out_path)
-    except BaseException:
-        # Failure: remove the temp file; target is untouched.
-        try:
-            os.remove(tmp_path)
-        except FileNotFoundError:
-            pass
-        raise
+        # Atomic publish (R1-R1-R8): publish ONLY when every validation
+        # succeeded. After os.replace the temp path no longer exists (it was
+        # renamed to the target).
+        if publish_rc == 0:
+            os.replace(tmp_path, out_path)
+            published = True
+    finally:
+        # Guaranteed cleanup on EVERY exit path (return or exception). On a
+        # successful publish the temp path no longer exists (os.replace
+        # renamed it), so FileNotFoundError is expected and handled
+        # explicitly; every other cleanup error propagates (no broad swallow).
+        if not published:
+            try:
+                os.remove(tmp_path)
+            except FileNotFoundError:
+                pass
 
+    if publish_rc != 0:
+        return publish_rc
     print("OK: all checks passed")
     return 0
 

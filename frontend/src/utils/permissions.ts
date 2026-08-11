@@ -89,3 +89,34 @@ export const INTAKE_PERMISSIONS = {
 
 /** All Data Intake permission codes as an array (useful for bulk seeding/checks). */
 export const ALL_INTAKE_PERMISSIONS: readonly string[] = Object.values(INTAKE_PERMISSIONS);
+
+/**
+ * Retailer (client) permission codes — DC-12R1-MVP-R0-R1 (WPR-002).
+ *
+ * Canonical constants for the six ``client:*`` permissions granted to the
+ * ``retailer_operator`` role by the backend seed (migration
+ * ``036_retailer_mvp_identity``) with the ``client:payments:create`` →
+ * ``client:payments:declare`` rename applied by migration
+ * ``037_payment_declarations_schema``. These MUST match the backend
+ * ``RequirePermission(...)`` strings byte-for-byte; they are the single
+ * source of truth referenced by route guards and tests so no independent
+ * permission algorithm or string drift can arise.
+ *
+ * Route admission (WPR-002) reuses the existing ``can()`` helper:
+ *   - order print          -> CLIENT_PERMISSIONS.ORDERS_READ
+ *   - declaration print    -> CLIENT_PERMISSIONS.PAYMENTS_READ
+ *   - receipt (Contract C) -> CLIENT_PERMISSIONS.PAYMENTS_READ
+ *   - statement (Contract D) -> CLIENT_PERMISSIONS.FINANCE_READ
+ *   - declaration submit   -> CLIENT_PERMISSIONS.PAYMENTS_DECLARE (WPR-003)
+ */
+export const CLIENT_PERMISSIONS = {
+  CATALOG_READ: 'client:catalog:read',
+  ORDERS_READ: 'client:orders:read',
+  ORDERS_CREATE: 'client:orders:create',
+  PAYMENTS_READ: 'client:payments:read',
+  PAYMENTS_DECLARE: 'client:payments:declare',
+  FINANCE_READ: 'client:finance:read',
+} as const;
+
+/** All six retailer (client) permission codes as an array. */
+export const ALL_CLIENT_PERMISSIONS: readonly string[] = Object.values(CLIENT_PERMISSIONS);

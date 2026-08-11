@@ -11,7 +11,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { PlatformRoute, isIdentityPlatformOperator } from '@/router/guards';
+import { PlatformRoute, RetailerPermissionRoute, isIdentityPlatformOperator } from '@/router/guards';
+import { CLIENT_PERMISSIONS } from '@/utils/permissions';
 import { useAuthStore } from '@/stores/authStore';
 
 // Reset auth store between tests
@@ -177,5 +178,128 @@ describe('isIdentityPlatformOperator', () => {
       roles: ['admin'],
       permissions: [],
     })).toBe(false);
+  });
+});
+
+// ===========================================================================
+// DC-12R1-MVP-R0-R1 (WPR-002/WPR-003): RetailerPermissionRoute guard.
+//
+// Reuses can() (no independent permission algorithm). A route is admitted only
+// when the user holds the required client:* permission; otherwise it fails
+// closed (redirect) BEFORE the child page renders. Admins bypass via can().
+// ===========================================================================
+
+function renderRetailerPermissionRoute(initialPath = '/guarded', permission: string = CLIENT_PERMISSIONS.PAYMENTS_DECLARE) {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route element={<RetailerPermissionRoute permission={permission} />}>
+          <Route path="/guarded" element={<div data-testid="guarded-page">Guarded</div>} />
+        </Route>
+        {/* Fail-closed redirect target used by the guard. */}
+        <Route path="/client" element={<div data-testid="client-home">Client Home</div>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+describe('RetailerPermissionRoute guard', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: null,
+      refreshToken: null,
+      user: null,
+      tenantCode: null,
+    });
+  });
+
+  it('admits a retailer_operator holding the required permission', () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'ref',
+      user: {
+        id: 'r1',
+        email: 'r@e.com',
+        full_name: 'R',
+        tenant_id: 't1',
+        tenant_schema: 't_1',
+        roles: ['retailer_operator'],
+        permissions: ['client:payments:declare'],
+      },
+      tenantCode: null,
+    });
+    renderRetailerPermissionRoute('/guarded', CLIENT_PERMISSIONS.PAYMENTS_DECLARE);
+    expect(screen.getByTestId('guarded-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('client-home')).not.toBeInTheDocument();
+  });
+
+  it('fails closed (redirects to /client) when the permission is missing', () => {
+    // RED/GREEN: before WPR-002 the client print/declare routes admitted any
+    // retailer_operator regardless of permissions; this permission-empty user
+    // must now be denied.
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'ref',
+      user: {
+        id: 'r2',
+        email: 'r2@e.com',
+        full_name: 'R2',
+        tenant_id: 't1',
+        tenant_schema: 't_1',
+        roles: ['retailer_operator'],
+        permissions: [],
+      },
+      tenantCode: null,
+    });
+    renderRetailerPermissionRoute('/guarded', CLIENT_PERMISSIONS.PAYMENTS_DECLARE);
+    // The guarded page NEVER renders.
+    expect(screen.queryByTestId('guarded-page')).not.toBeInTheDocument();
+    expect(screen.getByTestId('client-home')).toBeInTheDocument();
+  });
+
+  it('denies a retailer holding a DIFFERENT client permission (precision)', () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'ref',
+      user: {
+        id: 'r3',
+        email: 'r3@e.com',
+        full_name: 'R3',
+        tenant_id: 't1',
+        tenant_schema: 't_1',
+        roles: ['retailer_operator'],
+        // Holds payments:read but NOT payments:declare.
+        permissions: ['client:payments:read'],
+      },
+      tenantCode: null,
+    });
+    renderRetailerPermissionRoute('/guarded', CLIENT_PERMISSIONS.PAYMENTS_DECLARE);
+    expect(screen.queryByTestId('guarded-page')).not.toBeInTheDocument();
+    expect(screen.getByTestId('client-home')).toBeInTheDocument();
+  });
+
+  it('admin bypass: admits an admin even without the permission in the list', () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      refreshToken: 'ref',
+      user: {
+        id: 'a1',
+        email: 'a@e.com',
+        full_name: 'A',
+        tenant_id: 't1',
+        tenant_schema: 't_1',
+        roles: ['admin'],
+        permissions: [],
+      },
+      tenantCode: null,
+    });
+    renderRetailerPermissionRoute('/guarded', CLIENT_PERMISSIONS.FINANCE_READ);
+    expect(screen.getByTestId('guarded-page')).toBeInTheDocument();
+  });
+
+  it('denies an unauthenticated (null) user', () => {
+    renderRetailerPermissionRoute('/guarded', CLIENT_PERMISSIONS.ORDERS_READ);
+    expect(screen.queryByTestId('guarded-page')).not.toBeInTheDocument();
+    expect(screen.getByTestId('client-home')).toBeInTheDocument();
   });
 });

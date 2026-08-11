@@ -35,6 +35,7 @@ import { ClientFinanceBalancePage } from '@/pages/client/FinanceBalancePage';
 import { FinancePage } from '@/pages/finance/FinancePage';
 import { formatKes, eatDateFromUtc, eatToday, eatMonthRange, eatDefaultRange } from '@/utils/printFormat';
 import { sanitizePrintError } from '@/utils/printError';
+import { CLIENT_PERMISSIONS } from '@/utils/permissions';
 import type { AxiosError } from 'axios';
 import type { StatementPrintView } from '@/types/statement';
 
@@ -560,6 +561,22 @@ const RETAILER_USER = {
   tenant_id: 't1', tenant_schema: 't_1',
   roles: ['retailer_operator'], permissions: [],
 };
+// DC-12R1-MVP-R0-R1 (WPR-002): retailer_operator holding the full client:*
+// grant set. The ALLOW matrix uses this so the per-route permission guard
+// admits it; RETAILER_USER (permissions: []) is the permission-empty case.
+const RETAILER_USER_PERMITTED = {
+  id: 'r1', email: 'r@e.com', full_name: 'R',
+  tenant_id: 't1', tenant_schema: 't_1',
+  roles: ['retailer_operator'],
+  permissions: [
+    CLIENT_PERMISSIONS.CATALOG_READ,
+    CLIENT_PERMISSIONS.ORDERS_READ,
+    CLIENT_PERMISSIONS.ORDERS_CREATE,
+    CLIENT_PERMISSIONS.PAYMENTS_READ,
+    CLIENT_PERMISSIONS.PAYMENTS_DECLARE,
+    CLIENT_PERMISSIONS.FINANCE_READ,
+  ],
+};
 const WHOLESALER_USER = {
   id: 'w1', email: 'w@e.com', full_name: 'W',
   tenant_id: 't1', tenant_schema: 't_1',
@@ -661,7 +678,8 @@ describe('I2C-I2B — actual AppRouter guard matrix across all 8 print routes', 
   describe('retailer ALLOW (4 client routes)', () => {
     for (const tpl of CLIENT_TPL) {
       it(`admits ${tpl}; print-data GET list == [expected] only; opposite + 7 others never called`, async () => {
-        useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER, tenantCode: null, retailerPortalCode: 'SUPP42' });
+        // WPR-002: the retailer needs the per-route client:* permission.
+        useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER_PERMITTED, tenantCode: null, retailerPortalCode: 'SUPP42' });
         const exp = routeExpectations(tpl)!;
         await renderAppRouterAt(concretePath(tpl));
         await waitFor(() => expect(screen.queryByTestId(exp.testid)).not.toBeNull(), { timeout: 3000 });
@@ -735,7 +753,8 @@ describe('I2C-I2B — actual AppRouter guard matrix across all 8 print routes', 
   });
 
   it('statement endpoint exclusivity — client never calls supplier statement endpoint and vice versa', async () => {
-    useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER, tenantCode: null, retailerPortalCode: 'SUPP42' });
+    // WPR-002: /client/statements/print now requires client:finance:read.
+    useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER_PERMITTED, tenantCode: null, retailerPortalCode: 'SUPP42' });
     await renderAppRouterAt('/client/statements/print?from=2026-08-01&to=2026-08-10');
     await waitFor(() => expect(screen.queryByTestId('statement-print-document')).not.toBeNull(), { timeout: 3000 });
     expect(mockGet).not.toHaveBeenCalledWith('/statements/print');
@@ -747,6 +766,63 @@ describe('I2C-I2B — actual AppRouter guard matrix across all 8 print routes', 
     await renderAppRouterAt('/statements/print?retailer_id=ret-a-1&from=2026-08-01&to=2026-08-10');
     await waitFor(() => expect(screen.queryByTestId('statement-print-document')).not.toBeNull(), { timeout: 3000 });
     expect(mockGet).not.toHaveBeenCalledWith('/client/statements/print');
+  });
+});
+
+// ===========================================================================
+// DC-12R1-MVP-R0-R1 (WPR-002): Contract D statement permission admission.
+//
+// RED/GREEN evidence: before WPR-002 /client/statements/print admitted any
+// retailer_operator (RetailerRoute was role-only). After WPR-002 it requires
+// client:finance:read, so a permission-empty retailer is denied (zero statement
+// GET, zero writes). Permitted admission stays GREEN (ALLOW matrix above).
+// ===========================================================================
+
+describe('WPR-002 — /client/statements/print denied for permissions=[] (RED/GREEN)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGet.mockReset();
+    vi.mocked(api.post).mockReset();
+    useAuthStore.setState({
+      accessToken: null, refreshToken: null, user: null,
+      tenantCode: null, retailerPortalCode: null,
+    });
+  });
+
+  it('denies the retailer statement route for permissions=[]: no document, zero GET, zero writes', async () => {
+    useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER, tenantCode: null, retailerPortalCode: 'SUPP42' });
+    await renderAppRouterAt('/client/statements/print?from=2026-08-01&to=2026-08-10');
+    await waitFor(() => expect(screen.queryByTestId('statement-print-document')).not.toBeInTheDocument(), { timeout: 3000 });
+    expect(printDataGetUrls(mockGet.mock.calls)).toEqual([]);
+    for (const ep of ALL_EIGHT_PRINT_ENDPOINTS) expect(mockGet).not.toHaveBeenCalledWith(ep);
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.put).not.toHaveBeenCalled();
+    expect(api.patch).not.toHaveBeenCalled();
+    expect(api.delete).not.toHaveBeenCalled();
+  });
+
+  it('denies the retailer statement route when only client:finance:read is missing (precision)', async () => {
+    const perms = [
+      CLIENT_PERMISSIONS.CATALOG_READ,
+      CLIENT_PERMISSIONS.ORDERS_READ,
+      CLIENT_PERMISSIONS.ORDERS_CREATE,
+      CLIENT_PERMISSIONS.PAYMENTS_READ,
+      CLIENT_PERMISSIONS.PAYMENTS_DECLARE,
+      // client:finance:read intentionally omitted.
+    ];
+    useAuthStore.setState({
+      accessToken: 't', refreshToken: 'r',
+      user: {
+        id: 'r1', email: 'r@e.com', full_name: 'R',
+        tenant_id: 't1', tenant_schema: 't_1',
+        roles: ['retailer_operator'], permissions: perms,
+      },
+      tenantCode: null, retailerPortalCode: 'SUPP42',
+    });
+    await renderAppRouterAt('/client/statements/print?from=2026-08-01&to=2026-08-10');
+    await waitFor(() => expect(screen.queryByTestId('statement-print-document')).not.toBeInTheDocument(), { timeout: 3000 });
+    expect(printDataGetUrls(mockGet.mock.calls)).toEqual([]);
+    expect(api.post).not.toHaveBeenCalled();
   });
 });
 

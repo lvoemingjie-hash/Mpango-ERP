@@ -22,19 +22,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.dependencies import get_tenant_db_session
 from api.middleware.rbac import RequirePermission
 from api.v1.client.dependencies import ClientIdentity, resolve_client_identity
+from api.v1.statement_http import map_statement_result
 from core.security import TokenPayload
 from repositories.payment_declaration_repository import PaymentDeclarationRepository
 from repositories.statement_repository import (
-    StatementInternalInconsistent,
-    StatementLedgerScopeIncomplete,
     StatementPeriodError,
-    StatementRangeTooLarge,
-    StatementReconciliationFailed,
     parse_statement_date_range,
 )
 from schemas.common import DataResponse, Pagination
 from schemas.print import StatementPrintView
-from services.print_service import StatementResult, build_statement_print
+from services.print_service import build_statement_print
 
 
 router = APIRouter()
@@ -83,69 +80,11 @@ async def get_client_statement(
 # Contract D (I2C-I2B) — printable relationship account statement (retailer).
 # GET /client/statements/print?from=YYYY-MM-DD&to=YYYY-MM-DD
 # Permission: client:finance:read. Retailer identity is server-derived.
+#
+# WPR-004: the StatementResult → HTTP mapping is the shared
+# ``api.v1.statement_http.map_statement_result`` (also used by the supplier
+# route), so the retailer and supplier public contracts cannot drift apart.
 # ---------------------------------------------------------------------------
-
-
-def _map_statement_result(res: StatementResult) -> StatementPrintView:
-    """Map a StatementResult to a view or raise the precise HTTP status.
-
-    No partial document is returned after a fail-closed condition. The three
-    integrity failures are NOT downgraded to a neutral 404 — they surface their
-    exact 409 codes.
-    """
-    if res.view is not None:
-        return res.view
-    if res.not_found:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "STATEMENT_NOT_AVAILABLE", "message": "Statement not available"},
-        )
-    err = res.error
-    if isinstance(err, StatementPeriodError):
-        # Defensive: a period error reaching this map is an internal invariant
-        # breach (routes pre-validate via the shared parser). Controlled 400.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "INVALID_DATE_RANGE", "message": "Invalid date range."},
-        )
-    if isinstance(err, StatementRangeTooLarge):
-        # Aggregate line cap exceeded — controlled 400, zero partial document.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "STATEMENT_RANGE_TOO_LARGE",
-                "message": "Statement range is too large. Choose a shorter date range.",
-            },
-        )
-    if isinstance(err, StatementLedgerScopeIncomplete):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "STATEMENT_LEDGER_SCOPE_INCOMPLETE",
-                "message": "Statement ledger scope is incomplete.",
-            },
-        )
-    if isinstance(err, StatementInternalInconsistent):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "STATEMENT_INTERNAL_INCONSISTENT",
-                "message": "Statement internal arithmetic is inconsistent.",
-            },
-        )
-    if isinstance(err, StatementReconciliationFailed):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "STATEMENT_RECONCILIATION_FAILED",
-                "message": "Statement reconciliation failed.",
-            },
-        )
-    # Defensive: any other error -> neutral 404 (no internal disclosure).
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail={"code": "STATEMENT_NOT_AVAILABLE", "message": "Statement not available"},
-    )
 
 
 @router.get(
@@ -190,7 +129,7 @@ async def print_client_statement(
         date_to=date_to,
         include_pending=include_pending,
     )
-    view = _map_statement_result(res)
+    view = map_statement_result(res)
     return DataResponse(
         success=True,
         data=view,

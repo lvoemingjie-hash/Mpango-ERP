@@ -3,7 +3,8 @@
 **Last updated:** 2026-08-11
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5`
+**Current protected branch tip:** `d796dcb0d8ecc4ddffc2f82a67e90170c9cdb60f` (the SHA controlled work branches from; verify before editing)
+**Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (accepted Contract D merge; an ancestor of the current tip, NOT the tip itself)
 **Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
@@ -13,8 +14,12 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered@adcc7f28` includes accepted I2B and read-only
-  backend/browser-printable Contracts A-D.
+- `origin/product-dev-recovered@d796dcb0` is the current protected tip. It
+  descends from and includes the accepted product-code merge `adcc7f28`, so it
+  carries accepted I2B runtime and read-only backend/browser-printable Contracts
+  A-D. Controlled work branches from `d796dcb0`.
+- The accepted merge `adcc7f28` is an ANCESTOR of the current tip, not the tip
+  itself. Do not branch from or reference `adcc7f28` as the current baseline.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -66,7 +71,8 @@ in `ai-ledger/`.
 
 I2C-I2B Contract D controlled merge and independent verification:
 
-`origin/product-dev-recovered` includes `adcc7f28`
+`origin/product-dev-recovered@d796dcb0` (current tip) includes `adcc7f28` as an
+ancestor
 
 - Approved source: `133ca46b`; merge tree equals the reviewed source tree.
 - Kilo final source/test-authenticity review: `a56078c6`.
@@ -215,7 +221,8 @@ Required planning boundary:
 ## Agent Assignment
 
 - **Primary planning agent (Zcode):** audit and plan S3-S3-D in a clean
-  worktree from `origin/product-dev-recovered@adcc7f28`.
+  worktree from `origin/product-dev-recovered@d796dcb0` (the current protected
+  tip; `adcc7f28` is an ancestor and must not be used as the branch baseline).
 - **Independent reviewer:** Kilo performs adversarial UX/source and
   test-authenticity review after the S3-S3-D plan is frozen.
 - **Codex CTO:** own scope, financial blast radius, and merge decision.
@@ -229,8 +236,11 @@ Required planning boundary:
 
 Stop and report to the CTO if:
 
-- fetched `origin/product-dev-recovered` does not equal or descend from accepted
-  Contract D merge `adcc7f281c661897ad050a8278686375b611edb5`;
+- fetched `origin/product-dev-recovered` does not equal the documented current
+  protected tip `d796dcb0d8ecc4ddffc2f82a67e90170c9cdb60f` (or a CTO-published
+  later tip), or the fetched tip does not descend from accepted Contract D merge
+  `adcc7f281c661897ad050a8278686375b611edb5`; the current tip `d796dcb0` DOES
+  descend from `adcc7f28` and this stop condition was verified satisfied;
 - statement data is accepted from client-calculated financial fields;
 - supplier or retailer authority comes from request-supplied IDs;
 - ledger movements and settled payments are correlated without a persisted key;

@@ -1,9 +1,9 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-11
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Accepted product code merge:** `0dc245114ec7442ebb1dea16e9332d95ddb3a6fe`
+**Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5`
 **Current database head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
@@ -20,10 +20,9 @@ identity, supplier-scoped retailer login, catalog/order workspace, read-only
 retailer finance visibility, and the payment-declaration maker-checker loop are
 materially implemented.
 
-The current product is still pre-pilot because Contract D relationship
-statements, final workspace polish, the real-mailbox browser journey, customer
-HTTPS deployment, the formal DB-OPS package, tenant branding, and current user
-manuals are not all closed.
+The current product is still pre-pilot because final workspace polish, the
+real-mailbox browser journey, customer HTTPS deployment, the formal DB-OPS
+package, tenant branding, and current user manuals are not all closed.
 
 Current engineering truth:
 
@@ -77,7 +76,7 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product code baseline | `origin/product-dev-recovered@0dc24511` includes accepted I2B runtime and I2C-I1/I2 browser-printable Contracts A-C |
+| Product code baseline | `origin/product-dev-recovered@adcc7f28` includes accepted I2B runtime and read-only backend/browser-printable Contracts A-D |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `037_payment_declarations_schema` |
@@ -109,8 +108,8 @@ deployment state from a merged branch.
 | Retailer payment declaration schema foundation | Merged | Migration `037` provides declarations, receipt sequences, and receipt numbers |
 | Canonical payment transaction extraction I2A | Merged | `CanonicalPaymentService` owns the reusable mutation core; direct pay behavior is preserved and invalid amounts fail before DB access |
 | Payment declaration and cashier confirmation I2B | Merged | Retailer declaration remains non-authoritative; cashier confirm/reject is supplier-scoped; confirmation uses the canonical atomic payment path and allocates a receipt |
-| Printable business records | Backend and browser A-C merged | Read-only order, declaration, and eligible receipt print data plus browser-print UI are available; Contract D statements remain |
-| Retailer workspace closure | In progress | Contract D statements and final responsive/brand UX remain |
+| Printable business records | Backend and browser A-D merged | Read-only order, declaration, eligible receipt, and relationship-statement print data plus browser-print UI are available |
+| Retailer workspace closure | In progress | Final responsive and branded workspace UX remains |
 | Retailer end-to-end S4 | Not closed | Real mailbox and browser journey on deployed latest SHA remains |
 | Platform operator schema | Foundation merged | Migration `034` tables exist |
 | Platform operator runtime | Incomplete | Dedicated login/JWT/guard/frontend lifecycle remains |
@@ -208,15 +207,40 @@ checks, `63` focused tests, `223` full frontend tests, and a successful build at
 report `12460e0c`. Post-merge checks repeated the `63` focused tests, full
 frontend suite, production build, secrets, pre-commit, and GitNexus gates.
 
+### DC-12R1-S3-S2B-I2C-I2B Contract D relationship statement
+
+Merged as `adcc7f281c661897ad050a8278686375b611edb5` from approved source
+`133ca46be0c664be0118365dfcef85ce76e60379` after Kilo review `a56078c6`
+and Lubuntu independent verification `b652b683`.
+
+Delivered:
+
+- read-only supplier and retailer relationship statements over an inclusive
+  date range;
+- one server-authoritative opening and closing balance computed from immutable
+  receivable ledger movements;
+- independent `movements[]` and canonical `settled_payments[]` lists, with no
+  inferred receipt-to-ledger association;
+- fail-closed ownership, ledger-scope, arithmetic, reconciliation, date-range,
+  and line-cap boundaries;
+- browser-print rendering with string-safe money display and zero financial
+  mutation.
+
+Two independent fresh PostgreSQL 16 and Redis 7 full-backend gates each
+reported `3285 passed`, `48 skipped`, `15 xfailed`, zero failures, and zero
+errors. The final frontend gate reported `270 passed` and a successful
+production build.
+
 ## 6. Latest Validation Snapshot
 
-I2C-I2 source `10c9158d` passed Kilo adversarial source/test-authenticity
+Contract D source `133ca46b` passed Kilo adversarial source/test-authenticity
 review and Lubuntu independent runtime verification. The independent gate
-proved `63` focused printable-workspace tests across repeated runs, `223` full
-frontend tests, a successful production build, eight RED/GREEN mutation checks,
-the full 12-case route boundary, and the real cashier-confirmation-to-receipt
-link flow. The reviewed tree was merged as `0dc24511`; post-merge focused,
-full-frontend, build, secrets, pre-commit, and GitNexus gates passed again.
+proved the focused Contract D and generator bundle in both orders, the accepted
+`192`-node financial regression bundle on two stacks, two identical full
+backend runs at `3285 passed`, `48 skipped`, `15 xfailed`, zero failures and
+zero errors, `270` full frontend tests, and a successful production build. The
+reviewed tree was merged as `adcc7f28`; post-merge compile, generator/CSV,
+frontend, build, secrets, pre-commit, and GitNexus gates passed.
 
 Earlier financial-runtime evidence remains accepted:
 
@@ -256,9 +280,8 @@ real browser/mailbox journey.
 
 ### P1 product journey blockers
 
-1. Contract D relationship statements are not implemented.
-2. The complete retailer workspace is not yet closed on mobile and desktop.
-3. The latest SHA has not passed the full invitation/setup/reset/login/order/
+1. The complete retailer workspace is not yet closed on mobile and desktop.
+2. The latest SHA has not passed the full invitation/setup/reset/login/order/
    payment/finance journey through a real mailbox and browser.
 
 ### P1 operational blockers
@@ -382,34 +405,28 @@ recalculating finance or issuing a financial mutation.
 This slice excludes Contract D statements, events/outbox, SMS/WhatsApp delivery,
 new migrations, dependencies, backend financial changes, and deployment.
 
-#### DC-12R1-S3-S2B-I2C-I2B - Contract D relationship statement (active)
+#### DC-12R1-S3-S2B-I2C-I2B - Contract D relationship statement (completed)
 
-Implement the read-only supplier and retailer Contract D account-statement
-backend and browser-print view from the binding contract in
-`2026-08-04_dc12r1_s3_s2b_i2c_print_notification_contract.md`.
+Merged as `adcc7f281c661897ad050a8278686375b611edb5`. The accepted implementation
+provides read-only supplier and retailer relationship statements from immutable
+receivable ledger movements, keeps movements and settled payments independent,
+retains historical accounting scope, and fails closed instead of rendering a
+partial or inconsistent statement.
 
-The statement must use immutable receivable `ledger_entries` for its one
-customer-facing opening and closing balance. It must render ledger
-`movements[]` and canonical `settled_payments[]` as independent lists, never
-infer a receipt-to-ledger link, retain historical movements for soft-deleted
-orders, and fail closed on incomplete ledger scope or inconsistent arithmetic.
-It reuses `client:finance:read` and `finance:read`; it adds no migration,
-permission, financial write, event/outbox, provider integration, PDF library,
-deployment, or notification delivery.
+#### DC-12R1-S3-S2B-I2C-I3 - future notification-event closure (deferred)
 
-#### DC-12R1-S3-S2B-I2C-I3 - future notification-event closure (pending)
+This remains outside the current MVP. Transactional outbox storage, event
+emission, provider integration, and SMS/WhatsApp delivery require a separate
+post-MVP CTO authorization. Existing event-shape decisions do not authorize an
+implementation, migration, queue, dispatcher, or financial mutation path.
 
-Define and implement committed-state notification-event/outbox boundaries only
-after I2C-I2 is independently reviewed and merged. The scope must define event
-identity, tenant/relationship scope, committed-state timing, redaction, replay,
-and audit semantics. It must not integrate SMS/WhatsApp delivery or introduce a
-financial mutation path without a separate approval.
+#### DC-12R1-S3-S3-D - responsive branded workspace closure (active design gate)
 
-#### DC-12R1-S3-S3 - responsive branded workspace closure
-
-Deliver responsive retailer navigation, branded relationship context, clear
-financial state language, empty/error states, logout recovery, and focused
-accessibility tests. It builds on I2C-I2 rather than duplicating print views.
+Audit the existing retailer workspace and define a bounded implementation plan
+for responsive navigation, existing relationship-brand context, clear financial
+state language, empty/error states, logout recovery, and focused accessibility
+tests. It must reuse Contracts A-D and existing financial services rather than
+duplicating print views or changing financial semantics.
 
 #### DC-12R1-S4 - end-to-end delivery closure
 

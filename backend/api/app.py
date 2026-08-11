@@ -132,6 +132,9 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     # DC-12R1-S3-S2B-I2B: wholesaler cashier declaration confirm/reject + list/read
     from api.v1.declarations import router as declarations_router
     app.include_router(declarations_router, prefix="/api/v1/declarations", tags=["declarations"])
+    # DC-12R1-S3-S2B-I2C-I2B (Contract D): wholesaler printable relationship statement
+    from api.v1.statements import router as supplier_statements_router
+    app.include_router(supplier_statements_router, prefix="/api/v1/statements", tags=["statements"])
 
     # GAP 2: Finance — Invoices, AR, Financial Summary
     from api.v1.finance import router as finance_router

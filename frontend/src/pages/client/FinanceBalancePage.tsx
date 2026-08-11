@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScaleIcon } from '@heroicons/react/24/outline';
+import { Link } from 'react-router-dom';
+import { ScaleIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { clientFinanceService } from '@/services/clientFinanceService';
+import { eatMonthRange } from '@/utils/printFormat';
 import type { ClientFinanceBalance } from '@/types/client';
 
 function formatMoney(amount: string) {
@@ -9,6 +11,13 @@ function formatMoney(amount: string) {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/** Current calendar month in Africa/Nairobi (EAT) — R1 rule 6: never
+ *  browser-local dates for statement ranges. */
+function monthRangeHref(): string {
+  const { from, to } = eatMonthRange();
+  return `/client/statements/print?from=${from}&to=${to}`;
 }
 
 export function ClientFinanceBalancePage() {
@@ -66,6 +75,16 @@ export function ClientFinanceBalancePage() {
             This value is from your supplier relationship and is not recalculated on this device.
           </p>
           <p className="mt-2 text-xs text-gray-400">Updated {formatDate(balance.updated_at)}</p>
+          <div className="mt-4 border-t border-gray-100 pt-3">
+            <Link
+              to={monthRangeHref()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700"
+              data-testid="retailer-statement-print-link"
+            >
+              <PrinterIcon className="h-4 w-4" />
+              Print monthly statement
+            </Link>
+          </div>
         </section>
       )}
     </div>

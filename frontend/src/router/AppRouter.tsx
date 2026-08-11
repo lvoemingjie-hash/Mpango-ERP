@@ -39,6 +39,8 @@ import DeclarePaymentPage from '@/pages/client/DeclarePaymentPage';
 import { OrderPrintPage } from '@/pages/print/OrderPrintPage';
 import { DeclarationPrintPage } from '@/pages/print/DeclarationPrintPage';
 import { ReceiptPrintPage } from '@/pages/print/ReceiptPrintPage';
+// DC-12R1-S3-S2B-I2C-I2B: printable relationship account statement (Contract D).
+import { StatementPrintPage } from '@/pages/print/StatementPrintPage';
 // DC-12R1-S1: retailer credential setup/reset pages (fragment-only token transport)
 import { RetailerSetupCredentialPage } from '@/pages/retailer/RetailerSetupCredentialPage';
 import { RetailerResetPasswordPage } from '@/pages/retailer/RetailerResetPasswordPage';
@@ -128,6 +130,10 @@ const router = createBrowserRouter([
               { path: '/orders/:orderId/print', element: <OrderPrintPage mode="cashier" /> },
               { path: '/declarations/:declarationId/print', element: <DeclarationPrintPage mode="cashier" /> },
               { path: '/declarations/:declarationId/receipt', element: <ReceiptPrintPage mode="cashier" /> },
+              // DC-12R1-S3-S2B-I2C-I2B: cashier relationship statement (Contract D).
+              // mode is fixed by static route config; retailer_id/from/to are
+              // read-only query inputs for the GET (never route/mode switches).
+              { path: '/statements/print', element: <StatementPrintPage mode="cashier" /> },
             ],
           },
         ],
@@ -154,6 +160,10 @@ const router = createBrowserRouter([
               { path: '/client/orders/:orderId/print', element: <OrderPrintPage mode="client" /> },
               { path: '/client/declarations/:declarationId/print', element: <DeclarationPrintPage mode="client" /> },
               { path: '/client/declarations/:declarationId/receipt', element: <ReceiptPrintPage mode="client" /> },
+              // DC-12R1-S3-S2B-I2C-I2B: retailer relationship statement (Contract D).
+              // mode is fixed by static route config; from/to are read-only
+              // query inputs for the GET (the retailer identity is server-derived).
+              { path: '/client/statements/print', element: <StatementPrintPage mode="client" /> },
             ],
           },
         ],

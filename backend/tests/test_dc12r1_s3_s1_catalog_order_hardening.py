@@ -657,6 +657,8 @@ class TestClientRouteAllowlist:
             ("GET", "/api/v1/client/orders/{order_id}/print"): "client:orders:read",
             ("GET", "/api/v1/client/declarations/{declaration_id}/print"): "client:payments:read",
             ("GET", "/api/v1/client/declarations/{declaration_id}/receipt"): "client:payments:read",
+            # DC-12R1-S3-S2B-I2C-I2B (Contract D): printable relationship statement.
+            ("GET", "/api/v1/client/statements/print"): "client:finance:read",
         }
 
         actual: dict[tuple[str, str], str | None] = {}

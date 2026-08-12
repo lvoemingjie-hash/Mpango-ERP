@@ -227,21 +227,26 @@ def check_setup_sh_wiring(text: str) -> None:
         ``true ||``);
       * no unconditional ``exit`` / ``return`` (outside ``if … fi``) precedes
         the pip line;
-      * the exact sequence ``cd backend`` → ``pip install -r requirements.txt``
-        → ``alembic upgrade head -x tenant_schema=t_dev`` is present in order.
+      * the exact sequence ``cd … backend`` → ``pip install -r requirements.txt``
+        → ``alembic upgrade head`` (public) → ``alembic -x tenant_schema=…
+        upgrade head`` (tenant) → ``pnpm install --frozen-lockfile`` is present
+        in order;
+      * the old alembic form ``alembic upgrade head -x …`` is rejected;
+      * ``npm install`` is rejected (pnpm is required).
 
     This is a source-shape guard, not native-execution proof.
     """
     P = "pip install -r requirements.txt"
-    ALEMBIC = "alembic upgrade head -x tenant_schema=t_dev"
-    CD_BACKEND = "cd backend"
+    OLD_ALEMBIC = "alembic upgrade head -x"
+    PNPM_CMD = "pnpm install --frozen-lockfile"
     lines = text.splitlines()
+    CD_BACKEND = "cd backend"
 
     # ------- block-depth helper -----------------------------------------------
     def _block_delta(s: str) -> int:
         """Return +1 for opener, -1 for closer, 0 otherwise."""
         low = s.lower()
-        if re.match(r"^(if|elif)\b", low):
+        if re.match(r"^if\b", low):
             return 1
         if re.match(r"^(for|while|until|case)\b", low):
             return 1
@@ -324,13 +329,37 @@ def check_setup_sh_wiring(text: str) -> None:
         elif re.match(r"^(exit|return)\b", s) and if_depth == 0:
             raise ValueError(f"setup.sh: unreachable (exit/return before pip line at L{pip_idx + 1})")
 
-    # ------- step 3: exact sequence -------------------------------------------
-    # cd backend (exact)
-    if not any(raw.strip() == CD_BACKEND for raw in lines[:pip_idx]):
+    # ------- step 3: exact sequence + reject old alembic form ---------------
+    after_pip = lines[pip_idx + 1 :]
+    # reject old "alembic upgrade head -x ..." form anywhere
+    for raw in lines:
+        s = raw.strip()
+        if OLD_ALEMBIC in s and not s.startswith("#"):
+            raise ValueError("setup.sh: old alembic form 'alembic upgrade head -x' must be replaced with 'alembic -x tenant_schema=... upgrade head'")
+    # reject npm (pnpm is required)
+    for raw in after_pip:
+        s = raw.strip()
+        if re.search(r"\bnpm\s+(install|i)\b", s) and "pnpm" not in s.lower():
+            raise ValueError("setup.sh: npm install is not allowed — use pnpm install --frozen-lockfile")
+    # cd backend (accepts "cd $REPO_ROOT/backend", "cd backend", etc.)
+    cd_found = any(re.match(r"^cd\b", raw.strip()) and "backend" in raw for raw in lines[:pip_idx])
+    if not cd_found:
         raise ValueError("setup.sh: must cd into backend before pip install")
-    # alembic upgrade head -x tenant_schema=t_dev (exact) after pip
-    if not any(raw.strip() == ALEMBIC for raw in lines[pip_idx + 1:]):
-        raise ValueError("setup.sh: must run alembic upgrade head after pip install")
+    # public alembic upgrade head (bare, without -x) after pip (allow trailing comment)
+    if not any(re.match(r"^alembic upgrade head\s*(#|$)", raw.strip()) for raw in after_pip):
+        raise ValueError("setup.sh: must run public 'alembic upgrade head' (no -x) after pip install")
+    # tenant migration: alembic -x tenant_schema=... upgrade head (allow trailing comment)
+    if not any(re.match(r"^alembic -x tenant_schema=", raw.strip()) for raw in after_pip):
+        raise ValueError("setup.sh: must run tenant 'alembic -x tenant_schema=... upgrade head' after public migration")
+    # tenant must not appear before public
+    pub_idx = next((i for i,r in enumerate(after_pip) if re.match(r"^alembic upgrade head\s*(#|$)", r.strip())), -1)
+    ten_idx = next((i for i,r in enumerate(after_pip) if re.match(r"^alembic -x tenant_schema=", r.strip())), -1)
+    if ten_idx >= 0 and pub_idx >= 0 and ten_idx < pub_idx:
+        raise ValueError("setup.sh: tenant migration must run AFTER public 'alembic upgrade head'")
+    # pnpm frozen-lockfile (accepts both literal and $PNPM variable)
+    PNPM_LIT = "pnpm install --frozen-lockfile"
+    if not any((PNPM_LIT in raw or "$PNPM install --frozen-lockfile" in raw) for raw in after_pip):
+        raise ValueError("setup.sh: must run 'pnpm install --frozen-lockfile' after migrations")
 
 
 def check_dockerfile_wiring(text: str) -> None:
@@ -501,21 +530,51 @@ class TestH7R4InventoryParity:
 # ──────────────────────────────────────────────────────────────────────────── #
 # GREEN — install-path source-shape guards (real files must pass)
 # ──────────────────────────────────────────────────────────────────────────── #
-class TestH7R4InstallPathWiring:
+ALEMBIC_PNPM_SUFFIX = "alembic upgrade head\nalembic -x tenant_schema=t_dev upgrade head\npnpm install --frozen-lockfile"
+
+
+class TestH7R5InstallPathWiring:
     def test_setup_sh_passes_structural_guard(self) -> None:
         check_setup_sh_wiring(SETUP_SH.read_text(encoding="utf-8"))
 
     def test_dockerfile_passes_structural_guard(self) -> None:
         check_dockerfile_wiring(DOCKERFILE.read_text(encoding="utf-8"))
 
-    # ---- setup.sh RED mutations -----------------------------------------
+    # ---- setup.sh RED: old-form rejection + sequence ---------------------
+    ALEMBIC_PNPM_SUFFIX = "alembic upgrade head\nalembic -x tenant_schema=t_dev upgrade head\npnpm install --frozen-lockfile"
+
+    def test_RED_setup_sh_old_alembic_form_rejected(self) -> None:
+        with pytest.raises(ValueError, match="old alembic"):
+            check_setup_sh_wiring("cd backend\npip install -r requirements.txt\nalembic upgrade head -x tenant_schema=t_dev")
+
+    def test_RED_setup_sh_missing_public_migration_rejected(self) -> None:
+        with pytest.raises(ValueError, match="public"):
+            check_setup_sh_wiring("cd backend\npip install -r requirements.txt\nalembic -x tenant_schema=t_dev upgrade head\npnpm install --frozen-lockfile")
+
+    def test_RED_setup_sh_tenant_before_public_rejected(self) -> None:
+        with pytest.raises(ValueError, match="tenant"):
+            check_setup_sh_wiring(f"cd backend\npip install -r requirements.txt\nalembic -x tenant_schema=t_dev upgrade head\nalembic upgrade head\npnpm install --frozen-lockfile")
+
+    def test_RED_setup_sh_migration_or_true_rejected(self) -> None:
+        with pytest.raises(ValueError, match="public"):
+            check_setup_sh_wiring("cd backend\npip install -r requirements.txt\nalembic upgrade head || true\nalembic -x tenant_schema=t_dev upgrade head\npnpm install --frozen-lockfile")
+
+    def test_RED_setup_sh_npm_install_rejected(self) -> None:
+        with pytest.raises(ValueError, match="npm"):
+            check_setup_sh_wiring(f"cd backend\npip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX.replace('pnpm install --frozen-lockfile','npm install')}")
+
+    def test_RED_setup_sh_missing_pnpm_rejected(self) -> None:
+        with pytest.raises(ValueError, match="pnpm"):
+            check_setup_sh_wiring("cd backend\npip install -r requirements.txt\nalembic upgrade head\nalembic -x tenant_schema=t_dev upgrade head")
+
+    # preserved R4-R1 RED tests (updated inputs to new alembic form)
     def test_RED_setup_sh_commented_pip_detected(self) -> None:
         with pytest.raises(ValueError, match="no active"):
-            check_setup_sh_wiring("cd backend\n# pip install -r requirements.txt\nalembic upgrade head -x tenant_schema=t_dev")
+            check_setup_sh_wiring(f"cd backend\n# pip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX}")
 
     def test_RED_setup_sh_pip_after_exit_rejected(self) -> None:
         with pytest.raises(ValueError, match="unreachable"):
-            check_setup_sh_wiring("exit 0\npip install -r requirements.txt")
+            check_setup_sh_wiring(f"exit 0\npip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX}")
 
     def test_RED_setup_sh_pip_inside_echo_rejected(self) -> None:
         with pytest.raises(ValueError, match="inert"):
@@ -531,11 +590,7 @@ class TestH7R4InstallPathWiring:
 
     def test_RED_setup_sh_missing_cd_backend_rejected(self) -> None:
         with pytest.raises(ValueError, match="cd"):
-            check_setup_sh_wiring("pip install -r requirements.txt\nalembic upgrade head -x tenant_schema=t_dev")
-
-    def test_RED_setup_sh_missing_alembic_rejected(self) -> None:
-        with pytest.raises(ValueError, match="alembic"):
-            check_setup_sh_wiring("cd backend\npip install -r requirements.txt")
+            check_setup_sh_wiring(f"pip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX}")
 
     def test_RED_setup_sh_var_assign_rejected(self) -> None:
         with pytest.raises(ValueError, match="variable assignment"):
@@ -545,41 +600,39 @@ class TestH7R4InstallPathWiring:
         with pytest.raises(ValueError, match="quoted"):
             check_setup_sh_wiring('"pip install -r requirements.txt"')
 
-    # multi-line block wrappers (R4-R1)
     def test_RED_setup_sh_multiline_if_block_rejected(self) -> None:
         with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring("if false; then\npip install -r requirements.txt\nfi")
+            check_setup_sh_wiring(f"if false; then\npip install -r requirements.txt\nfi\n{ALEMBIC_PNPM_SUFFIX}")
 
     def test_RED_setup_sh_same_line_if_rejected(self) -> None:
         with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring("if true; then pip install -r requirements.txt; fi")
+            check_setup_sh_wiring(f"if true; then pip install -r requirements.txt; fi\n{ALEMBIC_PNPM_SUFFIX}")
 
     def test_RED_setup_sh_for_block_rejected(self) -> None:
         with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring("for x in 1; do\npip install -r requirements.txt\ndone")
+            check_setup_sh_wiring(f"for x in 1; do\npip install -r requirements.txt\ndone\n{ALEMBIC_PNPM_SUFFIX}")
 
     def test_RED_setup_sh_while_block_rejected(self) -> None:
         with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring("while false; do\npip install -r requirements.txt\ndone")
+            check_setup_sh_wiring(f"while false; do\npip install -r requirements.txt\ndone\n{ALEMBIC_PNPM_SUFFIX}")
 
     def test_RED_setup_sh_function_block_rejected(self) -> None:
         with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring("_bad() {\npip install -r requirements.txt\n}")
+            check_setup_sh_wiring(f"_bad() {{\npip install -r requirements.txt\n}}\n{ALEMBIC_PNPM_SUFFIX}")
 
-    # exact command guard (R4-R1)
     def test_RED_setup_sh_pip_or_true_rejected(self) -> None:
         with pytest.raises(ValueError, match="exactly"):
-            check_setup_sh_wiring("cd backend\npip install -r requirements.txt || true\nalembic upgrade head -x tenant_schema=t_dev")
+            check_setup_sh_wiring(f"cd backend\npip install -r requirements.txt || true\n{ALEMBIC_PNPM_SUFFIX}")
 
     def test_RED_setup_sh_pip_with_redirect_rejected(self) -> None:
         with pytest.raises(ValueError, match="exactly"):
-            check_setup_sh_wiring("cd backend\npip install -r requirements.txt > /dev/null\nalembic upgrade head -x tenant_schema=t_dev")
+            check_setup_sh_wiring(f"cd backend\npip install -r requirements.txt > /dev/null\n{ALEMBIC_PNPM_SUFFIX}")
 
     def test_RED_setup_sh_unbalanced_if_rejected(self) -> None:
         with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring("if true; then\ncd backend\npip install -r requirements.txt\nalembic upgrade head -x tenant_schema=t_dev")
+            check_setup_sh_wiring(f"if true; then\ncd backend\npip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX}")
 
-    # ---- Dockerfile RED mutations (R4-R1) --------------------------------
+    # ---- Dockerfile RED mutations (unchanged) ---------------------------
     def test_RED_dockerfile_wrong_ordering_rejected(self) -> None:
         with pytest.raises(ValueError, match="must appear AFTER"):
             check_dockerfile_wiring("FROM python:3.11\nRUN poetry install --no-root --only main --no-ansi\nCOPY pyproject.toml poetry.lock ./")

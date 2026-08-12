@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R4-R2 current)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5 current)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -246,7 +246,7 @@ code, Dockerfile, setup.sh, pyproject.toml and poetry.lock remain
 byte-identical to R3; full backend gates are inherited from R3. Evidence in
 the same ledger path.
 
-**H7-R4-R1 (CTO-authorized, current):** corrects two remaining uncovered false-green
+**H7-R4-R1 (CTO-authorized, superseded by H7-R5):** corrects two remaining uncovered false-green
 paths found by CTO review: (A) the setup.sh guard now tracks multi-line shell block
 depth (if/fi, for/do/done, while/do/done, until/do/done, case/esac, functions) and
 requires the pip line to be exactly ``pip install -r requirements.txt`` with no
@@ -255,6 +255,17 @@ final build stage, and detects inert/dead-branch forms (echo-wrapper, ``false &&
 ``|| true``, ``ENV``/``LABEL``/``ARG`` carriers) on RUN lines. The test suite grew
 to 92 tests; all manifests, product code, Dockerfile and setup.sh remain byte-
 identical; full backend gates are inherited from R3. Evidence in the same ledger.
+
+**H7-R5 (CTO-authorized, current):** repairs the native Linux setup path:
+``set -Eeuo pipefail`` + ERR trap; bounded PostgreSQL/Redis health polling
+replaces fixed sleep; migration uses valid ``alembic -x tenant_schema=... upgrade
+head`` order (public first); ``pnpm install --frozen-lockfile`` replaces
+``npm install``; ``docker compose`` before ``docker-compose`` fallback; repo
+root resolved from script location. Command examples in ``alembic/env.py`` and
+``bootstrap_tenant_schema.py`` corrected. The test suite grew to 97 tests with
+RED mutations for every setup failure mode. All H7 manifest versions and 70==70
+parity preserved; requirements/pyproject/lock/Dockerfile/Compose unchanged.
+Evidence in the same ledger.
 
 ## Active Phase
 

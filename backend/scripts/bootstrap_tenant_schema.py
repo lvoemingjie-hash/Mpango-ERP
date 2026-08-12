@@ -8,7 +8,7 @@ default tenant schema (used by MockAuthStrategy in MPANGO_ENV=test) is ready.
 
 Alembic migrations cannot be used for this purpose because the project uses
 a single shared alembic_version table in public schema - running
-`alembic upgrade head -x tenant_schema=t_dev` is a no-op when public
+`alembic -x tenant_schema=t_dev upgrade head` is a no-op when public
 migrations are already at HEAD.
 
 Usage:

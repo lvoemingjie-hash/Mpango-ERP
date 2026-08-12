@@ -1,1 +1,2 @@
 backend/scripts/reset-staging.sh text eol=lf
+backend/scripts/setup.sh text eol=lf

@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R2 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R3 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -280,7 +280,7 @@ suite (94 tests) uses the real committed setup.sh as the mutation base for every
 RED case. All manifests, Dockerfile, Compose, and product code unchanged.
 Native Linux execution remains a Lubuntu gate — not claimed here.
 
-**H7-R5-R2 (evidence checkpoint — NO PASS verdict):** the setup path now
+**H7-R5-R2 (evidence checkpoint, superseded by H7-R5-R3):** the setup path now
 verifies the safely parsed DATABASE_URL tuple (username, database, host,
 port) against the running Compose postgres identity (container-owned
 `POSTGRES_USER`/`POSTGRES_DB` via `exec -T ... sh -ec`), never printing the
@@ -304,6 +304,18 @@ lock-governed and byte-identical since R3). The R5-R2 verdict is therefore
 `STOP_AND_REPORT_CTO_AWAITING_LUBUNTU_ZERO_RED`: the inherited R3 full-gate
 evidence (3366/0/0) does **not** satisfy the current zero-red focused gate,
 and the zero-red focused run must be obtained on the Lubuntu host.
+
+**H7-R5-R3 (evidence checkpoint, current; NO PASS):** adds complete preflight
+before side effects (rendered Compose config validation, DATABASE_URL tuple
+verification against container identity, re-resolution after pip install);
+loopback-only Compose port bindings (`127.0.0.1`); `.gitattributes` LF
+enforcement for setup.sh; and the KILO-001 hash-disproof record
+(env.py=`1c71de7` / bootstrap=`ca7d91f`, both verified unchanged). H7 suite
+103/103 natural+reverse; executable harness 9/9; all deterministic gates
+clean; immutable files byte-identical to `bb52c01b`. The Hypothesis
+`HealthCheck.too_slow` focused-regression red node remains unresolved and
+environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
 ## Active Phase
 

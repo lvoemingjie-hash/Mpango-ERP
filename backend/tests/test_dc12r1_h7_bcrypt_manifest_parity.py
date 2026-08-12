@@ -249,6 +249,11 @@ def check_setup_sh_wiring(text: str) -> None:
         if re.match(r"^if\b", low):
             return 1
         if re.match(r"^(for|while|until|case)\b", low):
+            # if the matching closer is on the same line (single-line block), net 0
+            first_word = low.split()[0] if low.split() else ""
+            closer = {"for": "done", "while": "done", "until": "done", "case": "esac"}.get(first_word, "")
+            if closer and re.search(rf"\b{closer}\b", low):
+                return 0
             return 1
         if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)", s):
             return 1
@@ -260,12 +265,27 @@ def check_setup_sh_wiring(text: str) -> None:
             return -1  # function closer
         return 0
 
+    # ------- pre-compute $(...) command-substitution line ranges -------------
+    # Lines inside $() contain Python code whose if/for keywords must not be
+    # mistaken for shell block openers.  We track paren nesting: each line's
+    # net ( - ) count.  Python code has balanced parens (net 0), so only the
+    # shell $() opener (unbalanced () and closer (unbalanced )) shift depth.
+    in_cmdsubst = [False] * len(lines)
+    _cs = 0
+    for _i, _raw in enumerate(lines):
+        _s = _raw.strip()
+        if _cs > 0:
+            in_cmdsubst[_i] = True
+        _cs = max(0, _cs + _s.count("(") - _s.count(")"))
+
     # ------- step 1: locate the exact pip line --------------------------------
     pip_idx: int | None = None
     depth = 0
     for i, raw in enumerate(lines):
         s = raw.lstrip()
         if not s or s.startswith("#"):
+            continue
+        if in_cmdsubst[i]:
             continue
 
         # track block depth BEFORE evaluating this line's content
@@ -630,8 +650,9 @@ class TestH7R5R1InstallPathWiring:
     # ---- setup.sh RED: alembic / bootstrap sequence ----------------------
     def test_RED_tenant_alembic_noop_rejected(self) -> None:
         text = self._base().replace(
-            '''export DATABASE_URL="$RESOLVED_DATABASE_URL"
-python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"''',
+            '''export DATABASE_URL="$PREFLIGHT_DB_URL"
+python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"
+unset DATABASE_URL''',
             'alembic -x tenant_schema="${DEFAULT_TENANT_SCHEMA:-t_dev}" upgrade head',
         )
         with pytest.raises(ValueError, match="tenant_schema"):
@@ -644,14 +665,14 @@ python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"''',
 
     def test_RED_bootstrap_before_public_migration(self) -> None:
         text = self._base().replace(
-            'alembic upgrade head\n\n# ---- resolve',
-            '# placeholder\n',
+            'alembic upgrade head',
+            '# alembic removed',
         )
         with pytest.raises(ValueError, match="public"):
             check_setup_sh_wiring(text)
 
     def test_RED_missing_bootstrap_database_url(self) -> None:
-        text = self._base().replace('export DATABASE_URL="$RESOLVED_DATABASE_URL"\n', "")
+        text = self._base().replace('export DATABASE_URL="$PREFLIGHT_DB_URL"\n', "")
         with pytest.raises(ValueError, match="(?i)database"):
             check_setup_sh_wiring(text)
 
@@ -798,6 +819,9 @@ echo "docker $*" >> "{log_str}"
 a="$*"
 case "$a" in
     "compose version"*) echo "Docker Compose version v2.20.0"; exit 0;;
+    "compose config --format json"*)
+        echo '{{"services":{{"postgres":{{"environment":{{"POSTGRES_USER":"pguser","POSTGRES_DB":"pgdb"}},"ports":["127.0.0.1:5432:5432"]}},"redis":{{"ports":["127.0.0.1:6379:6379"]}}}}}}'
+        exit 0;;
     "compose config"*) exit {_ev("compose_config")};;
     "compose up -d"*) exit 0;;
     "compose exec -T postgres"*)
@@ -821,6 +845,11 @@ exit {_ev("alembic")}
             "python": f'''#!/bin/bash
 echo "python $*" >> "{log_str}"
 if [ "$1" = "-c" ]; then
+    if echo "$2" | grep -q "json.load"; then
+        cat > /dev/null
+        echo "pguser|pgdb|5432"
+        exit 0
+    fi
     if echo "$2" | grep -q "settings.DATABASE_URL"; then
         echo "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
         exit 0
@@ -875,15 +904,13 @@ exit {_ev("pnpm")}
         assert "Setup complete" in r.stdout
         log_lines = h["log"].read_text().splitlines()
         marks = [
-            "compose version",
             "compose config",
             "compose up -d",
             "compose exec -T postgres",
             "compose exec -T redis",
             "pip install -r requirements.txt",
             "alembic upgrade head",
-            "python -c",
-            "python scripts/bootstrap_tenant_schema.py",
+            "bootstrap_tenant_schema.py",
             "pnpm install --frozen-lockfile",
         ]
         indexes = []

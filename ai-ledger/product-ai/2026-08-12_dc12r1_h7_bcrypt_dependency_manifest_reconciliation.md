@@ -1,13 +1,13 @@
-# DC-12R1-H7-R5-R2 — Evidence Checkpoint (NO PASS)
+# DC-12R1-H7-R5-R3 — Native Setup Preflight and Cross-Host Evidence Closure (NO PASS)
 
-> **Status: `STOP_AND_REPORT_CTO_AWAITING_LUBUNTU_ZERO_RED`.** This is an
-> evidence checkpoint, NOT a merge-review PASS. R5-R1 is superseded. All
-> deterministic/source gates are green; the focused regression retains one
-> environment-gated unresolved Hypothesis red node (see below). The inherited
-> R3 full-gate evidence does NOT satisfy the current zero-red focused gate.
+> **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
+> an evidence checkpoint, NOT a merge-review PASS. R5-R2 is superseded.
+> KILO-001 is DISPROVED_BY_CTO_OBJECT_HASH_CHECK: env.py=`1c71de789e803edff495950fb95edc93b900dfe7`
+> and bootstrap_tenant_schema.py=`ca7d91f31a67c982c974fd5c9e02eeb19a49c536` —
+> both verified unchanged (neither file was edited in any H7 slice).
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `0e8d5159` (H7-R5-R1)
+> Base candidate: `bb52c01b` (H7-R5-R2)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
 ## Exact commands and counts (R5-R2)

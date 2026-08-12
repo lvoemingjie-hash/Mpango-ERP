@@ -1,13 +1,15 @@
-# DC-12R1-H7-R4 — Evidence Gate Authenticity Final Closure
+# DC-12R1-H7-R4-R1 — Install-Path Guard Authenticity Correction
+
+> **H7-R4 verdict is `SUPERSEDED_BY_H7_R4_R1`.** CTO review of R4 found two
+> remaining uncovered false-green paths in the source-shape guards: (A) the
+> setup.sh guard used only same-line block detection and loose command matching;
+> (B) the Dockerfile guard did not join continuations or detect inert/dead-branch
+> forms on RUN lines (echo-wrapper, ``false &&``, ``|| true``, ``ENV``/``LABEL``/
+> ``ARG`` carriers). R4-R1 closes both.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `6cd37e03` (H7-R3)
-> Root base: `origin/product-dev-recovered@a6ef3aac...` (accepted R0-R1 readiness-debt merge)
-> Objective: close the four Kilo findings on H7-R3 and finish evidence-gate authenticity.
-
-> **H7-R3 verdict is `SUPERSEDED_BY_H7_R4`.** Kilo review of R3
-> (`reports/dc12r1-h7-r3-v1-kilo-comprehensive-review-2026-08-12`, commit
-> `c5385565`) returned STOP with four findings, all closed here.
+> Base candidate: `fc816820` (H7-R4)
+> Root base: `origin/product-dev-recovered@a6ef3aac`
 
 ## 0 Verdict Summary
 

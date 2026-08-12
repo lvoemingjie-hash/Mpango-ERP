@@ -214,32 +214,77 @@ def main_inventory_deltas(
 def check_setup_sh_wiring(text: str) -> None:
     """Verify setup.sh has an active ``pip install -r requirements.txt`` line.
 
-    Non-blank, non-comment lines are scanned.  The guard requires:
+    Scans non-blank, non-comment lines with a shell-block depth tracker
+    (if/fi, for/do/done, while/do/done, until/do/done, case/esac, and
+    functions).  The guard requires:
 
-      * a line whose stripped content starts with exactly
-        ``pip install -r requirements.txt`` and is NOT a commented, quoted,
-        inert, or dead-branch form;
-      * the line is NOT unreachable (no bare ``exit``/``return`` outside an
-        ``if … fi`` block before it);
-      * a ``cd … backend`` line precedes the pip line and ``alembic upgrade
-        head`` follows it.
+      * the pip command line is **exactly**
+        ``pip install -r requirements.txt`` (no suffix, redirect, ``||`` chain,
+        or ``&&`` chain);
+      * no shell block is open at the pip line (multi-line or same-line);
+      * the line is NOT commented, quoted, inert (echo/printf), a variable
+        assignment, or behind a dead-branch short-circuit (``false &&`` /
+        ``true ||``);
+      * no unconditional ``exit`` / ``return`` (outside ``if … fi``) precedes
+        the pip line;
+      * the exact sequence ``cd backend`` → ``pip install -r requirements.txt``
+        → ``alembic upgrade head -x tenant_schema=t_dev`` is present in order.
+
+    This is a source-shape guard, not native-execution proof.
     """
     P = "pip install -r requirements.txt"
+    ALEMBIC = "alembic upgrade head -x tenant_schema=t_dev"
+    CD_BACKEND = "cd backend"
     lines = text.splitlines()
 
-    # 1) find the pip line; reject malformed forms inline
-    pip_idx = None
+    # ------- block-depth helper -----------------------------------------------
+    def _block_delta(s: str) -> int:
+        """Return +1 for opener, -1 for closer, 0 otherwise."""
+        low = s.lower()
+        if re.match(r"^(if|elif)\b", low):
+            return 1
+        if re.match(r"^(for|while|until|case)\b", low):
+            return 1
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)", s):
+            return 1
+        if re.match(r"^function\s+", low):
+            return 1
+        if re.match(r"^(fi|done|esac)\b", low):
+            return -1
+        # `}` as a function closer — only when we know blocks are open
+        return 0
+
+    # ------- step 1: locate the exact pip line --------------------------------
+    pip_idx: int | None = None
+    depth = 0
     for i, raw in enumerate(lines):
         s = raw.lstrip()
         if not s or s.startswith("#"):
             continue
+
+        # track block depth BEFORE evaluating this line's content
+        delta = _block_delta(s)
+        if delta == -1 and depth > 0:
+            depth -= 1
+            if P in s:  # pip keyword inside a closer line? still reject
+                pass
+        new_depth = depth + delta if delta == 1 else depth
+
+        # reject if blocks are open and this line contains pip
+        if new_depth > 0 and P in s:
+            raise ValueError("setup.sh: pip install inside a shell block is not allowed")
+
+        if delta == 1:
+            depth = new_depth
+            if P in s:
+                raise ValueError("setup.sh: pip install inside a shell block is not allowed")
+            continue
+
         if P not in s:
             continue
 
-        # ---- reject forms that contain the substring but aren't real ----
+        # ---- reject inert/dead forms inline ----
         low = s.lower()
-        if low.startswith(("if ", "elif ", "for ", "while ", "until ", "case ")):
-            raise ValueError("setup.sh: pip install inside a shell block is not allowed")
         if low.startswith(("echo ", "printf ")):
             raise ValueError("setup.sh: pip install line appears to be inert (echo/printf)")
         if re.match(r"(false|true)\s*(&&|\|\|)", s):
@@ -249,24 +294,29 @@ def check_setup_sh_wiring(text: str) -> None:
         if s.startswith(('"', "'")):
             raise ValueError("setup.sh: pip install appears inside quoted text")
 
-        # ---- the line itself must start with the exact command ----
-        if not s.startswith(P):
-            raise ValueError("setup.sh: pip install line is not a bare command")
-
+        # ---- exact command ----
+        cmd = s
+        if cmd != P:
+            raise ValueError(
+                f"setup.sh: pip line must be exactly {P!r}, got {cmd!r}"
+            )
         if pip_idx is not None:
             raise ValueError("setup.sh: more than one pip install line found")
         pip_idx = i
 
+    # final block balance check
+    if depth != 0:
+        raise ValueError(f"setup.sh: unbalanced shell blocks (depth={depth})")
+
     if pip_idx is None:
         raise ValueError("setup.sh: no active 'pip install -r requirements.txt' command found")
 
-    # 2) check for unreachable bare exit/return (outside if..fi) before pip
+    # ------- step 2: unreachable exit/return (outside if..fi only) ------------
     if_depth = 0
     for raw in lines[:pip_idx]:
         s = raw.strip()
         if not s or s.startswith("#"):
             continue
-        # crude if/fi depth tracker
         if re.match(r"^if\b", s):
             if_depth += 1
         elif re.match(r"^fi\b", s):
@@ -274,67 +324,103 @@ def check_setup_sh_wiring(text: str) -> None:
         elif re.match(r"^(exit|return)\b", s) and if_depth == 0:
             raise ValueError(f"setup.sh: unreachable (exit/return before pip line at L{pip_idx + 1})")
 
-    # 3) cd backend before pip, alembic after pip
-    cd_found = any(
-        re.match(r"^cd\b", raw.strip()) and "backend" in raw
-        for raw in lines[:pip_idx]
-    )
-    if not cd_found:
+    # ------- step 3: exact sequence -------------------------------------------
+    # cd backend (exact)
+    if not any(raw.strip() == CD_BACKEND for raw in lines[:pip_idx]):
         raise ValueError("setup.sh: must cd into backend before pip install")
-    alembic_found = any(
-        raw.strip().startswith("alembic upgrade head") for raw in lines[pip_idx + 1 :]
-    )
-    if not alembic_found:
+    # alembic upgrade head -x tenant_schema=t_dev (exact) after pip
+    if not any(raw.strip() == ALEMBIC for raw in lines[pip_idx + 1:]):
         raise ValueError("setup.sh: must run alembic upgrade head after pip install")
 
 
 def check_dockerfile_wiring(text: str) -> None:
     """Verify the Dockerfile actively installs via Poetry/lock.
 
-    The guard requires:
+    Line continuations (``\\`` at end-of-line) are joined before parsing.
+    The guard requires, in the **final** build stage (after the last ``FROM``):
 
-      * a ``COPY`` instruction that mentions both ``pyproject.toml`` and
-        ``poetry.lock`` (ignoring comments and continuations);
-      * that ``COPY`` appears textually **before** an active ``RUN poetry
-        install`` line (the ``RUN`` line must NOT be commented, inert, or
-        unreachable);
-      * both instructions are in the same (final) build stage (no ``FROM``
-        line between them).
+      * exactly one ``COPY pyproject.toml poetry.lock ./`` line;
+      * exactly one ``RUN poetry install --no-root --only main --no-ansi`` line;
+      * the ``COPY`` appears textually **before** the ``RUN poetry install``;
+      * no line is a commented, inert, or dead-branch form that contains the
+        same substrings but would not actually execute the intended command
+        (echo-wrapper, ``false &&``, ``|| true`` suffix, ``ENV``/``LABEL``/
+        ``ARG`` assignment, comment-only, earlier-stage-only, duplicates).
     """
-    lines = text.splitlines()
-    copy_line = None
-    poetry_run_line = None
-    from_line_after_copy = -1
+    COPY_LINE = "COPY pyproject.toml poetry.lock ./"
+    RUN_LINE = "RUN poetry install --no-root --only main --no-ansi"
 
-    for i, raw in enumerate(lines):
+    # ------ join continuations -------------------------------------------
+    joined: list[str] = []
+    buf = ""
+    for raw in text.splitlines():
+        s = raw.rstrip()
+        if s.endswith("\\"):
+            buf += s[:-1] + " "
+        else:
+            buf += s
+            joined.append(buf)
+            buf = ""
+    if buf:
+        joined.append(buf)
+
+    # ------ find the last FROM (final stage) -----------------------------
+    last_from = -1
+    for i, s in enumerate(joined):
+        if re.match(r"^FROM\b", s, re.IGNORECASE):
+            last_from = i
+
+    stage_lines = joined[last_from:] if last_from >= 0 else joined
+
+    # ------ scan for COPY and RUN poetry install -------------------------
+    copy_idx = -1
+    run_idx = -1
+    for i, raw in enumerate(stage_lines):
         s = raw.lstrip()
-        if not s or s.startswith("#"):
+        if not s or re.match(r"^\s*#", s) or s.startswith("#"):
             continue
-        # handle COPY
-        if s.upper().startswith("COPY") and "pyproject.toml" in s and "poetry.lock" in s:
-            if copy_line is not None:
-                raise ValueError("Dockerfile: multiple COPY pyproject+lock instructions found")
-            copy_line = i
-        # handle RUN poetry install
-        if s.upper().startswith("RUN") and "poetry install" in s:
-            # reject commented / inert
-            if raw.strip().startswith("#"):
-                continue  # already filtered, but double-check
-            if poetry_run_line is not None:
-                raise ValueError("Dockerfile: multiple RUN poetry install lines found")
-            poetry_run_line = i
-        # detect FROM (stage boundary)
-        if s.upper().startswith("FROM") and copy_line is not None and poetry_run_line is None:
-            from_line_after_copy = i
 
-    if copy_line is None:
-        raise ValueError("Dockerfile: COPY pyproject.toml poetry.lock instruction not found")
-    if poetry_run_line is None:
-        raise ValueError("Dockerfile: RUN poetry install instruction not found")
-    if poetry_run_line <= copy_line:
+        # ---- exact COPY pyproject.toml poetry.lock ./ -------------------
+        if COPY_LINE in s:
+            if not s.upper().startswith("COPY"):
+                raise ValueError("Dockerfile: COPY line must be an active COPY instruction")
+            if s != COPY_LINE:
+                raise ValueError(f"Dockerfile: COPY must be exactly {COPY_LINE!r}, got {s!r}")
+            if copy_idx >= 0:
+                raise ValueError("Dockerfile: duplicate COPY+pyproject+lock instructions")
+            copy_idx = i
+
+        # ---- detect poetry install on non-COPY lines --------------------
+        if "poetry install" in s:
+            if s.upper().startswith("RUN"):
+                after_run = s[3:].lstrip()
+                # inert forms
+                if after_run.lower().startswith(("echo ", "printf ")):
+                    raise ValueError("Dockerfile: RUN poetry install line is inert (echo/printf)")
+                if re.search(r"(false|true)\s*(&&|\|\|)", after_run):
+                    raise ValueError("Dockerfile: RUN poetry install line behind dead-branch short-circuit")
+                if re.search(r"\|\|\s*true\b", after_run):
+                    raise ValueError("Dockerfile: RUN poetry install line has a || true guard")
+                # must be exactly the expected command
+                if s != RUN_LINE:
+                    raise ValueError(f"Dockerfile: RUN must be exactly {RUN_LINE!r}, got {s!r}")
+                if run_idx >= 0:
+                    raise ValueError("Dockerfile: duplicate RUN poetry install lines")
+                run_idx = i
+            elif s.upper().startswith(("ENV", "LABEL", "ARG")):
+                raise ValueError("Dockerfile: RUN poetry install text inside ENV/LABEL/ARG")
+
+        # ---- detect a later FROM (stage boundary) --------------------------
+        if re.match(r"^FROM\b", s, re.IGNORECASE) and i > 0:
+            if last_from < 0:
+                last_from = i
+
+    if copy_idx < 0:
+        raise ValueError("Dockerfile: active COPY pyproject.toml poetry.lock ./ not found")
+    if run_idx < 0:
+        raise ValueError("Dockerfile: active RUN poetry install --no-root --only main --no-ansi not found")
+    if run_idx <= copy_idx:
         raise ValueError("Dockerfile: RUN poetry install must appear AFTER COPY pyproject.toml poetry.lock")
-    if from_line_after_copy >= 0 and from_line_after_copy < poetry_run_line:
-        raise ValueError("Dockerfile: COPY and RUN poetry install are not in the same build stage")
 
 
 # --------------------------------------------------------------------------- #
@@ -417,26 +503,19 @@ class TestH7R4InventoryParity:
 # ──────────────────────────────────────────────────────────────────────────── #
 class TestH7R4InstallPathWiring:
     def test_setup_sh_passes_structural_guard(self) -> None:
-        text = SETUP_SH.read_text(encoding="utf-8")
-        check_setup_sh_wiring(text)  # must not raise
+        check_setup_sh_wiring(SETUP_SH.read_text(encoding="utf-8"))
 
     def test_dockerfile_passes_structural_guard(self) -> None:
-        text = DOCKERFILE.read_text(encoding="utf-8")
-        check_dockerfile_wiring(text)
+        check_dockerfile_wiring(DOCKERFILE.read_text(encoding="utf-8"))
 
-    # RED mutations (setup.sh)
-    def test_RED_setup_sh_commented_pip_line_detected(self) -> None:
-        text = "cd backend\n# pip install -r requirements.txt\nalembic upgrade head -x t_dev"
+    # ---- setup.sh RED mutations -----------------------------------------
+    def test_RED_setup_sh_commented_pip_detected(self) -> None:
         with pytest.raises(ValueError, match="no active"):
-            check_setup_sh_wiring(text)
+            check_setup_sh_wiring("cd backend\n# pip install -r requirements.txt\nalembic upgrade head -x tenant_schema=t_dev")
 
     def test_RED_setup_sh_pip_after_exit_rejected(self) -> None:
         with pytest.raises(ValueError, match="unreachable"):
             check_setup_sh_wiring("exit 0\npip install -r requirements.txt")
-
-    def test_RED_setup_sh_pip_inside_if_block_rejected(self) -> None:
-        with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring("if true; then pip install -r requirements.txt; fi")
 
     def test_RED_setup_sh_pip_inside_echo_rejected(self) -> None:
         with pytest.raises(ValueError, match="inert"):
@@ -446,27 +525,100 @@ class TestH7R4InstallPathWiring:
         with pytest.raises(ValueError, match="short-circuit"):
             check_setup_sh_wiring("false && pip install -r requirements.txt")
 
+    def test_RED_setup_sh_true_or_dead_rejected(self) -> None:
+        with pytest.raises(ValueError, match="short-circuit"):
+            check_setup_sh_wiring("true || pip install -r requirements.txt")
+
     def test_RED_setup_sh_missing_cd_backend_rejected(self) -> None:
         with pytest.raises(ValueError, match="cd"):
-            check_setup_sh_wiring("pip install -r requirements.txt\nalembic upgrade head -x t_dev")
+            check_setup_sh_wiring("pip install -r requirements.txt\nalembic upgrade head -x tenant_schema=t_dev")
 
     def test_RED_setup_sh_missing_alembic_rejected(self) -> None:
         with pytest.raises(ValueError, match="alembic"):
             check_setup_sh_wiring("cd backend\npip install -r requirements.txt")
 
-    # RED mutations (Dockerfile)
-    def test_RED_dockerfile_poetry_run_before_copy_rejected(self) -> None:
-        text = "FROM python:3.11\nRUN poetry install --no-root --only main\nCOPY pyproject.toml poetry.lock ./"
+    def test_RED_setup_sh_var_assign_rejected(self) -> None:
+        with pytest.raises(ValueError, match="variable assignment"):
+            check_setup_sh_wiring("CMD=pip install -r requirements.txt")
+
+    def test_RED_setup_sh_quoted_rejected(self) -> None:
+        with pytest.raises(ValueError, match="quoted"):
+            check_setup_sh_wiring('"pip install -r requirements.txt"')
+
+    # multi-line block wrappers (R4-R1)
+    def test_RED_setup_sh_multiline_if_block_rejected(self) -> None:
+        with pytest.raises(ValueError, match="block"):
+            check_setup_sh_wiring("if false; then\npip install -r requirements.txt\nfi")
+
+    def test_RED_setup_sh_same_line_if_rejected(self) -> None:
+        with pytest.raises(ValueError, match="block"):
+            check_setup_sh_wiring("if true; then pip install -r requirements.txt; fi")
+
+    def test_RED_setup_sh_for_block_rejected(self) -> None:
+        with pytest.raises(ValueError, match="block"):
+            check_setup_sh_wiring("for x in 1; do\npip install -r requirements.txt\ndone")
+
+    def test_RED_setup_sh_while_block_rejected(self) -> None:
+        with pytest.raises(ValueError, match="block"):
+            check_setup_sh_wiring("while false; do\npip install -r requirements.txt\ndone")
+
+    def test_RED_setup_sh_function_block_rejected(self) -> None:
+        with pytest.raises(ValueError, match="block"):
+            check_setup_sh_wiring("_bad() {\npip install -r requirements.txt\n}")
+
+    # exact command guard (R4-R1)
+    def test_RED_setup_sh_pip_or_true_rejected(self) -> None:
+        with pytest.raises(ValueError, match="exactly"):
+            check_setup_sh_wiring("cd backend\npip install -r requirements.txt || true\nalembic upgrade head -x tenant_schema=t_dev")
+
+    def test_RED_setup_sh_pip_with_redirect_rejected(self) -> None:
+        with pytest.raises(ValueError, match="exactly"):
+            check_setup_sh_wiring("cd backend\npip install -r requirements.txt > /dev/null\nalembic upgrade head -x tenant_schema=t_dev")
+
+    def test_RED_setup_sh_unbalanced_if_rejected(self) -> None:
+        with pytest.raises(ValueError, match="block"):
+            check_setup_sh_wiring("if true; then\ncd backend\npip install -r requirements.txt\nalembic upgrade head -x tenant_schema=t_dev")
+
+    # ---- Dockerfile RED mutations (R4-R1) --------------------------------
+    def test_RED_dockerfile_wrong_ordering_rejected(self) -> None:
         with pytest.raises(ValueError, match="must appear AFTER"):
-            check_dockerfile_wiring(text)
+            check_dockerfile_wiring("FROM python:3.11\nRUN poetry install --no-root --only main --no-ansi\nCOPY pyproject.toml poetry.lock ./")
 
     def test_RED_dockerfile_copy_absent_rejected(self) -> None:
-        with pytest.raises(ValueError, match="COPY .* not found"):
-            check_dockerfile_wiring("FROM python:3.11\nRUN poetry install --no-root --only main")
+        with pytest.raises(ValueError, match="COPY"):
+            check_dockerfile_wiring("FROM python:3.11\nRUN poetry install --no-root --only main --no-ansi")
 
-    def test_RED_dockerfile_run_poetry_install_absent_rejected(self) -> None:
-        with pytest.raises(ValueError, match="RUN poetry install"):
+    def test_RED_dockerfile_run_absent_rejected(self) -> None:
+        with pytest.raises(ValueError, match="poetry install"):
             check_dockerfile_wiring("FROM python:3.11\nCOPY pyproject.toml poetry.lock ./")
+
+    def test_RED_dockerfile_echo_form_rejected(self) -> None:
+        with pytest.raises(ValueError, match="inert"):
+            check_dockerfile_wiring("FROM python:3.11\nRUN echo 'poetry install --no-root --only main --no-ansi'\nCOPY pyproject.toml poetry.lock ./")
+
+    def test_RED_dockerfile_false_and_rejected(self) -> None:
+        with pytest.raises(ValueError, match="short-circuit"):
+            check_dockerfile_wiring("FROM python:3.11\nCOPY pyproject.toml poetry.lock ./\nRUN false && poetry install --no-root --only main --no-ansi")
+
+    def test_RED_dockerfile_or_true_rejected(self) -> None:
+        with pytest.raises(ValueError, match="true guard"):
+            check_dockerfile_wiring("FROM python:3.11\nCOPY pyproject.toml poetry.lock ./\nRUN poetry install --no-root --only main --no-ansi || true")
+
+    def test_RED_dockerfile_env_label_rejected(self) -> None:
+        with pytest.raises(ValueError, match="ENV.*LABEL"):
+            check_dockerfile_wiring("FROM python:3.11\nCOPY pyproject.toml poetry.lock ./\nENV X=poetry install --no-root --only main --no-ansi")
+
+    def test_RED_dockerfile_commented_run_rejected(self) -> None:
+        with pytest.raises(ValueError, match="poetry install"):
+            check_dockerfile_wiring("FROM python:3.11\nCOPY pyproject.toml poetry.lock ./\n# RUN poetry install --no-root --only main --no-ansi")
+
+    def test_RED_dockerfile_duplicate_copy_rejected(self) -> None:
+        with pytest.raises(ValueError, match="duplicate"):
+            check_dockerfile_wiring("FROM python:3.11\nCOPY pyproject.toml poetry.lock ./\nCOPY pyproject.toml poetry.lock ./\nRUN poetry install --no-root --only main --no-ansi")
+
+    def test_RED_dockerfile_duplicate_run_rejected(self) -> None:
+        with pytest.raises(ValueError, match="duplicate"):
+            check_dockerfile_wiring("FROM python:3.11\nCOPY pyproject.toml poetry.lock ./\nRUN poetry install --no-root --only main --no-ansi\nRUN poetry install --no-root --only main --no-ansi")
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 bcrypt Manifest Reconciliation
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R4-R1 current)
 
 Before any local deployment, the two backend install paths must resolve the same
 main-runtime packages. H7 closes that drift to exact **normalized package-name
@@ -227,7 +227,7 @@ failure mode. `pyproject.toml` and `poetry.lock` remain byte-identical. Evidence
 in
 `ai-ledger/product-ai/2026-08-12_dc12r1_h7_bcrypt_dependency_manifest_reconciliation.md`.
 
-**H7-R4 (CTO-authorized, current; supersedes H7-R3):** closes four Kilo findings
+**H7-R4 (CTO-authorized, superseded by H7-R4-R1):** closes four Kilo findings
 on R3: (001) the lock parser silently accepted/excluded malformed entries or
 raised unrelated exceptions — now validates name/version/groups exhaustively
 with controlled `ValueError` for 13+ malformed forms; (002) the requirements
@@ -242,6 +242,16 @@ is host-specific. The test suite grew to 75 tests. Dependencies, product
 code, Dockerfile, setup.sh, pyproject.toml and poetry.lock remain
 byte-identical to R3; full backend gates are inherited from R3. Evidence in
 the same ledger path.
+
+**H7-R4-R1 (CTO-authorized, current):** corrects two remaining uncovered false-green
+paths found by CTO review: (A) the setup.sh guard now tracks multi-line shell block
+depth (if/fi, for/do/done, while/do/done, until/do/done, case/esac, functions) and
+requires the pip line to be exactly ``pip install -r requirements.txt`` with no
+suffix/redirect/chain; (B) the Dockerfile guard now joins continuations, locates the
+final build stage, and detects inert/dead-branch forms (echo-wrapper, ``false &&``,
+``|| true``, ``ENV``/``LABEL``/``ARG`` carriers) on RUN lines. The test suite grew
+to 92 tests; all manifests, product code, Dockerfile and setup.sh remain byte-
+identical; full backend gates are inherited from R3. Evidence in the same ledger.
 
 ## Active Phase
 

@@ -3,7 +3,8 @@
 **Last updated:** 2026-08-12
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current protected branch tip:** `d796dcb0d8ecc4ddffc2f82a67e90170c9cdb60f` (the SHA controlled work branches from; verify before editing)
+**Current protected branch tip:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` (the accepted DC-12R1-MVP-R0-R1 readiness-debt merge; the SHA controlled work now branches from; verify before editing)
+**Accepted readiness-debt merge:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` — DC-12R1-MVP-R0-R1 P2/P3 readiness-debt closure (baseline-truth docs, permission-aligned client route guards, neutral declaration error contract, shared Contract D statement mapper). The H7 branch `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12` branches from this tip.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (accepted Contract D merge; an ancestor of the current tip, NOT the tip itself)
 **Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
@@ -14,12 +15,16 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered@d796dcb0` is the current protected tip. It
-  descends from and includes the accepted product-code merge `adcc7f28`, so it
-  carries accepted I2B runtime and read-only backend/browser-printable Contracts
-  A-D. Controlled work branches from `d796dcb0`.
-- The accepted merge `adcc7f28` is an ANCESTOR of the current tip, not the tip
-  itself. Do not branch from or reference `adcc7f28` as the current baseline.
+- `origin/product-dev-recovered@a6ef3aac` is the current protected tip — the
+  accepted DC-12R1-MVP-R0-R1 readiness-debt merge. It descends from
+  `d796dcb0`, which descended from and included the accepted product-code merge
+  `adcc7f28`, so it carries accepted I2B runtime and read-only backend/browser-
+  printable Contracts A-D plus the R0-R1 readiness-debt closure. Controlled work
+  branches from `a6ef3aac`.
+- The earlier merges `d796dcb0` and `adcc7f28` are ANCESTORS of the current tip,
+  not the tip itself. Do not branch from or reference them as the current
+  baseline. (Post-merge of the H7 bcrypt reconciliation, the CTO syncs this
+  documented tip to the new H7 merge SHA.)
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -168,6 +173,38 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
+## Active Deployment Prerequisite — H7 bcrypt Manifest Reconciliation
+
+Before any local deployment, the two backend install paths must resolve the same
+runtime versions. H7 closes that drift. It is a **pre-deployment prerequisite**,
+not a deployed capability — no local deployment, Playwright, or VPS validation
+is claimed here.
+
+**Original three-package drift (RED, pre-H7-R2):** `backend/requirements.txt`
+(the `scripts/setup.sh` pip path) diverged from `pyproject.toml` +
+`poetry.lock` (the Dockerfile Poetry path) on three direct runtime dependencies:
+
+| Package | `pyproject.toml` | `poetry.lock` | `requirements.txt` (pre) | Impact |
+|---|---|---|---|---|
+| bcrypt | `>=4.0,<4.1` | `4.0.1` | `5.0.0` | breaks passlib 1.7.4 password hashing |
+| cryptography | `>=46.0.5` (S8-SEC, CVE-2026-26007) | `46.0.5` | `46.0.4` | below the security floor |
+| openpyxl | `3.1.5` | `3.1.5` | *(absent)* | `ModuleNotFoundError` on the pip path |
+
+**Why H7-R1 correctly stopped:** H7-R1 was scoped to bcrypt only. Its exhaustive
+manifest audit found bcrypt was **not** the only material drift — cryptography
+(violating the `>=46.0.5` security floor) and openpyxl (a missing direct
+dependency) also diverged. Per its step-5 guardrail ("if bcrypt is not the only
+material drift, STOP"), H7-R1 returned `STOP_AND_REPORT_CTO` with the exact
+delta, having made no edit. That stop was correct: a bcrypt-only edit could not
+achieve install-path parity and was forbidden from touching the other two.
+
+**H7-R2 (CTO-authorized, supersedes H7-R1):** the CTO explicitly overrode the
+bcrypt-only restriction for exactly three `requirements.txt` corrections —
+bcrypt `5.0.0 → 4.0.1`, cryptography `46.0.4 → 46.0.5`, add `openpyxl==3.1.5`.
+No other dependency change or regeneration; `pyproject.toml` and `poetry.lock`
+remain byte-identical. H7-R1 is superseded by H7-R2. Evidence in
+`ai-ledger/product-ai/2026-08-12_dc12r1_h7_bcrypt_dependency_manifest_reconciliation.md`.
+
 ## Active Phase
 
 **Active product gate:**
@@ -221,8 +258,9 @@ Required planning boundary:
 ## Agent Assignment
 
 - **Primary planning agent (Zcode):** audit and plan S3-S3-D in a clean
-  worktree from `origin/product-dev-recovered@d796dcb0` (the current protected
-  tip; `adcc7f28` is an ancestor and must not be used as the branch baseline).
+  worktree from `origin/product-dev-recovered@a6ef3aac` (the current protected
+  tip; `d796dcb0` and `adcc7f28` are ancestors and must not be used as the
+  branch baseline).
 - **Independent reviewer:** Kilo performs adversarial UX/source and
   test-authenticity review after the S3-S3-D plan is frozen.
 - **Codex CTO:** own scope, financial blast radius, and merge decision.
@@ -237,10 +275,11 @@ Required planning boundary:
 Stop and report to the CTO if:
 
 - fetched `origin/product-dev-recovered` does not equal the documented current
-  protected tip `d796dcb0d8ecc4ddffc2f82a67e90170c9cdb60f` (or a CTO-published
+  protected tip `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` (or a CTO-published
   later tip), or the fetched tip does not descend from accepted Contract D merge
-  `adcc7f281c661897ad050a8278686375b611edb5`; the current tip `d796dcb0` DOES
-  descend from `adcc7f28` and this stop condition was verified satisfied;
+  `adcc7f281c661897ad050a8278686375b611edb5`; the current tip `a6ef3aac` DOES
+  descend from `adcc7f28` (via `d796dcb0`) and this stop condition was verified
+  satisfied;
 - statement data is accepted from client-calculated financial fields;
 - supplier or retailer authority comes from request-supplied IDs;
 - ledger movements and settled payments are correlated without a persisted key;

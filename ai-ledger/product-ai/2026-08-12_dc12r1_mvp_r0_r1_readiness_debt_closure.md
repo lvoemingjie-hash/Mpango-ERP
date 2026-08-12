@@ -5,6 +5,13 @@
 > Objective: close four readiness-debt items **without** changing backend
 > authorization, financial semantics, migrations, or deployment.
 
+> **R1 Evidence Truth Closure (2026-08-12)** — continues from frozen R0 SHA
+> `03379730` on the same branch. **Docs/evidence-only:** no code, no tests
+> re-run, no dependency/lockfile change. Closes the four evidence-truth gaps
+> (status-doc dates; mandatory-GitNexus disclosure + CTO `detect_changes`
+> evidence; detect-secrets file count; bcrypt H7 prerequisite). Authoritative
+> verdict now **`PASS_FOR_CTO_DC12R1_MVP_R0_R1_R1_MERGE_REVIEW`** (see §11).
+
 ## 0 Verdict Summary
 
 | Dimension | Result |
@@ -17,8 +24,8 @@
 | WPR-004 Contract D mapper de-dup | ✅ ONE shared `backend/api/v1/statement_http.map_statement_result`; supplier + retailer routes call it; every status/code/message preserved exactly; supplier/client parity tests + mutation evidence (one-sided drift → RED) |
 | Backend gates | ✅ Contract D focused 75/75 natural + 75/75 randomized (seed 3304940527); RBAC/route-auth regression 110/110; full `pytest tests/` on two independent fresh PG16+Redis7 stacks: **identical totals, 0 failed / 0 errors** (see §6) |
 | Frontend gates | ✅ focused suites green (permissions 23, guards 15, DeclarePaymentPage 10, PrintableWorkspace 78, StatementPrintWorkspace 45); full `pnpm vitest run` **291/0**; `pnpm build` exit 0 |
-| Static / integrity | ✅ `py_compile` clean (4 backend files); `git diff --check` clean; detect-secrets 0 new (baseline-scoped); mojibake/encoding clean; no skip/xfail/deselect/assert-weakening |
-| Verdict | **PASS_FOR_CTO_DC12R1_MVP_R0_R1_MERGE_REVIEW** |
+| Static / integrity | ✅ `py_compile` clean (4 backend files); `git diff --check` clean; detect-secrets 0 new across **all 16** files (baseline-scoped); mojibake/encoding clean; no skip/xfail/deselect/assert-weakening |
+| Verdict | **R0:** `PASS_FOR_CTO_DC12R1_MVP_R0_R1_MERGE_REVIEW` (frozen `03379730`). **R1 (this update):** `PASS_FOR_CTO_DC12R1_MVP_R0_R1_R1_MERGE_REVIEW` — evidence-truth closure only (see §11). No tests re-run; `03379730` run evidence preserved |
 
 ---
 
@@ -105,8 +112,19 @@ deployment:
 
 ## 4 Impact analysis (before edit, every changed symbol)
 
-GitNexus CLI was not on PATH in this worktree; an equivalent static dependant
-search was performed instead and recorded:
+### 4.1 Disclosure — mandatory GitNexus NOT executed by the author
+The mandatory GitNexus gates ("GitNexus impact before editing every changed
+symbol" and "GitNexus detect_changes before commit") were **NOT executed by the
+author**. GitNexus CLI (`npx gitnexus status`) reports `Repository not indexed`
+for this worktree, and a full `gitnexus analyze` (knowledge-graph + embedding
+build across the whole monorepo) is disproportionate to this slice and out of
+step with the "preserve existing evidence" constraint. The author therefore
+satisfied the pre-edit impact gate with a **manual static dependant search**
+(§4.2), NOT the GitNexus tool. The authoritative GitNexus `detect_changes`
+result for the frozen SHA `03379730` was supplied by the CTO as supplementary
+evidence and is recorded verbatim in §4.3.
+
+### 4.2 Manual dependant search (author, pre-edit)
 - `_map_statement_result` — only self-referential in the two route files; **no**
   test or external module imported it → relocating to `statement_http.py` breaks
   nothing. Verified zero references in `backend/tests/`.
@@ -117,6 +135,18 @@ search was performed instead and recorded:
 - `can` — 3 import sites (reused, not modified).
 - `DeclarePaymentPage` / `submitDeclaration` — AppRouter + the declaration test.
 - No test imported the removed private mapper, so the rename is import-safe.
+
+### 4.3 GitNexus detect_changes — CTO supplementary evidence on `03379730`
+The CTO ran GitNexus `detect_changes` against the frozen R0 SHA and reported:
+- **detect_changes = 84 symbols / 16 files / 6 affected flows / impact HIGH.**
+- `map_statement_result` (the new shared mapper) — **MEDIUM** (two route-module
+  callers, both updated in lockstep; the byte-contract + parity tests pin its
+  output).
+- Key permission/declaration symbols (`can`, `CLIENT_PERMISSIONS`,
+  `RetailerPermissionRoute`, `DeclarePaymentPage` / `neutralDeclarationError`) —
+  **LOW** (additive; no existing caller semantics changed).
+- **No missed direct callers** were found — consistent with the §4.2 manual
+  search.
 
 ## 5 RED/GREEN evidence
 
@@ -171,14 +201,30 @@ search was performed instead and recorded:
 ### Test-environment note (disclosed, not a code change)
 The full-suite gate was run with `bcrypt==4.0.1` (the version `pyproject.toml`
 documents as compatible with `passlib 1.7.4` — its comment states passlib 1.7.4
-is incompatible with bcrypt ≥ 4.1's strict 72-byte enforcement). The shipped
-`requirements.txt` carries a pre-existing drifted `bcrypt==5.0.0` pin that breaks
-password hashing; this drift predates this slice and is **out of scope** (no
-dependency/lockfile changes are permitted). The disposable test DBs are named
-`test_mpango` (matching the `tests/async_test_utils.py` `^(?:test|…)[_-]…`
-temp-DB source contract) owned by the test-safe `mpango_test` superuser; the
-main `mpango_test` user is rejected by the temp-DB guard (`user is not
-test-safe`). None of these are repository changes.
+is incompatible with bcrypt ≥ 4.1's strict 72-byte enforcement). The disposable
+test DBs are named `test_mpango` (matching the `tests/async_test_utils.py`
+`^(?:test|…)[_-]…` temp-DB source contract) owned by the test-safe `mpango_test`
+superuser; the main `mpango_test` user is rejected by the temp-DB guard (`user
+is not test-safe`). None of these are repository changes.
+
+### H7 prerequisite — bcrypt manifest drift (post-merge, pre-deployment)
+There is a **pre-existing bcrypt pin drift** that must be reconciled as an **H7
+prerequisite, after merge of this slice and before any deployment**. It is
+**out of scope for this task** (no dependency/lockfile changes permitted) and is
+recorded here so it is not lost. Verified facts on `03379730`:
+- `backend/pyproject.toml` (Poetry source of truth) pins `bcrypt = ">=4.0,<4.1"`
+  with an explicit comment that passlib 1.7.4 is incompatible with bcrypt ≥ 4.1.
+- `backend/poetry.lock` locks `bcrypt==4.0.1`; `backend/Dockerfile` installs via
+  `poetry install --no-root --only main` (copying `pyproject.toml poetry.lock`),
+  so **Poetry/Docker deployments use the locked `bcrypt==4.0.1` (correct).**
+- `backend/requirements.txt` carries the drifted `bcrypt==5.0.0`, and
+  `backend/scripts/setup.sh` line 44 runs `pip install -r requirements.txt`, so
+  **any environment provisioned via `setup.sh` (not Poetry/Docker) gets the
+  broken `bcrypt==5.0.0`**, which raises on the 72-byte password path and breaks
+  the test/auth hashing flows.
+- Remediation (separate, post-merge task): re-pin `bcrypt` in `requirements.txt`
+  to `4.0.1` (matching `pyproject.toml`/`poetry.lock`) or switch `setup.sh` to
+  Poetry. **Not done here.**
 
 ## 7 Frontend gate evidence
 
@@ -198,9 +244,11 @@ test-safe`). None of these are repository changes.
 - `python -m py_compile` clean: `statement_http.py`, `statements.py`,
   `client/statements.py`, `test_dc12r1_contract_d_statement_print.py`.
 - `git diff --check`: clean (no whitespace errors).
-- `detect-secrets-hook --baseline .secrets.baseline` on all 15 changed files:
-  exit 0 (no new secrets).
-- Mojibake / UTF-8 validity scan on all 15 changed text files: clean.
+- `detect-secrets-hook --baseline .secrets.baseline` on **all 16 changed files**
+  (14 modified + `statement_http.py` + this ledger): exit 0 (no new secrets).
+  R0 initially scanned 15 (this ledger was still in-progress); R1 re-scanned the
+  full set of 16 after the ledger was finalized — still 0 new secrets.
+- Mojibake / UTF-8 validity scan on all 16 changed text files: clean.
 - No `skip`/`xfail`/deselect/timeout-increase/assertion-weakening introduced —
   only additive tests.
 
@@ -217,3 +265,54 @@ isolated source branch is pushed.
 After the isolated branch is pushed and the SHA frozen, **STOP**. Await Kilo
 review, Lubuntu verification, and CTO merge. Do not begin Playwright or local
 deployment.
+
+---
+
+## 11 R1 Evidence Truth Closure (2026-08-12)
+
+Continues from frozen R0 SHA `03379730` on the same isolated branch. **This is a
+docs/evidence-only update:** no source code, no tests re-run, no
+dependency/lockfile change. Exactly three files were modified:
+`docs/ai/PROJECT.md`, `docs/ai/CTO_CURRENT_OPS.md`, and this ledger.
+
+### 11.1 Corrections applied
+1. **Status-doc dates** — `Last updated` in `docs/ai/PROJECT.md` and
+   `docs/ai/CTO_CURRENT_OPS.md` corrected from `2026-08-11` → `2026-08-12`.
+2. **Mandatory GitNexus disclosure (§4.1, §4.3)** — stated explicitly that the
+   author **did not** execute the mandatory GitNexus gates; recorded the CTO's
+   supplementary `detect_changes` evidence on `03379730` verbatim:
+   **84 symbols / 16 files / 6 affected flows / HIGH**; `map_statement_result` =
+   MEDIUM; key permission/declaration symbols = LOW; **no missed direct
+   callers.**
+3. **detect-secrets file count (§8)** — corrected from 15 to **16**; all 16 files
+   re-scanned after this ledger was finalized (see §11.3).
+4. **bcrypt manifest drift (§6 H7 prerequisite)** — recorded as a post-merge,
+   pre-deployment H7 item with verified facts: Poetry/Docker → locked
+   `bcrypt==4.0.1` (`poetry.lock` + `Dockerfile poetry install`);
+   `backend/requirements.txt` → drifted `bcrypt==5.0.0`;
+   `backend/scripts/setup.sh:44` → `pip install -r requirements.txt` (so
+   `setup.sh`-provisioned envs get the broken 5.0.0). **Not modified here.**
+
+### 11.2 Tests — deliberately NOT re-run
+Per the R1 brief, the R0 frozen run evidence is preserved unchanged: Contract D
+focused 75/75 (both orders), RBAC 110/110, and two full `pytest tests/` runs at
+**3303/3303 identical, 0 failed / 0 errors**. R1 changed no executable code, so
+re-running would not change these totals.
+
+### 11.3 R1 gates run
+- `git diff --check`: clean.
+- `detect-secrets-hook --baseline .secrets.baseline` on **all 16 files**: exit 0.
+- Mojibake / UTF-8 scan on all 16 files: clean.
+- Scoped pre-commit (trailing-whitespace, end-of-files, check-yaml,
+  check-added-large-files, detect-secrets) on the 3 R1-modified files: all
+  Passed.
+- GitNexus: `npx gitnexus status` → `Repository not indexed` (confirms why the
+  mandatory GitNexus could not be run by the author; the authoritative
+  `detect_changes` evidence is the CTO's, §4.3). A full `gitnexus analyze` was
+  not run — it is disproportionate to a docs-only task and out of step with the
+  "preserve existing evidence" constraint.
+
+### 11.4 Verdict
+**`PASS_FOR_CTO_DC12R1_MVP_R0_R1_R1_MERGE_REVIEW`** — fast-forward pushed to the
+same isolated branch; no protected push or merge. Await Kilo review, Lubuntu
+verification, and CTO merge.

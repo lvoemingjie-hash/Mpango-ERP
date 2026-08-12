@@ -1,10 +1,12 @@
-# DC-12R1-H7-R5-R4 — Real Compose Preflight and Harness Authenticity Closure (NO PASS)
+# DC-12R1-H7-R5-R5 — Effective-Config and Cross-Host Harness Final Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. R5-R3 is superseded.
+> an evidence checkpoint, NOT a merge-review PASS. R5-R4 is superseded.
+> R5-R4 actual delta = 7 files; Windows CTO reproduction at c8060644 = 2/7;
+> previous 9/9 claim is host-specific and superseded.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `f18761b1` (H7-R5-R3)
+> Base candidate: `c8060644` (H7-R5-R4)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
 ## Exact commands and counts (R5-R2)

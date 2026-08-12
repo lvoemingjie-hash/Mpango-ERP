@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R4 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R5 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -317,7 +317,7 @@ clean; immutable files byte-identical to `bb52c01b`. The Hypothesis
 environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
-**H7-R5-R4 (evidence checkpoint, current; NO PASS):** PostgreSQL/Redis published
+**H7-R5-R4 (evidence checkpoint, superseded by H7-R5-R5):** PostgreSQL/Redis published
 ports moved from base docker-compose.yml to docker-compose.override.yml
 (loopback-only `127.0.0.1:${PORT:-5432}:5432`). setup.sh preflight is now
 dependency-free before pip (stdlib .env parser, no core.config import), with
@@ -327,6 +327,19 @@ JSON/URL/file parsing to the real interpreter (`$REAL_PYTHON`). H7 suite
 103/103 natural+reverse; all deterministic gates clean; immutable files
 byte-identical to `f18761b1`. Hypothesis `HealthCheck.too_slow` focused-
 regression red node remains unresolved and environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R5-R5 (evidence checkpoint, current; NO PASS):** consolidated preflight
+into one secret-safe Python process via heredoc temp file (all parsing,
+credential comparison, and Compose v2 port-object validation inside one
+stdlib process; secrets never emitted). Added tested Bash selector
+(explicit Git Bash path, rejects System32/WSL). Harness now 11 nodes
+(9 existing + bash-selector + CRLF-blob-proof). Fake Python delegates all
+JSON/URL/.env parsing to the real interpreter. R5-R4 actual delta was 7
+files; Windows CTO reproduction at c8060644 = 2 passed / 7 failed — the
+previous 9/9 claim is host-specific and superseded. H7 suite 105/105 natural
++reverse; all deterministic gates clean; immutable files byte-identical.
+Hypothesis node remains unresolved. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
 ## Active Phase

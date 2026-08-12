@@ -268,17 +268,27 @@ def check_setup_sh_wiring(text: str) -> None:
             return -1  # function closer
         return 0
 
-    # ------- pre-compute $(...) command-substitution line ranges -------------
-    # Lines inside $() contain Python code whose if/for keywords must not be
-    # mistaken for shell block openers.  We track paren nesting: each line's
-    # net ( - ) count.  Python code has balanced parens (net 0), so only the
-    # shell $() opener (unbalanced () and closer (unbalanced )) shift depth.
+    # ------- pre-compute $(...) and heredoc line ranges --------------------
+    # Lines inside $() or heredocs contain Python code whose if/for keywords
+    # must not be mistaken for shell block openers.
     in_cmdsubst = [False] * len(lines)
     _cs = 0
+    _in_heredoc = False
+    _heredoc_delim = ""
     for _i, _raw in enumerate(lines):
         _s = _raw.strip()
+        if _in_heredoc:
+            in_cmdsubst[_i] = True
+            if _s == _heredoc_delim:
+                _in_heredoc = False
+            continue
         if _cs > 0:
             in_cmdsubst[_i] = True
+        # detect heredoc start: <<'DELIM' or <<DELIM
+        _hm = re.search(r"<<-?'([^']+)'", _s) or re.search(r'<<-"([^"]+)"', _s) or re.search(r"<<'([A-Za-z_][A-Za-z0-9_]*)'", _s)
+        if _hm:
+            _heredoc_delim = _hm.group(1)
+            _in_heredoc = True
         _cs = max(0, _cs + _s.count("(") - _s.count(")"))
 
     # ------- step 1: locate the exact pip line --------------------------------
@@ -646,7 +656,7 @@ class TestH7R5R1InstallPathWiring:
     # ---- setup.sh RED: alembic / bootstrap sequence ----------------------
     def test_RED_tenant_alembic_noop_rejected(self) -> None:
         text = self._base().replace(
-            '''export DATABASE_URL="$PREFLIGHT_DB_URL"
+            '''export DATABASE_URL="$POSTINSTALL_DB"
 python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"
 unset DATABASE_URL''',
             'alembic -x tenant_schema="${DEFAULT_TENANT_SCHEMA:-t_dev}" upgrade head',
@@ -668,7 +678,7 @@ unset DATABASE_URL''',
             check_setup_sh_wiring(text)
 
     def test_RED_missing_bootstrap_database_url(self) -> None:
-        text = self._base().replace('export DATABASE_URL="$PREFLIGHT_DB_URL"\n', "")
+        text = self._base().replace('export DATABASE_URL="$POSTINSTALL_DB"\n', "")
         with pytest.raises(ValueError, match="(?i)database"):
             check_setup_sh_wiring(text)
 
@@ -810,8 +820,8 @@ class TestH7R5R2ExecutableHarness:
             v = fake_exits.get(name, default)
             return v if v else default
 
-        # Fake Compose JSON (pragma suppresses detect-secrets false positive)
-        _compose_json = '{"services":{"postgres":{"environment":{"POSTGRES_USER":"pguser","POSTGRES_DB":"pgdb","POSTGRES_PASSWORD":"pgpass"},"ports":["127.0.0.1:5432:5432"]},"redis":{"ports":["127.0.0.1:6379:6379"]}}}'  # pragma: allowlist secret
+        # Fake Compose JSON with Compose v2 object-shape port entries
+        _compose_json = '{"services":{"postgres":{"environment":{"POSTGRES_USER":"pguser","POSTGRES_DB":"pgdb","POSTGRES_PASSWORD":"pgpass"},"ports":[{"host_ip":"127.0.0.1","target":5432,"published":5432,"protocol":"tcp","mode":"ingress"}]},"redis":{"environment":{},"ports":[{"host_ip":"127.0.0.1","target":6379,"published":6379,"protocol":"tcp","mode":"ingress"}]}}}'  # pragma: allowlist secret
 
         fake_bodies = {
             "docker": f'''#!/bin/bash
@@ -844,18 +854,18 @@ exit {_ev("alembic")}
 ''',
             "python": f'''#!/bin/bash
 echo "python $*" >> "{log_str}"
-if [ "$1" = "-c" ]; then
-    if echo "$2" | grep -q "settings.DATABASE_URL"; then
-        echo "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
-        exit 0
-    fi
-    if [ -n "$REAL_PYTHON" ]; then
-        exec "$REAL_PYTHON" "$@"
-    fi
-    echo "REAL_PYTHON not set" >&2
-    exit 1
+if echo "$*" | grep -q "bootstrap_tenant_schema"; then
+    exit {_ev("bootstrap")}
 fi
-exit {_ev("bootstrap")}
+if [ "$1" = "-c" ] && echo "$2" | grep -q "settings.DATABASE_URL"; then
+    echo "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
+    exit 0
+fi
+if [ -n "$REAL_PYTHON" ]; then
+    exec "$REAL_PYTHON" "$@"
+fi
+echo "REAL_PYTHON not set" >&2
+exit 1
 ''',
             "pnpm": f'''#!/bin/bash
 echo "pnpm $*" >> "{log_str}"
@@ -878,6 +888,9 @@ exit {_ev("pnpm")}
         import subprocess
 
         env = os.environ.copy()
+        # Clear host DB/Redis URLs so preflight sees no process-env conflict
+        env.pop("DATABASE_URL", None)
+        env.pop("REDIS_URL", None)
         env["PATH"] = cls._msys_path(str(harness["bin"])) + os.pathsep + env.get("PATH", "")
         env["HOME"] = os.environ.get("HOME", "/tmp")
         env["REAL_PYTHON"] = harness.get("real_python", "")
@@ -982,6 +995,65 @@ exit {_ev("pnpm")}
         for name in before:
             assert before[name] == after[name], f"unexpected file mutation: {name}"
         assert (h["repo"] / "frontend" / ".env").read_text().count("VITE_API_URL") == 1
+
+    # ---- launcher tests (R5-R5) -----------------------------------------
+
+    @staticmethod
+    def _select_bash() -> str:
+        """Explicitly select Git Bash on Windows, native bash on POSIX.
+        Reject System32/WSL bash. Fail closed if unavailable."""
+        import os
+        import shutil
+        import sys
+
+        if sys.platform == "win32":
+            # Try known Git Bash installation paths
+            pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+            pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+            la = os.environ.get("LOCALAPPDATA", "")
+            candidates = [
+                os.path.join(pf, "Git", "usr", "bin", "bash.exe"),
+                os.path.join(pf86, "Git", "usr", "bin", "bash.exe"),
+                os.path.join(la, "Programs", "Git", "usr", "bin", "bash.exe"),
+            ]
+            for c in candidates:
+                if os.path.isfile(c) and "system32" not in c.lower():
+                    return c
+            # Fallback: shutil.which but reject System32/WSL
+            bash = shutil.which("bash")
+            if bash and "system32" not in bash.lower() and "wsl" not in bash.lower():
+                return bash
+            raise RuntimeError("Git Bash not found; System32/WSL bash rejected")
+        else:
+            bash = shutil.which("bash")
+            if bash and "system32" not in bash.lower():
+                return bash
+            raise RuntimeError("No suitable bash found on PATH")
+
+    def test_launcher_rejects_system32_wsl_bash(self) -> None:
+        """The selected Bash must never be System32/WSL."""
+        selected = self._select_bash()
+        assert "system32" not in selected.lower()
+        assert "wsl" not in selected.lower()
+        import os
+        assert os.path.isfile(selected)
+
+    def test_launcher_crlf_enforcement_zero_crlf_blob(self) -> None:
+        """The committed setup.sh blob must have zero CRLF bytes (cross-host
+        LF guarantee via .gitattributes). On POSIX, a CRLF-mutated script
+        also fails at runtime; on Windows/MSYS bash strips \\r so the blob
+        proof is the authoritative guarantee."""
+        import subprocess
+        # The committed blob must be LF-only
+        result = subprocess.run(
+            ["git", "cat-file", "blob", "HEAD:backend/scripts/setup.sh"],
+            capture_output=True, text=False,
+        )
+        assert result.returncode == 0, "could not read committed blob"
+        assert b"\r" not in result.stdout, "committed setup.sh blob contains CRLF"
+        # .gitattributes must enforce eol=lf
+        ga = (BACKEND_DIR.parent / ".gitattributes").read_text(encoding="utf-8")
+        assert "backend/scripts/setup.sh" in ga and "eol=lf" in ga
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

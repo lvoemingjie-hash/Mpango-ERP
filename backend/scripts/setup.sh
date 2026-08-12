@@ -1,14 +1,18 @@
 #!/bin/bash
+# Mpango ERP Setup Script  (H7-R5-R1 — canonical tenant bootstrap)
+# Requires: bash >= 4, Docker (compose v1 or v2), Python 3.11+, pip, pnpm/corepack.
 set -Eeuo pipefail
 
 # ---------------------------------------------------------------------------
-# Mpango ERP Setup Script  (H7-R5 — native fail-closed repair)
-#
-# Requires: bash >= 4, Docker, pnpm (or corepack), Python 3.11+, pip.
-# Invoke from the repository root (the script resolves its own location).
+# ERR trap: preserve non-zero exit, identify the failing line, and truthfully
+# state that setup stopped with possible partial local artifacts.  Never claim
+# rollback or "no changes applied"; never print "Setup complete" after failure.
 # ---------------------------------------------------------------------------
-
-trap 'echo "❌ Setup failed at line $LINENO.  No changes have been applied." >&2; exit 1' ERR
+_on_err() {
+    echo "❌ Setup stopped at line $1 (exit status preserved). Partial local artifacts may exist; inspect and re-run after fixing the cause." >&2
+    exit 1
+}
+trap '_on_err $LINENO' ERR
 
 # ---- resolve repository root from script location -----------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,17 +21,17 @@ cd "$REPO_ROOT"
 
 echo "🚀 Setting up Mpango ERP (root: $REPO_ROOT) …"
 
-# ---- docker-compose / docker compose ------------------------------------
-DOCKER_COMPOSE=""
+# ---- docker compose (stored as a shell array) ---------------------------
+COMPOSE=()
 if command -v docker &> /dev/null; then
     if docker compose version &> /dev/null; then
-        DOCKER_COMPOSE="docker compose"
+        COMPOSE=(docker compose)
     elif command -v docker-compose &> /dev/null; then
-        DOCKER_COMPOSE="docker-compose"
+        COMPOSE=(docker-compose)
     fi
 fi
-if [ -z "$DOCKER_COMPOSE" ]; then
-    echo "❌ Neither 'docker compose' (Docker Compose v2) nor 'docker-compose' (v1) is available." >&2
+if [ "${#COMPOSE[@]}" -eq 0 ]; then
+    echo "❌ Neither 'docker compose' nor 'docker-compose' is available." >&2
     exit 1
 fi
 
@@ -47,64 +51,82 @@ fi
 
 # ---- start Docker services ----------------------------------------------
 echo "🐳 Starting Docker services …"
-$DOCKER_COMPOSE up -d postgres redis
+"${COMPOSE[@]}" up -d postgres redis
 
-# ---- bounded health polling ---------------------------------------------
-MAX_ATTEMPTS=30
-SLEEP_SECS=2
-
-# PostgreSQL (pg_isready in container)
+# ---- bounded PostgreSQL readiness (Compose-scoped, no hardcoded user) ---
 echo "⏳ Waiting for PostgreSQL …"
-for i in $(seq 1 $MAX_ATTEMPTS); do
-    if docker exec "$($DOCKER_COMPOSE ps -q postgres)" pg_isready -U postgres &> /dev/null; then
-        echo "   PostgreSQL ready (attempt $i)"
+MAX_ATTEMPTS="${SETUP_TIMEOUT_ATTEMPTS:-30}"
+SLEEP_SECS="${SETUP_TIMEOUT_INTERVAL:-2}"
+for i in $(seq 1 "$MAX_ATTEMPTS"); do
+    if "${COMPOSE[@]}" exec -T postgres \
+         pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-mpango_erp}" \
+         &> /dev/null; then
+        echo "   PostgreSQL ready (attempt $i/$MAX_ATTEMPTS)"
         break
     fi
     if [ "$i" -eq "$MAX_ATTEMPTS" ]; then
-        echo "❌ PostgreSQL did not become ready within $((MAX_ATTEMPTS * SLEEP_SECS))s" >&2
+        echo "❌ PostgreSQL did not become ready within $((MAX_ATTEMPTS * SLEEP_SECS))s." >&2
         exit 1
     fi
     sleep "$SLEEP_SECS"
 done
 
-# Redis
+# ---- bounded Redis readiness --------------------------------------------
 echo "⏳ Waiting for Redis …"
-for i in $(seq 1 $MAX_ATTEMPTS); do
-    if docker exec "$($DOCKER_COMPOSE ps -q redis)" redis-cli ping | grep -q PONG; then
-        echo "   Redis ready (attempt $i)"
+for i in $(seq 1 "$MAX_ATTEMPTS"); do
+    if "${COMPOSE[@]}" exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; then
+        echo "   Redis ready (attempt $i/$MAX_ATTEMPTS)"
         break
     fi
     if [ "$i" -eq "$MAX_ATTEMPTS" ]; then
-        echo "❌ Redis did not become ready within $((MAX_ATTEMPTS * SLEEP_SECS))s" >&2
+        echo "❌ Redis did not become ready within $((MAX_ATTEMPTS * SLEEP_SECS))s." >&2
         exit 1
     fi
     sleep "$SLEEP_SECS"
 done
 
-# ---- backend dependencies + migrations ----------------------------------
-echo "🔧 Setting up backend …"
+# ---- backend dependencies -----------------------------------------------
+echo "🔧 Installing backend dependencies …"
 cd "$REPO_ROOT/backend"
 pip install -r requirements.txt
 
-echo "🗄️ Running database migrations …"
-alembic upgrade head                                      # public schema first
-alembic -x tenant_schema="${DEFAULT_TENANT_SCHEMA:-t_dev}" upgrade head
+# ---- public Alembic migration -------------------------------------------
+echo "🗄️ Running public Alembic migration …"
+alembic upgrade head
+
+# ---- resolve DATABASE_URL from core.config.settings (never printed) -----
+RESOLVED_DATABASE_URL="$(python -c "from core.config import settings; print(settings.DATABASE_URL)" 2>/dev/null)" \
+    || { echo "❌ Could not resolve DATABASE_URL from core.config.settings." >&2; exit 1; }
+if [ -z "$RESOLVED_DATABASE_URL" ]; then
+    echo "❌ Resolved DATABASE_URL is empty." >&2
+    exit 1
+fi
+
+# ---- canonical tenant bootstrap (replaces the alembic -x no-op) ---------
+echo "🏗️ Bootstrapping tenant schema …"
+python scripts/bootstrap_tenant_schema.py \
+    "${DEFAULT_TENANT_SCHEMA:-t_dev}" \
+    --database-url "$RESOLVED_DATABASE_URL"
+
+cd "$REPO_ROOT"
 
 # ---- frontend dependencies (pnpm frozen-lockfile) -----------------------
 echo "🎨 Setting up frontend …"
 cd "$REPO_ROOT/frontend"
 
 if command -v pnpm &> /dev/null; then
-    PNPM="pnpm"
+    PNPM_BIN="pnpm"
 elif command -v corepack &> /dev/null; then
     corepack enable
-    PNPM="pnpm"
+    PNPM_BIN="pnpm"
 else
     echo "❌ pnpm is not installed and corepack is not available." >&2
     echo "   Install pnpm (https://pnpm.io/installation) or enable corepack." >&2
     exit 1
 fi
-$PNPM install --frozen-lockfile
+"$PNPM_BIN" install --frozen-lockfile
+
+cd "$REPO_ROOT"
 
 # ---- done ---------------------------------------------------------------
 echo ""
@@ -115,4 +137,4 @@ echo "  1. Backend : cd backend && uvicorn main:app --reload"
 echo "  2. Frontend: cd frontend && pnpm run dev"
 echo ""
 echo "Or use Docker Compose:"
-echo "  $DOCKER_COMPOSE up backend frontend"
+echo "  ${COMPOSE[*]} up backend frontend"

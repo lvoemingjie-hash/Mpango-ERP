@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5 current)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R1 current)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -256,7 +256,7 @@ final build stage, and detects inert/dead-branch forms (echo-wrapper, ``false &&
 to 92 tests; all manifests, product code, Dockerfile and setup.sh remain byte-
 identical; full backend gates are inherited from R3. Evidence in the same ledger.
 
-**H7-R5 (CTO-authorized, current):** repairs the native Linux setup path:
+**H7-R5 (CTO-authorized, superseded by H7-R5-R1):** repairs the native Linux setup path:
 ``set -Eeuo pipefail`` + ERR trap; bounded PostgreSQL/Redis health polling
 replaces fixed sleep; migration uses valid ``alembic -x tenant_schema=... upgrade
 head`` order (public first); ``pnpm install --frozen-lockfile`` replaces
@@ -266,6 +266,19 @@ root resolved from script location. Command examples in ``alembic/env.py`` and
 RED mutations for every setup failure mode. All H7 manifest versions and 70==70
 parity preserved; requirements/pyproject/lock/Dockerfile/Compose unchanged.
 Evidence in the same ledger.
+
+**H7-R5-R1 (CTO-authorized, current):** replaces the ineffective post-public
+``alembic -x tenant_schema=... upgrade head`` (a no-op per the project's
+shared-version-table design) with the canonical tenant path:
+``python scripts/bootstrap_tenant_schema.py "$DEFAULT_TENANT_SCHEMA" --database-url
+"$RESOLVED_DATABASE_URL"`` where the URL is resolved from
+``core.config.settings`` and never printed. The ERR trap is rewritten to
+truthfully state partial-artifact risk (no false "no changes applied" or
+rollback claim). Compose invocation stored as a shell array with Compose-scoped
+``exec -T`` health checks (no hard-coded container IDs or users). The test
+suite (94 tests) uses the real committed setup.sh as the mutation base for every
+RED case. All manifests, Dockerfile, Compose, and product code unchanged.
+Native Linux execution remains a Lubuntu gate — not claimed here.
 
 ## Active Phase
 

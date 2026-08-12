@@ -1,4 +1,17 @@
-# DC-12R1-H7-R4-R1 — Install-Path Guard Authenticity Correction
+# DC-12R1-H7-R5-R1 — Canonical Tenant Bootstrap and Native Evidence Closure
+
+> **H7-R5 verdict is superseded by H7-R5-R1.** R5-R1 replaces the ineffective
+> post-public ``alembic -x tenant_schema=... upgrade head`` (a no-op under the
+> project's shared ``alembic_version`` table) with the canonical tenant bootstrap
+> path ``python scripts/bootstrap_tenant_schema.py … --database-url
+> "$RESOLVED_DATABASE_URL"`` where the URL is resolved from
+> ``core.config.settings`` and never printed. ERR trap rewritten truthfully;
+> Compose stored as a shell array with Compose-scoped ``exec -T`` health checks;
+> test suite (94 tests) uses the real committed setup.sh as the mutation base.
+
+> Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
+> Base candidate: `572b0925` (H7-R5)
+> Root base: `origin/product-dev-recovered@a6ef3aac`
 
 > **H7-R4 verdict is `SUPERSEDED_BY_H7_R4_R1`.** CTO review of R4 found two
 > remaining uncovered false-green paths in the source-shape guards: (A) the

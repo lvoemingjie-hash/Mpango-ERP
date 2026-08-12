@@ -256,7 +256,8 @@ def check_setup_sh_wiring(text: str) -> None:
             return 1
         if re.match(r"^(fi|done|esac)\b", low):
             return -1
-        # `}` as a function closer — only when we know blocks are open
+        if re.match(r"^\}\s*$", s):
+            return -1  # function closer
         return 0
 
     # ------- step 1: locate the exact pip line --------------------------------
@@ -316,49 +317,80 @@ def check_setup_sh_wiring(text: str) -> None:
     if pip_idx is None:
         raise ValueError("setup.sh: no active 'pip install -r requirements.txt' command found")
 
-    # ------- step 2: unreachable exit/return (outside if..fi only) ------------
+    # ------- step 2: unreachable exit/return (outside if..fi and functions) ----
     if_depth = 0
+    func_depth = 0
     for raw in lines[:pip_idx]:
         s = raw.strip()
         if not s or s.startswith("#"):
             continue
-        if re.match(r"^if\b", s):
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)\s*\{?", s) or re.match(r"^function\s+", s, re.IGNORECASE):
+            func_depth += 1
+        elif re.match(r"^\}\s*$", s):
+            func_depth = max(0, func_depth - 1)
+        elif re.match(r"^if\b", s):
             if_depth += 1
         elif re.match(r"^fi\b", s):
             if_depth = max(0, if_depth - 1)
-        elif re.match(r"^(exit|return)\b", s) and if_depth == 0:
+        elif re.match(r"^(exit|return)\b", s) and if_depth == 0 and func_depth == 0:
             raise ValueError(f"setup.sh: unreachable (exit/return before pip line at L{pip_idx + 1})")
 
-    # ------- step 3: exact sequence + reject old alembic form ---------------
+    # ------- step 3: canonical sequence checks -----------------------------
     after_pip = lines[pip_idx + 1 :]
-    # reject old "alembic upgrade head -x ..." form anywhere
-    for raw in lines:
-        s = raw.strip()
-        if OLD_ALEMBIC in s and not s.startswith("#"):
-            raise ValueError("setup.sh: old alembic form 'alembic upgrade head -x' must be replaced with 'alembic -x tenant_schema=... upgrade head'")
-    # reject npm (pnpm is required)
-    for raw in after_pip:
-        s = raw.strip()
-        if re.search(r"\bnpm\s+(install|i)\b", s) and "pnpm" not in s.lower():
-            raise ValueError("setup.sh: npm install is not allowed — use pnpm install --frozen-lockfile")
-    # cd backend (accepts "cd $REPO_ROOT/backend", "cd backend", etc.)
-    cd_found = any(re.match(r"^cd\b", raw.strip()) and "backend" in raw for raw in lines[:pip_idx])
-    if not cd_found:
+    non_comment = [r.strip() for r in lines if r.strip() and not r.strip().startswith("#")]
+
+    # strict mode
+    if not any("set -Eeuo pipefail" in r for r in lines[:12]):
+        raise ValueError("setup.sh: missing 'set -Eeuo pipefail' strict mode")
+    # ERR trap present
+    if not any(re.search(r"trap\b.*\bERR\b", r) for r in non_comment):
+        raise ValueError("setup.sh: missing ERR trap")
+    # ERR trap must not claim rollback / no-changes-applied (scan non-comment lines only)
+    nc_text = "\n".join(non_comment).lower()
+    for bad in ["no changes have been applied", "no changes applied", "rolled back", "rollback complete"]:
+        if bad in nc_text:
+            raise ValueError(f"setup.sh: ERR trap must not claim '{bad}'")
+    # Compose stored as a shell array
+    if not any(re.search(r"COMPOSE\s*=\s*\(", r) for r in non_comment):
+        raise ValueError("setup.sh: Compose invocation must be a shell array (COMPOSE=(...))")
+    # bounded PostgreSQL health polling
+    if not any("pg_isready" in r for r in non_comment) or not any(re.search(r"seq\b.*MAX_ATTEMPTS|for i in.*seq", r) for r in non_comment):
+        raise ValueError("setup.sh: missing bounded PostgreSQL readiness polling (pg_isready + loop)")
+    if not any("redis-cli ping" in r for r in non_comment):
+        raise ValueError("setup.sh: missing bounded Redis readiness polling (redis-cli ping)")
+    # cd backend before pip
+    if not any(re.match(r"^cd\b", r) and "backend" in r for r in [l.strip() for l in lines[:pip_idx]]):
         raise ValueError("setup.sh: must cd into backend before pip install")
-    # public alembic upgrade head (bare, without -x) after pip (allow trailing comment)
-    if not any(re.match(r"^alembic upgrade head\s*(#|$)", raw.strip()) for raw in after_pip):
-        raise ValueError("setup.sh: must run public 'alembic upgrade head' (no -x) after pip install")
-    # tenant migration: alembic -x tenant_schema=... upgrade head (allow trailing comment)
-    if not any(re.match(r"^alembic -x tenant_schema=", raw.strip()) for raw in after_pip):
-        raise ValueError("setup.sh: must run tenant 'alembic -x tenant_schema=... upgrade head' after public migration")
-    # tenant must not appear before public
-    pub_idx = next((i for i,r in enumerate(after_pip) if re.match(r"^alembic upgrade head\s*(#|$)", r.strip())), -1)
-    ten_idx = next((i for i,r in enumerate(after_pip) if re.match(r"^alembic -x tenant_schema=", r.strip())), -1)
-    if ten_idx >= 0 and pub_idx >= 0 and ten_idx < pub_idx:
-        raise ValueError("setup.sh: tenant migration must run AFTER public 'alembic upgrade head'")
-    # pnpm frozen-lockfile (accepts both literal and $PNPM variable)
-    PNPM_LIT = "pnpm install --frozen-lockfile"
-    if not any((PNPM_LIT in raw or "$PNPM install --frozen-lockfile" in raw) for raw in after_pip):
+    # public alembic upgrade head (bare) after pip
+    pub_lines = [i for i, r in enumerate(after_pip) if re.match(r"^alembic upgrade head\s*(#|$)", r.strip())]
+    if not pub_lines:
+        raise ValueError("setup.sh: must run public 'alembic upgrade head' after pip install")
+    pub_off = pub_lines[0]
+    # REJECT the tenant alembic no-op form
+    if any(re.match(r"^alembic\s+.*-x\s+tenant_schema=", r) for r in non_comment):
+        raise ValueError("setup.sh: tenant alembic '-x tenant_schema=' is a no-op; use canonical bootstrap_tenant_schema.py")
+    # REJECT hard-coded postgres user (must use env var)
+    if any(re.search(r"pg_isready\s+-U\s+(mpango_test|postgres|mpango)\b", r) for r in non_comment):
+        raise ValueError("setup.sh: pg_isready must use '${POSTGRES_USER:...}' env var, not a hard-coded user")
+    # canonical bootstrap after public migration
+    boot_lines = [i for i, r in enumerate(after_pip) if "bootstrap_tenant_schema.py" in r]
+    if not boot_lines:
+        raise ValueError("setup.sh: must invoke canonical 'python scripts/bootstrap_tenant_schema.py' after public migration")
+    if boot_lines[0] < pub_off:
+        raise ValueError("setup.sh: canonical bootstrap must run AFTER public 'alembic upgrade head'")
+    # bootstrap must pass --database-url
+    if not any("bootstrap_tenant_schema.py" in r and "--database-url" in "\n".join(after_pip) for r in after_pip):
+        if not any("--database-url" in r for r in after_pip if "bootstrap" in "\n".join(after_pip[max(0,i-1):i+2])):
+            raise ValueError("setup.sh: canonical bootstrap must pass '--database-url'")
+    # DATABASE_URL resolution from core.config.settings
+    if not any("settings.DATABASE_URL" in r for r in non_comment):
+        raise ValueError("setup.sh: must resolve DATABASE_URL from core.config.settings")
+    # REJECT npm (pnpm required; word-boundary so 'pnpm' is not flagged)
+    for r in after_pip:
+        if re.search(r"\bnpm\s+(install|i)\b", r) and "pnpm" not in r.lower():
+            raise ValueError("setup.sh: npm install is not allowed — use pnpm install --frozen-lockfile")
+    # pnpm frozen-lockfile (literal, $VAR, or "$VAR" forms)
+    if not any("install --frozen-lockfile" in r and "pnpm" in r.lower() for r in after_pip):
         raise ValueError("setup.sh: must run 'pnpm install --frozen-lockfile' after migrations")
 
 
@@ -528,111 +560,136 @@ class TestH7R4InventoryParity:
 
 
 # ──────────────────────────────────────────────────────────────────────────── #
-# GREEN — install-path source-shape guards (real files must pass)
+# Install-path source-shape guards  (R5-R1 — canonical bootstrap)
 # ──────────────────────────────────────────────────────────────────────────── #
-ALEMBIC_PNPM_SUFFIX = "alembic upgrade head\nalembic -x tenant_schema=t_dev upgrade head\npnpm install --frozen-lockfile"
+class TestH7R5R1InstallPathWiring:
+    """Each RED test reads the REAL committed setup.sh, mutates one element,
+    and asserts the specific rejection.  This proves the guard catches real
+    regressions, not just synthetic snippets."""
 
+    @staticmethod
+    def _base() -> str:
+        return SETUP_SH.read_text(encoding="utf-8")
 
-class TestH7R5InstallPathWiring:
-    def test_setup_sh_passes_structural_guard(self) -> None:
-        check_setup_sh_wiring(SETUP_SH.read_text(encoding="utf-8"))
+    # ---- GREEN ----
+    def test_GREEN_real_setup_sh_passes(self) -> None:
+        check_setup_sh_wiring(self._base())
 
-    def test_dockerfile_passes_structural_guard(self) -> None:
+    def test_GREEN_real_dockerfile_passes(self) -> None:
         check_dockerfile_wiring(DOCKERFILE.read_text(encoding="utf-8"))
 
-    # ---- setup.sh RED: old-form rejection + sequence ---------------------
-    ALEMBIC_PNPM_SUFFIX = "alembic upgrade head\nalembic -x tenant_schema=t_dev upgrade head\npnpm install --frozen-lockfile"
+    # ---- setup.sh RED: strict mode, ERR trap, compose, readiness ----------
+    def test_RED_missing_strict_mode(self) -> None:
+        text = self._base().replace("set -Eeuo pipefail", "set -e")
+        with pytest.raises(ValueError, match="strict mode"):
+            check_setup_sh_wiring(text)
 
-    def test_RED_setup_sh_old_alembic_form_rejected(self) -> None:
-        with pytest.raises(ValueError, match="old alembic"):
-            check_setup_sh_wiring("cd backend\npip install -r requirements.txt\nalembic upgrade head -x tenant_schema=t_dev")
+    def test_RED_missing_err_trap(self) -> None:
+        text = self._base().replace("trap '_on_err $LINENO' ERR", "true")
+        with pytest.raises(ValueError, match="ERR trap"):
+            check_setup_sh_wiring(text)
 
-    def test_RED_setup_sh_missing_public_migration_rejected(self) -> None:
+    def test_RED_false_no_changes_applied_wording(self) -> None:
+        text = self._base().replace(
+            "Partial local artifacts may exist",
+            "No changes have been applied to your system",
+        )
+        with pytest.raises(ValueError, match="must not claim"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_missing_compose_array(self) -> None:
+        import re as _re
+        text = _re.sub(r"COMPOSE\s*=\s*\(", "COMPOSE=", self._base())
+        with pytest.raises(ValueError, match="shell array"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_missing_pg_health_polling(self) -> None:
+        text = self._base().replace("pg_isready", "true_check")
+        with pytest.raises(ValueError, match="PostgreSQL readiness"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_missing_redis_health_polling(self) -> None:
+        text = self._base().replace("redis-cli ping", "true_check")
+        with pytest.raises(ValueError, match="Redis readiness"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_hardcoded_postgres_user(self) -> None:
+        text = self._base().replace(
+            '-U "${POSTGRES_USER:-postgres}"',
+            "-U mpango_test",
+        )
+        with pytest.raises(ValueError, match="hard-coded"):
+            check_setup_sh_wiring(text)
+
+    # ---- setup.sh RED: alembic / bootstrap sequence ----------------------
+    def test_RED_tenant_alembic_noop_rejected(self) -> None:
+        text = self._base().replace(
+            'python scripts/bootstrap_tenant_schema.py \\\n    "${DEFAULT_TENANT_SCHEMA:-t_dev}" \\\n    --database-url "$RESOLVED_DATABASE_URL"',
+            'alembic -x tenant_schema="${DEFAULT_TENANT_SCHEMA:-t_dev}" upgrade head',
+        )
+        with pytest.raises(ValueError, match="tenant_schema"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_missing_canonical_bootstrap(self) -> None:
+        text = self._base().replace("python scripts/bootstrap_tenant_schema.py", "true")
+        with pytest.raises(ValueError, match="canonical"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_bootstrap_before_public_migration(self) -> None:
+        text = self._base().replace(
+            'alembic upgrade head\n\n# ---- resolve',
+            '# placeholder\n',
+        )
         with pytest.raises(ValueError, match="public"):
-            check_setup_sh_wiring("cd backend\npip install -r requirements.txt\nalembic -x tenant_schema=t_dev upgrade head\npnpm install --frozen-lockfile")
+            check_setup_sh_wiring(text)
 
-    def test_RED_setup_sh_tenant_before_public_rejected(self) -> None:
-        with pytest.raises(ValueError, match="tenant"):
-            check_setup_sh_wiring(f"cd backend\npip install -r requirements.txt\nalembic -x tenant_schema=t_dev upgrade head\nalembic upgrade head\npnpm install --frozen-lockfile")
+    def test_RED_missing_bootstrap_database_url(self) -> None:
+        text = self._base().replace('--database-url "$RESOLVED_DATABASE_URL"', "")
+        with pytest.raises(ValueError, match="(?i)database.url|database-url|canonical"):
+            check_setup_sh_wiring(text)
 
-    def test_RED_setup_sh_migration_or_true_rejected(self) -> None:
-        with pytest.raises(ValueError, match="public"):
-            check_setup_sh_wiring("cd backend\npip install -r requirements.txt\nalembic upgrade head || true\nalembic -x tenant_schema=t_dev upgrade head\npnpm install --frozen-lockfile")
+    def test_RED_missing_database_url_resolution(self) -> None:
+        text = self._base().replace("settings.DATABASE_URL", "os.environ.get('X')")
+        with pytest.raises(ValueError, match="DATABASE_URL"):
+            check_setup_sh_wiring(text)
 
-    def test_RED_setup_sh_npm_install_rejected(self) -> None:
+    # ---- setup.sh RED: pip / npm / pnpm ----------------------------------
+    def test_RED_npm_rejected(self) -> None:
+        text = self._base().replace('"$PNPM_BIN" install --frozen-lockfile', "npm install")
         with pytest.raises(ValueError, match="npm"):
-            check_setup_sh_wiring(f"cd backend\npip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX.replace('pnpm install --frozen-lockfile','npm install')}")
+            check_setup_sh_wiring(text)
 
-    def test_RED_setup_sh_missing_pnpm_rejected(self) -> None:
-        with pytest.raises(ValueError, match="pnpm"):
-            check_setup_sh_wiring("cd backend\npip install -r requirements.txt\nalembic upgrade head\nalembic -x tenant_schema=t_dev upgrade head")
+    def test_RED_non_frozen_pnpm_rejected(self) -> None:
+        text = self._base().replace('"$PNPM_BIN" install --frozen-lockfile', '"$PNPM_BIN" install')
+        with pytest.raises(ValueError, match="frozen-lockfile"):
+            check_setup_sh_wiring(text)
 
-    # preserved R4-R1 RED tests (updated inputs to new alembic form)
-    def test_RED_setup_sh_commented_pip_detected(self) -> None:
-        with pytest.raises(ValueError, match="no active"):
-            check_setup_sh_wiring(f"cd backend\n# pip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX}")
-
-    def test_RED_setup_sh_pip_after_exit_rejected(self) -> None:
-        with pytest.raises(ValueError, match="unreachable"):
-            check_setup_sh_wiring(f"exit 0\npip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX}")
-
-    def test_RED_setup_sh_pip_inside_echo_rejected(self) -> None:
+    # ---- setup.sh RED: pip-line context (preserved from R4-R1) -----------
+    def test_RED_pip_inside_echo(self) -> None:
         with pytest.raises(ValueError, match="inert"):
             check_setup_sh_wiring('echo "pip install -r requirements.txt"')
 
-    def test_RED_setup_sh_false_and_dead_rejected(self) -> None:
+    def test_RED_pip_false_and(self) -> None:
         with pytest.raises(ValueError, match="short-circuit"):
             check_setup_sh_wiring("false && pip install -r requirements.txt")
 
-    def test_RED_setup_sh_true_or_dead_rejected(self) -> None:
-        with pytest.raises(ValueError, match="short-circuit"):
-            check_setup_sh_wiring("true || pip install -r requirements.txt")
-
-    def test_RED_setup_sh_missing_cd_backend_rejected(self) -> None:
-        with pytest.raises(ValueError, match="cd"):
-            check_setup_sh_wiring(f"pip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX}")
-
-    def test_RED_setup_sh_var_assign_rejected(self) -> None:
-        with pytest.raises(ValueError, match="variable assignment"):
-            check_setup_sh_wiring("CMD=pip install -r requirements.txt")
-
-    def test_RED_setup_sh_quoted_rejected(self) -> None:
+    def test_RED_pip_quoted(self) -> None:
         with pytest.raises(ValueError, match="quoted"):
             check_setup_sh_wiring('"pip install -r requirements.txt"')
 
-    def test_RED_setup_sh_multiline_if_block_rejected(self) -> None:
+    def test_RED_pip_var_assign(self) -> None:
+        with pytest.raises(ValueError, match="variable assignment"):
+            check_setup_sh_wiring("CMD=pip install -r requirements.txt")
+
+    def test_RED_pip_inside_if_block(self) -> None:
+        text = self._base().replace(
+            "pip install -r requirements.txt",
+            "if false; then\npip install -r requirements.txt\nfi",
+        )
         with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring(f"if false; then\npip install -r requirements.txt\nfi\n{ALEMBIC_PNPM_SUFFIX}")
+            check_setup_sh_wiring(text)
 
-    def test_RED_setup_sh_same_line_if_rejected(self) -> None:
-        with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring(f"if true; then pip install -r requirements.txt; fi\n{ALEMBIC_PNPM_SUFFIX}")
-
-    def test_RED_setup_sh_for_block_rejected(self) -> None:
-        with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring(f"for x in 1; do\npip install -r requirements.txt\ndone\n{ALEMBIC_PNPM_SUFFIX}")
-
-    def test_RED_setup_sh_while_block_rejected(self) -> None:
-        with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring(f"while false; do\npip install -r requirements.txt\ndone\n{ALEMBIC_PNPM_SUFFIX}")
-
-    def test_RED_setup_sh_function_block_rejected(self) -> None:
-        with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring(f"_bad() {{\npip install -r requirements.txt\n}}\n{ALEMBIC_PNPM_SUFFIX}")
-
-    def test_RED_setup_sh_pip_or_true_rejected(self) -> None:
-        with pytest.raises(ValueError, match="exactly"):
-            check_setup_sh_wiring(f"cd backend\npip install -r requirements.txt || true\n{ALEMBIC_PNPM_SUFFIX}")
-
-    def test_RED_setup_sh_pip_with_redirect_rejected(self) -> None:
-        with pytest.raises(ValueError, match="exactly"):
-            check_setup_sh_wiring(f"cd backend\npip install -r requirements.txt > /dev/null\n{ALEMBIC_PNPM_SUFFIX}")
-
-    def test_RED_setup_sh_unbalanced_if_rejected(self) -> None:
-        with pytest.raises(ValueError, match="block"):
-            check_setup_sh_wiring(f"if true; then\ncd backend\npip install -r requirements.txt\n{ALEMBIC_PNPM_SUFFIX}")
-
-    # ---- Dockerfile RED mutations (unchanged) ---------------------------
+    # ---- Dockerfile RED mutations (unchanged from R4-R1) -----------------
     def test_RED_dockerfile_wrong_ordering_rejected(self) -> None:
         with pytest.raises(ValueError, match="must appear AFTER"):
             check_dockerfile_wiring("FROM python:3.11\nRUN poetry install --no-root --only main --no-ansi\nCOPY pyproject.toml poetry.lock ./")

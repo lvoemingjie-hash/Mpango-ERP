@@ -212,7 +212,7 @@ silently overwrote duplicate entries; (003) `openpyxl 3.1.5` depends on
 so the "complete install-path parity" claim was an overclaim. H7-R2's PASS is
 **SUPERSEDED_BY_H7_R3**.
 
-**H7-R3 (CTO-authorized, current; supersedes H7-R2):** recomputed the complete
+**H7-R3 (CTO-authorized, superseded by H7-R4):** recomputed the complete
 Poetry main-runtime lock map (70 packages) vs `requirements.txt` and found the
 **only** remaining drift was the missing transitive `et-xmlfile==2.0.0` (no
 extras, no version mismatches, no duplicate names). R3 adds `et-xmlfile==2.0.0`
@@ -226,6 +226,22 @@ exact versions) and includes authentic RED mutation tests for each parser
 failure mode. `pyproject.toml` and `poetry.lock` remain byte-identical. Evidence
 in
 `ai-ledger/product-ai/2026-08-12_dc12r1_h7_bcrypt_dependency_manifest_reconciliation.md`.
+
+**H7-R4 (CTO-authorized, current; supersedes H7-R3):** closes four Kilo findings
+on R3: (001) the lock parser silently accepted/excluded malformed entries or
+raised unrelated exceptions — now validates name/version/groups exhaustively
+with controlled `ValueError` for 13+ malformed forms; (002) the requirements
+parser silently dropped extras and the broader wording overclaimed parity —
+extras are now rejected, all contract language uses the exact phrase
+"requirements.txt and Poetry's main-group lock inventory have identical
+canonical package names and exact versions," and markers/hashes/sources/
+installer execution are explicitly excluded; (003) install-path tests used
+raw substrings — replaced with structural source-shape guards for setup.sh
+and Dockerfile with RED mutation tests; (004) GitNexus status reproducibility
+is host-specific. The test suite grew to 75 tests. Dependencies, product
+code, Dockerfile, setup.sh, pyproject.toml and poetry.lock remain
+byte-identical to R3; full backend gates are inherited from R3. Evidence in
+the same ledger path.
 
 ## Active Phase
 

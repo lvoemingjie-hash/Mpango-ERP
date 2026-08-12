@@ -1,5 +1,6 @@
 import { createBrowserRouter, RouterProvider, Navigate, useSearchParams } from 'react-router-dom';
-import { ProtectedRoute, PublicRoute, PlatformRoute, RetailerRoute, WholesalerRoute } from '@/router/guards';
+import { ProtectedRoute, PublicRoute, PlatformRoute, RetailerRoute, RetailerPermissionRoute, WholesalerRoute } from '@/router/guards';
+import { CLIENT_PERMISSIONS } from '@/utils/permissions';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -154,16 +155,41 @@ const router = createBrowserRouter([
               { path: '/client/payments', element: <ClientPaymentHistoryPage /> },
               { path: '/client/finance', element: <ClientFinanceBalancePage /> },
               { path: '/client/declarations', element: <DeclarationHistoryPage /> },
-              { path: '/client/orders/:orderId/declare', element: <DeclarePaymentPage /> },
+              // DC-12R1-MVP-R0-R1 (WPR-003): the payment-declaration submission
+              // page requires client:payments:declare. Fail closed before render
+              // so a permission-empty user can never reach the form (zero POST).
+              {
+                element: <RetailerPermissionRoute permission={CLIENT_PERMISSIONS.PAYMENTS_DECLARE} />,
+                children: [
+                  { path: '/client/orders/:orderId/declare', element: <DeclarePaymentPage /> },
+                ],
+              },
               // DC-12R1-S3-S2B-I2C-I2: retailer printable workspace (Contracts A–C).
               // mode is fixed by static route config (never a query param).
-              { path: '/client/orders/:orderId/print', element: <OrderPrintPage mode="client" /> },
-              { path: '/client/declarations/:declarationId/print', element: <DeclarationPrintPage mode="client" /> },
-              { path: '/client/declarations/:declarationId/receipt', element: <ReceiptPrintPage mode="client" /> },
+              // WPR-002: each print route is admission-checked against the same
+              // client:* permission its backend GET endpoint requires.
+              {
+                element: <RetailerPermissionRoute permission={CLIENT_PERMISSIONS.ORDERS_READ} />,
+                children: [
+                  { path: '/client/orders/:orderId/print', element: <OrderPrintPage mode="client" /> },
+                ],
+              },
+              {
+                element: <RetailerPermissionRoute permission={CLIENT_PERMISSIONS.PAYMENTS_READ} />,
+                children: [
+                  { path: '/client/declarations/:declarationId/print', element: <DeclarationPrintPage mode="client" /> },
+                  { path: '/client/declarations/:declarationId/receipt', element: <ReceiptPrintPage mode="client" /> },
+                ],
+              },
               // DC-12R1-S3-S2B-I2C-I2B: retailer relationship statement (Contract D).
               // mode is fixed by static route config; from/to are read-only
               // query inputs for the GET (the retailer identity is server-derived).
-              { path: '/client/statements/print', element: <StatementPrintPage mode="client" /> },
+              {
+                element: <RetailerPermissionRoute permission={CLIENT_PERMISSIONS.FINANCE_READ} />,
+                children: [
+                  { path: '/client/statements/print', element: <StatementPrintPage mode="client" /> },
+                ],
+              },
             ],
           },
         ],

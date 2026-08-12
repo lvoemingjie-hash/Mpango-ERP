@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { can } from '@/utils/permissions';
 
 /**
  * ProtectedRoute — redirects to /login if not authenticated.
@@ -84,6 +85,38 @@ export function RetailerRoute() {
       return <Navigate to={`/retail/login?w=${retailerPortalCode}`} replace />;
     }
     return <Navigate to="/login" replace />;
+  }
+
+  return <Outlet />;
+}
+
+/**
+ * RetailerPermissionRoute — DC-12R1-MVP-R0-R1 (WPR-002/WPR-003) permission guard.
+ *
+ * A reusable nested route guard that admits a route only if the current user
+ * holds ``permission``. It reuses the centralized ``can()`` helper (no
+ * independent permission algorithm): admins bypass, otherwise the exact
+ * permission string must be present in ``user.permissions``.
+ *
+ * This guard is ALWAYS nested under ``RetailerRoute``, so on entry the user is
+ * already an authenticated ``retailer_operator``. When the permission is
+ * missing it fails closed BEFORE the child page renders and BEFORE any
+ * protected API request can be issued: the user is redirected (replace) to
+ * ``/client`` — their legitimate retailer home — mirroring how
+ * ``WholesalerRoute`` redirects an authenticated retailer who crosses a
+ * boundary. The protected page component never mounts, so its data-fetch
+ * effects (and any submit) never run.
+ *
+ * ``RetailerRoute`` stays role/boundary-only; this guard adds the per-route
+ * permission check on top of it. It does NOT weaken or replace any backend
+ * ``RequirePermission`` — it is a defense-in-depth client admission check.
+ */
+export function RetailerPermissionRoute({ permission }: { permission: string }) {
+  const user = useAuthStore((s) => s.user);
+
+  if (!can(user, permission)) {
+    // Fail closed before render: the guarded page never mounts.
+    return <Navigate to="/client" replace />;
   }
 
   return <Outlet />;

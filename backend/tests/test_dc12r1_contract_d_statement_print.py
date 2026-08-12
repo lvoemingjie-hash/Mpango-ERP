@@ -36,11 +36,22 @@ from http import HTTPStatus
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from unittest.mock import patch
+
+# WPR-004 parity tests (mapper-level, collection-time symbols).
+from repositories.statement_repository import (  # noqa: E402
+    StatementInternalInconsistent,
+    StatementLedgerScopeIncomplete,
+    StatementPeriodError,
+    StatementRangeTooLarge,
+    StatementReconciliationFailed,
+)
+from schemas.print import StatementPrintView  # noqa: E402
+from services.print_service import StatementResult  # noqa: E402
 
 from tests.test_dc12r1_s3_s2b_i2b_payment_declarations import (  # noqa: E402
     _CASHIER_PW,
@@ -2873,3 +2884,218 @@ class TestOrderIndependence:
         assert Decimal(data["closing_balance"]) == opening + net
         assert Decimal(data["charge_total"]) >= Decimal("0")
         assert Decimal(data["collection_total"]) >= Decimal("0")
+
+
+# ===========================================================================
+# §WPR-004 — shared statement_http mapper: supplier/client parity + mutation
+# evidence (DC-12R1-MVP-R0-R1).
+#
+# Before this slice the supplier (api/v1/statements.py) and retailer
+# (api/v1/client/statements.py) Contract D print routes each carried a
+# byte-equivalent private ``_map_statement_result``. A one-sided edit could
+# silently drift the two public contracts apart. Both routes now call ONE
+# shared helper — ``api.v1.statement_http.map_statement_result``.
+#
+# These tests prove:
+#   1. IDENTITY — both route modules reference the SAME callable (a re-introduced
+#      local copy in either file makes this RED);
+#   2. BYTE-CONTRACT TABLE — the single mapper emits the exact status/code/
+#      message for every StatementResult variant (any change -> RED);
+#   3. SUPPLIER/CLIENT PARITY — for the same StatementResult the supplier-side
+#      and client-side mappings raise identical HTTPExceptions (drift -> RED);
+#   4. MUTATION EVIDENCE — a drifted mapper is provably detectable (the
+#      byte-contract assertions are sensitive to a one-sided change);
+#   5. END-TO-END route parity for a representative shared condition.
+#
+# The mapper-level tests (1-4) are deterministic and need no database.
+# ===========================================================================
+
+
+class TestWpr004SharedStatementHttpMapper:
+    """WPR-004: one shared statement-result -> HTTP mapper, parity-enforced."""
+
+    # ---- 1. IDENTITY -------------------------------------------------------
+
+    def test_both_routes_reference_the_same_shared_mapper(self):
+        """The supplier and retailer route modules must call the ONE shared
+        ``map_statement_result``. A re-introduced private ``_map_statement_result``
+        in either file (the pre-WPR-004 duplication hazard) makes this RED."""
+        import api.v1.client.statements as client_mod
+        import api.v1.statements as supplier_mod
+        from api.v1.statement_http import map_statement_result as shared
+
+        assert supplier_mod.map_statement_result is shared
+        assert client_mod.map_statement_result is shared
+        # No private duplicate remains in either module.
+        assert not hasattr(supplier_mod, "_map_statement_result")
+        assert not hasattr(client_mod, "_map_statement_result")
+
+    # ---- 2. BYTE-CONTRACT TABLE ------------------------------------------
+
+    @pytest.mark.parametrize(
+        "result_factory, expected_status, expected_code, expected_message",
+        [
+            (
+                lambda: StatementResult(view=StatementPrintView(
+                    document_type="statement", supplier_name="S", retailer_name="R",
+                    period_from="2026-08-01", period_to="2026-08-10",
+                    opening_balance="0.00", closing_balance="0.00",
+                    charge_total="0.00", collection_total="0.00", net_movement="0.00",
+                    settled_total="0.00", movements=[], settled_payments=[],
+                    pending_declarations=[], generated_at="2026-08-10T00:00:00Z",
+                    generated_at_eat="2026-08-10T00:00:00+03:00",
+                )),
+                HTTPStatus.OK, None, None,
+            ),
+            (
+                lambda: StatementResult(not_found=True),
+                HTTPStatus.NOT_FOUND, "STATEMENT_NOT_AVAILABLE", "Statement not available",
+            ),
+            (
+                lambda: StatementResult(error=StatementPeriodError("bad")),
+                HTTPStatus.BAD_REQUEST, "INVALID_DATE_RANGE", "Invalid date range.",
+            ),
+            (
+                lambda: StatementResult(error=StatementRangeTooLarge("big")),
+                HTTPStatus.BAD_REQUEST,
+                "STATEMENT_RANGE_TOO_LARGE",
+                "Statement range is too large. Choose a shorter date range.",
+            ),
+            (
+                lambda: StatementResult(error=StatementLedgerScopeIncomplete("orph")),
+                HTTPStatus.CONFLICT,
+                "STATEMENT_LEDGER_SCOPE_INCOMPLETE",
+                "Statement ledger scope is incomplete.",
+            ),
+            (
+                lambda: StatementResult(error=StatementInternalInconsistent("arith")),
+                HTTPStatus.CONFLICT,
+                "STATEMENT_INTERNAL_INCONSISTENT",
+                "Statement internal arithmetic is inconsistent.",
+            ),
+            (
+                lambda: StatementResult(error=StatementReconciliationFailed("recon")),
+                HTTPStatus.CONFLICT,
+                "STATEMENT_RECONCILIATION_FAILED",
+                "Statement reconciliation failed.",
+            ),
+            (
+                lambda: StatementResult(error=RuntimeError("unknown")),
+                HTTPStatus.NOT_FOUND, "STATEMENT_NOT_AVAILABLE", "Statement not available",
+            ),
+        ],
+        ids=[
+            "view-ok", "not_found-404", "period-400", "range-too-large-400",
+            "ledger-scope-409", "internal-inconsistent-409", "reconciliation-409",
+            "fallback-404",
+        ],
+    )
+    def test_byte_contract_table(self, result_factory, expected_status, expected_code, expected_message):
+        from api.v1.statement_http import map_statement_result
+
+        res = result_factory()
+        if expected_status == HTTPStatus.OK:
+            view = map_statement_result(res)
+            assert view is res.view
+            return
+        with pytest.raises(HTTPException) as exc:
+            map_statement_result(res)
+        assert exc.value.status_code == expected_status
+        detail = exc.value.detail
+        assert detail["code"] == expected_code
+        assert detail["message"] == expected_message
+
+    # ---- 3. SUPPLIER/CLIENT PARITY (same result -> identical HTTP) --------
+
+    @pytest.mark.parametrize(
+        "result_factory",
+        [
+            lambda: StatementResult(not_found=True),
+            lambda: StatementResult(error=StatementPeriodError("x")),
+            lambda: StatementResult(error=StatementRangeTooLarge("x")),
+            lambda: StatementResult(error=StatementLedgerScopeIncomplete("x")),
+            lambda: StatementResult(error=StatementInternalInconsistent("x")),
+            lambda: StatementResult(error=StatementReconciliationFailed("x")),
+            lambda: StatementResult(error=RuntimeError("x")),
+        ],
+        ids=["not_found", "period", "range", "scope", "inconsistent", "recon", "fallback"],
+    )
+    def test_supplier_and_client_mapping_are_identical(self, result_factory):
+        """For the same StatementResult, the supplier-side and client-side
+        mapper references must raise HTTPExceptions with identical status and
+        detail. (They are the same callable; this pins the parity invariant.)"""
+        import api.v1.client.statements as client_mod
+        import api.v1.statements as supplier_mod
+
+        res = result_factory()
+        with pytest.raises(HTTPException) as sup_exc:
+            supplier_mod.map_statement_result(res)
+        with pytest.raises(HTTPException) as cli_exc:
+            client_mod.map_statement_result(res)
+        assert sup_exc.value.status_code == cli_exc.value.status_code
+        assert sup_exc.value.detail == cli_exc.value.detail
+
+    # ---- 4. MUTATION EVIDENCE ---------------------------------------------
+
+    def test_mutation_evidence_one_sided_drift_is_detectable(self):
+        """Mutation evidence: a drifted mapper (simulating the pre-WPR-004
+        hazard where one side maps an error differently) produces a result that
+        DISAGREES with the shared mapper for the same StatementResult. Therefore
+        the byte-contract + parity assertions above would go RED if someone
+        re-introduced a one-sided local mapper with different behavior."""
+        from api.v1.statement_http import map_statement_result
+
+        def drifted_mapper(res):
+            # Drift: range-too-large -> 409 DRIFTED instead of the contract 400.
+            if isinstance(res.error, StatementRangeTooLarge):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"code": "DRIFTED", "message": "drifted"},
+                )
+            return map_statement_result(res)
+
+        res = StatementResult(error=StatementRangeTooLarge("big"))
+
+        with pytest.raises(HTTPException) as shared_exc:
+            map_statement_result(res)
+        with pytest.raises(HTTPException) as drifted_exc:
+            drifted_mapper(res)
+
+        # The shared mapper raises 400 STATEMENT_RANGE_TOO_LARGE (the contract);
+        # the drifted mapper raises 409 DRIFTED. They DISAGREE on every axis.
+        assert shared_exc.value.status_code == HTTPStatus.BAD_REQUEST
+        assert shared_exc.value.detail["code"] == "STATEMENT_RANGE_TOO_LARGE"
+        assert drifted_exc.value.status_code == status.HTTP_409_CONFLICT
+        assert drifted_exc.value.detail["code"] == "DRIFTED"
+        assert shared_exc.value.status_code != drifted_exc.value.status_code
+        assert shared_exc.value.detail != drifted_exc.value.detail
+        # Consequently the §3 parity test (supplier vs client) would FAIL if one
+        # side used drifted_mapper — this is the proof of sensitivity.
+
+    # ---- 5. END-TO-END route parity (shared invalid-date-range contract) --
+
+    async def test_end_to_end_parity_invalid_date_range_both_routes(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
+    ):
+        """The shared strict parser + shared mapper mean a malformed date range
+        yields an IDENTICAL 400 INVALID_DATE_RANGE response shape on BOTH the
+        retailer and supplier Contract D print routes."""
+        db, reg = s2_clean_db
+        token_ret, token_admin = await _disposable_tokens(
+            i2b_client, db, contractd_disposable_tenant, reg
+        )
+        ret_id = contractd_disposable_tenant["ret_id"]
+
+        r_client = await _get_retailer_statement(i2b_client, token_ret, "nope", "2026-08-10")
+        r_supplier = await _get_supplier_statement(i2b_client, token_admin, ret_id, "nope", "2026-08-10")
+
+        assert r_client.status_code == HTTPStatus.BAD_REQUEST
+        assert r_supplier.status_code == HTTPStatus.BAD_REQUEST
+        cj, sj = r_client.json(), r_supplier.json()
+        # Identical public contract: code + message match byte-for-byte.
+        assert cj["code"] == sj["code"] == "INVALID_DATE_RANGE"
+        assert cj["message"] == sj["message"] == "Invalid date range."
+        # No raw parser/internal details leak on either side.
+        for body in (r_client.text, r_supplier.text):
+            assert "strptime" not in body
+            assert "ValueError" not in body

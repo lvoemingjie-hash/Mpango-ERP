@@ -38,6 +38,7 @@ import { DeclarationPrintPage } from '@/pages/print/DeclarationPrintPage';
 import { ReceiptPrintPage } from '@/pages/print/ReceiptPrintPage';
 import { formatKes, formatDecimalMoney } from '@/utils/printFormat';
 import { sanitizePrintError } from '@/utils/printError';
+import { CLIENT_PERMISSIONS } from '@/utils/permissions';
 import type { AxiosError } from 'axios';
 import type { PaymentDeclaration } from '@/types/declaration';
 
@@ -868,6 +869,22 @@ const RETAILER_USER = {
   tenant_id: 't1', tenant_schema: 't_1',
   roles: ['retailer_operator'], permissions: [],
 };
+// DC-12R1-MVP-R0-R1 (WPR-002): a retailer_operator holding the full client:*
+// grant set. The ALLOW matrix uses this so the per-route permission guard
+// admits it; RETAILER_USER (permissions: []) is the permission-empty case.
+const RETAILER_USER_PERMITTED = {
+  id: 'r1', email: 'r@e.com', full_name: 'R',
+  tenant_id: 't1', tenant_schema: 't_1',
+  roles: ['retailer_operator'],
+  permissions: [
+    CLIENT_PERMISSIONS.CATALOG_READ,
+    CLIENT_PERMISSIONS.ORDERS_READ,
+    CLIENT_PERMISSIONS.ORDERS_CREATE,
+    CLIENT_PERMISSIONS.PAYMENTS_READ,
+    CLIENT_PERMISSIONS.PAYMENTS_DECLARE,
+    CLIENT_PERMISSIONS.FINANCE_READ,
+  ],
+};
 const WHOLESALER_USER = {
   id: 'w1', email: 'w@e.com', full_name: 'W',
   tenant_id: 't1', tenant_schema: 't_1',
@@ -967,10 +984,12 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
   });
 
   // Retailer ALLOW — all four /client routes admitted + exact endpoint list.
+  // WPR-002: the retailer now needs the per-route client:* permission, so the
+  // ALLOW matrix uses RETAILER_USER_PERMITTED (full client grant set).
   describe('retailer ALLOW (4 client routes)', () => {
     for (const tpl of ['/client/orders/:id/print', '/client/declarations/:id/print', '/client/declarations/:id/receipt', '/client/statements/print']) {
       it(`admits ${tpl}; print-data GET list == [expected] only; opposite + 7 others never called`, async () => {
-        useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER, tenantCode: null, retailerPortalCode: 'SUPP42' });
+        useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER_PERMITTED, tenantCode: null, retailerPortalCode: 'SUPP42' });
         const exp = routeExpectations(tpl)!;
         await renderAppRouterAt(concretePath(tpl));
         await waitFor(() => expect(screen.queryByTestId(exp.testid)).not.toBeNull(), { timeout: 3000 });
@@ -1052,7 +1071,7 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
 
   // Static endpoint ownership: opposite client/supplier endpoint never called.
   it('static endpoint ownership — each route never calls its opposite-side endpoint', async () => {
-    useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER, tenantCode: null, retailerPortalCode: 'SUPP42' });
+    useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER_PERMITTED, tenantCode: null, retailerPortalCode: 'SUPP42' });
     await renderAppRouterAt('/client/orders/ord-route/print');
     await waitFor(() => expect(screen.queryByTestId('order-print-document')).not.toBeNull(), { timeout: 3000 });
     // Client order print must NEVER call the supplier endpoint.
@@ -1066,6 +1085,146 @@ describe('R2 Correction 3 — complete actual AppRouter guard/endpoint matrix', 
     await waitFor(() => expect(screen.queryByTestId('order-print-document')).not.toBeNull(), { timeout: 3000 });
     // Supplier order print must NEVER call the client endpoint.
     expect(mockGet).not.toHaveBeenCalledWith('/client/orders/ord-route/print');
+  });
+});
+
+// ===========================================================================
+// DC-12R1-MVP-R0-R1 (WPR-002): per-route client permission admission.
+//
+// RED/GREEN evidence: before WPR-002 the four client print routes admitted ANY
+// retailer_operator regardless of permissions (RetailerRoute was role-only).
+// After WPR-002 each route requires its exact client:* permission, so a
+// permission-empty retailer_operator is denied each one (zero print-data GET,
+// zero writes). Permitted routes remain GREEN (covered by the ALLOW matrix
+// above using RETAILER_USER_PERMITTED).
+// ===========================================================================
+
+describe('WPR-002 — permission gate denies client print routes for permissions=[] (RED/GREEN)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGet.mockReset();
+    vi.mocked(api.post).mockReset();
+    useAuthStore.setState({
+      accessToken: null, refreshToken: null, user: null,
+      tenantCode: null, retailerPortalCode: null,
+    });
+  });
+
+  for (const tpl of ['/client/orders/:id/print', '/client/declarations/:id/print', '/client/declarations/:id/receipt', '/client/statements/print']) {
+    it(`denies ${tpl} for permissions=[]: no document, zero print GET, zero writes`, async () => {
+      // RETAILER_USER has roles=['retailer_operator'] but permissions=[].
+      useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER, tenantCode: null, retailerPortalCode: 'SUPP42' });
+      const exp = routeExpectations(tpl)!;
+      await renderAppRouterAt(concretePath(tpl));
+      // Fail closed BEFORE render: the protected document never appears.
+      await waitFor(() => expect(screen.queryByTestId(exp.testid)).not.toBeInTheDocument(), { timeout: 3000 });
+      // No print-data GET and no writes of any kind.
+      expect(printDataGetUrls(mockGet.mock.calls)).toEqual([]);
+      for (const ep of ALL_EIGHT_PRINT_ENDPOINTS) expect(mockGet).not.toHaveBeenCalledWith(ep);
+      expect(api.post).not.toHaveBeenCalled();
+      expect(api.put).not.toHaveBeenCalled();
+      expect(api.patch).not.toHaveBeenCalled();
+      expect(api.delete).not.toHaveBeenCalled();
+    });
+  }
+});
+
+describe('WPR-002 — each missing client permission independently denies its exact route (precision)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGet.mockReset();
+    vi.mocked(api.post).mockReset();
+    useAuthStore.setState({
+      accessToken: null, refreshToken: null, user: null,
+      tenantCode: null, retailerPortalCode: null,
+    });
+  });
+
+  // A retailer holding ALL client permissions EXCEPT the one the route needs.
+  function retailerMissing(missing: string) {
+    const perms = [
+      CLIENT_PERMISSIONS.CATALOG_READ,
+      CLIENT_PERMISSIONS.ORDERS_READ,
+      CLIENT_PERMISSIONS.ORDERS_CREATE,
+      CLIENT_PERMISSIONS.PAYMENTS_READ,
+      CLIENT_PERMISSIONS.PAYMENTS_DECLARE,
+      CLIENT_PERMISSIONS.FINANCE_READ,
+    ].filter((p) => p !== missing);
+    return {
+      id: 'r1', email: 'r@e.com', full_name: 'R',
+      tenant_id: 't1', tenant_schema: 't_1',
+      roles: ['retailer_operator'], permissions: perms,
+    };
+  }
+
+  // route template -> the single permission it requires.
+  const CASES: Array<[string, string]> = [
+    ['/client/orders/:id/print', CLIENT_PERMISSIONS.ORDERS_READ],
+    ['/client/declarations/:id/print', CLIENT_PERMISSIONS.PAYMENTS_READ],
+    ['/client/declarations/:id/receipt', CLIENT_PERMISSIONS.PAYMENTS_READ],
+    ['/client/statements/print', CLIENT_PERMISSIONS.FINANCE_READ],
+  ];
+
+  for (const [tpl, perm] of CASES) {
+    it(`denies ${tpl} when only ${perm} is missing`, async () => {
+      useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: retailerMissing(perm), tenantCode: null, retailerPortalCode: 'SUPP42' });
+      const exp = routeExpectations(tpl)!;
+      await renderAppRouterAt(concretePath(tpl));
+      await waitFor(() => expect(screen.queryByTestId(exp.testid)).not.toBeInTheDocument(), { timeout: 3000 });
+      expect(printDataGetUrls(mockGet.mock.calls)).toEqual([]);
+      expect(api.post).not.toHaveBeenCalled();
+    });
+  }
+});
+
+// ===========================================================================
+// DC-12R1-MVP-R0-R1 (WPR-003): /client/orders/:id/declare admission.
+//
+// The declaration page requires client:payments:declare. A permitted retailer
+// sees the form; a permission-empty retailer is redirected before render, so
+// the form never mounts and NO declaration POST can be issued (zero POST).
+// ===========================================================================
+
+describe('WPR-003 — /client/orders/:id/declare permission gate (client:payments:declare)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGet.mockReset();
+    vi.mocked(api.post).mockReset();
+    useAuthStore.setState({
+      accessToken: null, refreshToken: null, user: null,
+      tenantCode: null, retailerPortalCode: null,
+    });
+  });
+
+  it('admits a permitted retailer and renders the declaration form', async () => {
+    useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER_PERMITTED, tenantCode: null, retailerPortalCode: 'SUPP42' });
+    await renderAppRouterAt('/client/orders/ord-route/declare');
+    await waitFor(() => expect(screen.queryByRole('button', { name: /submit declaration/i })).not.toBeNull(), { timeout: 3000 });
+  });
+
+  it('denies a permission-empty retailer: form absent and zero declaration POST', async () => {
+    useAuthStore.setState({ accessToken: 't', refreshToken: 'r', user: RETAILER_USER, tenantCode: null, retailerPortalCode: 'SUPP42' });
+    await renderAppRouterAt('/client/orders/ord-route/declare');
+    // The form never mounts (RetailerPermissionRoute redirected before render).
+    await waitFor(() => expect(screen.queryByRole('button', { name: /submit declaration/i })).not.toBeInTheDocument(), { timeout: 3000 });
+    // No declaration POST can ever be issued because the page never rendered.
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('denies a retailer holding payments:read but NOT payments:declare (precision)', async () => {
+    useAuthStore.setState({
+      accessToken: 't', refreshToken: 'r',
+      user: {
+        id: 'r1', email: 'r@e.com', full_name: 'R',
+        tenant_id: 't1', tenant_schema: 't_1',
+        roles: ['retailer_operator'],
+        permissions: ['client:payments:read'],
+      },
+      tenantCode: null, retailerPortalCode: 'SUPP42',
+    });
+    await renderAppRouterAt('/client/orders/ord-route/declare');
+    await waitFor(() => expect(screen.queryByRole('button', { name: /submit declaration/i })).not.toBeInTheDocument(), { timeout: 3000 });
+    expect(api.post).not.toHaveBeenCalled();
   });
 });
 

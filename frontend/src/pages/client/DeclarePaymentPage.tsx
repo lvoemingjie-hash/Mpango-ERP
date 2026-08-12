@@ -3,6 +3,29 @@ import { useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { submitDeclaration } from '@/services/declarationService';
 
+/**
+ * Fixed, status-derived public copy for a declaration submission failure
+ * (DC-12R1-MVP-R0-R1 / WPR-003).
+ *
+ * Deliberately consults ONLY the coarse HTTP status (and a no-response /
+ * network signal) — never the response body, ``data.message``, ``data.code``,
+ * headers, schema names, internal ids, or the raw ``Error.message``. This
+ * mirrors the established ``sanitizePrintError`` contract and guarantees a
+ * malicious or verbose backend payload can never reach the declaration UI.
+ */
+function neutralDeclarationError(err: unknown): string {
+  const status = (err as { response?: { status?: number } })?.response?.status;
+  if (status === 401) return 'Your session has expired. Please sign in and try again.';
+  if (status === 403) return 'You are not allowed to declare payments for this order.';
+  if (status === 404) return 'This order is not available for declaration.';
+  if (status === 409) return 'This declaration could not be processed. Please review and try again.';
+  if (status !== undefined && status >= 400 && status < 500) {
+    return 'We could not process your declaration. Please check your input and try again.';
+  }
+  // 5xx, network, timeout, or fully unknown — uniform neutral fallback.
+  return 'We could not submit your declaration right now. Please try again later.';
+}
+
 export default function DeclarePaymentPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
@@ -43,9 +66,9 @@ export default function DeclarePaymentPage() {
       navigate(`/client/orders/${orderId}`);
     } catch (err: unknown) {
       // Error: keep the SAME key so a retry hits the same idempotency slot.
-      const msg = (err as { response?: { data?: { message?: string; code?: string } } })?.response?.data?.message
-        || (err as Error).message || 'Submission failed';
-      setError(msg);
+      // WPR-003: render only fixed, status-derived public copy — never the
+      // backend body, error code, schema, internal id, or raw exception text.
+      setError(neutralDeclarationError(err));
     } finally {
       setLoading(false);
       submittingRef.current = false;

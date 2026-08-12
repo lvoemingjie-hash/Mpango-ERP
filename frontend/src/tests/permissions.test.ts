@@ -9,7 +9,7 @@
  * - Intake permission constants are correct
  */
 import { describe, it, expect } from 'vitest';
-import { can, canAny, isAdmin, SKU_PERMISSIONS, INTAKE_PERMISSIONS, ALL_INTAKE_PERMISSIONS } from '@/utils/permissions';
+import { can, canAny, isAdmin, SKU_PERMISSIONS, INTAKE_PERMISSIONS, ALL_INTAKE_PERMISSIONS, CLIENT_PERMISSIONS, ALL_CLIENT_PERMISSIONS } from '@/utils/permissions';
 import type { CurrentUserData } from '@/types/auth';
 
 // ---------------------------------------------------------------------------
@@ -139,5 +139,45 @@ describe('Permission constants', () => {
     expect(ALL_INTAKE_PERMISSIONS).toContain('intake:approve');
     expect(ALL_INTAKE_PERMISSIONS).toContain('intake:export');
     expect(ALL_INTAKE_PERMISSIONS).toContain('intake:import_to_erp');
+  });
+
+  // -------------------------------------------------------------------------
+  // DC-12R1-MVP-R0-R1 (WPR-002): retailer (client) permission constants.
+  // These MUST match the backend retailer_operator seed byte-for-byte
+  // (migration 036 + the 037 client:payments:create -> client:payments:declare
+  // rename). can() is the single admission helper reused by the route guard.
+  // -------------------------------------------------------------------------
+
+  it('CLIENT_PERMISSIONS has the 6 retailer client codes (036 seed + 037 rename)', () => {
+    expect(CLIENT_PERMISSIONS.CATALOG_READ).toBe('client:catalog:read');
+    expect(CLIENT_PERMISSIONS.ORDERS_READ).toBe('client:orders:read');
+    expect(CLIENT_PERMISSIONS.ORDERS_CREATE).toBe('client:orders:create');
+    expect(CLIENT_PERMISSIONS.PAYMENTS_READ).toBe('client:payments:read');
+    // 037 renamed client:payments:create -> client:payments:declare.
+    expect(CLIENT_PERMISSIONS.PAYMENTS_DECLARE).toBe('client:payments:declare');
+    expect(CLIENT_PERMISSIONS.FINANCE_READ).toBe('client:finance:read');
+  });
+
+  it('CLIENT_PERMISSIONS never carries the stale client:payments:create code', () => {
+    const values = Object.values(CLIENT_PERMISSIONS);
+    expect(values).not.toContain('client:payments:create');
+    expect(values).toContain('client:payments:declare');
+  });
+
+  it('ALL_CLIENT_PERMISSIONS contains exactly the 6 codes', () => {
+    expect(ALL_CLIENT_PERMISSIONS).toHaveLength(6);
+    expect(ALL_CLIENT_PERMISSIONS).toContain('client:catalog:read');
+    expect(ALL_CLIENT_PERMISSIONS).toContain('client:orders:read');
+    expect(ALL_CLIENT_PERMISSIONS).toContain('client:orders:create');
+    expect(ALL_CLIENT_PERMISSIONS).toContain('client:payments:read');
+    expect(ALL_CLIENT_PERMISSIONS).toContain('client:payments:declare');
+    expect(ALL_CLIENT_PERMISSIONS).toContain('client:finance:read');
+  });
+
+  it('can() admits a retailer_operator holding client:payments:declare and denies one without it', () => {
+    const holder = makeUser(['client:payments:declare'], ['retailer_operator']);
+    const empty = makeUser([], ['retailer_operator']);
+    expect(can(holder, CLIENT_PERMISSIONS.PAYMENTS_DECLARE)).toBe(true);
+    expect(can(empty, CLIENT_PERMISSIONS.PAYMENTS_DECLARE)).toBe(false);
   });
 });

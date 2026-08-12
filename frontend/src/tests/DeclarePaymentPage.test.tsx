@@ -194,3 +194,103 @@ describe('DeclarePaymentPage idempotency', () => {
     expect(results[0]).not.toBe(results[2]);
   });
 });
+
+// ===========================================================================
+// DC-12R1-MVP-R0-R1 (WPR-003): neutral, status-derived declaration error copy.
+//
+// The declaration UI must NEVER render the backend body, error code, schema
+// name, internal id, or raw exception text. Only fixed, status-derived public
+// copy is shown. These tests prove a malicious/verbose payload cannot reach
+// the UI, and that the idempotency contract is preserved (same key on failure).
+// ===========================================================================
+
+describe('DeclarePaymentPage neutral error copy (WPR-003)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    if (typeof crypto.randomUUID !== 'function') {
+      Object.defineProperty(crypto, 'randomUUID', {
+        configurable: true, writable: true, value: () => 'fallback',
+      });
+    }
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue('11111111-1111-4111-8111-111111111111');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function fillAmount(value: string) {
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value } });
+  }
+  function submit() {
+    fireEvent.click(screen.getByRole('button', { name: /submit declaration/i }));
+  }
+
+  // A payload a verbose/malicious backend might return. None of it may appear.
+  const MALICIOUS_MESSAGE = 'SQLSTATE 23505 duplicate key value violates payments_declare_xact schema=public tenant_user_id=9f3e raw: ERROR: relation "public.payments" does not exist';
+  const MALICIOUS_CODE = 'STATEMENT_INTERNAL_INCONSISTENT';
+
+  it('never renders the backend body message / code / schema / internal id on a 409', async () => {
+    vi.mocked(submitDeclaration).mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: { message: MALICIOUS_MESSAGE, code: MALICIOUS_CODE },
+      },
+    });
+    render(<DeclarePaymentPage />);
+    fillAmount('500');
+    submit();
+    await waitFor(() => expect(screen.queryByText(/could not be processed/i)).not.toBeNull());
+
+    // The malicious payload MUST NOT leak into the UI.
+    expect(screen.queryByText(/SQLSTATE/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/23505/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/payments_declare_xact/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/schema=public/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/tenant_user_id/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/9f3e/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/relation "public.payments"/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(MALICIOUS_CODE))).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(MALICIOUS_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).not.toBeInTheDocument();
+  });
+
+  it('shows the fixed neutral 409 copy (status-derived), not the backend message', async () => {
+    vi.mocked(submitDeclaration).mockRejectedValueOnce({
+      response: { status: 409, data: { message: MALICIOUS_MESSAGE } },
+    });
+    render(<DeclarePaymentPage />);
+    fillAmount('500');
+    submit();
+    await waitFor(() => expect(screen.getByText(/This declaration could not be processed\. Please review and try again\./i)).toBeInTheDocument());
+  });
+
+  it('never renders the raw Error.message on a network/timeout failure', async () => {
+    vi.mocked(submitDeclaration).mockRejectedValueOnce(new Error('Network timeout ECONNREFUSED 10.0.0.5:5432'));
+    render(<DeclarePaymentPage />);
+    fillAmount('300');
+    submit();
+    await waitFor(() => expect(screen.queryByText(/could not submit your declaration right now/i)).not.toBeNull());
+    // Raw exception text MUST NOT leak.
+    expect(screen.queryByText(/Network timeout/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ECONNREFUSED/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/10\.0\.0\.5/i)).not.toBeInTheDocument();
+  });
+
+  it('preserves the idempotency key across a neutral-copy failure (same key on retry)', async () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValueOnce('22222222-2222-4222-8222-222222222222');
+    vi.mocked(submitDeclaration)
+      .mockRejectedValueOnce({ response: { status: 500, data: { message: 'boom' } } })
+      .mockRejectedValueOnce({ response: { status: 409, data: { message: 'dup' } } });
+    render(<DeclarePaymentPage />);
+    fillAmount('750');
+    submit();
+    await waitFor(() => expect(submitDeclaration).toHaveBeenCalledTimes(1));
+    submit();
+    await waitFor(() => expect(submitDeclaration).toHaveBeenCalledTimes(2));
+    const keys = vi.mocked(submitDeclaration).mock.calls.map((c) => c[2]);
+    expect(keys).toHaveLength(2);
+    // Same key reused across failures (no rotation on failure) — unchanged.
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[0]).toBe('22222222-2222-4222-8222-222222222222');
+  });
+});

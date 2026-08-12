@@ -173,15 +173,18 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R4-R1 current)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R4-R2 current)
 
-Before any local deployment, the two backend install paths must resolve the same
-main-runtime packages. H7 closes that drift to exact **normalized package-name
-and exact-version parity** between `requirements.txt` and Poetry's main-runtime
-lock set (this is name/version parity; Poetry lock hashes and pip marker
-behavior are not claimed equivalent). It is a **pre-deployment prerequisite**,
-not a deployed capability — no local deployment, Playwright, or VPS validation,
-and no native `setup.sh` PASS on Linux, is claimed here.
+Before any local deployment, requirements.txt and Poetry's main-group lock
+inventory must have identical canonical package names and exact versions. This
+is a committed inventory comparison only; it does not prove that pip and Poetry
+produce identical installed environments. H7 closes that drift. This is
+name/version parity only: Poetry lock hashes and sources are not compared;
+markers are not compared; extras are rejected in requirements.txt; resolver
+behavior is not compared. It is a **pre-deployment prerequisite**, not a
+deployed capability — no local deployment, Playwright, or VPS validation, and
+no native `setup.sh` PASS on Linux, is claimed here. Native setup.sh and Docker
+execution remain Lubuntu gates.
 
 **Original three-package drift (RED, pre-H7-R2):** `backend/requirements.txt`
 (the `scripts/setup.sh` pip path) diverged from `pyproject.toml` +

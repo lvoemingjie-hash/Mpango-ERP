@@ -247,6 +247,9 @@ def check_setup_sh_wiring(text: str) -> None:
         """Return +1 for opener, -1 for closer, 0 otherwise."""
         low = s.lower()
         if re.match(r"^if\b", low):
+            # single-line if...fi → net 0
+            if re.search(r"\bfi\b", low):
+                return 0
             return 1
         if re.match(r"^(for|while|until|case)\b", low):
             # if the matching closer is on the same line (single-line block), net 0
@@ -288,23 +291,16 @@ def check_setup_sh_wiring(text: str) -> None:
         if in_cmdsubst[i]:
             continue
 
-        # track block depth BEFORE evaluating this line's content
+        # simple linear block-depth tracking (skip cmdsubst lines)
         delta = _block_delta(s)
-        if delta == -1 and depth > 0:
-            depth -= 1
-            if P in s:  # pip keyword inside a closer line? still reject
-                pass
-        new_depth = depth + delta if delta == 1 else depth
+        if delta == 1:
+            depth += 1
+        elif delta == -1:
+            depth = max(0, depth - 1)
 
         # reject if blocks are open and this line contains pip
-        if new_depth > 0 and P in s:
+        if depth > 0 and P in s:
             raise ValueError("setup.sh: pip install inside a shell block is not allowed")
-
-        if delta == 1:
-            depth = new_depth
-            if P in s:
-                raise ValueError("setup.sh: pip install inside a shell block is not allowed")
-            continue
 
         if P not in s:
             continue
@@ -798,9 +794,10 @@ class TestH7R5R2ExecutableHarness:
         # minimal disposable repo structure
         (repo / "backend" / "scripts").mkdir(parents=True)
         (repo / "backend" / ".env").write_text(
-            "DATABASE_URL=postgresql://u:p@localhost:5432/db\n"
+            "DATABASE_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
             "SECRET_KEY=notweaknotsecretkeyabcdef1234567890\n"  # pragma: allowlist secret
             "POSTGRES_USER=pguser\nPOSTGRES_DB=pgdb\n"
+            "REDIS_URL=redis://localhost:6379/0\n"
         )
         (repo / "frontend").mkdir(parents=True)
         (repo / "docker-compose.yml").write_text(
@@ -813,6 +810,9 @@ class TestH7R5R2ExecutableHarness:
             v = fake_exits.get(name, default)
             return v if v else default
 
+        # Fake Compose JSON (pragma suppresses detect-secrets false positive)
+        _compose_json = '{"services":{"postgres":{"environment":{"POSTGRES_USER":"pguser","POSTGRES_DB":"pgdb","POSTGRES_PASSWORD":"pgpass"},"ports":["127.0.0.1:5432:5432"]},"redis":{"ports":["127.0.0.1:6379:6379"]}}}'  # pragma: allowlist secret
+
         fake_bodies = {
             "docker": f'''#!/bin/bash
 echo "docker $*" >> "{log_str}"
@@ -820,7 +820,7 @@ a="$*"
 case "$a" in
     "compose version"*) echo "Docker Compose version v2.20.0"; exit 0;;
     "compose config --format json"*)
-        echo '{{"services":{{"postgres":{{"environment":{{"POSTGRES_USER":"pguser","POSTGRES_DB":"pgdb"}},"ports":["127.0.0.1:5432:5432"]}},"redis":{{"ports":["127.0.0.1:6379:6379"]}}}}}}'
+        echo '{_compose_json}'
         exit 0;;
     "compose config"*) exit {_ev("compose_config")};;
     "compose up -d"*) exit 0;;
@@ -845,19 +845,15 @@ exit {_ev("alembic")}
             "python": f'''#!/bin/bash
 echo "python $*" >> "{log_str}"
 if [ "$1" = "-c" ]; then
-    if echo "$2" | grep -q "json.load"; then
-        cat > /dev/null
-        echo "pguser|pgdb|5432"
-        exit 0
-    fi
     if echo "$2" | grep -q "settings.DATABASE_URL"; then
         echo "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
         exit 0
     fi
-    if echo "$2" | grep -q "urlparse"; then
-        echo "pguser|pgpass|localhost|5432|pgdb"
-        exit 0
+    if [ -n "$REAL_PYTHON" ]; then
+        exec "$REAL_PYTHON" "$@"
     fi
+    echo "REAL_PYTHON not set" >&2
+    exit 1
 fi
 exit {_ev("bootstrap")}
 ''',
@@ -872,7 +868,8 @@ exit {_ev("pnpm")}
         bash_bin = shutil.which("bash") or "bash"
         quoted = " ".join(f'"{str(bin_dir / n)}"' for n in cls._FAKE_NAMES)
         subprocess.run([bash_bin, "-c", f"chmod +x {quoted}"], check=False)
-        return {"repo": repo, "bin": bin_dir, "log": log_file}
+        real_python = shutil.which("python") or shutil.which("python3") or ""
+        return {"repo": repo, "bin": bin_dir, "log": log_file, "real_python": real_python}
 
     @classmethod
     def _run(cls, harness: dict, **env_overrides: str):
@@ -883,6 +880,7 @@ exit {_ev("pnpm")}
         env = os.environ.copy()
         env["PATH"] = cls._msys_path(str(harness["bin"])) + os.pathsep + env.get("PATH", "")
         env["HOME"] = os.environ.get("HOME", "/tmp")
+        env["REAL_PYTHON"] = harness.get("real_python", "")
         env["SETUP_TIMEOUT_ATTEMPTS"] = env_overrides.pop("SETUP_TIMEOUT_ATTEMPTS", "3")
         env["SETUP_TIMEOUT_INTERVAL"] = env_overrides.pop("SETUP_TIMEOUT_INTERVAL", "0")
         env.update(env_overrides)

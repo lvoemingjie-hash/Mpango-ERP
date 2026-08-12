@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R3 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R4 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -305,7 +305,7 @@ lock-governed and byte-identical since R3). The R5-R2 verdict is therefore
 evidence (3366/0/0) does **not** satisfy the current zero-red focused gate,
 and the zero-red focused run must be obtained on the Lubuntu host.
 
-**H7-R5-R3 (evidence checkpoint, current; NO PASS):** adds complete preflight
+**H7-R5-R3 (evidence checkpoint, superseded by H7-R5-R4):** adds complete preflight
 before side effects (rendered Compose config validation, DATABASE_URL tuple
 verification against container identity, re-resolution after pip install);
 loopback-only Compose port bindings (`127.0.0.1`); `.gitattributes` LF
@@ -315,6 +315,18 @@ enforcement for setup.sh; and the KILO-001 hash-disproof record
 clean; immutable files byte-identical to `bb52c01b`. The Hypothesis
 `HealthCheck.too_slow` focused-regression red node remains unresolved and
 environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R5-R4 (evidence checkpoint, current; NO PASS):** PostgreSQL/Redis published
+ports moved from base docker-compose.yml to docker-compose.override.yml
+(loopback-only `127.0.0.1:${PORT:-5432}:5432`). setup.sh preflight is now
+dependency-free before pip (stdlib .env parser, no core.config import), with
+rendered Compose v2 JSON port-object validation and in-memory credential
+identity comparison (password never printed). Fake Python harness delegates
+JSON/URL/file parsing to the real interpreter (`$REAL_PYTHON`). H7 suite
+103/103 natural+reverse; all deterministic gates clean; immutable files
+byte-identical to `f18761b1`. Hypothesis `HealthCheck.too_slow` focused-
+regression red node remains unresolved and environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
 ## Active Phase

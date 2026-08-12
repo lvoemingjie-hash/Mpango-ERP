@@ -378,10 +378,16 @@ def check_setup_sh_wiring(text: str) -> None:
         raise ValueError("setup.sh: must invoke canonical 'python scripts/bootstrap_tenant_schema.py' after public migration")
     if boot_lines[0] < pub_off:
         raise ValueError("setup.sh: canonical bootstrap must run AFTER public 'alembic upgrade head'")
-    # bootstrap must pass --database-url
-    if not any("bootstrap_tenant_schema.py" in r and "--database-url" in "\n".join(after_pip) for r in after_pip):
-        if not any("--database-url" in r for r in after_pip if "bootstrap" in "\n".join(after_pip[max(0,i-1):i+2])):
-            raise ValueError("setup.sh: canonical bootstrap must pass '--database-url'")
+    # bootstrap must receive DATABASE_URL via --database-url OR env export (not both absent)
+    bootstrap_idx = boot_lines[0]
+    bootstrap_line = after_pip[bootstrap_idx]
+    has_url_arg = "--database-url" in bootstrap_line
+    has_env_export = any(
+        re.search(r"(^|\s)export\s+DATABASE_URL\s*=", after_pip[j].strip())
+        for j in range(bootstrap_idx)
+    )
+    if not has_url_arg and not has_env_export:
+        raise ValueError("setup.sh: canonical bootstrap needs DATABASE_URL via --database-url or env export")
     # DATABASE_URL resolution from core.config.settings
     if not any("settings.DATABASE_URL" in r for r in non_comment):
         raise ValueError("setup.sh: must resolve DATABASE_URL from core.config.settings")
@@ -585,7 +591,7 @@ class TestH7R5R1InstallPathWiring:
             check_setup_sh_wiring(text)
 
     def test_RED_missing_err_trap(self) -> None:
-        text = self._base().replace("trap '_on_err $LINENO' ERR", "true")
+        text = self._base().replace('''trap '_on_err "$LINENO" "$?"' ERR''', "true")
         with pytest.raises(ValueError, match="ERR trap"):
             check_setup_sh_wiring(text)
 
@@ -615,8 +621,8 @@ class TestH7R5R1InstallPathWiring:
 
     def test_RED_hardcoded_postgres_user(self) -> None:
         text = self._base().replace(
-            '-U "${POSTGRES_USER:-postgres}"',
-            "-U mpango_test",
+            'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"',
+            "pg_isready -U mpango_test -d mpango_test",
         )
         with pytest.raises(ValueError, match="hard-coded"):
             check_setup_sh_wiring(text)
@@ -624,7 +630,8 @@ class TestH7R5R1InstallPathWiring:
     # ---- setup.sh RED: alembic / bootstrap sequence ----------------------
     def test_RED_tenant_alembic_noop_rejected(self) -> None:
         text = self._base().replace(
-            'python scripts/bootstrap_tenant_schema.py \\\n    "${DEFAULT_TENANT_SCHEMA:-t_dev}" \\\n    --database-url "$RESOLVED_DATABASE_URL"',
+            '''export DATABASE_URL="$RESOLVED_DATABASE_URL"
+python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"''',
             'alembic -x tenant_schema="${DEFAULT_TENANT_SCHEMA:-t_dev}" upgrade head',
         )
         with pytest.raises(ValueError, match="tenant_schema"):
@@ -644,8 +651,8 @@ class TestH7R5R1InstallPathWiring:
             check_setup_sh_wiring(text)
 
     def test_RED_missing_bootstrap_database_url(self) -> None:
-        text = self._base().replace('--database-url "$RESOLVED_DATABASE_URL"', "")
-        with pytest.raises(ValueError, match="(?i)database.url|database-url|canonical"):
+        text = self._base().replace('export DATABASE_URL="$RESOLVED_DATABASE_URL"\n', "")
+        with pytest.raises(ValueError, match="(?i)database"):
             check_setup_sh_wiring(text)
 
     def test_RED_missing_database_url_resolution(self) -> None:
@@ -729,6 +736,227 @@ class TestH7R5R1InstallPathWiring:
     def test_RED_dockerfile_duplicate_run_rejected(self) -> None:
         with pytest.raises(ValueError, match="duplicate"):
             check_dockerfile_wiring("FROM python:3.11\nCOPY pyproject.toml poetry.lock ./\nRUN poetry install --no-root --only main --no-ansi\nRUN poetry install --no-root --only main --no-ansi")
+
+
+# ──────────────────────────────────────────────────────────────────────────── #
+# Executable fake-PATH harness  (R5-R2 — proves actual exit-status behaviour)
+# ──────────────────────────────────────────────────────────────────────────── #
+# ──────────────────────────────────────────────────────────────────────────── #
+# Executable fake-PATH harness  (R5-R2 checkpoint — actual fake executables)
+# ──────────────────────────────────────────────────────────────────────────── #
+class TestH7R5R2ExecutableHarness:
+    """Execute an UNMODIFIED copy of the committed setup.sh through subprocess
+    against task-owned fake executables in a temporary fake-bin directory
+    prepended to PATH (MSYS-style path so Git Bash performs the lookup).
+
+    This proves actual exit-status preservation, command ordering, side-effect
+    behaviour, and idempotency — not just source-text shape."""
+
+    _FAKE_NAMES = ("docker", "pip", "alembic", "python", "pnpm")
+
+    @staticmethod
+    def _msys_path(windows_path: str) -> str:
+        p = windows_path.replace("\\", "/")
+        if len(p) >= 2 and p[1] == ":":
+            return "/" + p[0].lower() + "/" + p[3:]
+        return p
+
+    @classmethod
+    def _build_harness(cls, tmp_path: Path, **fake_exits: str) -> dict:
+        import os
+        import shutil
+        import subprocess
+
+        repo = tmp_path / "h7r2_repo"
+        bin_dir = tmp_path / "h7r2_bin"
+        log_file = tmp_path / "h7r2_cmd.log"
+        repo.mkdir(parents=True)
+        bin_dir.mkdir(parents=True)
+        log_str = str(log_file).replace("\\", "/")
+
+        # minimal disposable repo structure
+        (repo / "backend" / "scripts").mkdir(parents=True)
+        (repo / "backend" / ".env").write_text(
+            "DATABASE_URL=postgresql://u:p@localhost:5432/db\n"
+            "SECRET_KEY=notweaknotsecretkeyabcdef1234567890\n"  # pragma: allowlist secret
+            "POSTGRES_USER=pguser\nPOSTGRES_DB=pgdb\n"
+        )
+        (repo / "frontend").mkdir(parents=True)
+        (repo / "docker-compose.yml").write_text(
+            "services:\n  postgres:\n    image: postgres\n  redis:\n    image: redis\n"
+        )
+        # UNMODIFIED copy of the committed setup.sh
+        shutil.copy(SETUP_SH, repo / "backend" / "scripts" / "setup.sh")
+
+        def _ev(name: str, default: str = "0") -> str:
+            v = fake_exits.get(name, default)
+            return v if v else default
+
+        fake_bodies = {
+            "docker": f'''#!/bin/bash
+echo "docker $*" >> "{log_str}"
+a="$*"
+case "$a" in
+    "compose version"*) echo "Docker Compose version v2.20.0"; exit 0;;
+    "compose config"*) exit {_ev("compose_config")};;
+    "compose up -d"*) exit 0;;
+    "compose exec -T postgres"*)
+        if echo "$a" | grep -q "pg_isready"; then
+            exit {_ev("pg")}
+        fi
+        printf "pguser|pgdb"
+        exit 0;;
+    "compose exec -T redis"*) echo "PONG"; exit {_ev("redis")};;
+    *) exit 0;;
+esac
+''',
+            "pip": f'''#!/bin/bash
+echo "pip $*" >> "{log_str}"
+exit 0
+''',
+            "alembic": f'''#!/bin/bash
+echo "alembic $*" >> "{log_str}"
+exit {_ev("alembic")}
+''',
+            "python": f'''#!/bin/bash
+echo "python $*" >> "{log_str}"
+if [ "$1" = "-c" ]; then
+    if echo "$2" | grep -q "settings.DATABASE_URL"; then
+        echo "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
+        exit 0
+    fi
+    if echo "$2" | grep -q "urlparse"; then
+        echo "pguser|pgpass|localhost|5432|pgdb"
+        exit 0
+    fi
+fi
+exit {_ev("bootstrap")}
+''',
+            "pnpm": f'''#!/bin/bash
+echo "pnpm $*" >> "{log_str}"
+exit {_ev("pnpm")}
+''',
+        }
+        for name, body in fake_bodies.items():
+            (bin_dir / name).write_text(body)
+        # set MSYS2 executable bits via bash chmod
+        bash_bin = shutil.which("bash") or "bash"
+        quoted = " ".join(f'"{str(bin_dir / n)}"' for n in cls._FAKE_NAMES)
+        subprocess.run([bash_bin, "-c", f"chmod +x {quoted}"], check=False)
+        return {"repo": repo, "bin": bin_dir, "log": log_file}
+
+    @classmethod
+    def _run(cls, harness: dict, **env_overrides: str):
+        import os
+        import shutil
+        import subprocess
+
+        env = os.environ.copy()
+        env["PATH"] = cls._msys_path(str(harness["bin"])) + os.pathsep + env.get("PATH", "")
+        env["HOME"] = os.environ.get("HOME", "/tmp")
+        env["SETUP_TIMEOUT_ATTEMPTS"] = env_overrides.pop("SETUP_TIMEOUT_ATTEMPTS", "3")
+        env["SETUP_TIMEOUT_INTERVAL"] = env_overrides.pop("SETUP_TIMEOUT_INTERVAL", "0")
+        env.update(env_overrides)
+        bash_bin = shutil.which("bash") or "bash"
+        script = str(harness["repo"] / "backend" / "scripts" / "setup.sh").replace("\\", "/")
+        result = subprocess.run(
+            [bash_bin, script], capture_output=True, text=False, env=env, timeout=60
+        )
+        result.stdout = result.stdout.decode("utf-8", errors="replace")
+        result.stderr = result.stderr.decode("utf-8", errors="replace")
+        return result
+
+    # ---- required executable tests ----
+
+    def test_complete_success_and_strict_ordered_indexes(self, tmp_path: Path) -> None:
+        h = self._build_harness(tmp_path)
+        r = self._run(h)
+        assert r.returncode == 0, r.stderr
+        assert "Setup complete" in r.stdout
+        log_lines = h["log"].read_text().splitlines()
+        marks = [
+            "compose version",
+            "compose config",
+            "compose up -d",
+            "compose exec -T postgres",
+            "compose exec -T redis",
+            "pip install -r requirements.txt",
+            "alembic upgrade head",
+            "python -c",
+            "python scripts/bootstrap_tenant_schema.py",
+            "pnpm install --frozen-lockfile",
+        ]
+        indexes = []
+        for mark in marks:
+            idx = next((i for i, l in enumerate(log_lines) if mark in l), None)
+            assert idx is not None, f"missing command containing {mark!r}; log={log_lines}"
+            indexes.append(idx)
+        assert indexes == sorted(indexes), f"strict command order violated: {indexes}"
+
+    def test_alembic_exit_42_preserved(self, tmp_path: Path) -> None:
+        h = self._build_harness(tmp_path, alembic="42")
+        r = self._run(h)
+        assert r.returncode == 42
+        assert "Setup complete" not in r.stdout
+
+    def test_bootstrap_exit_43_preserved_no_pnpm(self, tmp_path: Path) -> None:
+        h = self._build_harness(tmp_path, bootstrap="43")
+        r = self._run(h)
+        assert r.returncode == 43
+        assert "pnpm" not in h["log"].read_text()
+        assert "Setup complete" not in r.stdout
+
+    def test_pnpm_exit_44_preserved(self, tmp_path: Path) -> None:
+        h = self._build_harness(tmp_path, pnpm="44")
+        r = self._run(h)
+        assert r.returncode == 44
+        assert "Setup complete" not in r.stdout
+
+    def test_pg_timeout_nonzero_no_later_steps(self, tmp_path: Path) -> None:
+        h = self._build_harness(tmp_path, pg="1")
+        r = self._run(h)
+        assert r.returncode != 0
+        log = h["log"].read_text()
+        assert "alembic" not in log
+        assert "pip install" not in log
+
+    def test_redis_timeout_nonzero(self, tmp_path: Path) -> None:
+        h = self._build_harness(tmp_path, redis="1")
+        r = self._run(h)
+        assert r.returncode != 0
+
+    def test_invalid_compose_config_zero_side_effects(self, tmp_path: Path) -> None:
+        h = self._build_harness(tmp_path, compose_config="1")
+        repo = h["repo"]
+        r = self._run(h)
+        assert r.returncode != 0
+        assert not (repo / "logs").exists()
+        assert not (repo / "uploads").exists()
+        assert not (repo / "frontend" / ".env").exists()
+        log = h["log"].read_text()
+        assert "compose up" not in log
+        assert "pip install" not in log
+        assert "alembic" not in log
+        assert "bootstrap" not in log
+        assert "pnpm" not in log
+
+    def test_no_secret_in_output(self, tmp_path: Path) -> None:
+        h = self._build_harness(tmp_path)
+        r = self._run(h)
+        combined = r.stdout + r.stderr
+        assert "pgpass" not in combined
+        assert "postgresql://pguser" not in combined
+
+    def test_idempotent_second_run(self, tmp_path: Path) -> None:
+        h = self._build_harness(tmp_path)
+        assert self._run(h).returncode == 0
+        before = {p.name: p.read_bytes() for p in (h["repo"] / "frontend").iterdir()}
+        assert self._run(h).returncode == 0
+        after = {p.name: p.read_bytes() for p in (h["repo"] / "frontend").iterdir()}
+        assert set(before) == set(after)
+        for name in before:
+            assert before[name] == after[name], f"unexpected file mutation: {name}"
+        assert (h["repo"] / "frontend" / ".env").read_text().count("VITE_API_URL") == 1
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

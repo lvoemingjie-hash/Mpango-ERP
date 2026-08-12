@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R1 current)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R2 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -267,7 +267,7 @@ RED mutations for every setup failure mode. All H7 manifest versions and 70==70
 parity preserved; requirements/pyproject/lock/Dockerfile/Compose unchanged.
 Evidence in the same ledger.
 
-**H7-R5-R1 (CTO-authorized, current):** replaces the ineffective post-public
+**H7-R5-R1 (CTO-authorized, superseded by H7-R5-R2):** replaces the ineffective post-public
 ``alembic -x tenant_schema=... upgrade head`` (a no-op per the project's
 shared-version-table design) with the canonical tenant path:
 ``python scripts/bootstrap_tenant_schema.py "$DEFAULT_TENANT_SCHEMA" --database-url
@@ -279,6 +279,31 @@ rollback claim). Compose invocation stored as a shell array with Compose-scoped
 suite (94 tests) uses the real committed setup.sh as the mutation base for every
 RED case. All manifests, Dockerfile, Compose, and product code unchanged.
 Native Linux execution remains a Lubuntu gate — not claimed here.
+
+**H7-R5-R2 (evidence checkpoint — NO PASS verdict):** the setup path now
+verifies the safely parsed DATABASE_URL tuple (username, database, host,
+port) against the running Compose postgres identity (container-owned
+`POSTGRES_USER`/`POSTGRES_DB` via `exec -T ... sh -ec`), never printing the
+password. The executable harness uses task-owned fake executables in a
+temporary fake-bin directory prepended to PATH (MSYS-style) against an
+UNMODIFIED copy of setup.sh: strict ordered command indexes, exit-status
+preservation (42/43/44), pg/redis timeouts, invalid-Compose zero side
+effects, no-secret output, and idempotency are all proven (9/9). H7 suite
+103/103 in natural and reverse order; `bash -n`, py_compile, pre-commit,
+detect-secrets, mojibake clean.
+
+**Focused-regression red node (unresolved, environment-gated):**
+`tests/test_token_properties.py::test_property_token_roundtrip_integrity`
+fails intermittently with `hypothesis.errors.FailedHealthCheck` /
+`HealthCheck.too_slow` (input generation > 1 s) under this host's heavy
+concurrent load (seed
+`303296478269760642762159842520761126666`); it passes on isolation/replay.
+This node is **classified but unresolved** — it is an environment-gated
+Hypothesis timing health check, not an H7 defect (the Poetry test env is
+lock-governed and byte-identical since R3). The R5-R2 verdict is therefore
+`STOP_AND_REPORT_CTO_AWAITING_LUBUNTU_ZERO_RED`: the inherited R3 full-gate
+evidence (3366/0/0) does **not** satisfy the current zero-red focused gate,
+and the zero-red focused run must be obtained on the Lubuntu host.
 
 ## Active Phase
 

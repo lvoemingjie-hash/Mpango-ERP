@@ -1,18 +1,17 @@
 #!/bin/bash
-# Mpango ERP Setup Script  (H7-R5-R1 — canonical tenant bootstrap)
-# Requires: bash >= 4, Docker (compose v1 or v2), Python 3.11+, pip, pnpm/corepack.
+# Mpango ERP Setup Script  (H7-R5-R2 — executable truth closure)
 set -Eeuo pipefail
 
 # ---------------------------------------------------------------------------
-# ERR trap: preserve non-zero exit, identify the failing line, and truthfully
-# state that setup stopped with possible partial local artifacts.  Never claim
-# rollback or "no changes applied"; never print "Setup complete" after failure.
+# ERR trap: preserve exact failure status, identify the line, and truthfully
+# state that setup stopped with possible partial local artifacts.
 # ---------------------------------------------------------------------------
 _on_err() {
-    echo "❌ Setup stopped at line $1 (exit status preserved). Partial local artifacts may exist; inspect and re-run after fixing the cause." >&2
-    exit 1
+    local line="$1" status="${2:-1}"
+    echo "❌ Setup stopped at line $line (exit status $status). Partial local artifacts may exist; inspect and re-run after fixing the cause." >&2
+    exit "$status"
 }
-trap '_on_err $LINENO' ERR
+trap '_on_err "$LINENO" "$?"' ERR
 
 # ---- resolve repository root from script location -----------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,17 +34,29 @@ if [ "${#COMPOSE[@]}" -eq 0 ]; then
     exit 1
 fi
 
+# ---- configuration preflight (before any filesystem/service side effect) -
+if [ ! -f backend/.env ]; then
+    echo "❌ backend/.env not found. Copy backend/.env.example and configure real values first." >&2
+    exit 1
+fi
+# reject placeholder credentials (do NOT source .env as shell code)
+if grep -qiE '(^|[^A-Z_])CHANGE_ME|CHANGEME' backend/.env 2>/dev/null; then
+    echo "❌ backend/.env still contains CHANGE_ME placeholder values." >&2
+    exit 1
+fi
+# validate Compose config before touching services
+if ! "${COMPOSE[@]}" config --quiet 2>/dev/null; then
+    echo "❌ docker-compose configuration is invalid." >&2
+    exit 1
+fi
+
 # ---- directories --------------------------------------------------------
 echo "📁 Creating directories …"
 mkdir -p logs uploads
 
-# ---- environment files --------------------------------------------------
-if [ ! -f backend/.env ]; then
-    echo "📝 Creating backend .env file …"
-    cp backend/.env.example backend/.env
-fi
+# ---- frontend env ------------------------------------------------------
 if [ ! -f frontend/.env ]; then
-    echo "📝 Creating frontend .env file …"
+    echo "📝 Creating frontend .env …"
     echo "VITE_API_URL=http://localhost:8000/api/v1" > frontend/.env
 fi
 
@@ -53,13 +64,13 @@ fi
 echo "🐳 Starting Docker services …"
 "${COMPOSE[@]}" up -d postgres redis
 
-# ---- bounded PostgreSQL readiness (Compose-scoped, no hardcoded user) ---
+# ---- bounded PostgreSQL readiness (container-owned env, no host fallback) -
 echo "⏳ Waiting for PostgreSQL …"
 MAX_ATTEMPTS="${SETUP_TIMEOUT_ATTEMPTS:-30}"
 SLEEP_SECS="${SETUP_TIMEOUT_INTERVAL:-2}"
 for i in $(seq 1 "$MAX_ATTEMPTS"); do
-    if "${COMPOSE[@]}" exec -T postgres \
-         pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-mpango_erp}" \
+    if "${COMPOSE[@]}" exec -T postgres sh -ec \
+         'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
          &> /dev/null; then
         echo "   PostgreSQL ready (attempt $i/$MAX_ATTEMPTS)"
         break
@@ -102,11 +113,53 @@ if [ -z "$RESOLVED_DATABASE_URL" ]; then
     exit 1
 fi
 
-# ---- canonical tenant bootstrap (replaces the alembic -x no-op) ---------
+# ---- verify DATABASE_URL matches the running Compose PostgreSQL ----------
+# Parse the tuple safely via an env var (never in argv, never printed).
+DB_TUPLE="$(DATABASE_URL="$RESOLVED_DATABASE_URL" python -c "
+import os
+from urllib.parse import urlparse
+u = urlparse(os.environ['DATABASE_URL'].replace('postgresql+asyncpg', 'postgresql'))
+print(u.username or '', u.password or '', u.hostname or '', u.port or 5432, u.path.lstrip('/') or '', sep='|')
+" 2>/dev/null)" || { echo "❌ Could not parse DATABASE_URL." >&2; exit 1; }
+DB_USER="${DB_TUPLE%%|*}"; _T="${DB_TUPLE#*|}"
+DB_PASS="${_T%%|*}"; _T="${_T#*|}"
+DB_HOST="${_T%%|*}"; _T="${_T#*|}"
+DB_PORT="${_T%%|*}"; _T="${_T#*|}"
+DB_NAME="${_T}"
+# NOTE: DB_PASS is never printed, compared, or echoed.
+
+# Read the container-owned identity from the running Compose postgres service.
+COMPOSE_ID="$( "${COMPOSE[@]}" exec -T postgres sh -ec 'printf "%s|%s" "$POSTGRES_USER" "$POSTGRES_DB"' 2>/dev/null )" \
+    || { echo "❌ Could not read Compose postgres identity." >&2; exit 1; }
+COMPOSE_USER="${COMPOSE_ID%%|*}"; COMPOSE_DB="${COMPOSE_ID#*|}"
+
+# Fail clearly BEFORE Alembic/bootstrap on any identity mismatch.
+if [ -z "$DB_USER" ] || [ -z "$DB_NAME" ]; then
+    echo "❌ DATABASE_URL must carry a username and database name." >&2
+    exit 1
+fi
+case "$DB_HOST" in
+    localhost|127.0.0.1|::1) ;;
+    *) echo "❌ DATABASE_URL host must resolve to the locally published Compose service." >&2; exit 1 ;;
+esac
+if [ "$DB_PORT" != "${POSTGRES_PUBLISHED_PORT:-5432}" ]; then
+    echo "❌ DATABASE_URL port must match the published development port (${POSTGRES_PUBLISHED_PORT:-5432})." >&2
+    exit 1
+fi
+if [ "$DB_USER" != "$COMPOSE_USER" ]; then
+    echo "❌ DATABASE_URL user does not match Compose postgres (POSTGRES_USER)." >&2
+    exit 1
+fi
+if [ "$DB_NAME" != "$COMPOSE_DB" ]; then
+    echo "❌ DATABASE_URL database does not match Compose postgres (POSTGRES_DB)." >&2
+    exit 1
+fi
+
+# ---- canonical tenant bootstrap (DATABASE_URL via env, not argv) --------
 echo "🏗️ Bootstrapping tenant schema …"
-python scripts/bootstrap_tenant_schema.py \
-    "${DEFAULT_TENANT_SCHEMA:-t_dev}" \
-    --database-url "$RESOLVED_DATABASE_URL"
+export DATABASE_URL="$RESOLVED_DATABASE_URL"
+python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"
+unset DATABASE_URL
 
 cd "$REPO_ROOT"
 

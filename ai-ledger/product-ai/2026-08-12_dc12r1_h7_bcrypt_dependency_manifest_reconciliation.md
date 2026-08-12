@@ -1,24 +1,65 @@
-# DC-12R1-H7-R5-R1 — Canonical Tenant Bootstrap and Native Evidence Closure
+# DC-12R1-H7-R5-R2 — Evidence Checkpoint (NO PASS)
 
-> **H7-R5 verdict is superseded by H7-R5-R1.** R5-R1 replaces the ineffective
-> post-public ``alembic -x tenant_schema=... upgrade head`` (a no-op under the
-> project's shared ``alembic_version`` table) with the canonical tenant bootstrap
-> path ``python scripts/bootstrap_tenant_schema.py … --database-url
-> "$RESOLVED_DATABASE_URL"`` where the URL is resolved from
-> ``core.config.settings`` and never printed. ERR trap rewritten truthfully;
-> Compose stored as a shell array with Compose-scoped ``exec -T`` health checks;
-> test suite (94 tests) uses the real committed setup.sh as the mutation base.
+> **Status: `STOP_AND_REPORT_CTO_AWAITING_LUBUNTU_ZERO_RED`.** This is an
+> evidence checkpoint, NOT a merge-review PASS. R5-R1 is superseded. All
+> deterministic/source gates are green; the focused regression retains one
+> environment-gated unresolved Hypothesis red node (see below). The inherited
+> R3 full-gate evidence does NOT satisfy the current zero-red focused gate.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `572b0925` (H7-R5)
+> Base candidate: `0e8d5159` (H7-R5-R1)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-> **H7-R4 verdict is `SUPERSEDED_BY_H7_R4_R1`.** CTO review of R4 found two
-> remaining uncovered false-green paths in the source-shape guards: (A) the
-> setup.sh guard used only same-line block detection and loose command matching;
-> (B) the Dockerfile guard did not join continuations or detect inert/dead-branch
-> forms on RUN lines (echo-wrapper, ``false &&``, ``|| true``, ``ENV``/``LABEL``/
-> ``ARG`` carriers). R4-R1 closes both.
+## Exact commands and counts (R5-R2)
+
+- setup.sh: config preflight (backend/.env present, no CHANGE_ME, `compose
+  config` valid) before any side effect; `set -Eeuo pipefail`; `_on_err
+  "$LINENO" "$?"` preserving exact status; Compose stored as a shell array;
+  Compose-scoped `exec -T` pg/redis readiness with container-owned
+  `POSTGRES_USER`/`POSTGRES_DB`; `pip install -r requirements.txt`; `alembic
+  upgrade head` (public); DATABASE_URL resolved from `core.config.settings`
+  (never printed) and verified tuple-vs-Compose (username, database,
+  host=localhost, port=5432); canonical bootstrap via exported DATABASE_URL
+  (never in argv); `pnpm install --frozen-lockfile`.
+- Executable harness (fake executables in a temp fake-bin dir prepended to
+  PATH, MSYS-style, UNMODIFIED setup.sh copy): **9/9 PASS** — strict ordered
+  command indexes; alembic exit 42 / bootstrap exit 43 / pnpm exit 44
+  preserved; pg and redis timeouts non-zero with no later steps; invalid
+  compose config → zero filesystem/service side effects; no secret in output;
+  idempotent second run with no duplicate config or file mutation.
+- H7 suite: **103 passed / 0 failed in natural order AND reverse order**.
+- Deterministic gates: `bash -n` OK; py_compile OK; `git diff --check` clean;
+  scoped pre-commit + detect-secrets Passed; mojibake clean; all immutable
+  files (requirements.txt, pyproject.toml, poetry.lock, Dockerfile,
+  alembic/env.py, bootstrap_tenant_schema.py) byte-identical to `0e8d5159`.
+
+## Hypothesis red node (classified, UNRESOLVED, environment-gated)
+
+`tests/test_token_properties.py::test_property_token_roundtrip_integrity`
+(line 46): `hypothesis.errors.FailedHealthCheck` / `HealthCheck.too_slow`
+("Input generation is slow: only 2 valid inputs after 1.09 s"), reproducible
+with `--hypothesis-seed=303296478269760642762159842520761126666`, intermittent
+in the 16-file focused bundle (4/5 runs) on this heavily loaded Windows host
+(concurrent ChatGPT/opencode/ZCode/WeChat/kilo processes), passing on
+isolation/replay (3/3). It is a timing health check, NOT an assertion failure,
+and NOT an H7 defect: the Poetry test env is lock-governed and byte-identical
+since R3; no H7 slice touches this test.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_LUBUNTU_ZERO_RED`.** No PASS is
+claimed. The current zero-red focused gate can only be satisfied on a
+low-load (Lubuntu) host; the R3 full-gate evidence (3366/29/15/0/0) is
+inherited for runtime, NOT as satisfaction of this slice's focused gate.
+
+---
+
+## Historical record (R4-R1, superseded)
+
+R4-R1 closed two remaining uncovered false-green paths in the source-shape
+guards: (A) the
+setup.sh guard used only same-line block detection and loose command matching;
+(B) the Dockerfile guard did not join continuations or detect inert/dead-branch
+forms on RUN lines (echo-wrapper, ``false &&``, ``|| true``, ``ENV``/``LABEL``/
+``ARG`` carriers). R4-R1 closes both.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
 > Base candidate: `fc816820` (H7-R4)

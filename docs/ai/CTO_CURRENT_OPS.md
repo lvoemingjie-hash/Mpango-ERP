@@ -176,9 +176,12 @@ Post-merge validation:
 ## Active Deployment Prerequisite — H7 bcrypt Manifest Reconciliation
 
 Before any local deployment, the two backend install paths must resolve the same
-runtime versions. H7 closes that drift. It is a **pre-deployment prerequisite**,
-not a deployed capability — no local deployment, Playwright, or VPS validation
-is claimed here.
+main-runtime packages. H7 closes that drift to exact **normalized package-name
+and exact-version parity** between `requirements.txt` and Poetry's main-runtime
+lock set (this is name/version parity; Poetry lock hashes and pip marker
+behavior are not claimed equivalent). It is a **pre-deployment prerequisite**,
+not a deployed capability — no local deployment, Playwright, or VPS validation,
+and no native `setup.sh` PASS on Linux, is claimed here.
 
 **Original three-package drift (RED, pre-H7-R2):** `backend/requirements.txt`
 (the `scripts/setup.sh` pip path) diverged from `pyproject.toml` +
@@ -198,11 +201,30 @@ material drift, STOP"), H7-R1 returned `STOP_AND_REPORT_CTO` with the exact
 delta, having made no edit. That stop was correct: a bcrypt-only edit could not
 achieve install-path parity and was forbidden from touching the other two.
 
-**H7-R2 (CTO-authorized, supersedes H7-R1):** the CTO explicitly overrode the
-bcrypt-only restriction for exactly three `requirements.txt` corrections —
-bcrypt `5.0.0 → 4.0.1`, cryptography `46.0.4 → 46.0.5`, add `openpyxl==3.1.5`.
-No other dependency change or regeneration; `pyproject.toml` and `poetry.lock`
-remain byte-identical. H7-R1 is superseded by H7-R2. Evidence in
+**H7-R2 (CTO-authorized, superseded by H7-R3):** the CTO overrode the bcrypt-only
+restriction for exactly three `requirements.txt` corrections — bcrypt
+`5.0.0 → 4.0.1`, cryptography `46.0.4 → 46.0.5`, add `openpyxl==3.1.5`. Kilo
+review (`reports/dc12r1-h7-r2-v1-kilo-review-2026-08-12`, commit `ea3baf41`)
+then returned STOP with three findings: (001) the requirements parser silently
+overwrote duplicate governed lines; (002) the lock parser dict-comprehension
+silently overwrote duplicate entries; (003) `openpyxl 3.1.5` depends on
+`et-xmlfile` (locked at `2.0.0`) but `requirements.txt` had no `et-xmlfile` pin,
+so the "complete install-path parity" claim was an overclaim. H7-R2's PASS is
+**SUPERSEDED_BY_H7_R3**.
+
+**H7-R3 (CTO-authorized, current; supersedes H7-R2):** recomputed the complete
+Poetry main-runtime lock map (70 packages) vs `requirements.txt` and found the
+**only** remaining drift was the missing transitive `et-xmlfile==2.0.0` (no
+extras, no version mismatches, no duplicate names). R3 adds `et-xmlfile==2.0.0`
+and rewrites the manifest test's parsers to be fail-closed:
+`parse_requirements_text` uses `packaging.requirements.Requirement` (exact `==`
+only; rejects malformed/URL/wildcard/non-exact/duplicates/normalized-name
+collisions) and `parse_main_lock_packages` validates every lock entry and
+rejects duplicate names. The suite (44 tests) proves full-map equality
+(requirements.txt == Poetry main-runtime lock, identical normalized names and
+exact versions) and includes authentic RED mutation tests for each parser
+failure mode. `pyproject.toml` and `poetry.lock` remain byte-identical. Evidence
+in
 `ai-ledger/product-ai/2026-08-12_dc12r1_h7_bcrypt_dependency_manifest_reconciliation.md`.
 
 ## Active Phase

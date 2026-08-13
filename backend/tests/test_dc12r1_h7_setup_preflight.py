@@ -53,6 +53,7 @@ GOOD_ENV = (
     "POSTGRES_USER=pguser\n"
     "POSTGRES_PASSWORD=pgpass\n"
     "POSTGRES_DB=pgdb\n"
+    "REPORTING_USER_PASSWORD=reportingpass\n"  # pragma: allowlist secret
 )
 
 PG_ENV_GOOD = {"POSTGRES_USER": "pguser", "POSTGRES_PASSWORD": "pgpass", "POSTGRES_DB": "pgdb"}  # pragma: allowlist secret
@@ -110,8 +111,8 @@ def _expect_fail(capsys, func, *args, stdin_text: str = "") -> str:
     assert captured.out == ""
     err = captured.err.rstrip("\n")
     for bad in (
-        "pgpass", "postgresql://", "redis://", '"host_ip"', '"published"',
-        SENTINEL_TOKEN,
+        "pgpass", "reportingpass", "postgresql://", "redis://",
+        '"host_ip"', '"published"', SENTINEL_TOKEN,
     ):
         assert bad not in err
     return err
@@ -119,11 +120,13 @@ def _expect_fail(capsys, func, *args, stdin_text: str = "") -> str:
 
 @pytest.fixture(autouse=True)
 def _clean_process_urls(monkeypatch):
-    """Preflight reads DATABASE_URL/REDIS_URL from os.environ. Clear the host's
-    real values so the default (non-conflict) cases are deterministic; tests
-    that exercise the conflict path set them explicitly."""
+    """Preflight reads DATABASE_URL/REDIS_URL/REPORTING_USER_PASSWORD from
+    os.environ. Clear the host's real values so the default (non-conflict)
+    cases are deterministic; tests that exercise the conflict path set them
+    explicitly."""
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("REPORTING_USER_PASSWORD", raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +304,12 @@ class TestRunInitial:
     @staticmethod
     def _env(tmp_path: Path, content: str = GOOD_ENV) -> str:
         p = tmp_path / ".env"
+        # R15: auto-inject REPORTING_USER_PASSWORD for content that lacks it,
+        # so existing tests that focus on other fields still pass the new
+        # required-field check. Tests that explicitly verify RUP-missing write
+        # the .env directly (bypassing this helper).
+        if "REPORTING_USER_PASSWORD" not in content:
+            content = content + "REPORTING_USER_PASSWORD=reportingpass\n"  # pragma: allowlist secret
         p.write_text(content, encoding="utf-8")
         return str(p)
 
@@ -612,6 +621,44 @@ class TestRunInitial:
             sys.stdin = old_stdin
         captured = capsys.readouterr()
         assert captured.out == "OK\n" and captured.err == ""
+
+    # ---- R15: REPORTING_USER_PASSWORD required + conflict checks --------
+
+    def test_rup_missing_fails(self, capsys, tmp_path: Path) -> None:
+        """RED (R15): .env without REPORTING_USER_PASSWORD fails before any
+        side effect."""
+        p = tmp_path / ".env"
+        p.write_text(
+            "DATABASE_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL=redis://localhost:6379/0\n"
+            "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n",
+            encoding="utf-8",
+        )
+        err = _expect_fail(capsys, pf.run_initial, str(p), stdin_text=_compose())
+        assert err == "REPORTING_USER_PASSWORD not found in backend/.env"
+
+    def test_rup_process_env_conflict(self, capsys, tmp_path: Path, monkeypatch) -> None:
+        """RED (R15): process REPORTING_USER_PASSWORD differing from .env
+        fails closed before side effects."""
+        monkeypatch.setenv("REPORTING_USER_PASSWORD", "different_value")
+        err = _expect_fail(
+            capsys, pf.run_initial, self._env(tmp_path), stdin_text=_compose(),
+        )
+        assert err == "REPORTING_USER_PASSWORD conflict: process env differs from backend/.env"
+
+    def test_rup_compose_backend_conflict(self, capsys, tmp_path: Path) -> None:
+        """RED (R15): a rendered backend Compose service whose
+        REPORTING_USER_PASSWORD differs from .env fails closed."""
+        services = {
+            "postgres": dict(PG_SVC),
+            "redis": {"ports": [_port_entry_redis()]},
+            "backend": {"environment": {"REPORTING_USER_PASSWORD": "wrong_value"}},  # pragma: allowlist secret
+        }
+        err = _expect_fail(
+            capsys, pf.run_initial, self._env(tmp_path),
+            stdin_text=json.dumps({"services": services}),
+        )
+        assert err == "REPORTING_USER_PASSWORD conflict: Compose backend differs from backend/.env"
 
 
 # ---------------------------------------------------------------------------

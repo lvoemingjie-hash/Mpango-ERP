@@ -860,6 +860,8 @@ class TestH7R5R2ExecutableHarness:
     # genuinely unique password sentinel placed in the harness .env AND the
     # fake Compose output; proven absent from argv/log/stdout/stderr.
     _SENTINEL_PW = "H7R8HarnessSentinel123"  # pragma: allowlist secret
+    # R15: second unique sentinel for REPORTING_USER_PASSWORD.
+    _SENTINEL_RUP = "H7R15ReportingSentinel456"  # pragma: allowlist secret
 
     @staticmethod
     def _msys_path(windows_path: str) -> str:
@@ -933,6 +935,7 @@ class TestH7R5R2ExecutableHarness:
             "SECRET_KEY=notweaknotsecretkeyabcdef1234567890\n"  # pragma: allowlist secret
             "POSTGRES_USER=pguser\nPOSTGRES_DB=pgdb\n"
             "REDIS_URL=redis://localhost:6379/0\n"
+            f"REPORTING_USER_PASSWORD={cls._SENTINEL_RUP}\n"  # pragma: allowlist secret
         )
         (repo / "frontend").mkdir(parents=True)
         (repo / "docker-compose.yml").write_text(
@@ -1006,21 +1009,29 @@ exit 0
 ''',
             "alembic": f'''#!/bin/bash
 echo "alembic $*" >> "{log_str}"
-# R14: alembic must receive the validated DATABASE_URL from backend/.env
-# (no alembic.ini fallback). Fail closed on missing/mismatched identity.
-_expected="$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
-if [ -z "${{DATABASE_URL:-}}" ] || [ "$DATABASE_URL" != "$_expected" ]; then
+# R14/R15: alembic must receive BOTH DATABASE_URL and REPORTING_USER_PASSWORD
+# from backend/.env (no alembic.ini fallback). Fail closed on mismatch.
+_exp_db="$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
+_exp_rup="$(grep -E '^REPORTING_USER_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
+if [ -z "${{DATABASE_URL:-}}" ] || [ "$DATABASE_URL" != "$_exp_db" ]; then
     exit 2
+fi
+if [ -z "${{REPORTING_USER_PASSWORD:-}}" ] || [ "$REPORTING_USER_PASSWORD" != "$_exp_rup" ]; then
+    exit 4
 fi
 exit {_ev("alembic")}
 ''',
             "python": f'''#!/bin/bash
 echo "python $*" >> "{log_str}"
 if echo "$*" | grep -q "bootstrap_tenant_schema"; then
-    # R14: bootstrap must use the SAME validated DATABASE_URL as Alembic.
-    _expected="$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
-    if [ -z "${{DATABASE_URL:-}}" ] || [ "$DATABASE_URL" != "$_expected" ]; then
+    # R14/R15: bootstrap uses the SAME DATABASE_URL; REPORTING_USER_PASSWORD
+    # must NOT survive into bootstrap (setup.sh unsets it before bootstrap).
+    _exp_db="$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
+    if [ -z "${{DATABASE_URL:-}}" ] || [ "$DATABASE_URL" != "$_exp_db" ]; then
         exit 3
+    fi
+    if [ -n "${{REPORTING_USER_PASSWORD:-}}" ]; then
+        exit 5
     fi
     exit {_ev("bootstrap")}
 fi
@@ -1096,9 +1107,10 @@ esac
         import subprocess
 
         env = os.environ.copy()
-        # Clear host DB/Redis URLs so preflight sees no process-env conflict
+        # Clear host DB/Redis/Reporting URLs so preflight sees no process-env conflict
         env.pop("DATABASE_URL", None)
         env.pop("REDIS_URL", None)
+        env.pop("REPORTING_USER_PASSWORD", None)
         bash_bin = _select_bash()
         # cross-host: explicitly provide Git Bash /usr/bin + /mingw64/bin and
         # verify required coreutils before running; fail closed if unavailable.
@@ -1537,9 +1549,9 @@ esac
         return cls._run(h)
 
     def test_alembic_and_bootstrap_use_validated_env_url(self, tmp_path: Path) -> None:
-        """GREEN (R14): Alembic and tenant bootstrap both receive the validated
-        DATABASE_URL exported from backend/.env (the enforcing fakes would fail
-        otherwise); the URL value never reaches argv/log/stdout/stderr."""
+        """GREEN (R14/R15): Alembic and tenant bootstrap both receive the
+        validated DATABASE_URL exported from backend/.env (the enforcing fakes
+        would fail otherwise); neither sentinel reaches any capture channel."""
         h = self._build_harness(tmp_path)
         r = self._run(h)
         assert r.returncode == 0, r.stderr
@@ -1547,10 +1559,11 @@ esac
         log = h["log"].read_text()
         assert "alembic upgrade head" in log
         assert "bootstrap_tenant_schema" in log
-        # the URL value (carrying the unique sentinel) never appears anywhere
-        assert self._SENTINEL_PW not in log
-        assert self._SENTINEL_PW not in r.stdout
-        assert self._SENTINEL_PW not in r.stderr
+        # R15: BOTH sentinels (DB password + reporting password) never appear
+        for sentinel in (self._SENTINEL_PW, self._SENTINEL_RUP):
+            assert sentinel not in log
+            assert sentinel not in r.stdout
+            assert sentinel not in r.stderr
 
     def test_mutation_remove_db_url_export_fails(self, tmp_path: Path) -> None:
         """RED (R14): removing the DATABASE_URL export leaves Alembic without
@@ -1615,6 +1628,76 @@ esac
         assert r.returncode != 0
         log = h["log"].read_text()
         assert "alembic" not in log
+
+    # ---- R15: REPORTING_USER_PASSWORD dual-secret tests -----------------
+
+    def test_mutation_remove_rup_export_fails(self, tmp_path: Path) -> None:
+        """RED (R15): removing the REPORTING_USER_PASSWORD export leaves
+        Alembic without the reporting password — the enforcing fake fails."""
+        r = self._run_mutated(
+            tmp_path,
+            lambda t: t.replace('export REPORTING_USER_PASSWORD="$_NATIVE_RUP"\n', ""),
+        )
+        assert r.returncode != 0
+        assert "Setup complete" not in r.stdout
+
+    def test_mutation_wrong_rup_fails(self, tmp_path: Path) -> None:
+        """RED (R15): exporting a REPORTING_USER_PASSWORD that differs from
+        backend/.env makes the enforcing Alembic fake reject it."""
+        r = self._run_mutated(
+            tmp_path,
+            lambda t: t.replace(
+                'export REPORTING_USER_PASSWORD="$_NATIVE_RUP"',
+                'export REPORTING_USER_PASSWORD="wrong_rup_value"',  # pragma: allowlist secret
+            ),
+        )
+        assert r.returncode != 0
+        assert "Setup complete" not in r.stdout
+
+    def test_rup_unset_before_bootstrap(self, tmp_path: Path) -> None:
+        """GREEN (R15): REPORTING_USER_PASSWORD is unset before tenant
+        bootstrap (the enforcing bootstrap fake rejects a surviving RUP)."""
+        h = self._build_harness(tmp_path)
+        r = self._run(h)
+        assert r.returncode == 0, r.stderr
+        assert "Setup complete" in r.stdout
+
+
+# ---------------------------------------------------------------------------
+# AST migration-env dependency inventory (R15)
+# ---------------------------------------------------------------------------
+def test_migration_env_dependency_inventory_is_exactly_reporting_user_password():
+    """AST scan of ALL migration files: the set of non-connection env-var
+    dependencies must be exactly {REPORTING_USER_PASSWORD}. Any future
+    addition makes this gate RED."""
+    import ast as _ast
+    migration_dir = BACKEND_DIR / "alembic" / "versions"
+    env_vars: set[str] = set()
+    for pyfile in sorted(migration_dir.glob("*.py")):
+        tree = _ast.parse(pyfile.read_text(encoding="utf-8"))
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Call):
+                func = node.func
+                if not (isinstance(func, _ast.Attribute)
+                        and node.args
+                        and isinstance(node.args[0], _ast.Constant)
+                        and isinstance(node.args[0].value, str)):
+                    continue
+                # os.environ.get("VAR") / _os.environ.get("VAR")
+                if (func.attr == "get"
+                        and isinstance(func.value, _ast.Attribute)
+                        and func.value.attr == "environ"):
+                    env_vars.add(node.args[0].value)
+                # os.getenv("VAR")
+                elif (func.attr == "getenv"
+                      and isinstance(func.value, _ast.Name)
+                      and func.value.id in ("os", "_os")):
+                    env_vars.add(node.args[0].value)
+    connection_vars = {"DATABASE_URL", "REDIS_URL"}
+    extra = env_vars - connection_vars
+    assert extra == {"REPORTING_USER_PASSWORD"}, (
+        f"unexpected migration env-var dependency set: {extra}"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

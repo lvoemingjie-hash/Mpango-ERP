@@ -1,8 +1,8 @@
-# DC-12R1-H7-R14 — Native Alembic Connection Context Closure (NO PASS)
+# DC-12R1-H7-R15 — REPORTING_USER_PASSWORD Migration Env Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R13 is
-> `SUPERSEDED_BY_H7_R14`.** Accepted external evidence: Kilo R10-V1 =
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R14 is
+> `SUPERSEDED_BY_H7_R15`.** Accepted external evidence: Kilo R10-V1 =
 > `7d53d6a5c9dc7fc8a8a44414951c214c7bce4d02`; Lubuntu R10-V2 STOP =
 > `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier records superseded.
 
@@ -10,7 +10,39 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R14 evidence (current checkpoint)
+## R15 evidence (current checkpoint)
+
+Lubuntu evidence: `d3f34af3469d3c48469b9a0275c830b0842796ea` (R14 V2 native
+migration reached 001–010; blocker = REPORTING_USER_PASSWORD not passed to
+Alembic). CTO directive confirmed the only additional migration env var across
+001–037 is REPORTING_USER_PASSWORD.
+
+- **setup_preflight.py:** requires non-empty REPORTING_USER_PASSWORD in .env
+  before any side effect; process-env conflict check; Compose backend-env
+  conflict check (if backend service present). Fixed neutral errors, no value.
+- **setup.sh:** resolves BOTH DATABASE_URL and REPORTING_USER_PASSWORD via the
+  same strict `parse_env_file()` (no second parser, no `set -a`, no sourcing);
+  exports both BEFORE `alembic upgrade head`; unsets REPORTING_USER_PASSWORD
+  before tenant bootstrap (it does not extend its lifetime); unsets
+  DATABASE_URL after bootstrap. Neither secret enters argv/log/output.
+- **Enforcing fakes:** alembic checks BOTH DATABASE_URL and
+  REPORTING_USER_PASSWORD identity against .env; bootstrap checks DATABASE_URL
+  only AND that REPORTING_USER_PASSWORD is unset (proving the unset).
+- **AST inventory test:** proves the migration env-var dependency set across
+  ALL 001–037 files is exactly {REPORTING_USER_PASSWORD}; any future addition
+  makes the gate RED.
+- **Test gates:** direct **136/136** nat+rev; harness **38/38** nat+rev zero
+  skip/xfail; complete H7 suite **269/269** both file orders nat+rev.
+- bash -n, py_compile, diff-check, pre-commit incl. detect-secrets, UTF-8/mojibake
+  all clean; immutable blobs unchanged; protected baseline `a6ef3aac` unchanged.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed. After R15: Kilo bounded review; Lubuntu V4 repeats native setup
+twice + focused zero-red; only then CTO merge consideration.
+
+---
+
+## R14 evidence (SUPERSEDED_BY_H7_R15)
 
 Narrow correction to setup.sh and the manifest-parity test (setup_preflight.py,
 direct preflight test, and all product/Compose/migration files untouched).

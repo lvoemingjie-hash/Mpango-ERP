@@ -106,27 +106,36 @@ pip install -r requirements.txt
 python "$SCRIPT_DIR/setup_preflight.py" --env-file .env --post-install || {
     echo "Post-install verification failed." >&2; exit 1; }
 
-# Resolve the validated DATABASE_URL from backend/.env via the SAME strict
-# parser the preflight uses (setup_preflight.parse_env_file) — no second
-# handwritten parser, no `set -a`, no sourcing of .env. The value is captured
-# into a temporary shell variable and never printed. Export it so BOTH the
-# public Alembic migration and tenant bootstrap connect to the exact URL
-# already validated against the rendered Compose config (no alembic.ini
-# fallback).
-_NATIVE_DB_URL="$(python -c "import sys; sys.path.insert(0, sys.argv[1]); from setup_preflight import parse_env_file; print(parse_env_file('.env').get('DATABASE_URL', ''))" "$SCRIPT_DIR" 2>/dev/null)" \
-    || { echo "Could not resolve DATABASE_URL from backend/.env." >&2; exit 1; }
+# Resolve the validated DATABASE_URL and REPORTING_USER_PASSWORD from
+# backend/.env via the SAME strict parser the preflight uses
+# (setup_preflight.parse_env_file) — no second handwritten parser, no `set -a`,
+# no sourcing of .env. Values are captured into temporary shell variables and
+# never printed. Both are exported BEFORE Alembic (migrations including
+# 011_s6_p_reporting_role require REPORTING_USER_PASSWORD). It is unset before
+# tenant bootstrap so the reporting password does not extend its lifetime.
+_NATIVE_CREDS="$(python -c "import sys; sys.path.insert(0, sys.argv[1]); from setup_preflight import parse_env_file; e=parse_env_file('.env'); print(e.get('DATABASE_URL','')); print(e.get('REPORTING_USER_PASSWORD',''))" "$SCRIPT_DIR" 2>/dev/null)" \
+    || { echo "Could not resolve credentials from backend/.env." >&2; exit 1; }
+_NATIVE_DB_URL="${_NATIVE_CREDS%%$'\n'*}"
+_NATIVE_DB_URL="${_NATIVE_DB_URL%$'\r'}"
+_NATIVE_RUP="${_NATIVE_CREDS#*$'\n'}"
+_NATIVE_RUP="${_NATIVE_RUP%$'\r'}"
 [ -n "$_NATIVE_DB_URL" ] || { echo "DATABASE_URL missing from backend/.env." >&2; exit 1; }
+[ -n "$_NATIVE_RUP" ] || { echo "REPORTING_USER_PASSWORD missing from backend/.env." >&2; exit 1; }
 export DATABASE_URL="$_NATIVE_DB_URL"
+export REPORTING_USER_PASSWORD="$_NATIVE_RUP"
 
 echo "Running public Alembic migration"
 alembic upgrade head
 
+# REPORTING_USER_PASSWORD is only needed by Alembic migrations; drop it before
+# tenant bootstrap so the reporting password does not extend its lifetime.
+unset REPORTING_USER_PASSWORD _NATIVE_RUP
+
 echo "Bootstrapping tenant schema"
 python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"
 
-# Drop the connection URL and the temporary variable so no credential survives
-# in the setup process after bootstrap.
-unset DATABASE_URL _NATIVE_DB_URL
+# Drop the connection URL and all temporary variables.
+unset DATABASE_URL _NATIVE_DB_URL _NATIVE_CREDS
 
 cd "$REPO_ROOT"
 echo "Setting up frontend"

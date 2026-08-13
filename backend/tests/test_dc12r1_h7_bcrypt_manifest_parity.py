@@ -691,9 +691,7 @@ class TestH7R5R1InstallPathWiring:
     # ---- setup.sh RED: alembic / bootstrap sequence ----------------------
     def test_RED_tenant_alembic_noop_rejected(self) -> None:
         text = self._base().replace(
-            '''export DATABASE_URL="$_POSTGRES_URL"
-python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"
-unset DATABASE_URL''',
+            'python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"',
             'alembic -x tenant_schema="${DEFAULT_TENANT_SCHEMA:-t_dev}" upgrade head',
         )
         with pytest.raises(ValueError, match="tenant_schema"):
@@ -713,7 +711,7 @@ unset DATABASE_URL''',
             check_setup_sh_wiring(text)
 
     def test_RED_missing_bootstrap_database_url(self) -> None:
-        text = self._base().replace('export DATABASE_URL="$_POSTGRES_URL"\n', "")
+        text = self._base().replace('export DATABASE_URL="$_NATIVE_DB_URL"\n', "")
         with pytest.raises(ValueError, match="(?i)database"):
             check_setup_sh_wiring(text)
 
@@ -1008,11 +1006,22 @@ exit 0
 ''',
             "alembic": f'''#!/bin/bash
 echo "alembic $*" >> "{log_str}"
+# R14: alembic must receive the validated DATABASE_URL from backend/.env
+# (no alembic.ini fallback). Fail closed on missing/mismatched identity.
+_expected="$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
+if [ -z "${{DATABASE_URL:-}}" ] || [ "$DATABASE_URL" != "$_expected" ]; then
+    exit 2
+fi
 exit {_ev("alembic")}
 ''',
             "python": f'''#!/bin/bash
 echo "python $*" >> "{log_str}"
 if echo "$*" | grep -q "bootstrap_tenant_schema"; then
+    # R14: bootstrap must use the SAME validated DATABASE_URL as Alembic.
+    _expected="$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
+    if [ -z "${{DATABASE_URL:-}}" ] || [ "$DATABASE_URL" != "$_expected" ]; then
+        exit 3
+    fi
     exit {_ev("bootstrap")}
 fi
 if [ -n "$REAL_PYTHON" ]; then
@@ -1512,6 +1521,100 @@ esac
                 capture_output=True,
             )
             assert res.returncode == 0, f"{name} fake is not executable (bash test -x)"
+
+    # ---- native Alembic connection context (R14) ------------------------
+
+    @classmethod
+    def _run_mutated(cls, tmp_path: Path, mutate):
+        """Build a normal harness, replace the committed setup.sh copy with a
+        mutation, and run it.  Returns the CompletedProcess."""
+        h = cls._build_harness(tmp_path)
+        script = h["repo"] / "backend" / "scripts" / "setup.sh"
+        original = SETUP_SH.read_text(encoding="utf-8")
+        mutated = mutate(original)
+        assert mutated != original, "mutation did not change setup.sh"
+        script.write_bytes(mutated.encode("utf-8"))
+        return cls._run(h)
+
+    def test_alembic_and_bootstrap_use_validated_env_url(self, tmp_path: Path) -> None:
+        """GREEN (R14): Alembic and tenant bootstrap both receive the validated
+        DATABASE_URL exported from backend/.env (the enforcing fakes would fail
+        otherwise); the URL value never reaches argv/log/stdout/stderr."""
+        h = self._build_harness(tmp_path)
+        r = self._run(h)
+        assert r.returncode == 0, r.stderr
+        assert "Setup complete" in r.stdout
+        log = h["log"].read_text()
+        assert "alembic upgrade head" in log
+        assert "bootstrap_tenant_schema" in log
+        # the URL value (carrying the unique sentinel) never appears anywhere
+        assert self._SENTINEL_PW not in log
+        assert self._SENTINEL_PW not in r.stdout
+        assert self._SENTINEL_PW not in r.stderr
+
+    def test_mutation_remove_db_url_export_fails(self, tmp_path: Path) -> None:
+        """RED (R14): removing the DATABASE_URL export leaves Alembic without
+        the validated URL (alembic.ini fallback) — the enforcing fake fails."""
+        r = self._run_mutated(
+            tmp_path,
+            lambda t: t.replace('export DATABASE_URL="$_NATIVE_DB_URL"\n', ""),
+        )
+        assert r.returncode != 0
+        assert "Setup complete" not in r.stdout
+
+    def test_mutation_db_url_export_after_alembic_fails(self, tmp_path: Path) -> None:
+        """RED (R14): exporting DATABASE_URL only AFTER `alembic upgrade head`
+        leaves Alembic without the URL — fails before completion."""
+        text_mut = lambda t: (
+            t.replace('export DATABASE_URL="$_NATIVE_DB_URL"\n', "")
+             .replace("alembic upgrade head",
+                      'alembic upgrade head\nexport DATABASE_URL="$_NATIVE_DB_URL"')
+        )
+        r = self._run_mutated(tmp_path, text_mut)
+        assert r.returncode != 0
+        assert "Setup complete" not in r.stdout
+
+    def test_mutation_wrong_db_url_alembic_fails(self, tmp_path: Path) -> None:
+        """RED (R14): exporting a DATABASE_URL that differs from backend/.env
+        makes the enforcing Alembic fake reject the connection."""
+        r = self._run_mutated(
+            tmp_path,
+            lambda t: t.replace(
+                'export DATABASE_URL="$_NATIVE_DB_URL"',
+                'export DATABASE_URL="postgresql://wrong:h7r14wrong@localhost:5432/wrong"',  # pragma: allowlist secret
+            ),
+        )
+        assert r.returncode != 0
+        assert "Setup complete" not in r.stdout
+
+    def test_mutation_wrong_db_url_bootstrap_fails(self, tmp_path: Path) -> None:
+        """RED (R14): re-exporting a mismatched DATABASE_URL between Alembic
+        and bootstrap makes the enforcing bootstrap fake fail (Alembic still
+        passes with the correct earlier export)."""
+        r = self._run_mutated(
+            tmp_path,
+            lambda t: t.replace(
+                "python scripts/bootstrap_tenant_schema.py",
+                'export DATABASE_URL="postgresql://wrong:h7r14wrong@localhost:5432/wrong"\n'  # pragma: allowlist secret
+                "python scripts/bootstrap_tenant_schema.py",
+            ),
+        )
+        assert r.returncode != 0
+        assert "Setup complete" not in r.stdout
+
+    def test_missing_db_url_in_env_fails_before_alembic(self, tmp_path: Path) -> None:
+        """RED (R14): a backend/.env without DATABASE_URL fails before Alembic
+        runs (post-install verification rejects it)."""
+        h = self._build_harness(tmp_path)
+        env_file = h["repo"] / "backend" / ".env"
+        kept = "\n".join(
+            l for l in env_file.read_text().splitlines() if not l.startswith("DATABASE_URL=")
+        ) + "\n"
+        env_file.write_text(kept, encoding="utf-8")
+        r = self._run(h)
+        assert r.returncode != 0
+        log = h["log"].read_text()
+        assert "alembic" not in log
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

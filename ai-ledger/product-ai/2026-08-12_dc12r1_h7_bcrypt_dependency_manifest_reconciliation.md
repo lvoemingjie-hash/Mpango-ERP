@@ -1,8 +1,8 @@
-# DC-12R1-H7-R13 — Standalone Harness Exec-Bit Closure (NO PASS)
+# DC-12R1-H7-R14 — Native Alembic Connection Context Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R12 is
-> `SUPERSEDED_BY_H7_R13`.** Accepted external evidence: Kilo R10-V1 =
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R13 is
+> `SUPERSEDED_BY_H7_R14`.** Accepted external evidence: Kilo R10-V1 =
 > `7d53d6a5c9dc7fc8a8a44414951c214c7bce4d02`; Lubuntu R10-V2 STOP =
 > `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier records superseded.
 
@@ -10,7 +10,45 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R13 evidence (current checkpoint)
+## R14 evidence (current checkpoint)
+
+Narrow correction to setup.sh and the manifest-parity test (setup_preflight.py,
+direct preflight test, and all product/Compose/migration files untouched).
+
+- **Native Alembic connection context.** setup.sh now resolves DATABASE_URL
+  from backend/.env via the SAME strict `parse_env_file()` the preflight uses
+  (no second handwritten parser, no `set -a`, no sourcing). The value is
+  captured into a temporary shell variable and never printed. It is exported
+  BEFORE `alembic upgrade head` and kept for
+  `python scripts/bootstrap_tenant_schema.py`; both unset afterwards. No
+  alembic.ini fallback — Alembic and bootstrap connect to the exact URL
+  already validated against the rendered Compose config.
+- **Enforcing harness fakes.** The fake `alembic` and `bootstrap` now require
+  `$DATABASE_URL` to be present AND equal to the `.env` value (grep-verified);
+  missing/mismatched → exit 2/3 fail-closed.
+- **Authentic RED/GREEN:** GREEN (setup completes with the validated URL;
+  sentinel never in argv/log/stdout/stderr); RED mutations — removing the
+  export, moving it after Alembic, exporting a wrong URL (alembic and
+  bootstrap independently), and a .env missing DATABASE_URL all fail before
+  completion. Existing exit 42/43/44, Compose isolation, standalone harness,
+  and all R5-R13 tests remain green.
+- **Test gates:** direct 133/133 nat+rev; harness **35/35** nat+rev zero
+  skip/xfail; complete H7 suite **262/262** both file orders nat+rev.
+- **Deterministic gates:** bash -n OK; py_compile OK (no SyntaxWarning);
+  diff-check clean; pre-commit incl. detect-secrets Passed; UTF-8/mojibake OK;
+  GitNexus detect_changes vs `5a27e56d` = exactly the in-scope files;
+  immutable blobs unchanged (env.py=`1c71de78`, bootstrap=`ca7d91f`);
+  protected baseline `a6ef3aac` unchanged.
+- **Hypothesis red node** (`HealthCheck.too_slow`): classified, UNRESOLVED,
+  environment-gated; NOT suppressed or edited.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed. After R14: Kilo bounded review; Lubuntu V4 repeats native setup
+twice + focused zero-red; only then CTO merge consideration.
+
+---
+
+## R13 evidence (SUPERSEDED_BY_H7_R14)
 
 Narrow test-only correction; setup.sh and all product files remain byte-
 identical to R12.

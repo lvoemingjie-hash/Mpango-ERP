@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R13 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R14 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -429,6 +429,21 @@ environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. R13 is the STOP
 checkpoint before Kilo bounded review; only after Kilo passes does Lubuntu run
 native setup.sh + focused zero-red; no deployment, Playwright or merge.
+
+**H7-R14 (evidence checkpoint, current; NO PASS):** native Alembic connection
+context closure. setup.sh resolves DATABASE_URL from backend/.env via the same
+strict `parse_env_file()` the preflight uses (no second handwritten parser, no
+`set -a`, no sourcing); the value is captured (never printed), exported BEFORE
+`alembic upgrade head`, kept for tenant bootstrap, and unset afterwards — no
+alembic.ini fallback. Enforcing harness fakes (alembic/bootstrap) require
+`$DATABASE_URL` present and equal to the .env value; authentic RED/GREEN
+mutations (remove export, move after alembic, wrong URL for alembic and
+bootstrap independently, missing DATABASE_URL) all fail closed. Direct 133/133;
+harness 35/35; H7 262/262 both orders. setup_preflight.py, direct preflight
+test, and all product/Compose/migration files untouched. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. After R14: Kilo
+bounded review; Lubuntu V4 repeats native setup twice + focused zero-red;
+only then CTO merge consideration.
 
 ## Active Phase
 

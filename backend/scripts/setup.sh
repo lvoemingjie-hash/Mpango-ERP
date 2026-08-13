@@ -106,22 +106,27 @@ pip install -r requirements.txt
 python "$SCRIPT_DIR/setup_preflight.py" --env-file .env --post-install || {
     echo "Post-install verification failed." >&2; exit 1; }
 
+# Resolve the validated DATABASE_URL from backend/.env via the SAME strict
+# parser the preflight uses (setup_preflight.parse_env_file) — no second
+# handwritten parser, no `set -a`, no sourcing of .env. The value is captured
+# into a temporary shell variable and never printed. Export it so BOTH the
+# public Alembic migration and tenant bootstrap connect to the exact URL
+# already validated against the rendered Compose config (no alembic.ini
+# fallback).
+_NATIVE_DB_URL="$(python -c "import sys; sys.path.insert(0, sys.argv[1]); from setup_preflight import parse_env_file; print(parse_env_file('.env').get('DATABASE_URL', ''))" "$SCRIPT_DIR" 2>/dev/null)" \
+    || { echo "Could not resolve DATABASE_URL from backend/.env." >&2; exit 1; }
+[ -n "$_NATIVE_DB_URL" ] || { echo "DATABASE_URL missing from backend/.env." >&2; exit 1; }
+export DATABASE_URL="$_NATIVE_DB_URL"
+
 echo "Running public Alembic migration"
 alembic upgrade head
 
 echo "Bootstrapping tenant schema"
-# Re-read DATABASE_URL for the bootstrap env var
-_POSTGRES_URL="$(python -c "
-seen={}
-for l in open('.env'):
-    s=l.strip()
-    if s and not s.startswith('#') and '=' in s:
-        k,v=s.split('=',1); seen[k.strip()]=v.strip().strip(chr(39)).strip(chr(34))
-print(seen.get('DATABASE_URL',''))
-" 2>/dev/null)"
-export DATABASE_URL="$_POSTGRES_URL"
 python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"
-unset DATABASE_URL
+
+# Drop the connection URL and the temporary variable so no credential survives
+# in the setup process after bootstrap.
+unset DATABASE_URL _NATIVE_DB_URL
 
 cd "$REPO_ROOT"
 echo "Setting up frontend"

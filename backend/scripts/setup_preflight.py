@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Stdlib-only setup preflight validator (H7-R7).
+Stdlib-only setup preflight validator (H7-R11).
 
 Secret hygiene: DATABASE_URL / REDIS_URL are read ONLY from ``os.environ``
 and from ``backend/.env`` — they are never accepted on the command line, so
@@ -8,9 +8,13 @@ no secret ever appears in argv (process listings / logs).  Output is only
 ``OK`` on success; every failure writes a FIXED neutral error to stderr and
 exits non-zero.  No error ever echoes a URL, password, or Compose JSON.
 
+Project isolation: any rendered service declaring an explicit
+``container_name`` is rejected (a fixed name would collide across Compose
+project namespaces).
+
 Usage (initial mode — reads Compose JSON from stdin):
-    docker compose config --format json | python scripts/setup_preflight.py \
-        --env-file backend/.env
+    docker compose --env-file backend/.env config --format json | \
+        python scripts/setup_preflight.py --env-file backend/.env
 
 Usage (post-install mode — imports core.config.settings):
     python scripts/setup_preflight.py --env-file backend/.env --post-install
@@ -237,6 +241,13 @@ def run_initial(env_path: str) -> None:
     services = cfg.get("services")
     if not isinstance(services, dict):
         _fail("Compose services is not a dict")
+
+    # project isolation: no rendered service may pin a container_name (the
+    # value would collide across project namespaces). Fixed neutral error;
+    # the container_name value itself is never echoed.
+    for _svc_name, _svc in services.items():
+        if isinstance(_svc, dict) and "container_name" in _svc:
+            _fail(f"{_svc_name} declares an explicit container_name")
 
     pg_env = _validate_port_entry(services, "postgres", 5432, db_port)
     _validate_port_entry(services, "redis", 6379, rd_port, require_env=False)

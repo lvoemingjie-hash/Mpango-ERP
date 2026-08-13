@@ -1,16 +1,100 @@
-# DC-12R1-H7-R10 — Deterministic Coreutils Non-Zero Probe Evidence (NO PASS)
+# DC-12R1-H7-R11 — Compose Project Isolation and Native Env-File Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R9 is
-> `SUPERSEDED_BY_H7_R10`.** CTO cross-host reproduction = **187 collected /
-> 174 passed / 13 failed** (Git Bash `/usr/bin` + /mingw64/bin not explicitly
-> provided → coreutils unresolved); closed by the R7 cross-host repair and
-> re-validated by R8/R9/R10. Earlier R5-R5 `abbbe32f` 11/4/7 record is likewise
-> superseded.
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R10 is
+> `SUPERSEDED_BY_H7_R11`.** Accepted external evidence: Kilo R10-V1 =
+> `7d53d6a5c9dc7fc8a8a44414951c214c7bce4d02`; Lubuntu R10-V2 STOP =
+> `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier CTO cross-host
+> reproduction (187/174/13) and R5-R5 `abbbe32f` 11/4/7 records are superseded.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `b495eb4a` (H7-R9)
+> Base candidate: `6be4c279` (H7-R10)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
+
+## R11 evidence (current checkpoint)
+
+R11 closes two source defects surfaced by the Lubuntu V2 native failure on the
+occupied host (report SHA `e073ded8`):
+
+- **Source defect A — fixed container names.** `docker-compose.yml` pinned
+  `container_name` on every service (`mpango_postgres`, `mpango_redis`,
+  `mpango_backend`, `mpango_frontend`, `mpango_gateway`, `mpango_prometheus`).
+  Fixed names collide with the host-owner's pre-existing containers no matter
+  which Compose project name is used. R11 removes ALL `container_name` lines
+  from the base file (services, DNS, volumes, networks, health checks and
+  semantics preserved; docker-compose.prod.yml untouched). Compose now
+  namespaces containers/networks/volumes from the caller's
+  `COMPOSE_PROJECT_NAME`, which setup.sh honours unchanged.
+- **Source defect B — missing Compose env-file wiring.** setup.sh ran
+  `docker compose` with the DEFAULT env-file (repo-root `.env`) and relied on
+  the caller's exported variables, so `bash backend/scripts/setup.sh` failed
+  interpolation when `backend/.env` existed but was not exported. R11 passes
+  `backend/.env` explicitly through Compose's global option
+  `docker compose --env-file <absolute backend/.env> ...` — same array for
+  config/up/exec, `--env-file` before the subcommand, no `source`/export of
+  `.env`, no secrets printed. The exact native command remains
+  `bash backend/scripts/setup.sh`.
+- **Fail-closed preflight rule:** any rendered service declaring an explicit
+  `container_name` is rejected with a fixed neutral error
+  (`<service> declares an explicit container_name`; the name value is never
+  echoed). Direct unit matrix (postgres/redis/backend mutations + multi-service
+  GREEN) covers it.
+- **Authentic RED proofs against `6be4c279` (this host, occupied):**
+  1. R10 `compose up -d redis` under a unique project name FAILED with
+     `Conflict. The container name "/mpango_redis" is already in use by
+     container 722add54…` — the pre-existing host-owner `mpango_redis` (up
+     12h, healthy) blocked it; partial task resources were removed.
+  2. R10-style invocation (`docker compose config --quiet` without
+     `--env-file`, no exports) failed with `POSTGRES_PASSWORD must be set`;
+     the R11 `--env-file` invocation succeeds.
+  3. R10 preflight has no `container_name` rule (grep count 0) and the R10
+     compose renders 5 fixed container_names; the R11 preflight rejects that
+     exact rendered JSON (`backend declares an explicit container_name`).
+- **Authentic GREEN proofs (this host, task-owned disposable resources):**
+  - `docker compose -p h7_r11_a|b --env-file backend/.env config --format
+    json` — both renders contain ZERO explicit `container_name`; networks
+    (`h7_r11_a_mpango_network` vs `h7_r11_b_mpango_network`) and volumes
+    (`h7_r11_a_*_data` vs `h7_r11_b_*_data`) are disjoint.
+  - Sentinel coexistence: `-p h7_r11_green up -d redis` created and started
+    `h7_r11_green-redis-1` while the host-owner `mpango_redis` kept running
+    untouched (verified before/after `docker ps` identical; project fully
+    `down -v`'d; zero leftovers).
+  - Harness: every Compose operation carries `--env-file` before the
+    subcommand (`test_compose_invocations_carry_env_file_before_subcommand`).
+  - Port isolation: caller-selected `POSTGRES_PUBLISHED_PORT=15432` /
+    `REDIS_PUBLISHED_PORT=16379` with matching URLs → `OK`; URL 15432 vs
+    published 15433 → `postgres port published mismatch` (exit 1) before any
+    side effect.
+- **Test gates:** direct preflight **133/133** natural+reverse; executable
+  harness **23/23** natural+reverse zero skip/xfail; complete H7 suite
+  **250/250** natural+reverse in both file orders. Existing exit-status,
+  timeout, secret, CRLF, idempotency and command-order assertions intact.
+- **Deterministic gates:** `bash -n` OK; py_compile OK (no SyntaxWarning);
+  `git diff --check` clean; scoped pre-commit incl. detect-secrets Passed;
+  strict UTF-8/mojibake OK; GitNexus `detect_changes` vs `6be4c279` = exactly
+  the eight allowed files; every file outside the allowlist byte-identical to
+  R10 (setup.sh changed in-scope; manifests, migrations, product code,
+  Dockerfile, docker-compose.prod.yml, lockfiles, Hypothesis test unchanged);
+  immutable blobs unchanged (env.py=`1c71de78`, bootstrap=`ca7d91f`);
+  protected baseline unchanged at `a6ef3aac`.
+- **Host-owner non-interference proof:** before/after `docker ps` name sets
+  identical (9 host-owner containers); no host-owner container was stopped,
+  renamed, or inspected; only a doomed create attempt (failed at name
+  registration) and task-owned `h7_r11_green`/`h7_r11_red` projects were
+  involved, all cleaned (`no task containers/networks/volumes` after).
+- **Hypothesis red node** (`test_property_token_roundtrip_integrity`
+  `HealthCheck.too_slow`): classified, UNRESOLVED, environment-gated; NOT
+  suppressed or edited.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed; no native-Linux success, merge readiness or deployment claim.
+After R11: (1) Kilo bounded source review; (2) Lubuntu V3 native setup on the
+same occupied host with a unique project name and free loopback ports;
+(3) focused Hypothesis zero-red gate; only then CTO merge consideration.
+
+---
+
+## R10 evidence (SUPERSEDED_BY_H7_R11)
 
 ## R10 evidence (current checkpoint)
 

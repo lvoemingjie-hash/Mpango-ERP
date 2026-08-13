@@ -429,6 +429,13 @@ def check_setup_sh_wiring(text: str) -> None:
     # R5-R6: CRLF fail-closed self-check (python raw-byte read)
     if not any(re.search(r"b'\\r'", r) for r in non_comment):
         raise ValueError("setup.sh: missing CRLF fail-closed self-check")
+    # R11: Compose must be given backend/.env explicitly via the global --env-file
+    # option (no sourcing / exporting of .env into the caller environment).
+    if not any("--env-file" in r for r in non_comment):
+        raise ValueError("setup.sh: must pass backend/.env to Compose via --env-file")
+    # R11: setup.sh must NOT overwrite a caller-provided COMPOSE_PROJECT_NAME
+    if any(re.search(r"^\s*COMPOSE_PROJECT_NAME\s*=", r) for r in lines):
+        raise ValueError("setup.sh: must not set/overwrite COMPOSE_PROJECT_NAME")
     # REJECT npm (pnpm required; word-boundary so 'pnpm' is not flagged)
     for r in after_pip:
         if re.search(r"\bnpm\s+(install|i)\b", r) and "pnpm" not in r.lower():
@@ -959,21 +966,23 @@ class TestH7R5R2ExecutableHarness:
         fake_bodies = {
             "docker": f'''#!/bin/bash
 echo "docker $*" >> "{log_str}"
-a="$*"
-case "$a" in
-    "compose version"*) echo "Docker Compose version v2.20.0"; exit 0;;
-    "compose config --format json"*)
+shift  # drop "compose"
+[ "$1" = "--env-file" ] && shift 2  # R11: Compose global --env-file <path>
+sub="$*"
+case "$sub" in
+    "version"*) echo "Docker Compose version v2.20.0"; exit 0;;
+    "config --format json"*)
         echo '{_compose_json}'
         exit 0;;
-    "compose config"*) exit {_ev("compose_config")};;
-    "compose up -d"*) exit 0;;
-    "compose exec -T postgres"*)
-        if echo "$a" | grep -q "pg_isready"; then
+    "config"*) exit {_ev("compose_config")};;
+    "up -d"*) exit 0;;
+    "exec -T postgres"*)
+        if echo "$sub" | grep -q "pg_isready"; then
             exit {_ev("pg")}
         fi
         printf "pguser|pgdb"
         exit 0;;
-    "compose exec -T redis"*) echo "PONG"; exit {_ev("redis")};;
+    "exec -T redis"*) echo "PONG"; exit {_ev("redis")};;
     *) exit 0;;
 esac
 ''',
@@ -1054,10 +1063,10 @@ exit {_ev("pnpm")}
         assert "Setup complete" in r.stdout
         log_lines = h["log"].read_text().splitlines()
         marks = [
-            "compose config",
-            "compose up -d",
-            "compose exec -T postgres",
-            "compose exec -T redis",
+            "config --format json",      # preflight Compose render
+            "up -d",                     # compose up (subcommand; --env-file precedes it)
+            "exec -T postgres",          # pg readiness
+            "exec -T redis",             # redis readiness
             "pip install -r requirements.txt",
             "alembic upgrade head",
             "bootstrap_tenant_schema.py",
@@ -1111,7 +1120,7 @@ exit {_ev("pnpm")}
         assert not (repo / "uploads").exists()
         assert not (repo / "frontend" / ".env").exists()
         log = h["log"].read_text()
-        assert "compose up" not in log
+        assert "up -d" not in log
         assert "pip install" not in log
         assert "alembic" not in log
         assert "bootstrap" not in log
@@ -1207,7 +1216,7 @@ exit {_ev("pnpm")}
             i for i, l in enumerate(log_lines)
             if "setup_preflight.py" in l and "--post-install" not in l
         )
-        up_idx = next(i for i, l in enumerate(log_lines) if "compose up -d" in l)
+        up_idx = next(i for i, l in enumerate(log_lines) if "up -d" in l)
         assert pre_idx < up_idx, f"initial preflight not before compose up: {log_lines}"
 
     def test_post_install_verification_runs_between_pip_and_alembic(
@@ -1301,6 +1310,32 @@ exit {_ev("pnpm")}
         assert sentinel not in log
         assert sentinel not in r.stdout
         assert sentinel not in r.stderr
+
+    def test_compose_invocations_carry_env_file_before_subcommand(
+        self, tmp_path: Path
+    ) -> None:
+        """R11: every Compose operation (config/up/exec) is invoked with the
+        global ``--env-file <backend/.env>`` option BEFORE the subcommand —
+        setup works without manually exporting backend/.env into the caller
+        environment."""
+        h = self._build_harness(tmp_path)
+        r = self._run(h)
+        assert r.returncode == 0, r.stderr
+        docker_lines = [
+            l for l in h["log"].read_text().splitlines() if l.startswith("docker ")
+        ]
+        # the `compose version` capability probe legitimately carries no
+        # --env-file; every OPERATION (config/up/exec) must.
+        operation_lines = [l for l in docker_lines if "version" not in l]
+        assert operation_lines, "no docker operations logged"
+        for line in operation_lines:
+            assert "--env-file" in line, f"docker call missing --env-file: {line}"
+        # --env-file precedes the subcommand for the render and up calls
+        for mark in ("config --format json", "up -d"):
+            marked = [l for l in operation_lines if mark in l]
+            assert marked, f"no docker call with {mark!r}"
+            for line in marked:
+                assert line.index("--env-file") < line.index(mark.split()[0]), line
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

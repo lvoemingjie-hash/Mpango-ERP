@@ -571,6 +571,48 @@ class TestRunInitial:
         )
         assert err == expected
 
+    @pytest.mark.parametrize(
+        "services,expected",
+        [
+            # explicit container_name on any rendered service is rejected
+            # (project isolation); the container_name value is never echoed.
+            ({"services": {"postgres": {**PG_SVC, "container_name": "mpango_postgres"},
+                            "redis": {"ports": [_port_entry_redis()]}}},
+             "postgres declares an explicit container_name"),
+            ({"services": {"postgres": dict(PG_SVC),
+                            "redis": {"ports": [_port_entry_redis()], "container_name": "mpango_redis"}}},
+             "redis declares an explicit container_name"),
+            ({"services": {"postgres": dict(PG_SVC),
+                            "redis": {"ports": [_port_entry_redis()]},
+                            "backend": {"image": "x", "container_name": "mpango_backend"}}},
+             "backend declares an explicit container_name"),
+        ],
+    )
+    def test_container_name_rejected(
+        self, capsys, tmp_path: Path, services: dict, expected: str
+    ) -> None:
+        err = _expect_fail(
+            capsys, pf.run_initial, self._env(tmp_path), stdin_text=json.dumps(services),
+        )
+        assert err == expected
+
+    def test_no_container_name_passes_with_extra_services(self, capsys, tmp_path: Path) -> None:
+        # multi-service compose with NO container_name on any service passes
+        services = {
+            "postgres": dict(PG_SVC),
+            "redis": {"ports": [_port_entry_redis()]},
+            "backend": {"image": "x"},
+            "frontend": {"image": "y"},
+        }
+        old_stdin = sys.stdin
+        sys.stdin = io.StringIO(json.dumps({"services": services}))
+        try:
+            pf.run_initial(self._env(tmp_path))
+        finally:
+            sys.stdin = old_stdin
+        captured = capsys.readouterr()
+        assert captured.out == "OK\n" and captured.err == ""
+
 
 # ---------------------------------------------------------------------------
 # secret hygiene — argv never carries secrets (process URLs via os.environ)

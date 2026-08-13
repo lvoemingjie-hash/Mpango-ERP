@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R10 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R11 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -384,29 +384,50 @@ test used `shutil.which("false")`, which is host-fragile (244/1 where `false`
 is absent). Hypothesis node unresolved and environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
-**H7-R10 (evidence checkpoint, current; NO PASS):** extremely narrow correction
-— only the manifest-parity test and the three evidence docs change; everything
-else byte-identical to R9. The non-zero probe test now uses `sys.executable`
-(guaranteed to exist and launch, but it receives the shell probe as Python code
-→ SyntaxError → non-zero exit); `_verify_coreutils(sys.executable, [])` raises
-exactly `RuntimeError("coreutils probe failed")` (assertion via
-`str(exc.value) ==`). This is deterministic and host-independent — no reliance
-on a `false` coreutil. The three independent coreutils tests (OSError /
-non-executable, missing real coreutil, successful cross-host resolution) are
-retained unchanged. R9 host-fragility recorded truthfully: **244/1** on hosts
-lacking `false` (the `assert false_exe` fails); on this Windows host R9 read
-245/0 because `false` resolves. Evidence: direct preflight 129/129; harness
-22/22; complete H7 suite 245/245 natural AND reverse in both file orderings,
-and 245/245 under a Git-Bash-stripped PATH (R10 host-independence proven);
-py_compile, bash -n, diff-check, pre-commit incl. detect-secrets, UTF-8/mojibake
-all clean; GitNexus detect_changes vs `b495eb4a` = in-scope files only; all
-files outside the four-file R10 allowlist byte-identical to R9; immutable blobs
-unchanged (env.py=`1c71de78`, bootstrap=`ca7d91f`). CTO cross-host
-**187/174/13** preserved. Hypothesis node remains unresolved and
-environment-gated. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
-R10 source corrections complete; NOT merge approval. Next: Kilo bounded source
-review; only after Kilo closure may Lubuntu run native setup.sh + focused
-zero-red; H7 cannot merge until both gates pass.
+**H7-R10 (evidence checkpoint, SUPERSEDED_BY_H7_R11):** extremely narrow
+correction — non-zero coreutils probe test switched from `shutil.which("false")`
+to `sys.executable` (deterministic, host-independent); direct preflight 129/129;
+harness 22/22; H7 suite 245/245 both orders. Hypothesis node unresolved and
+environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R11 (evidence checkpoint, current; NO PASS):** closes two source defects
+surfaced by the Lubuntu V2 native failure on the occupied host (report SHA
+`e073ded8`; accepted Kilo R10-V1 = `7d53d6a5`). (1) Fixed container names —
+ALL `container_name` lines removed from the base docker-compose.yml; Compose
+now namespaces containers/networks/volumes from the caller's
+`COMPOSE_PROJECT_NAME` (setup.sh honours it, never overwrites it). New
+fail-closed preflight rule rejects any rendered service declaring an explicit
+`container_name` (fixed neutral error, value never echoed). (2) Compose
+env-file wiring — setup.sh passes `backend/.env` explicitly via
+`docker compose --env-file <absolute backend/.env> ...` (same array for
+config/up/exec, `--env-file` before the subcommand, no source/export of .env,
+no secrets printed); the native command remains `bash backend/scripts/setup.sh`.
+Authentic RED proofs against `6be4c279` on THIS occupied host: R10 `up -d redis`
+failed with `Conflict: container name "/mpango_redis" already in use` against
+the pre-existing host-owner `mpango_redis`; R10-style config without
+`--env-file`/exports failed interpolation (`POSTGRES_PASSWORD must be set`);
+R10 preflight (no container_name rule) accepted the fixed-name render while
+R11 rejects it. Authentic GREEN proofs: two project names render disjoint
+resource names with zero explicit container_name; `-p h7_r11_green up -d redis`
+coexisted with the untouched host-owner sentinel (before/after `docker ps`
+identical; all task resources removed; zero leftovers); every Compose
+operation carries `--env-file` before the subcommand; caller-selected ports
+(15432/16379) with matching URLs pass and a mismatched pairing fails before
+side effects. Evidence: direct preflight 133/133 natural+reverse; harness
+23/23 natural+reverse zero skip/xfail; complete H7 suite 250/250 natural+reverse
+in both file orders; bash -n, py_compile, diff-check, pre-commit incl.
+detect-secrets, UTF-8/mojibake all clean; GitNexus detect_changes vs `6be4c279`
+= exactly the eight allowed files; everything outside byte-identical to R10
+(docker-compose.prod.yml, manifests, migrations, product code, lockfiles,
+Hypothesis test untouched); immutable blobs unchanged (env.py=`1c71de78`,
+bootstrap=`ca7d91f`); protected baseline `a6ef3aac` unchanged. Host-owner
+non-interference proven (no host-owner container stopped/renamed/inspected).
+Hypothesis node remains unresolved and environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. After R11: Kilo
+bounded source review; then Lubuntu V3 native setup on the same occupied host
+with a unique project name and free loopback ports; then the focused
+Hypothesis zero-red gate; only then CTO merge consideration.
 
 ## Active Phase
 

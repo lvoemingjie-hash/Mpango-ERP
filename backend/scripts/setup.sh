@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mpango ERP Setup Script  (H7-R5-R6 — extracted preflight module)
+# Mpango ERP Setup Script  (H7-R11 — Compose project isolation + native env-file)
 set -Eeuo pipefail
 
 _on_err() {
@@ -24,17 +24,24 @@ cd "$REPO_ROOT"
 echo "Setting up Mpango ERP (root: $REPO_ROOT)"
 
 # ---- docker compose v2 (required for JSON config output) ---------------
-COMPOSE=()
+# backend/.env is passed to Compose explicitly via the global --env-file
+# option (before the subcommand) so setup works without exporting the file
+# into the caller environment. A caller-provided COMPOSE_PROJECT_NAME is
+# honoured unchanged; Compose namespaces resources from it naturally.
+BACKEND_ENV="$REPO_ROOT/backend/.env"
+COMPOSE_BASE=()
 if command -v docker &> /dev/null && docker compose version &> /dev/null; then
-    COMPOSE=(docker compose)
+    COMPOSE_BASE=(docker compose)
 elif command -v docker-compose &> /dev/null && docker-compose version &> /dev/null; then
     if docker-compose config --format json &> /dev/null < /dev/null; then
-        COMPOSE=(docker-compose)
+        COMPOSE_BASE=(docker-compose)
     fi
 fi
-if [ "${#COMPOSE[@]}" -eq 0 ]; then
+if [ "${#COMPOSE_BASE[@]}" -eq 0 ]; then
     echo "Docker Compose v2 is required." >&2; exit 1
 fi
+# Same array for config, up and exec; --env-file precedes the subcommand.
+COMPOSE=("${COMPOSE_BASE[@]}" --env-file "$BACKEND_ENV")
 
 # =========================================================================
 # PREFLIGHT — validate everything BEFORE any filesystem or service side effect

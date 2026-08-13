@@ -1060,12 +1060,20 @@ esac
 '''
         for name, body in fake_bodies.items():
             (bin_dir / name).write_text(body)
-        # set MSYS2 executable bits via bash chmod (MSYS-converted paths, checked)
+        # set MSYS2 executable bits via bash chmod (MSYS-converted paths, checked).
+        # R13: the standalone harness also chmods its docker-compose fake; the
+        # normal harness must never attempt to chmod a file it does not create.
+        chmod_names = list(cls._FAKE_NAMES)
+        if standalone:
+            chmod_names.append("docker-compose")
+        missing = [n for n in chmod_names if not (bin_dir / n).exists()]
+        if missing:
+            raise RuntimeError("harness fakes missing before chmod: " + ", ".join(missing))
         bash_bin = _select_bash()
         git_dirs = cls._git_bin_dirs(bash_bin)
         path_dirs = [cls._msys_path(str(bin_dir))] + git_dirs
         cls._verify_coreutils(bash_bin, path_dirs)
-        quoted = " ".join(f'"{cls._msys_path(str(bin_dir / n))}"' for n in cls._FAKE_NAMES)
+        quoted = " ".join(f'"{cls._msys_path(str(bin_dir / n))}"' for n in chmod_names)
         chmod_env = os.environ.copy()
         chmod_env["PATH"] = os.pathsep.join(path_dirs) + os.pathsep + chmod_env.get("PATH", "")
         subprocess.run([bash_bin, "-c", f"chmod +x {quoted}"], check=True, env=chmod_env)
@@ -1469,6 +1477,41 @@ esac
         assert r.returncode != 0
         assert "Docker Compose v2 is required" in r.stderr
         assert "Setup complete" not in r.stdout
+
+    def test_standalone_fakes_exist_and_are_executable(self, tmp_path: Path) -> None:
+        """Fail-closed (R13): the standalone docker-compose fake must EXIST and
+        be executable — proven via the selected Bash's `test -x` (the POSIX/
+        MSYS executability check that `chmod +x` satisfies; Windows os.stat
+        does not expose exec bits)."""
+        import subprocess
+        h = self._build_harness(tmp_path, standalone=True)
+        bash_bin = _select_bash()
+        for name in ("docker", "docker-compose"):
+            f = h["bin"] / name
+            assert f.exists(), f"{name} fake missing"
+            res = subprocess.run(
+                [bash_bin, "-c", f'test -x "{self._msys_path(str(f))}"'],
+                capture_output=True,
+            )
+            assert res.returncode == 0, f"{name} fake is not executable (bash test -x)"
+
+    def test_normal_harness_does_not_chmod_nonexistent_docker_compose(
+        self, tmp_path: Path
+    ) -> None:
+        """Fail-closed (R13): the normal harness builds only its own fakes and
+        never attempts to chmod a docker-compose file it does not create."""
+        import subprocess
+        h = self._build_harness(tmp_path)
+        assert not (h["bin"] / "docker-compose").exists()
+        bash_bin = _select_bash()
+        for name in self._FAKE_NAMES:
+            f = h["bin"] / name
+            assert f.exists(), f"{name} fake missing"
+            res = subprocess.run(
+                [bash_bin, "-c", f'test -x "{self._msys_path(str(f))}"'],
+                capture_output=True,
+            )
+            assert res.returncode == 0, f"{name} fake is not executable (bash test -x)"
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

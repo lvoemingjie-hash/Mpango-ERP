@@ -1,16 +1,59 @@
-# DC-12R1-H7-R12 — Standalone Compose Probe Repair (NO PASS)
+# DC-12R1-H7-R13 — Standalone Harness Exec-Bit Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R11 is
-> `SUPERSEDED_BY_H7_R12`.** Accepted external evidence: Kilo R10-V1 =
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R12 is
+> `SUPERSEDED_BY_H7_R13`.** Accepted external evidence: Kilo R10-V1 =
 > `7d53d6a5c9dc7fc8a8a44414951c214c7bce4d02`; Lubuntu R10-V2 STOP =
 > `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier records superseded.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `849f31ca` (H7-R11)
+> Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R12 evidence (current checkpoint)
+## R13 evidence (current checkpoint)
+
+Narrow test-only correction; setup.sh and all product files remain byte-
+identical to R12.
+
+- **Defect closed — standalone fake never chmod'd.** In R12 the standalone
+  harness wrote a `docker-compose` fake but the `chmod +x` loop only covered
+  `_FAKE_NAMES` (docker/pip/alembic/python/pnpm). On MSYS/Windows this was
+  masked (the exec bit is not enforced there); on POSIX the standalone fake
+  would not be executable and the standalone tests would fail.
+  R13 adds `docker-compose` to the chmod set ONLY when `standalone=True`, and
+  the normal harness never attempts to chmod a file it does not create
+  (existence-filtered; a missing fake raises fail-closed).
+- **Fail-closed executability assertions (new):**
+  `test_standalone_fakes_exist_and_are_executable` (docker + docker-compose
+  exist and pass the selected Bash's `test -x` — the POSIX/MSYS executability
+  proof; Windows `os.stat` does not expose exec bits, so `test -x` is the
+  authentic cross-platform check) and
+  `test_normal_harness_does_not_chmod_nonexistent_docker_compose`.
+- **Test gates (counts updated truthfully):** direct preflight **133/133**
+  natural+reverse; executable harness **29/29** natural+reverse zero skip/xfail
+  (27 previous + 2 R13); complete H7 suite **256/256** natural+reverse in both
+  file orders.
+- **Deterministic gates:** py_compile OK (no SyntaxWarning); `bash -n` OK
+  (setup.sh untouched); `git diff --check` clean; scoped pre-commit incl.
+  detect-secrets Passed; strict UTF-8/mojibake OK; GitNexus `detect_changes`
+  vs `db166b77` = exactly the in-scope files (manifest-parity test + three
+  evidence docs); immutable blobs unchanged (env.py=`1c71de78`,
+  bootstrap=`ca7d91f`); protected baseline `a6ef3aac` unchanged.
+- **GitNexus note:** `gitnexus status` is up-to-date at `db166b7`, but the
+  local MCP `compare` misreports many historical files; the authoritative R12
+  scope is therefore the precise `git diff` result (5 files). Recorded as
+  host-specific GitNexus non-reproducibility.
+- **Hypothesis red node** (`HealthCheck.too_slow`): classified, UNRESOLVED,
+  environment-gated; NOT suppressed or edited.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed. R13 is the STOP checkpoint before Kilo bounded review; only after
+Kilo passes does Lubuntu run native setup.sh + focused zero-red. No
+deployment, Playwright or merge.
+
+---
+
+## R12 evidence (SUPERSEDED_BY_H7_R13)
 
 - **Defect closed — premature standalone config probe.** R11's candidate
   selection ran `docker-compose config --format json` as a capability probe

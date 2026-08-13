@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R12 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R13 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -399,36 +399,36 @@ disjoint renders; port isolation). Direct 133/133; harness 23/23; H7 250/250.
 Hypothesis node unresolved. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
-**H7-R12 (evidence checkpoint, current; NO PASS):** repairs the standalone
-docker-compose probe defect. R11's candidate selection ran
-`docker-compose config --format json` BEFORE the `--env-file`-bearing array
-existed — that config probe ran without `--env-file`, failed interpolation, and
-silently rejected a valid standalone Compose v2. R12 selects candidates with
-`version` probes ONLY and runs the real `config --quiet` / `config --format
-json` capability checks through the same
-`COMPOSE=(<candidate> --env-file "$BACKEND_ENV")` array. A structural guard
-rejects any `config` occurrence before the `COMPOSE=(` line (narrowed to
-`\bconfig\b` after a false positive on the "Setting up" echo was caught). New
-authentic standalone harness: the `docker compose` plugin is hidden and only a
-standalone Compose v2 fake exists whose operations succeed ONLY with
-`--env-file` carried before the subcommand. GREEN: standalone setup completes
-with every operation carrying `--env-file` first. Three mutation REDs: removing
-`--env-file`, moving it after `config`, and restoring the premature probe all
-fail closed (mutation copies written as LF bytes so the CRLF self-check does
-not mask the intended path). Evidence: direct preflight 133/133 natural+reverse;
-harness 27/27 natural+reverse zero skip/xfail (23 + 4 standalone); complete H7
-suite 254/254 natural+reverse in both file orders; bash -n, py_compile (no
-SyntaxWarning), diff-check, pre-commit incl. detect-secrets, UTF-8/mojibake all
-clean; GitNexus detect_changes vs `849f31ca` = exactly the in-scope files
-(setup.sh, manifest-parity test, three evidence docs); everything else
-byte-identical to R11 (setup_preflight.py, direct preflight test, compose
-files, manifests, migrations, product code, lockfiles, Hypothesis test);
-immutable blobs unchanged (env.py=`1c71de78`, bootstrap=`ca7d91f`); protected
-baseline `a6ef3aac` unchanged. Hypothesis node remains unresolved and
+**H7-R12 (evidence checkpoint, SUPERSEDED_BY_H7_R13):** standalone Compose
+probe repair (version-only candidate selection; real capability checks through
+the `--env-file` array; structural guard; authentic standalone harness with 1
+GREEN + 3 mutation REDs). Direct 133/133; harness 27/27; H7 254/254. Hypothesis
+node unresolved. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R13 (evidence checkpoint, current; NO PASS):** narrow test-only correction
+— setup.sh and all product files byte-identical to R12. Defect closed: the R12
+standalone harness wrote a `docker-compose` fake but the `chmod +x` set only
+covered `_FAKE_NAMES`; masked on MSYS but fatal on POSIX (the fake would not
+be executable). R13 chmods `docker-compose` only when `standalone=True` and the
+normal harness never attempts to chmod a file it does not create (fail-closed
+if a fake is missing). New fail-closed assertions prove the standalone fakes
+exist and pass the selected Bash's `test -x` (POSIX/MSYS executability; Windows
+`os.stat` lacks exec bits), and that the normal harness builds only its own
+fakes. Evidence: direct preflight 133/133 natural+reverse; harness 29/29
+natural+reverse zero skip/xfail (27 + 2 R13); complete H7 suite 256/256
+natural+reverse in both file orders; py_compile, bash -n (setup.sh untouched),
+diff-check, pre-commit incl. detect-secrets, UTF-8/mojibake all clean;
+GitNexus detect_changes vs `db166b77` = in-scope files only (manifest-parity
+test + three evidence docs); immutable blobs unchanged (env.py=`1c71de78`,
+bootstrap=`ca7d91f`); protected baseline `a6ef3aac` unchanged. GitNexus note:
+`status` is up-to-date at `db166b7` but the local MCP `compare` misreports many
+historical files; the precise `git diff` result (R12 = 5 files) is the
+authoritative scope record. Hypothesis node remains unresolved and
 environment-gated. Verdict:
-`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. R12 is a STOP
-checkpoint: Kilo bounded review is next; only after Kilo passes does Lubuntu
-V3 run; no deployment, Playwright or merge.
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. R13 is the STOP
+checkpoint before Kilo bounded review; only after Kilo passes does Lubuntu run
+native setup.sh + focused zero-red; no deployment, Playwright or merge.
 
 ## Active Phase
 

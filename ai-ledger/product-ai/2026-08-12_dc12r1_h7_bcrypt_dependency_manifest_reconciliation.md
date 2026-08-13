@@ -1,17 +1,59 @@
-# DC-12R1-H7-R7 — Hardened, Secret-Safe, Cross-Host Preflight Closure (NO PASS)
+# DC-12R1-H7-R8 — Precise Port Contract, .env UTF-8 Fail-Closed, Coreutils Evidence (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. R5-R6 is superseded.
+> an evidence checkpoint, NOT a merge-review PASS. R7 is superseded.
 > CTO cross-host reproduction = **187 collected / 174 passed / 13 failed**
-> (Git Bash `/usr/bin` + `/mingw64/bin` not explicitly provided → coreutils
-> unresolved); closed by the R7 cross-host repair. The earlier R5-R5
-> `abbbe32f` 11/4/7 record is likewise superseded.
+> (Git Bash `/usr/bin` + /mingw64/bin not explicitly provided → coreutils
+> unresolved); closed by the R7 cross-host repair and re-validated by the R8
+> coreutils-evidence correction. Earlier R5-R5 `abbbe32f` 11/4/7 record is
+> likewise superseded.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `4746e180` (H7-R5-R6)
+> Base candidate: `0eb24d88` (H7-R7)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R7 evidence (current checkpoint)
+## R8 evidence (current checkpoint)
+
+- **setup.sh byte-identical to `0eb24d88`** — `git diff --exit-code 0eb24d88 --
+  backend/scripts/setup.sh` is empty; no source defect required a change.
+- **Coreutils evidence:** `_REQUIRED_COREUTILS` now covers exactly the external
+  commands setup.sh actually invokes — `dirname, grep, mkdir, seq, sleep` — plus
+  `chmod` used by harness preparation; obsolete `tr/cat/mktemp` removed.
+  `_verify_coreutils` fails closed if the Bash probe cannot execute OR returns
+  non-zero OR any required coreutil is unresolvable. RED: missing real
+  dependency (emptied PATH → dirname/grep/... unresolvable) and probe-execution
+  failure (non-existent bash → `coreutils probe failed`); GREEN: this host.
+- **.env fail-closed:** `parse_env_file` catches `UnicodeDecodeError` during
+  iteration and emits one fixed neutral error (`backend/.env is not valid
+  UTF-8`) with no path, bytes or secret content. Direct + CLI tests cover an
+  invalid-UTF-8 `.env`.
+- **Precise asymmetric port contract:** `target` must be an exact int (bool,
+  float, string, Unicode digits, structures rejected); `published` must be an
+  exact int OR an ASCII `[0-9]+` string (the form Compose v2 emits for
+  env-substituted published ports). Module, tests and this report use the same
+  wording. Real `docker compose config --format json` (target=int,
+  published=string) passes.
+- **Evidence integrity:** a genuinely unique sentinel
+  (`H7R8HarnessSentinel123`) is placed in the harness `.env` AND the fake
+  Compose output and proven absent from every captured argv/log/stdout/stderr
+  (`test_unique_sentinel_absent_from_all_captures`).
+- **Evidence:** direct preflight matrix **114 passed** natural AND reverse;
+  executable harness **21 passed** natural AND reverse, zero skip/xfail;
+  complete H7 suite **229 passed** natural AND reverse (parity 115 + preflight
+  114); real Compose pipeline = `OK`; `bash -n`, py_compile, `git diff --check`,
+  pre-commit incl. detect-secrets, UTF-8 all clean; GitNexus `detect_changes`
+  vs `0eb24d88` = exactly the in-scope files (setup.sh unchanged); immutable
+  files byte-identical (env.py=`1c71de78`, bootstrap=`ca7d91f`).
+- **Hypothesis red node** (classified, UNRESOLVED, environment-gated):
+  unchanged; NOT suppressed or edited.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed; this is an evidence checkpoint only. After R8 freezes: Kilo
+bounded review, then Lubuntu native setup.sh + focused zero-red verification.
+
+---
+
+## R7 evidence (superseded by R8)
 
 - **Secret hygiene:** `--process-db` / `--process-redis` removed; no
   secret-bearing argv. setup_preflight.py reads DATABASE_URL / REDIS_URL from

@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R7 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R8 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -357,30 +357,38 @@ shell CR detection unreliable). H7 suite 187/187 natural+reverse; harness
 node remains unresolved and environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
-**H7-R7 (evidence checkpoint, current; NO PASS):** secret-argv removed —
-`--process-db`/`--process-redis` deleted; setup_preflight.py reads
-DATABASE_URL/REDIS_URL from `os.environ` and a unique sentinel is proven
-absent from argv, the captured command log, and all output. Hardening: env
-keys strictly `[A-Za-z_][A-Za-z0-9_]*`; exact DB scheme parse (no global
-replacement); blank DB passwords rejected; integer-valued port fields only
-(int or decimal-digit string as real Compose emits for env-substituted
-`published`; bool/float/non-numeric/structured rejected); Compose root must
-be a dict; malformed URL/file/JSON → fixed neutral errors; Redis credentials
-rejected (no-auth Compose Redis). Cross-host harness repair: the selected
-Git Bash `/usr/bin` + `/mingw64/bin` are explicitly provided, required
-coreutils are verified before running, and the harness fails closed if any
-is unresolvable — closing the CTO cross-host reproduction **187 collected /
-174 passed / 13 failed** (authentic RED:
-`test_cross_host_fails_closed_when_required_coreutil_missing`). Evidence:
-direct preflight matrix 104/104 natural+reverse; executable harness 20/20
-natural+reverse zero skip/xfail; complete H7 suite 218/218 natural+reverse;
-real `docker compose config --format json` through the committed helper = OK
-(blank-password and Redis-creds negatives = exit 1, fixed messages); bash -n,
-py_compile, diff-check, pre-commit incl. detect-secrets, UTF-8 all clean;
-GitNexus detect_changes vs `4746e180` = exactly 7 in-scope files; immutable
-files byte-identical (env.py=`1c71de78`, bootstrap=`ca7d91f`). Hypothesis
-node remains unresolved and environment-gated. Verdict:
+**H7-R7 (evidence checkpoint, superseded by H7-R8):** secret-argv removed
+(`--process-db`/`--process-redis` deleted; setup_preflight.py reads
+DATABASE_URL/REDIS_URL from `os.environ`); env keys, exact DB scheme,
+blank-password and Redis-creds hardening; cross-host harness repair with
+coreutils verify. H7 suite 218/218 natural+reverse; direct preflight 104/104;
+harness 20/20; immutable files byte-identical. Hypothesis node unresolved and
+environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R8 (evidence checkpoint, current; NO PASS):** four precision corrections
+on top of R7. (1) Coreutils evidence — `_REQUIRED_COREUTILS` now covers exactly
+the externals setup.sh invokes (`dirname, grep, mkdir, seq, sleep`) plus
+`chmod` for harness prep; obsolete `tr/cat/mktemp` removed; `_verify_coreutils`
+fails closed if the probe cannot execute, returns non-zero, or any required
+coreutil is unresolvable (RED: missing real dependency + probe failure).
+(2) `.env` fail-closed — `UnicodeDecodeError` during iteration → one fixed
+neutral error `backend/.env is not valid UTF-8` (no path/bytes/secret); direct
++ CLI tests. (3) Precise asymmetric port contract — `target` exact int only
+(bool/float/string/Unicode-digit/structure rejected); `published` exact int OR
+ASCII `[0-9]+` string (Compose v2 form); module/test/report wording aligned.
+(4) Evidence integrity — a genuinely unique sentinel in harness `.env` + Compose
+output, proven absent from every argv/log/stdout/stderr. setup.sh is
+**byte-identical to `0eb24d88`** (no source defect required a change).
+Evidence: direct preflight 114/114 natural+reverse; harness 21/21 natural+reverse
+zero skip/xfail; complete H7 suite 229/229 natural+reverse; real Compose
+pipeline = OK; bash -n, py_compile, diff-check, pre-commit incl. detect-secrets,
+UTF-8 all clean; GitNexus detect_changes vs `0eb24d88` = in-scope files only
+(setup.sh unchanged); immutable files byte-identical (env.py=`1c71de78`,
+bootstrap=`ca7d91f`). CTO cross-host reproduction **187/174/13** preserved and
+re-validated. Hypothesis node remains unresolved and environment-gated.
+Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. After R8
+freezes: Kilo bounded review, then Lubuntu native setup.sh + focused zero-red.
 
 ## Active Phase
 

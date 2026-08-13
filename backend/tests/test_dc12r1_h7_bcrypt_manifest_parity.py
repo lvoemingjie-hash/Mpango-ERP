@@ -833,8 +833,12 @@ class TestH7R5R2ExecutableHarness:
     behaviour, and idempotency — not just source-text shape."""
 
     _FAKE_NAMES = ("docker", "pip", "alembic", "python", "pnpm")
-    # cross-host coreutils the setup.sh run depends on (verified before running)
-    _REQUIRED_COREUTILS = ("chmod", "grep", "tr", "cat", "mktemp", "seq")
+    # External commands setup.sh actually invokes (dirname/grep/mkdir/seq/sleep)
+    # plus chmod used by harness preparation. No obsolete tr/cat/mktemp.
+    _REQUIRED_COREUTILS = ("dirname", "grep", "mkdir", "seq", "sleep", "chmod")
+    # genuinely unique password sentinel placed in the harness .env AND the
+    # fake Compose output; proven absent from argv/log/stdout/stderr.
+    _SENTINEL_PW = "H7R8HarnessSentinel123"  # pragma: allowlist secret
 
     @staticmethod
     def _msys_path(windows_path: str) -> str:
@@ -862,7 +866,8 @@ class TestH7R5R2ExecutableHarness:
 
     @classmethod
     def _verify_coreutils(cls, bash_bin: str, path_dirs: list[str]) -> None:
-        """Fail closed if any required coreutil is unresolvable on the run PATH."""
+        """Fail closed if the probe itself fails OR any required coreutil is
+        unresolvable on the run PATH."""
         import os
         import subprocess
         env = os.environ.copy()
@@ -871,9 +876,15 @@ class TestH7R5R2ExecutableHarness:
             "for c in " + " ".join(cls._REQUIRED_COREUTILS)
             + "; do command -v \"$c\" >/dev/null 2>&1 || echo \"missing:$c\"; done"
         )
-        res = subprocess.run(
-            [bash_bin, "-c", script], capture_output=True, text=True, env=env,
-        )
+        res = None
+        try:
+            res = subprocess.run(
+                [bash_bin, "-c", script], capture_output=True, text=True, env=env,
+            )
+        except OSError:
+            raise RuntimeError("coreutils probe failed")
+        if res.returncode != 0:
+            raise RuntimeError("coreutils probe failed")
         missing = [
             ln[len("missing:"):] for ln in res.stdout.splitlines()
             if ln.startswith("missing:")
@@ -897,7 +908,7 @@ class TestH7R5R2ExecutableHarness:
         # minimal disposable repo structure
         (repo / "backend" / "scripts").mkdir(parents=True)
         (repo / "backend" / ".env").write_text(
-            "DATABASE_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            f"DATABASE_URL=postgresql://pguser:{cls._SENTINEL_PW}@localhost:5432/pgdb\n"  # pragma: allowlist secret
             "SECRET_KEY=notweaknotsecretkeyabcdef1234567890\n"  # pragma: allowlist secret
             "POSTGRES_USER=pguser\nPOSTGRES_DB=pgdb\n"
             "REDIS_URL=redis://localhost:6379/0\n"
@@ -937,8 +948,13 @@ class TestH7R5R2ExecutableHarness:
             v = fake_exits.get(name, default)
             return v if v else default
 
-        # Fake Compose JSON with Compose v2 object-shape port entries
-        _compose_json = '{"services":{"postgres":{"environment":{"POSTGRES_USER":"pguser","POSTGRES_DB":"pgdb","POSTGRES_PASSWORD":"pgpass"},"ports":[{"host_ip":"127.0.0.1","target":5432,"published":5432,"protocol":"tcp","mode":"ingress"}]},"redis":{"environment":{},"ports":[{"host_ip":"127.0.0.1","target":6379,"published":6379,"protocol":"tcp","mode":"ingress"}]}}}'  # pragma: allowlist secret
+        # Fake Compose JSON with Compose v2 object-shape port entries; the
+        # POSTGRES_PASSWORD carries the same unique sentinel as the .env.
+        _pw = cls._SENTINEL_PW
+        _compose_json = (
+            '{"services":{"postgres":{"environment":{"POSTGRES_USER":"pguser","POSTGRES_DB":"pgdb","POSTGRES_PASSWORD":"'  # pragma: allowlist secret
+            + _pw + '"},"ports":[{"host_ip":"127.0.0.1","target":5432,"published":5432,"protocol":"tcp","mode":"ingress"}]},"redis":{"environment":{},"ports":[{"host_ip":"127.0.0.1","target":6379,"published":6379,"protocol":"tcp","mode":"ingress"}]}}}'
+        )
 
         fake_bodies = {
             "docker": f'''#!/bin/bash
@@ -1105,7 +1121,7 @@ exit {_ev("pnpm")}
         h = self._build_harness(tmp_path)
         r = self._run(h)
         combined = r.stdout + r.stderr
-        assert "pgpass" not in combined
+        assert self._SENTINEL_PW not in combined
         assert "postgresql://pguser" not in combined
 
     def test_idempotent_second_run(self, tmp_path: Path) -> None:
@@ -1220,45 +1236,54 @@ exit {_ev("pnpm")}
         assert "bootstrap_tenant_schema" not in log
         assert "pnpm install" not in log
 
-    # ---- cross-host + secret-argv (R7) -----------------------------------
+    # ---- cross-host + secret-argv (R7/R8) --------------------------------
 
     def test_cross_host_coreutils_verified_when_available(self, tmp_path: Path) -> None:
-        """On this host the required coreutils resolve and the run succeeds
-        (Git Bash /usr/bin + /mingw64/bin are explicitly provided)."""
+        """GREEN: on this host the required coreutils resolve and the run
+        succeeds (Git Bash /usr/bin + /mingw64/bin explicitly provided)."""
         h = self._build_harness(tmp_path)
         r = self._run(h)
         assert r.returncode == 0, r.stderr
 
-    def test_cross_host_fails_closed_when_required_coreutil_missing(
+    def test_verify_coreutils_rejects_missing_real_dependency(
         self, tmp_path: Path, monkeypatch
     ) -> None:
-        """If a required coreutil is unresolvable the harness fails closed
-        (RuntimeError) instead of a cryptic partial run — this is the
-        cross-host failure mode behind the CTO 187/174/13 reproduction,
-        closed by the explicit bin-dir provision + verification."""
-        h = self._build_harness(tmp_path)
-        monkeypatch.setattr(
-            TestH7R5R2ExecutableHarness, "_REQUIRED_COREUTILS",
-            ("chmod", "grep", "__definitely_not_a_real_coreutil__"),
-        )
+        """RED: a REAL required dependency (dirname/grep/...) that is not on the
+        probe PATH must fail closed. With PATH emptied, none resolve."""
+        self._build_harness(tmp_path)  # ensure helper env exists
+        monkeypatch.delenv("PATH", raising=False)
         with pytest.raises(RuntimeError, match="required coreutils not found"):
-            self._run(h)
+            self._verify_coreutils(_select_bash(), [])
 
-    def test_no_secret_in_argv_or_log(self, tmp_path: Path) -> None:
-        """The .env password sentinel must never appear in the captured argv
-        log (proving setup.sh passes no secret on argv) nor in output."""
+    def test_verify_coreutils_rejects_probe_failure(self, tmp_path: Path) -> None:
+        """RED: if the Bash probe cannot execute (missing bash) it must fail
+        closed with the probe-failure error rather than a raw traceback."""
+        h = self._build_harness(tmp_path)
+        with pytest.raises(RuntimeError, match="coreutils probe failed"):
+            self._verify_coreutils(
+                "/definitely/not/a/real/bash", [self._msys_path(str(h["bin"]))]
+            )
+
+    def test_unique_sentinel_absent_from_all_captures(self, tmp_path: Path) -> None:
+        """The unique password sentinel (in .env AND Compose output) must be
+        absent from every captured surface: argv (the command log), stdout,
+        and stderr — proving no secret is passed on argv or leaked."""
         h = self._build_harness(tmp_path)
         r = self._run(h)
         assert r.returncode == 0, r.stderr
         log = h["log"].read_text()
+        sentinel = self._SENTINEL_PW
+        # argv hygiene: the preflight invocation carries no secret/secret-argv
         preflight_lines = [l for l in log.splitlines() if "setup_preflight.py" in l]
         assert preflight_lines, "preflight invocation not logged"
         for line in preflight_lines:
-            assert "pgpass" not in line
+            assert sentinel not in line
             assert "--process-db" not in line
             assert "--process-redis" not in line
-        # no argv line at all carries the password sentinel
-        assert "pgpass" not in log
+        # every captured surface is sentinel-free
+        assert sentinel not in log
+        assert sentinel not in r.stdout
+        assert sentinel not in r.stderr
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

@@ -245,6 +245,29 @@ class TestParseEnvFile:
         err = _expect_fail(capsys, pf.parse_env_file, str(tmp_path / "nope.env"))
         assert err == "backend/.env not readable"
 
+    def test_invalid_utf8_direct_neutral(self, capsys, tmp_path: Path) -> None:
+        # invalid UTF-8 anywhere in the file → one fixed neutral error, no bytes/path
+        p = tmp_path / "test.env"
+        p.write_bytes(b"DATABASE_URL=postgresql://u:p@localhost:5432/db\n\xff\xfe NOT-UTF8\n")
+        err = _expect_fail(capsys, pf.parse_env_file, str(p))
+        assert err == "backend/.env is not valid UTF-8"
+        assert b"\xff" not in err.encode() and "test.env" not in err
+
+
+def test_invalid_utf8_cli_neutral(tmp_path: Path) -> None:
+    """The CLI must emit the same fixed neutral error for a non-UTF-8 .env."""
+    import subprocess
+    env = tmp_path / ".env"
+    env.write_bytes(b"DATABASE_URL=postgresql://u:p@localhost:5432/db\n\xff\xfe NOT-UTF8\n")
+    res = subprocess.run(
+        [sys.executable, str(_PREFLIGHT_PATH), "--env-file", str(env)],
+        capture_output=True, text=False, stdin=subprocess.DEVNULL,
+    )
+    assert res.returncode == 1
+    err = res.stderr.decode("utf-8", errors="replace").strip()
+    assert err == "backend/.env is not valid UTF-8"
+
+
 
 # ---------------------------------------------------------------------------
 # initial mode — URL/conflict/Compose matrix (run_initial)
@@ -446,16 +469,28 @@ class TestRunInitial:
              "postgres port target must be an integer"),
             ({"services": {"postgres": {"ports": [_port_entry(target="abc")]}, "redis": {}}},
              "postgres port target must be an integer"),
-            ({"services": {"postgres": {"ports": [_port_entry(target="5432:5432")]}, "redis": {}}},
+            ({"services": {"postgres": {"ports": [_port_entry(target="5432")]}, "redis": {}}},
              "postgres port target must be an integer"),
             ({"services": {"postgres": {"ports": [_port_entry(target="5433")]}, "redis": {}}},
-             "postgres port target mismatch"),
-            ({"services": {"postgres": {"ports": [_port_entry(published=5432.0)]}, "redis": {}}},
-             "postgres port published must be an integer"),
+             "postgres port target must be an integer"),
+            ({"services": {"postgres": {"ports": [_port_entry(target=5432.0)]}, "redis": {}}},
+             "postgres port target must be an integer"),
+            ({"services": {"postgres": {"ports": [_port_entry(target="５４３２")]}, "redis": {}}},
+             "postgres port target must be an integer"),
             ({"services": {"postgres": {"ports": [_port_entry(target=[5432])]}, "redis": {}}},
              "postgres port target must be an integer"),
             ({"services": {"postgres": {"ports": [_port_entry(published=5433)]}, "redis": {}}},
              "postgres port published mismatch"),
+            ({"services": {"postgres": {"ports": [_port_entry(published="5433")]}, "redis": {}}},
+             "postgres port published mismatch"),
+            ({"services": {"postgres": {"ports": [_port_entry(published=5432.0)]}, "redis": {}}},
+             "postgres port published must be an integer"),
+            ({"services": {"postgres": {"ports": [_port_entry(published=True)]}, "redis": {}}},
+             "postgres port published must be an integer"),
+            ({"services": {"postgres": {"ports": [_port_entry(published="abc")]}, "redis": {}}},
+             "postgres port published must be an integer"),
+            ({"services": {"postgres": {"ports": [_port_entry(published="５４３２")]}, "redis": {}}},
+             "postgres port published must be an integer"),
             ({"services": {"postgres": {"ports": [dict(_port_entry(), name="web")]}, "redis": {}}},
              "postgres port entry has unknown or missing fields"),
             ({"services": {"postgres": {"ports": [_port_entry()], "environment": "NOTADICT"}, "redis": {}}},
@@ -476,7 +511,11 @@ class TestRunInitial:
              "redis host_ip must be 127.0.0.1"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(published=6380)]}}},
              "redis port published mismatch"),
+            ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(published="6380")]}}},
+             "redis port published mismatch"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(target="abc")]}}},
+             "redis port target must be an integer"),
+            ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(target="6379")]}}},
              "redis port target must be an integer"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(), _port_entry_redis()]}}},
              "redis ports must be a list with exactly one entry"),

@@ -27,6 +27,8 @@ from urllib.parse import unquote, urlparse
 
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _DB_SCHEMES = ("postgresql", "postgresql+asyncpg")
+# Compose v2 emits env-substituted `published` ports as a decimal-digit string.
+_PUBLISHED_RE = re.compile(r"^[0-9]+$")
 
 
 # ---------------------------------------------------------------------------
@@ -42,18 +44,25 @@ def _is_loopback(host: str) -> bool:
     return host in ("localhost", "127.0.0.1", "::1")
 
 
-def _port_int(value, svc_name: str, field: str) -> int:
-    """Coerce a port field to int.  Accept a genuine int (bool rejected) or a
-    decimal-digit string — the form Compose emits for env-substituted
-    ``published`` ports.  Reject bool, float, non-numeric strings and any
-    structured type with a fixed neutral error."""
+def _target_int(value, svc_name: str) -> int:
+    """``target`` (container port) must be an exact int — bool, float, string,
+    Unicode digits and structured types are all rejected."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        _fail(f"{svc_name} port target must be an integer")
+    return value
+
+
+def _published_int(value, svc_name: str) -> int:
+    """``published`` (host port) must be an exact int OR an ASCII [0-9]+ string
+    (the form Compose v2 emits for env-substituted published ports).  bool,
+    float, Unicode-digit strings and structured types are rejected."""
     if isinstance(value, bool):
-        _fail(f"{svc_name} port {field} must be an integer")
+        _fail(f"{svc_name} port published must be an integer")
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and value.isdigit():
+    if isinstance(value, str) and _PUBLISHED_RE.match(value):
         return int(value)
-    _fail(f"{svc_name} port {field} must be an integer")
+    _fail(f"{svc_name} port published must be an integer")
 
 
 # ---------------------------------------------------------------------------
@@ -61,36 +70,40 @@ def _port_int(value, svc_name: str, field: str) -> int:
 # ---------------------------------------------------------------------------
 def parse_env_file(path: str) -> dict[str, str]:
     """Parse a .env file into a dict.  Keys must match [A-Za-z_][A-Za-z0-9_]*.
-    Reject export syntax, duplicates, malformed lines and bad quotes."""
+    Reject export syntax, duplicates, malformed lines, bad quotes and any
+    non-UTF-8 content with a single fixed neutral error."""
     seen: dict[str, str] = {}
     try:
         fh = open(path, encoding="utf-8")
     except (FileNotFoundError, OSError):
         _fail("backend/.env not readable")
-    with fh:
-        for lineno, raw in enumerate(fh, 1):
-            s = raw.strip()
-            if not s or s.startswith("#"):
-                continue
-            if s.startswith("export "):
-                _fail(f"malformed .env line {lineno}: export syntax rejected")
-            if "=" not in s:
-                _fail(f"malformed .env line {lineno}: missing =")
-            key, val = s.split("=", 1)
-            key = key.strip()
-            if not _ENV_KEY_RE.match(key):
-                _fail(f"malformed .env line {lineno}: invalid key")
-            if key in seen:
-                _fail(f"duplicate key in .env: {key}")
-            val = val.strip()
-            if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
-                inner = val[1:-1]
-                if val[0] in inner:
-                    _fail(f"malformed .env line {lineno}: mismatched quotes")
-                val = inner
-            elif val.startswith('"') or val.startswith("'"):
-                _fail(f"malformed .env line {lineno}: unclosed quote")
-            seen[key] = val
+    try:
+        with fh:
+            for lineno, raw in enumerate(fh, 1):
+                s = raw.strip()
+                if not s or s.startswith("#"):
+                    continue
+                if s.startswith("export "):
+                    _fail(f"malformed .env line {lineno}: export syntax rejected")
+                if "=" not in s:
+                    _fail(f"malformed .env line {lineno}: missing =")
+                key, val = s.split("=", 1)
+                key = key.strip()
+                if not _ENV_KEY_RE.match(key):
+                    _fail(f"malformed .env line {lineno}: invalid key")
+                if key in seen:
+                    _fail(f"duplicate key in .env: {key}")
+                val = val.strip()
+                if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                    inner = val[1:-1]
+                    if val[0] in inner:
+                        _fail(f"malformed .env line {lineno}: mismatched quotes")
+                    val = inner
+                elif val.startswith('"') or val.startswith("'"):
+                    _fail(f"malformed .env line {lineno}: unclosed quote")
+                seen[key] = val
+    except UnicodeDecodeError:
+        _fail("backend/.env is not valid UTF-8")
     return seen
 
 
@@ -151,9 +164,10 @@ def _validate_port_entry(
     require_env: bool = True,
 ) -> dict | None:
     """Validate exactly one object-form port mapping with the exact allowed
-    field set.  target/published must be genuine integers (bool/string/float
-    rejected).  Returns the service environment dict — required for postgres,
-    optional (absent allowed) for redis."""
+    field set.  ``target`` must be an exact int; ``published`` may be an exact
+    int or an ASCII [0-9]+ string (Compose v2 form).  Returns the service
+    environment dict — required for postgres, optional (absent allowed) for
+    redis."""
     svc = services.get(svc_name)
     if not isinstance(svc, dict):
         _fail(f"{svc_name} service is not a dict")
@@ -171,9 +185,9 @@ def _validate_port_entry(
         _fail(f"{svc_name} port protocol must be tcp")
     if entry.get("host_ip") != "127.0.0.1":
         _fail(f"{svc_name} host_ip must be 127.0.0.1")
-    if _port_int(entry.get("target"), svc_name, "target") != target_int:
+    if _target_int(entry.get("target"), svc_name) != target_int:
         _fail(f"{svc_name} port target mismatch")
-    if _port_int(entry.get("published"), svc_name, "published") != published_int:
+    if _published_int(entry.get("published"), svc_name) != published_int:
         _fail(f"{svc_name} port published mismatch")
     env = svc.get("environment")
     if env is None and not require_env:

@@ -50,11 +50,11 @@ if ! "${COMPOSE[@]}" config --quiet 2>/dev/null; then
     echo "docker-compose configuration is invalid." >&2; exit 1
 fi
 
-# Preflight via extracted module — pipe Compose JSON through setup_preflight.py
+# Preflight via extracted module — pipe Compose JSON through setup_preflight.py.
+# DATABASE_URL/REDIS_URL are read from the environment inside the helper
+# (never passed on argv, so no secret lands in process listings or logs).
 "${COMPOSE[@]}" config --format json | python "$SCRIPT_DIR/setup_preflight.py" \
-    --env-file "$REPO_ROOT/backend/.env" \
-    --process-db "${DATABASE_URL:-}" \
-    --process-redis "${REDIS_URL:-}" || {
+    --env-file "$REPO_ROOT/backend/.env" || {
     echo "Preflight failed." >&2; exit 1
 }
 echo "Preflight OK."

@@ -420,6 +420,9 @@ def check_setup_sh_wiring(text: str) -> None:
     # R5-R6: rendered Compose JSON must be piped into setup_preflight.py
     if not any("config --format json" in r and "setup_preflight.py" in r for r in non_comment):
         raise ValueError("setup.sh: must pipe 'compose config --format json' into setup_preflight.py")
+    # R7: secrets must never be passed on argv (read from os.environ inside the helper)
+    if any("--process-db" in r or "--process-redis" in r for r in non_comment):
+        raise ValueError("setup.sh: must not pass DATABASE_URL/REDIS_URL on argv (use os.environ)")
     # R5-R6: post-install settings/.env verification before Alembic
     if not any("--post-install" in r for r in non_comment):
         raise ValueError("setup.sh: missing --post-install preflight verification")
@@ -830,6 +833,8 @@ class TestH7R5R2ExecutableHarness:
     behaviour, and idempotency — not just source-text shape."""
 
     _FAKE_NAMES = ("docker", "pip", "alembic", "python", "pnpm")
+    # cross-host coreutils the setup.sh run depends on (verified before running)
+    _REQUIRED_COREUTILS = ("chmod", "grep", "tr", "cat", "mktemp", "seq")
 
     @staticmethod
     def _msys_path(windows_path: str) -> str:
@@ -837,6 +842,44 @@ class TestH7R5R2ExecutableHarness:
         if len(p) >= 2 and p[1] == ":":
             return "/" + p[0].lower() + "/" + p[3:]
         return p
+
+    @classmethod
+    def _git_bin_dirs(cls, bash_bin: str) -> list[str]:
+        """Explicitly provide the selected Git Bash /usr/bin and /mingw64/bin
+        (MSYS-style) so cross-host runs resolve coreutils even when the
+        inherited PATH lacks them. POSIX hosts rely on the native PATH."""
+        import sys
+        from pathlib import Path as _Path
+        if sys.platform != "win32":
+            return []
+        usr_bin = _Path(bash_bin).resolve().parent  # <GIT>/usr/bin
+        git_root = usr_bin.parent.parent  # <GIT>
+        dirs = [cls._msys_path(str(usr_bin))]
+        mingw_bin = git_root / "mingw64" / "bin"
+        if mingw_bin.is_dir():
+            dirs.append(cls._msys_path(str(mingw_bin)))
+        return dirs
+
+    @classmethod
+    def _verify_coreutils(cls, bash_bin: str, path_dirs: list[str]) -> None:
+        """Fail closed if any required coreutil is unresolvable on the run PATH."""
+        import os
+        import subprocess
+        env = os.environ.copy()
+        env["PATH"] = os.pathsep.join(path_dirs) + os.pathsep + env.get("PATH", "")
+        script = (
+            "for c in " + " ".join(cls._REQUIRED_COREUTILS)
+            + "; do command -v \"$c\" >/dev/null 2>&1 || echo \"missing:$c\"; done"
+        )
+        res = subprocess.run(
+            [bash_bin, "-c", script], capture_output=True, text=True, env=env,
+        )
+        missing = [
+            ln[len("missing:"):] for ln in res.stdout.splitlines()
+            if ln.startswith("missing:")
+        ]
+        if missing:
+            raise RuntimeError("required coreutils not found: " + ", ".join(missing))
 
     @classmethod
     def _build_harness(cls, tmp_path: Path, **fake_exits: str) -> dict:
@@ -946,8 +989,13 @@ exit {_ev("pnpm")}
             (bin_dir / name).write_text(body)
         # set MSYS2 executable bits via bash chmod (MSYS-converted paths, checked)
         bash_bin = _select_bash()
+        git_dirs = cls._git_bin_dirs(bash_bin)
+        path_dirs = [cls._msys_path(str(bin_dir))] + git_dirs
+        cls._verify_coreutils(bash_bin, path_dirs)
         quoted = " ".join(f'"{cls._msys_path(str(bin_dir / n))}"' for n in cls._FAKE_NAMES)
-        subprocess.run([bash_bin, "-c", f"chmod +x {quoted}"], check=True)
+        chmod_env = os.environ.copy()
+        chmod_env["PATH"] = os.pathsep.join(path_dirs) + os.pathsep + chmod_env.get("PATH", "")
+        subprocess.run([bash_bin, "-c", f"chmod +x {quoted}"], check=True, env=chmod_env)
         real_python = shutil.which("python") or shutil.which("python3") or ""
         return {"repo": repo, "bin": bin_dir, "log": log_file, "real_python": real_python}
 
@@ -961,13 +1009,18 @@ exit {_ev("pnpm")}
         # Clear host DB/Redis URLs so preflight sees no process-env conflict
         env.pop("DATABASE_URL", None)
         env.pop("REDIS_URL", None)
-        env["PATH"] = cls._msys_path(str(harness["bin"])) + os.pathsep + env.get("PATH", "")
+        bash_bin = _select_bash()
+        # cross-host: explicitly provide Git Bash /usr/bin + /mingw64/bin and
+        # verify required coreutils before running; fail closed if unavailable.
+        git_dirs = cls._git_bin_dirs(bash_bin)
+        path_dirs = [cls._msys_path(str(harness["bin"]))] + git_dirs
+        cls._verify_coreutils(bash_bin, path_dirs)
+        env["PATH"] = os.pathsep.join(path_dirs) + os.pathsep + env.get("PATH", "")
         env["HOME"] = os.environ.get("HOME", "/tmp")
         env["REAL_PYTHON"] = harness.get("real_python", "")
         env["SETUP_TIMEOUT_ATTEMPTS"] = env_overrides.pop("SETUP_TIMEOUT_ATTEMPTS", "3")
         env["SETUP_TIMEOUT_INTERVAL"] = env_overrides.pop("SETUP_TIMEOUT_INTERVAL", "0")
         env.update(env_overrides)
-        bash_bin = _select_bash()
         script = str(harness["repo"] / "backend" / "scripts" / "setup.sh").replace("\\", "/")
         result = subprocess.run(
             [bash_bin, script], capture_output=True, text=False, env=env, timeout=60
@@ -1166,6 +1219,46 @@ exit {_ev("pnpm")}
         assert "alembic" not in log
         assert "bootstrap_tenant_schema" not in log
         assert "pnpm install" not in log
+
+    # ---- cross-host + secret-argv (R7) -----------------------------------
+
+    def test_cross_host_coreutils_verified_when_available(self, tmp_path: Path) -> None:
+        """On this host the required coreutils resolve and the run succeeds
+        (Git Bash /usr/bin + /mingw64/bin are explicitly provided)."""
+        h = self._build_harness(tmp_path)
+        r = self._run(h)
+        assert r.returncode == 0, r.stderr
+
+    def test_cross_host_fails_closed_when_required_coreutil_missing(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """If a required coreutil is unresolvable the harness fails closed
+        (RuntimeError) instead of a cryptic partial run — this is the
+        cross-host failure mode behind the CTO 187/174/13 reproduction,
+        closed by the explicit bin-dir provision + verification."""
+        h = self._build_harness(tmp_path)
+        monkeypatch.setattr(
+            TestH7R5R2ExecutableHarness, "_REQUIRED_COREUTILS",
+            ("chmod", "grep", "__definitely_not_a_real_coreutil__"),
+        )
+        with pytest.raises(RuntimeError, match="required coreutils not found"):
+            self._run(h)
+
+    def test_no_secret_in_argv_or_log(self, tmp_path: Path) -> None:
+        """The .env password sentinel must never appear in the captured argv
+        log (proving setup.sh passes no secret on argv) nor in output."""
+        h = self._build_harness(tmp_path)
+        r = self._run(h)
+        assert r.returncode == 0, r.stderr
+        log = h["log"].read_text()
+        preflight_lines = [l for l in log.splitlines() if "setup_preflight.py" in l]
+        assert preflight_lines, "preflight invocation not logged"
+        for line in preflight_lines:
+            assert "pgpass" not in line
+            assert "--process-db" not in line
+            assert "--process-redis" not in line
+        # no argv line at all carries the password sentinel
+        assert "pgpass" not in log
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

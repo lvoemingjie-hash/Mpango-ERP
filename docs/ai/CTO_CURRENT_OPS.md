@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R6 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R7 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -344,28 +344,42 @@ Hypothesis node remains unresolved. Verdict:
 CTO reproduction at `abbbe32f` (Windows): **11 collected / 4 passed / 7 failed** —
 preserved as the superseded host-specific record.
 
-**H7-R5-R6 (evidence checkpoint, current; NO PASS):** preflight extracted from
+**H7-R5-R6 (evidence checkpoint, superseded by H7-R7):** preflight extracted from
 setup.sh into a stdlib-only `backend/scripts/setup_preflight.py` (initial mode
 reads rendered Compose JSON from stdin + backend/.env by path; post-install
 mode imports core.config only after pip; outputs only `OK`; never emits URLs,
-passwords, or Compose JSON; no temporary secret-bearing files). setup.sh now
+passwords, or Compose JSON; no temporary secret-bearing files). setup.sh
 pipes `compose config --format json | python scripts/setup_preflight.py ...`
-under `pipefail` and runs `--post-install` before Alembic/bootstrap. Compose
-truth enforced exactly: postgres environment must be a dict with exact
-credential values; redis environment may be absent or a dict; exactly one
-object-form port mapping per service with host_ip=127.0.0.1, protocol=tcp,
-mode=ingress, exact target/published; string ports, duplicates, extra entries,
-missing fields, booleans, floats and unknown structures rejected. CRLF
+under `pipefail` and runs `--post-install` before Alembic/bootstrap. CRLF
 fail-closed self-check via python raw-byte read (MSYS text-mode reads make
-shell CR detection unreliable). Evidence: direct preflight matrix 76/76
-natural+reverse (fixed neutral errors, no secret substrings); executable
-harness 17/17 natural+reverse zero skip/xfail (System32/WSL fail-closed,
-CRLF-mutated copy fails before any fake command); complete H7 suite 187/187
-natural+reverse; real `docker compose config --format json` piped through the
-committed helper = OK (negative conflict = exit 1, fixed message); bash -n,
+shell CR detection unreliable). H7 suite 187/187 natural+reverse; harness
+17/17; direct preflight 76/76; immutable files byte-identical. Hypothesis
+node remains unresolved and environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R7 (evidence checkpoint, current; NO PASS):** secret-argv removed —
+`--process-db`/`--process-redis` deleted; setup_preflight.py reads
+DATABASE_URL/REDIS_URL from `os.environ` and a unique sentinel is proven
+absent from argv, the captured command log, and all output. Hardening: env
+keys strictly `[A-Za-z_][A-Za-z0-9_]*`; exact DB scheme parse (no global
+replacement); blank DB passwords rejected; integer-valued port fields only
+(int or decimal-digit string as real Compose emits for env-substituted
+`published`; bool/float/non-numeric/structured rejected); Compose root must
+be a dict; malformed URL/file/JSON → fixed neutral errors; Redis credentials
+rejected (no-auth Compose Redis). Cross-host harness repair: the selected
+Git Bash `/usr/bin` + `/mingw64/bin` are explicitly provided, required
+coreutils are verified before running, and the harness fails closed if any
+is unresolvable — closing the CTO cross-host reproduction **187 collected /
+174 passed / 13 failed** (authentic RED:
+`test_cross_host_fails_closed_when_required_coreutil_missing`). Evidence:
+direct preflight matrix 104/104 natural+reverse; executable harness 20/20
+natural+reverse zero skip/xfail; complete H7 suite 218/218 natural+reverse;
+real `docker compose config --format json` through the committed helper = OK
+(blank-password and Redis-creds negatives = exit 1, fixed messages); bash -n,
 py_compile, diff-check, pre-commit incl. detect-secrets, UTF-8 all clean;
-immutable files byte-identical (env.py=`1c71de78`, bootstrap=`ca7d91f`).
-Hypothesis node remains unresolved and environment-gated. Verdict:
+GitNexus detect_changes vs `4746e180` = exactly 7 in-scope files; immutable
+files byte-identical (env.py=`1c71de78`, bootstrap=`ca7d91f`). Hypothesis
+node remains unresolved and environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
 ## Active Phase

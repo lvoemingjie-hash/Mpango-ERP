@@ -1,16 +1,65 @@
-# DC-12R1-H7-R5-R6 — Testable Native Setup Preflight Final Closure (NO PASS)
+# DC-12R1-H7-R7 — Hardened, Secret-Safe, Cross-Host Preflight Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. R5-R5 is superseded.
-> R5-R5 CTO reproduction at `abbbe32f` (Windows) = **11 collected / 4 passed /
-> 7 failed** — preserved as the superseded host-specific record (the earlier
-> c8060644 = 2/7 record and the 9/9 claim are likewise superseded).
+> an evidence checkpoint, NOT a merge-review PASS. R5-R6 is superseded.
+> CTO cross-host reproduction = **187 collected / 174 passed / 13 failed**
+> (Git Bash `/usr/bin` + `/mingw64/bin` not explicitly provided → coreutils
+> unresolved); closed by the R7 cross-host repair. The earlier R5-R5
+> `abbbe32f` 11/4/7 record is likewise superseded.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `abbbe32f` (H7-R5-R5)
+> Base candidate: `4746e180` (H7-R5-R6)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R5-R6 evidence (current checkpoint)
+## R7 evidence (current checkpoint)
+
+- **Secret hygiene:** `--process-db` / `--process-redis` removed; no
+  secret-bearing argv. setup_preflight.py reads DATABASE_URL / REDIS_URL from
+  `os.environ` (process vs file conflict checked in memory). A unique sentinel
+  is proven absent from argv, the captured command log, and all output
+  (direct `TestSecretHygiene` + harness `test_no_secret_in_argv_or_log`).
+- **Hardened setup_preflight.py:** env keys strictly `[A-Za-z_][A-Za-z0-9_]*`;
+  exact DB scheme parse (postgresql / postgresql+asyncpg only — no global
+  string replacement); blank DB passwords rejected; integer-valued port
+  fields only (int or decimal-digit string as real Compose emits for
+  env-substituted `published`; bool / float / non-numeric string / structured
+  types rejected); Compose root must be a dict; malformed URL / file / JSON →
+  fixed neutral errors; Redis credentials rejected (no-auth Compose Redis).
+- **Cross-host harness repair:** the selected Git Bash `/usr/bin` and
+  `/mingw64/bin` are explicitly provided on the run PATH; required coreutils
+  (`chmod grep tr cat mktemp seq`) are verified before running and the harness
+  fails closed (RuntimeError) if any is unresolvable. `_select_bash` rejects
+  System32/WSL/WindowsApps. This closes the CTO 187/174/13 cross-host
+  failure mode (authentic RED: `test_cross_host_fails_closed_when_required_coreutil_missing`).
+- **setup.sh:** pipes `compose config --format json | python
+  scripts/setup_preflight.py --env-file backend/.env` under
+  `set -Eeuo pipefail` (no secret on argv); `--post-install` after pip and
+  before Alembic / bootstrap; CRLF fail-closed self-check (python raw-byte).
+- **Evidence:** direct preflight matrix **104 passed** natural AND reverse
+  (fixed neutral errors; file-wide no-secret invariant); executable harness
+  **20 passed** natural AND reverse, zero skip/xfail (System32/WSL
+  fail-closed, CRLF runtime, cross-host coreutils verify + fail-closed,
+  post-install order/mismatch, sentinel-argv proof); complete H7 suite
+  **218 passed** natural AND reverse (parity 114 + preflight 104); real
+  `docker compose config --format json` (v2.40.3) through the committed
+  helper = `OK`; negatives (blank DB password, Redis credentials) = exit 1
+  with fixed neutral messages.
+- **Deterministic gates:** `bash -n` OK; py_compile OK; `git diff --check`
+  clean; scoped pre-commit incl. detect-secrets Passed; UTF-8 strict OK;
+  GitNexus `detect_changes` vs `4746e180` = exactly the 7 in-scope files;
+  immutable files byte-identical (env.py=`1c71de78`, bootstrap=`ca7d91f`);
+  manifests, migrations, product code, lockfiles and protected refs untouched.
+- **Aggregate scope:** exactly 7 files (setup.sh, setup_preflight.py, both
+  H7 test files, PROJECT.md, CTO_CURRENT_OPS.md, this ledger).
+- **Hypothesis red node** (classified, UNRESOLVED, environment-gated):
+  unchanged from the R5-R5 record; NOT suppressed or edited.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No
+PASS is claimed; this is an evidence checkpoint only.
+
+---
+
+## R5-R6 evidence (superseded by R7)
 
 - **Extracted preflight module** `backend/scripts/setup_preflight.py`
   (stdlib-only): initial mode reads rendered Compose JSON from stdin and

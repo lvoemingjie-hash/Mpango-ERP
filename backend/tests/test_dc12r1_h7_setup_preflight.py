@@ -1,16 +1,18 @@
-"""Direct unit tests for backend/scripts/setup_preflight.py (H7-R5-R6).
+"""Direct unit tests for backend/scripts/setup_preflight.py (H7-R7).
 
 The module is imported and exercised directly — never through fake parser
 outputs or the executable shell harness.  Every failure path must emit a
-FIXED neutral error, and no error may ever contain the offending URL,
-password, or a Compose JSON fragment.
+FIXED neutral error, and no error/log/output may ever contain a URL,
+password, or Compose JSON fragment.  R7 hardening covered here:
 
-Compose truth (R5-R6): PostgreSQL environment must be a dict carrying the
-exact required credential values; Redis environment may be absent or a
-dict; both services require exactly one object-form port mapping with
-host_ip=127.0.0.1, protocol=tcp, mode=ingress and exact target/published
-ports.  String ports, duplicates, extra entries, missing fields, booleans,
-floats and unknown structures are all rejected.
+  * env keys strictly [A-Za-z_][A-Za-z0-9_]*
+  * exact DB scheme parse (no global string replacement)
+  * blank DB passwords rejected
+  * integer port fields only (bool / string / float rejected)
+  * Compose root must be a dict
+  * malformed URL / file / JSON → fixed neutral errors
+  * Redis credentials rejected (no-auth Compose Redis)
+  * process URLs read from os.environ (never argv)
 """
 from __future__ import annotations
 
@@ -36,6 +38,9 @@ _spec.loader.exec_module(pf)
 # ---------------------------------------------------------------------------
 GOOD_DB_URL = "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
 GOOD_REDIS_URL = "redis://localhost:6379/0"
+# unique sentinel used to prove secrets never reach argv / logs / output
+SENTINEL_URL = "postgresql://sentinel:h7r7sentinel_pw@localhost:5432/sentinel"  # pragma: allowlist secret
+SENTINEL_TOKEN = "h7r7sentinel_pw"
 
 GOOD_ENV = (
     "DATABASE_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
@@ -77,13 +82,10 @@ REDIS_SVC = {"ports": [_port_entry_redis()]}
 
 
 def _compose(pg=None, redis=None) -> str:
-    """Build rendered-Compose JSON.  Default redis has NO environment key
-    (absent is allowed per R5-R6)."""
+    """Build rendered-Compose JSON.  Default redis has NO environment key."""
     services = {
         "postgres": pg if pg is not None else dict(PG_SVC),
-        "redis": redis
-        if redis is not None
-        else {"ports": [_port_entry_redis()]},
+        "redis": redis if redis is not None else {"ports": [_port_entry_redis()]},
     }
     return json.dumps({"services": services})
 
@@ -102,9 +104,21 @@ def _expect_fail(capsys, func, *args, stdin_text: str = "") -> str:
     captured = capsys.readouterr()
     assert captured.out == ""
     err = captured.err.rstrip("\n")
-    for bad in ("pgpass", "postgresql://", "redis://", '"host_ip"', '"published"'):
+    for bad in (
+        "pgpass", "postgresql://", "redis://", '"host_ip"', '"published"',
+        SENTINEL_TOKEN,
+    ):
         assert bad not in err
     return err
+
+
+@pytest.fixture(autouse=True)
+def _clean_process_urls(monkeypatch):
+    """Preflight reads DATABASE_URL/REDIS_URL from os.environ. Clear the host's
+    real values so the default (non-conflict) cases are deterministic; tests
+    that exercise the conflict path set them explicitly."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -113,23 +127,23 @@ def _expect_fail(capsys, func, *args, stdin_text: str = "") -> str:
 class TestParseDbUrl:
     def test_parses_plain(self) -> None:
         assert pf.parse_db_url("postgresql://u:p@localhost:5432/db") == (
-            "u", "p", "localhost", "5432", "db",
+            "u", "p", "localhost", 5432, "db",
         )
 
-    def test_parses_asyncpg_scheme(self) -> None:
+    def test_parses_asyncpg_scheme_exact(self) -> None:
+        # exact scheme match — no global string replacement
         assert pf.parse_db_url("postgresql+asyncpg://u:p@127.0.0.1:5432/db") == (
-            "u", "p", "127.0.0.1", "5432", "db",
+            "u", "p", "127.0.0.1", 5432, "db",
         )
 
     def test_url_decodes_credentials(self) -> None:
-        # URL-decode BEFORE in-memory comparison
         assert pf.parse_db_url("postgresql://pg%40user:pa%40ss@localhost:5432/pgdb") == (  # pragma: allowlist secret
-            "pg@user", "pa@ss", "localhost", "5432", "pgdb",
+            "pg@user", "pa@ss", "localhost", 5432, "pgdb",
         )
 
     def test_default_port_is_5432(self) -> None:
         assert pf.parse_db_url("postgresql://u:p@localhost/db") == (
-            "u", "p", "localhost", "5432", "db",
+            "u", "p", "localhost", 5432, "db",
         )
 
     @pytest.mark.parametrize(
@@ -138,9 +152,14 @@ class TestParseDbUrl:
             ("mysql://u:p@localhost:5432/db", "DATABASE_URL scheme is not postgresql"),
             ("postgres://u:p@localhost:5432/db", "DATABASE_URL scheme is not postgresql"),
             ("postgresql+psycopg2://u:p@localhost:5432/db", "DATABASE_URL scheme is not postgresql"),
+            # global-replace bug regression: a near-scheme must NOT be normalised
+            ("postgresql+asyncpgx://u:p@localhost:5432/db", "DATABASE_URL scheme is not postgresql"),
             ("postgresql://:p@localhost:5432/db", "DATABASE_URL must contain a username and database"),
             ("postgresql://u:p@localhost:5432", "DATABASE_URL must contain a username and database"),
+            ("postgresql://u:@localhost:5432/db", "DATABASE_URL must contain a password"),
+            ("postgresql://u@localhost:5432/db", "DATABASE_URL must contain a password"),
             ("postgresql://u:p@localhost:abc/db", "DATABASE_URL has an invalid port"),
+            ("postgresql://u:p@[INVALID", "DATABASE_URL is malformed"),
         ],
     )
     def test_failures_exact_and_neutral(self, capsys, url: str, expected: str) -> None:
@@ -151,10 +170,10 @@ class TestParseDbUrl:
 
 class TestParseRedisUrl:
     def test_parses(self) -> None:
-        assert pf.parse_redis_url("redis://localhost:6379/0") == ("localhost", "6379")
+        assert pf.parse_redis_url("redis://localhost:6379/0") == ("localhost", 6379)
 
     def test_default_port_is_6379(self) -> None:
-        assert pf.parse_redis_url("redis://127.0.0.1/0") == ("127.0.0.1", "6379")
+        assert pf.parse_redis_url("redis://127.0.0.1/0") == ("127.0.0.1", 6379)
 
     @pytest.mark.parametrize(
         "url,expected",
@@ -162,6 +181,10 @@ class TestParseRedisUrl:
             ("http://localhost:6379/0", "REDIS_URL scheme is not redis"),
             ("rediss://localhost:6379/0", "REDIS_URL scheme is not redis"),
             ("redis://localhost:abc/0", "REDIS_URL has an invalid port"),
+            ("redis://:pass@localhost:6379/0", "REDIS_URL must not carry credentials (Compose Redis is no-auth)"),
+            ("redis://user@localhost:6379/0", "REDIS_URL must not carry credentials (Compose Redis is no-auth)"),
+            ("redis://user:pass@localhost:6379/0", "REDIS_URL must not carry credentials (Compose Redis is no-auth)"),  # pragma: allowlist secret
+            ("redis://[INVALID", "REDIS_URL is malformed"),
         ],
     )
     def test_failures_exact_and_neutral(self, capsys, url: str, expected: str) -> None:
@@ -186,11 +209,13 @@ class TestParseEnvFile:
             "# comment\n"
             'DATABASE_URL="postgresql://u:p@localhost:5432/db"\n'
             "REDIS_URL='redis://localhost:6379/0'\n"
-            "\n",
+            "_LEADING_UNDERSCORE=ok\nA1=ok\n\n",
         )
         d = pf.parse_env_file(p)
         assert d["DATABASE_URL"] == "postgresql://u:p@localhost:5432/db"
         assert d["REDIS_URL"] == "redis://localhost:6379/0"
+        assert d["_LEADING_UNDERSCORE"] == "ok"
+        assert d["A1"] == "ok"
 
     @pytest.mark.parametrize(
         "content,expected",
@@ -202,6 +227,9 @@ class TestParseEnvFile:
             ("DATABASE_URL\n", "malformed .env line 1: missing ="),
             ("DATABASE URL=postgresql://u:p@localhost:5432/db\n", "malformed .env line 1: invalid key"),
             ("DATABASE.URL=postgresql://u:p@localhost:5432/db\n", "malformed .env line 1: invalid key"),
+            ("1KEY=postgresql://u:p@localhost:5432/db\n", "malformed .env line 1: invalid key"),
+            ("KEY-NAME=postgresql://u:p@localhost:5432/db\n", "malformed .env line 1: invalid key"),
+            ("KEY NAME=postgresql://u:p@localhost:5432/db\n", "malformed .env line 1: invalid key"),
             ("=x\n", "malformed .env line 1: invalid key"),
             ("DATABASE_URL='unclosed\n", "malformed .env line 1: unclosed quote"),
             ('DATABASE_URL="a\'\n', "malformed .env line 1: unclosed quote"),
@@ -212,6 +240,10 @@ class TestParseEnvFile:
         p = self._write(tmp_path, content)
         err = _expect_fail(capsys, pf.parse_env_file, p)
         assert err == expected
+
+    def test_missing_file_neutral(self, capsys, tmp_path: Path) -> None:
+        err = _expect_fail(capsys, pf.parse_env_file, str(tmp_path / "nope.env"))
+        assert err == "backend/.env not readable"
 
 
 # ---------------------------------------------------------------------------
@@ -225,9 +257,9 @@ class TestRunInitial:
         return str(p)
 
     @staticmethod
-    def _ok(capsys, func, *args) -> None:
+    def _ok(capsys, func, *args, stdin_text: str = _compose()) -> None:
         old_stdin = sys.stdin
-        sys.stdin = io.StringIO(_compose())
+        sys.stdin = io.StringIO(stdin_text)
         try:
             func(*args)
         finally:
@@ -237,10 +269,15 @@ class TestRunInitial:
         assert captured.err == ""
 
     def test_ok_prints_only_ok(self, capsys, tmp_path: Path) -> None:
-        self._ok(capsys, pf.run_initial, self._env(tmp_path), "", "")
+        self._ok(capsys, pf.run_initial, self._env(tmp_path))
 
-    def test_ok_with_matching_process_urls(self, capsys, tmp_path: Path) -> None:
-        self._ok(capsys, pf.run_initial, self._env(tmp_path), GOOD_DB_URL, GOOD_REDIS_URL)
+    def test_ok_with_matching_process_urls_from_environ(
+        self, capsys, tmp_path: Path, monkeypatch
+    ) -> None:
+        # process URLs come from os.environ (never argv)
+        monkeypatch.setenv("DATABASE_URL", GOOD_DB_URL)
+        monkeypatch.setenv("REDIS_URL", GOOD_REDIS_URL)
+        self._ok(capsys, pf.run_initial, self._env(tmp_path))
 
     def test_ok_loopback_127_0_0_1(self, capsys, tmp_path: Path) -> None:
         content = (
@@ -248,7 +285,15 @@ class TestRunInitial:
             "REDIS_URL=redis://127.0.0.1:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
         )
-        self._ok(capsys, pf.run_initial, self._env(tmp_path, content), "", "")
+        self._ok(capsys, pf.run_initial, self._env(tmp_path, content))
+
+    def test_ok_asyncpg_scheme(self, capsys, tmp_path: Path) -> None:
+        content = (
+            "DATABASE_URL=postgresql+asyncpg://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL=redis://localhost:6379/0\n"
+            "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+        )
+        self._ok(capsys, pf.run_initial, self._env(tmp_path, content))
 
     def test_ok_url_encoded_credentials_match_compose(self, capsys, tmp_path: Path) -> None:
         content = (
@@ -259,32 +304,27 @@ class TestRunInitial:
             "environment": {"POSTGRES_USER": "pg@user", "POSTGRES_PASSWORD": "pa@ss", "POSTGRES_DB": "pgdb"},  # pragma: allowlist secret
             "ports": [_port_entry()],
         }
-        old_stdin = sys.stdin
-        sys.stdin = io.StringIO(_compose(pg=pg))
-        try:
-            pf.run_initial(self._env(tmp_path, content), "", "")
-        finally:
-            sys.stdin = old_stdin
-        captured = capsys.readouterr()
-        assert captured.out == "OK\n" and captured.err == ""
+        self._ok(capsys, pf.run_initial, self._env(tmp_path, content), stdin_text=_compose(pg=pg))
+
+    def test_ok_real_rendered_shape_published_as_digit_string(
+        self, capsys, tmp_path: Path
+    ) -> None:
+        # real `docker compose config --format json` emits `published` as a
+        # decimal-digit string (env-var substitution) and `target` as an int;
+        # integer-valued fields must be accepted.
+        pg = {"environment": dict(PG_ENV_GOOD), "ports": [
+            {"host_ip": "127.0.0.1", "target": 5432, "published": "5432", "protocol": "tcp", "mode": "ingress"}]}
+        redis = {"ports": [
+            {"host_ip": "127.0.0.1", "target": 6379, "published": "6379", "protocol": "tcp", "mode": "ingress"}]}
+        self._ok(capsys, pf.run_initial, self._env(tmp_path), stdin_text=_compose(pg=pg, redis=redis))
 
     def test_redis_environment_absent_is_not_a_failure(self, capsys, tmp_path: Path) -> None:
-        """Mutation removing Redis environment must NOT fail only because
-        the environment is absent (default _compose has no redis env)."""
-        self._ok(capsys, pf.run_initial, self._env(tmp_path), "", "")
+        self._ok(capsys, pf.run_initial, self._env(tmp_path))
 
     def test_redis_environment_dict_shapes_pass(self, capsys, tmp_path: Path) -> None:
-        # empty dict and populated dict are the real rendered shapes
         for redis_env in ({}, {"REDIS_PASSWORD": "redispass"}):  # pragma: allowlist secret
             redis = {"environment": redis_env, "ports": [_port_entry_redis()]}
-            old_stdin = sys.stdin
-            sys.stdin = io.StringIO(_compose(redis=redis))
-            try:
-                pf.run_initial(self._env(tmp_path), "", "")
-            finally:
-                sys.stdin = old_stdin
-            captured = capsys.readouterr()
-            assert captured.out == "OK\n" and captured.err == ""
+            self._ok(capsys, pf.run_initial, self._env(tmp_path), stdin_text=_compose(redis=redis))
 
     @pytest.mark.parametrize(
         "url,expected",
@@ -293,6 +333,7 @@ class TestRunInitial:
             ("postgresql+psycopg2://u:p@localhost:5432/db", "DATABASE_URL scheme is not postgresql"),
             ("postgresql://u:p@db.example.com:5432/db", "DATABASE_URL host must be local"),
             ("postgresql://u:p@localhost:5433/db", "postgres port published mismatch"),
+            ("postgresql://u:@localhost:5432/db", "DATABASE_URL must contain a password"),
         ],
     )
     def test_db_url_failures(self, capsys, tmp_path: Path, url: str, expected: str) -> None:
@@ -302,8 +343,7 @@ class TestRunInitial:
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
         )
         err = _expect_fail(
-            capsys, pf.run_initial, self._env(tmp_path, content), "", "",
-            stdin_text=_compose(),
+            capsys, pf.run_initial, self._env(tmp_path, content), stdin_text=_compose(),
         )
         assert err == expected
         assert url not in err
@@ -314,13 +354,13 @@ class TestRunInitial:
             ("redis://redis.example.com:6379/0", "REDIS_URL host must be local"),
             ("redis://localhost:6380/0", "redis port published mismatch"),
             ("rediss://localhost:6379/0", "REDIS_URL scheme is not redis"),
+            ("redis://:pw@localhost:6379/0", "REDIS_URL must not carry credentials (Compose Redis is no-auth)"),
         ],
     )
     def test_redis_url_failures(self, capsys, tmp_path: Path, url: str, expected: str) -> None:
         content = f"DATABASE_URL={GOOD_DB_URL}\nREDIS_URL={url}\nPOSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
         err = _expect_fail(
-            capsys, pf.run_initial, self._env(tmp_path, content), "", "",
-            stdin_text=_compose(),
+            capsys, pf.run_initial, self._env(tmp_path, content), stdin_text=_compose(),
         )
         assert err == expected
         assert url not in err
@@ -336,26 +376,49 @@ class TestRunInitial:
     )
     def test_missing_required_urls(self, capsys, tmp_path: Path, content: str, expected: str) -> None:
         err = _expect_fail(
-            capsys, pf.run_initial, self._env(tmp_path, content), "", "",
-            stdin_text=_compose(),
+            capsys, pf.run_initial, self._env(tmp_path, content), stdin_text=_compose(),
         )
         assert err == expected
 
-    def test_process_db_conflict(self, capsys, tmp_path: Path) -> None:
+    def test_process_db_conflict_from_environ(self, capsys, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("DATABASE_URL", SENTINEL_URL)
         err = _expect_fail(
-            capsys, pf.run_initial, self._env(tmp_path),
-            "postgresql://someone:else@localhost:5432/other", "",  # pragma: allowlist secret
-            stdin_text=_compose(),
+            capsys, pf.run_initial, self._env(tmp_path), stdin_text=_compose(),
         )
         assert err == "DATABASE_URL conflict: process env differs from backend/.env"
+        assert SENTINEL_TOKEN not in err
 
-    def test_process_redis_conflict(self, capsys, tmp_path: Path) -> None:
+    def test_process_redis_conflict_from_environ(self, capsys, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:9999/0")
         err = _expect_fail(
-            capsys, pf.run_initial, self._env(tmp_path),
-            "", "redis://localhost:9999/0",
-            stdin_text=_compose(),
+            capsys, pf.run_initial, self._env(tmp_path), stdin_text=_compose(),
         )
         assert err == "REDIS_URL conflict: process env differs from backend/.env"
+
+    def test_no_conflict_when_process_urls_unset(self, capsys, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        self._ok(capsys, pf.run_initial, self._env(tmp_path))
+
+    def test_malformed_compose_json_neutral(self, capsys, tmp_path: Path) -> None:
+        err = _expect_fail(
+            capsys, pf.run_initial, self._env(tmp_path), stdin_text="not-json{",
+        )
+        assert err == "Could not parse Compose JSON from stdin"
+
+    @pytest.mark.parametrize(
+        "root_json,expected",
+        [
+            ("[]", "Compose root is not a dict"),
+            ('"a-string"', "Compose root is not a dict"),
+            ("42", "Compose root is not a dict"),
+        ],
+    )
+    def test_compose_root_not_dict(self, capsys, tmp_path: Path, root_json: str, expected: str) -> None:
+        err = _expect_fail(
+            capsys, pf.run_initial, self._env(tmp_path), stdin_text=root_json,
+        )
+        assert err == expected
 
     @pytest.mark.parametrize(
         "services,expected",
@@ -380,11 +443,19 @@ class TestRunInitial:
             ({"services": {"postgres": {"ports": [_port_entry(target=5433)]}, "redis": {}}},
              "postgres port target mismatch"),
             ({"services": {"postgres": {"ports": [_port_entry(target=True)]}, "redis": {}}},
+             "postgres port target must be an integer"),
+            ({"services": {"postgres": {"ports": [_port_entry(target="abc")]}, "redis": {}}},
+             "postgres port target must be an integer"),
+            ({"services": {"postgres": {"ports": [_port_entry(target="5432:5432")]}, "redis": {}}},
+             "postgres port target must be an integer"),
+            ({"services": {"postgres": {"ports": [_port_entry(target="5433")]}, "redis": {}}},
              "postgres port target mismatch"),
             ({"services": {"postgres": {"ports": [_port_entry(published=5432.0)]}, "redis": {}}},
-             "postgres port published mismatch"),
+             "postgres port published must be an integer"),
             ({"services": {"postgres": {"ports": [_port_entry(target=[5432])]}, "redis": {}}},
-             "postgres port target mismatch"),
+             "postgres port target must be an integer"),
+            ({"services": {"postgres": {"ports": [_port_entry(published=5433)]}, "redis": {}}},
+             "postgres port published mismatch"),
             ({"services": {"postgres": {"ports": [dict(_port_entry(), name="web")]}, "redis": {}}},
              "postgres port entry has unknown or missing fields"),
             ({"services": {"postgres": {"ports": [_port_entry()], "environment": "NOTADICT"}, "redis": {}}},
@@ -405,6 +476,8 @@ class TestRunInitial:
              "redis host_ip must be 127.0.0.1"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(published=6380)]}}},
              "redis port published mismatch"),
+            ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(target="abc")]}}},
+             "redis port target must be an integer"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(), _port_entry_redis()]}}},
              "redis ports must be a list with exactly one entry"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis()], "environment": "NOTADICT"}}},
@@ -417,10 +490,46 @@ class TestRunInitial:
         self, capsys, tmp_path: Path, services: dict, expected: str
     ) -> None:
         err = _expect_fail(
-            capsys, pf.run_initial, self._env(tmp_path), "", "",
-            stdin_text=json.dumps(services),
+            capsys, pf.run_initial, self._env(tmp_path), stdin_text=json.dumps(services),
         )
         assert err == expected
+
+
+# ---------------------------------------------------------------------------
+# secret hygiene — argv never carries secrets (process URLs via os.environ)
+# ---------------------------------------------------------------------------
+class TestSecretHygiene:
+    """A unique sentinel proves secrets reach neither argv nor logs nor output.
+    The executable-harness half of this proof lives in the parity test file
+    (the fake-python log captures argv); here we prove the module reads only
+    from os.environ and never echoes the value."""
+
+    def test_conflict_neutral_hides_sentinel(self, capsys, tmp_path: Path, monkeypatch) -> None:
+        p = tmp_path / ".env"
+        p.write_text(GOOD_ENV, encoding="utf-8")
+        monkeypatch.setenv("DATABASE_URL", SENTINEL_URL)
+        err = _expect_fail(capsys, pf.run_initial, str(p), stdin_text=_compose())
+        assert err == "DATABASE_URL conflict: process env differs from backend/.env"
+        assert SENTINEL_TOKEN not in err
+        assert "sentinel" not in err.lower()
+
+    def test_environ_is_sole_source_for_process_url(
+        self, capsys, tmp_path: Path, monkeypatch
+    ) -> None:
+        # with process URLs unset there is no conflict even though a sentinel
+        # value is unrelatedly present in argv/sys — run_initial takes no url arg
+        p = tmp_path / ".env"
+        p.write_text(GOOD_ENV, encoding="utf-8")
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        old_stdin = sys.stdin
+        sys.stdin = io.StringIO(_compose())
+        try:
+            pf.run_initial(str(p))
+        finally:
+            sys.stdin = old_stdin
+        captured = capsys.readouterr()
+        assert captured.out == "OK\n" and captured.err == ""
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +561,7 @@ class TestRunPostInstall:
 
     def test_db_mismatch_exact(self, capsys, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setitem(sys.modules, "core.config", _FakeCoreConfig)
-        _FakeCoreConfig.settings.DATABASE_URL = "postgresql://u:p@localhost:5432/db"
+        _FakeCoreConfig.settings.DATABASE_URL = "postgresql://u:p@localhost:5432/db"  # pragma: allowlist secret
         _FakeCoreConfig.settings.REDIS_URL = GOOD_REDIS_URL
         err = _expect_fail(capsys, pf.run_post_install, self._env(tmp_path))
         assert err == "settings.DATABASE_URL differs from backend/.env after pip install"

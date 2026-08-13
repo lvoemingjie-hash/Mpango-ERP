@@ -1,18 +1,65 @@
-# DC-12R1-H7-R9 — Exact Published-Port and Coreutils Non-Zero Evidence Closure (NO PASS)
+# DC-12R1-H7-R10 — Deterministic Coreutils Non-Zero Probe Evidence (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R8 is
-> `SUPERSEDED_BY_H7_R9`.** CTO cross-host reproduction = **187 collected /
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R9 is
+> `SUPERSEDED_BY_H7_R10`.** CTO cross-host reproduction = **187 collected /
 > 174 passed / 13 failed** (Git Bash `/usr/bin` + /mingw64/bin not explicitly
 > provided → coreutils unresolved); closed by the R7 cross-host repair and
-> re-validated by R8/R9. Earlier R5-R5 `abbbe32f` 11/4/7 record is likewise
+> re-validated by R8/R9/R10. Earlier R5-R5 `abbbe32f` 11/4/7 record is likewise
 > superseded.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `9f06d4a7` (H7-R8)
+> Base candidate: `b495eb4a` (H7-R9)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R9 evidence (current checkpoint)
+## R10 evidence (current checkpoint)
+
+R10 is an extremely narrow correction: only the manifest-parity test and the
+three evidence docs change. `setup_preflight.py`, the direct preflight test,
+setup.sh, dependency manifests, product code, migrations, Compose config,
+lockfiles and the Hypothesis test are all byte-identical to R9.
+
+- **Defect closed — non-zero probe test was host-fragile.** R9's
+  `test_verify_coreutils_fails_when_probe_returns_nonzero` used
+  `shutil.which("false")`. On hosts where the `false` coreutil is not on PATH
+  the leading `assert false_exe` fails, so that one test errors → the suite is
+  **244 passed / 1 failed** (the R9 host-fragility reproduction). On this
+  Windows host `false` resolves (`C:\\Program Files\\Git\\usr\\bin\\false.EXE`)
+  so R9 reads 245/0 here — but the `false` dependency is a latent single point
+  of failure.
+- **R10 fix (deterministic).** The test now uses `sys.executable`: it is
+  guaranteed to exist (`os.path.isfile(sys.executable)` asserted) and launches
+  successfully, but it receives the shell coreutils probe as Python code →
+  `SyntaxError` → non-zero exit. `_verify_coreutils(sys.executable, [])` raises
+  **exactly** `RuntimeError("coreutils probe failed")` (assertion uses
+  `str(exc.value) == "coreutils probe failed"`). No reliance on `false` or any
+  PATH-resolved coreutil.
+- **Three independent coreutils tests retained unchanged:** OSError /
+  non-executable probe (`/definitely/not/a/real/bash`), missing real coreutil
+  (emptied PATH), and successful cross-host resolution. The non-zero test is
+  the fourth.
+- **Evidence (re-run after the change):** direct preflight **129/129** natural;
+  executable harness **22/22** natural; complete H7 suite **245/245** natural
+  AND reverse in both file orderings (preflight-first and parity-first); and
+  **245/245 under a Git-Bash-stripped PATH** — proving R10 is host-independent
+  (R9's `false`-dependency removed). `py_compile`, `bash -n`, `git diff --check`,
+  pre-commit incl. detect-secrets, strict UTF-8/mojibake all clean; GitNexus
+  `detect_changes` vs `b495eb4a` = exactly the in-scope files; all files
+  outside the four-file R10 allowlist byte-identical to R9; immutable blobs
+  unchanged (env.py=`1c71de78`, bootstrap=`ca7d91f`).
+- **Hypothesis red node** (`test_property_token_roundtrip_integrity`
+  `HealthCheck.too_slow`): classified, UNRESOLVED, environment-gated; NOT
+  suppressed or edited.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed; this is an evidence checkpoint only. R10 source corrections are
+complete; this is not merge approval. Kilo bounded source review is next; only
+after Kilo closure may Lubuntu run native setup.sh and the focused zero-red
+gate; H7 cannot merge until both gates pass.
+
+---
+
+## R9 evidence (SUPERSEDED_BY_H7_R10)
 
 R9 closes two bounded R8 source/evidence defects. setup.sh, dependency
 manifests, product code, migrations, Compose configuration, lockfiles,

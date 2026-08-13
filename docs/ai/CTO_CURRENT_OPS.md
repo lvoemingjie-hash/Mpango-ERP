@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R9 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R10 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -376,30 +376,37 @@ non-zero-return guard had no direct test. Hypothesis node unresolved and
 environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
-**H7-R9 (evidence checkpoint, current; NO PASS):** closes the two R8 defects
-without touching setup.sh, manifests, migrations, product code, Compose config,
-lockfiles or the Hypothesis test. (1) Published-port newline false-acceptance —
-`_PUBLISHED_RE.match` → `.fullmatch`; RED proof against `9f06d4a7`
-(`match("5432\n")=True` → `fullmatch("5432\n")=False`); `target` unchanged
-(exact int only). Direct `TestPublishedInt` matrix plus a complete
-`run_initial()` newline case. (2) Coreutils non-zero-return branch — new
-`test_verify_coreutils_fails_when_probe_returns_nonzero` (real `false` exe:
-starts, exits non-zero → `RuntimeError("coreutils probe failed")`); mutation
-evidence: removing the guard turns the new test RED. (3) Documentation truth —
-test module header now states the asymmetric contract accurately. Evidence:
-direct preflight 129/129 natural+reverse; harness 22/22 natural+reverse zero
-skip/xfail; complete H7 suite 245/245 natural+reverse in both file orderings;
-exact direct probes (21) for newline/UTF-8/coreutils/sentinel; bash -n,
-py_compile (no SyntaxWarning), diff-check, pre-commit incl. detect-secrets,
-UTF-8/mojibake all clean; GitNexus detect_changes vs `9f06d4a7` = in-scope
-files only; all files outside the six-file allowlist byte-identical to R8;
-immutable blobs unchanged (env.py=`1c71de78`, bootstrap=`ca7d91f`). CTO
-cross-host reproduction **187/174/13** preserved. Hypothesis node remains
-unresolved and environment-gated. Verdict:
-`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. R9 source corrections
-complete; NOT merge approval. Next: Kilo bounded source review; only after Kilo
-closure may Lubuntu run native setup.sh + focused zero-red; H7 cannot merge
-until both gates pass.
+**H7-R9 (evidence checkpoint, SUPERSEDED_BY_H7_R10):** closed the two R8
+defects (`_published_int` `.match`→`.fullmatch`; coreutils non-zero-return
+guard test). H7 suite 245/245 natural+reverse both orderings; direct preflight
+129/129; harness 22/22. Carried one bounded defect into R10: the non-zero probe
+test used `shutil.which("false")`, which is host-fragile (244/1 where `false`
+is absent). Hypothesis node unresolved and environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R10 (evidence checkpoint, current; NO PASS):** extremely narrow correction
+— only the manifest-parity test and the three evidence docs change; everything
+else byte-identical to R9. The non-zero probe test now uses `sys.executable`
+(guaranteed to exist and launch, but it receives the shell probe as Python code
+→ SyntaxError → non-zero exit); `_verify_coreutils(sys.executable, [])` raises
+exactly `RuntimeError("coreutils probe failed")` (assertion via
+`str(exc.value) ==`). This is deterministic and host-independent — no reliance
+on a `false` coreutil. The three independent coreutils tests (OSError /
+non-executable, missing real coreutil, successful cross-host resolution) are
+retained unchanged. R9 host-fragility recorded truthfully: **244/1** on hosts
+lacking `false` (the `assert false_exe` fails); on this Windows host R9 read
+245/0 because `false` resolves. Evidence: direct preflight 129/129; harness
+22/22; complete H7 suite 245/245 natural AND reverse in both file orderings,
+and 245/245 under a Git-Bash-stripped PATH (R10 host-independence proven);
+py_compile, bash -n, diff-check, pre-commit incl. detect-secrets, UTF-8/mojibake
+all clean; GitNexus detect_changes vs `b495eb4a` = in-scope files only; all
+files outside the four-file R10 allowlist byte-identical to R9; immutable blobs
+unchanged (env.py=`1c71de78`, bootstrap=`ca7d91f`). CTO cross-host
+**187/174/13** preserved. Hypothesis node remains unresolved and
+environment-gated. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+R10 source corrections complete; NOT merge approval. Next: Kilo bounded source
+review; only after Kilo closure may Lubuntu run native setup.sh + focused
+zero-red; H7 cannot merge until both gates pass.
 
 ## Active Phase
 

@@ -1265,18 +1265,21 @@ exit {_ev("pnpm")}
             )
 
     def test_verify_coreutils_fails_when_probe_returns_nonzero(self, tmp_path: Path) -> None:
-        """RED (R9): the probe STARTS and returns a NON-ZERO exit code (an
-        executable that always fails, e.g. ``false``) — ``_verify_coreutils``
-        must raise ``RuntimeError('coreutils probe failed')``.  This exercises
-        the ``res.returncode != 0`` guard directly and deterministically,
-        independent of the non-executable/OSError case, and does not rely on a
-        missing executable."""
-        import shutil
+        """RED: the probe STARTS successfully but returns a NON-ZERO exit code.
+        ``sys.executable`` is guaranteed to exist and launch, but it receives
+        shell syntax (the coreutils probe) as Python code, so it exits non-zero
+        with a SyntaxError.  ``_verify_coreutils`` must raise exactly
+        ``RuntimeError('coreutils probe failed')``.  This is deterministic and
+        host-independent (no reliance on a ``false`` coreutil being on PATH),
+        and is distinct from the OSError / non-executable case."""
+        import os
+        import sys
         self._build_harness(tmp_path)
-        false_exe = shutil.which("false")
-        assert false_exe, "coreutil `false` not found on this host"
-        with pytest.raises(RuntimeError, match="coreutils probe failed"):
-            self._verify_coreutils(false_exe, [])
+        exe = sys.executable
+        assert exe and os.path.isfile(exe), "sys.executable must be an existing executable"
+        with pytest.raises(RuntimeError) as exc_info:
+            self._verify_coreutils(exe, [])
+        assert str(exc_info.value) == "coreutils probe failed"
 
     def test_unique_sentinel_absent_from_all_captures(self, tmp_path: Path) -> None:
         """The unique password sentinel (in .env AND Compose output) must be

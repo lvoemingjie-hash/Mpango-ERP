@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mpango ERP Setup Script  (H7-R5-R5 — effective-config preflight)
+# Mpango ERP Setup Script  (H7-R5-R6 — extracted preflight module)
 set -Eeuo pipefail
 
 _on_err() {
@@ -8,6 +8,14 @@ _on_err() {
     exit "$status"
 }
 trap '_on_err "$LINENO" "$?"' ERR
+
+# Fail closed on CRLF line endings (committed scripts are LF-only).
+# Python reads raw bytes: MSYS shell tools strip CR in text-mode file reads,
+# and raw CR bytes cannot be passed reliably through argv.
+if python -c "import sys; d = open(sys.argv[1], 'rb').read(); sys.exit(0 if b'\r' in d else 1)" "${BASH_SOURCE[0]}" 2>/dev/null; then
+    echo "setup.sh contains CRLF line endings; re-checkout with LF." >&2
+    exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -42,144 +50,13 @@ if ! "${COMPOSE[@]}" config --quiet 2>/dev/null; then
     echo "docker-compose configuration is invalid." >&2; exit 1
 fi
 
-# Capture rendered Compose config as JSON to a temp file
-COMPOSE_JSON_FILE="$(mktemp)"
-"${COMPOSE[@]}" config --format json > "$COMPOSE_JSON_FILE" 2>/dev/null || {
-    echo "Could not render Compose config as JSON." >&2; rm -f "$COMPOSE_JSON_FILE"; exit 1
+# Preflight via extracted module — pipe Compose JSON through setup_preflight.py
+"${COMPOSE[@]}" config --format json | python "$SCRIPT_DIR/setup_preflight.py" \
+    --env-file "$REPO_ROOT/backend/.env" \
+    --process-db "${DATABASE_URL:-}" \
+    --process-redis "${REDIS_URL:-}" || {
+    echo "Preflight failed." >&2; exit 1
 }
-
-# Write the preflight parser to a temp file (heredoc avoids inline $(...) issues)
-PREFLIGHT_PY="$(mktemp)"
-cat > "$PREFLIGHT_PY" <<'H7PREFLIGHT'
-import sys, os, json
-from urllib.parse import urlparse, unquote
-
-def fail(msg):
-    sys.stderr.write(msg + "\n")
-    sys.exit(1)
-
-# ---- read backend/.env (strict stdlib parser) ----
-seen = {}
-try:
-    for lineno, line in enumerate(open("backend/.env"), 1):
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        if "=" not in s:
-            fail(f"malformed .env line {lineno}: no = sign")
-        k, v = s.split("=", 1)
-        k = k.strip()
-        if not k:
-            fail(f"malformed .env line {lineno}: empty key")
-        if k in seen:
-            fail(f"duplicate key in .env: {k}")
-        seen[k] = v.strip().strip("'").strip('"')
-except FileNotFoundError:
-    fail("backend/.env not readable")
-
-file_db = seen.get("DATABASE_URL", "")
-file_redis = seen.get("REDIS_URL", "")
-
-# ---- process-env vs file conflict detection ----
-proc_db = os.environ.get("DATABASE_URL_PROCESS", "")
-proc_redis = os.environ.get("REDIS_URL_PROCESS", "")
-if proc_db and proc_db != file_db:
-    fail("DATABASE_URL conflict: process env differs from backend/.env")
-if proc_redis and proc_redis != file_redis:
-    fail("REDIS_URL conflict: process env differs from backend/.env")
-
-if not file_db:
-    fail("DATABASE_URL not found in backend/.env")
-if not file_redis:
-    fail("REDIS_URL not found in backend/.env")
-
-# ---- parse DB URL ----
-db_u = urlparse(file_db.replace("postgresql+asyncpg", "postgresql"))
-if db_u.scheme != "postgresql":
-    fail("DATABASE_URL scheme is not postgresql")
-db_user = unquote(db_u.username or "")
-db_pass = unquote(db_u.password or "")
-db_host = db_u.hostname or ""
-db_port = str(db_u.port or 5432)
-db_name = db_u.path.lstrip("/") or ""
-if not db_user or not db_name:
-    fail("DATABASE_URL must have username and database")
-
-# ---- parse Redis URL ----
-rd_u = urlparse(file_redis)
-rd_host = rd_u.hostname or ""
-rd_port = str(rd_u.port or 6379)
-
-# ---- load Compose JSON ----
-try:
-    cfg = json.load(open(os.environ["COMPOSE_JSON_FILE"]))
-except Exception:
-    fail("Could not parse Compose JSON")
-
-services = cfg.get("services", {})
-if not isinstance(services, dict):
-    fail("Compose services is not a dict")
-
-def validate_port_entry(svc_name, target_str, published_str):
-    svc = services.get(svc_name)
-    if not isinstance(svc, dict):
-        fail(f"{svc_name} service is not a dict")
-    env = svc.get("environment")
-    if not isinstance(env, dict):
-        fail(f"{svc_name} environment is not a dict")
-    ports = svc.get("ports")
-    if not isinstance(ports, list) or len(ports) != 1:
-        fail(f"{svc_name} ports must be a list with exactly one entry")
-    p = ports[0]
-    if not isinstance(p, dict):
-        fail(f"{svc_name} port entry is not a dict (string form rejected)")
-    if p.get("mode") != "ingress":
-        fail(f"{svc_name} mode must be ingress")
-    if p.get("protocol") != "tcp":
-        fail(f"{svc_name} protocol must be tcp")
-    if p.get("host_ip") != "127.0.0.1":
-        fail(f"{svc_name} host_ip must be 127.0.0.1")
-    if str(p.get("target")) != target_str:
-        fail(f"{svc_name} target must be {target_str}")
-    if str(p.get("published")) != published_str:
-        fail(f"{svc_name} published must be {published_str}")
-    return env
-
-pg_env = validate_port_entry("postgres", "5432", db_port)
-rd_env = validate_port_entry("redis", "6379", rd_port)
-
-# ---- credential comparison (in-memory only, never printed) ----
-if db_user != pg_env.get("POSTGRES_USER", ""):
-    fail("DATABASE_URL username does not match Compose POSTGRES_USER")
-if db_pass != pg_env.get("POSTGRES_PASSWORD", ""):
-    fail("DATABASE_URL password does not match Compose POSTGRES_PASSWORD")
-if db_name != pg_env.get("POSTGRES_DB", ""):
-    fail("DATABASE_URL database does not match Compose POSTGRES_DB")
-
-# ---- host verification ----
-if db_host not in ("localhost", "127.0.0.1", "::1"):
-    fail("DATABASE_URL host must be local")
-if rd_host not in ("localhost", "127.0.0.1", "::1"):
-    fail("REDIS_URL host must be local")
-
-print("OK")
-H7PREFLIGHT
-
-# Run the preflight (all secrets stay inside the Python process)
-PREFLIGHT_RESULT="$(cd "$REPO_ROOT" \
-    && COMPOSE_JSON_FILE="$COMPOSE_JSON_FILE" \
-    DATABASE_URL_PROCESS="${DATABASE_URL:-}" \
-    REDIS_URL_PROCESS="${REDIS_URL:-}" \
-    python "$PREFLIGHT_PY" 2>&1)" || {
-    echo "Preflight failed: $PREFLIGHT_RESULT" >&2
-    rm -f "$PREFLIGHT_PY" "$COMPOSE_JSON_FILE"
-    exit 1
-}
-rm -f "$PREFLIGHT_PY" "$COMPOSE_JSON_FILE"
-
-if [ "$PREFLIGHT_RESULT" != "OK" ]; then
-    echo "Preflight did not return OK." >&2; exit 1
-fi
 echo "Preflight OK."
 
 # =========================================================================
@@ -214,10 +91,16 @@ echo "Installing backend dependencies"
 cd "$REPO_ROOT/backend"
 pip install -r requirements.txt
 
-# Re-resolve through core.config.settings and assert equality with .env
-POSTINSTALL_DB="$(python -c "from core.config import settings; print(settings.DATABASE_URL)" 2>/dev/null)" \
-    || { echo "Could not re-resolve DATABASE_URL after pip install." >&2; exit 1; }
-_env_recheck="$(python -c "
+# Post-install verification via extracted preflight module
+python "$SCRIPT_DIR/setup_preflight.py" --env-file .env --post-install || {
+    echo "Post-install verification failed." >&2; exit 1; }
+
+echo "Running public Alembic migration"
+alembic upgrade head
+
+echo "Bootstrapping tenant schema"
+# Re-read DATABASE_URL for the bootstrap env var
+_POSTGRES_URL="$(python -c "
 seen={}
 for l in open('.env'):
     s=l.strip()
@@ -225,14 +108,7 @@ for l in open('.env'):
         k,v=s.split('=',1); seen[k.strip()]=v.strip().strip(chr(39)).strip(chr(34))
 print(seen.get('DATABASE_URL',''))
 " 2>/dev/null)"
-[ "$POSTINSTALL_DB" = "$_env_recheck" ] || {
-    echo "DATABASE_URL changed after dependency installation." >&2; exit 1; }
-
-echo "Running public Alembic migration"
-alembic upgrade head
-
-echo "Bootstrapping tenant schema"
-export DATABASE_URL="$POSTINSTALL_DB"
+export DATABASE_URL="$_POSTGRES_URL"
 python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"
 unset DATABASE_URL
 

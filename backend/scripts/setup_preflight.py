@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""
+Stdlib-only setup preflight validator (H7-R5-R6).
+
+Usage (initial mode — reads Compose JSON from stdin):
+    docker compose config --format json | python scripts/setup_preflight.py \
+        --env-file backend/.env [--process-db URL] [--process-redis URL]
+
+Usage (post-install mode — imports core.config.settings):
+    python scripts/setup_preflight.py --env-file backend/.env --post-install
+
+Outputs only ``OK`` on success.  Never outputs URLs, passwords, or
+secret-bearing Compose JSON.  On failure, writes a fixed neutral error
+to stderr and exits non-zero.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+
+# ---------------------------------------------------------------------------
+# strict .env parser
+# ---------------------------------------------------------------------------
+def parse_env_file(path: str) -> dict[str, str]:
+    """Parse a .env file into a dict.  Reject duplicates, malformed lines."""
+    seen: dict[str, str] = {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for lineno, raw in enumerate(fh, 1):
+                s = raw.strip()
+                if not s or s.startswith("#"):
+                    continue
+                if s.startswith("export "):
+                    _fail(f"malformed .env line {lineno}: export syntax rejected")
+                if "=" not in s:
+                    _fail(f"malformed .env line {lineno}: missing =")
+                key, val = s.split("=", 1)
+                key = key.strip()
+                if not key or not key.replace("_", "").replace("-", "").isalnum():
+                    _fail(f"malformed .env line {lineno}: invalid key")
+                if key in seen:
+                    _fail(f"duplicate key in .env: {key}")
+                val = val.strip()
+                # strip matching surrounding quotes only
+                if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                    inner = val[1:-1]
+                    if val[0] in inner:
+                        _fail(f"malformed .env line {lineno}: mismatched quotes")
+                    val = inner
+                elif val.startswith('"') or val.startswith("'"):
+                    _fail(f"malformed .env line {lineno}: unclosed quote")
+                seen[key] = val
+    except FileNotFoundError:
+        _fail("backend/.env not readable")
+    return seen
+
+
+# ---------------------------------------------------------------------------
+# URL parsers
+# ---------------------------------------------------------------------------
+def parse_db_url(url: str) -> tuple[str, str, str, str, str]:
+    """Return (user, password, host, port, database) from a DATABASE_URL."""
+    try:
+        u = urlparse(url.replace("postgresql+asyncpg", "postgresql"))
+    except Exception:
+        _fail("DATABASE_URL is malformed")
+    if u.scheme != "postgresql":
+        _fail("DATABASE_URL scheme is not postgresql")
+    user = unquote(u.username or "")
+    password = unquote(u.password or "")
+    host = u.hostname or ""
+    try:
+        port = str(u.port or 5432)
+    except (ValueError, TypeError):
+        _fail("DATABASE_URL has an invalid port")
+    database = u.path.lstrip("/") or ""
+    if not user or not database:
+        _fail("DATABASE_URL must contain a username and database")
+    return user, password, host, port, database
+
+
+def parse_redis_url(url: str) -> tuple[str, str]:
+    """Return (host, port) from a REDIS_URL."""
+    try:
+        u = urlparse(url)
+    except Exception:
+        _fail("REDIS_URL is malformed")
+    if u.scheme != "redis":
+        _fail("REDIS_URL scheme is not redis")
+    host = u.hostname or ""
+    try:
+        port = str(u.port or 6379)
+    except (ValueError, TypeError):
+        _fail("REDIS_URL has an invalid port")
+    return host, port
+
+
+# ---------------------------------------------------------------------------
+# Compose port-object validator
+# ---------------------------------------------------------------------------
+def _validate_port_entry(
+    services: dict, svc_name: str, target_str: str, published_str: str,
+    require_env: bool = True,
+) -> dict | None:
+    """Validate exactly one object-form port mapping with the exact allowed
+    field set (string ports, duplicates, extra entries, missing fields,
+    booleans, floats and unknown structures are all rejected).  Returns the
+    service environment dict — a required dict for postgres, an optional
+    dict for redis (absent is allowed)."""
+    svc = services.get(svc_name)
+    if not isinstance(svc, dict):
+        _fail(f"{svc_name} service is not a dict")
+    ports = svc.get("ports")
+    if not isinstance(ports, list) or len(ports) != 1:
+        _fail(f"{svc_name} ports must be a list with exactly one entry")
+    entry = ports[0]
+    if not isinstance(entry, dict):
+        _fail(f"{svc_name} port entry must be an object (string form rejected)")
+    if set(entry.keys()) != {"host_ip", "target", "published", "protocol", "mode"}:
+        _fail(f"{svc_name} port entry has unknown or missing fields")
+    if entry.get("mode") != "ingress":
+        _fail(f"{svc_name} port mode must be ingress")
+    if entry.get("protocol") != "tcp":
+        _fail(f"{svc_name} port protocol must be tcp")
+    if entry.get("host_ip") != "127.0.0.1":
+        _fail(f"{svc_name} host_ip must be 127.0.0.1")
+    if str(entry.get("target")) != target_str:
+        _fail(f"{svc_name} port target mismatch")
+    if str(entry.get("published")) != published_str:
+        _fail(f"{svc_name} port published mismatch")
+    env = svc.get("environment")
+    if env is None and not require_env:
+        return None
+    if not isinstance(env, dict):
+        _fail(f"{svc_name} environment must be a dict")
+    return env
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+def _fail(msg: str) -> None:
+    """Write a neutral error and exit.  Never includes secret values."""
+    sys.stderr.write(msg + "\n")
+    sys.exit(1)
+
+
+def _is_loopback(host: str) -> bool:
+    return host in ("localhost", "127.0.0.1", "::1")
+
+
+# ---------------------------------------------------------------------------
+# initial mode (stdin Compose JSON + .env)
+# ---------------------------------------------------------------------------
+def run_initial(env_path: str, proc_db: str, proc_redis: str) -> None:
+    env = parse_env_file(env_path)
+    file_db = env.get("DATABASE_URL", "")
+    file_redis = env.get("REDIS_URL", "")
+    if not file_db:
+        _fail("DATABASE_URL not found in backend/.env")
+    if not file_redis:
+        _fail("REDIS_URL not found in backend/.env")
+
+    # process-env vs file conflict
+    if proc_db and proc_db != file_db:
+        _fail("DATABASE_URL conflict: process env differs from backend/.env")
+    if proc_redis and proc_redis != file_redis:
+        _fail("REDIS_URL conflict: process env differs from backend/.env")
+
+    # parse URLs
+    db_user, db_pass, db_host, db_port, db_name = parse_db_url(file_db)
+    rd_host, rd_port = parse_redis_url(file_redis)
+
+    if not _is_loopback(db_host):
+        _fail("DATABASE_URL host must be local")
+    if not _is_loopback(rd_host):
+        _fail("REDIS_URL host must be local")
+
+    # parse Compose JSON from stdin
+    try:
+        cfg = json.load(sys.stdin)
+    except Exception:
+        _fail("Could not parse Compose JSON from stdin")
+    services = cfg.get("services", {})
+    if not isinstance(services, dict):
+        _fail("Compose services is not a dict")
+
+    # validate ports (postgres environment must be a dict; redis env optional)
+    pg_env = _validate_port_entry(services, "postgres", "5432", db_port)
+    _validate_port_entry(services, "redis", "6379", rd_port, require_env=False)
+
+    # in-memory credential comparison (never printed)
+    if db_user != pg_env.get("POSTGRES_USER", ""):
+        _fail("DATABASE_URL username does not match Compose POSTGRES_USER")
+    if db_pass != pg_env.get("POSTGRES_PASSWORD", ""):
+        _fail("DATABASE_URL password does not match Compose POSTGRES_PASSWORD")
+    if db_name != pg_env.get("POSTGRES_DB", ""):
+        _fail("DATABASE_URL database does not match Compose POSTGRES_DB")
+
+    print("OK")
+
+
+# ---------------------------------------------------------------------------
+# post-install mode (imports core.config)
+# ---------------------------------------------------------------------------
+def run_post_install(env_path: str) -> None:
+    env = parse_env_file(env_path)
+    file_db = env.get("DATABASE_URL", "")
+    file_redis = env.get("REDIS_URL", "")
+    if not file_db:
+        _fail("DATABASE_URL not found in backend/.env")
+    if not file_redis:
+        _fail("REDIS_URL not found in backend/.env")
+
+    # make the backend package root importable regardless of cwd
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    try:
+        from core.config import settings  # noqa: imported only after pip
+    except Exception:
+        _fail("Could not import core.config.settings")
+
+    if settings.DATABASE_URL != file_db:
+        _fail("settings.DATABASE_URL differs from backend/.env after pip install")
+    if getattr(settings, "REDIS_URL", "") != file_redis:
+        _fail("settings.REDIS_URL differs from backend/.env after pip install")
+
+    print("OK")
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Setup preflight validator")
+    parser.add_argument("--env-file", required=True, help="Path to backend/.env")
+    parser.add_argument("--process-db", default="", help="Process DATABASE_URL")
+    parser.add_argument("--process-redis", default="", help="Process REDIS_URL")
+    parser.add_argument("--post-install", action="store_true", help="Post-install mode")
+    args = parser.parse_args()
+
+    if args.post_install:
+        run_post_install(args.env_file)
+    else:
+        run_initial(args.env_file, args.process_db, args.process_redis)
+
+
+if __name__ == "__main__":
+    main()

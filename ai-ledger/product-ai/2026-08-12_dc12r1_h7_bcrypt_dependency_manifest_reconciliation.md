@@ -1,13 +1,74 @@
-# DC-12R1-H7-R5-R5 — Effective-Config and Cross-Host Harness Final Closure (NO PASS)
+# DC-12R1-H7-R5-R6 — Testable Native Setup Preflight Final Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. R5-R4 is superseded.
-> R5-R4 actual delta = 7 files; Windows CTO reproduction at c8060644 = 2/7;
-> previous 9/9 claim is host-specific and superseded.
+> an evidence checkpoint, NOT a merge-review PASS. R5-R5 is superseded.
+> R5-R5 CTO reproduction at `abbbe32f` (Windows) = **11 collected / 4 passed /
+> 7 failed** — preserved as the superseded host-specific record (the earlier
+> c8060644 = 2/7 record and the 9/9 claim are likewise superseded).
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `c8060644` (H7-R5-R4)
+> Base candidate: `abbbe32f` (H7-R5-R5)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
+
+## R5-R6 evidence (current checkpoint)
+
+- **Extracted preflight module** `backend/scripts/setup_preflight.py`
+  (stdlib-only): initial mode reads rendered Compose JSON from stdin and
+  backend/.env by path; validates process/file URL conflicts, strict .env
+  syntax (export/duplicate/malformed/unclosed/mismatched quotes/invalid
+  keys), postgresql/postgresql+asyncpg and redis schemes, URL-decoded
+  credentials compared **in memory** against Compose POSTGRES_* values,
+  loopback hosts and exact ports. Post-install mode imports core.config
+  (only after pip) and compares settings.DATABASE_URL/REDIS_URL. Output is
+  only `OK`; errors are fixed neutral strings — URLs, passwords and Compose
+  JSON are never emitted. No temporary secret-bearing Compose or Python files.
+- **Compose truth enforced exactly:** postgres environment must be a dict with
+  exact required credential values; redis environment may be absent or a dict;
+  exactly one object-form port mapping per service (host_ip=127.0.0.1,
+  protocol=tcp, mode=ingress, exact target/published). String ports,
+  duplicates, extra entries, missing fields, booleans, floats and unknown
+  structures are rejected.
+- **setup.sh:** pipes `compose config --format json | python
+  scripts/setup_preflight.py --env-file backend/.env --process-db ...
+  --process-redis ...` under `set -Eeuo pipefail`; `--post-install` runs after
+  pip and before `alembic upgrade head` and tenant bootstrap; CRLF fail-closed
+  self-check via python raw-byte read (MSYS text-mode file reads make shell
+  CR detection unreliable — verified empirically).
+- **Direct preflight matrix** `tests/test_dc12r1_h7_setup_preflight.py`:
+  **76 passed** natural AND reverse; every DB/Redis URL, .env and Compose
+  shape failure asserts the exact fixed neutral error; a file-wide invariant
+  asserts no secret substring in any error; redis-env-absent mutation does
+  not fail; the real rendered redis shape passes.
+- **Executable harness:** **17 passed** natural AND reverse, zero skip/xfail —
+  strict command ordering incl. initial-preflight-pipe-before-compose-up and
+  post-install-between-pip-and-alembic; exit 42/43/44 preserved; pg/redis
+  timeouts; invalid compose → zero side effects; no secret in output;
+  idempotency; System32/WSL/WindowsApps bash fail-closed (monkeypatched);
+  CRLF-mutated setup.sh exits non-zero before any fake command (committed LF
+  copy GREEN; committed blob has zero CR bytes via .gitattributes eol=lf).
+  Fake executables are LF bytes; chmod uses MSYS-converted paths with
+  check=True; `_select_bash` is module-scope and used by build+run.
+- **Real pipeline:** actual `docker compose config --format json` (Compose
+  v2.40.3) piped through the committed helper = `OK` (exit 0); negative
+  process-DB conflict = exit 1 with the fixed neutral message.
+- **Complete H7 suite:** **187 passed** natural AND reverse (parity 111 +
+  preflight 76), zero skip/xfail.
+- **Deterministic gates:** `bash -n` OK; py_compile OK; `git diff --check`
+  clean; scoped pre-commit incl. detect-secrets Passed; UTF-8 strict OK;
+  GitNexus index refreshed (status up-to-date at abbbe32f) and impact query
+  recorded (cross-links only to the frozen migration versions module).
+- **Changed files (exactly 4):** `backend/scripts/setup.sh`,
+  `backend/scripts/setup_preflight.py` (new),
+  `backend/tests/test_dc12r1_h7_bcrypt_manifest_parity.py`,
+  `backend/tests/test_dc12r1_h7_setup_preflight.py` (new).
+  Immutable files byte-identical (env.py=`1c71de78`, bootstrap=`ca7d91f`);
+  protected tip unchanged at `a6ef3aac`; dependency manifests, migrations,
+  product code and Hypothesis tests untouched.
+- **Hypothesis red node** (classified, UNRESOLVED, environment-gated):
+  unchanged from R5-R5 record below; NOT suppressed or edited.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No
+PASS is claimed; this is an evidence checkpoint only.
 
 ## Exact commands and counts (R5-R2)
 
@@ -51,7 +112,7 @@ inherited for runtime, NOT as satisfaction of this slice's focused gate.
 
 ---
 
-## Historical record (R4-R1, superseded)
+## Historical record (R5-R5 and earlier, superseded)
 
 R4-R1 closed two remaining uncovered false-green paths in the source-shape
 guards: (A) the

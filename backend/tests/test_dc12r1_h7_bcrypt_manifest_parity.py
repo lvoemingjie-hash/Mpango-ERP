@@ -414,9 +414,18 @@ def check_setup_sh_wiring(text: str) -> None:
     )
     if not has_url_arg and not has_env_export:
         raise ValueError("setup.sh: canonical bootstrap needs DATABASE_URL via --database-url or env export")
-    # DATABASE_URL resolution from core.config.settings
-    if not any("settings.DATABASE_URL" in r for r in non_comment):
-        raise ValueError("setup.sh: must resolve DATABASE_URL from core.config.settings")
+    # DATABASE_URL resolution must go through the extracted preflight module
+    if not any("setup_preflight.py" in r for r in non_comment):
+        raise ValueError("setup.sh: must resolve DATABASE_URL via setup_preflight.py")
+    # R5-R6: rendered Compose JSON must be piped into setup_preflight.py
+    if not any("config --format json" in r and "setup_preflight.py" in r for r in non_comment):
+        raise ValueError("setup.sh: must pipe 'compose config --format json' into setup_preflight.py")
+    # R5-R6: post-install settings/.env verification before Alembic
+    if not any("--post-install" in r for r in non_comment):
+        raise ValueError("setup.sh: missing --post-install preflight verification")
+    # R5-R6: CRLF fail-closed self-check (python raw-byte read)
+    if not any(re.search(r"b'\\r'", r) for r in non_comment):
+        raise ValueError("setup.sh: missing CRLF fail-closed self-check")
     # REJECT npm (pnpm required; word-boundary so 'pnpm' is not flagged)
     for r in after_pip:
         if re.search(r"\bnpm\s+(install|i)\b", r) and "pnpm" not in r.lower():
@@ -656,7 +665,7 @@ class TestH7R5R1InstallPathWiring:
     # ---- setup.sh RED: alembic / bootstrap sequence ----------------------
     def test_RED_tenant_alembic_noop_rejected(self) -> None:
         text = self._base().replace(
-            '''export DATABASE_URL="$POSTINSTALL_DB"
+            '''export DATABASE_URL="$_POSTGRES_URL"
 python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"
 unset DATABASE_URL''',
             'alembic -x tenant_schema="${DEFAULT_TENANT_SCHEMA:-t_dev}" upgrade head',
@@ -678,12 +687,12 @@ unset DATABASE_URL''',
             check_setup_sh_wiring(text)
 
     def test_RED_missing_bootstrap_database_url(self) -> None:
-        text = self._base().replace('export DATABASE_URL="$POSTINSTALL_DB"\n', "")
+        text = self._base().replace('export DATABASE_URL="$_POSTGRES_URL"\n', "")
         with pytest.raises(ValueError, match="(?i)database"):
             check_setup_sh_wiring(text)
 
     def test_RED_missing_database_url_resolution(self) -> None:
-        text = self._base().replace("settings.DATABASE_URL", "os.environ.get('X')")
+        text = self._base().replace("setup_preflight.py", "preflight_placeholder.py")
         with pytest.raises(ValueError, match="DATABASE_URL"):
             check_setup_sh_wiring(text)
 
@@ -768,9 +777,50 @@ unset DATABASE_URL''',
 # ──────────────────────────────────────────────────────────────────────────── #
 # Executable fake-PATH harness  (R5-R2 — proves actual exit-status behaviour)
 # ──────────────────────────────────────────────────────────────────────────── #
-# ──────────────────────────────────────────────────────────────────────────── #
-# Executable fake-PATH harness  (R5-R2 checkpoint — actual fake executables)
-# ──────────────────────────────────────────────────────────────────────────── #
+def _select_bash(isfile=None, which=None):
+    """Explicitly select Git Bash on Windows, native bash on POSIX.
+
+    Reject System32/WSL/WindowsApps bash.  Fail closed if unavailable.
+    ``isfile``/``which`` are injectable for fail-closed launcher tests."""
+    import os
+    import shutil
+    import sys
+
+    if isfile is None:
+        isfile = os.path.isfile
+    if which is None:
+        which = shutil.which
+
+    if sys.platform == "win32":
+        # Try known Git Bash installation paths first
+        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        la = os.environ.get("LOCALAPPDATA", "")
+        candidates = [
+            os.path.join(pf, "Git", "usr", "bin", "bash.exe"),
+            os.path.join(pf86, "Git", "usr", "bin", "bash.exe"),
+            os.path.join(la, "Programs", "Git", "usr", "bin", "bash.exe"),
+        ]
+        for c in candidates:
+            if isfile(c) and "system32" not in c.lower():
+                return c
+        # Fallback: PATH lookup but reject System32/WSL/WindowsApps
+        bash = which("bash")
+        if (
+            bash
+            and "system32" not in bash.lower()
+            and "wsl" not in bash.lower()
+            and "windowsapps" not in bash.lower()
+        ):
+            return bash
+        raise RuntimeError("Git Bash not found; System32/WSL bash rejected")
+    else:
+        bash = which("bash")
+        if bash and "system32" not in bash.lower():
+            return bash
+        raise RuntimeError("No suitable bash found on PATH")
+
+
 class TestH7R5R2ExecutableHarness:
     """Execute an UNMODIFIED copy of the committed setup.sh through subprocess
     against task-owned fake executables in a temporary fake-bin directory
@@ -813,8 +863,32 @@ class TestH7R5R2ExecutableHarness:
         (repo / "docker-compose.yml").write_text(
             "services:\n  postgres:\n    image: postgres\n  redis:\n    image: redis\n"
         )
-        # UNMODIFIED copy of the committed setup.sh
+        # UNMODIFIED copies of committed setup files
         shutil.copy(SETUP_SH, repo / "backend" / "scripts" / "setup.sh")
+        preflight_src = BACKEND_DIR / "scripts" / "setup_preflight.py"
+        shutil.copy(preflight_src, repo / "backend" / "scripts" / "setup_preflight.py")
+        # Minimal disposable core.config so the delegated --post-install check
+        # performs a real in-memory comparison (reads backend/.env); env
+        # H7R2_POSTINSTALL_MISMATCH=1 forces a RED mismatch.
+        mismatch_url = "postgresql://someone:else@localhost:9999/other"  # pragma: allowlist secret
+        (repo / "backend" / "core").mkdir(parents=True)
+        (repo / "backend" / "core" / "__init__.py").write_text("")
+        (repo / "backend" / "core" / "config.py").write_text(
+            "import os\n"
+            "class _Settings:\n"
+            "    pass\n"
+            "settings = _Settings()\n"
+            "_seen = {}\n"
+            "for _line in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env'), encoding='utf-8'):\n"
+            "    _s = _line.strip()\n"
+            "    if _s and not _s.startswith('#') and '=' in _s:\n"
+            "        _k, _v = _s.split('=', 1)\n"
+            "        _seen[_k.strip()] = _v.strip()\n"
+            "settings.DATABASE_URL = _seen.get('DATABASE_URL', '')\n"
+            "settings.REDIS_URL = _seen.get('REDIS_URL', '')\n"
+            "if os.environ.get('H7R2_POSTINSTALL_MISMATCH') == '1':\n"
+            f"    settings.DATABASE_URL = {mismatch_url!r}\n"
+        )
 
         def _ev(name: str, default: str = "0") -> str:
             v = fake_exits.get(name, default)
@@ -857,10 +931,6 @@ echo "python $*" >> "{log_str}"
 if echo "$*" | grep -q "bootstrap_tenant_schema"; then
     exit {_ev("bootstrap")}
 fi
-if [ "$1" = "-c" ] && echo "$2" | grep -q "settings.DATABASE_URL"; then
-    echo "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
-    exit 0
-fi
 if [ -n "$REAL_PYTHON" ]; then
     exec "$REAL_PYTHON" "$@"
 fi
@@ -874,10 +944,10 @@ exit {_ev("pnpm")}
         }
         for name, body in fake_bodies.items():
             (bin_dir / name).write_text(body)
-        # set MSYS2 executable bits via bash chmod
-        bash_bin = shutil.which("bash") or "bash"
-        quoted = " ".join(f'"{str(bin_dir / n)}"' for n in cls._FAKE_NAMES)
-        subprocess.run([bash_bin, "-c", f"chmod +x {quoted}"], check=False)
+        # set MSYS2 executable bits via bash chmod (MSYS-converted paths, checked)
+        bash_bin = _select_bash()
+        quoted = " ".join(f'"{cls._msys_path(str(bin_dir / n))}"' for n in cls._FAKE_NAMES)
+        subprocess.run([bash_bin, "-c", f"chmod +x {quoted}"], check=True)
         real_python = shutil.which("python") or shutil.which("python3") or ""
         return {"repo": repo, "bin": bin_dir, "log": log_file, "real_python": real_python}
 
@@ -897,7 +967,7 @@ exit {_ev("pnpm")}
         env["SETUP_TIMEOUT_ATTEMPTS"] = env_overrides.pop("SETUP_TIMEOUT_ATTEMPTS", "3")
         env["SETUP_TIMEOUT_INTERVAL"] = env_overrides.pop("SETUP_TIMEOUT_INTERVAL", "0")
         env.update(env_overrides)
-        bash_bin = shutil.which("bash") or "bash"
+        bash_bin = _select_bash()
         script = str(harness["repo"] / "backend" / "scripts" / "setup.sh").replace("\\", "/")
         result = subprocess.run(
             [bash_bin, script], capture_output=True, text=False, env=env, timeout=60
@@ -996,53 +1066,39 @@ exit {_ev("pnpm")}
             assert before[name] == after[name], f"unexpected file mutation: {name}"
         assert (h["repo"] / "frontend" / ".env").read_text().count("VITE_API_URL") == 1
 
-    # ---- launcher tests (R5-R5) -----------------------------------------
-
-    @staticmethod
-    def _select_bash() -> str:
-        """Explicitly select Git Bash on Windows, native bash on POSIX.
-        Reject System32/WSL bash. Fail closed if unavailable."""
-        import os
-        import shutil
-        import sys
-
-        if sys.platform == "win32":
-            # Try known Git Bash installation paths
-            pf = os.environ.get("ProgramFiles", r"C:\Program Files")
-            pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-            la = os.environ.get("LOCALAPPDATA", "")
-            candidates = [
-                os.path.join(pf, "Git", "usr", "bin", "bash.exe"),
-                os.path.join(pf86, "Git", "usr", "bin", "bash.exe"),
-                os.path.join(la, "Programs", "Git", "usr", "bin", "bash.exe"),
-            ]
-            for c in candidates:
-                if os.path.isfile(c) and "system32" not in c.lower():
-                    return c
-            # Fallback: shutil.which but reject System32/WSL
-            bash = shutil.which("bash")
-            if bash and "system32" not in bash.lower() and "wsl" not in bash.lower():
-                return bash
-            raise RuntimeError("Git Bash not found; System32/WSL bash rejected")
-        else:
-            bash = shutil.which("bash")
-            if bash and "system32" not in bash.lower():
-                return bash
-            raise RuntimeError("No suitable bash found on PATH")
+    # ---- launcher tests (R5-R5 / R5-R6) ----------------------------------
 
     def test_launcher_rejects_system32_wsl_bash(self) -> None:
         """The selected Bash must never be System32/WSL."""
-        selected = self._select_bash()
+        selected = _select_bash()
         assert "system32" not in selected.lower()
         assert "wsl" not in selected.lower()
+        assert "windowsapps" not in selected.lower()
         import os
         assert os.path.isfile(selected)
 
+    @pytest.mark.parametrize(
+        "bad_path",
+        [
+            r"C:\Windows\System32\bash.exe",
+            r"C:\Users\me\AppData\Local\Microsoft\WindowsApps\bash.exe",
+        ],
+    )
+    def test_launcher_fail_closed_when_only_system32_wsl_bash_exists(
+        self, monkeypatch, bad_path: str
+    ) -> None:
+        """When only System32/WSL bash exists, selection must raise (fail closed)."""
+        import os
+        import shutil
+        monkeypatch.setattr(os.path, "isfile", lambda p: False)
+        monkeypatch.setattr(shutil, "which", lambda name: bad_path)
+        with pytest.raises(RuntimeError):
+            _select_bash()
+
     def test_launcher_crlf_enforcement_zero_crlf_blob(self) -> None:
         """The committed setup.sh blob must have zero CRLF bytes (cross-host
-        LF guarantee via .gitattributes). On POSIX, a CRLF-mutated script
-        also fails at runtime; on Windows/MSYS bash strips \\r so the blob
-        proof is the authoritative guarantee."""
+        LF guarantee via .gitattributes). Runtime CRLF enforcement is proven
+        separately by setup.sh's fail-closed CRLF self-check."""
         import subprocess
         # The committed blob must be LF-only
         result = subprocess.run(
@@ -1054,6 +1110,62 @@ exit {_ev("pnpm")}
         # .gitattributes must enforce eol=lf
         ga = (BACKEND_DIR.parent / ".gitattributes").read_text(encoding="utf-8")
         assert "backend/scripts/setup.sh" in ga and "eol=lf" in ga
+
+    def test_launcher_crlf_mutated_script_fails_before_any_command(
+        self, tmp_path: Path
+    ) -> None:
+        """A CRLF-mutated copy of the committed setup.sh must exit non-zero via
+        its fail-closed CRLF self-check BEFORE any fake command runs (only the
+        python raw-byte self-check may appear in the command log)."""
+        h = self._build_harness(tmp_path)
+        script = h["repo"] / "backend" / "scripts" / "setup.sh"
+        script.write_bytes(script.read_bytes().replace(b"\n", b"\r\n"))
+        assert b"\r\n" in script.read_bytes()[:200]
+        r = self._run(h)
+        assert r.returncode != 0
+        assert "CRLF line endings" in r.stderr
+        log_lines = h["log"].read_text().splitlines()
+        assert len(log_lines) == 1 and "python -c" in log_lines[0]
+
+    def test_initial_preflight_pipe_runs_before_compose_up(self, tmp_path: Path) -> None:
+        """The rendered-Compose-JSON pipe into setup_preflight.py must run
+        before any service side effect (compose up)."""
+        h = self._build_harness(tmp_path)
+        r = self._run(h)
+        assert r.returncode == 0, r.stderr
+        log_lines = h["log"].read_text().splitlines()
+        pre_idx = next(
+            i for i, l in enumerate(log_lines)
+            if "setup_preflight.py" in l and "--post-install" not in l
+        )
+        up_idx = next(i for i, l in enumerate(log_lines) if "compose up -d" in l)
+        assert pre_idx < up_idx, f"initial preflight not before compose up: {log_lines}"
+
+    def test_post_install_verification_runs_between_pip_and_alembic(
+        self, tmp_path: Path
+    ) -> None:
+        """The --post-install settings comparison must run after pip install
+        and BEFORE Alembic / tenant bootstrap."""
+        h = self._build_harness(tmp_path)
+        r = self._run(h)
+        assert r.returncode == 0, r.stderr
+        log_lines = h["log"].read_text().splitlines()
+        pip_idx = next(i for i, l in enumerate(log_lines) if "pip install -r requirements.txt" in l)
+        post_idx = next(i for i, l in enumerate(log_lines) if "setup_preflight.py --env-file .env --post-install" in l)
+        alembic_idx = next(i for i, l in enumerate(log_lines) if "alembic upgrade head" in l)
+        assert pip_idx < post_idx < alembic_idx, f"post-install order violated: {log_lines}"
+
+    def test_post_install_mismatch_fails_before_alembic(self, tmp_path: Path) -> None:
+        """A settings/.env mismatch detected by --post-install must stop the
+        setup before Alembic or tenant bootstrap runs."""
+        h = self._build_harness(tmp_path)
+        r = self._run(h, H7R2_POSTINSTALL_MISMATCH="1")
+        assert r.returncode != 0
+        log = h["log"].read_text()
+        assert "pip install -r requirements.txt" in log
+        assert "alembic" not in log
+        assert "bootstrap_tenant_schema" not in log
+        assert "pnpm install" not in log
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

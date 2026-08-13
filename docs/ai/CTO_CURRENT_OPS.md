@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R5 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R5-R6 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -329,7 +329,7 @@ byte-identical to `f18761b1`. Hypothesis `HealthCheck.too_slow` focused-
 regression red node remains unresolved and environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
-**H7-R5-R5 (evidence checkpoint, current; NO PASS):** consolidated preflight
+**H7-R5-R5 (evidence checkpoint, superseded by H7-R5-R6):** consolidated preflight
 into one secret-safe Python process via heredoc temp file (all parsing,
 credential comparison, and Compose v2 port-object validation inside one
 stdlib process; secrets never emitted). Added tested Bash selector
@@ -340,6 +340,32 @@ files; Windows CTO reproduction at c8060644 = 2 passed / 7 failed — the
 previous 9/9 claim is host-specific and superseded. H7 suite 105/105 natural
 +reverse; all deterministic gates clean; immutable files byte-identical.
 Hypothesis node remains unresolved. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+CTO reproduction at `abbbe32f` (Windows): **11 collected / 4 passed / 7 failed** —
+preserved as the superseded host-specific record.
+
+**H7-R5-R6 (evidence checkpoint, current; NO PASS):** preflight extracted from
+setup.sh into a stdlib-only `backend/scripts/setup_preflight.py` (initial mode
+reads rendered Compose JSON from stdin + backend/.env by path; post-install
+mode imports core.config only after pip; outputs only `OK`; never emits URLs,
+passwords, or Compose JSON; no temporary secret-bearing files). setup.sh now
+pipes `compose config --format json | python scripts/setup_preflight.py ...`
+under `pipefail` and runs `--post-install` before Alembic/bootstrap. Compose
+truth enforced exactly: postgres environment must be a dict with exact
+credential values; redis environment may be absent or a dict; exactly one
+object-form port mapping per service with host_ip=127.0.0.1, protocol=tcp,
+mode=ingress, exact target/published; string ports, duplicates, extra entries,
+missing fields, booleans, floats and unknown structures rejected. CRLF
+fail-closed self-check via python raw-byte read (MSYS text-mode reads make
+shell CR detection unreliable). Evidence: direct preflight matrix 76/76
+natural+reverse (fixed neutral errors, no secret substrings); executable
+harness 17/17 natural+reverse zero skip/xfail (System32/WSL fail-closed,
+CRLF-mutated copy fails before any fake command); complete H7 suite 187/187
+natural+reverse; real `docker compose config --format json` piped through the
+committed helper = OK (negative conflict = exit 1, fixed message); bash -n,
+py_compile, diff-check, pre-commit incl. detect-secrets, UTF-8 all clean;
+immutable files byte-identical (env.py=`1c71de78`, bootstrap=`ca7d91f`).
+Hypothesis node remains unresolved and environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
 ## Active Phase

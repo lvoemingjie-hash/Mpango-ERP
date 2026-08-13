@@ -1,6 +1,8 @@
 # DC-12R1-H7-R13-V1 Kilo Final Bounded Source Review
 
-**Verdict:** `STOP_AND_REPORT_CTO`
+> **Historical note:** The prior verdict in this report is `SUPERSEDED_BY_H7_R13_V1_R1_EVIDENCE_CORRECTION` because the earlier scope STOP incorrectly compared R10 to R13 instead of the direct R12 parent to R13.
+
+**Verdict:** `PASS_FOR_CTO_DC12R1_H7_R13_V1_R1_KILO_FINAL_REVIEW`
 
 This review was bounded to the R13 candidate and the requested closure questions only.
 
@@ -30,6 +32,61 @@ Verified:
 
 No proof-gate mismatch occurred.
 
+## R1 authoritative evidence correction
+
+The following exact commands were rerun against the correct base ref `db166b773389604d49ca2682a8e24ec715f3e1f7`.
+
+### Raw command 1
+
+```text
+git diff --name-status db166b773389604d49ca2682a8e24ec715f3e1f7..5a27e56ddcd1dff79b9cba780e34cdd5b71bdfe7
+
+M	ai-ledger/product-ai/2026-08-12_dc12r1_h7_bcrypt_dependency_manifest_reconciliation.md
+M	backend/tests/test_dc12r1_h7_bcrypt_manifest_parity.py
+M	docs/ai/CTO_CURRENT_OPS.md
+M	docs/ai/PROJECT.md
+```
+
+### Raw command 2
+
+```text
+git diff --exit-code db166b773389604d49ca2682a8e24ec715f3e1f7..5a27e56ddcd1dff79b9cba780e34cdd5b71bdfe7 -- backend/scripts/setup.sh backend/scripts/setup_preflight.py backend/tests/test_dc12r1_h7_setup_preflight.py docker-compose.yml
+
+[exit code 0]
+```
+
+### Raw command 3 — blob IDs
+
+```text
+git rev-parse db166b77:backend/scripts/setup.sh
+f1acbcb6e60b743fb16095110bc984f2e6c97abf
+git rev-parse 5a27e56d:backend/scripts/setup.sh
+f1acbcb6e60b743fb16095110bc984f2e6c97abf
+
+git rev-parse db166b77:backend/scripts/setup_preflight.py
+76ead580be3fea5231ef67e4d660d4faf8447844
+git rev-parse 5a27e56d:backend/scripts/setup_preflight.py
+76ead580be3fea5231ef67e4d660d4faf8447844
+
+git rev-parse db166b77:backend/tests/test_dc12r1_h7_setup_preflight.py
+e79328cecf852ba9fee8703eae158d4ebdb9e076
+git rev-parse 5a27e56d:backend/tests/test_dc12r1_h7_setup_preflight.py
+e79328cecf852ba9fee8703eae158d4ebdb9e076
+
+git rev-parse db166b77:docker-compose.yml
+2cc2dd5743b7ad26c82816df06af6e02a8d440b4
+git rev-parse 5a27e56d:docker-compose.yml
+2cc2dd5743b7ad26c82816df06af6e02a8d440b4
+```
+
+Conclusion from the authoritative R12-to-R13 evidence:
+
+- R13 delta is exactly the 4 allowed files.
+- immutable diff exit is `0`.
+- all four blob pairs are equal.
+- `KILO-H7R13V1-001` was an `INVALID_FALSE_POSITIVE_WRONG_BASE_REF`.
+- `KILO-H7R13V1-012` was an `INVALID_DERIVED_FINDING`.
+
 ## Phase 2 — Exact R13 scope
 
 ### EXECUTED exact delta proof
@@ -41,7 +98,7 @@ No proof-gate mismatch occurred.
 3. `docs/ai/PROJECT.md`
 4. `docs/ai/CTO_CURRENT_OPS.md`
 
-### FAIL — immutable-file proof
+### Corrected immutable-file proof
 
 The task required byte-identity to R12 for many files including:
 
@@ -67,19 +124,14 @@ R13 preserves byte identity for many of these, including:
 - `docker-compose.prod.yml`
 - `backend/api/**`, `backend/core/**`, `backend/models/**`, `backend/schemas/**`, `backend/services/**`
 
-But it does **not** preserve byte identity to R12 for these out-of-scope files:
+The earlier STOP was wrong because it compared `R10 -> R13` instead of the correct `R12 -> R13` base. Using the authoritative commands above, these files are byte-identical to R12:
 
 - `backend/scripts/setup.sh`
 - `backend/scripts/setup_preflight.py`
 - `backend/tests/test_dc12r1_h7_setup_preflight.py`
 - `docker-compose.yml`
 
-This is confirmed both by:
-
-- `git diff --name-only 6be4c279..5a27e56d -- <listed paths>`
-- git object identity differences between `db166b77` and `5a27e56d`
-
-That is a direct scope violation against the task’s immutable-file requirement.
+No immutable-file contradiction exists in the correct R12-to-R13 comparison.
 
 ## Phase 3 — R13 executable-bit closure
 
@@ -155,7 +207,7 @@ Answers to required questions:
 
 ## Phase 5 — Preserve R11/R12 closures
 
-### FAIL — inherited guarantees not preserved because out-of-scope files changed
+### Corrected inherited-guarantee assessment
 
 The task required R13 to preserve inherited R11/R12 closures without changing:
 
@@ -164,16 +216,7 @@ The task required R13 to preserve inherited R11/R12 closures without changing:
 - `test_dc12r1_h7_setup_preflight.py`
 - Compose files
 
-But `db166b77..5a27e56d` changes include:
-
-- `backend/scripts/setup.sh`
-- `backend/scripts/setup_preflight.py`
-- `backend/tests/test_dc12r1_h7_setup_preflight.py`
-- `docker-compose.yml`
-
-Therefore I cannot certify that R13 is a pure test/doc-only closure of the POSIX standalone exec-bit defect. It is not the bounded four-file candidate the task describes.
-
-Because of this scope break, the requested inherited-guarantee preservation cannot be accepted under the task’s own rules, even though many specific protections remain visible in current source, such as:
+The earlier STOP was invalid because those claimed out-of-scope file changes do not exist in the correct `db166b77..5a27e56d` comparison. R13 is a bounded four-file candidate, and the inherited R11/R12 protections remain visible in current source, such as:
 
 - no explicit `container_name` in current base compose (`docker-compose.yml:17-175`)
 - no `COMPOSE_PROJECT_NAME` overwrite in current `setup.sh`
@@ -181,7 +224,7 @@ Because of this scope break, the requested inherited-guarantee preservation cann
 - config probes use the env-file-bearing `COMPOSE` array (`60`, `67`, `84`, `90`, `96`)
 - preflight still rejects rendered explicit `container_name` (`245-250` in `setup_preflight.py`)
 
-Those source properties are present, but the bounded R13 scope contract was still violated.
+Those source properties remain present, and the bounded R13 scope contract is satisfied once the correct base ref is used.
 
 ## Phase 6 — Runtime/source gates
 
@@ -263,10 +306,7 @@ and re-verified cleanliness. No candidate modification remained at the end.
 
 ## Stop-condition accounting
 
-Triggered stop conditions:
-
-- product/setup/Compose change in R13
-- scope mismatch against required immutable-file set
+Triggered stop conditions in the prior report were based on the wrong base ref and are now cleared.
 
 Not triggered:
 
@@ -278,13 +318,13 @@ Not triggered:
 
 ## Findings counts
 
-- PASS: 9
+- PASS: 11
 - INFO: 4
-- FAIL: 3
+- FAIL: 0
 - accounting gap = 0
 
 ## Final verdict
 
-`STOP_AND_REPORT_CTO`
+`PASS_FOR_CTO_DC12R1_H7_R13_V1_R1_KILO_FINAL_REVIEW`
 
-Reason: the committed R13 source does close the narrow standalone `docker-compose` exec-bit defect in the harness, and the two new executable-bit tests are authentic and green on this host. However, the candidate **does not satisfy the bounded review contract** because `db166b77..5a27e56d` changes out-of-scope source files that were required to remain byte-identical to R12, including `backend/scripts/setup.sh`, `backend/scripts/setup_preflight.py`, `backend/tests/test_dc12r1_h7_setup_preflight.py`, and `docker-compose.yml`. Under the task’s stop conditions, that requires STOP.
+Reason: the authoritative R12-to-R13 git proof shows the candidate is exactly the intended four-file delta, the immutable-file diff is clean, the claimed out-of-scope source changes were false positives caused by a wrong-base comparison, the R13 exec-bit closure is authentic, and the valid runtime/source findings remain intact. This PASS is source-review approval only; it is not merge approval and does not replace Lubuntu native execution.

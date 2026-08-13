@@ -119,6 +119,7 @@ _NATIVE_DB_URL="${_NATIVE_CREDS%%$'\n'*}"
 _NATIVE_DB_URL="${_NATIVE_DB_URL%$'\r'}"
 _NATIVE_RUP="${_NATIVE_CREDS#*$'\n'}"
 _NATIVE_RUP="${_NATIVE_RUP%$'\r'}"
+unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split
 [ -n "$_NATIVE_DB_URL" ] || { echo "DATABASE_URL missing from backend/.env." >&2; exit 1; }
 [ -n "$_NATIVE_RUP" ] || { echo "REPORTING_USER_PASSWORD missing from backend/.env." >&2; exit 1; }
 export DATABASE_URL="$_NATIVE_DB_URL"

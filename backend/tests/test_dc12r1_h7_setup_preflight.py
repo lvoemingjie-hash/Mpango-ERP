@@ -87,11 +87,15 @@ PG_SVC = {"environment": dict(PG_ENV_GOOD), "ports": [_port_entry()]}
 REDIS_SVC = {"ports": [_port_entry_redis()]}
 
 
-def _compose(pg=None, redis=None) -> str:
+BACKEND_SVC = {"environment": {"REPORTING_USER_PASSWORD": "reportingpass"}}  # pragma: allowlist secret
+
+
+def _compose(pg=None, redis=None, backend=None) -> str:
     """Build rendered-Compose JSON.  Default redis has NO environment key."""
     services = {
         "postgres": pg if pg is not None else dict(PG_SVC),
         "redis": redis if redis is not None else {"ports": [_port_entry_redis()]},
+        "backend": backend if backend is not None else dict(BACKEND_SVC),
     }
     return json.dumps({"services": services})
 
@@ -575,6 +579,11 @@ class TestRunInitial:
     def test_compose_shape_failures_exact_and_neutral(
         self, capsys, tmp_path: Path, services: dict, expected: str
     ) -> None:
+        # R15-R1: inject a valid backend so tests reach their intended failure
+        # (which fires before the backend RUP check in most cases).
+        svc = services.get("services")
+        if isinstance(svc, dict) and "backend" not in svc:
+            svc["backend"] = dict(BACKEND_SVC)
         err = _expect_fail(
             capsys, pf.run_initial, self._env(tmp_path), stdin_text=json.dumps(services),
         )
@@ -610,7 +619,7 @@ class TestRunInitial:
         services = {
             "postgres": dict(PG_SVC),
             "redis": {"ports": [_port_entry_redis()]},
-            "backend": {"image": "x"},
+            "backend": {"image": "x", "environment": dict(BACKEND_SVC["environment"])},
             "frontend": {"image": "y"},
         }
         old_stdin = sys.stdin
@@ -659,6 +668,39 @@ class TestRunInitial:
             stdin_text=json.dumps({"services": services}),
         )
         assert err == "REPORTING_USER_PASSWORD conflict: Compose backend differs from backend/.env"
+
+    # ---- R15-R1: backend RUP must exist as str (fail-closed) ------------
+
+    @pytest.mark.parametrize(
+        "backend,expected",
+        [
+            (None, "backend service is not a dict"),
+            ({"image": "x"}, "backend environment must be a dict"),
+            ({"environment": {}}, "backend REPORTING_USER_PASSWORD must be a string"),
+            ({"environment": {"REPORTING_USER_PASSWORD": None}}, "backend REPORTING_USER_PASSWORD must be a string"),
+            ({"environment": {"REPORTING_USER_PASSWORD": True}}, "backend REPORTING_USER_PASSWORD must be a string"),
+            ({"environment": {"REPORTING_USER_PASSWORD": 123}}, "backend REPORTING_USER_PASSWORD must be a string"),
+            ({"environment": {"REPORTING_USER_PASSWORD": ["x"]}}, "backend REPORTING_USER_PASSWORD must be a string"),
+        ],
+    )
+    def test_backend_rup_type_failures(self, capsys, tmp_path: Path, backend, expected: str) -> None:
+        services = {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis()]}}
+        if backend is not None:
+            services["backend"] = backend
+        err = _expect_fail(
+            capsys, pf.run_initial, self._env(tmp_path),
+            stdin_text=json.dumps({"services": services}),
+        )
+        assert err == expected
+
+    def test_rup_process_empty_conflict(self, capsys, tmp_path: Path, monkeypatch) -> None:
+        """RED (R15-R1): a present-but-empty process REPORTING_USER_PASSWORD
+        conflicts with the non-empty .env value."""
+        monkeypatch.setenv("REPORTING_USER_PASSWORD", "")
+        err = _expect_fail(
+            capsys, pf.run_initial, self._env(tmp_path), stdin_text=_compose(),
+        )
+        assert err == "REPORTING_USER_PASSWORD conflict: process env differs from backend/.env"
 
 
 # ---------------------------------------------------------------------------

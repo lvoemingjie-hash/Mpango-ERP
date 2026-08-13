@@ -1,8 +1,8 @@
-# DC-12R1-H7-R15 — REPORTING_USER_PASSWORD Migration Env Closure (NO PASS)
+# DC-12R1-H7-R15-R1 — Source Evidence Blocker Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R14 is
-> `SUPERSEDED_BY_H7_R15`.** Accepted external evidence: Kilo R10-V1 =
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R15 is
+> `SUPERSEDED_BY_H7_R15_R1`.** Accepted external evidence: Kilo R10-V1 =
 > `7d53d6a5c9dc7fc8a8a44414951c214c7bce4d02`; Lubuntu R10-V2 STOP =
 > `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier records superseded.
 
@@ -10,7 +10,36 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R15 evidence (current checkpoint)
+## R15-R1 evidence (current checkpoint)
+
+Closes three CTO source-evidence blockers on R15 (directive
+`STOP_AND_REPORT_CTO_WITH_H7_R15_R1_SOURCE_EVIDENCE_BLOCKERS`):
+
+- **P1 (setup.sh):** `_NATIVE_CREDS` (combined buffer holding BOTH secrets) is
+  now `unset` immediately after the split into `_NATIVE_DB_URL` / `_NATIVE_RUP`,
+  BEFORE Alembic. The combined buffer no longer survives past the split point.
+  Structural guard asserts the unset precedes `alembic upgrade head`;
+  mutation RED removing the unset → guard raises.
+- **P1 (setup_preflight.py):** the rendered backend service, its environment,
+  and the REPORTING_USER_PASSWORD key are now REQUIRED (not conditional):
+  missing service / non-dict environment / missing-or-non-string key
+  (None/bool/int/list) all fail closed with fixed neutral errors. `str()`
+  coercion removed — exact `isinstance(str)` check. A present-but-empty
+  process REPORTING_USER_PASSWORD is treated as a conflict (was skipped).
+- **P2 (AST test):** the migration env-var inventory now covers
+  `os.environ[...]` subscript, `os.environ.get(...)`, `os.getenv(...)`,
+  imported aliases (`from os import environ/getenv`), and hard-fails on
+  dynamic keys or non-string accesses.
+- **Test gates:** direct **144/144** nat+rev (136 + 8 R15-R1 type/conflict
+  tests); harness **38/38** nat+rev; complete H7 suite **278/278** both file
+  orders nat+rev. All R5-R15 tests retained.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed. Sequence: Kilo bounded review → Lubuntu V4 → CTO merge.
+
+---
+
+## R15 evidence (SUPERSEDED_BY_H7_R15_R1)
 
 Lubuntu evidence: `d3f34af3469d3c48469b9a0275c830b0842796ea` (R14 V2 native
 migration reached 001–010; blocker = REPORTING_USER_PASSWORD not passed to

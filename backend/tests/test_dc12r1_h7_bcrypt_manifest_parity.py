@@ -436,6 +436,17 @@ def check_setup_sh_wiring(text: str) -> None:
     # R11: setup.sh must NOT overwrite a caller-provided COMPOSE_PROJECT_NAME
     if any(re.search(r"^\s*COMPOSE_PROJECT_NAME\s*=", r) for r in lines):
         raise ValueError("setup.sh: must not set/overwrite COMPOSE_PROJECT_NAME")
+    # R15-R1: _NATIVE_CREDS must be unset before Alembic (combined buffer
+    # containing both secrets must not survive past the split point).
+    unset_creds_idx = next(
+        (i for i, r in enumerate(lines)
+         if "_NATIVE_CREDS" in r and "unset" in r), None,
+    )
+    if unset_creds_idx is None:
+        raise ValueError("setup.sh: _NATIVE_CREDS must be unset before Alembic")
+    if any("alembic upgrade head" in r.strip() and i < unset_creds_idx
+           for i, r in enumerate(lines)):
+        raise ValueError("setup.sh: _NATIVE_CREDS must be unset before Alembic")
     # R12: no Compose config operation may run before the --env-file-bearing
     # array is constructed (a premature config probe without --env-file would
     # fail interpolation and silently reject a standalone docker-compose).
@@ -715,6 +726,16 @@ class TestH7R5R1InstallPathWiring:
         with pytest.raises(ValueError, match="(?i)database"):
             check_setup_sh_wiring(text)
 
+    def test_RED_native_creds_not_cleared_before_alembic(self) -> None:
+        """RED (R15-R1): removing the _NATIVE_CREDS unset means the combined
+        buffer holding both secrets survives past Alembic — the guard catches it."""
+        text = self._base().replace(
+            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n",
+            "",
+        )
+        with pytest.raises(ValueError, match="_NATIVE_CREDS must be unset before Alembic"):
+            check_setup_sh_wiring(text)
+
     def test_RED_missing_database_url_resolution(self) -> None:
         text = self._base().replace("setup_preflight.py", "preflight_placeholder.py")
         with pytest.raises(ValueError, match="DATABASE_URL"):
@@ -974,11 +995,24 @@ class TestH7R5R2ExecutableHarness:
 
         # Fake Compose JSON with Compose v2 object-shape port entries; the
         # POSTGRES_PASSWORD carries the same unique sentinel as the .env.
+        # R15: backend also carries the REPORTING_USER_PASSWORD sentinel.
         _pw = cls._SENTINEL_PW
-        _compose_json = (
-            '{"services":{"postgres":{"environment":{"POSTGRES_USER":"pguser","POSTGRES_DB":"pgdb","POSTGRES_PASSWORD":"'  # pragma: allowlist secret
-            + _pw + '"},"ports":[{"host_ip":"127.0.0.1","target":5432,"published":5432,"protocol":"tcp","mode":"ingress"}]},"redis":{"environment":{},"ports":[{"host_ip":"127.0.0.1","target":6379,"published":6379,"protocol":"tcp","mode":"ingress"}]}}}'
-        )
+        _pw_rup = cls._SENTINEL_RUP
+        import json as _json
+        _compose_json = _json.dumps({
+            "services": {
+                "postgres": {
+                    "environment": {"POSTGRES_USER": "pguser", "POSTGRES_DB": "pgdb", "POSTGRES_PASSWORD": _pw},  # pragma: allowlist secret
+                    "ports": [{"host_ip": "127.0.0.1", "target": 5432, "published": 5432, "protocol": "tcp", "mode": "ingress"}],
+                },
+                "redis": {
+                    "ports": [{"host_ip": "127.0.0.1", "target": 6379, "published": 6379, "protocol": "tcp", "mode": "ingress"}],
+                },
+                "backend": {
+                    "environment": {"REPORTING_USER_PASSWORD": _pw_rup},  # pragma: allowlist secret
+                },
+            }
+        }, separators=(",", ":"))
 
         fake_bodies = {
             "docker": f'''#!/bin/bash
@@ -1664,35 +1698,77 @@ esac
 
 
 # ---------------------------------------------------------------------------
-# AST migration-env dependency inventory (R15)
+# AST migration-env dependency inventory (R15/R15-R1)
 # ---------------------------------------------------------------------------
 def test_migration_env_dependency_inventory_is_exactly_reporting_user_password():
     """AST scan of ALL migration files: the set of non-connection env-var
-    dependencies must be exactly {REPORTING_USER_PASSWORD}. Any future
-    addition makes this gate RED."""
+    dependencies must be exactly {REPORTING_USER_PASSWORD}. Covers
+    os.environ.get(), os.environ[...], os.getenv(), and imported aliases.
+    Dynamic keys or unrecognized environment access → hard fail."""
     import ast as _ast
     migration_dir = BACKEND_DIR / "alembic" / "versions"
     env_vars: set[str] = set()
+
+    def _fail_dynamic(node):
+        raise AssertionError(
+            f"dynamic or non-string env-var access in migration at line {getattr(node, 'lineno', '?')}"
+        )
+
+    def _collect_call_key(node):
+        if not node.args or not isinstance(node.args[0], _ast.Constant) or not isinstance(node.args[0].value, str):
+            _fail_dynamic(node)
+        env_vars.add(node.args[0].value)
+
+    def _collect_subscript_key(node):
+        sl = node.slice
+        if not isinstance(sl, _ast.Constant) or not isinstance(sl.value, str):
+            _fail_dynamic(node)
+        env_vars.add(sl.value)
+
     for pyfile in sorted(migration_dir.glob("*.py")):
-        tree = _ast.parse(pyfile.read_text(encoding="utf-8"))
+        src = pyfile.read_text(encoding="utf-8")
+        tree = _ast.parse(src)
+        # Track imported aliases: from os import environ/getenv [as X]
+        environ_names = set()
+        getenv_names = set()
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.ImportFrom) and node.module == "os":
+                for alias in node.names:
+                    local = alias.asname or alias.name
+                    if alias.name == "environ":
+                        environ_names.add(local)
+                    elif alias.name == "getenv":
+                        getenv_names.add(local)
+        # Scan for environment access patterns
         for node in _ast.walk(tree):
             if isinstance(node, _ast.Call):
                 func = node.func
-                if not (isinstance(func, _ast.Attribute)
-                        and node.args
-                        and isinstance(node.args[0], _ast.Constant)
-                        and isinstance(node.args[0].value, str)):
-                    continue
-                # os.environ.get("VAR") / _os.environ.get("VAR")
-                if (func.attr == "get"
+                # *.environ.get("VAR") — attribute chain (os.environ, _os.environ)
+                if (isinstance(func, _ast.Attribute) and func.attr == "get"
                         and isinstance(func.value, _ast.Attribute)
                         and func.value.attr == "environ"):
-                    env_vars.add(node.args[0].value)
-                # os.getenv("VAR")
-                elif (func.attr == "getenv"
+                    _collect_call_key(node)
+                # alias.get("VAR") — from os import environ; environ.get(...)
+                elif (isinstance(func, _ast.Attribute) and func.attr == "get"
                       and isinstance(func.value, _ast.Name)
-                      and func.value.id in ("os", "_os")):
-                    env_vars.add(node.args[0].value)
+                      and func.value.id in environ_names):
+                    _collect_call_key(node)
+                # *.getenv("VAR") — os.getenv, _os.getenv
+                elif (isinstance(func, _ast.Attribute) and func.attr == "getenv"
+                      and isinstance(func.value, _ast.Name)):
+                    _collect_call_key(node)
+                # alias getenv(...) — from os import getenv; getenv(...)
+                elif isinstance(func, _ast.Name) and func.id in getenv_names:
+                    _collect_call_key(node)
+            if isinstance(node, _ast.Subscript):
+                val = node.value
+                # *.environ["VAR"]
+                if (isinstance(val, _ast.Attribute) and val.attr == "environ"):
+                    _collect_subscript_key(node)
+                # alias["VAR"] — from os import environ; environ[...]
+                elif isinstance(val, _ast.Name) and val.id in environ_names:
+                    _collect_subscript_key(node)
+
     connection_vars = {"DATABASE_URL", "REDIS_URL"}
     extra = env_vars - connection_vars
     assert extra == {"REPORTING_USER_PASSWORD"}, (

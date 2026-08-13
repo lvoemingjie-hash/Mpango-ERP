@@ -219,15 +219,15 @@ def run_initial(env_path: str) -> None:
     if not file_rup:
         _fail("REPORTING_USER_PASSWORD not found in backend/.env")
 
-    # process-env vs file conflict (secrets read from os.environ, never argv)
+    # process-env vs file conflict (secrets read from os.environ, never argv).
+    # R15-R1: an empty-but-present process REPORTING_USER_PASSWORD is also a conflict.
     proc_db = os.environ.get("DATABASE_URL", "")
     proc_redis = os.environ.get("REDIS_URL", "")
-    proc_rup = os.environ.get("REPORTING_USER_PASSWORD", "")
     if proc_db and proc_db != file_db:
         _fail("DATABASE_URL conflict: process env differs from backend/.env")
     if proc_redis and proc_redis != file_redis:
         _fail("REDIS_URL conflict: process env differs from backend/.env")
-    if proc_rup and proc_rup != file_rup:
+    if "REPORTING_USER_PASSWORD" in os.environ and os.environ["REPORTING_USER_PASSWORD"] != file_rup:
         _fail("REPORTING_USER_PASSWORD conflict: process env differs from backend/.env")
 
     db_user, db_pass, db_host, db_port, db_name = parse_db_url(file_db)
@@ -265,17 +265,24 @@ def run_initial(env_path: str) -> None:
     if db_name != pg_env.get("POSTGRES_DB", ""):
         _fail("DATABASE_URL database does not match Compose POSTGRES_DB")
 
-    # REPORTING_USER_PASSWORD must match between backend/.env and the rendered
-    # backend Compose service (if present). In-memory comparison only.
+    # R15-R1: the rendered backend service MUST exist and carry a string
+    # REPORTING_USER_PASSWORD that exactly matches .env. Missing service,
+    # missing/non-dict environment, missing key, null/bool/int/list values,
+    # or a value mismatch all fail closed with a fixed neutral error.
     _backend = services.get("backend")
-    if isinstance(_backend, dict):
-        _backend_env = _backend.get("environment")
-        if isinstance(_backend_env, dict):
-            if str(_backend_env.get("REPORTING_USER_PASSWORD", "")) != file_rup:
-                _fail(
-                    "REPORTING_USER_PASSWORD conflict: "
-                    "Compose backend differs from backend/.env"
-                )
+    if not isinstance(_backend, dict):
+        _fail("backend service is not a dict")
+    _backend_env = _backend.get("environment")
+    if not isinstance(_backend_env, dict):
+        _fail("backend environment must be a dict")
+    _backend_rup = _backend_env.get("REPORTING_USER_PASSWORD")
+    if not isinstance(_backend_rup, str):
+        _fail("backend REPORTING_USER_PASSWORD must be a string")
+    if _backend_rup != file_rup:
+        _fail(
+            "REPORTING_USER_PASSWORD conflict: "
+            "Compose backend differs from backend/.env"
+        )
 
     print("OK")
 

@@ -436,11 +436,11 @@ def check_setup_sh_wiring(text: str) -> None:
     # R11: setup.sh must NOT overwrite a caller-provided COMPOSE_PROJECT_NAME
     if any(re.search(r"^\s*COMPOSE_PROJECT_NAME\s*=", r) for r in lines):
         raise ValueError("setup.sh: must not set/overwrite COMPOSE_PROJECT_NAME")
-    # R15-R1: _NATIVE_CREDS must be unset before Alembic (combined buffer
-    # containing both secrets must not survive past the split point).
+    # R15-R1/R15-R2: _NATIVE_CREDS must be actively unset (anchored command,
+    # not an echo/comment/no-op) before Alembic.
     unset_creds_idx = next(
         (i for i, r in enumerate(lines)
-         if "_NATIVE_CREDS" in r and "unset" in r), None,
+         if re.match(r"^\s*unset\b.*\b_NATIVE_CREDS\b", r)), None,
     )
     if unset_creds_idx is None:
         raise ValueError("setup.sh: _NATIVE_CREDS must be unset before Alembic")
@@ -734,6 +734,36 @@ class TestH7R5R1InstallPathWiring:
             "",
         )
         with pytest.raises(ValueError, match="_NATIVE_CREDS must be unset before Alembic"):
+            check_setup_sh_wiring(text)
+
+    @pytest.mark.parametrize(
+        "inert",
+        [
+            'echo unset _NATIVE_CREDS',
+            '# unset _NATIVE_CREDS',
+            ': unset _NATIVE_CREDS',
+            'true unset _NATIVE_CREDS',
+        ],
+    )
+    def test_RED_native_creds_inert_unset_rejected(self, inert: str) -> None:
+        """RED (R15-R2): echo / comment / colon / true no-op forms that merely
+        contain the tokens must NOT satisfy the guard — only an active anchored
+        `unset _NATIVE_CREDS` command is accepted."""
+        text = self._base().replace(
+            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n",
+            inert + "\n",
+        )
+        with pytest.raises(ValueError, match="_NATIVE_CREDS must be unset"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_native_creds_unset_after_alembic_rejected(self) -> None:
+        """RED (R15-R2): moving the unset AFTER `alembic upgrade head` leaves
+        the combined buffer alive during Alembic — the guard catches the ordering."""
+        text = self._base().replace(
+            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n",
+            "",
+        ).replace("alembic upgrade head", "alembic upgrade head\nunset _NATIVE_CREDS")
+        with pytest.raises(ValueError, match="_NATIVE_CREDS must be unset"):
             check_setup_sh_wiring(text)
 
     def test_RED_missing_database_url_resolution(self) -> None:
@@ -1698,79 +1728,115 @@ esac
 
 
 # ---------------------------------------------------------------------------
-# AST migration-env dependency inventory (R15/R15-R1)
+# AST migration-env dependency inventory (R15/R15-R1/R15-R2)
 # ---------------------------------------------------------------------------
-def test_migration_env_dependency_inventory_is_exactly_reporting_user_password():
-    """AST scan of ALL migration files: the set of non-connection env-var
-    dependencies must be exactly {REPORTING_USER_PASSWORD}. Covers
-    os.environ.get(), os.environ[...], os.getenv(), and imported aliases.
-    Dynamic keys or unrecognized environment access → hard fail."""
-    import ast as _ast
-    migration_dir = BACKEND_DIR / "alembic" / "versions"
+def _scan_migration_env_vars(source: str) -> set[str]:
+    """Pure scanner: extract env-var names from Python source code. Recognized:
+    os.environ.get(K), os.environ[K], os.getenv(K), and import/assignment
+    aliases. Hard-fails (AssertionError) on dynamic keys, setdefault/pop/
+    update/putenv, or any other os.environ access on a tracked name."""
+    import ast
+    tree = ast.parse(source)
+    environ_names: set[str] = set()
+    getenv_names: set[str] = set()
+    # First pass: track imports and assignment aliases
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "os":
+            for alias in node.names:
+                local = alias.asname or alias.name
+                if alias.name == "environ":
+                    environ_names.add(local)
+                elif alias.name == "getenv":
+                    getenv_names.add(local)
+        if isinstance(node, ast.Assign):
+            if isinstance(node.value, ast.Attribute) and node.value.attr == "environ":
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        environ_names.add(target.id)
     env_vars: set[str] = set()
 
-    def _fail_dynamic(node):
-        raise AssertionError(
-            f"dynamic or non-string env-var access in migration at line {getattr(node, 'lineno', '?')}"
+    def _is_environ(val):
+        return (
+            (isinstance(val, ast.Attribute) and val.attr == "environ")
+            or (isinstance(val, ast.Name) and val.id in environ_names)
         )
 
-    def _collect_call_key(node):
-        if not node.args or not isinstance(node.args[0], _ast.Constant) or not isinstance(node.args[0].value, str):
-            _fail_dynamic(node)
+    def _key(node):
+        if not node.args or not isinstance(node.args[0], ast.Constant) or not isinstance(node.args[0].value, str):
+            raise AssertionError(f"dynamic env-var key at line {getattr(node, 'lineno', '?')}")
         env_vars.add(node.args[0].value)
 
-    def _collect_subscript_key(node):
+    def _sub(node):
         sl = node.slice
-        if not isinstance(sl, _ast.Constant) or not isinstance(sl.value, str):
-            _fail_dynamic(node)
+        if not isinstance(sl, ast.Constant) or not isinstance(sl.value, str):
+            raise AssertionError(f"dynamic env-var subscript at line {getattr(node, 'lineno', '?')}")
         env_vars.add(sl.value)
 
-    for pyfile in sorted(migration_dir.glob("*.py")):
-        src = pyfile.read_text(encoding="utf-8")
-        tree = _ast.parse(src)
-        # Track imported aliases: from os import environ/getenv [as X]
-        environ_names = set()
-        getenv_names = set()
-        for node in _ast.walk(tree):
-            if isinstance(node, _ast.ImportFrom) and node.module == "os":
-                for alias in node.names:
-                    local = alias.asname or alias.name
-                    if alias.name == "environ":
-                        environ_names.add(local)
-                    elif alias.name == "getenv":
-                        getenv_names.add(local)
-        # Scan for environment access patterns
-        for node in _ast.walk(tree):
-            if isinstance(node, _ast.Call):
-                func = node.func
-                # *.environ.get("VAR") — attribute chain (os.environ, _os.environ)
-                if (isinstance(func, _ast.Attribute) and func.attr == "get"
-                        and isinstance(func.value, _ast.Attribute)
-                        and func.value.attr == "environ"):
-                    _collect_call_key(node)
-                # alias.get("VAR") — from os import environ; environ.get(...)
-                elif (isinstance(func, _ast.Attribute) and func.attr == "get"
-                      and isinstance(func.value, _ast.Name)
-                      and func.value.id in environ_names):
-                    _collect_call_key(node)
-                # *.getenv("VAR") — os.getenv, _os.getenv
-                elif (isinstance(func, _ast.Attribute) and func.attr == "getenv"
-                      and isinstance(func.value, _ast.Name)):
-                    _collect_call_key(node)
-                # alias getenv(...) — from os import getenv; getenv(...)
-                elif isinstance(func, _ast.Name) and func.id in getenv_names:
-                    _collect_call_key(node)
-            if isinstance(node, _ast.Subscript):
-                val = node.value
-                # *.environ["VAR"]
-                if (isinstance(val, _ast.Attribute) and val.attr == "environ"):
-                    _collect_subscript_key(node)
-                # alias["VAR"] — from os import environ; environ[...]
-                elif isinstance(val, _ast.Name) and val.id in environ_names:
-                    _collect_subscript_key(node)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Attribute):
+                if func.attr == "get" and _is_environ(func.value):
+                    _key(node)
+                elif func.attr == "getenv" and isinstance(func.value, ast.Name):
+                    _key(node)
+                elif func.attr in ("setdefault", "pop", "update") and _is_environ(func.value):
+                    raise AssertionError(f"unauthorized os.environ.{func.attr} at line {node.lineno}")
+                elif func.attr == "putenv":
+                    raise AssertionError(f"os.putenv not allowed at line {node.lineno}")
+            elif isinstance(func, ast.Name) and func.id in getenv_names:
+                _key(node)
+        if isinstance(node, ast.Subscript) and _is_environ(node.value):
+            _sub(node)
+    return env_vars
 
-    connection_vars = {"DATABASE_URL", "REDIS_URL"}
-    extra = env_vars - connection_vars
+
+class TestMigrationEnvVarScanner:
+    """Synthetic-source mutation tests for _scan_migration_env_vars — proves
+    every supported syntax form is caught and every unauthorized form
+    hard-fails."""
+
+    @pytest.mark.parametrize("src,expected", [
+        ('import os; os.environ.get("VAR")', {"VAR"}),
+        ('import os; os.environ["VAR"]', {"VAR"}),
+        ('import os; os.getenv("VAR")', {"VAR"}),
+        ('import _os; _os.environ.get("VAR")', {"VAR"}),
+        ('import _os; _os.environ["VAR"]', {"VAR"}),
+        ('import _os; _os.getenv("VAR")', {"VAR"}),
+        ('from os import environ; environ.get("VAR")', {"VAR"}),
+        ('from os import environ; environ["VAR"]', {"VAR"}),
+        ('from os import environ as e; e.get("VAR")', {"VAR"}),
+        ('from os import environ as e; e["VAR"]', {"VAR"}),
+        ('from os import getenv; getenv("VAR")', {"VAR"}),
+        ('from os import getenv as g; g("VAR")', {"VAR"}),
+        ('import os; env = os.environ; env.get("VAR")', {"VAR"}),
+        ('import os; env = os.environ; env["VAR"]', {"VAR"}),
+    ])
+    def test_supported_forms(self, src: str, expected: set[str]) -> None:
+        assert _scan_migration_env_vars(src) == expected
+
+    @pytest.mark.parametrize("src", [
+        'import os; os.environ.get(some_var)',             # dynamic key
+        'import os; os.environ[some_var]',                 # dynamic subscript
+        'import os; os.environ.setdefault("VAR", "x")',    # setdefault
+        'import os; os.environ.pop("VAR")',                # pop
+        'import os; os.environ.update({"VAR": "x"})',      # update
+        'import os; os.putenv("VAR", "x")',                # putenv
+        'import os; env = os.environ; env.setdefault("VAR", "x")',  # alias setdefault
+    ])
+    def test_unauthorized_forms_hard_fail(self, src: str) -> None:
+        with pytest.raises(AssertionError):
+            _scan_migration_env_vars(src)
+
+
+def test_migration_env_dependency_inventory_is_exactly_reporting_user_password():
+    """Real migration files 001–037: the non-connection env-var set must be
+    exactly {REPORTING_USER_PASSWORD}."""
+    migration_dir = BACKEND_DIR / "alembic" / "versions"
+    env_vars: set[str] = set()
+    for pyfile in sorted(migration_dir.glob("*.py")):
+        env_vars |= _scan_migration_env_vars(pyfile.read_text(encoding="utf-8"))
+    extra = env_vars - {"DATABASE_URL", "REDIS_URL"}
     assert extra == {"REPORTING_USER_PASSWORD"}, (
         f"unexpected migration env-var dependency set: {extra}"
     )

@@ -1,8 +1,8 @@
-# DC-12R1-H7-R15-R1 — Source Evidence Blocker Closure (NO PASS)
+# DC-12R1-H7-R15-R2 — Evidence Authenticity Blocker Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R15 is
-> `SUPERSEDED_BY_H7_R15_R1`.** Accepted external evidence: Kilo R10-V1 =
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R15-R1 is
+> `SUPERSEDED_BY_H7_R15_R2`.** Accepted external evidence: Kilo R10-V1 =
 > `7d53d6a5c9dc7fc8a8a44414951c214c7bce4d02`; Lubuntu R10-V2 STOP =
 > `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier records superseded.
 
@@ -10,7 +10,33 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R15-R1 evidence (current checkpoint)
+## R15-R2 evidence (current checkpoint)
+
+Closes two CTO evidence-authenticity blockers on R15-R1. Only the parity test
+and three evidence docs change; setup.sh, setup_preflight.py, and the direct
+preflight test are byte-identical to R15-R1.
+
+- **P1 (guard authenticity):** the `_NATIVE_CREDS` lifecycle guard now matches
+  only an active anchored `^\s*unset.*_NATIVE_CREDS` command (not
+  echo/comment/colon/true no-op forms). Inert-form mutation REDs (echo, comment,
+  colon, true) and post-Alembic-ordering RED all prove the guard catches them.
+- **P1 (AST scanner authenticity):** extracted a pure `_scan_migration_env_vars`
+  helper (independently testable). Synthetic-source tests cover every supported
+  form: `os.environ.get`, `os.environ[...]`, `os.getenv`, `_os.*`, `from os
+  import environ/getenv [as alias]`, and assignment aliases (`env = os.environ`).
+  Hard-fail tests cover dynamic keys, `setdefault/pop/update/putenv`, and alias
+  `setdefault`. The real 001–037 scan still produces exactly
+  {REPORTING_USER_PASSWORD}.
+- **Test gates:** direct **144/144** nat+rev (unchanged); harness **38/38**;
+  full parity **160/160** (134 + 26 R15-R2); complete H7 suite **304/304**
+  both file orders nat+rev.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed. Sequence: Kilo bounded review → Lubuntu V4 → CTO merge.
+
+---
+
+## R15-R1 evidence (SUPERSEDED_BY_H7_R15_R2)
 
 Closes three CTO source-evidence blockers on R15 (directive
 `STOP_AND_REPORT_CTO_WITH_H7_R15_R1_SOURCE_EVIDENCE_BLOCKERS`):

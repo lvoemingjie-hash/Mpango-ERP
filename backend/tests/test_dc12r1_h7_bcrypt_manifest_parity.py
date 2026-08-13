@@ -436,6 +436,22 @@ def check_setup_sh_wiring(text: str) -> None:
     # R11: setup.sh must NOT overwrite a caller-provided COMPOSE_PROJECT_NAME
     if any(re.search(r"^\s*COMPOSE_PROJECT_NAME\s*=", r) for r in lines):
         raise ValueError("setup.sh: must not set/overwrite COMPOSE_PROJECT_NAME")
+    # R12: no Compose config operation may run before the --env-file-bearing
+    # array is constructed (a premature config probe without --env-file would
+    # fail interpolation and silently reject a standalone docker-compose).
+    compose_array_idx = next(
+        (i for i, r in enumerate(lines) if re.search(r"^\s*COMPOSE\s*=\(", r)), None
+    )
+    if compose_array_idx is None:
+        raise ValueError("setup.sh: missing COMPOSE array")
+    for r in lines[:compose_array_idx]:
+        s = r.strip()
+        if not s or s.startswith("#"):
+            continue
+        if re.search(r"\bconfig\b", s) and "version" not in s:
+            raise ValueError(
+                "setup.sh: Compose config operation runs before the --env-file-bearing array"
+            )
     # REJECT npm (pnpm required; word-boundary so 'pnpm' is not flagged)
     for r in after_pip:
         if re.search(r"\bnpm\s+(install|i)\b", r) and "pnpm" not in r.lower():
@@ -900,7 +916,7 @@ class TestH7R5R2ExecutableHarness:
             raise RuntimeError("required coreutils not found: " + ", ".join(missing))
 
     @classmethod
-    def _build_harness(cls, tmp_path: Path, **fake_exits: str) -> dict:
+    def _build_harness(cls, tmp_path: Path, standalone: bool = False, **fake_exits: str) -> dict:
         import os
         import shutil
         import subprocess
@@ -1010,6 +1026,38 @@ echo "pnpm $*" >> "{log_str}"
 exit {_ev("pnpm")}
 ''',
         }
+        if standalone:
+            # R12 standalone harness: the `docker compose` plugin is hidden
+            # (any docker call fails) and only a standalone Compose v2 exists.
+            # Its `config` (and every operation) succeeds ONLY when
+            # `--env-file <path>` is carried BEFORE the subcommand.
+            fake_bodies["docker"] = f'''#!/bin/bash
+echo "docker $*" >> "{log_str}"
+exit 1
+'''
+            fake_bodies["docker-compose"] = f'''#!/bin/bash
+echo "docker-compose $*" >> "{log_str}"
+a="$*"
+case "$a" in
+    "version"*) echo "Docker Compose version v2.20.0"; exit 0;;
+    "--env-file "*)
+        rest="${{a#* }}"; rest="${{rest#* }}"
+        case "$rest" in
+            "config --format json"*) echo '{_compose_json}'; exit 0;;
+            "config"*) exit {_ev("compose_config")};;
+            "up -d"*) exit 0;;
+            "exec -T postgres"*)
+                if echo "$rest" | grep -q "pg_isready"; then
+                    exit {_ev("pg")}
+                fi
+                printf "pguser|pgdb"
+                exit 0;;
+            "exec -T redis"*) echo "PONG"; exit {_ev("redis")};;
+            *) exit 0;;
+        esac;;
+    *) exit 1;;
+esac
+'''
         for name, body in fake_bodies.items():
             (bin_dir / name).write_text(body)
         # set MSYS2 executable bits via bash chmod (MSYS-converted paths, checked)
@@ -1336,6 +1384,91 @@ exit {_ev("pnpm")}
             assert marked, f"no docker call with {mark!r}"
             for line in marked:
                 assert line.index("--env-file") < line.index(mark.split()[0]), line
+
+    # ---- standalone Compose v2 (R12) ------------------------------------
+
+    @classmethod
+    def _run_mutated_standalone(cls, tmp_path: Path, mutate):
+        """Build a standalone harness, replace the committed setup.sh copy with
+        a mutation, and run it.  Returns the CompletedProcess."""
+        h = cls._build_harness(tmp_path, standalone=True)
+        script = h["repo"] / "backend" / "scripts" / "setup.sh"
+        original = SETUP_SH.read_text(encoding="utf-8")
+        mutated = mutate(original)
+        assert mutated != original, "mutation did not change setup.sh"
+        # write LF bytes: text-mode writes would emit CRLF and trip the CRLF
+        # self-check instead of the intended mutation path.
+        script.write_bytes(mutated.encode("utf-8"))
+        return cls._run(h)
+
+    def test_standalone_compose_env_file_enforced(self, tmp_path: Path) -> None:
+        """GREEN (R12): with the `docker compose` plugin hidden and only a
+        standalone Compose v2 available, candidate selection uses the version
+        probe, and every operation carries --env-file BEFORE the subcommand —
+        setup completes."""
+        h = self._build_harness(tmp_path, standalone=True)
+        r = self._run(h)
+        assert r.returncode == 0, r.stderr
+        assert "Setup complete" in r.stdout
+        log = h["log"].read_text()
+        assert "docker-compose version" in log
+        ops = [
+            l for l in log.splitlines()
+            if l.startswith("docker-compose ") and "version" not in l
+        ]
+        assert ops, "no docker-compose operations logged"
+        for line in ops:
+            assert line.startswith("docker-compose --env-file"), line
+
+    def test_standalone_mutation_remove_env_file_fails(self, tmp_path: Path) -> None:
+        """RED (R12): removing --env-file from the COMPOSE array makes the
+        enforcing standalone fake reject `config` — setup fails."""
+        r = self._run_mutated_standalone(
+            tmp_path,
+            lambda t: t.replace(
+                'COMPOSE=("${COMPOSE_BASE[@]}" --env-file "$BACKEND_ENV")',
+                'COMPOSE=("${COMPOSE_BASE[@]}")',
+            ),
+        )
+        assert r.returncode != 0
+        assert "docker-compose configuration is invalid" in r.stderr
+        assert "Setup complete" not in r.stdout
+
+    def test_standalone_mutation_env_file_after_subcommand_fails(
+        self, tmp_path: Path
+    ) -> None:
+        """RED (R12): placing --env-file AFTER the config subcommand is
+        rejected by the enforcing standalone fake — setup fails."""
+        r = self._run_mutated_standalone(
+            tmp_path,
+            lambda t: t.replace(
+                'COMPOSE=("${COMPOSE_BASE[@]}" --env-file "$BACKEND_ENV")',
+                'COMPOSE=("${COMPOSE_BASE[@]}")',
+            ).replace(
+                '"${COMPOSE[@]}" config --quiet',
+                '"${COMPOSE[@]}" config --env-file "$BACKEND_ENV" --quiet',
+            ),
+        )
+        assert r.returncode != 0
+        assert "docker-compose configuration is invalid" in r.stderr
+        assert "Setup complete" not in r.stdout
+
+    def test_standalone_mutation_premature_config_probe_fails(
+        self, tmp_path: Path
+    ) -> None:
+        """RED (R12): restoring the premature `docker-compose config --format
+        json` probe in candidate selection runs config WITHOUT --env-file and
+        is rejected by the enforcing fake — selection fails closed."""
+        r = self._run_mutated_standalone(
+            tmp_path,
+            lambda t: t.replace(
+                "    COMPOSE_BASE=(docker-compose)\n",
+                "    if docker-compose config --format json &> /dev/null < /dev/null; then\n        COMPOSE_BASE=(docker-compose)\n    fi\n",
+            ),
+        )
+        assert r.returncode != 0
+        assert "Docker Compose v2 is required" in r.stderr
+        assert "Setup complete" not in r.stdout
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

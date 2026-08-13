@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R11 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R12 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -391,43 +391,44 @@ harness 22/22; H7 suite 245/245 both orders. Hypothesis node unresolved and
 environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
-**H7-R11 (evidence checkpoint, current; NO PASS):** closes two source defects
-surfaced by the Lubuntu V2 native failure on the occupied host (report SHA
-`e073ded8`; accepted Kilo R10-V1 = `7d53d6a5`). (1) Fixed container names —
-ALL `container_name` lines removed from the base docker-compose.yml; Compose
-now namespaces containers/networks/volumes from the caller's
-`COMPOSE_PROJECT_NAME` (setup.sh honours it, never overwrites it). New
-fail-closed preflight rule rejects any rendered service declaring an explicit
-`container_name` (fixed neutral error, value never echoed). (2) Compose
-env-file wiring — setup.sh passes `backend/.env` explicitly via
-`docker compose --env-file <absolute backend/.env> ...` (same array for
-config/up/exec, `--env-file` before the subcommand, no source/export of .env,
-no secrets printed); the native command remains `bash backend/scripts/setup.sh`.
-Authentic RED proofs against `6be4c279` on THIS occupied host: R10 `up -d redis`
-failed with `Conflict: container name "/mpango_redis" already in use` against
-the pre-existing host-owner `mpango_redis`; R10-style config without
-`--env-file`/exports failed interpolation (`POSTGRES_PASSWORD must be set`);
-R10 preflight (no container_name rule) accepted the fixed-name render while
-R11 rejects it. Authentic GREEN proofs: two project names render disjoint
-resource names with zero explicit container_name; `-p h7_r11_green up -d redis`
-coexisted with the untouched host-owner sentinel (before/after `docker ps`
-identical; all task resources removed; zero leftovers); every Compose
-operation carries `--env-file` before the subcommand; caller-selected ports
-(15432/16379) with matching URLs pass and a mismatched pairing fails before
-side effects. Evidence: direct preflight 133/133 natural+reverse; harness
-23/23 natural+reverse zero skip/xfail; complete H7 suite 250/250 natural+reverse
-in both file orders; bash -n, py_compile, diff-check, pre-commit incl.
-detect-secrets, UTF-8/mojibake all clean; GitNexus detect_changes vs `6be4c279`
-= exactly the eight allowed files; everything outside byte-identical to R10
-(docker-compose.prod.yml, manifests, migrations, product code, lockfiles,
-Hypothesis test untouched); immutable blobs unchanged (env.py=`1c71de78`,
-bootstrap=`ca7d91f`); protected baseline `a6ef3aac` unchanged. Host-owner
-non-interference proven (no host-owner container stopped/renamed/inspected).
-Hypothesis node remains unresolved and environment-gated. Verdict:
-`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. After R11: Kilo
-bounded source review; then Lubuntu V3 native setup on the same occupied host
-with a unique project name and free loopback ports; then the focused
-Hypothesis zero-red gate; only then CTO merge consideration.
+**H7-R11 (evidence checkpoint, SUPERSEDED_BY_H7_R12):** Compose project
+isolation (all fixed `container_name` removed; fail-closed preflight rule) and
+native env-file wiring (`docker compose --env-file <backend/.env>`). Authentic
+RED/GREEN proofs on the occupied host (sentinel collision vs coexistence;
+disjoint renders; port isolation). Direct 133/133; harness 23/23; H7 250/250.
+Hypothesis node unresolved. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R12 (evidence checkpoint, current; NO PASS):** repairs the standalone
+docker-compose probe defect. R11's candidate selection ran
+`docker-compose config --format json` BEFORE the `--env-file`-bearing array
+existed — that config probe ran without `--env-file`, failed interpolation, and
+silently rejected a valid standalone Compose v2. R12 selects candidates with
+`version` probes ONLY and runs the real `config --quiet` / `config --format
+json` capability checks through the same
+`COMPOSE=(<candidate> --env-file "$BACKEND_ENV")` array. A structural guard
+rejects any `config` occurrence before the `COMPOSE=(` line (narrowed to
+`\bconfig\b` after a false positive on the "Setting up" echo was caught). New
+authentic standalone harness: the `docker compose` plugin is hidden and only a
+standalone Compose v2 fake exists whose operations succeed ONLY with
+`--env-file` carried before the subcommand. GREEN: standalone setup completes
+with every operation carrying `--env-file` first. Three mutation REDs: removing
+`--env-file`, moving it after `config`, and restoring the premature probe all
+fail closed (mutation copies written as LF bytes so the CRLF self-check does
+not mask the intended path). Evidence: direct preflight 133/133 natural+reverse;
+harness 27/27 natural+reverse zero skip/xfail (23 + 4 standalone); complete H7
+suite 254/254 natural+reverse in both file orders; bash -n, py_compile (no
+SyntaxWarning), diff-check, pre-commit incl. detect-secrets, UTF-8/mojibake all
+clean; GitNexus detect_changes vs `849f31ca` = exactly the in-scope files
+(setup.sh, manifest-parity test, three evidence docs); everything else
+byte-identical to R11 (setup_preflight.py, direct preflight test, compose
+files, manifests, migrations, product code, lockfiles, Hypothesis test);
+immutable blobs unchanged (env.py=`1c71de78`, bootstrap=`ca7d91f`); protected
+baseline `a6ef3aac` unchanged. Hypothesis node remains unresolved and
+environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. R12 is a STOP
+checkpoint: Kilo bounded review is next; only after Kilo passes does Lubuntu
+V3 run; no deployment, Playwright or merge.
 
 ## Active Phase
 

@@ -1,17 +1,69 @@
-# DC-12R1-H7-R11 — Compose Project Isolation and Native Env-File Closure (NO PASS)
+# DC-12R1-H7-R12 — Standalone Compose Probe Repair (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R10 is
-> `SUPERSEDED_BY_H7_R11`.** Accepted external evidence: Kilo R10-V1 =
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R11 is
+> `SUPERSEDED_BY_H7_R12`.** Accepted external evidence: Kilo R10-V1 =
 > `7d53d6a5c9dc7fc8a8a44414951c214c7bce4d02`; Lubuntu R10-V2 STOP =
-> `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier CTO cross-host
-> reproduction (187/174/13) and R5-R5 `abbbe32f` 11/4/7 records are superseded.
+> `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier records superseded.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `6be4c279` (H7-R10)
+> Base candidate: `849f31ca` (H7-R11)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R11 evidence (current checkpoint)
+## R12 evidence (current checkpoint)
+
+- **Defect closed — premature standalone config probe.** R11's candidate
+  selection ran `docker-compose config --format json` as a capability probe
+  BEFORE the `--env-file "$BACKEND_ENV"` array existed. That config operation
+  ran without `--env-file`, failed interpolation (`POSTGRES_PASSWORD must be
+  set`), and silently rejected an otherwise-valid standalone Compose v2.
+  R12 selects candidates with `version` probes ONLY, then runs the real
+  capability checks (`config --quiet`, `config --format json`) through the
+  same `COMPOSE=(<candidate> --env-file "$BACKEND_ENV")` array.
+- **Structural guard:** `check_setup_sh_wiring` now rejects any `config`
+  occurrence before the `COMPOSE=(` array line (fixed wording; a false
+  positive on the "Setting **up**" echo line was caught and the check was
+  narrowed to `\bconfig\b`).
+- **Authentic standalone harness (new):** the `docker compose` plugin is
+  hidden (any `docker` call fails) and only a standalone Compose v2 fake
+  exists; its `config`/`up`/`exec` succeed ONLY when `--env-file <path>` is
+  carried BEFORE the subcommand.
+  - GREEN `test_standalone_compose_env_file_enforced`: setup completes through
+    the standalone path; every logged operation starts with
+    `docker-compose --env-file`.
+  - RED `test_standalone_mutation_remove_env_file_fails`: removing
+    `--env-file` from the array → `docker-compose configuration is invalid`,
+    no completion.
+  - RED `test_standalone_mutation_env_file_after_subcommand_fails`: moving
+    `--env-file` after `config` → rejected, no completion.
+  - RED `test_standalone_mutation_premature_config_probe_fails`: restoring the
+    premature `docker-compose config --format json` probe → selection fails
+    closed (`Docker Compose v2 is required`).
+  - Mutation copies are written as LF bytes so the CRLF self-check does not
+    mask the intended mutation path.
+- **Test gates (re-run, counts updated truthfully):** direct preflight
+  **133/133** natural+reverse; executable harness **27/27** natural+reverse
+  zero skip/xfail (23 previous + 4 standalone); complete H7 suite **254/254**
+  natural+reverse in both file orders.
+- **Deterministic gates:** `bash -n` OK; py_compile OK (no SyntaxWarning);
+  `git diff --check` clean; scoped pre-commit incl. detect-secrets Passed;
+  strict UTF-8/mojibake OK; GitNexus `detect_changes` vs `849f31ca` = exactly
+  the in-scope files (setup.sh, manifest-parity test, this ledger, PROJECT.md,
+  CTO_CURRENT_OPS.md); everything else byte-identical to R11 (setup_preflight.py,
+  direct preflight test, docker-compose files, manifests, migrations, product
+  code, lockfiles, Hypothesis test); immutable blobs unchanged
+  (env.py=`1c71de78`, bootstrap=`ca7d91f`); protected baseline `a6ef3aac`
+  unchanged.
+- **Hypothesis red node** (`HealthCheck.too_slow`): classified, UNRESOLVED,
+  environment-gated; NOT suppressed or edited.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed. R12 is a STOP checkpoint: Kilo bounded review is next; only after
+Kilo passes does Lubuntu V3 run. No deployment, Playwright or merge.
+
+---
+
+## R11 evidence (SUPERSEDED_BY_H7_R12)
 
 R11 closes two source defects surfaced by the Lubuntu V2 native failure on the
 occupied host (report SHA `e073ded8`):

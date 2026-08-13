@@ -28,19 +28,23 @@ echo "Setting up Mpango ERP (root: $REPO_ROOT)"
 # option (before the subcommand) so setup works without exporting the file
 # into the caller environment. A caller-provided COMPOSE_PROJECT_NAME is
 # honoured unchanged; Compose namespaces resources from it naturally.
+# Candidate selection uses `version` probes ONLY: no config operation may
+# run before the --env-file-bearing array exists (a standalone
+# docker-compose config probe without --env-file would fail interpolation
+# and silently reject an otherwise-valid standalone Compose).
 BACKEND_ENV="$REPO_ROOT/backend/.env"
 COMPOSE_BASE=()
 if command -v docker &> /dev/null && docker compose version &> /dev/null; then
     COMPOSE_BASE=(docker compose)
 elif command -v docker-compose &> /dev/null && docker-compose version &> /dev/null; then
-    if docker-compose config --format json &> /dev/null < /dev/null; then
-        COMPOSE_BASE=(docker-compose)
-    fi
+    COMPOSE_BASE=(docker-compose)
 fi
 if [ "${#COMPOSE_BASE[@]}" -eq 0 ]; then
     echo "Docker Compose v2 is required." >&2; exit 1
 fi
 # Same array for config, up and exec; --env-file precedes the subcommand.
+# The real capability checks (config --quiet / config --format json below)
+# run through THIS array, so they carry --env-file too.
 COMPOSE=("${COMPOSE_BASE[@]}" --env-file "$BACKEND_ENV")
 
 # =========================================================================

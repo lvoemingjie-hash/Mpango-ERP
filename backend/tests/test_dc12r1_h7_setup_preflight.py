@@ -1,18 +1,23 @@
-"""Direct unit tests for backend/scripts/setup_preflight.py (H7-R7).
+"""Direct unit tests for backend/scripts/setup_preflight.py (H7-R9).
 
 The module is imported and exercised directly — never through fake parser
 outputs or the executable shell harness.  Every failure path must emit a
 FIXED neutral error, and no error/log/output may ever contain a URL,
-password, or Compose JSON fragment.  R7 hardening covered here:
+password, or Compose JSON fragment.  The asymmetric port contract enforced
+here and in the module is:
 
-  * env keys strictly [A-Za-z_][A-Za-z0-9_]*
-  * exact DB scheme parse (no global string replacement)
-  * blank DB passwords rejected
-  * integer port fields only (bool / string / float rejected)
-  * Compose root must be a dict
-  * malformed URL / file / JSON → fixed neutral errors
-  * Redis credentials rejected (no-auth Compose Redis)
-  * process URLs read from os.environ (never argv)
+  * ``target``  — exact int only (bool / float / string / Unicode digits /
+    structured values all rejected).
+  * ``published`` — exact int OR a *complete* ASCII ``[0-9]+`` string with no
+    whitespace or trailing characters (the form Compose v2 emits for
+    env-substituted published ports).  bool / float / Unicode digits /
+    whitespace-bearing strings / structured values are rejected.
+
+Other hardening: env keys strictly [A-Za-z_][A-Za-z0-9_]*; exact DB scheme
+parse (no global replacement); blank DB passwords rejected; Compose root
+must be a dict; malformed URL / file / JSON / non-UTF-8 → fixed neutral
+errors; Redis credentials rejected (no-auth Compose Redis); process URLs
+read from os.environ (never argv).
 """
 from __future__ import annotations
 
@@ -268,6 +273,26 @@ def test_invalid_utf8_cli_neutral(tmp_path: Path) -> None:
     assert err == "backend/.env is not valid UTF-8"
 
 
+class TestPublishedInt:
+    """Direct proof of the asymmetric published-port contract (R9).  R8 used
+    ``re.match`` whose ``$`` accepts a trailing newline; ``fullmatch`` closes
+    that false-acceptance."""
+
+    @pytest.mark.parametrize("value", [5432, "5432"])
+    def test_accepted(self, value) -> None:
+        assert pf._published_int(value, "postgres") == 5432
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "5432\n", "5432\r", "5432 ", " 5432", "\t5432", "5432\t",
+            "５４３２", True, 5432.0, "abc", [5432], None,
+        ],
+    )
+    def test_rejected_neutral(self, capsys, value) -> None:
+        err = _expect_fail(capsys, pf._published_int, value, "postgres")
+        assert err == "postgres port published must be an integer"
+
 
 # ---------------------------------------------------------------------------
 # initial mode — URL/conflict/Compose matrix (run_initial)
@@ -340,6 +365,19 @@ class TestRunInitial:
         redis = {"ports": [
             {"host_ip": "127.0.0.1", "target": 6379, "published": "6379", "protocol": "tcp", "mode": "ingress"}]}
         self._ok(capsys, pf.run_initial, self._env(tmp_path), stdin_text=_compose(pg=pg, redis=redis))
+
+    def test_published_trailing_newline_rejected_via_run_initial(
+        self, capsys, tmp_path: Path
+    ) -> None:
+        """R9 RED via the complete run_initial() path (not only _published_int):
+        real Compose-shaped JSON whose published string carries a trailing
+        newline must be rejected with the fixed neutral error."""
+        pg = {"environment": dict(PG_ENV_GOOD), "ports": [
+            {"host_ip": "127.0.0.1", "target": 5432, "published": "5432\n", "protocol": "tcp", "mode": "ingress"}]}
+        err = _expect_fail(
+            capsys, pf.run_initial, self._env(tmp_path), stdin_text=_compose(pg=pg),
+        )
+        assert err == "postgres port published must be an integer"
 
     def test_redis_environment_absent_is_not_a_failure(self, capsys, tmp_path: Path) -> None:
         self._ok(capsys, pf.run_initial, self._env(tmp_path))

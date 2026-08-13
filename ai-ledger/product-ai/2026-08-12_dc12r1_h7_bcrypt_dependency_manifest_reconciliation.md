@@ -1,18 +1,77 @@
-# DC-12R1-H7-R8 — Precise Port Contract, .env UTF-8 Fail-Closed, Coreutils Evidence (NO PASS)
+# DC-12R1-H7-R9 — Exact Published-Port and Coreutils Non-Zero Evidence Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. R7 is superseded.
-> CTO cross-host reproduction = **187 collected / 174 passed / 13 failed**
-> (Git Bash `/usr/bin` + /mingw64/bin not explicitly provided → coreutils
-> unresolved); closed by the R7 cross-host repair and re-validated by the R8
-> coreutils-evidence correction. Earlier R5-R5 `abbbe32f` 11/4/7 record is
-> likewise superseded.
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R8 is
+> `SUPERSEDED_BY_H7_R9`.** CTO cross-host reproduction = **187 collected /
+> 174 passed / 13 failed** (Git Bash `/usr/bin` + /mingw64/bin not explicitly
+> provided → coreutils unresolved); closed by the R7 cross-host repair and
+> re-validated by R8/R9. Earlier R5-R5 `abbbe32f` 11/4/7 record is likewise
+> superseded.
 
 > Isolated branch: `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
-> Base candidate: `0eb24d88` (H7-R7)
+> Base candidate: `9f06d4a7` (H7-R8)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R8 evidence (current checkpoint)
+## R9 evidence (current checkpoint)
+
+R9 closes two bounded R8 source/evidence defects. setup.sh, dependency
+manifests, product code, migrations, Compose configuration, lockfiles,
+deployment behavior and the unresolved Hypothesis test are all unchanged.
+
+- **Defect 1 — published-port trailing-newline false-acceptance (closed).**
+  R8 used `_PUBLISHED_RE.match(value)` with pattern `^[0-9]+$`; Python's `$`
+  matches before a final newline, so `_published_int("5432\n", "postgres")
+  == 5432` was accepted — violating the "complete ASCII `[0-9]+` string"
+  contract. **RED proof against `9f06d4a7`:** `_PUBLISHED_RE.match("5432\n")`
+  → `True`; `_PUBLISHED_RE.fullmatch("5432\n")` → `False`. Fix:
+  `_PUBLISHED_RE.fullmatch(value)` (no `.strip()`/`int()`-before-validate/
+  `isdigit()`/coercive parsing). `target` unchanged (exact int only).
+  Mandatory GREEN/RED matrix proven directly (`TestPublishedInt`: `5432` and
+  `"5432"` accepted; `"5432\n"`, `"5432\r"`, `"5432 "`, `" 5432"`, `"\t5432"`,
+  `"5432\t"`, `"５４３２"`, `True`, `5432.0`, `"abc"`, `[5432]`, `None`
+  rejected with `port published must be an integer`) AND via the complete
+  `run_initial()` path with real Compose-shaped JSON
+  (`test_published_trailing_newline_rejected_via_run_initial`). `target="5432"`
+  remains rejected.
+- **Defect 2 — coreutils non-zero-return branch evidence (closed).** R8's
+  `_verify_coreutils` checked `res.returncode != 0` but no test exercised it.
+  New `test_verify_coreutils_fails_when_probe_returns_nonzero` uses the real
+  `false` executable (starts successfully, exits non-zero) →
+  `_verify_coreutils` raises exactly `RuntimeError("coreutils probe failed")`;
+  it does not rely on a missing executable (the OSError/non-executable test
+  remains). **Mutation evidence:** with the return-code guard removed,
+  `_verify_coreutils(false_exe, [])` does NOT raise → the new test goes RED;
+  with the guard it raises → GREEN. The committed source has the guard.
+- **Documentation truth:** the `test_dc12r1_h7_setup_preflight.py` module
+  header now describes the asymmetric contract accurately (target exact int;
+  published exact int or complete ASCII digit string; bool/float/Unicode
+  digits/whitespace/structured values rejected).
+- **Evidence:** direct preflight **129 passed** natural AND reverse; executable
+  harness **22 passed** natural AND reverse, zero skip/xfail; complete H7
+  suite **245 passed** natural AND reverse in both file orderings (preflight
+  129 + parity 116); full manifest-parity file 116/116; exact direct probes
+  (21) for trailing-newline published, invalid-UTF-8 (direct+CLI), missing
+  coreutil, non-executable probe, non-zero-return probe, unique sentinel.
+  `bash -n`, `py_compile` (no SyntaxWarning), `git diff --check`, pre-commit
+  incl. detect-secrets, strict UTF-8/mojibake — all clean; GitNexus
+  `detect_changes` vs `9f06d4a7` = exactly the in-scope files; all files
+  outside the six-file allowlist byte-identical to R8 (setup.sh,
+  requirements.txt, pyproject.toml, poetry.lock, Dockerfile, docker-compose,
+  migrations, product code, Hypothesis tests); immutable blobs unchanged
+  (env.py=`1c71de78`, bootstrap=`ca7d91f`).
+- **Hypothesis red node** (`test_property_token_roundtrip_integrity`
+  `HealthCheck.too_slow`): classified, UNRESOLVED, environment-gated; NOT
+  suppressed or edited.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed; this is an evidence checkpoint only. R9 source corrections are
+complete; this is not merge approval. Kilo bounded source review is next; only
+after Kilo closure may Lubuntu run native setup.sh and the focused zero-red
+gate; H7 cannot merge until both gates pass.
+
+---
+
+## R8 evidence (SUPERSEDED_BY_H7_R9)
 
 - **setup.sh byte-identical to `0eb24d88`** — `git diff --exit-code 0eb24d88 --
   backend/scripts/setup.sh` is empty; no source defect required a change.

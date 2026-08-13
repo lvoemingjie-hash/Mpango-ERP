@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R8 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R9 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -366,29 +366,40 @@ harness 20/20; immutable files byte-identical. Hypothesis node unresolved and
 environment-gated. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
-**H7-R8 (evidence checkpoint, current; NO PASS):** four precision corrections
-on top of R7. (1) Coreutils evidence — `_REQUIRED_COREUTILS` now covers exactly
-the externals setup.sh invokes (`dirname, grep, mkdir, seq, sleep`) plus
-`chmod` for harness prep; obsolete `tr/cat/mktemp` removed; `_verify_coreutils`
-fails closed if the probe cannot execute, returns non-zero, or any required
-coreutil is unresolvable (RED: missing real dependency + probe failure).
-(2) `.env` fail-closed — `UnicodeDecodeError` during iteration → one fixed
-neutral error `backend/.env is not valid UTF-8` (no path/bytes/secret); direct
-+ CLI tests. (3) Precise asymmetric port contract — `target` exact int only
-(bool/float/string/Unicode-digit/structure rejected); `published` exact int OR
-ASCII `[0-9]+` string (Compose v2 form); module/test/report wording aligned.
-(4) Evidence integrity — a genuinely unique sentinel in harness `.env` + Compose
-output, proven absent from every argv/log/stdout/stderr. setup.sh is
-**byte-identical to `0eb24d88`** (no source defect required a change).
-Evidence: direct preflight 114/114 natural+reverse; harness 21/21 natural+reverse
-zero skip/xfail; complete H7 suite 229/229 natural+reverse; real Compose
-pipeline = OK; bash -n, py_compile, diff-check, pre-commit incl. detect-secrets,
-UTF-8 all clean; GitNexus detect_changes vs `0eb24d88` = in-scope files only
-(setup.sh unchanged); immutable files byte-identical (env.py=`1c71de78`,
-bootstrap=`ca7d91f`). CTO cross-host reproduction **187/174/13** preserved and
-re-validated. Hypothesis node remains unresolved and environment-gated.
-Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. After R8
-freezes: Kilo bounded review, then Lubuntu native setup.sh + focused zero-red.
+**H7-R8 (evidence checkpoint, SUPERSEDED_BY_H7_R9):** four precision corrections
+on top of R7 (coreutils evidence set; `.env` UTF-8 fail-closed; asymmetric port
+contract; unique sentinel). setup.sh byte-identical to `0eb24d88`. H7 suite
+229/229 natural+reverse; direct preflight 114/114; harness 21/21; immutable
+files byte-identical. Carried two bounded defects into R9: (a) `_published_int`
+used `re.match` whose `$` accepts a trailing newline; (b) the coreutils
+non-zero-return guard had no direct test. Hypothesis node unresolved and
+environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R9 (evidence checkpoint, current; NO PASS):** closes the two R8 defects
+without touching setup.sh, manifests, migrations, product code, Compose config,
+lockfiles or the Hypothesis test. (1) Published-port newline false-acceptance —
+`_PUBLISHED_RE.match` → `.fullmatch`; RED proof against `9f06d4a7`
+(`match("5432\n")=True` → `fullmatch("5432\n")=False`); `target` unchanged
+(exact int only). Direct `TestPublishedInt` matrix plus a complete
+`run_initial()` newline case. (2) Coreutils non-zero-return branch — new
+`test_verify_coreutils_fails_when_probe_returns_nonzero` (real `false` exe:
+starts, exits non-zero → `RuntimeError("coreutils probe failed")`); mutation
+evidence: removing the guard turns the new test RED. (3) Documentation truth —
+test module header now states the asymmetric contract accurately. Evidence:
+direct preflight 129/129 natural+reverse; harness 22/22 natural+reverse zero
+skip/xfail; complete H7 suite 245/245 natural+reverse in both file orderings;
+exact direct probes (21) for newline/UTF-8/coreutils/sentinel; bash -n,
+py_compile (no SyntaxWarning), diff-check, pre-commit incl. detect-secrets,
+UTF-8/mojibake all clean; GitNexus detect_changes vs `9f06d4a7` = in-scope
+files only; all files outside the six-file allowlist byte-identical to R8;
+immutable blobs unchanged (env.py=`1c71de78`, bootstrap=`ca7d91f`). CTO
+cross-host reproduction **187/174/13** preserved. Hypothesis node remains
+unresolved and environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. R9 source corrections
+complete; NOT merge approval. Next: Kilo bounded source review; only after Kilo
+closure may Lubuntu run native setup.sh + focused zero-red; H7 cannot merge
+until both gates pass.
 
 ## Active Phase
 

@@ -1264,6 +1264,20 @@ exit {_ev("pnpm")}
                 "/definitely/not/a/real/bash", [self._msys_path(str(h["bin"]))]
             )
 
+    def test_verify_coreutils_fails_when_probe_returns_nonzero(self, tmp_path: Path) -> None:
+        """RED (R9): the probe STARTS and returns a NON-ZERO exit code (an
+        executable that always fails, e.g. ``false``) — ``_verify_coreutils``
+        must raise ``RuntimeError('coreutils probe failed')``.  This exercises
+        the ``res.returncode != 0`` guard directly and deterministically,
+        independent of the non-executable/OSError case, and does not rely on a
+        missing executable."""
+        import shutil
+        self._build_harness(tmp_path)
+        false_exe = shutil.which("false")
+        assert false_exe, "coreutil `false` not found on this host"
+        with pytest.raises(RuntimeError, match="coreutils probe failed"):
+            self._verify_coreutils(false_exe, [])
+
     def test_unique_sentinel_absent_from_all_captures(self, tmp_path: Path) -> None:
         """The unique password sentinel (in .env AND Compose output) must be
         absent from every captured surface: argv (the command log), stdout,

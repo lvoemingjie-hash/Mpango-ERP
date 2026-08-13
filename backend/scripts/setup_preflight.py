@@ -53,14 +53,17 @@ def _target_int(value, svc_name: str) -> int:
 
 
 def _published_int(value, svc_name: str) -> int:
-    """``published`` (host port) must be an exact int OR an ASCII [0-9]+ string
-    (the form Compose v2 emits for env-substituted published ports).  bool,
-    float, Unicode-digit strings and structured types are rejected."""
+    """``published`` (host port) must be an exact int OR a complete ASCII
+    ``[0-9]+`` string with no whitespace or trailing characters (the form
+    Compose v2 emits for env-substituted published ports).  bool, float,
+    Unicode-digit strings, whitespace-bearing strings and structured types are
+    rejected.  ``fullmatch`` is required: ``re.match`` with a ``$`` anchor
+    accepts a trailing newline, which violates the contract."""
     if isinstance(value, bool):
         _fail(f"{svc_name} port published must be an integer")
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and _PUBLISHED_RE.match(value):
+    if isinstance(value, str) and _PUBLISHED_RE.fullmatch(value):
         return int(value)
     _fail(f"{svc_name} port published must be an integer")
 

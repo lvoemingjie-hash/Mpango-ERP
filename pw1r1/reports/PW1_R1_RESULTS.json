@@ -1,0 +1,154 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R1",
+  "generated_at": "2026-08-14T12:32:35.140Z",
+  "source_sha": "d2e7e44cf23e91cabfab545c494abd342fec3062",
+  "backend_env": "staging (JwtAuthStrategy)",
+  "stages": [
+    {
+      "name": "stage1-auth-desktop",
+      "blocked": false,
+      "exit": 1,
+      "json_nodes": 9,
+      "junit": {
+        "tests": 9,
+        "failures": 1,
+        "errors": 1,
+        "skipped": 0
+      }
+    },
+    {
+      "name": "stage2-phases-desktop",
+      "blocked": true,
+      "exit": null,
+      "json_nodes": 0,
+      "junit": null
+    },
+    {
+      "name": "stage3-matrix-tablet-mobile",
+      "blocked": true,
+      "exit": null,
+      "json_nodes": 0,
+      "junit": null
+    }
+  ],
+  "accounting": {
+    "total": 9,
+    "pass": 7,
+    "fail": 2,
+    "skip": 0,
+    "flaky": 0,
+    "blocked": 153
+  },
+  "accounting_gap": 0,
+  "failure_root_causes": {
+    "timeout-wait": [
+      "desktop:RA multi-tenant login: response carries 2 availableTenants into workspace selector"
+    ],
+    "element-not-visible": [
+      "desktop:wrong password on wholesaler login: API 401, stays on /login, no token persisted"
+    ]
+  },
+  "nodes": [
+    {
+      "stage": "stage1-auth-desktop",
+      "project": "desktop",
+      "file": "auth-matrix.spec.ts",
+      "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+      "outcome": "passed",
+      "duration_ms": 1300,
+      "evidence_attachments": [
+        "browser-evidence"
+      ],
+      "error": null
+    },
+    {
+      "stage": "stage1-auth-desktop",
+      "project": "desktop",
+      "file": "auth-matrix.spec.ts",
+      "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+      "outcome": "passed",
+      "duration_ms": 1086,
+      "evidence_attachments": [],
+      "error": null
+    },
+    {
+      "stage": "stage1-auth-desktop",
+      "project": "desktop",
+      "file": "auth-matrix.spec.ts",
+      "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+      "outcome": "failed",
+      "duration_ms": 21302,
+      "evidence_attachments": [
+        "error-context",
+        "trace"
+      ],
+      "error": "TimeoutError: page.waitForURL: Timeout 20000ms exceeded. | =========================== logs =========================== | waiting for navigation to \"**/select-workspace\" until \"load\" | ============================================================ |  |   49 |"
+    },
+    {
+      "stage": "stage1-auth-desktop",
+      "project": "desktop",
+      "file": "auth-matrix.spec.ts",
+      "title": "RB retailer portal login: client auth API 200, lands on /client",
+      "outcome": "passed",
+      "duration_ms": 1231,
+      "evidence_attachments": [],
+      "error": null
+    },
+    {
+      "stage": "stage1-auth-desktop",
+      "project": "desktop",
+      "file": "auth-matrix.spec.ts",
+      "title": "RA retailer portal login at W1 portal: lands on /client",
+      "outcome": "passed",
+      "duration_ms": 901,
+      "evidence_attachments": [],
+      "error": null
+    },
+    {
+      "stage": "stage1-auth-desktop",
+      "project": "desktop",
+      "file": "auth-matrix.spec.ts",
+      "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+      "outcome": "failed",
+      "duration_ms": 11854,
+      "evidence_attachments": [
+        "browser-evidence",
+        "error-context",
+        "trace"
+      ],
+      "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed |  | Locator: locator('text=Invalid credentials').first() | Expected: visible | Timeout: 10000ms | Error: element(s) not found"
+    },
+    {
+      "stage": "stage1-auth-desktop",
+      "project": "desktop",
+      "file": "auth-matrix.spec.ts",
+      "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+      "outcome": "passed",
+      "duration_ms": 1816,
+      "evidence_attachments": [
+        "browser-evidence"
+      ],
+      "error": null
+    },
+    {
+      "stage": "stage1-auth-desktop",
+      "project": "desktop",
+      "file": "auth-matrix.spec.ts",
+      "title": "/select-workspace direct access without navigation state redirects to /login",
+      "outcome": "passed",
+      "duration_ms": 520,
+      "evidence_attachments": [],
+      "error": null
+    },
+    {
+      "stage": "stage1-auth-desktop",
+      "project": "desktop",
+      "file": "auth-matrix.spec.ts",
+      "title": "logout clears mpango-auth session and returns to /login",
+      "outcome": "passed",
+      "duration_ms": 1181,
+      "evidence_attachments": [],
+      "error": null
+    }
+  ]
+}

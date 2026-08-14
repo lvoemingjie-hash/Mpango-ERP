@@ -1,0 +1,11 @@
+dc12r1_mvp_l1_r0_743684555-redis-1	Up 5 hours (healthy)
+dc12r1_mvp_l1_r0_743684555-postgres-1	Up 5 hours (healthy)
+mpango_gateway	Restarting (1) 20 seconds ago
+mpango_frontend	Up 40 hours (healthy)
+mpango_postgres	Up 40 hours (healthy)
+mpango_prod_backend	Up 40 hours (healthy)
+mpango_redis	Up 40 hours (healthy)
+mpango_prod_gateway	Up 40 hours (healthy)
+mpango_prod_redis	Up 40 hours (healthy)
+mpango_prod_postgres	Up 40 hours (healthy)
+mpango_prod_frontend	Up 40 hours (healthy)

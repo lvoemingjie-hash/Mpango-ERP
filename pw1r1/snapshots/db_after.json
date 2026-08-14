@@ -1,0 +1,159 @@
+{
+  "tenant_schemas": [
+    "t_39f59c2ea66c4a44a092d8e728d13cfd",
+    "t_550e8400e29b41d4a716446655440000",
+    "t_7a382afa0163452280cb7d3e906e856c",
+    "t_b5bc5fcd006f429e8d775c408a4c708b",
+    "t_dev"
+  ],
+  "wholesalers": [
+    [
+      "TEST001",
+      "Mpango Test Tenant",
+      "active"
+    ],
+    [
+      "TEST002",
+      "Test Tenant 2",
+      "active"
+    ],
+    [
+      "TEST003",
+      "Test Tenant 2",
+      "active"
+    ],
+    [
+      "TR16BB078F3A444E409D0BA80AE9D3CE",
+      "PW1R1 W1 Wholesale",
+      "active"
+    ],
+    [
+      "TR683EC9D1C5414CC6AE7F760ADB0406",
+      "PW1R1 W2 Wholesale",
+      "active"
+    ]
+  ],
+  "registrations": [
+    [
+      "16bb078f",
+      "pw1r1.w1.r1@pw1r1.dev",
+      "active",
+      "t_7a382afa0163452280cb7d3e906e856c"
+    ],
+    [
+      "683ec9d1",
+      "pw1r1.w2.r1@pw1r1.dev",
+      "active",
+      "t_b5bc5fcd006f429e8d775c408a4c708b"
+    ]
+  ],
+  "retailers": [
+    [
+      "2b473307",
+      "Westlands Shop",
+      null,
+      "+254712000004"
+    ],
+    [
+      "2f2a0cda",
+      "Karen Mall",
+      null,
+      "+254712000005"
+    ],
+    [
+      "4ac9e59f",
+      "PW1R1 Retailer A",
+      "pw1r1.ra.r1@pw1r1.dev",
+      "+25471000001"
+    ],
+    [
+      "95293cf1",
+      "PW1R1 Retailer B",
+      "pw1r1.rb.r1@pw1r1.dev",
+      "+25472000002"
+    ]
+  ],
+  "users[t_39f59c2ea66c4a44a092d8e728d13cfd]": [
+    [
+      "admin2@test.com",
+      true
+    ],
+    [
+      "operator2_2b473307@test.com",
+      true
+    ],
+    [
+      "operator2_2f2a0cda@test.com",
+      true
+    ]
+  ],
+  "users[t_550e8400e29b41d4a716446655440000]": [
+    [
+      "admin@test.com",
+      true
+    ],
+    [
+      "operator_46353d70@test.com",
+      true
+    ],
+    [
+      "operator_a5aa25c4@test.com",
+      true
+    ],
+    [
+      "operator_b4506fe6@test.com",
+      true
+    ]
+  ],
+  "users[t_7a382afa0163452280cb7d3e906e856c]": [
+    [
+      "pw1r1.ra.r1@pw1r1.dev",
+      true
+    ],
+    [
+      "pw1r1.rb.r1@pw1r1.dev",
+      true
+    ],
+    [
+      "pw1r1.w1.r1@pw1r1.dev",
+      true
+    ]
+  ],
+  "users[t_b5bc5fcd006f429e8d775c408a4c708b]": [
+    [
+      "pw1r1.ra.r1@pw1r1.dev",
+      true
+    ],
+    [
+      "pw1r1.w2.r1@pw1r1.dev",
+      true
+    ]
+  ],
+  "users[t_dev]": [],
+  "bindings": [
+    [
+      "4ac9e59f",
+      "7a382afa",
+      "active"
+    ],
+    [
+      "4ac9e59f",
+      "b5bc5fcd",
+      "active"
+    ],
+    [
+      "95293cf1",
+      "7a382afa",
+      "active"
+    ]
+  ],
+  "count[email_verification_tokens]": 2,
+  "count[invitations]": 3,
+  "count[onboarding_status_tokens]": 2,
+  "count[owner_credential_setup_tokens]": 2,
+  "count[password_reset_tokens]": 0,
+  "count[platform_operator_reset_tokens]": 0,
+  "count[platform_operator_setup_tokens]": 0,
+  "count[retailer_credential_setup_tokens]": 4,
+  "count[retailer_password_reset_tokens]": 0
+}

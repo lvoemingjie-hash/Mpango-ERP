@@ -1,0 +1,42 @@
+{
+  "old_csv": {
+    "total": 53,
+    "pass": 21,
+    "fail": 32,
+    "other": 0,
+    "by_phase": {
+      "Phase 1": {
+        "PASS": 12
+      },
+      "Phase 2": {
+        "FAIL": 4,
+        "PASS": 3
+      },
+      "Phase 3": {
+        "FAIL": 9
+      },
+      "Phase 4": {
+        "FAIL": 6,
+        "PASS": 2
+      },
+      "Phase 5": {
+        "PASS": 4,
+        "FAIL": 2
+      },
+      "Phase 6": {
+        "FAIL": 11
+      }
+    }
+  },
+  "old_md_claims": {
+    "Total Tests": null,
+    "Passed": 57,
+    "Failed": 60,
+    "Skipped": null,
+    "P0 (Critical)": null,
+    "P1 (High)": null
+  },
+  "csv_vs_md_discrepancy": true,
+  "superseded_by": "PW1_R1",
+  "supersede_reason": "Old PW1 harness ran backend with MPANGO_ENV=test + MockAuthStrategy (no real JWT); loginWholesaler masked failures by manually navigating to /select-workspace; countConsoleErrors hardcoded 0; CSV(21P/32F) vs MD(57P/60F) counts disagree; test identities created by direct DB INSERT, not formal lifecycle."
+}

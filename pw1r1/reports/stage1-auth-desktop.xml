@@ -1,0 +1,99 @@
+<testsuites id="" name="" tests="9" failures="1" skipped="0" errors="1" time="46.5784">
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-14T12:31:29.745Z" hostname="desktop" tests="9" failures="1" skipped="0" time="41.191" errors="1">
+<testcase name="PW1-R1 auth matrix (real JWT) › W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts" time="1.3">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts" time="1.086">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts" time="21.302">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-desktop\trace.zip]]
+]]>
+</system-out>
+<error message="page.waitForURL: Timeout 20000ms exceeded." type="TimeoutError">
+<![CDATA[  [desktop] › auth-matrix.spec.ts:36:7 › PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector 
+
+    TimeoutError: page.waitForURL: Timeout 20000ms exceeded.
+    =========================== logs ===========================
+    waiting for navigation to "**/select-workspace" until "load"
+    ============================================================
+
+      49 |
+      50 |     // Workspace selector rendered from login-response navigation state
+    > 51 |     await page.waitForURL('**/select-workspace');
+         |                ^
+      52 |     for (const t of tenants) {
+      53 |       await expect(page.locator('button', { hasText: t.name })).toBeVisible();
+      54 |       await expect(page.locator(`text=Code: ${t.code}`)).toBeVisible();
+        at C:\Users\Jeff0\playwright_pw1_r1_2026-08-14\tests\auth-matrix.spec.ts:51:16
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts" time="1.231">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts" time="0.901">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts" time="11.854">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(locator).toBeVisible() failed" type="expect.toBeVisible">
+<![CDATA[  [desktop] › auth-matrix.spec.ts:78:7 › PW1-R1 auth matrix (real JWT) › wrong password on wholesaler login: API 401, stays on /login, no token persisted 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('text=Invalid credentials').first()
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('text=Invalid credentials').first()
+
+
+      89 |     await page.waitForTimeout(800);
+      90 |     await expect(page).toHaveURL(/\/login/);
+    > 91 |     await expect(page.locator('text=Invalid credentials').first()).toBeVisible();
+         |                                                                    ^
+      92 |     const auth = await readMpangoAuth(page);
+      93 |     expect(auth?.state?.accessToken ?? null).toBeFalsy(); // no fake "logged in"
+      94 |   });
+        at C:\Users\Jeff0\playwright_pw1_r1_2026-08-14\tests\auth-matrix.spec.ts:91:68
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-desktop\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts" time="1.816">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › /select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts" time="0.52">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts" time="1.181">
+</testcase>
+</testsuite>
+</testsuites>

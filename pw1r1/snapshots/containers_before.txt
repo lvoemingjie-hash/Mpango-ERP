@@ -1,0 +1,30 @@
+dc12r1_mvp_l1_r0_743684555-redis-1	Up 4 hours (healthy)	127.0.0.1:16379->6379/tcp	redis:7-alpine
+dc12r1_mvp_l1_r0_743684555-postgres-1	Up 4 hours (healthy)	127.0.0.1:15432->5432/tcp	postgres:15-alpine
+contractd_redis7_run2	Exited (255) 39 hours ago	0.0.0.0:6381->6379/tcp	redis:7-alpine
+contractd_pg16_run2	Exited (255) 39 hours ago	0.0.0.0:5434->5432/tcp	postgres:16-alpine
+contractd_redis7	Exited (255) 39 hours ago	0.0.0.0:6380->6379/tcp	redis:7-alpine
+contractd_pg16	Exited (255) 39 hours ago	0.0.0.0:5433->5432/tcp	postgres:16-alpine
+mpango_h2_redis7	Exited (255) 7 days ago	0.0.0.0:6380->6379/tcp	redis:7-alpine
+mpango_h2_pg16	Exited (255) 7 days ago	0.0.0.0:5433->5432/tcp	postgres:16-alpine
+mpango_dc11t4c_r1_pg2	Exited (255) 2 weeks ago	0.0.0.0:55444->5432/tcp	postgres:16
+mpango_dc11t4c_r1_redis2	Exited (255) 2 weeks ago	0.0.0.0:56444->6379/tcp	redis:7
+mpango_dc11t4c_r1_redis1	Exited (255) 2 weeks ago	0.0.0.0:56443->6379/tcp	redis:7
+mpango_dc11t4c_r1_pg1	Exited (255) 2 weeks ago	0.0.0.0:55443->5432/tcp	postgres:16
+dc10e_redis_547b0b29	Exited (255) 3 weeks ago	127.0.0.1:56380->6379/tcp	ee64a64eaab6
+dc10e_pg_547b0b29	Exited (255) 3 weeks ago	127.0.0.1:55433->5432/tcp	postgres:15-alpine
+dc10a_redis_547b0b29	Exited (255) 3 weeks ago	127.0.0.1:56379->6379/tcp	ee64a64eaab6
+dc10a_pg_547b0b29	Exited (255) 3 weeks ago	127.0.0.1:55432->5432/tcp	postgres:15-alpine
+mpango_dc2a_r1_pg	Exited (255) 3 weeks ago	0.0.0.0:5434->5432/tcp	postgres:15-alpine
+mpango_p25ec_pg	Exited (255) 3 weeks ago	0.0.0.0:5433->5432/tcp	postgres:15-alpine
+mpango_gateway	Up 2 seconds	0.0.0.0:80->80/tcp, [::]:80->80/tcp	nginx:alpine
+mpango_frontend	Up 39 hours (healthy)	80/tcp	windsurfmpangoerp-frontend
+mpango_backend	Exited (137) 5 weeks ago		windsurfmpangoerp-backend
+mpango_postgres	Up 39 hours (healthy)	0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp	postgres:15-alpine
+p21dd-dbg-ac0bead9	Exited (255) 3 weeks ago	0.0.0.0:32776->5432/tcp	postgres:15
+p21dd-dbg-bb02a303	Exited (255) 3 weeks ago	0.0.0.0:32775->5432/tcp	postgres:15
+mpango_prod_backend	Up 39 hours (healthy)	8000/tcp	mpango_staging_rehearsal-backend
+mpango_redis	Up 39 hours (healthy)	0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp	ee64a64eaab6
+mpango_prod_gateway	Up 39 hours (healthy)	0.0.0.0:8080->80/tcp, [::]:8080->80/tcp	nginx:alpine
+mpango_prod_redis	Up 39 hours (healthy)	6379/tcp	ee64a64eaab6
+mpango_prod_postgres	Up 39 hours (healthy)	5432/tcp	postgres:15-alpine
+mpango_prod_frontend	Up 39 hours (healthy)	80/tcp	mpango_staging_rehearsal-frontend

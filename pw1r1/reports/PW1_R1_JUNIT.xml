@@ -1,0 +1,500 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="PW1_R1" tests="162" failures="2" skipped="153">
+  <testsuite name="stage1-auth-desktop/desktop" tests="1" failures="0" skipped="0">
+    <testcase classname="auth-matrix.spec.ts" name="W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" time="1.300" />
+    </testcase>
+  </testsuite>
+  <testsuite name="stage1-auth-desktop/desktop" tests="1" failures="0" skipped="0">
+    <testcase classname="auth-matrix.spec.ts" name="W2 second wholesaler admin: independent tenant, login + select-tenant 200" time="1.086" />
+    </testcase>
+  </testsuite>
+  <testsuite name="stage1-auth-desktop/desktop" tests="1" failures="1" skipped="0">
+    <testcase classname="auth-matrix.spec.ts" name="RA multi-tenant login: response carries 2 availableTenants into workspace selector" time="21.302">
+      <failure message="TimeoutError: page.waitForURL: Timeout 20000ms exceeded. | =========================== logs =========================== | waiting for navigation to &quot;**/select-workspace&quot; until &quot;load&quot; | ============================================================ |  |   49 |"/>
+    </testcase>
+  </testsuite>
+  <testsuite name="stage1-auth-desktop/desktop" tests="1" failures="0" skipped="0">
+    <testcase classname="auth-matrix.spec.ts" name="RB retailer portal login: client auth API 200, lands on /client" time="1.231" />
+    </testcase>
+  </testsuite>
+  <testsuite name="stage1-auth-desktop/desktop" tests="1" failures="0" skipped="0">
+    <testcase classname="auth-matrix.spec.ts" name="RA retailer portal login at W1 portal: lands on /client" time="0.901" />
+    </testcase>
+  </testsuite>
+  <testsuite name="stage1-auth-desktop/desktop" tests="1" failures="1" skipped="0">
+    <testcase classname="auth-matrix.spec.ts" name="wrong password on wholesaler login: API 401, stays on /login, no token persisted" time="11.854">
+      <failure message="Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed |  | Locator: locator('text=Invalid credentials').first() | Expected: visible | Timeout: 10000ms | Error: element(s) not found"/>
+    </testcase>
+  </testsuite>
+  <testsuite name="stage1-auth-desktop/desktop" tests="1" failures="0" skipped="0">
+    <testcase classname="auth-matrix.spec.ts" name="wrong password on retailer portal: API 401, stays on portal, neutral message" time="1.816" />
+    </testcase>
+  </testsuite>
+  <testsuite name="stage1-auth-desktop/desktop" tests="1" failures="0" skipped="0">
+    <testcase classname="auth-matrix.spec.ts" name="/select-workspace direct access without navigation state redirects to /login" time="0.520" />
+    </testcase>
+  </testsuite>
+  <testsuite name="stage1-auth-desktop/desktop" tests="1" failures="0" skipped="0">
+    <testcase classname="auth-matrix.spec.ts" name="logout clears mpango-auth session and returns to /login" time="1.181" />
+    </testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="backend health endpoints are 200 (live/ready)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="frontend serves the SPA shell"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="wholesaler routes redirect anonymous users to /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="retailer /client routes redirect anonymous users to retailer portal or /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="/client/login alias redirects to /retail/login preserving w"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="public auth pages are reachable anonymously"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="unknown route renders the 404 page (no crash)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="invalid portal code shows controlled invalid-portal state with zero login API calls"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="legacy localStorage keys (access_token/user) do NOT authenticate"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="forged mpango-auth with invalid JWT is rejected by the backend"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="REAL mpango-auth format restores a wholesaler session (hydration)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="REAL mpango-auth format restores a retailer session at /client"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="login form submits real credentials to the real API (request body audit)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page / renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /orders renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /inventory renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /skus renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /retailers renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /finance renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /payments renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /declarations renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="dashboard shows the app shell with user context"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler cannot open retailer /client routes (boundary redirect)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="logout returns to /login and clears the session"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer portal: catalog page renders supplier products incl. the setup SKU"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer creates an order through the real API (journey precondition)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer orders page lists own orders via the browser"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="financial idempotency: repeated declaration with the same key produces ZERO extra writes"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="UI double-click on declare submit creates exactly one declaration (browser evidence)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer finance/payments/declarations pages render without errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer print page issues NO mutating requests"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="cross-retailer: RB cannot read RA order by id (API isolation)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="cross-tenant: RA W2-context cannot use W1-only data paths"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="malformed IDs return neutral structured errors (no internals leaked)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="unauthenticated API access is rejected with structured 401 (no leak)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="browser: RB portal session never exposes W2 tenant data"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="RB orders page contains no RA-created orders (page-level isolation)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="wholesaler dashboard: no horizontal overflow, no console/page errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="wholesaler orders page: no horizontal overflow"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="retailer catalog: no horizontal overflow, no console/page errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="retailer orders page: no horizontal overflow"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="login forms have labels and keyboard-accessible inputs"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="no unexpected network failures during a login journey"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage2-phases-desktop/desktop" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="print stub: window.print callable on print pages without errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="W2 second wholesaler admin: independent tenant, login + select-tenant 200"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="RA multi-tenant login: response carries 2 availableTenants into workspace selector"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="RB retailer portal login: client auth API 200, lands on /client"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="RA retailer portal login at W1 portal: lands on /client"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="wrong password on wholesaler login: API 401, stays on /login, no token persisted"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="wrong password on retailer portal: API 401, stays on portal, neutral message"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="/select-workspace direct access without navigation state redirects to /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="logout clears mpango-auth session and returns to /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="W2 second wholesaler admin: independent tenant, login + select-tenant 200"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="RA multi-tenant login: response carries 2 availableTenants into workspace selector"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="RB retailer portal login: client auth API 200, lands on /client"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="RA retailer portal login at W1 portal: lands on /client"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="wrong password on wholesaler login: API 401, stays on /login, no token persisted"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="wrong password on retailer portal: API 401, stays on portal, neutral message"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="/select-workspace direct access without navigation state redirects to /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="auth-matrix.spec.ts" name="logout clears mpango-auth session and returns to /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="backend health endpoints are 200 (live/ready)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="frontend serves the SPA shell"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="wholesaler routes redirect anonymous users to /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="retailer /client routes redirect anonymous users to retailer portal or /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="/client/login alias redirects to /retail/login preserving w"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="public auth pages are reachable anonymously"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="unknown route renders the 404 page (no crash)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="invalid portal code shows controlled invalid-portal state with zero login API calls"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="backend health endpoints are 200 (live/ready)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="frontend serves the SPA shell"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="wholesaler routes redirect anonymous users to /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="retailer /client routes redirect anonymous users to retailer portal or /login"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="/client/login alias redirects to /retail/login preserving w"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="public auth pages are reachable anonymously"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="unknown route renders the 404 page (no crash)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase1-routes.spec.ts" name="invalid portal code shows controlled invalid-portal state with zero login API calls"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="legacy localStorage keys (access_token/user) do NOT authenticate"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="forged mpango-auth with invalid JWT is rejected by the backend"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="REAL mpango-auth format restores a wholesaler session (hydration)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="REAL mpango-auth format restores a retailer session at /client"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="login form submits real credentials to the real API (request body audit)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="legacy localStorage keys (access_token/user) do NOT authenticate"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="forged mpango-auth with invalid JWT is rejected by the backend"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="REAL mpango-auth format restores a wholesaler session (hydration)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="REAL mpango-auth format restores a retailer session at /client"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase2-identity.spec.ts" name="login form submits real credentials to the real API (request body audit)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page / renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /orders renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /inventory renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /skus renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /retailers renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /finance renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /payments renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /declarations renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="dashboard shows the app shell with user context"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler cannot open retailer /client routes (boundary redirect)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="logout returns to /login and clears the session"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page / renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /orders renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /inventory renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /skus renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /retailers renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /finance renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /payments renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler page /declarations renders authenticated content"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="dashboard shows the app shell with user context"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="wholesaler cannot open retailer /client routes (boundary redirect)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase3-wholesaler.spec.ts" name="logout returns to /login and clears the session"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer portal: catalog page renders supplier products incl. the setup SKU"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer creates an order through the real API (journey precondition)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer orders page lists own orders via the browser"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="financial idempotency: repeated declaration with the same key produces ZERO extra writes"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="UI double-click on declare submit creates exactly one declaration (browser evidence)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer finance/payments/declarations pages render without errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer print page issues NO mutating requests"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer portal: catalog page renders supplier products incl. the setup SKU"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer creates an order through the real API (journey precondition)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer orders page lists own orders via the browser"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="financial idempotency: repeated declaration with the same key produces ZERO extra writes"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="UI double-click on declare submit creates exactly one declaration (browser evidence)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer finance/payments/declarations pages render without errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase4-retailer.spec.ts" name="retailer print page issues NO mutating requests"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="cross-retailer: RB cannot read RA order by id (API isolation)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="cross-tenant: RA W2-context cannot use W1-only data paths"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="malformed IDs return neutral structured errors (no internals leaked)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="unauthenticated API access is rejected with structured 401 (no leak)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="browser: RB portal session never exposes W2 tenant data"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="RB orders page contains no RA-created orders (page-level isolation)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="cross-retailer: RB cannot read RA order by id (API isolation)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="cross-tenant: RA W2-context cannot use W1-only data paths"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="malformed IDs return neutral structured errors (no internals leaked)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="unauthenticated API access is rejected with structured 401 (no leak)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="browser: RB portal session never exposes W2 tenant data"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase5-isolation.spec.ts" name="RB orders page contains no RA-created orders (page-level isolation)"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="wholesaler dashboard: no horizontal overflow, no console/page errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="wholesaler orders page: no horizontal overflow"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="retailer catalog: no horizontal overflow, no console/page errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="retailer orders page: no horizontal overflow"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="login forms have labels and keyboard-accessible inputs"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="no unexpected network failures during a login journey"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/tablet" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="print stub: window.print callable on print pages without errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="wholesaler dashboard: no horizontal overflow, no console/page errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="wholesaler orders page: no horizontal overflow"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="retailer catalog: no horizontal overflow, no console/page errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="retailer orders page: no horizontal overflow"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="login forms have labels and keyboard-accessible inputs"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="no unexpected network failures during a login journey"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+  <testsuite name="stage3-matrix-tablet-mobile/mobile" tests="1" failures="0" skipped="1">
+    <testcase classname="phase6-responsive.spec.ts" name="print stub: window.print callable on print pages without errors"><skipped message="BLOCKED: auth matrix gate failed (not a product FAIL)"/></testcase>
+  </testsuite>
+</testsuites>

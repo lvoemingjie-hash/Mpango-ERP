@@ -1,0 +1,11 @@
+{
+  "executed_nodes": 9,
+  "blocked_nodes": 153,
+  "collected_total": 162,
+  "junit_tests": 162,
+  "junit_failures": 2,
+  "csv_rows": 162,
+  "json_pass": 7,
+  "json_fail": 2,
+  "gap": 0
+}

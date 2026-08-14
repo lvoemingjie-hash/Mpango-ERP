@@ -1,0 +1,524 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "tests/auth-matrix.spec.ts",
+      "--project",
+      "desktop"
+    ],
+    "configFile": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\playwright.config.js",
+    "rootDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "desktop",
+        "name": "desktop",
+        "testDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "tablet",
+        "name": "tablet",
+        "testDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "mobile",
+        "name": "mobile",
+        "testDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        null
+      ],
+      [
+        "junit",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "auth-matrix.spec.ts",
+      "file": "auth-matrix.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 auth matrix (real JWT)",
+          "file": "auth-matrix.spec.ts",
+          "line": 16,
+          "column": 6,
+          "specs": [
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1300,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-14T12:31:30.269Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogW10sCiAgInBhZ2VFcnJvcnMiOiBbXSwKICAicmVxdWVzdEZhaWxlZCI6IFtdLAogICJodHRwRXJyb3JzIjogW10sCiAgInVuZXhwZWN0ZWRIdHRwRXJyb3JzIjogW10sCiAgImJlbmlnbkNvbnNvbGVGaWx0ZXJlZCI6IFtdLAogICJub25CZW5pZ25Db25zb2xlRXJyb3JzIjogW10KfQ=="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-b3751c7819936499765f",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1086,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-14T12:31:31.838Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-d7a7f34845d9d4f8a341",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 21302,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 20000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/select-workspace\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 20000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/select-workspace\" until \"load\"\n============================================================\n    at C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts:51:16",
+                        "location": {
+                          "file": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts",
+                          "column": 16,
+                          "line": 51
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 49 |\u001b[39m\n \u001b[90m 50 |\u001b[39m     \u001b[90m// Workspace selector rendered from login-response navigation state\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 51 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/select-workspace'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 52 |\u001b[39m     \u001b[36mfor\u001b[39m (\u001b[36mconst\u001b[39m t \u001b[36mof\u001b[39m tenants) {\n \u001b[90m 53 |\u001b[39m       \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { hasText\u001b[33m:\u001b[39m t\u001b[33m.\u001b[39mname }))\u001b[33m.\u001b[39mtoBeVisible()\u001b[33m;\u001b[39m\n \u001b[90m 54 |\u001b[39m       \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m`text=Code: ${t.code}`\u001b[39m))\u001b[33m.\u001b[39mtoBeVisible()\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts",
+                            "column": 16,
+                            "line": 51
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 20000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/select-workspace\" until \"load\"\n============================================================\n\n  49 |\n  50 |     // Workspace selector rendered from login-response navigation state\n> 51 |     await page.waitForURL('**/select-workspace');\n     |                ^\n  52 |     for (const t of tenants) {\n  53 |       await expect(page.locator('button', { hasText: t.name })).toBeVisible();\n  54 |       await expect(page.locator(`text=Code: ${t.code}`)).toBeVisible();\n    at C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts:51:16"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-14T12:31:32.941Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\test-results\\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-desktop\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\test-results\\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-desktop\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts",
+                        "column": 16,
+                        "line": 51
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9460476de98aab76eed4",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1231,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-14T12:31:56.402Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-75fd33162025d2177339",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 901,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-14T12:31:58.315Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-63350d86b5a3c445283e",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11854,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('text=Invalid credentials').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('text=Invalid credentials').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('text=Invalid credentials').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('text=Invalid credentials').first()\u001b[22m\n\n    at C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts:91:68",
+                        "location": {
+                          "file": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts",
+                          "column": 68,
+                          "line": 91
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 89 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForTimeout(\u001b[35m800\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 90 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveURL(\u001b[35m/\\/login/\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 91 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'text=Invalid credentials'\u001b[39m)\u001b[33m.\u001b[39mfirst())\u001b[33m.\u001b[39mtoBeVisible()\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                                                                    \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 92 |\u001b[39m     \u001b[36mconst\u001b[39m auth \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m readMpangoAuth(page)\u001b[33m;\u001b[39m\n \u001b[90m 93 |\u001b[39m     expect(auth\u001b[33m?\u001b[39m\u001b[33m.\u001b[39mstate\u001b[33m?\u001b[39m\u001b[33m.\u001b[39maccessToken \u001b[33m?\u001b[39m\u001b[33m?\u001b[39m \u001b[36mnull\u001b[39m)\u001b[33m.\u001b[39mtoBeFalsy()\u001b[33m;\u001b[39m \u001b[90m// no fake \"logged in\"\u001b[39m\n \u001b[90m 94 |\u001b[39m   })\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts",
+                            "column": 68,
+                            "line": 91
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('text=Invalid credentials').first()\nExpected: visible\nTimeout: 10000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('text=Invalid credentials').first()\u001b[22m\n\n\n  89 |     await page.waitForTimeout(800);\n  90 |     await expect(page).toHaveURL(/\\/login/);\n> 91 |     await expect(page.locator('text=Invalid credentials').first()).toBeVisible();\n     |                                                                    ^\n  92 |     const auth = await readMpangoAuth(page);\n  93 |     expect(auth?.state?.accessToken ?? null).toBeFalsy(); // no fake \"logged in\"\n  94 |   });\n    at C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts:91:68"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-14T12:31:59.232Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdLAogICJwYWdlRXJyb3JzIjogW10sCiAgInJlcXVlc3RGYWlsZWQiOiBbXSwKICAiaHR0cEVycm9ycyI6IFsKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2F1dGgvbG9naW4iLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIgogIF0KfQ=="
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\test-results\\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-desktop\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\test-results\\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-desktop\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\tests\\auth-matrix.spec.ts",
+                        "column": 68,
+                        "line": 91
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9039d00c6ba374926db0",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1816,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-14T12:32:12.042Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdLAogICJwYWdlRXJyb3JzIjogW10sCiAgInJlcXVlc3RGYWlsZWQiOiBbXSwKICAiaHR0cEVycm9ycyI6IFsKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2NsaWVudC9hdXRoL2xvZ2luIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfQogIF0sCiAgInVuZXhwZWN0ZWRIdHRwRXJyb3JzIjogW10sCiAgImJlbmlnbkNvbnNvbGVGaWx0ZXJlZCI6IFtdLAogICJub25CZW5pZ25Db25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-bc98695f73a4339b1921",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 520,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-14T12:32:14.206Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-5400f1b088e6d19449b7",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1181,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-14T12:32:14.744Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9b7ea5304713ba1a14cc",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-14T12:31:29.679Z",
+    "duration": 46578.4,
+    "expected": 7,
+    "skipped": 0,
+    "unexpected": 2,
+    "flaky": 0
+  }
+}

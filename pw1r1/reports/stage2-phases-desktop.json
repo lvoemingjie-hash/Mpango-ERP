@@ -1,0 +1,1114 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "tests/phase1-routes.spec.ts",
+      "tests/phase2-identity.spec.ts",
+      "tests/phase3-wholesaler.spec.ts",
+      "tests/phase4-retailer.spec.ts",
+      "tests/phase5-isolation.spec.ts",
+      "tests/phase6-responsive.spec.ts",
+      "--project",
+      "desktop",
+      "--list"
+    ],
+    "configFile": "C:\\Users\\Jeff0\\playwright_pw1_r1_2026-08-14\\playwright.config.js",
+    "rootDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {},
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "desktop",
+        "name": "desktop",
+        "testDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "tablet",
+        "name": "tablet",
+        "testDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "mobile",
+        "name": "mobile",
+        "testDir": "C:/Users/Jeff0/playwright_pw1_r1_2026-08-14/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        null
+      ],
+      [
+        "junit",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "phase1-routes.spec.ts",
+      "file": "phase1-routes.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 1: routes & navigation",
+          "file": "phase1-routes.spec.ts",
+          "line": 8,
+          "column": 6,
+          "specs": [
+            {
+              "title": "backend health endpoints are 200 (live/ready)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-01e531d8f25e4724b72d",
+              "file": "phase1-routes.spec.ts",
+              "line": 10,
+              "column": 7
+            },
+            {
+              "title": "frontend serves the SPA shell",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-b8accaf87d53aedf5e58",
+              "file": "phase1-routes.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "wholesaler routes redirect anonymous users to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-7e3ff960b74b517ad54e",
+              "file": "phase1-routes.spec.ts",
+              "line": 24,
+              "column": 7
+            },
+            {
+              "title": "retailer /client routes redirect anonymous users to retailer portal or /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-5ac9d55a8b5befbb2f4c",
+              "file": "phase1-routes.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "/client/login alias redirects to /retail/login preserving w",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-a10e56e5953122ba2a33",
+              "file": "phase1-routes.spec.ts",
+              "line": 37,
+              "column": 7
+            },
+            {
+              "title": "public auth pages are reachable anonymously",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-851e70525fa14ee24185",
+              "file": "phase1-routes.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "unknown route renders the 404 page (no crash)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-8be2f33d6817e9750da1",
+              "file": "phase1-routes.spec.ts",
+              "line": 50,
+              "column": 7
+            },
+            {
+              "title": "invalid portal code shows controlled invalid-portal state with zero login API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-464c5734c7b1e56313fe",
+              "file": "phase1-routes.spec.ts",
+              "line": 55,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase2-identity.spec.ts",
+      "file": "phase2-identity.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 2: identity & hydration",
+          "file": "phase2-identity.spec.ts",
+          "line": 12,
+          "column": 6,
+          "specs": [
+            {
+              "title": "legacy localStorage keys (access_token/user) do NOT authenticate",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-521aa9b007640c86f58b",
+              "file": "phase2-identity.spec.ts",
+              "line": 14,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-964bc5b3c0afaee9b6bf",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "REAL mpango-auth format restores a wholesaler session (hydration)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-0cd67809fc8b9de5adc5",
+              "file": "phase2-identity.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "REAL mpango-auth format restores a retailer session at /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-ee3d2976184c87a13da7",
+              "file": "phase2-identity.spec.ts",
+              "line": 65,
+              "column": 7
+            },
+            {
+              "title": "login form submits real credentials to the real API (request body audit)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-e3adc3328b7fa725f14d",
+              "file": "phase2-identity.spec.ts",
+              "line": 86,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase3-wholesaler.spec.ts",
+      "file": "phase3-wholesaler.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 3: wholesaler journey",
+          "file": "phase3-wholesaler.spec.ts",
+          "line": 11,
+          "column": 6,
+          "specs": [
+            {
+              "title": "wholesaler page / renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-bb2ade165d4be6e19f67",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /orders renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-324b9df2173c928e026e",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /inventory renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-138831f3b74d5fcce85f",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /skus renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-9e0414a82df47023b37e",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /retailers renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-7dd6acfdc104aa989af4",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /finance renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-76c99eb53049eb95b577",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /payments renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-48374211c2ace7a99097",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /declarations renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-6b01a31b70fbcd356684",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "dashboard shows the app shell with user context",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-b55fe8a847a4a7057531",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 41,
+              "column": 7
+            },
+            {
+              "title": "wholesaler cannot open retailer /client routes (boundary redirect)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-591d048c9f5f1ca62368",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 46,
+              "column": 7
+            },
+            {
+              "title": "logout returns to /login and clears the session",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-b277352ce2cedd773186",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 52,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase4-retailer.spec.ts",
+      "file": "phase4-retailer.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 4: retailer journey",
+          "file": "phase4-retailer.spec.ts",
+          "line": 34,
+          "column": 6,
+          "specs": [
+            {
+              "title": "retailer portal: catalog page renders supplier products incl. the setup SKU",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-a813b617b77ad8a298aa",
+              "file": "phase4-retailer.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "retailer creates an order through the real API (journey precondition)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-ec5881b8cd3b5226b774",
+              "file": "phase4-retailer.spec.ts",
+              "line": 45,
+              "column": 7
+            },
+            {
+              "title": "retailer orders page lists own orders via the browser",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-f306ac821889e0af3f90",
+              "file": "phase4-retailer.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "financial idempotency: repeated declaration with the same key produces ZERO extra writes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-edfbb3f6a37214a46b09",
+              "file": "phase4-retailer.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "UI double-click on declare submit creates exactly one declaration (browser evidence)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-ffdd16650825979a9b8a",
+              "file": "phase4-retailer.spec.ts",
+              "line": 110,
+              "column": 7
+            },
+            {
+              "title": "retailer finance/payments/declarations pages render without errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-4993be1db12ef8773d9a",
+              "file": "phase4-retailer.spec.ts",
+              "line": 144,
+              "column": 7
+            },
+            {
+              "title": "retailer print page issues NO mutating requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-6b86ec38f2553a342b82",
+              "file": "phase4-retailer.spec.ts",
+              "line": 155,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase5-isolation.spec.ts",
+      "file": "phase5-isolation.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 5: isolation & negative paths",
+          "file": "phase5-isolation.spec.ts",
+          "line": 13,
+          "column": 6,
+          "specs": [
+            {
+              "title": "cross-retailer: RB cannot read RA order by id (API isolation)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-0494bc8195fd9388a3a5",
+              "file": "phase5-isolation.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-039b62e330a2c9b9f2b9",
+              "file": "phase5-isolation.spec.ts",
+              "line": 43,
+              "column": 7
+            },
+            {
+              "title": "cross-tenant: RA W2-context cannot use W1-only data paths",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-168059166db8e592b019",
+              "file": "phase5-isolation.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "malformed IDs return neutral structured errors (no internals leaked)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-9a5b68248719a3835f1b",
+              "file": "phase5-isolation.spec.ts",
+              "line": 69,
+              "column": 7
+            },
+            {
+              "title": "unauthenticated API access is rejected with structured 401 (no leak)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-37a5aa9c8a9f325140b7",
+              "file": "phase5-isolation.spec.ts",
+              "line": 80,
+              "column": 7
+            },
+            {
+              "title": "browser: RB portal session never exposes W2 tenant data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-32a72ae6da36108f7194",
+              "file": "phase5-isolation.spec.ts",
+              "line": 87,
+              "column": 7
+            },
+            {
+              "title": "RB orders page contains no RA-created orders (page-level isolation)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-6635675846cfad9ae558",
+              "file": "phase5-isolation.spec.ts",
+              "line": 96,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase6-responsive.spec.ts",
+      "file": "phase6-responsive.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 6: responsive & usability",
+          "file": "phase6-responsive.spec.ts",
+          "line": 15,
+          "column": 6,
+          "specs": [
+            {
+              "title": "wholesaler dashboard: no horizontal overflow, no console/page errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-a024d6658b76168d4b48",
+              "file": "phase6-responsive.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "wholesaler orders page: no horizontal overflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-532bc2da13b9df477edb",
+              "file": "phase6-responsive.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "retailer catalog: no horizontal overflow, no console/page errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-352b07ee91676d5b033d",
+              "file": "phase6-responsive.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "retailer orders page: no horizontal overflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-a25c6a3c092f0ef60ed3",
+              "file": "phase6-responsive.spec.ts",
+              "line": 40,
+              "column": 7
+            },
+            {
+              "title": "login forms have labels and keyboard-accessible inputs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-52ff8529164aecdcf150",
+              "file": "phase6-responsive.spec.ts",
+              "line": 47,
+              "column": 7
+            },
+            {
+              "title": "no unexpected network failures during a login journey",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-02b1fc5d63df6b59f323",
+              "file": "phase6-responsive.spec.ts",
+              "line": 60,
+              "column": 7
+            },
+            {
+              "title": "print stub: window.print callable on print pages without errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-3afcce8bd45792272ad5",
+              "file": "phase6-responsive.spec.ts",
+              "line": 68,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-14T12:32:32.737Z",
+    "duration": 205.34699999999998,
+    "expected": 0,
+    "skipped": 45,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

@@ -1,0 +1,47 @@
+▲ [WARNING] Duplicate key "jsdom" in object literal [duplicate-object-key]
+
+    package.json:40:4:
+      40 │     "jsdom": "^29.1.1",
+         ╵     ~~~~~~~
+
+  The original key "jsdom" is here:
+
+    package.json:30:4:
+      30 │     "jsdom": "^23.0.0",
+         ╵     ~~~~~~~
+
+
+[7m[1m[36m RUN [39m[22m[27m [36mv1.6.1[39m [90mC:/Users/Jeff0/pw1_r2_worktree/frontend[39m
+
+ [33m❯[39m src/tests/Pw1R2AuthSessionClosure.test.tsx [2m ([22m[2m32 tests[22m [2m|[22m [31m1 failed[39m [2m|[22m [33m31 skipped[39m[2m)[22m[90m 30[2mms[22m[39m
+[31m   [33m❯[31m src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22mPW1-R2-R2: case-insensitive Authorization precedence[2m > [22mconsole.debug serialization leaks NO sentinel in any casing; only [REDACTED] appears[39m
+[31m     → sentinel leaked into dev log: explicit-lower-token: expected '"[API →]" "GET" "/pw1r2-probe" {"head…' not to contain 'explicit-lower-token'[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 1 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22mPW1-R2-R2: case-insensitive Authorization precedence[2m > [22mconsole.debug serialization leaks NO sentinel in any casing; only [REDACTED] appears
+[31m[1mAssertionError[22m: sentinel leaked into dev log: explicit-lower-token: expected '"[API →]" "GET" "/pw1r2-probe" {"head…' not to contain 'explicit-lower-token'[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- explicit-lower-token[39m
+[31m+ "[API →]" "GET" "/pw1r2-probe" {"headers":{"Accept":"application/json, text/plain, */*","Content-Type":"application/json","Authorization":"[REDACTED]"}} [39m
+[31m+  "[API →]" "GET" "/pw1r2-probe" {"headers":{"Accept":"application/json, text/plain, */*","Content-Type":"application/json","authorization":"Bearer explicit-lower-token"}} [39m
+[31m+  "[API →]" "GET" "/pw1r2-probe" {"headers":{"Accept":"application/json, text/plain, */*","Content-Type":"application/json","aUtHoRiZaTiOn":"Bearer explicit-mixed-token"}}[39m
+
+[36m [2m❯[22m src/tests/Pw1R2AuthSessionClosure.test.tsx:[2m863:63[22m[39m
+    [90m861| [39m    [34mexpect[39m(calls[33m.[39mlength)[33m.[39m[34mtoBeGreaterThanOrEqual[39m([34m3[39m)[33m;[39m
+    [90m862| [39m    [35mfor[39m ([35mconst[39m snt [35mof[39m [33mSENTINELS[39m) {
+    [90m863| [39m      [34mexpect[39m(all[33m,[39m [32m`sentinel leaked into dev log: [39m[36m${[39msnt[36m}[39m[32m`[39m)[33m.[39mnot[33m.[39m[34mtoContai[39m…
+    [90m   | [39m                                                              [31m^[39m
+    [90m864| [39m      [34mexpect[39m(all)[33m.[39mnot[33m.[39m[34mtoContain[39m(snt[33m.[39m[34mtoUpperCase[39m())[33m;[39m
+    [90m865| [39m    }
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m31 skipped[39m[90m (32)[39m
+[2m   Start at [22m 00:01:04
+[2m   Duration [22m 7.29s[2m (transform 1.15s, setup 199ms, collect 3.94s, tests 30ms, environment 1.84s, prepare 226ms)[22m
+

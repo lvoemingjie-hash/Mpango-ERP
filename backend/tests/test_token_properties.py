@@ -19,16 +19,13 @@ from core.security import (
 )
 
 
-# Strategy for generating valid UUIDs
-uuid_strategy = st.from_regex(
-    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-    fullmatch=True
-)
+# Strategy for generating valid UUIDs — efficient structural generation
+# (avoids HealthCheck.to_slow from slow regex backtracking)
+uuid_strategy = st.uuids().map(str)
 
-# Strategy for generating tenant schema names
-tenant_schema_strategy = st.from_regex(
-    r'^t_[0-9a-f]{32}$',
-    fullmatch=True
+# Strategy for generating tenant schema names — exactly 16 bytes rendered as hex
+tenant_schema_strategy = st.binary(min_size=16, max_size=16).map(
+    lambda b: "t_" + b.hex()
 )
 
 # Strategy for generating passwords (within bcrypt's 72-byte limit, no NULL bytes)

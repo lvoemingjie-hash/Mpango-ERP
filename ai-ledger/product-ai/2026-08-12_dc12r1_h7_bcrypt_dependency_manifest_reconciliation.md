@@ -10,7 +10,22 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R15-R4-R1 docs-only truth correction (current checkpoint)
+## R16 evidence (current checkpoint)
+
+Test-only: cross-host portability + Hypothesis isolation. Only two test files and three evidence docs change; all source/runtime files are byte-identical to R15-R4-R1.
+
+- **C1 platform injection:** `_select_bash` now accepts `platform_name` (default `sys.platform`) and injectable `isfile`/`which`; rejection tests call with `platform_name="win32"` and direct deps (no monkeypatch of globals). System32/WSL/WindowsApps fail closed on every host.
+- **C2 cross-host CRLF contract:** the CRLF mutation test handles a nonexistent command log as empty; accepts either the setup.sh CRLF self-check rejection or Bash's own parse rejection; does not require identical stderr across implementations.
+- **C3 Hypothesis isolation:** replaced `st.from_regex` with efficient structural strategies (`st.uuids().map(str)` for UUIDs; `st.binary(16).map(lambda b: 't_'+b.hex())` for tenant schema). `max_examples=20` kept; default deadlines and health checks preserved; no `deadline=None` added to token tests.
+- **Gates:** H7 **319/319** natural+reverse; 3-file bundle (setup_preflight + manifest_parity + token_properties) **324/324** natural+reverse; seeded token test (303296478269760642762159842520761126666) passes; 5 fresh unseeded processes green; full token_properties 5/5.
+- **Phase 4 baseline (Lubuntu `189852da`):** natural 324/321/3, reverse 324/322/2 — the failures were `HealthCheck.too_slow` from slow regex generation, now resolved by the structural strategies. R16 proves the fix locally; **Lubuntu must rerun Phase 4 to confirm zero-red.**
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_ZERO_RED`.**
+No native Linux PASS, NO merge approval, NO deployment claim.
+
+---
+
+## R15-R4-R1 docs-only truth correction (SUPERSEDED_BY_H7_R16)
 
 No code, test, Compose, manifest, migration or lockfile change. Only the three evidence documents are corrected to reflect the actual R15-R4 frozen state (the previous PROJECT.md summary still contained R13-era text mislabelled as R15-R4).
 

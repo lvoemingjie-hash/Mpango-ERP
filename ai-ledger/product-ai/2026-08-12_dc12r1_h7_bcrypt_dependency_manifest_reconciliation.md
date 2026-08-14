@@ -1,8 +1,8 @@
-# DC-12R1-H7-R15-R3 — Evidence Authenticity Final Closure (NO PASS)
+# DC-12R1-H7-R15-R4 — Final Alias Evidence Blocker Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R15-R2 is
-> `SUPERSEDED_BY_H7_R15_R3`.** Accepted external evidence: Kilo R10-V1 =
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R15-R3 is
+> `SUPERSEDED_BY_H7_R15_R4`.** Accepted external evidence: Kilo R10-V1 =
 > `7d53d6a5c9dc7fc8a8a44414951c214c7bce4d02`; Lubuntu R10-V2 STOP =
 > `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier records superseded.
 
@@ -10,7 +10,22 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R15-R3 evidence (current checkpoint)
+## R15-R4 evidence (current checkpoint)
+
+Final alias evidence blocker: `g = os.getenv; g("VAR")` (module-qualified
+getenv assignment alias) was silently missed. Fixed via `os_module_names`
+tracking (`import os [as alias]`) and a fixed-point branch for
+`g = <os_module>.getenv`. Non-`os` module `.getenv` is NOT tracked
+(false-positive guard). New tests: 3 GREEN (os/_os/alias), 1 RED (dynamic
+key on getenv alias), 1 negative (someother.getenv → empty set).
+Real 001-037 unchanged. Source 3 files byte-identical.
+Direct 144/144; harness 38/38; full parity 175/175; H7 319/319 both orders.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.**
+
+---
+
+## R15-R3 evidence (SUPERSEDED_BY_H7_R15_R4)
 
 Closes two CTO evidence-authenticity blockers on R15-R2. Only the parity test
 and three evidence docs change; setup.sh, setup_preflight.py, and the direct

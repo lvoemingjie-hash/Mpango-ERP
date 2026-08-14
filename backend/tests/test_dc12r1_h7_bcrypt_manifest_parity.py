@@ -1766,7 +1766,14 @@ def _scan_migration_env_vars(source: str) -> set[str]:
     tree = ast.parse(source)
     environ_names: set[str] = set()
     getenv_names: set[str] = set()
-    # Initialize from imports
+    # R15-R4: track os module aliases for module-qualified getenv assignments
+    os_module_names: set[str] = {"os"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "os":
+                    os_module_names.add(alias.asname or alias.name)
+    # Initialize from from-imports
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "os":
             for alias in node.names:
@@ -1775,8 +1782,7 @@ def _scan_migration_env_vars(source: str) -> set[str]:
                     environ_names.add(local)
                 elif alias.name == "getenv":
                     getenv_names.add(local)
-    # R15-R3: fixed-point iteration for assignment chains (handles multi-level
-    # alias chains and getenv function aliases).
+    # R15-R3/R15-R4: fixed-point iteration for assignment chains.
     changed = True
     while changed:
         changed = False
@@ -1790,6 +1796,10 @@ def _scan_migration_env_vars(source: str) -> set[str]:
             elif isinstance(val, ast.Name) and val.id in environ_names:
                 new_names = environ_names
             elif isinstance(val, ast.Name) and val.id in getenv_names:
+                new_names = getenv_names
+            elif (isinstance(val, ast.Attribute) and val.attr == "getenv"
+                  and isinstance(val.value, ast.Name)
+                  and val.value.id in os_module_names):
                 new_names = getenv_names
             if new_names is not environ_names and new_names is not getenv_names:
                 continue
@@ -1863,9 +1873,20 @@ class TestMigrationEnvVarScanner:
         ('from os import environ; e = environ; e.get("VAR")', {"VAR"}),
         # R15-R3: getenv function alias
         ('from os import getenv; g = getenv; g("VAR")', {"VAR"}),
+        # R15-R4: module-qualified getenv alias
+        ('import os; g = os.getenv; g("VAR")', {"VAR"}),
+        ('import os as _os; g = _os.getenv; g("VAR")', {"VAR"}),
+        ('import os as alias; g = alias.getenv; g("VAR")', {"VAR"}),
     ])
     def test_supported_forms(self, src: str, expected: set[str]) -> None:
         assert _scan_migration_env_vars(src) == expected
+
+    def test_non_os_getenv_not_tracked(self) -> None:
+        """R15-R4: a non-os module's .getenv must NOT be mistaken for an
+        environment read."""
+        assert _scan_migration_env_vars(
+            'import someother; g = someother.getenv; g("VAR")'
+        ) == set()
 
     @pytest.mark.parametrize("src", [
         'import os; os.environ.get(some_var)',             # dynamic key
@@ -1881,6 +1902,8 @@ class TestMigrationEnvVarScanner:
         'import os; os.environ.items()',
         # R15-R3: chained alias setdefault
         'import os; a = os.environ; b = a; b.setdefault("VAR", "x")',
+        # R15-R4: dynamic key on getenv alias
+        'import os; g = os.getenv; g(some_var)',
     ])
     def test_unauthorized_forms_hard_fail(self, src: str) -> None:
         with pytest.raises(AssertionError):

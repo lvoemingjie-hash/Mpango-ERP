@@ -1,10 +1,11 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-12
+**Last updated:** 2026-08-14
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current protected branch tip:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` (the accepted DC-12R1-MVP-R0-R1 readiness-debt merge; the SHA controlled work now branches from; verify before editing)
-**Accepted readiness-debt merge:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` — DC-12R1-MVP-R0-R1 P2/P3 readiness-debt closure (baseline-truth docs, permission-aligned client route guards, neutral declaration error contract, shared Contract D statement mapper). The H7 branch `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12` branches from this tip.
+**Current protected branch tip:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` (the accepted DC-12R1-H7 controlled merge; verify this SHA before new controlled work)
+**Accepted H7 merge:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` - parents `a6ef3aac` and `a0a14e4d`; merge tree identical to the independently reviewed source.
+**Accepted readiness-debt merge:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` - DC-12R1-MVP-R0-R1 P2/P3 readiness-debt closure and direct parent of the H7 source lineage; it is now an ancestor, not the current tip.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (accepted Contract D merge; an ancestor of the current tip, NOT the tip itself)
 **Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
@@ -15,16 +16,13 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered@a6ef3aac` is the current protected tip — the
-  accepted DC-12R1-MVP-R0-R1 readiness-debt merge. It descends from
-  `d796dcb0`, which descended from and included the accepted product-code merge
-  `adcc7f28`, so it carries accepted I2B runtime and read-only backend/browser-
-  printable Contracts A-D plus the R0-R1 readiness-debt closure. Controlled work
-  branches from `a6ef3aac`.
-- The earlier merges `d796dcb0` and `adcc7f28` are ANCESTORS of the current tip,
-  not the tip itself. Do not branch from or reference them as the current
-  baseline. (Post-merge of the H7 bcrypt reconciliation, the CTO syncs this
-  documented tip to the new H7 merge SHA.)
+- `origin/product-dev-recovered@ea990826` is the current protected tip - the
+  accepted H7 controlled merge. It carries accepted I2B runtime, read-only
+  backend/browser-printable Contracts A-D, R0-R1 readiness-debt closure, and H7
+  setup/dependency reconciliation. Controlled work branches from `ea990826`.
+- The earlier merges `a6ef3aac`, `d796dcb0`, and `adcc7f28` are ANCESTORS of the
+  current tip, not the tip itself. Do not branch from or reference them as the
+  current baseline.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -173,7 +171,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R16-R2 checkpoint; NO PASS)
+## Completed Deployment Prerequisite - H7 Manifest Reconciliation
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -181,10 +179,10 @@ is a committed inventory comparison only; it does not prove that pip and Poetry
 produce identical installed environments. H7 closes that drift. This is
 name/version parity only: Poetry lock hashes and sources are not compared;
 markers are not compared; extras are rejected in requirements.txt; resolver
-behavior is not compared. It is a **pre-deployment prerequisite**, not a
-deployed capability — no local deployment, Playwright, or VPS validation, and
-no native `setup.sh` PASS on Linux, is claimed here. Native setup.sh and Docker
-execution remain Lubuntu gates.
+behavior is not compared. It is a **completed pre-deployment prerequisite**, not
+a deployed capability. Native `setup.sh` ran twice successfully on Lubuntu, but
+no local application deployment, Playwright acceptance, VPS validation, or
+customer delivery is claimed here.
 
 **Original three-package drift (RED, pre-H7-R2):** `backend/requirements.txt`
 (the `scripts/setup.sh` pip path) diverged from `pyproject.toml` +
@@ -406,7 +404,7 @@ GREEN + 3 mutation REDs). Direct 133/133; harness 27/27; H7 254/254. Hypothesis
 node unresolved. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
 
-**H7-R13 (evidence checkpoint, current; NO PASS):** narrow test-only correction
+**H7-R13 (historical checkpoint, SUPERSEDED_BY_H7_R14):** narrow test-only correction
 — setup.sh and all product files byte-identical to R12. Defect closed: the R12
 standalone harness wrote a `docker-compose` fake but the `chmod +x` set only
 covered `_FAKE_NAMES`; masked on MSYS but fatal on POSIX (the fake would not
@@ -445,35 +443,41 @@ test, and all product/Compose/migration files untouched. Verdict:
 bounded review; Lubuntu V4 repeats native setup twice + focused zero-red;
 only then CTO merge consideration.
 
-**H7-R15 through R15-R4 (evidence checkpoint, current; NO PASS):** R15 added `REPORTING_USER_PASSWORD` as a required migration env var (setup_preflight.py enforces it; setup.sh exports it before Alembic and unsets it before bootstrap). R15-R1 fixed three CTO P1 blockers (`_NATIVE_CREDS` lifecycle, backend RUP fail-open, AST coverage). R15-R2/R15-R3/R15-R4 tightened the shell guard to an exact `unset _NATIVE_CREDS` command (no inert bypass) and the AST scanner to fixed-point alias tracking covering all `os.environ`/`os.getenv` forms including module-qualified assignment aliases. Final SHA `1291d87a`; only tests and docs changed relative to R15-R3; source 3 files byte-identical. Direct 144/144; harness 38/38; parity 175/175; complete H7 319/319 both orders. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. Next: Kilo bounded cumulative R15 review → Lubuntu native setup.sh twice → focused zero-red gate → CTO merge decision. NO native Linux PASS, NO merge approval, NO deployment/Playwright/VPS claim.
+**H7-R15 through R15-R4 (historical checkpoint, SUPERSEDED_BY_H7_R16):** R15 added `REPORTING_USER_PASSWORD` as a required migration env var (setup_preflight.py enforces it; setup.sh exports it before Alembic and unsets it before bootstrap). R15-R1 fixed three CTO P1 blockers (`_NATIVE_CREDS` lifecycle, backend RUP fail-open, AST coverage). R15-R2/R15-R3/R15-R4 tightened the shell guard to an exact `unset _NATIVE_CREDS` command (no inert bypass) and the AST scanner to fixed-point alias tracking covering all `os.environ`/`os.getenv` forms including module-qualified assignment aliases. Final SHA `1291d87a`; only tests and docs changed relative to R15-R3; source 3 files byte-identical. Direct 144/144; harness 38/38; parity 175/175; complete H7 319/319 both orders. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. Next: Kilo bounded cumulative R15 review → Lubuntu native setup.sh twice → focused zero-red gate → CTO merge decision. NO native Linux PASS, NO merge approval, NO deployment/Playwright/VPS claim.
 
-**H7-R16 (evidence checkpoint, current; NO PASS):** test-only cross-host portability + Hypothesis isolation. `_select_bash` accepts `platform_name` (deterministic cross-host, no monkeypatch); CRLF test handles nonexistent log + either rejection form; Hypothesis uses `st.uuids()`/`st.binary(16)` instead of slow regex. Accepted evidence: Kilo `e9303476`; Lubuntu native `189852da` (setup twice PASS). Phase 4 baseline 324/321/3 nat, 324/322/2 rev — now **324/324** both orders locally; Lubuntu must rerun to confirm zero-red. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R2_ZERO_RED`. Next: Kilo bounded R16/R16-R1 review -> Lubuntu reruns Phase 4 only -> focused zero-red gate -> CTO merge decision.
+**H7-R16 (historical checkpoint, SUPERSEDED_BY_H7_R16_R2_FINAL_CLOSURE):** test-only cross-host portability + Hypothesis isolation. `_select_bash` accepts `platform_name` (deterministic cross-host, no monkeypatch); CRLF test handles nonexistent log + either rejection form; Hypothesis uses `st.uuids()`/`st.binary(16)` instead of slow regex. Accepted evidence: Kilo `e9303476`; Lubuntu native `189852da` (setup twice PASS). Phase 4 baseline 324/321/3 nat, 324/322/2 rev — now **324/324** both orders locally; Lubuntu must rerun to confirm zero-red. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R2_ZERO_RED`. Next: Kilo bounded R16/R16-R1 review -> Lubuntu reruns Phase 4 only -> focused zero-red gate -> CTO merge decision.
+
+**H7-R16-R2 final closure (MERGED_AND_CLOSED):** source `a0a14e4d` passed Kilo
+review `8b04a92b`, Lubuntu native setup `189852da`, and Lubuntu Phase-4
+zero-red `4fa13dac`. Controlled merge `ea990826` has parents `a6ef3aac` and
+`a0a14e4d`; its tree is identical to the source. Post-merge evidence closed
+with H7 bundle 325/325, scoped pre-commit/detect-secrets, exact 15-file scope,
+and GitNexus 15,106 nodes / 45,321 edges / 300 flows indexed and current at
+`ea990826`. Historical STOP and SUPERSEDED entries above remain evidence of the
+review path, not the current gate state.
 
 ## Active Phase
 
-**Active product gate:**
-`DC-12R1-S3-S3-D Responsive Branded Workspace Planning`
+**Active delivery gate:**
+`DC-12R1-MVP-L1 Local Deployment and Acceptance Rehearsal`
 
-I2B and printable Contracts A-D are merged and independently verified. S3-S3-D
-must audit the existing retailer workspace and produce a bounded implementation
-plan. It must not duplicate existing print or finance paths, change financial
-semantics, or introduce an external messaging provider.
+Deploy exact protected tip `ea990826` in a clean local environment, prove the
+runtime SHA, and exercise the existing wholesaler and retailer journeys before
+any VPS work. The active gate is validation, not feature expansion.
 
-Required planning boundary:
+Required boundary:
 
-1. Inventory and reuse the existing retailer shell, guards, navigation,
-   catalog, order, finance, declaration, and Contracts A-D print views.
-2. Define desktop, tablet, and mobile behavior without introducing a parallel
-   retailer application or duplicating routes.
-3. Use only existing authoritative relationship context; tenant-configurable
-   branding remains outside this slice unless separately approved.
-4. Preserve string-safe financial rendering and server-authoritative values;
-   no client-side financial recomputation is allowed.
-5. Cover navigation, empty/error/loading states, logout recovery, keyboard
-   access, focus management, labels, and responsive tests.
-6. Keep supplier and retailer route ownership isolated and fail closed.
-7. This design task is documentation/audit only: no product implementation,
-   migration, permission, dependency, provider, deployment, or financial write.
+1. Use the merged setup and dependency paths without source modification.
+2. Record service health, migration head `037`, tenant bootstrap, and exact
+   runtime SHA.
+3. Run Playwright across login, catalog/order, declaration, cashier confirmation,
+   receipt/statement printing, logout/recovery, and cross-role denial paths.
+4. Perform human acceptance only after automated journeys are green.
+5. Preserve string-safe, server-authoritative financial rendering and tenant
+   isolation; do not weaken permissions or test assertions to pass rehearsal.
+6. Treat any required source fix as a separate isolated correction and review;
+   do not patch the deployed checkout in place.
+7. A local PASS is not a VPS, HTTPS, customer-delivery, or production approval.
 
 ## Ordered Delivery Plan
 
@@ -489,41 +493,46 @@ Required planning boundary:
 5. **S3-S2B-I2C-I2B (completed):** read-only backend and browser-print Contract D
    relationship statement using immutable-ledger arithmetic and two independent
    movement/payment lists.
-6. **S3-S3-D (active):** audit and plan the responsive branded retailer
-   workspace closure without changing product code.
-7. **S3-S2B-I2C-I3 (deferred post-MVP):** transactional outbox, event emission,
+6. **H7 (completed):** manifest parity, fail-closed native setup, Compose
+   isolation, cross-host harness portability, and independent zero-red closure.
+7. **MVP-L1 (active):** local exact-SHA deployment, Playwright journeys, and
+   human acceptance rehearsal without feature expansion.
+8. **S3-S3-D (planned after rehearsal):** audit and plan the responsive branded
+   retailer workspace closure without changing financial semantics.
+9. **S3-S2B-I2C-I3 (deferred post-MVP):** transactional outbox, event emission,
    and provider delivery require separate CTO authorization.
-8. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
-9. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
+10. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
+11. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
    package.
-10. **Tenant branding and manuals:** legal profile, logo, dual branding, and
+12. **Tenant branding and manuals:** legal profile, logo, dual branding, and
    current user/operator documentation.
 
 ## Agent Assignment
 
-- **Primary planning agent (Zcode):** audit and plan S3-S3-D in a clean
-  worktree from `origin/product-dev-recovered@a6ef3aac` (the current protected
-  tip; `d796dcb0` and `adcc7f28` are ancestors and must not be used as the
-  branch baseline).
-- **Independent reviewer:** Kilo performs adversarial UX/source and
-  test-authenticity review after the S3-S3-D plan is frozen.
-- **Codex CTO:** own scope, financial blast radius, and merge decision.
-- **Lubuntu Codex:** independently validate runtime only after a separately
-  approved S3-S3 implementation candidate is frozen.
-- **OPS:** handle deployment/runtime work only after product merge approval.
-- **Human owner:** approve production, credentials, domains, and business/legal
-  decisions.
+- **Local execution agent:** deploy exact `ea990826` without source edits and
+  collect reproducible service, migration, tenant, and runtime-SHA evidence.
+- **Playwright agent:** run bounded wholesaler/retailer journeys against that
+  local deployment and report every failed path without weakening assertions.
+- **Codex CTO:** own scope, environment/source classification, and acceptance
+  decision.
+- **Independent reviewer:** review any correction candidate before it can alter
+  the accepted local-rehearsal SHA.
+- **Lubuntu Codex:** provide independent cross-host runtime verification when a
+  source correction or VPS candidate is frozen.
+- **OPS:** begin VPS/DNS/TLS work only after local automated and human rehearsal
+  are accepted.
+- **Human owner:** perform acceptance and approve credentials, domains,
+  business/legal data, and any production action.
 
 ## Stop Conditions
 
 Stop and report to the CTO if:
 
 - fetched `origin/product-dev-recovered` does not equal the documented current
-  protected tip `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` (or a CTO-published
+  protected tip `ea9908263d57737e434d7d61e06e5f0ee941aa81` (or a CTO-published
   later tip), or the fetched tip does not descend from accepted Contract D merge
-  `adcc7f281c661897ad050a8278686375b611edb5`; the current tip `a6ef3aac` DOES
-  descend from `adcc7f28` (via `d796dcb0`) and this stop condition was verified
-  satisfied;
+  `adcc7f281c661897ad050a8278686375b611edb5`; the current tip `ea990826` does
+  descend from `adcc7f28` through the accepted merge lineage;
 - statement data is accepted from client-calculated financial fields;
 - supplier or retailer authority comes from request-supplied IDs;
 - ledger movements and settled payments are correlated without a persisted key;

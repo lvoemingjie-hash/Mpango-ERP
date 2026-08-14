@@ -1,0 +1,96 @@
+▲ [WARNING] Duplicate key "jsdom" in object literal [duplicate-object-key]
+
+    package.json:40:4:
+      40 │     "jsdom": "^29.1.1",
+         ╵     ~~~~~~~
+
+  The original key "jsdom" is here:
+
+    package.json:30:4:
+      30 │     "jsdom": "^23.0.0",
+         ╵     ~~~~~~~
+
+
+[7m[1m[36m RUN [39m[22m[27m [36mv1.6.1[39m [90mC:/Users/Jeff0/pw1_r2_worktree/frontend[39m
+
+[90mstderr[2m | src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22m[2mPW1-R2-R1: explicit Authorization precedence (token-gated adapters)[2m > [22m[2mselection flow: identity token to select-tenant, CONTEXTUAL token to me, contextual token on business APIs; committed user matches the selected tenant[22m[39m
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+[90mstderr[2m | src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22m[2mPW1-R2-R1: explicit Authorization precedence (token-gated adapters)[2m > [22m[2mselection flow: identity token to select-tenant, CONTEXTUAL token to me, contextual token on business APIs; committed user matches the selected tenant[22m[39m
+<empty line>
+[90mstdout[2m | src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22m[2mPW1-R2-R1: explicit Authorization precedence (token-gated adapters)[2m > [22m[2mselection flow: identity token to select-tenant, CONTEXTUAL token to me, contextual token on business APIs; committed user matches the selected tenant[22m[39m
+[API →] POST /auth/login {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m
+  }
+}
+
+[90mstdout[2m | src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22m[2mPW1-R2-R1: explicit Authorization precedence (token-gated adapters)[2m > [22m[2mselection flow: identity token to select-tenant, CONTEXTUAL token to me, contextual token on business APIs; committed user matches the selected tenant[22m[39m
+[API →] POST /auth/select-tenant {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+[API →] GET /auth/me {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+[90mstderr[2m | src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22m[2mPW1-R2-R1: explicit Authorization precedence (token-gated adapters)[2m > [22m[2mselection flow: identity token to select-tenant, CONTEXTUAL token to me, contextual token on business APIs; committed user matches the selected tenant[22m[39m
+Not implemented: navigation to another Document
+
+[90mstdout[2m | src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22m[2mPW1-R2-R1: explicit Authorization precedence (token-gated adapters)[2m > [22m[2mwrong-token requests receive real 401s (adapters are token-gated, not path-gated)[22m[39m
+[API →] GET /auth/me {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+[API →] GET /auth/me {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+[90mstdout[2m | src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22m[2mPW1-R2-R1: explicit Authorization precedence (token-gated adapters)[2m > [22m[2mrefresh: no explicit Authorization uses the store token; retry after refresh uses the refreshed token[22m[39m
+[API →] GET /orders {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+[API →] GET /orders {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+ [33m❯[39m src/tests/Pw1R2AuthSessionClosure.test.tsx [2m ([22m[2m26 tests[22m [2m|[22m [31m1 failed[39m [2m|[22m [33m23 skipped[39m[2m)[22m[33m 5114[2mms[22m[39m
+[31m   [33m❯[31m src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22mPW1-R2-R1: explicit Authorization precedence (token-gated adapters)[2m > [22mselection flow: identity token to select-tenant, CONTEXTUAL token to me, contextual token on business APIs; committed user matches the selected tenant[39m
+[31m     → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 1 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/tests/Pw1R2AuthSessionClosure.test.tsx[2m > [22mPW1-R2-R1: explicit Authorization precedence (token-gated adapters)[2m > [22mselection flow: identity token to select-tenant, CONTEXTUAL token to me, contextual token on business APIs; committed user matches the selected tenant
+[31m[1mError[22m: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[2m | [22m[33m23 skipped[39m[90m (26)[39m
+[2m   Start at [22m 23:38:53
+[2m   Duration [22m 12.98s[2m (transform 1.35s, setup 230ms, collect 4.48s, tests 5.11s, environment 1.80s, prepare 259ms)[22m
+

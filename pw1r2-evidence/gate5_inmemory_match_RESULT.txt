@@ -1,0 +1,8 @@
+[gate5] select-tenant response token vs /auth/me Authorization: MATCH
+[gate5] me Authorization present: true | select-tenant token present: true
+[gate6] user.tenant_id == selected tenant: true
+[gate6] user.tenant_schema non-empty: true
+[gate6] user.roles: ["retailer_operator"]
+[gate6] user.permissions count: 6
+[gate6] tenantCode matches selected: true
+[gate5/6] FINAL: PASS

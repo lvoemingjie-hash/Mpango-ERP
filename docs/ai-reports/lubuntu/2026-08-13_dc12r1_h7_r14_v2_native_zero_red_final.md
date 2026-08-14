@@ -4,6 +4,29 @@
 
 ## Verdict summary
 
+**Phase 1 STOP on re-issue** — the source branch has moved beyond the frozen
+candidate. The original run (documented below) reached Phase 3 and STOPped on
+a source-side defect in candidate `b2b08ab0`.
+
+### Re-run attempt (same task, identical spec)
+
+The same gate task was re-issued with the identical specification and the same
+frozen candidate SHA `b2b08ab0`. Phase 1.2 requires `source branch = b2b08ab0`,
+but the source branch `origin/zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12`
+has moved to `fd7727f83e30338ccabcf5cb459a093a0a766e05` ("DC-12R1-H7-R15-R4-R1:
+current-truth documentation correction (NO PASS)"). Per Phase 1.7 "STOP on any
+mismatch," this re-run halts at Phase 1.
+
+The new tip `fd7727f8` is 5 commits ahead of `b2b08ab0` (R15-R1 through
+R15-R4-R1). The R15 setup.sh changes resolve the exact R14 defect reported
+below: setup.sh now exports BOTH `DATABASE_URL` and `REPORTING_USER_PASSWORD`
+from `.env` before `alembic upgrade head`, and unsets
+`REPORTING_USER_PASSWORD` before tenant bootstrap. **Recommendation:** update
+the task spec to reference `fd7727f8` as the frozen candidate for an R15 gate
+re-run.
+
+### Original run result (candidate b2b08ab0)
+
 The R14 connection-context fix (exporting `DATABASE_URL` from `backend/.env`
 before `alembic upgrade head`) successfully eliminated the R13 alembic.ini
 fallback defect — Alembic connected to the project-isolated PostgreSQL on

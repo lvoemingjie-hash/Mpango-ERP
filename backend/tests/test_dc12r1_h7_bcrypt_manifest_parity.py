@@ -927,33 +927,75 @@ def _select_bash(isfile=None, which=None, platform_name=None):
 
 
 def _validate_crlf_guard(source: str) -> None:
-    """Pure function: prove the setup.sh source contains an ACTIVE raw-byte
-    Python CRLF probe that inspects ``BASH_SOURCE[0]``, emits the neutral
-    error + ``exit 1``, and precedes all side-effect commands (SCRIPT_DIR,
-    Compose, pip, Alembic, bootstrap). Raises ValueError on any failure."""
+    """Pure function: validate the setup.sh CRLF fail-closed guard as one
+    bounded active shell block — not loose substrings.
+
+    The block must contain, in exact executable order:
+    1. An active line beginning with ``if python -c``.
+    2. Exact raw-byte read: ``open(sys.argv[1], 'rb').read()``
+    3. Exact CR test: ``b'\\r' in d``
+    4. Exact target: ``"${BASH_SOURCE[0]}"``
+    5. The probe line ends with ``; then``.
+    6. Next active command is the neutral stderr echo.
+    7. Next active command is exactly ``exit 1``.
+    8. Next active command is exactly ``fi``.
+    9. The complete block precedes SCRIPT_DIR and all side-effect commands.
+
+    Comments, echo, colon, true, assignments, quoted text and compound-command
+    carriers never count as an active probe/error/exit.
+    """
     lines = source.splitlines()
-    guard_idx = None
+    # 1. Find the active probe line: must START with 'if python -c'
+    probe_idx = None
     for i, line in enumerate(lines):
         s = line.strip()
         if s.startswith("#"):
             continue
-        # Active probe: python + 'rb' open + BASH_SOURCE
-        if "python" in s and "'rb'" in s and "BASH_SOURCE" in s:
-            guard_idx = i
+        if s.startswith("if python -c"):
+            probe_idx = i
             break
-    if guard_idx is None:
-        raise ValueError("setup.sh: active CRLF raw-byte probe not found")
-    # Next non-blank lines: neutral error + exit 1
-    after = [
-        lines[j].strip()
-        for j in range(guard_idx + 1, min(guard_idx + 5, len(lines)))
-        if lines[j].strip()
-    ]
-    if not any("CRLF line endings" in l for l in after):
-        raise ValueError("setup.sh: CRLF guard missing neutral error")
-    if not any("exit 1" in l for l in after):
-        raise ValueError("setup.sh: CRLF guard missing exit 1")
-    # Guard must precede side-effect commands
+    if probe_idx is None:
+        raise ValueError("setup.sh: active CRLF probe not found")
+    probe_line = lines[probe_idx].strip()
+    # 2. Exact raw-byte read semantics
+    if "open(sys.argv[1], 'rb').read()" not in probe_line:
+        raise ValueError("setup.sh: CRLF probe missing exact raw-byte read")
+    # 3. Exact CR test
+    if "b'\\r' in d" not in probe_line:
+        raise ValueError("setup.sh: CRLF probe missing exact CR test (b'\\r')")
+    # 4. Exact target
+    if '"${BASH_SOURCE[0]}"' not in probe_line:
+        raise ValueError("setup.sh: CRLF probe must inspect BASH_SOURCE[0]")
+    # 5. Probe line ends with '; then'
+    if not probe_line.rstrip().endswith("; then"):
+        raise ValueError("setup.sh: CRLF probe must end with '; then'")
+    # 6-8. Next three active (non-comment, non-blank) commands in order
+    active_after: list[str] = []
+    for j in range(probe_idx + 1, len(lines)):
+        s = lines[j].strip()
+        if not s or s.startswith("#"):
+            continue
+        active_after.append(s)
+        if len(active_after) >= 3:
+            break
+    if len(active_after) < 3:
+        raise ValueError("setup.sh: CRLF guard block incomplete")
+    echo_line, exit_line, fi_line = active_after
+    # 6. neutral stderr echo
+    if not (echo_line.startswith("echo ") and ">&2" in echo_line and "CRLF" in echo_line):
+        raise ValueError("setup.sh: CRLF guard missing neutral stderr echo")
+    # 7. exactly exit 1
+    if exit_line != "exit 1":
+        raise ValueError("setup.sh: CRLF guard exit must be exactly 'exit 1'")
+    # 8. exactly fi
+    if fi_line != "fi":
+        raise ValueError("setup.sh: CRLF guard must close with 'fi'")
+    # 9. The complete block must precede SCRIPT_DIR and all side-effect commands
+    block_end = probe_idx
+    for j in range(probe_idx + 1, len(lines)):
+        if lines[j].strip() == "fi":
+            block_end = j
+            break
     for marker in ("SCRIPT_DIR", "COMPOSE", "pip install", "alembic upgrade",
                     "bootstrap_tenant_schema"):
         idx = next(
@@ -961,7 +1003,7 @@ def _validate_crlf_guard(source: str) -> None:
              if marker in l and not l.strip().startswith("#")),
             None,
         )
-        if idx is not None and idx <= guard_idx:
+        if idx is not None and idx <= block_end:
             raise ValueError(f"setup.sh: {marker} precedes the CRLF guard")
 
 
@@ -1403,18 +1445,39 @@ esac
         # R16-R1: structural CRLF guard authenticity (pure helper on real source)
         _validate_crlf_guard(SETUP_SH.read_text(encoding="utf-8"))
 
-    def test_crlf_guard_mutation_removing_guard_fails_validation(self) -> None:
-        """RED (R16-R1): removing the active CRLF guard from setup.sh source
-        makes the structural validator fail — proves the validation is
-        mutation-sensitive, not just a substring check."""
+    def test_crlf_guard_mutation_all_variants_fail_validation(self) -> None:
+        """RED (R16-R2): every inert/corrupted/misplaced form of the CRLF guard
+        must make the structural validator raise ValueError. The committed real
+        source must continue passing."""
         source = SETUP_SH.read_text(encoding="utf-8")
-        mutated = source.replace(
-            'if python -c "import sys; d = open(sys.argv[1], ',
-            '# if python -c "import sys; d = open(sys.argv[1], ',
-        )
-        assert mutated != source, "mutation did not change source"
-        with pytest.raises(ValueError, match="active CRLF raw-byte probe"):
-            _validate_crlf_guard(mutated)
+        # prove real source passes
+        _validate_crlf_guard(source)
+        mutations = [
+            ("comment out probe",
+             lambda s: s.replace("if python -c ", "# if python -c ", 1)),
+            ("echo probe",
+             lambda s: s.replace("if python -c ", 'echo "', 1)),
+            ("colon no-op",
+             lambda s: s.replace("if python -c ", ": # if python -c ", 1)),
+            ("true carrier",
+             lambda s: s.replace("if python -c ", "true # if python -c ", 1)),
+            ("change CR to LF",
+             lambda s: s.replace("b'\\r'", "b'\\n'", 1)),
+            ("comment out neutral error",
+             lambda s: s.replace('echo "setup.sh contains CRLF',
+                                  '# echo "setup.sh contains CRLF', 1)),
+            ("exit to true",
+             lambda s: s.replace("    exit 1\nfi", "    true\nfi", 1)),
+            ("exit 0",
+             lambda s: s.replace("    exit 1\nfi", "    exit 0\nfi", 1)),
+            ("guard after SCRIPT_DIR",
+             lambda s: "SCRIPT_DIR=MOVED\n" + s),
+        ]
+        for name, mutate in mutations:
+            mutated = mutate(source)
+            assert mutated != source, f"mutation '{name}' did not change source"
+            with pytest.raises(ValueError):
+                _validate_crlf_guard(mutated)
 
     def test_launcher_crlf_mutated_script_fails_before_any_command(
         self, tmp_path: Path

@@ -10,7 +10,22 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R16-R1 evidence (current checkpoint)
+## R16-R2 evidence (current checkpoint)
+
+Rewrote `_validate_crlf_guard(source)` to recognize one bounded active shell block — not loose substrings. The validated block must contain, in exact executable order: (1) active line starting `if python -c`; (2) exact `open(sys.argv[1], 'rb').read()`; (3) exact `b'
+' in d`; (4) exact `"${BASH_SOURCE[0]}"`; (5) ends with `; then`; (6) next active command is the neutral stderr echo; (7) next is exactly `exit 1`; (8) next is exactly `fi`; (9) the complete block precedes SCRIPT_DIR and all side-effect commands.
+
+Single mutation test loops through 9 variants (no parametrized nodes): comment probe, echo probe, colon no-op, true carrier, CR→LF, comment error, exit→true, exit→0, guard-after-SCRIPT_DIR. Each must raise ValueError; the committed real source must pass.
+
+Gates: H7 **320/320** nat+rev; 3-file bundle **325/325** rev (natural has 1 intermittent `too_slow` under combined-run load — same documented host-gated flake, resolved on isolation/reverse; Phase 4 zero-red pending Lubuntu).
+
+Only the parity test and three evidence docs change; all other files (including test_token_properties.py) are byte-identical to R16-R1.
+
+Next: Kilo bounded R16-R2 review → Lubuntu reruns Phase 4 only → CTO merge decision.
+
+---
+
+## R16-R1 evidence (SUPERSEDED_BY_H7_R16_R2)
 
 Four test/doc-only corrections. Only two test files and three evidence docs change; setup.sh, setup_preflight.py, and all product/Compose/manifest/migration/lockfile files are byte-identical to R16.
 
@@ -20,7 +35,7 @@ Four test/doc-only corrections. Only two test files and three evidence docs chan
 - **C4 authoritative documentation:** Lubuntu report `189852da` — Phase 3 native setup PASS accepted (setup ran twice, all 37 migrations including 011, tenant bootstrap, idempotency). R16-R1 changes test/docs only; source is byte-identical so Phase 3 does NOT need repetition. Phase 4 (focused zero-red) remains pending independent Lubuntu verification. Native setup Phase 3 PASS accepted; no R16 native zero-red or merge approval.
 - **Gates:** H7 **320/320** nat+rev; 3-file bundle **325/325** nat+rev; token_properties 5/5; seeded token green; structural CRLF mutation RED.
 
-**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R1_ZERO_RED`.**
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R2_ZERO_RED`.**
 Next: Kilo bounded R16/R16-R1 review → Lubuntu reruns Phase 4 only → CTO merge decision.
 
 ---
@@ -35,7 +50,7 @@ Test-only: cross-host portability + Hypothesis isolation. Only two test files an
 - **Gates:** H7 **319/319** natural+reverse; 3-file bundle (setup_preflight + manifest_parity + token_properties) **324/324** natural+reverse; seeded token test (303296478269760642762159842520761126666) passes; 5 fresh unseeded processes green; full token_properties 5/5.
 - **Phase 4 baseline (Lubuntu `189852da`):** natural 324/321/3, reverse 324/322/2 — the failures were `HealthCheck.too_slow` from slow regex generation, now resolved by the structural strategies. R16 proves the fix locally; **Lubuntu must rerun Phase 4 to confirm zero-red.**
 
-**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R1_ZERO_RED`.**
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R2_ZERO_RED`.**
 No native Linux PASS, NO merge approval, NO deployment claim.
 
 ---

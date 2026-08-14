@@ -173,7 +173,7 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
-## Active Deployment Prerequisite — H7 Manifest Reconciliation (R16-R1 checkpoint; NO PASS)
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R16-R2 checkpoint; NO PASS)
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -447,7 +447,7 @@ only then CTO merge consideration.
 
 **H7-R15 through R15-R4 (evidence checkpoint, current; NO PASS):** R15 added `REPORTING_USER_PASSWORD` as a required migration env var (setup_preflight.py enforces it; setup.sh exports it before Alembic and unsets it before bootstrap). R15-R1 fixed three CTO P1 blockers (`_NATIVE_CREDS` lifecycle, backend RUP fail-open, AST coverage). R15-R2/R15-R3/R15-R4 tightened the shell guard to an exact `unset _NATIVE_CREDS` command (no inert bypass) and the AST scanner to fixed-point alias tracking covering all `os.environ`/`os.getenv` forms including module-qualified assignment aliases. Final SHA `1291d87a`; only tests and docs changed relative to R15-R3; source 3 files byte-identical. Direct 144/144; harness 38/38; parity 175/175; complete H7 319/319 both orders. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. Next: Kilo bounded cumulative R15 review → Lubuntu native setup.sh twice → focused zero-red gate → CTO merge decision. NO native Linux PASS, NO merge approval, NO deployment/Playwright/VPS claim.
 
-**H7-R16 (evidence checkpoint, current; NO PASS):** test-only cross-host portability + Hypothesis isolation. `_select_bash` accepts `platform_name` (deterministic cross-host, no monkeypatch); CRLF test handles nonexistent log + either rejection form; Hypothesis uses `st.uuids()`/`st.binary(16)` instead of slow regex. Accepted evidence: Kilo `e9303476`; Lubuntu native `189852da` (setup twice PASS). Phase 4 baseline 324/321/3 nat, 324/322/2 rev — now **324/324** both orders locally; Lubuntu must rerun to confirm zero-red. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R1_ZERO_RED`. Next: Kilo bounded R16/R16-R1 review -> Lubuntu reruns Phase 4 only -> focused zero-red gate -> CTO merge decision.
+**H7-R16 (evidence checkpoint, current; NO PASS):** test-only cross-host portability + Hypothesis isolation. `_select_bash` accepts `platform_name` (deterministic cross-host, no monkeypatch); CRLF test handles nonexistent log + either rejection form; Hypothesis uses `st.uuids()`/`st.binary(16)` instead of slow regex. Accepted evidence: Kilo `e9303476`; Lubuntu native `189852da` (setup twice PASS). Phase 4 baseline 324/321/3 nat, 324/322/2 rev — now **324/324** both orders locally; Lubuntu must rerun to confirm zero-red. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R2_ZERO_RED`. Next: Kilo bounded R16/R16-R1 review -> Lubuntu reruns Phase 4 only -> focused zero-red gate -> CTO merge decision.
 
 ## Active Phase
 

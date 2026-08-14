@@ -436,17 +436,30 @@ def check_setup_sh_wiring(text: str) -> None:
     # R11: setup.sh must NOT overwrite a caller-provided COMPOSE_PROJECT_NAME
     if any(re.search(r"^\s*COMPOSE_PROJECT_NAME\s*=", r) for r in lines):
         raise ValueError("setup.sh: must not set/overwrite COMPOSE_PROJECT_NAME")
-    # R15-R1/R15-R2: _NATIVE_CREDS must be actively unset (anchored command,
-    # not an echo/comment/no-op) before Alembic.
+    # R15-R1/R15-R2/R15-R3: _NATIVE_CREDS must be unset by an EXACT active
+    # command `unset _NATIVE_CREDS` (no options, no other variables, no
+    # compound commands; trailing comment OK). It must precede Alembic, and
+    # no re-assignment or reference may appear between the unset and Alembic.
     unset_creds_idx = next(
         (i for i, r in enumerate(lines)
-         if re.match(r"^\s*unset\b.*\b_NATIVE_CREDS\b", r)), None,
+         if re.match(r"^\s*unset\s+_NATIVE_CREDS\s*(#.*)?$", r)), None,
     )
     if unset_creds_idx is None:
         raise ValueError("setup.sh: _NATIVE_CREDS must be unset before Alembic")
-    if any("alembic upgrade head" in r.strip() and i < unset_creds_idx
-           for i, r in enumerate(lines)):
+    _alembic_idx = next(
+        (i for i, r in enumerate(lines) if "alembic upgrade head" in r.strip()), None,
+    )
+    if _alembic_idx is not None and _alembic_idx < unset_creds_idx:
         raise ValueError("setup.sh: _NATIVE_CREDS must be unset before Alembic")
+    # R15-R3: no re-assignment or reference between unset and Alembic
+    for i in range(unset_creds_idx + 1, len(lines)):
+        s = lines[i].strip()
+        if "alembic upgrade head" in s:
+            break
+        if "_NATIVE_CREDS" in s:
+            raise ValueError(
+                "setup.sh: _NATIVE_CREDS referenced after unset before Alembic"
+            )
     # R12: no Compose config operation may run before the --env-file-bearing
     # array is constructed (a premature config probe without --env-file would
     # fail interpolation and silently reject a standalone docker-compose).
@@ -743,12 +756,14 @@ class TestH7R5R1InstallPathWiring:
             '# unset _NATIVE_CREDS',
             ': unset _NATIVE_CREDS',
             'true unset _NATIVE_CREDS',
+            'unset -f _NATIVE_CREDS',             # R15-R3: option flag
+            'unset OTHER_VAR # _NATIVE_CREDS',    # R15-R3: comment-only reference
         ],
     )
     def test_RED_native_creds_inert_unset_rejected(self, inert: str) -> None:
-        """RED (R15-R2): echo / comment / colon / true no-op forms that merely
-        contain the tokens must NOT satisfy the guard — only an active anchored
-        `unset _NATIVE_CREDS` command is accepted."""
+        """RED (R15-R2/R15-R3): echo / comment / colon / true / option-flag /
+        comment-reference forms must NOT satisfy the guard — only an EXACT
+        active `unset _NATIVE_CREDS` command is accepted."""
         text = self._base().replace(
             "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n",
             inert + "\n",
@@ -764,6 +779,17 @@ class TestH7R5R1InstallPathWiring:
             "",
         ).replace("alembic upgrade head", "alembic upgrade head\nunset _NATIVE_CREDS")
         with pytest.raises(ValueError, match="_NATIVE_CREDS must be unset"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_native_creds_reassigned_after_unset(self) -> None:
+        """RED (R15-R3): re-assigning _NATIVE_CREDS after the unset but before
+        Alembic defeats the lifecycle claim — the guard catches the reference."""
+        text = self._base().replace(
+            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n",
+            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n"
+            "_NATIVE_CREDS=something\n",
+        )
+        with pytest.raises(ValueError, match="_NATIVE_CREDS referenced after unset"):
             check_setup_sh_wiring(text)
 
     def test_RED_missing_database_url_resolution(self) -> None:
@@ -1733,13 +1759,14 @@ esac
 def _scan_migration_env_vars(source: str) -> set[str]:
     """Pure scanner: extract env-var names from Python source code. Recognized:
     os.environ.get(K), os.environ[K], os.getenv(K), and import/assignment
-    aliases. Hard-fails (AssertionError) on dynamic keys, setdefault/pop/
-    update/putenv, or any other os.environ access on a tracked name."""
+    aliases (fixed-point). Hard-fails (AssertionError) on dynamic keys, ANY
+    method on a tracked environ name other than ``.get``, putenv, or any
+    unrecognized os.environ access."""
     import ast
     tree = ast.parse(source)
     environ_names: set[str] = set()
     getenv_names: set[str] = set()
-    # First pass: track imports and assignment aliases
+    # Initialize from imports
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "os":
             for alias in node.names:
@@ -1748,11 +1775,28 @@ def _scan_migration_env_vars(source: str) -> set[str]:
                     environ_names.add(local)
                 elif alias.name == "getenv":
                     getenv_names.add(local)
-        if isinstance(node, ast.Assign):
-            if isinstance(node.value, ast.Attribute) and node.value.attr == "environ":
-                for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        environ_names.add(target.id)
+    # R15-R3: fixed-point iteration for assignment chains (handles multi-level
+    # alias chains and getenv function aliases).
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            val = node.value
+            new_names: set[str] = set()
+            if isinstance(val, ast.Attribute) and val.attr == "environ":
+                new_names = environ_names
+            elif isinstance(val, ast.Name) and val.id in environ_names:
+                new_names = environ_names
+            elif isinstance(val, ast.Name) and val.id in getenv_names:
+                new_names = getenv_names
+            if new_names is not environ_names and new_names is not getenv_names:
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id not in new_names:
+                    new_names.add(target.id)
+                    changed = True
     env_vars: set[str] = set()
 
     def _is_environ(val):
@@ -1780,8 +1824,10 @@ def _scan_migration_env_vars(source: str) -> set[str]:
                     _key(node)
                 elif func.attr == "getenv" and isinstance(func.value, ast.Name):
                     _key(node)
-                elif func.attr in ("setdefault", "pop", "update") and _is_environ(func.value):
-                    raise AssertionError(f"unauthorized os.environ.{func.attr} at line {node.lineno}")
+                elif _is_environ(func.value) and func.attr != "get":
+                    raise AssertionError(
+                        f"unauthorized os.environ.{func.attr} at line {node.lineno}"
+                    )
                 elif func.attr == "putenv":
                     raise AssertionError(f"os.putenv not allowed at line {node.lineno}")
             elif isinstance(func, ast.Name) and func.id in getenv_names:
@@ -1811,6 +1857,12 @@ class TestMigrationEnvVarScanner:
         ('from os import getenv as g; g("VAR")', {"VAR"}),
         ('import os; env = os.environ; env.get("VAR")', {"VAR"}),
         ('import os; env = os.environ; env["VAR"]', {"VAR"}),
+        # R15-R3: chained alias (fixed-point tracking)
+        ('import os; a = os.environ; b = a; b.get("VAR")', {"VAR"}),
+        # R15-R3: imported alias assignment
+        ('from os import environ; e = environ; e.get("VAR")', {"VAR"}),
+        # R15-R3: getenv function alias
+        ('from os import getenv; g = getenv; g("VAR")', {"VAR"}),
     ])
     def test_supported_forms(self, src: str, expected: set[str]) -> None:
         assert _scan_migration_env_vars(src) == expected
@@ -1823,6 +1875,12 @@ class TestMigrationEnvVarScanner:
         'import os; os.environ.update({"VAR": "x"})',      # update
         'import os; os.putenv("VAR", "x")',                # putenv
         'import os; env = os.environ; env.setdefault("VAR", "x")',  # alias setdefault
+        # R15-R3: clear / copy / items on tracked environ
+        'import os; os.environ.clear()',
+        'import os; os.environ.copy()',
+        'import os; os.environ.items()',
+        # R15-R3: chained alias setdefault
+        'import os; a = os.environ; b = a; b.setdefault("VAR", "x")',
     ])
     def test_unauthorized_forms_hard_fail(self, src: str) -> None:
         with pytest.raises(AssertionError):

@@ -1,8 +1,8 @@
-# DC-12R1-H7-R15-R2 — Evidence Authenticity Blocker Closure (NO PASS)
+# DC-12R1-H7-R15-R3 — Evidence Authenticity Final Closure (NO PASS)
 
 > **Status: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** This is
-> an evidence checkpoint, NOT a merge-review PASS. **H7-R15-R1 is
-> `SUPERSEDED_BY_H7_R15_R2`.** Accepted external evidence: Kilo R10-V1 =
+> an evidence checkpoint, NOT a merge-review PASS. **H7-R15-R2 is
+> `SUPERSEDED_BY_H7_R15_R3`.** Accepted external evidence: Kilo R10-V1 =
 > `7d53d6a5c9dc7fc8a8a44414951c214c7bce4d02`; Lubuntu R10-V2 STOP =
 > `e073ded80c479a90732b19efedd6e45afbf08bc2`. Earlier records superseded.
 
@@ -10,7 +10,35 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R15-R2 evidence (current checkpoint)
+## R15-R3 evidence (current checkpoint)
+
+Closes two CTO evidence-authenticity blockers on R15-R2. Only the parity test
+and three evidence docs change; setup.sh, setup_preflight.py, and the direct
+preflight test are byte-identical to R15-R2.
+
+- **P1 (shell guard precision):** the `_NATIVE_CREDS` unset guard now matches
+  only the EXACT command `unset _NATIVE_CREDS` (regex
+  `^\s*unset\s+_NATIVE_CREDS\s*(#.*)?$` — no options like `-f`, no other
+  variables, no compound commands). A re-assignment / reference check between
+  the unset and Alembic catches post-unset reuse. Mutation REDs: `unset -f`,
+  `unset OTHER # _NATIVE_CREDS`, and re-assignment after unset.
+- **P1 (AST scanner fixed-point):** `_scan_migration_env_vars` now uses
+  fixed-point iteration to track multi-level assignment chains, imported-alias
+  assignments, and getenv function aliases. ANY method on a tracked environ
+  name other than `.get(...)` hard-fails (covers clear/copy/items/setdefault/
+  pop/update/popitem + unknown). New REDs: chained alias, imported alias
+  assignment, getenv alias, clear, copy, items, chained-alias setdefault.
+  The real 001-037 scan still produces exactly {REPORTING_USER_PASSWORD}.
+- **Test gates:** direct **144/144** nat+rev (unchanged); harness **38/38**;
+  full parity **170/170** (160 + 10 R15-R3); complete H7 suite **314/314**
+  both file orders nat+rev.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.** No PASS
+is claimed. Sequence: Kilo bounded review -> Lubuntu V4 -> CTO merge.
+
+---
+
+## R15-R2 evidence (SUPERSEDED_BY_H7_R15_R3)
 
 Closes two CTO evidence-authenticity blockers on R15-R1. Only the parity test
 and three evidence docs change; setup.sh, setup_preflight.py, and the direct

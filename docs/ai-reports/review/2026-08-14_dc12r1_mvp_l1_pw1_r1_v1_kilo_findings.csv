@@ -1,0 +1,28 @@
+Category,Check,Target,Observed,Result,Severity,Notes
+ProofGate,Evidence branch SHA match,pw1r1/real-jwt-browser-review-2026-08-14,d787c58ca85f05823fd4816e662c3db1f182dc92 == expected,PASS,INFO,Local==remote==expected
+ProofGate,Evidence parent == frozen product,d787c58~1 -> d2e7e44cf23e91cabfab545c494abd342fec3062,parent is frozen source,PASS,INFO,Product is ancestor of evidence
+ProofGate,Diff scope d2e7e44..d787c58,git diff --name-status,only A pw1r1/ (harness+evidence+report),PASS,INFO,Zero M/D on product paths
+ProofGate,Frozen product tree unmodified,product source paths,no tracked modifications,PASS,INFO,Only additions under pw1r1/
+ProofGate,Protected ref unchanged,origin/product-dev-recovered,d2e7e44cf23e91cabfab545c494abd342fec3062,PASS,INFO,Candidate branch not modified
+D1-Source,LoginPage nav order,LoginPage.tsx:96-104,updateTokens(accessToken=identity,user=null) before navigate('/select-workspace'),CONFIRMED,P1,Proximate trigger
+D1-Source,PublicRoute accessToken-only check,guards.tsx:31-39,admits on accessToken presence; never checks user,CONFIRMED,P1,Identity token treated as session
+D1-Source,authStore.updateTokens,authStore.ts:76-80,sets accessToken/refreshToken only; user stays null,CONFIRMED,P1,No identity/contextual state
+D1-Source,Root cause classification,LoginPage+PublicRoute+store,Combination of 3 factors; NOT a one-line reorder,CONFIRMED,P1,One-line reorder insufficient (reload path)
+D1-Runtime,/auth/login 200 + exactly 2 tenants,RA identity over staging,200; tenants=[TR16BB078F3A444E409D0BA80AE9D3CE,TR683EC9D1C5414CC6AE7F760ADB0406],PASS,P1,Real JWT from staging
+D1-Runtime,Final URL after login,browser history trace,http://127.0.0.1:5173/ (ERP shell),PASS,P1,WorkspaceSelectorPage never reached
+D1-Runtime,WorkspaceSelectorPage not rendered,repro-module-instrumentation,[WSP] NEVER logged,PASS,P1,Confirmed by instrumentation
+D1-Runtime,select-tenant not called,response listener,no /auth/select-tenant request,PASS,P1,
+D1-Runtime,Instrumentation does not alter result,repro-module-instrumentation,final URL still /,PASS,INFO,Defect not an artifact of instrumentation
+D1-Runtime,Selector itself healthy (diagnostic),repro-manual-state-injection,both tenant buttons render,PASS,INFO,Diagnostic only; not product GREEN
+D1-Runtime,Double-POST not the cause,uninstrumented run,single POST still reproduces defect,PASS,INFO,Intermittent double-submit irrelevant
+D2,Backend 401 envelope shape,/auth/login wrong creds,flat {code,message,request_id},CONFIRMED,P3,DC-12R1-H2 envelope
+D2,Owner LoginPage fallback,LoginPage.tsx:114-120,legacy detail.error.message absent -> axiosErr.message (raw),CONFIRMED,P3,Shows "Request failed with status code 401"
+D2,Retailer neutral handling,ClientLoginPage.tsx:106-114,401 -> fixed "Invalid credentials" (both envelopes),CONFIRMED,P3,Retailer negative node green
+D2,Scope stays P3,no secret leakage,generic message only,PASS,P3,Not escalated to blocking P1
+EvidenceIntegrity,Identities via formal lifecycle,provision_identities.py,signup/verify/setup + register/reissue/setup over HTTP,PASS,INFO,No direct INSERT/hand-written hashes
+EvidenceIntegrity,No secrets in committed artifacts,pw1r1/ secret scan,only var-name password refs + redacted + forged test JWT,PASS,INFO,identities.json not committed
+EvidenceIntegrity,Accounting 162=7+2+153,RESULTS/JUNIT/CSV + reconciliation,gap=0,PASS,INFO,CSV parse PASSED=7 FAILED=2 BLOCKED=153
+EvidenceIntegrity,153 blocked from real --list,replicated runner enumeration,stage2=45 + stage3=108 = 153,PASS,INFO,Not fabricated/hardcoded
+EvidenceIntegrity,Blocked not counted as product fail,PW1_R1_JUNIT.xml,skipped msg "BLOCKED: ... not a product FAIL"; failures=2,PASS,INFO,Explicitly marked not-executed
+EvidenceIntegrity,Two failures = two root causes,timeout-wait(D1) + element-not-visible(D2),distinct,PASS,INFO,153 blocked share single upstream D1
+EvidenceIntegrity,No skip/xfail/retry/hardcoded,tests + playwright.config.js,retries:0; no test.skip/fixme/only; stats computed,PASS,INFO,

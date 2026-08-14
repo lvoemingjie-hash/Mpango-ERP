@@ -926,6 +926,45 @@ def _select_bash(isfile=None, which=None, platform_name=None):
         raise RuntimeError("No suitable bash found on PATH")
 
 
+def _validate_crlf_guard(source: str) -> None:
+    """Pure function: prove the setup.sh source contains an ACTIVE raw-byte
+    Python CRLF probe that inspects ``BASH_SOURCE[0]``, emits the neutral
+    error + ``exit 1``, and precedes all side-effect commands (SCRIPT_DIR,
+    Compose, pip, Alembic, bootstrap). Raises ValueError on any failure."""
+    lines = source.splitlines()
+    guard_idx = None
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith("#"):
+            continue
+        # Active probe: python + 'rb' open + BASH_SOURCE
+        if "python" in s and "'rb'" in s and "BASH_SOURCE" in s:
+            guard_idx = i
+            break
+    if guard_idx is None:
+        raise ValueError("setup.sh: active CRLF raw-byte probe not found")
+    # Next non-blank lines: neutral error + exit 1
+    after = [
+        lines[j].strip()
+        for j in range(guard_idx + 1, min(guard_idx + 5, len(lines)))
+        if lines[j].strip()
+    ]
+    if not any("CRLF line endings" in l for l in after):
+        raise ValueError("setup.sh: CRLF guard missing neutral error")
+    if not any("exit 1" in l for l in after):
+        raise ValueError("setup.sh: CRLF guard missing exit 1")
+    # Guard must precede side-effect commands
+    for marker in ("SCRIPT_DIR", "COMPOSE", "pip install", "alembic upgrade",
+                    "bootstrap_tenant_schema"):
+        idx = next(
+            (i for i, l in enumerate(lines)
+             if marker in l and not l.strip().startswith("#")),
+            None,
+        )
+        if idx is not None and idx <= guard_idx:
+            raise ValueError(f"setup.sh: {marker} precedes the CRLF guard")
+
+
 class TestH7R5R2ExecutableHarness:
     """Execute an UNMODIFIED copy of the committed setup.sh through subprocess
     against task-owned fake executables in a temporary fake-bin directory
@@ -1347,8 +1386,9 @@ esac
 
     def test_launcher_crlf_enforcement_zero_crlf_blob(self) -> None:
         """The committed setup.sh blob must have zero CRLF bytes (cross-host
-        LF guarantee via .gitattributes). Runtime CRLF enforcement is proven
-        separately by setup.sh's fail-closed CRLF self-check."""
+        LF guarantee via .gitattributes). The active raw-byte CRLF self-check
+        must exist in source, inspect BASH_SOURCE[0], emit the neutral error +
+        exit 1, and precede all side-effect commands."""
         import subprocess
         # The committed blob must be LF-only
         result = subprocess.run(
@@ -1360,6 +1400,21 @@ esac
         # .gitattributes must enforce eol=lf
         ga = (BACKEND_DIR.parent / ".gitattributes").read_text(encoding="utf-8")
         assert "backend/scripts/setup.sh" in ga and "eol=lf" in ga
+        # R16-R1: structural CRLF guard authenticity (pure helper on real source)
+        _validate_crlf_guard(SETUP_SH.read_text(encoding="utf-8"))
+
+    def test_crlf_guard_mutation_removing_guard_fails_validation(self) -> None:
+        """RED (R16-R1): removing the active CRLF guard from setup.sh source
+        makes the structural validator fail — proves the validation is
+        mutation-sensitive, not just a substring check."""
+        source = SETUP_SH.read_text(encoding="utf-8")
+        mutated = source.replace(
+            'if python -c "import sys; d = open(sys.argv[1], ',
+            '# if python -c "import sys; d = open(sys.argv[1], ',
+        )
+        assert mutated != source, "mutation did not change source"
+        with pytest.raises(ValueError, match="active CRLF raw-byte probe"):
+            _validate_crlf_guard(mutated)
 
     def test_launcher_crlf_mutated_script_fails_before_any_command(
         self, tmp_path: Path
@@ -1380,6 +1435,11 @@ esac
         log_text = h["log"].read_text() if h["log"].exists() else ""
         for bad in ("docker", "pip install", "alembic", "bootstrap_tenant_schema", "pnpm install"):
             assert bad not in log_text
+        # R16-R1: prove no secret leakage from stdout, stderr, or command log
+        for capture in (r.stdout, r.stderr, log_text):
+            assert self._SENTINEL_PW not in capture
+            assert self._SENTINEL_RUP not in capture
+            assert "postgresql://" not in capture
 
     def test_initial_preflight_pipe_runs_before_compose_up(self, tmp_path: Path) -> None:
         """The rendered-Compose-JSON pipe into setup_preflight.py must run

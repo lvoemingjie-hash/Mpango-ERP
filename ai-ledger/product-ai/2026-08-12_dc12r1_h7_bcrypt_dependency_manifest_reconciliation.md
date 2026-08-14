@@ -10,7 +10,22 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R16 evidence (current checkpoint)
+## R16-R1 evidence (current checkpoint)
+
+Four test/doc-only corrections. Only two test files and three evidence docs change; setup.sh, setup_preflight.py, and all product/Compose/manifest/migration/lockfile files are byte-identical to R16.
+
+- **C1 structural CRLF guard:** pure `_validate_crlf_guard(source)` helper proves the committed setup.sh contains an ACTIVE raw-byte Python CRLF probe (not a comment/string) that inspects `BASH_SOURCE[0]`, emits the neutral error + `exit 1`, and precedes SCRIPT_DIR/Compose/pip/Alembic/bootstrap. Mutation RED: commenting out the guard makes the validator fail.
+- **C2 CRLF runtime secret boundary:** the mutated-script test now proves `_SENTINEL_PW`, `_SENTINEL_RUP`, and `postgresql://` fragments are absent from stdout, stderr, and the command log (treated as empty if missing).
+- **C3 wording:** `HealthCheck.to_slow` → `HealthCheck.too_slow` (typo fix in test_token_properties.py comment).
+- **C4 authoritative documentation:** Lubuntu report `189852da` — Phase 3 native setup PASS accepted (setup ran twice, all 37 migrations including 011, tenant bootstrap, idempotency). R16-R1 changes test/docs only; source is byte-identical so Phase 3 does NOT need repetition. Phase 4 (focused zero-red) remains pending independent Lubuntu verification. Native setup Phase 3 PASS accepted; no R16 native zero-red or merge approval.
+- **Gates:** H7 **320/320** nat+rev; 3-file bundle **325/325** nat+rev; token_properties 5/5; seeded token green; structural CRLF mutation RED.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R1_ZERO_RED`.**
+Next: Kilo bounded R16/R16-R1 review → Lubuntu reruns Phase 4 only → CTO merge decision.
+
+---
+
+## R16 evidence (SUPERSEDED_BY_H7_R16_R1)
 
 Test-only: cross-host portability + Hypothesis isolation. Only two test files and three evidence docs change; all source/runtime files are byte-identical to R15-R4-R1.
 
@@ -20,7 +35,7 @@ Test-only: cross-host portability + Hypothesis isolation. Only two test files an
 - **Gates:** H7 **319/319** natural+reverse; 3-file bundle (setup_preflight + manifest_parity + token_properties) **324/324** natural+reverse; seeded token test (303296478269760642762159842520761126666) passes; 5 fresh unseeded processes green; full token_properties 5/5.
 - **Phase 4 baseline (Lubuntu `189852da`):** natural 324/321/3, reverse 324/322/2 — the failures were `HealthCheck.too_slow` from slow regex generation, now resolved by the structural strategies. R16 proves the fix locally; **Lubuntu must rerun Phase 4 to confirm zero-red.**
 
-**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_ZERO_RED`.**
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R1_ZERO_RED`.**
 No native Linux PASS, NO merge approval, NO deployment claim.
 
 ---

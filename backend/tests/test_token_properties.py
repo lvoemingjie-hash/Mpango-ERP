@@ -20,7 +20,7 @@ from core.security import (
 
 
 # Strategy for generating valid UUIDs — efficient structural generation
-# (avoids HealthCheck.to_slow from slow regex backtracking)
+# (avoids HealthCheck.too_slow from slow regex backtracking)
 uuid_strategy = st.uuids().map(str)
 
 # Strategy for generating tenant schema names — exactly 16 bytes rendered as hex

@@ -1,0 +1,17 @@
+ID,Phase,Title,Result,Severity,Detail
+F1,P1,Candidate branch equals candidate SHA,PASS,-,origin/zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12 resolves to fd7727f83e30338ccabcf5cb459a093a0a766e05
+F2,P1,Parent equals R15-R4 implementation,PASS,-,fd7727f8^ == 1291d87a3f33e839e4d5e2610423535211393080
+F3,P1,Protected baseline is ancestor of candidate,PASS,-,git merge-base --is-ancestor a6ef3aac fd7727f8 returned 0
+F4,P1,R15-R4-R1 delta is exactly 3 docs,PASS,-,1291d87a..fd7727f8 = PROJECT.md, CTO_CURRENT_OPS.md, ai-ledger reconciliation.md (count 3)
+F5,P1,Cumulative delta is exactly 7 files (mandated list),PASS,-,b2b08ab0..fd7727f8 = setup.sh, setup_preflight.py, parity test, preflight test, PROJECT.md, CTO_CURRENT_OPS.md, ledger md (count 7, exact list match)
+F6,P2,REPORTING_USER_PASSWORD required fail-closed before Alembic side effect,PASS,-,setup.sh L124 exit on empty RUP before export (L126) and alembic upgrade head (L129)
+F7,P2,Process-env and rendered backend Compose RUP fail closed,PASS,-,absence/wrong-type/empty/mismatch all _fail in setup_preflight.run_initial (L219-285); empty-but-present process RUP = conflict (L230-231)
+F8,P2,Same parser; both exported before Alembic; RUP unset before bootstrap; DB_URL retained then unset,PASS,-,setup.sh L116 single parse_env_file; L125-126 export; L133 unset RUP; L139 unset DATABASE_URL/_NATIVE_DB_URL after bootstrap
+F9,P2,No secret in argv/log/stdout/stderr; no alembic.ini credential fallback,PASS,-,creds captured to shell var only; alembic/env.py L33-38 overrides sqlalchemy.url from DATABASE_URL env
+F10,P3,AST scanner supports all os.environ/os.getenv forms + aliases; hard-fails dynamic/unauthorized,PASS,-,21 supported-form cases + 13 fail-closed cases in TestMigrationEnvVarScanner; module-qualified getenv alias covered
+F11,P3,Migrations 001-037 non-connection env set exactly REPORTING_USER_PASSWORD,PASS,-,test_migration_env_dependency_inventory_is_exactly_reporting_user_password: extra = env_vars - {DATABASE_URL,REDIS_URL} == {REPORTING_USER_PASSWORD}
+F12,P4,Active unset _NATIVE_CREDS; mutation edits real setup.sh; fakes vs .env; no skip/xfail,PASS,-,setup.sh L122 active unset; _run_mutated asserts mutated!=original; alembic/bootstrap fakes grep .env; no skip/xfail/conditional decorators
+F13,P5,Direct 144 / harness 38 / parity 175 / complete 319 zero-red (Kilo host),PASS,-,Genuine execution in isolated exact-pin venv + Git Bash on Windows; not native Linux; no HOST_ENVIRONMENT_LIMITATION triggered
+F14,P6,PROJECT/CTO counts and STOP next-step order accurate; no overclaim,PASS,-,PROJECT.md L7 and CTO_CURRENT_OPS.md L448 state 144/38/175/319 matching runtime; docs disclaim native PASS/merge/deploy
+F15,P6,Ledger SUPERSEDED_BY_H7_R15_R4_R1_DOCS_ONLY tag accurate,PASS,INFORMATIONAL,R15-R4-R1 is docs-only increment; 4 code files byte-identical 1291d87a..fd7727f8; documentation-statement only, no source/secret/behavior impact
+F16,Q,Quality gates all OK,PASS,-,bash -n OK; py_compile OK; git diff --check clean (both deltas); scoped detect-secrets clean (baseline restored); UTF-8 strict OK; GitNexus indexed 15095 nodes up-to-date

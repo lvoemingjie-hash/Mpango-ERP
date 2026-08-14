@@ -1,0 +1,722 @@
+{
+  "target": {
+    "id": "Interface:frontend/src/stores/authStore.ts:AuthState",
+    "name": "AuthState",
+    "type": "Interface",
+    "filePath": "frontend/src/stores/authStore.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 87,
+  "risk": "HIGH",
+  "summary": {
+    "direct": 20,
+    "processes_affected": 0,
+    "modules_affected": 0
+  },
+  "affected_processes": [],
+  "affected_modules": [],
+  "byDepth": {
+    "1": [
+      {
+        "depth": 1,
+        "id": "File:frontend/src/services/api.ts",
+        "name": "api.ts",
+        "filePath": "frontend/src/services/api.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/router/guards.tsx",
+        "name": "guards.tsx",
+        "filePath": "frontend/src/router/guards.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/DashboardPage.tsx",
+        "name": "DashboardPage.tsx",
+        "filePath": "frontend/src/pages/DashboardPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/tenants/TenantListPage.tsx",
+        "name": "TenantListPage.tsx",
+        "filePath": "frontend/src/pages/tenants/TenantListPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/skus/SKUListPage.tsx",
+        "name": "SKUListPage.tsx",
+        "filePath": "frontend/src/pages/skus/SKUListPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/skus/DataIntakePage.tsx",
+        "name": "DataIntakePage.tsx",
+        "filePath": "frontend/src/pages/skus/DataIntakePage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/pricing/RetailerPricingPage.tsx",
+        "name": "RetailerPricingPage.tsx",
+        "filePath": "frontend/src/pages/pricing/RetailerPricingPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/platform/PlatformOperatorTasksPage.tsx",
+        "name": "PlatformOperatorTasksPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformOperatorTasksPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/platform/PlatformIncidentCloseoutsPage.tsx",
+        "name": "PlatformIncidentCloseoutsPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformIncidentCloseoutsPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/platform/PlatformDurableApprovalsPage.tsx",
+        "name": "PlatformDurableApprovalsPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformDurableApprovalsPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/platform/PlatformApprovalsPage.tsx",
+        "name": "PlatformApprovalsPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformApprovalsPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/orders/OrderListPage.tsx",
+        "name": "OrderListPage.tsx",
+        "filePath": "frontend/src/pages/orders/OrderListPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/orders/CreateOrderPage.tsx",
+        "name": "CreateOrderPage.tsx",
+        "filePath": "frontend/src/pages/orders/CreateOrderPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/inventory/InventoryPage.tsx",
+        "name": "InventoryPage.tsx",
+        "filePath": "frontend/src/pages/inventory/InventoryPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/client/ClientLoginPage.tsx",
+        "name": "ClientLoginPage.tsx",
+        "filePath": "frontend/src/pages/client/ClientLoginPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/auth/WorkspaceSelectorPage.tsx",
+        "name": "WorkspaceSelectorPage.tsx",
+        "filePath": "frontend/src/pages/auth/WorkspaceSelectorPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/pages/auth/LoginPage.tsx",
+        "name": "LoginPage.tsx",
+        "filePath": "frontend/src/pages/auth/LoginPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/components/layout/Sidebar.tsx",
+        "name": "Sidebar.tsx",
+        "filePath": "frontend/src/components/layout/Sidebar.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/components/layout/Header.tsx",
+        "name": "Header.tsx",
+        "filePath": "frontend/src/components/layout/Header.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:frontend/src/components/layout/ClientLayout.tsx",
+        "name": "ClientLayout.tsx",
+        "filePath": "frontend/src/components/layout/ClientLayout.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      }
+    ],
+    "2": [
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/tenantService.ts",
+        "name": "tenantService.ts",
+        "filePath": "frontend/src/services/tenantService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/supportApi.ts",
+        "name": "supportApi.ts",
+        "filePath": "frontend/src/services/supportApi.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/statementService.ts",
+        "name": "statementService.ts",
+        "filePath": "frontend/src/services/statementService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/skuService.ts",
+        "name": "skuService.ts",
+        "filePath": "frontend/src/services/skuService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/skuImportService.ts",
+        "name": "skuImportService.ts",
+        "filePath": "frontend/src/services/skuImportService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/retailerService.ts",
+        "name": "retailerService.ts",
+        "filePath": "frontend/src/services/retailerService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/pricingService.ts",
+        "name": "pricingService.ts",
+        "filePath": "frontend/src/services/pricingService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/platformApi.ts",
+        "name": "platformApi.ts",
+        "filePath": "frontend/src/services/platformApi.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/paymentService.ts",
+        "name": "paymentService.ts",
+        "filePath": "frontend/src/services/paymentService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/orderService.ts",
+        "name": "orderService.ts",
+        "filePath": "frontend/src/services/orderService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/inventoryService.ts",
+        "name": "inventoryService.ts",
+        "filePath": "frontend/src/services/inventoryService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/intakeService.ts",
+        "name": "intakeService.ts",
+        "filePath": "frontend/src/services/intakeService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/financeService.ts",
+        "name": "financeService.ts",
+        "filePath": "frontend/src/services/financeService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/declarationService.ts",
+        "name": "declarationService.ts",
+        "filePath": "frontend/src/services/declarationService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/dashboardService.ts",
+        "name": "dashboardService.ts",
+        "filePath": "frontend/src/services/dashboardService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/clientProductService.ts",
+        "name": "clientProductService.ts",
+        "filePath": "frontend/src/services/clientProductService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/clientOrderService.ts",
+        "name": "clientOrderService.ts",
+        "filePath": "frontend/src/services/clientOrderService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/clientFinanceService.ts",
+        "name": "clientFinanceService.ts",
+        "filePath": "frontend/src/services/clientFinanceService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/services/authService.ts",
+        "name": "authService.ts",
+        "filePath": "frontend/src/services/authService.ts",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/router/AppRouter.tsx",
+        "name": "AppRouter.tsx",
+        "filePath": "frontend/src/router/AppRouter.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/pages/invite/InvitePage.tsx",
+        "name": "InvitePage.tsx",
+        "filePath": "frontend/src/pages/invite/InvitePage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:frontend/src/components/layout/MainLayout.tsx",
+        "name": "MainLayout.tsx",
+        "filePath": "frontend/src/components/layout/MainLayout.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      }
+    ],
+    "3": [
+      {
+        "depth": 3,
+        "id": "File:frontend/src/App.tsx",
+        "name": "App.tsx",
+        "filePath": "frontend/src/App.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/skus/SKUImportModal.tsx",
+        "name": "SKUImportModal.tsx",
+        "filePath": "frontend/src/pages/skus/SKUImportModal.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/skus/SKUFormModal.tsx",
+        "name": "SKUFormModal.tsx",
+        "filePath": "frontend/src/pages/skus/SKUFormModal.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/retailers/RetailerListPage.tsx",
+        "name": "RetailerListPage.tsx",
+        "filePath": "frontend/src/pages/retailers/RetailerListPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/retailer/RetailerSetupCredentialPage.tsx",
+        "name": "RetailerSetupCredentialPage.tsx",
+        "filePath": "frontend/src/pages/retailer/RetailerSetupCredentialPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/retailer/RetailerResetPasswordPage.tsx",
+        "name": "RetailerResetPasswordPage.tsx",
+        "filePath": "frontend/src/pages/retailer/RetailerResetPasswordPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/print/StatementPrintPage.tsx",
+        "name": "StatementPrintPage.tsx",
+        "filePath": "frontend/src/pages/print/StatementPrintPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/print/ReceiptPrintPage.tsx",
+        "name": "ReceiptPrintPage.tsx",
+        "filePath": "frontend/src/pages/print/ReceiptPrintPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/print/OrderPrintPage.tsx",
+        "name": "OrderPrintPage.tsx",
+        "filePath": "frontend/src/pages/print/OrderPrintPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/print/DeclarationPrintPage.tsx",
+        "name": "DeclarationPrintPage.tsx",
+        "filePath": "frontend/src/pages/print/DeclarationPrintPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/SupportConsolePage.tsx",
+        "name": "SupportConsolePage.tsx",
+        "filePath": "frontend/src/pages/platform/SupportConsolePage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/PlatformTenantHealthPage.tsx",
+        "name": "PlatformTenantHealthPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformTenantHealthPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/PlatformTenantDirectoryPage.tsx",
+        "name": "PlatformTenantDirectoryPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformTenantDirectoryPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/PlatformSystemHealthPage.tsx",
+        "name": "PlatformSystemHealthPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformSystemHealthPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/PlatformRegistryPage.tsx",
+        "name": "PlatformRegistryPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformRegistryPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/PlatformOverviewPage.tsx",
+        "name": "PlatformOverviewPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformOverviewPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/PlatformControlledExecutionConsolePage.tsx",
+        "name": "PlatformControlledExecutionConsolePage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformControlledExecutionConsolePage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/PlatformControlledActionsPage.tsx",
+        "name": "PlatformControlledActionsPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformControlledActionsPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/PlatformAuditEventsPage.tsx",
+        "name": "PlatformAuditEventsPage.tsx",
+        "filePath": "frontend/src/pages/platform/PlatformAuditEventsPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/inventory/InventoryLogPage.tsx",
+        "name": "InventoryLogPage.tsx",
+        "filePath": "frontend/src/pages/inventory/InventoryLogPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/finance/PaymentListPage.tsx",
+        "name": "PaymentListPage.tsx",
+        "filePath": "frontend/src/pages/finance/PaymentListPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/finance/FinancePage.tsx",
+        "name": "FinancePage.tsx",
+        "filePath": "frontend/src/pages/finance/FinancePage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/finance/DeclarationQueuePage.tsx",
+        "name": "DeclarationQueuePage.tsx",
+        "filePath": "frontend/src/pages/finance/DeclarationQueuePage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/client/ProductListPage.tsx",
+        "name": "ProductListPage.tsx",
+        "filePath": "frontend/src/pages/client/ProductListPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/client/ProductDetailPage.tsx",
+        "name": "ProductDetailPage.tsx",
+        "filePath": "frontend/src/pages/client/ProductDetailPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/client/PaymentHistoryPage.tsx",
+        "name": "PaymentHistoryPage.tsx",
+        "filePath": "frontend/src/pages/client/PaymentHistoryPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/client/OrderListPage.tsx",
+        "name": "OrderListPage.tsx",
+        "filePath": "frontend/src/pages/client/OrderListPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/client/OrderDetailPage.tsx",
+        "name": "OrderDetailPage.tsx",
+        "filePath": "frontend/src/pages/client/OrderDetailPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/client/FinanceBalancePage.tsx",
+        "name": "FinanceBalancePage.tsx",
+        "filePath": "frontend/src/pages/client/FinanceBalancePage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/client/DeclarePaymentPage.tsx",
+        "name": "DeclarePaymentPage.tsx",
+        "filePath": "frontend/src/pages/client/DeclarePaymentPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/client/DeclarationHistoryPage.tsx",
+        "name": "DeclarationHistoryPage.tsx",
+        "filePath": "frontend/src/pages/client/DeclarationHistoryPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/client/CreateOrderPage.tsx",
+        "name": "CreateOrderPage.tsx",
+        "filePath": "frontend/src/pages/client/CreateOrderPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/auth/VerifyEmailPage.tsx",
+        "name": "VerifyEmailPage.tsx",
+        "filePath": "frontend/src/pages/auth/VerifyEmailPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/auth/SetupCredentialPage.tsx",
+        "name": "SetupCredentialPage.tsx",
+        "filePath": "frontend/src/pages/auth/SetupCredentialPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/auth/ResetPasswordPage.tsx",
+        "name": "ResetPasswordPage.tsx",
+        "filePath": "frontend/src/pages/auth/ResetPasswordPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/auth/ForgotPasswordPage.tsx",
+        "name": "ForgotPasswordPage.tsx",
+        "filePath": "frontend/src/pages/auth/ForgotPasswordPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/components/ui/PaymentRecordModal.tsx",
+        "name": "PaymentRecordModal.tsx",
+        "filePath": "frontend/src/components/ui/PaymentRecordModal.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/components/platform/SupportDiagnosticsPanel.tsx",
+        "name": "SupportDiagnosticsPanel.tsx",
+        "filePath": "frontend/src/components/platform/SupportDiagnosticsPanel.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/components/platform/SupportBundleCard.tsx",
+        "name": "SupportBundleCard.tsx",
+        "filePath": "frontend/src/components/platform/SupportBundleCard.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/ops/OpsSlowRoutesPage.tsx",
+        "name": "OpsSlowRoutesPage.tsx",
+        "filePath": "frontend/src/pages/platform/ops/OpsSlowRoutesPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/ops/OpsResourcesPage.tsx",
+        "name": "OpsResourcesPage.tsx",
+        "filePath": "frontend/src/pages/platform/ops/OpsResourcesPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/ops/OpsNoisyNeighborsPage.tsx",
+        "name": "OpsNoisyNeighborsPage.tsx",
+        "filePath": "frontend/src/pages/platform/ops/OpsNoisyNeighborsPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/ops/OpsHealthPage.tsx",
+        "name": "OpsHealthPage.tsx",
+        "filePath": "frontend/src/pages/platform/ops/OpsHealthPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/ops/OpsErrorsPage.tsx",
+        "name": "OpsErrorsPage.tsx",
+        "filePath": "frontend/src/pages/platform/ops/OpsErrorsPage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 3,
+        "id": "File:frontend/src/pages/platform/ops/IncidentTriagePage.tsx",
+        "name": "IncidentTriagePage.tsx",
+        "filePath": "frontend/src/pages/platform/ops/IncidentTriagePage.tsx",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      }
+    ]
+  }
+}

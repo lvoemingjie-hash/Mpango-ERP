@@ -1,0 +1,19 @@
+{
+  "target": {
+    "id": "Function:frontend/src/pages/auth/LoginPage.tsx:LoginPage",
+    "name": "LoginPage",
+    "type": "Function",
+    "filePath": "frontend/src/pages/auth/LoginPage.tsx"
+  },
+  "direction": "upstream",
+  "impactedCount": 0,
+  "risk": "LOW",
+  "summary": {
+    "direct": 0,
+    "processes_affected": 0,
+    "modules_affected": 0
+  },
+  "affected_processes": [],
+  "affected_modules": [],
+  "byDepth": {}
+}

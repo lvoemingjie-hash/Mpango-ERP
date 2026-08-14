@@ -1,0 +1,76 @@
+▲ [WARNING] Duplicate key "jsdom" in object literal [duplicate-object-key]
+
+    package.json:40:4:
+      40 │     "jsdom": "^29.1.1",
+         ╵     ~~~~~~~
+
+  The original key "jsdom" is here:
+
+    package.json:30:4:
+      30 │     "jsdom": "^23.0.0",
+         ╵     ~~~~~~~
+
+
+ RUN  v1.6.1 C:/Users/Jeff0/pw1_r2_worktree/frontend
+
+stderr | src/tests/Pw1R2AuthSessionClosure.test.tsx > PW1-R2 M9: select-tenant/me failure keeps the session pending and retry-safe > me 500 after select-tenant 200: NO contextual session is committed
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+stderr | src/tests/Pw1R2AuthSessionClosure.test.tsx > PW1-R2 M9: select-tenant/me failure keeps the session pending and retry-safe > me 500 after select-tenant 200: NO contextual session is committed
+<empty line>
+stdout | src/tests/Pw1R2AuthSessionClosure.test.tsx > PW1-R2 M9: select-tenant/me failure keeps the session pending and retry-safe > me 500 after select-tenant 200: NO contextual session is committed
+[API →] POST /auth/login {
+  headers: {
+    Accept: 'application/json, text/plain, */*',
+    'Content-Type': 'application/json'
+  }
+}
+
+stderr | src/tests/Pw1R2AuthSessionClosure.test.tsx > PW1-R2 M9: select-tenant/me failure keeps the session pending and retry-safe > me 500 after select-tenant 200: NO contextual session is committed
+<empty line>
+stdout | src/tests/Pw1R2AuthSessionClosure.test.tsx > PW1-R2 M9: select-tenant/me failure keeps the session pending and retry-safe > me 500 after select-tenant 200: NO contextual session is committed
+[API →] POST /auth/select-tenant {
+  headers: {
+    Accept: 'application/json, text/plain, */*',
+    'Content-Type': 'application/json',
+    Authorization: '[REDACTED]'
+  }
+}
+[API →] GET /auth/me {
+  headers: {
+    Accept: 'application/json, text/plain, */*',
+    'Content-Type': 'application/json',
+    Authorization: '[REDACTED]'
+  }
+}
+
+ ❯ src/tests/Pw1R2AuthSessionClosure.test.tsx  (23 tests | 1 failed | 22 skipped) 958ms
+   ❯ src/tests/Pw1R2AuthSessionClosure.test.tsx > PW1-R2 M9: select-tenant/me failure keeps the session pending and retry-safe > me 500 after select-tenant 200: NO contextual session is committed
+     → expected 'contextual-access-token' to be 'identity-access-token' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/Pw1R2AuthSessionClosure.test.tsx > PW1-R2 M9: select-tenant/me failure keeps the session pending and retry-safe > me 500 after select-tenant 200: NO contextual session is committed
+AssertionError: expected 'contextual-access-token' to be 'identity-access-token' // Object.is equality
+
+- Expected
++ Received
+
+- identity-access-token
++ contextual-access-token
+
+ ❯ src/tests/Pw1R2AuthSessionClosure.test.tsx:426:49
+    424|     expect(await screen.findByText('Failed to select workspace. Please…
+    425|     // The contextual token from select-tenant must NOT have been comm…
+    426|     expect(useAuthStore.getState().accessToken).toBe('identity-access-…
+       |                                                 ^
+    427|     expect(useAuthStore.getState().user).toBeNull();
+    428|     expect(sessionKind(useAuthStore.getState())).toBe('pending-identit…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 22 skipped (23)
+   Start at  22:58:28
+   Duration  8.14s (transform 1.15s, setup 212ms, collect 3.97s, tests 958ms, environment 1.77s, prepare 223ms)
+

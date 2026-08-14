@@ -1,0 +1,15 @@
+=== PublicRoute ===
+  processes: none listed
+  callers: none listed
+=== ProtectedRoute ===
+  processes: none listed
+  callers: none listed
+=== WholesalerRoute ===
+  processes: none listed
+  callers: none listed
+=== LoginPage ===
+  processes: none listed
+  callers: none listed
+=== WorkspaceSelectorPage ===
+  processes: none listed
+  callers: none listed

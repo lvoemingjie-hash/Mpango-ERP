@@ -1,0 +1,30 @@
+ID,Phase,Title,Result,Severity,Detail
+F1,P1,Source branch equals candidate SHA,PASS,-,origin/zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12 resolves to a0a14e4d7bbfdc2aef154810202c3ba93b633c50
+F2,P1,Direct parent equals R16-R2,PASS,-,a0a14e4d^ == cb4fab66e587017893d790877d381e006e1aaf5c
+F3,P1,Protected baseline ancestor and unchanged,PASS,-,merge-base --is-ancestor a6ef3aac a0a14e4d returned 0; origin/product-dev-recovered == a6ef3aac
+F4,P1,R16-R2 delta exactly 4 files,PASS,-,cb4fab66..a0a14e4d = parity test, PROJECT.md, CTO_CURRENT_OPS.md, ledger md (count 4)
+F5,P1,Aggregate fd7727f8..a0a14e4d exactly 5 authorized files,PASS,-,+ test_token_properties.py (count 5; all docs/tests)
+F6,P1,Product code byte-identical to fd7727f8,PASS,-,setup.sh, setup_preflight.py, alembic/env.py, docker-compose.yml, requirements.txt, poetry.lock all diff-quiet; only 5 doc/test files changed
+F7,P2,_select_bash defaults to sys.platform,PASS,-,platform_name param defaults to sys.platform when None (L896-897)
+F8,P2,platform_name injection test-only; no global monkeypatch,PASS,-,parameterized; no sys.platform patch
+F9,P2,Windows rejection tests inject win32/isfile/which directly,PASS,-,test_launcher_fail_closed_when_only_system32_wsl_bash_exists (L1423-1427)
+F10,P2,System32/WSL/WindowsApps fail closed,PASS,-,rejected in win32 (L910/916/918) and POSIX (L924) branches; RuntimeError otherwise
+F11,P2,POSIX native Bash selection intact,PASS,-,else branch which("bash") + reject system32 + raise (L922-926)
+F12,P3,CRLF guard active if python -c + raw-byte read + b'\r' + BASH_SOURCE[0] + ;then,PASS,-,_validate_crlf_guard L954/961/964/967/970
+F13,P3,Bounded echo >&2 / exit 1 / fi order; precedes SCRIPT_DIR/side effects,PASS,-,_validate_crlf_guard L985/988/991/993-1007
+F14,P3,All 9 mutations genuinely change source and go RED,PASS,-,assert mutated != source + pytest.raises(ValueError) for comment/echo/colon/true/CR->LF/comment-error/exit->true/exit 0/guard-after-SCRIPT_DIR
+F15,P3,Real committed setup.sh goes GREEN,PASS,-,committed blob zero CRLF + .gitattributes eol=lf + _validate_crlf_guard(real source)
+F16,P3,CRLF runtime mutation: non-zero exit, zero side effects, missing log empty, no secret leak, no platform stderr req,PASS,-,test_launcher_crlf_mutated_script_fails_before_any_command; sentinels + postgresql:// absent from stdout/stderr/log
+F17,P4,UUID uses st.uuids().map(str),PASS,-,test_token_properties.py L24
+F18,P4,Schema 16 bytes -> t_ + 32 lowercase hex,PASS,-,st.binary(16,16).map(lambda b: "t_" + b.hex()) (L27-29)
+F19,P4,Original assertions and max_examples=20 preserved,PASS,-,all 5 tests @settings(max_examples=20); assertions unchanged
+F20,P4,No deadline/health-check suppression,PASS,-,no suppress_health_check; deadline=None only on bcrypt tests (legitimate); too_slow health check left active
+F21,P4,No skip/xfail/rerun/conditional pass,PASS,-,grep: none present
+F22,P4,too_slow not caused by R16-R2 source change,PASS,-,R16-R2 delta does not include test_token_properties.py (git diff --quiet cb4fab66..a0a14e4d on it)
+F23,P5,Lubuntu Phase 3 PASS 189852da accepted; no repetition,PASS,-,source byte-identical to fd7727f8 so runtime source needs no re-run
+F24,P5,Phase 4 pending Lubuntu; next step Lubuntu Phase 4 only -> CTO merge,PASS,-,PROJECT L8 / CTO L450 / ledger L24,L39
+F25,P5,No R16 native zero-red/merge/deploy/Playwright/VPS claim,PASS,-,all docs STOP_AND_REPORT_CTO; ledger L35 "no R16 native zero-red or merge approval"
+F26,P6,H7 320 nodes, 320 passed both orders,PASS,-,collected+executed 320 in natural and reverse file order
+F27,P6,3-file bundle 325 nodes, 325 passed both orders,PASS,-,natural 325 passed (167.1s); reverse 325 passed (160.9s)
+F28,P6,Token node unseeded + recorded seed; too_slow flake did not reproduce,PASS,-,no @seed in source; ran seed R16R2KILO_SEED01 -> 5 passed; too_slow host-gated, not claimed as R16 zero-red
+F29,Q,Quality gates all OK,PASS,-,bash -n OK; py_compile OK; git diff --check clean (both deltas); scoped detect-secrets clean (baseline restored); UTF-8 OK; GitNexus 15120 nodes up-to-date

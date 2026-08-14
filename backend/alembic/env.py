@@ -5,7 +5,7 @@ Implements database_contract.md section 5: Alembic multi-schema migration strate
 
 Usage:
 - Public schema only: alembic upgrade head
-- Specific tenant: alembic upgrade head -x tenant_schema=t_abc123
+- Specific tenant: alembic -x tenant_schema=t_abc123 upgrade head
 """
 import asyncio
 import os

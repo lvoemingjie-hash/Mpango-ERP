@@ -1,9 +1,11 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-08-12
+**Last updated:** 2026-08-13
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current protected branch tip:** `d796dcb0d8ecc4ddffc2f82a67e90170c9cdb60f` (the SHA all controlled work branches from and the baseline agents must verify before editing)
+**Current protected branch tip:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` (the accepted DC-12R1-MVP-R0-R1 readiness-debt merge; the SHA all controlled work now branches from and the baseline agents must verify before editing)
+**H7-R16-R2 status: evidence checkpoint, NO PASS verdict** — `_validate_crlf_guard` rewritten as a bounded active shell-block validator (exact executable order: `if python -c` → raw-byte read → `b'
+'` → `BASH_SOURCE[0]` → `; then` → echo → `exit 1` → `fi` → precedes SCRIPT_DIR/Compose/pip/Alembic/bootstrap). 9-mutation loop RED proves inert/corrupted/misplaced forms all fail. H7 320/320; 3-file bundle 325/325 (rev); Phase 4 zero-red pending Lubuntu. Native Phase 3 PASS accepted (189852da). Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R2_ZERO_RED`. Next: Kilo R16-R2 review → Lubuntu Phase 4 only → CTO merge.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (the accepted Contract D merge; an ancestor contained in the current tip — it is NOT the current branch tip)
 **Current database head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
@@ -77,7 +79,7 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product code baseline | `origin/product-dev-recovered@d796dcb0` is the current protected tip; it descends from and includes the accepted product-code merge `adcc7f28` (I2B runtime + read-only backend/browser-printable Contracts A-D). Controlled work branches from `d796dcb0`, not `adcc7f28` |
+| Product code baseline | `origin/product-dev-recovered@a6ef3aac` is the current protected tip (the accepted R0-R1 readiness-debt merge). It descends from `d796dcb0`, which descended from and includes the accepted product-code merge `adcc7f28` (I2B runtime + read-only backend/browser-printable Contracts A-D). Controlled work branches from `a6ef3aac`, not `d796dcb0` or `adcc7f28` |
 | Post-merge SHA sync | After the CTO merges an approved candidate, the protected tip advances and the CTO must update the `Current protected branch tip` above to the new merge SHA before any further controlled work branches from it |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |

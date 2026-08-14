@@ -3,7 +3,8 @@
 **Last updated:** 2026-08-12
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current protected branch tip:** `d796dcb0d8ecc4ddffc2f82a67e90170c9cdb60f` (the SHA controlled work branches from; verify before editing)
+**Current protected branch tip:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` (the accepted DC-12R1-MVP-R0-R1 readiness-debt merge; the SHA controlled work now branches from; verify before editing)
+**Accepted readiness-debt merge:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` — DC-12R1-MVP-R0-R1 P2/P3 readiness-debt closure (baseline-truth docs, permission-aligned client route guards, neutral declaration error contract, shared Contract D statement mapper). The H7 branch `zcode/dc12r1-h7-bcrypt-manifest-reconciliation-2026-08-12` branches from this tip.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (accepted Contract D merge; an ancestor of the current tip, NOT the tip itself)
 **Current migration head:** `037_payment_declarations_schema`
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
@@ -14,12 +15,16 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered@d796dcb0` is the current protected tip. It
-  descends from and includes the accepted product-code merge `adcc7f28`, so it
-  carries accepted I2B runtime and read-only backend/browser-printable Contracts
-  A-D. Controlled work branches from `d796dcb0`.
-- The accepted merge `adcc7f28` is an ANCESTOR of the current tip, not the tip
-  itself. Do not branch from or reference `adcc7f28` as the current baseline.
+- `origin/product-dev-recovered@a6ef3aac` is the current protected tip — the
+  accepted DC-12R1-MVP-R0-R1 readiness-debt merge. It descends from
+  `d796dcb0`, which descended from and included the accepted product-code merge
+  `adcc7f28`, so it carries accepted I2B runtime and read-only backend/browser-
+  printable Contracts A-D plus the R0-R1 readiness-debt closure. Controlled work
+  branches from `a6ef3aac`.
+- The earlier merges `d796dcb0` and `adcc7f28` are ANCESTORS of the current tip,
+  not the tip itself. Do not branch from or reference them as the current
+  baseline. (Post-merge of the H7 bcrypt reconciliation, the CTO syncs this
+  documented tip to the new H7 merge SHA.)
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
 - All controlled work begins from a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
@@ -168,6 +173,282 @@ Post-merge validation:
 - Non-mainland customer HTTPS hosting, formal DB-OPS, platform operator runtime,
   tenant branding, and user manuals remain.
 
+## Active Deployment Prerequisite — H7 Manifest Reconciliation (R16-R2 checkpoint; NO PASS)
+
+Before any local deployment, requirements.txt and Poetry's main-group lock
+inventory must have identical canonical package names and exact versions. This
+is a committed inventory comparison only; it does not prove that pip and Poetry
+produce identical installed environments. H7 closes that drift. This is
+name/version parity only: Poetry lock hashes and sources are not compared;
+markers are not compared; extras are rejected in requirements.txt; resolver
+behavior is not compared. It is a **pre-deployment prerequisite**, not a
+deployed capability — no local deployment, Playwright, or VPS validation, and
+no native `setup.sh` PASS on Linux, is claimed here. Native setup.sh and Docker
+execution remain Lubuntu gates.
+
+**Original three-package drift (RED, pre-H7-R2):** `backend/requirements.txt`
+(the `scripts/setup.sh` pip path) diverged from `pyproject.toml` +
+`poetry.lock` (the Dockerfile Poetry path) on three direct runtime dependencies:
+
+| Package | `pyproject.toml` | `poetry.lock` | `requirements.txt` (pre) | Impact |
+|---|---|---|---|---|
+| bcrypt | `>=4.0,<4.1` | `4.0.1` | `5.0.0` | breaks passlib 1.7.4 password hashing |
+| cryptography | `>=46.0.5` (S8-SEC, CVE-2026-26007) | `46.0.5` | `46.0.4` | below the security floor |
+| openpyxl | `3.1.5` | `3.1.5` | *(absent)* | `ModuleNotFoundError` on the pip path |
+
+**Why H7-R1 correctly stopped:** H7-R1 was scoped to bcrypt only. Its exhaustive
+manifest audit found bcrypt was **not** the only material drift — cryptography
+(violating the `>=46.0.5` security floor) and openpyxl (a missing direct
+dependency) also diverged. Per its step-5 guardrail ("if bcrypt is not the only
+material drift, STOP"), H7-R1 returned `STOP_AND_REPORT_CTO` with the exact
+delta, having made no edit. That stop was correct: a bcrypt-only edit could not
+achieve install-path parity and was forbidden from touching the other two.
+
+**H7-R2 (CTO-authorized, superseded by H7-R3):** the CTO overrode the bcrypt-only
+restriction for exactly three `requirements.txt` corrections — bcrypt
+`5.0.0 → 4.0.1`, cryptography `46.0.4 → 46.0.5`, add `openpyxl==3.1.5`. Kilo
+review (`reports/dc12r1-h7-r2-v1-kilo-review-2026-08-12`, commit `ea3baf41`)
+then returned STOP with three findings: (001) the requirements parser silently
+overwrote duplicate governed lines; (002) the lock parser dict-comprehension
+silently overwrote duplicate entries; (003) `openpyxl 3.1.5` depends on
+`et-xmlfile` (locked at `2.0.0`) but `requirements.txt` had no `et-xmlfile` pin,
+so the "complete install-path parity" claim was an overclaim. H7-R2's PASS is
+**SUPERSEDED_BY_H7_R3**.
+
+**H7-R3 (CTO-authorized, superseded by H7-R4):** recomputed the complete
+Poetry main-runtime lock map (70 packages) vs `requirements.txt` and found the
+**only** remaining drift was the missing transitive `et-xmlfile==2.0.0` (no
+extras, no version mismatches, no duplicate names). R3 adds `et-xmlfile==2.0.0`
+and rewrites the manifest test's parsers to be fail-closed:
+`parse_requirements_text` uses `packaging.requirements.Requirement` (exact `==`
+only; rejects malformed/URL/wildcard/non-exact/duplicates/normalized-name
+collisions) and `parse_main_lock_packages` validates every lock entry and
+rejects duplicate names. The suite (44 tests) proves full-map equality
+(requirements.txt == Poetry main-runtime lock, identical normalized names and
+exact versions) and includes authentic RED mutation tests for each parser
+failure mode. `pyproject.toml` and `poetry.lock` remain byte-identical. Evidence
+in
+`ai-ledger/product-ai/2026-08-12_dc12r1_h7_bcrypt_dependency_manifest_reconciliation.md`.
+
+**H7-R4 (CTO-authorized, superseded by H7-R4-R1):** closes four Kilo findings
+on R3: (001) the lock parser silently accepted/excluded malformed entries or
+raised unrelated exceptions — now validates name/version/groups exhaustively
+with controlled `ValueError` for 13+ malformed forms; (002) the requirements
+parser silently dropped extras and the broader wording overclaimed parity —
+extras are now rejected, all contract language uses the exact phrase
+"requirements.txt and Poetry's main-group lock inventory have identical
+canonical package names and exact versions," and markers/hashes/sources/
+installer execution are explicitly excluded; (003) install-path tests used
+raw substrings — replaced with structural source-shape guards for setup.sh
+and Dockerfile with RED mutation tests; (004) GitNexus status reproducibility
+is host-specific. The test suite grew to 75 tests. Dependencies, product
+code, Dockerfile, setup.sh, pyproject.toml and poetry.lock remain
+byte-identical to R3; full backend gates are inherited from R3. Evidence in
+the same ledger path.
+
+**H7-R4-R1 (CTO-authorized, superseded by H7-R5):** corrects two remaining uncovered false-green
+paths found by CTO review: (A) the setup.sh guard now tracks multi-line shell block
+depth (if/fi, for/do/done, while/do/done, until/do/done, case/esac, functions) and
+requires the pip line to be exactly ``pip install -r requirements.txt`` with no
+suffix/redirect/chain; (B) the Dockerfile guard now joins continuations, locates the
+final build stage, and detects inert/dead-branch forms (echo-wrapper, ``false &&``,
+``|| true``, ``ENV``/``LABEL``/``ARG`` carriers) on RUN lines. The test suite grew
+to 92 tests; all manifests, product code, Dockerfile and setup.sh remain byte-
+identical; full backend gates are inherited from R3. Evidence in the same ledger.
+
+**H7-R5 (CTO-authorized, superseded by H7-R5-R1):** repairs the native Linux setup path:
+``set -Eeuo pipefail`` + ERR trap; bounded PostgreSQL/Redis health polling
+replaces fixed sleep; migration uses valid ``alembic -x tenant_schema=... upgrade
+head`` order (public first); ``pnpm install --frozen-lockfile`` replaces
+``npm install``; ``docker compose`` before ``docker-compose`` fallback; repo
+root resolved from script location. Command examples in ``alembic/env.py`` and
+``bootstrap_tenant_schema.py`` corrected. The test suite grew to 97 tests with
+RED mutations for every setup failure mode. All H7 manifest versions and 70==70
+parity preserved; requirements/pyproject/lock/Dockerfile/Compose unchanged.
+Evidence in the same ledger.
+
+**H7-R5-R1 (CTO-authorized, superseded by H7-R5-R2):** replaces the ineffective post-public
+``alembic -x tenant_schema=... upgrade head`` (a no-op per the project's
+shared-version-table design) with the canonical tenant path:
+``python scripts/bootstrap_tenant_schema.py "$DEFAULT_TENANT_SCHEMA" --database-url
+"$RESOLVED_DATABASE_URL"`` where the URL is resolved from
+``core.config.settings`` and never printed. The ERR trap is rewritten to
+truthfully state partial-artifact risk (no false "no changes applied" or
+rollback claim). Compose invocation stored as a shell array with Compose-scoped
+``exec -T`` health checks (no hard-coded container IDs or users). The test
+suite (94 tests) uses the real committed setup.sh as the mutation base for every
+RED case. All manifests, Dockerfile, Compose, and product code unchanged.
+Native Linux execution remains a Lubuntu gate — not claimed here.
+
+**H7-R5-R2 (evidence checkpoint, superseded by H7-R5-R3):** the setup path now
+verifies the safely parsed DATABASE_URL tuple (username, database, host,
+port) against the running Compose postgres identity (container-owned
+`POSTGRES_USER`/`POSTGRES_DB` via `exec -T ... sh -ec`), never printing the
+password. The executable harness uses task-owned fake executables in a
+temporary fake-bin directory prepended to PATH (MSYS-style) against an
+UNMODIFIED copy of setup.sh: strict ordered command indexes, exit-status
+preservation (42/43/44), pg/redis timeouts, invalid-Compose zero side
+effects, no-secret output, and idempotency are all proven (9/9). H7 suite
+103/103 in natural and reverse order; `bash -n`, py_compile, pre-commit,
+detect-secrets, mojibake clean.
+
+**Focused-regression red node (unresolved, environment-gated):**
+`tests/test_token_properties.py::test_property_token_roundtrip_integrity`
+fails intermittently with `hypothesis.errors.FailedHealthCheck` /
+`HealthCheck.too_slow` (input generation > 1 s) under this host's heavy
+concurrent load (seed
+`303296478269760642762159842520761126666`); it passes on isolation/replay.
+This node is **classified but unresolved** — it is an environment-gated
+Hypothesis timing health check, not an H7 defect (the Poetry test env is
+lock-governed and byte-identical since R3). The R5-R2 verdict is therefore
+`STOP_AND_REPORT_CTO_AWAITING_LUBUNTU_ZERO_RED`: the inherited R3 full-gate
+evidence (3366/0/0) does **not** satisfy the current zero-red focused gate,
+and the zero-red focused run must be obtained on the Lubuntu host.
+
+**H7-R5-R3 (evidence checkpoint, superseded by H7-R5-R4):** adds complete preflight
+before side effects (rendered Compose config validation, DATABASE_URL tuple
+verification against container identity, re-resolution after pip install);
+loopback-only Compose port bindings (`127.0.0.1`); `.gitattributes` LF
+enforcement for setup.sh; and the KILO-001 hash-disproof record
+(env.py=`1c71de7` / bootstrap=`ca7d91f`, both verified unchanged). H7 suite
+103/103 natural+reverse; executable harness 9/9; all deterministic gates
+clean; immutable files byte-identical to `bb52c01b`. The Hypothesis
+`HealthCheck.too_slow` focused-regression red node remains unresolved and
+environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R5-R4 (evidence checkpoint, superseded by H7-R5-R5):** PostgreSQL/Redis published
+ports moved from base docker-compose.yml to docker-compose.override.yml
+(loopback-only `127.0.0.1:${PORT:-5432}:5432`). setup.sh preflight is now
+dependency-free before pip (stdlib .env parser, no core.config import), with
+rendered Compose v2 JSON port-object validation and in-memory credential
+identity comparison (password never printed). Fake Python harness delegates
+JSON/URL/file parsing to the real interpreter (`$REAL_PYTHON`). H7 suite
+103/103 natural+reverse; all deterministic gates clean; immutable files
+byte-identical to `f18761b1`. Hypothesis `HealthCheck.too_slow` focused-
+regression red node remains unresolved and environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R5-R5 (evidence checkpoint, superseded by H7-R5-R6):** consolidated preflight
+into one secret-safe Python process via heredoc temp file (all parsing,
+credential comparison, and Compose v2 port-object validation inside one
+stdlib process; secrets never emitted). Added tested Bash selector
+(explicit Git Bash path, rejects System32/WSL). Harness now 11 nodes
+(9 existing + bash-selector + CRLF-blob-proof). Fake Python delegates all
+JSON/URL/.env parsing to the real interpreter. R5-R4 actual delta was 7
+files; Windows CTO reproduction at c8060644 = 2 passed / 7 failed — the
+previous 9/9 claim is host-specific and superseded. H7 suite 105/105 natural
++reverse; all deterministic gates clean; immutable files byte-identical.
+Hypothesis node remains unresolved. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+CTO reproduction at `abbbe32f` (Windows): **11 collected / 4 passed / 7 failed** —
+preserved as the superseded host-specific record.
+
+**H7-R5-R6 (evidence checkpoint, superseded by H7-R7):** preflight extracted from
+setup.sh into a stdlib-only `backend/scripts/setup_preflight.py` (initial mode
+reads rendered Compose JSON from stdin + backend/.env by path; post-install
+mode imports core.config only after pip; outputs only `OK`; never emits URLs,
+passwords, or Compose JSON; no temporary secret-bearing files). setup.sh
+pipes `compose config --format json | python scripts/setup_preflight.py ...`
+under `pipefail` and runs `--post-install` before Alembic/bootstrap. CRLF
+fail-closed self-check via python raw-byte read (MSYS text-mode reads make
+shell CR detection unreliable). H7 suite 187/187 natural+reverse; harness
+17/17; direct preflight 76/76; immutable files byte-identical. Hypothesis
+node remains unresolved and environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R7 (evidence checkpoint, superseded by H7-R8):** secret-argv removed
+(`--process-db`/`--process-redis` deleted; setup_preflight.py reads
+DATABASE_URL/REDIS_URL from `os.environ`); env keys, exact DB scheme,
+blank-password and Redis-creds hardening; cross-host harness repair with
+coreutils verify. H7 suite 218/218 natural+reverse; direct preflight 104/104;
+harness 20/20; immutable files byte-identical. Hypothesis node unresolved and
+environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R8 (evidence checkpoint, SUPERSEDED_BY_H7_R9):** four precision corrections
+on top of R7 (coreutils evidence set; `.env` UTF-8 fail-closed; asymmetric port
+contract; unique sentinel). setup.sh byte-identical to `0eb24d88`. H7 suite
+229/229 natural+reverse; direct preflight 114/114; harness 21/21; immutable
+files byte-identical. Carried two bounded defects into R9: (a) `_published_int`
+used `re.match` whose `$` accepts a trailing newline; (b) the coreutils
+non-zero-return guard had no direct test. Hypothesis node unresolved and
+environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R9 (evidence checkpoint, SUPERSEDED_BY_H7_R10):** closed the two R8
+defects (`_published_int` `.match`→`.fullmatch`; coreutils non-zero-return
+guard test). H7 suite 245/245 natural+reverse both orderings; direct preflight
+129/129; harness 22/22. Carried one bounded defect into R10: the non-zero probe
+test used `shutil.which("false")`, which is host-fragile (244/1 where `false`
+is absent). Hypothesis node unresolved and environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R10 (evidence checkpoint, SUPERSEDED_BY_H7_R11):** extremely narrow
+correction — non-zero coreutils probe test switched from `shutil.which("false")`
+to `sys.executable` (deterministic, host-independent); direct preflight 129/129;
+harness 22/22; H7 suite 245/245 both orders. Hypothesis node unresolved and
+environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R11 (evidence checkpoint, SUPERSEDED_BY_H7_R12):** Compose project
+isolation (all fixed `container_name` removed; fail-closed preflight rule) and
+native env-file wiring (`docker compose --env-file <backend/.env>`). Authentic
+RED/GREEN proofs on the occupied host (sentinel collision vs coexistence;
+disjoint renders; port isolation). Direct 133/133; harness 23/23; H7 250/250.
+Hypothesis node unresolved. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R12 (evidence checkpoint, SUPERSEDED_BY_H7_R13):** standalone Compose
+probe repair (version-only candidate selection; real capability checks through
+the `--env-file` array; structural guard; authentic standalone harness with 1
+GREEN + 3 mutation REDs). Direct 133/133; harness 27/27; H7 254/254. Hypothesis
+node unresolved. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.
+
+**H7-R13 (evidence checkpoint, current; NO PASS):** narrow test-only correction
+— setup.sh and all product files byte-identical to R12. Defect closed: the R12
+standalone harness wrote a `docker-compose` fake but the `chmod +x` set only
+covered `_FAKE_NAMES`; masked on MSYS but fatal on POSIX (the fake would not
+be executable). R13 chmods `docker-compose` only when `standalone=True` and the
+normal harness never attempts to chmod a file it does not create (fail-closed
+if a fake is missing). New fail-closed assertions prove the standalone fakes
+exist and pass the selected Bash's `test -x` (POSIX/MSYS executability; Windows
+`os.stat` lacks exec bits), and that the normal harness builds only its own
+fakes. Evidence: direct preflight 133/133 natural+reverse; harness 29/29
+natural+reverse zero skip/xfail (27 + 2 R13); complete H7 suite 256/256
+natural+reverse in both file orders; py_compile, bash -n (setup.sh untouched),
+diff-check, pre-commit incl. detect-secrets, UTF-8/mojibake all clean;
+GitNexus detect_changes vs `db166b77` = in-scope files only (manifest-parity
+test + three evidence docs); immutable blobs unchanged (env.py=`1c71de78`,
+bootstrap=`ca7d91f`); protected baseline `a6ef3aac` unchanged. GitNexus note:
+`status` is up-to-date at `db166b7` but the local MCP `compare` misreports many
+historical files; the precise `git diff` result (R12 = 5 files) is the
+authoritative scope record. Hypothesis node remains unresolved and
+environment-gated. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. R13 is the STOP
+checkpoint before Kilo bounded review; only after Kilo passes does Lubuntu run
+native setup.sh + focused zero-red; no deployment, Playwright or merge.
+
+**H7-R14 (evidence checkpoint, SUPERSEDED_BY_H7_R15):** native Alembic connection
+context closure. setup.sh resolves DATABASE_URL from backend/.env via the same
+strict `parse_env_file()` the preflight uses (no second handwritten parser, no
+`set -a`, no sourcing); the value is captured (never printed), exported BEFORE
+`alembic upgrade head`, kept for tenant bootstrap, and unset afterwards — no
+alembic.ini fallback. Enforcing harness fakes (alembic/bootstrap) require
+`$DATABASE_URL` present and equal to the .env value; authentic RED/GREEN
+mutations (remove export, move after alembic, wrong URL for alembic and
+bootstrap independently, missing DATABASE_URL) all fail closed. Direct 133/133;
+harness 35/35; H7 262/262 both orders. setup_preflight.py, direct preflight
+test, and all product/Compose/migration files untouched. Verdict:
+`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. After R14: Kilo
+bounded review; Lubuntu V4 repeats native setup twice + focused zero-red;
+only then CTO merge consideration.
+
+**H7-R15 through R15-R4 (evidence checkpoint, current; NO PASS):** R15 added `REPORTING_USER_PASSWORD` as a required migration env var (setup_preflight.py enforces it; setup.sh exports it before Alembic and unsets it before bootstrap). R15-R1 fixed three CTO P1 blockers (`_NATIVE_CREDS` lifecycle, backend RUP fail-open, AST coverage). R15-R2/R15-R3/R15-R4 tightened the shell guard to an exact `unset _NATIVE_CREDS` command (no inert bypass) and the AST scanner to fixed-point alias tracking covering all `os.environ`/`os.getenv` forms including module-qualified assignment aliases. Final SHA `1291d87a`; only tests and docs changed relative to R15-R3; source 3 files byte-identical. Direct 144/144; harness 38/38; parity 175/175; complete H7 319/319 both orders. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. Next: Kilo bounded cumulative R15 review → Lubuntu native setup.sh twice → focused zero-red gate → CTO merge decision. NO native Linux PASS, NO merge approval, NO deployment/Playwright/VPS claim.
+
+**H7-R16 (evidence checkpoint, current; NO PASS):** test-only cross-host portability + Hypothesis isolation. `_select_bash` accepts `platform_name` (deterministic cross-host, no monkeypatch); CRLF test handles nonexistent log + either rejection form; Hypothesis uses `st.uuids()`/`st.binary(16)` instead of slow regex. Accepted evidence: Kilo `e9303476`; Lubuntu native `189852da` (setup twice PASS). Phase 4 baseline 324/321/3 nat, 324/322/2 rev — now **324/324** both orders locally; Lubuntu must rerun to confirm zero-red. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_R16_R2_ZERO_RED`. Next: Kilo bounded R16/R16-R1 review -> Lubuntu reruns Phase 4 only -> focused zero-red gate -> CTO merge decision.
+
 ## Active Phase
 
 **Active product gate:**
@@ -221,8 +502,9 @@ Required planning boundary:
 ## Agent Assignment
 
 - **Primary planning agent (Zcode):** audit and plan S3-S3-D in a clean
-  worktree from `origin/product-dev-recovered@d796dcb0` (the current protected
-  tip; `adcc7f28` is an ancestor and must not be used as the branch baseline).
+  worktree from `origin/product-dev-recovered@a6ef3aac` (the current protected
+  tip; `d796dcb0` and `adcc7f28` are ancestors and must not be used as the
+  branch baseline).
 - **Independent reviewer:** Kilo performs adversarial UX/source and
   test-authenticity review after the S3-S3-D plan is frozen.
 - **Codex CTO:** own scope, financial blast radius, and merge decision.
@@ -237,10 +519,11 @@ Required planning boundary:
 Stop and report to the CTO if:
 
 - fetched `origin/product-dev-recovered` does not equal the documented current
-  protected tip `d796dcb0d8ecc4ddffc2f82a67e90170c9cdb60f` (or a CTO-published
+  protected tip `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` (or a CTO-published
   later tip), or the fetched tip does not descend from accepted Contract D merge
-  `adcc7f281c661897ad050a8278686375b611edb5`; the current tip `d796dcb0` DOES
-  descend from `adcc7f28` and this stop condition was verified satisfied;
+  `adcc7f281c661897ad050a8278686375b611edb5`; the current tip `a6ef3aac` DOES
+  descend from `adcc7f28` (via `d796dcb0`) and this stop condition was verified
+  satisfied;
 - statement data is accepted from client-calculated financial fields;
 - supplier or retailer authority comes from request-supplied IDs;
 - ledger movements and settled payments are correlated without a persisted key;

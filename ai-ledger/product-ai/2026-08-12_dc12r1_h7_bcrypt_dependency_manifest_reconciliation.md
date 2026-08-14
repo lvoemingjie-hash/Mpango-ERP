@@ -10,7 +10,22 @@
 > Base candidate: `db166b77` (H7-R12)
 > Root base: `origin/product-dev-recovered@a6ef3aac`
 
-## R15-R4 evidence (current checkpoint)
+## R15-R4-R1 docs-only truth correction (current checkpoint)
+
+No code, test, Compose, manifest, migration or lockfile change. Only the three evidence documents are corrected to reflect the actual R15-R4 frozen state (the previous PROJECT.md summary still contained R13-era text mislabelled as R15-R4).
+
+- **R15-R4 SHA:** `1291d87a3f33e839e4d5e2610423535211393080`
+- **Delta vs R15-R3:** only the parity test and three evidence docs; setup.sh, setup_preflight.py, and the direct preflight test are byte-identical.
+- **Test counts:** direct 144/144; harness 38/38; parity 175/175; complete H7 319/319 both file orders.
+- **Technical content:** `os.getenv` module-qualified assignment alias gap closed via `os_module_names` fixed-point tracking; non-os `.getenv` not tracked (false-positive guard).
+- **Next steps:** Kilo bounded cumulative R15 review → Lubuntu native setup.sh twice → focused zero-red gate → CTO merge decision.
+- **Claims:** NO native Linux PASS, NO merge approval, NO deployment, NO Playwright, NO VPS readiness.
+
+**Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`.**
+
+---
+
+## R15-R4 evidence (SUPERSEDED_BY_H7_R15_R4_R1_DOCS_ONLY)
 
 Final alias evidence blocker: `g = os.getenv; g("VAR")` (module-qualified
 getenv assignment alias) was silently missed. Fixed via `os_module_names`

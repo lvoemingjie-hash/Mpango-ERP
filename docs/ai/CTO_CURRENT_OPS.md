@@ -430,7 +430,7 @@ environment-gated. Verdict:
 checkpoint before Kilo bounded review; only after Kilo passes does Lubuntu run
 native setup.sh + focused zero-red; no deployment, Playwright or merge.
 
-**H7-R14 (evidence checkpoint, current; NO PASS):** native Alembic connection
+**H7-R14 (evidence checkpoint, SUPERSEDED_BY_H7_R15):** native Alembic connection
 context closure. setup.sh resolves DATABASE_URL from backend/.env via the same
 strict `parse_env_file()` the preflight uses (no second handwritten parser, no
 `set -a`, no sourcing); the value is captured (never printed), exported BEFORE
@@ -444,6 +444,8 @@ test, and all product/Compose/migration files untouched. Verdict:
 `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. After R14: Kilo
 bounded review; Lubuntu V4 repeats native setup twice + focused zero-red;
 only then CTO merge consideration.
+
+**H7-R15 through R15-R4 (evidence checkpoint, current; NO PASS):** R15 added `REPORTING_USER_PASSWORD` as a required migration env var (setup_preflight.py enforces it; setup.sh exports it before Alembic and unsets it before bootstrap). R15-R1 fixed three CTO P1 blockers (`_NATIVE_CREDS` lifecycle, backend RUP fail-open, AST coverage). R15-R2/R15-R3/R15-R4 tightened the shell guard to an exact `unset _NATIVE_CREDS` command (no inert bypass) and the AST scanner to fixed-point alias tracking covering all `os.environ`/`os.getenv` forms including module-qualified assignment aliases. Final SHA `1291d87a`; only tests and docs changed relative to R15-R3; source 3 files byte-identical. Direct 144/144; harness 38/38; parity 175/175; complete H7 319/319 both orders. Verdict: `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_ZERO_RED`. Next: Kilo bounded cumulative R15 review → Lubuntu native setup.sh twice → focused zero-red gate → CTO merge decision. NO native Linux PASS, NO merge approval, NO deployment/Playwright/VPS claim.
 
 ## Active Phase
 

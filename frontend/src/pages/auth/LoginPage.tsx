@@ -90,10 +90,12 @@ export function LoginPage() {
           }
         }
 
-        // Store identity token only for workspace selector navigation -
-        // this is the one case where we need the token in the store before
-        // tenant selection, but the target page is /select-workspace, not /.
-        useAuthStore.getState().updateTokens({
+        // PW1-R2 (D1 closure): enter the workspace-selection phase explicitly.
+        // beginWorkspaceSelection stores the identity tokens as a PENDING
+        // identity session (user == null, no portal context) that the route
+        // guards never mistake for a contextual authenticated session, then
+        // the tenants travel in the router navigation state (never the URL).
+        useAuthStore.getState().beginWorkspaceSelection({
           access_token: identityData.access_token,
           refresh_token: identityData.refresh_token,
         });
@@ -108,15 +110,16 @@ export function LoginPage() {
       navigate('/onboarding/create-tenant', { replace: true });
 
     } catch (err) {
+      // PW1-R2 (D2 closure): fixed neutral copy only. Never surface
+      // axiosErr.message, the backend message, request_id, the response
+      // body, or internal error codes on the owner login form.
       const axiosErr = err as AxiosError<ApiErrorResponse>;
-      const detail = axiosErr.response?.data;
+      const status = axiosErr.response?.status;
 
-      if (detail && 'error' in detail) {
-        setServerError(detail.error.message);
-      } else if (axiosErr.message) {
-        setServerError(axiosErr.message);
+      if (status === 401) {
+        setServerError('Invalid credentials');
       } else {
-        setServerError('An unexpected error occurred. Please try again.');
+        setServerError('Unable to sign in. Please try again.');
       }
 
       // Clear partial tokens on failure

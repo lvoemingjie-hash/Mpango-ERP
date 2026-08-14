@@ -24,11 +24,50 @@ interface AuthActions {
    */
   retailerLogin: (tokens: TokenData, user: CurrentUserData, wholesalerCode: string) => void;
   logout: () => void;
+  /**
+   * PW1-R2 (D1 closure): updateTokens is reserved for the established-session
+   * token-refresh flow (services/api.ts). It must NOT be used to start a
+   * workspace selection — a token-only write leaves `user == null`, which the
+   * route guards now treat as a *pending identity session* that is never a
+   * contextual authenticated session. Use beginWorkspaceSelection instead.
+   */
   updateTokens: (tokens: Pick<TokenData, 'access_token' | 'refresh_token'>) => void;
   setUser: (user: CurrentUserData) => void;
+  /**
+   * PW1-R2 (D1 closure): enter the workspace-selection phase of a multi-tenant
+   * login. Stores the identity access/refresh tokens as a PENDING identity
+   * session (`user == null`) and clears unrelated portal/tenant context.
+   *
+   * A pending identity session is deliberately NOT a contextual authenticated
+   * session: the route guards keep it out of the business shell until
+   * WorkspaceSelectorPage atomically commits a contextual session via
+   * `login(...)` after BOTH select-tenant and /auth/me succeed.
+   */
+  beginWorkspaceSelection: (identityTokens: Pick<TokenData, 'access_token' | 'refresh_token'>) => void;
 }
 
 export type AuthStore = AuthState & AuthActions;
+
+/**
+ * PW1-R2 binding session contract — DERIVED facts only (no stored booleans
+ * that could drift):
+ *
+ * - contextual session:           accessToken != null AND user != null
+ * - pending identity session:     accessToken != null AND user == null
+ * - anonymous:                    accessToken == null AND user == null
+ *
+ * (A token-less non-null user is treated as anonymous: without a token no
+ * authenticated API call is possible, so it must never be admitted.)
+ */
+export type SessionKind = 'anonymous' | 'pending-identity' | 'contextual';
+
+export function sessionKind(
+  state: Pick<AuthState, 'accessToken' | 'user'>,
+): SessionKind {
+  if (state.accessToken == null) return 'anonymous';
+  if (state.user == null) return 'pending-identity';
+  return 'contextual';
+}
 
 const initialState: AuthState = {
   accessToken: null,
@@ -80,6 +119,17 @@ export const useAuthStore = create<AuthStore>()(
         }),
 
       setUser: (user) => set({ user }),
+
+      beginWorkspaceSelection: (identityTokens) =>
+        set({
+          accessToken: identityTokens.access_token,
+          refreshToken: identityTokens.refresh_token,
+          // Pending identity session: forced, never a contextual session.
+          user: null,
+          tenantCode: null,
+          // Unrelated portal context must not leak into owner selection.
+          retailerPortalCode: null,
+        }),
     }),
     {
       name: 'mpango-auth',

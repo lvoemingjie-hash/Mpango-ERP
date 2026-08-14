@@ -63,6 +63,7 @@ function setUser(permissions: string[], roles: string[]) {
       logout: vi.fn(),
       updateTokens: vi.fn(),
       setUser: vi.fn(),
+      beginWorkspaceSelection: vi.fn(),
     } as AuthStore)) as unknown as typeof mockedUseAuthStore);
 }
 
@@ -79,6 +80,7 @@ function setNoUser() {
       logout: vi.fn(),
       updateTokens: vi.fn(),
       setUser: vi.fn(),
+      beginWorkspaceSelection: vi.fn(),
     } as AuthStore)) as unknown as typeof mockedUseAuthStore);
 }
 

@@ -1,10 +1,15 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore, sessionKind } from '@/stores/authStore';
 import { can } from '@/utils/permissions';
 
 /**
- * ProtectedRoute — redirects to /login if not authenticated.
+ * ProtectedRoute — admits ONLY a contextual authenticated session
+ * (PW1-R2 binding contract: accessToken != null AND user != null).
  * Wraps child routes via <Outlet />.
+ *
+ * A pending identity session (token-only, user == null — mid workspace
+ * selection) must NEVER enter the business shell or trigger dashboard APIs;
+ * it fails closed to /login where the flow can safely restart.
  *
  * DC-12R1-S2: if a stale/expired retailer session is detected (portal code
  * preserved but no access token), redirect back to the same supplier portal
@@ -12,10 +17,11 @@ import { can } from '@/utils/permissions';
  */
 export function ProtectedRoute() {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
   const retailerPortalCode = useAuthStore((s) => s.retailerPortalCode);
 
-  if (!accessToken) {
-    if (retailerPortalCode) {
+  if (sessionKind({ accessToken, user }) !== 'contextual') {
+    if (!accessToken && retailerPortalCode) {
       return <Navigate to={`/retail/login?w=${retailerPortalCode}`} replace />;
     }
     return <Navigate to="/login" replace />;
@@ -25,13 +31,19 @@ export function ProtectedRoute() {
 }
 
 /**
- * PublicRoute — redirects to / (dashboard) if already authenticated.
- * Used for login page to prevent logged-in users from seeing it.
+ * PublicRoute — redirects to / (dashboard) only for an already-established
+ * CONTEXTUAL session (PW1-R2: accessToken != null AND user != null).
+ *
+ * A pending identity session (multi-tenant login mid-handoff, user == null)
+ * is deliberately allowed through public routes so the /login →
+ * /select-workspace navigation handoff can complete; it is never mistaken
+ * for an authenticated session anymore (PW1-R1 defect D1 closure).
  */
 export function PublicRoute() {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
 
-  if (accessToken) {
+  if (sessionKind({ accessToken, user }) === 'contextual') {
     return <Navigate to="/" replace />;
   }
 
@@ -130,13 +142,25 @@ export function RetailerPermissionRoute({ permission }: { permission: string }) 
  *   - Authenticated retailer  → /client (their own home; they are signed in,
  *     just on the wrong side of the boundary — we do NOT log them out).
  *   - Stale/unauthenticated    → supplier portal login (preserving the code).
- * All other non-retailer sessions pass through to the existing
- * ProtectedRoute/auth checks.
+ *
+ * PW1-R2 (D1 closure): a half-established session (no user, or no token) is
+ * never admitted on this guard's own authority — WholesalerRoute no longer
+ * relies solely on the upstream ProtectedRoute to reject token-only pending
+ * identity sessions; it fails closed by itself.
  */
 export function WholesalerRoute() {
   const user = useAuthStore((s) => s.user);
   const accessToken = useAuthStore((s) => s.accessToken);
   const retailerPortalCode = useAuthStore((s) => s.retailerPortalCode);
+
+  // Fail closed: half-established sessions (user == null and/or token == null)
+  // must not reach wholesaler ERP routes through this guard.
+  if (!user || !accessToken) {
+    if (retailerPortalCode && !accessToken) {
+      return <Navigate to={`/retail/login?w=${retailerPortalCode}`} replace />;
+    }
+    return <Navigate to="/login" replace />;
+  }
 
   const isRetailerOperator =
     !!user && user.roles?.includes('retailer_operator') === true;

@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { AxiosError } from 'axios';
 import { BuildingOfficeIcon } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/authService';
 import type { TenantInfo } from '@/types/auth';
-import type { ApiErrorResponse } from '@/types/api';
 
 interface LocationState {
   availableTenants?: TenantInfo[];
@@ -28,41 +26,37 @@ export function WorkspaceSelectorPage() {
 
   const handleSelectTenant = async (tenant: TenantInfo) => {
     if (selectingId) return; // Prevent double-clicks
-    
+
     setServerError(null);
     setSelectingId(tenant.id);
 
     try {
-      // 1. Exchange Identity token for Contextual token
-      const ctxRes = await authService.selectTenant({ tenant_id: tenant.id });
-      const ctxTokens = ctxRes.data.data;
-      
-      // 2. Temporarily set token so /me works in the correct context
-      useAuthStore.getState().updateTokens({
-        access_token: ctxTokens.access_token,
-        refresh_token: ctxTokens.refresh_token,
-      });
+      // PW1-R2 (D1 closure): atomic workspace completion. The session stays a
+      // PENDING identity session (identity tokens, user == null) until BOTH
+      // select-tenant and /auth/me succeed; only then does login(...) commit
+      // contextual tokens + user + tenantCode in ONE store write. No partial
+      // token-only session is ever written, so no guard can mistake the
+      // half-flow for an authenticated session.
+      const identityToken = useAuthStore.getState().accessToken;
 
-      // 3. Get full user profile (with permissions for this tenant)
-      const meRes = await authService.me();
-      
-      // 4. Persist everything
+      // 1. Exchange the identity token for a contextual token (explicit token).
+      const ctxRes = await authService.selectTenant({ tenant_id: tenant.id }, identityToken ?? undefined);
+      const ctxTokens = ctxRes.data.data;
+
+      // 2. Load the full user profile with the contextual access token.
+      const meRes = await authService.me(ctxTokens.access_token);
+
+      // 3. One-shot commit of the complete contextual session.
       login(ctxTokens, meRes.data.data, tenant.code);
-      
-      // 5. Enter the app
+
+      // 4. Enter the app.
       navigate('/', { replace: true });
     } catch (err) {
-      const axiosErr = err as AxiosError<ApiErrorResponse>;
-      const detail = axiosErr.response?.data;
-
-      if (detail && 'error' in detail) {
-        setServerError(detail.error.message);
-      } else if (axiosErr.message) {
-        setServerError(axiosErr.message);
-      } else {
-        setServerError('Failed to select workspace. Please try again.');
-      }
-      
+      // Failure keeps the pending identity session (no user, no contextual
+      // tokens) — every guard still fails closed — and selection remains
+      // safely retryable. Fixed neutral copy only (PW1-R2 D2 alignment):
+      // never surface axios/backend internals.
+      setServerError('Failed to select workspace. Please try again.');
       setSelectingId(null);
     }
   };

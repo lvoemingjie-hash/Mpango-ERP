@@ -27,9 +27,18 @@ const api = axios.create({
 // ---------------------------------------------------------------------------
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const { accessToken } = useAuthStore.getState();
-    if (accessToken && config.headers) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
+    // PW1-R2-R1 (explicit authorization precedence): a caller-provided
+    // Authorization header ALWAYS wins. Only when the request carries no
+    // Authorization do we inject the Zustand store access token. This keeps
+    // mid-flow calls honest: during workspace selection the identity token is
+    // sent to /auth/select-tenant and the returned CONTEXTUAL token is sent to
+    // /auth/me — the interceptor may no longer silently rewrite either into
+    // whatever the store currently holds.
+    if (config.headers && !config.headers.Authorization) {
+      const { accessToken } = useAuthStore.getState();
+      if (accessToken) {
+        config.headers.Authorization = `Bearer ${accessToken}`;
+      }
     }
 
     // Security: redact sensitive headers in dev-mode logging

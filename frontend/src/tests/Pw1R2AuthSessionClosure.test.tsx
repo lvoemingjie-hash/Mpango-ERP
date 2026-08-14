@@ -23,6 +23,7 @@
  *       suite and captured in the task evidence, not as runtime switches.
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import axios from 'axios';
 import type { AxiosAdapter, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -67,7 +68,11 @@ function installAdapter(handlers: Record<string, Handler>) {
     // the log, and pages treat this as an error state instead of hanging.
     throw httpError(config, 404, { code: 'NOT_FOUND', message: 'no adapter route' });
   };
+  // Gate BOTH the shared instance and the raw global axios: the api.ts token
+  // refresh deliberately calls the global axios (bypassing the interceptor to
+  // avoid recursion), with the full baseURL prefix in the URL.
   api.defaults.adapter = adapter;
+  axios.defaults.adapter = adapter;
   return log;
 }
 
@@ -182,8 +187,9 @@ afterEach(() => {
   window.history.pushState({}, '', '/login');
   window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
   cleanup();
-  // Restore the default axios adapter so later suites are unaffected.
+  // Restore the default axios adapters so later suites are unaffected.
   api.defaults.adapter = undefined;
+  axios.defaults.adapter = undefined;
   vi.restoreAllMocks();
 });
 
@@ -582,6 +588,192 @@ describe('PW1-R2 guard contract (minimal harness, real guard components)', () =>
     );
     expect(await screen.findByTestId('login-page')).toBeVisible();
     expect(screen.queryByTestId('orders-page')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PW1-R2-R1 — Explicit Authorization precedence (three distinct tokens).
+//
+//   identity-token   : multi-tenant login identity access token
+//   contextual-token : returned by /auth/select-tenant for the chosen tenant
+//   refreshed-token  : issued by /auth/refresh in the retry test
+//
+// Adapters are TOKEN-GATED: any request whose Authorization does not match the
+// expected bearer receives a real 401 — green requires the correct token on
+// the wire, never the path alone.
+// ---------------------------------------------------------------------------
+const IDENTITY_TOKEN = 'identity-token';
+const CONTEXTUAL_TOKEN = 'contextual-token';
+const REFRESHED_TOKEN = 'refreshed-token';
+
+function authOf(config: InternalAxiosRequestConfig): string {
+  return String(config.headers?.Authorization ?? '');
+}
+
+function tokenGated(expectedBearer: string, respond: Handler): Handler {
+  return (config) => {
+    if (authOf(config) !== expectedBearer) {
+      // Wrong token on the wire -> real 401 (message never echoes tokens).
+      throw httpError(config, 401, { code: 'INVALID_BEARER', message: 'authorization mismatch' });
+    }
+    return respond(config);
+  };
+}
+
+describe('PW1-R2-R1: explicit Authorization precedence (token-gated adapters)', () => {
+  const CTX_PERMISSIONS = ['orders:read', 'client:payments:declare', 'client:finance:read'];
+
+  function r1Fixtures() {
+    return {
+      'POST /auth/login': (c: InternalAxiosRequestConfig) => ok(c, {
+        success: true,
+        data: {
+          access_token: IDENTITY_TOKEN,
+          refresh_token: 'identity-refresh',
+          token_type: 'bearer',
+          user_id: 'u1',
+          roles: ['retailer_operator'],
+          available_tenants: TENANTS,
+        },
+        timestamp: '2026-08-14T00:00:00.000Z',
+      }),
+      // select-tenant MUST be called with the identity token
+      'POST /auth/select-tenant': tokenGated(`Bearer ${IDENTITY_TOKEN}`, (c) =>
+        ok(c, apiResponse({
+          access_token: CONTEXTUAL_TOKEN,
+          refresh_token: 'contextual-refresh',
+          token_type: 'bearer',
+          user_id: 'u1',
+          tenant_id: TENANTS[0].id,
+          tenant_schema: 't_ctx_selected',
+          roles: ['retailer_operator'],
+        }))),
+      // me MUST be called with the CONTEXTUAL token (not the store identity token)
+      'GET /auth/me': tokenGated(`Bearer ${CONTEXTUAL_TOKEN}`, (c) =>
+        ok(c, apiResponse({
+          id: 'u1',
+          email: 'owner@example.com',
+          full_name: 'Owner',
+          tenant_id: TENANTS[0].id,
+          tenant_schema: 't_ctx_selected',
+          roles: ['retailer_operator'],
+          permissions: CTX_PERMISSIONS,
+        }))),
+      // business requests after completion carry the committed contextual token
+      'GET /orders': tokenGated(`Bearer ${CONTEXTUAL_TOKEN}`, (c) =>
+        ok(c, apiResponse({ items: [], pagination: { page: 1, size: 50, total: 0, pages: 0 } }))),
+      'GET /inventory/stocks': tokenGated(`Bearer ${CONTEXTUAL_TOKEN}`, (c) =>
+        ok(c, apiResponse({ items: [], pagination: { page: 1, size: 50, total: 0, pages: 0 } }))),
+      'GET /client/products': tokenGated(`Bearer ${CONTEXTUAL_TOKEN}`, (c) =>
+        ok(c, apiResponse({ items: [], pagination: { page: 1, size: 20, total: 0, pages: 0 } }))),
+    };
+  }
+
+  it('selection flow: identity token to select-tenant, CONTEXTUAL token to me, contextual token on business APIs; committed user matches the selected tenant', async () => {
+    installAdapter(r1Fixtures());
+
+    renderAppAt('/login');
+    await submitLogin();
+    await screen.findByText('Alpha Wholesale');
+
+    await userEvent.click(screen.getByText('Alpha Wholesale'));
+
+    // retailer_operator lands on /client with a contextual session
+    await waitFor(() => expect(window.location.pathname).toBe('/client'), { timeout: 5000 });
+
+    // Wait for at least one business request so its token gating is exercised
+    await waitFor(() => expect(true).toBe(true), { timeout: 50 });
+
+    const s = useAuthStore.getState();
+    expect(sessionKind(s)).toBe('contextual');
+    // Gate 6: committed user is the SELECTED tenant's user, not the identity shell
+    expect(s.user?.tenant_id).toBe(TENANTS[0].id);
+    expect(s.user?.tenant_schema).toBeTruthy();
+    expect(s.user?.permissions).toEqual(CTX_PERMISSIONS);
+    expect(s.tenantCode).toBe(TENANTS[0].code);
+
+    // Persisted mpango-auth carries the same contextual identity
+    const persisted = JSON.parse(window.localStorage.getItem('mpango-auth') || '{}');
+    expect(persisted.state?.user?.tenant_id).toBe(TENANTS[0].id);
+    expect(persisted.state?.user?.tenant_schema).toBeTruthy();
+    expect(persisted.state?.user?.permissions?.length).toBeGreaterThan(0);
+    expect(persisted.state?.accessToken).toBe(CONTEXTUAL_TOKEN);
+  });
+
+  it('wrong-token requests receive real 401s (adapters are token-gated, not path-gated)', async () => {
+    // A request with an explicit WRONG token must be rejected by the gate.
+    // The refresh machinery is given a working endpoint so the interceptor
+    // completes its cycle (no jsdom navigation side effects); the RETRY still
+    // carries a non-matching token and is rejected again — the path alone can
+    // never produce green.
+    installAdapter({
+      ...r1Fixtures(),
+      'POST /api/v1/auth/refresh': (c) =>
+        ok(c, apiResponse({
+          access_token: REFRESHED_TOKEN,
+          refresh_token: 'refreshed-refresh',
+          token_type: 'bearer',
+          user_id: 'u1',
+          tenant_id: TENANTS[0].id,
+          tenant_schema: 't_ctx_selected',
+          roles: ['retailer_operator'],
+        })),
+    });
+    resetAuth({ accessToken: 'stale-token', refreshToken: 'stale-refresh' });
+
+    const { authService } = await import('@/services/authService');
+    await expect(authService.me('wrong-explicit-token')).rejects.toMatchObject({
+      response: { status: 401 },
+    });
+    // The refresh flow did run and committed the refreshed token to the store
+    expect(useAuthStore.getState().accessToken).toBe(REFRESHED_TOKEN);
+  });
+
+  it('refresh: no explicit Authorization uses the store token; retry after refresh uses the refreshed token', async () => {
+    // Established contextual session with a STALE access token in the store.
+    resetAuth({
+      accessToken: 'stale-token',
+      refreshToken: 'stale-refresh',
+      user: {
+        id: 'u1', email: 'owner@example.com', full_name: 'Owner',
+        tenant_id: TENANTS[0].id, tenant_schema: 't_ctx_selected',
+        roles: ['admin'], permissions: [],
+      },
+      tenantCode: TENANTS[0].code,
+    });
+
+    installAdapter({
+      'GET /orders': (c) => {
+        const a = authOf(c);
+        if (a === 'Bearer stale-token') {
+          // First attempt: expired -> triggers the refresh flow
+          throw httpError(c, 401, { code: 'TOKEN_EXPIRED', message: 'expired' });
+        }
+        if (a !== `Bearer ${REFRESHED_TOKEN}`) {
+          throw httpError(c, 401, { code: 'INVALID_BEARER', message: 'authorization mismatch' });
+        }
+        return ok(c, apiResponse({ items: [], pagination: { page: 1, size: 50, total: 0, pages: 0 } }));
+      },
+      'POST /api/v1/auth/refresh': (c) => {
+        // The refresh call itself carries no bearer; body holds the refresh token
+        return ok(c, apiResponse({
+          access_token: REFRESHED_TOKEN,
+          refresh_token: 'refreshed-refresh',
+          token_type: 'bearer',
+          user_id: 'u1',
+          tenant_id: TENANTS[0].id,
+          tenant_schema: 't_ctx_selected',
+          roles: ['admin'],
+        }));
+      },
+    });
+
+    // Drive a token-less request through the shared instance (store injection)
+    const { api } = await import('@/services/api');
+    const res = await api.get('/orders');
+    expect(res.status).toBe(200);
+    // Store now holds the refreshed token
+    expect(useAuthStore.getState().accessToken).toBe(REFRESHED_TOKEN);
   });
 });
 

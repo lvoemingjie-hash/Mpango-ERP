@@ -3,7 +3,7 @@
 **Last updated:** 2026-08-14
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current protected branch tip:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` (the accepted DC-12R1-H7 controlled merge; the SHA all new controlled work must verify before editing)
+**Current reviewed product-code baseline:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` (the accepted DC-12R1-H7 controlled merge; fetch the live protected tip and verify this commit is its ancestor before new controlled work)
 **H7 status: MERGED_AND_CLOSED** - controlled merge `ea990826` has parents `a6ef3aac` and `a0a14e4d`, and its tree is identical to the reviewed source. Accepted evidence: Kilo `8b04a92b`, Lubuntu native setup `189852da`, Lubuntu Phase-4 zero-red `4fa13dac`, post-merge H7 bundle 325/325, and GitNexus indexed/current at `ea990826`. This proves the merged source and setup path; it does not claim local or VPS deployment.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (the accepted Contract D merge; an ancestor contained in the current tip — it is NOT the current branch tip)
 **Current database head:** `037_payment_declarations_schema`
@@ -78,8 +78,8 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product code baseline | `origin/product-dev-recovered@ea990826` is the current protected tip (the accepted H7 controlled merge). It descends from `a6ef3aac`, `d796dcb0`, and the accepted product-code merge `adcc7f28`, so it includes I2B, printable Contracts A-D, readiness-debt closure, and H7 setup/dependency reconciliation. Controlled work branches from `ea990826`, not any ancestor |
-| Post-merge SHA sync | After the CTO merges an approved candidate, the protected tip advances and the CTO must update the `Current protected branch tip` above to the new merge SHA before any further controlled work branches from it |
+| Product code baseline | `ea990826` is the current reviewed product-code baseline. It descends from `a6ef3aac`, `d796dcb0`, and the accepted product-code merge `adcc7f28`, so it includes I2B, printable Contracts A-D, readiness-debt closure, and H7 setup/dependency reconciliation. The live protected tip may include later docs-only commits and must descend from `ea990826` |
+| Protected-tip rule | Every task fetches `origin/product-dev-recovered` live, verifies `ea990826` is its ancestor, and starts from that fetched tip. Do not encode a docs commit as its own "current tip" because the act of committing changes the tip |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `037_payment_declarations_schema` |
@@ -113,7 +113,7 @@ deployment state from a merged branch.
 | Payment declaration and cashier confirmation I2B | Merged | Retailer declaration remains non-authoritative; cashier confirm/reject is supplier-scoped; confirmation uses the canonical atomic payment path and allocates a receipt |
 | Printable business records | Backend and browser A-D merged | Read-only order, declaration, eligible receipt, and relationship-statement print data plus browser-print UI are available |
 | H7 setup and dependency reconciliation | Merged and independently verified | Native setup ran twice on Lubuntu; cross-host focused gates and post-merge evidence are zero-red |
-| Local deployment and browser rehearsal | Active delivery gate | Deploy exact `ea990826` locally, run Playwright journeys, then perform human acceptance without claiming VPS delivery |
+| Local deployment and browser rehearsal | Active delivery gate | Deploy the fetched protected tip after proving it descends from `ea990826`, run Playwright journeys, then perform human acceptance without claiming VPS delivery |
 | Retailer workspace closure | Planned after rehearsal | Final responsive and branded workspace UX remains; it is not part of the active deployment gate |
 | Retailer end-to-end S4 | Not closed | Real mailbox and browser journey on deployed latest SHA remains |
 | Platform operator schema | Foundation merged | Migration `034` tables exist |
@@ -427,8 +427,9 @@ implementation, migration, queue, dispatcher, or financial mutation path.
 
 #### DC-12R1-MVP-L1 - local deployment and acceptance rehearsal (active delivery gate)
 
-Deploy exact protected tip `ea990826` on a clean local environment, verify the
-runtime SHA, execute Playwright journeys across wholesaler and retailer roles,
+Deploy the fetched protected tip on a clean local environment, first proving
+that it descends from `ea990826`. Verify the runtime SHA, execute Playwright
+journeys across wholesaler and retailer roles,
 and then perform a human acceptance rehearsal. This stage must not change
 financial semantics or expand MVP scope. A successful local rehearsal is not a
 VPS or customer-delivery claim.

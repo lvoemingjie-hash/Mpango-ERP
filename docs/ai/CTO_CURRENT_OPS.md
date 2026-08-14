@@ -3,7 +3,7 @@
 **Last updated:** 2026-08-14
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current protected branch tip:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` (the accepted DC-12R1-H7 controlled merge; verify this SHA before new controlled work)
+**Current reviewed product-code baseline:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` (the accepted DC-12R1-H7 controlled merge; fetch the live protected tip and verify this commit is its ancestor)
 **Accepted H7 merge:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` - parents `a6ef3aac` and `a0a14e4d`; merge tree identical to the independently reviewed source.
 **Accepted readiness-debt merge:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` - DC-12R1-MVP-R0-R1 P2/P3 readiness-debt closure and direct parent of the H7 source lineage; it is now an ancestor, not the current tip.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (accepted Contract D merge; an ancestor of the current tip, NOT the tip itself)
@@ -16,10 +16,10 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `origin/product-dev-recovered@ea990826` is the current protected tip - the
-  accepted H7 controlled merge. It carries accepted I2B runtime, read-only
-  backend/browser-printable Contracts A-D, R0-R1 readiness-debt closure, and H7
-  setup/dependency reconciliation. Controlled work branches from `ea990826`.
+- `ea990826` is the current reviewed product-code baseline. It carries accepted
+  I2B runtime, read-only backend/browser-printable Contracts A-D, R0-R1
+  readiness-debt closure, and H7 setup/dependency reconciliation. The live
+  protected tip may contain later docs-only commits and must descend from it.
 - The earlier merges `a6ef3aac`, `d796dcb0`, and `adcc7f28` are ANCESTORS of the
   current tip, not the tip itself. Do not branch from or reference them as the
   current baseline.
@@ -461,9 +461,10 @@ review path, not the current gate state.
 **Active delivery gate:**
 `DC-12R1-MVP-L1 Local Deployment and Acceptance Rehearsal`
 
-Deploy exact protected tip `ea990826` in a clean local environment, prove the
-runtime SHA, and exercise the existing wholesaler and retailer journeys before
-any VPS work. The active gate is validation, not feature expansion.
+Fetch and deploy the live protected tip in a clean local environment after
+proving it descends from `ea990826`. Record the runtime SHA and exercise the
+existing wholesaler and retailer journeys before any VPS work. The active gate
+is validation, not feature expansion.
 
 Required boundary:
 
@@ -509,8 +510,9 @@ Required boundary:
 
 ## Agent Assignment
 
-- **Local execution agent:** deploy exact `ea990826` without source edits and
-  collect reproducible service, migration, tenant, and runtime-SHA evidence.
+- **Local execution agent:** deploy the fetched protected tip without source
+  edits after proving `ea990826` ancestry, and collect reproducible service,
+  migration, tenant, and runtime-SHA evidence.
 - **Playwright agent:** run bounded wholesaler/retailer journeys against that
   local deployment and report every failed path without weakening assertions.
 - **Codex CTO:** own scope, environment/source classification, and acceptance
@@ -528,11 +530,10 @@ Required boundary:
 
 Stop and report to the CTO if:
 
-- fetched `origin/product-dev-recovered` does not equal the documented current
-  protected tip `ea9908263d57737e434d7d61e06e5f0ee941aa81` (or a CTO-published
-  later tip), or the fetched tip does not descend from accepted Contract D merge
-  `adcc7f281c661897ad050a8278686375b611edb5`; the current tip `ea990826` does
-  descend from `adcc7f28` through the accepted merge lineage;
+- fetched `origin/product-dev-recovered` does not descend from reviewed
+  product-code baseline `ea9908263d57737e434d7d61e06e5f0ee941aa81`, or that
+  baseline does not descend from accepted Contract D merge
+  `adcc7f281c661897ad050a8278686375b611edb5`;
 - statement data is accepted from client-calculated financial fields;
 - supplier or retailer authority comes from request-supplied IDs;
 - ledger movements and settled payments are correlated without a persisted key;

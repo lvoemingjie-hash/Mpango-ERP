@@ -1,0 +1,54 @@
+Category,Check,Target,Observed,Result,Severity,Notes
+ProofGate,Final HEAD == expected & source branch,9f5d67712e64f21061bd3516c6f0240f9feafb26,== zcode/...-auth-session-closure,PASS,INFO,
+ProofGate,Parent chain integrity,9f5d677->4ea514c->9eee73f->6ad2668->615d505->2dbc4f1->d2e7e44,all match,PASS,INFO,
+ProofGate,Baseline ancestry,d2e7e44 ancestor of 9f5d677,true,PASS,INFO,
+ProofGate,product-dev-recovered unchanged,origin/product-dev-recovered,d2e7e44cf23e91cabfab545c494abd342fec3062,PASS,INFO,
+ProofGate,No forbidden path changes,d2e7e44..9f5d677,only frontend auth src + tests + docs + evidence,PASS,INFO,no backend/migration/permission/dep/lockfile/deploy
+SessionContract,contextual = token+user,authStore.ts:51-70,sessionKind contextual requires user!=null,PASS,P1,
+SessionContract,pending = token + user=null,authStore.ts:123-132,beginWorkspaceSelection forces user:null,PASS,P1,
+SessionContract,tokenless user rejected,guards.tsx:18-31,ProtectedRoute admits only contextual,PASS,P1,
+SessionContract,beginWorkspaceSelection clears context,authStore.ts:123-132,user/tenantCode/retailerPortalCode=null,PASS,P1,
+SessionContract,login commits atomically,authStore.ts:85-93,single set of token+user+tenant,PASS,P1,
+SessionContract,updateTokens cannot upgrade pending,authStore.ts:115-119,sets tokens only; never user,PASS,P1,mutation M13 RED confirms
+SessionContract,persist/hydration fails closed,authStore.ts:134-144,pending rehydrates -> fails closed,PASS,P1,
+SessionContract,no route loops/cross-workspace,guards.tsx:42-51,151-181,PublicRoute contextual-only; WholesalerRoute self-fails,PASS,P1,
+AtomicFlow,multi-tenant = pending only,LoginPage.tsx:93-106,beginWorkspaceSelection then navigate selector,PASS,P1,
+AtomicFlow,select-tenant carries identity,WorkspaceSelectorPage.tsx:40-43; authService.ts:20-23,identity token forwarded as Bearer,PASS,P1,
+AtomicFlow,me carries contextual token,WorkspaceSelectorPage.tsx:47; authService.ts:28-31,ctx token forwarded,PASS,P1,
+AtomicFlow,me returns tenant_id/schema/perms,gate5_inmemory_match_R2R2_RESULT.txt,tenant_id match, schema non-empty, perms=6,PASS,P1,
+AtomicFlow,login only after both calls,WorkspaceSelectorPage.tsx:50,login after select+me,PASS,P1,
+AtomicFlow,no premature commit on failure,WorkspaceSelectorPage.tsx:54-61,stays pending; no business API,PASS,P1,
+AtomicFlow,selector state loss -> login,WorkspaceSelectorPage.tsx:23-25,!tenants -> Navigate /login,PASS,P1,
+AtomicFlow,single POST per submit,LoginPage.tsx:40-45; M11,exactly one login POST,PASS,P1,
+AuthzPrecedence,AxiosHeaders.has/get/set used,api.ts:37,40; test authOf:613,no property access,PASS,P1,
+AuthzPrecedence,case-insensitive explicit wins,api.ts:37,UPPER/lower/mixed preserved (tests 807-826),PASS,P1,
+AuthzPrecedence,empty explicit not filled,api.ts:37,empty stays empty (test 828-834),PASS,P1,
+AuthzPrecedence,no injection when explicit,api.ts:37-42,only injects when has() false,PASS,P1,
+AuthzPrecedence,three distinct tokens; wrong->401,test tokenGated,select/me/business gated (test 675-704),PASS,P1,
+AuthzPrecedence,refresh retry uses refreshed,api.ts:185,originalRequest set Bearer newToken,PASS,P1,
+AuthzPrecedence,queued requests use refreshed,api.ts:141,processQueue resolves newToken,PASS,P1,
+AuthzPrecedence,wrong explicit not silently green,test 706-733,request stays 401; store gets refreshed token,PASS,P1,
+AuthzPrecedence,both axios instances gated,api.ts:74-75,api + global axios adapters set,PASS,P1,
+SecretBoundary,toJSON case-insensitive redaction,api.ts:48-57,/^authorization$/i replaced,PASS,P1,mutation R2_MUT_B RED proves
+SecretBoundary,console.debug captures all args,api.ts:54,full header object logged,PASS,INFO,
+SecretBoundary,no sentinel in GREEN logs,test 843-868,only [REDACTED] appears,PASS,P1,
+SecretBoundary,RED files may hold fake sentinels,R2_MUT_B_RED.txt,explicit-lower/mixed tokens present (permitted),PASS,INFO,report says "no real credentials"
+SecretBoundary,no real credentials claim,scan,no eyJ/Bearer eyJ/conn-string/real secret in R2 scope,PASS,P1,
+SecretBoundary,attachments unmodified,authmatrix_r2r2.json,raw Playwright JSON; no tokens,PASS,INFO,
+TestAuth,adapter checks headers not path,test:60-77,616-624,tokenGated inspects Authorization,PASS,P1,
+TestAuth,authOf uses headers.get,test:609-614,AxiosHeaders.get,PASS,P1,
+TestAuth,both instances gated,test:74-75,api + axios adapters,PASS,P1,
+TestAuth,M12/M13/R1-MUT/R2-MUT real RED,evidence/*.txt,M12 2fail,M13 1fail,R1 A/B fail,R2 A 3fail,B 1fail,PASS,P1,
+TestAuth,source byte-restored,worktree status clean; frontend/src diff=0,PASS,INFO,
+TestAuth,no skip/xfail/retry/conditional,test grep,none in source (skipped counts = runtime -t filter),PASS,INFO,
+TestAuth,guard harness uses real components,test:504-592,real Public/Protected/WholesalerRoute,PASS,INFO,
+TestAuth,SKUListPage 2-line mock align,SKUListPage.test.tsx diff,beginWorkspaceSelection added to 2 mocks only,PASS,INFO,
+Runtime,focused suite,independent vitest,Pw1R2AuthSessionClosure 32/32,PASS,INFO,run on Kilo host
+Runtime,full vitest,independent vitest,21 files / 323 tests passed,PASS,INFO,run on Kilo host
+Runtime,pnpm build,independent build,exit 0,PASS,INFO,run on Kilo host
+Runtime,auth matrix 9/9,authmatrix_r2r2.json,all 9 passed; RA multi-tenant now passes,PASS,INFO,committed staging evidence
+Runtime,/auth/me Authorization MATCH,gate5_inmemory_match_R2R2_RESULT.txt,MATCH; user fields correct,PASS,INFO,committed staging evidence
+Quality,git diff --check,baseline..final frontend/src,exit 0,PASS,INFO,
+Quality,scoped secret scan,R2-scoped files,no real secrets,PASS,INFO,
+Quality,UTF-8 / no mojibake,changed files,0 U+FFFD,PASS,INFO,
+Quality,impact / caller census,impact_*.json + detect_changes_precommit.txt,auth flow only,PASS,INFO,

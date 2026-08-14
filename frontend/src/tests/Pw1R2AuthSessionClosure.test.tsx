@@ -607,7 +607,10 @@ const CONTEXTUAL_TOKEN = 'contextual-token';
 const REFRESHED_TOKEN = 'refreshed-token';
 
 function authOf(config: InternalAxiosRequestConfig): string {
-  return String(config.headers?.Authorization ?? '');
+  // PW1-R2-R2: case-insensitive read via the AxiosHeaders API — never the
+  // `.Authorization` property, which misses lowercase/mixed-case headers.
+  const h = config.headers as unknown as { get?: (k: string) => unknown };
+  return String(h?.get?.('Authorization') ?? '');
 }
 
 function tokenGated(expectedBearer: string, respond: Handler): Handler {
@@ -774,6 +777,94 @@ describe('PW1-R2-R1: explicit Authorization precedence (token-gated adapters)', 
     expect(res.status).toBe(200);
     // Store now holds the refreshed token
     expect(useAuthStore.getState().accessToken).toBe(REFRESHED_TOKEN);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PW1-R2-R2 — Case-insensitive Authorization closure.
+//
+// Probe endpoint records EXACTLY what went on the wire (via the
+// case-insensitive headers.get()). Sentinels are distinct in-memory test
+// tokens; they must never appear in serialized console.debug output.
+// ---------------------------------------------------------------------------
+describe('PW1-R2-R2: case-insensitive Authorization precedence', () => {
+  const STORE_TOKEN = 'store-injected-token';
+  const SENTINELS = ['explicit-upper-token', 'explicit-lower-token', 'explicit-mixed-token'];
+
+  function probeAdapter(recorded: string[]) {
+    installAdapter({
+      'GET /pw1r2-probe': (c) => {
+        recorded.push(authOf(c));
+        return ok(c, apiResponse({ ok: true }));
+      },
+    });
+  }
+
+  beforeEach(() => {
+    resetAuth({ accessToken: STORE_TOKEN, refreshToken: 'probe-refresh' });
+  });
+
+  it('UPPERCASE "Authorization" explicit header is preserved (no store injection)', async () => {
+    const seen: string[] = [];
+    probeAdapter(seen);
+    await api.get('/pw1r2-probe', { headers: { Authorization: `Bearer ${SENTINELS[0]}` } });
+    expect(seen[0]).toBe(`Bearer ${SENTINELS[0]}`);
+  });
+
+  it('lowercase "authorization" explicit header is preserved', async () => {
+    const seen: string[] = [];
+    probeAdapter(seen);
+    await api.get('/pw1r2-probe', { headers: { authorization: `Bearer ${SENTINELS[1]}` } });
+    expect(seen[0]).toBe(`Bearer ${SENTINELS[1]}`);
+  });
+
+  it('mixed-case "aUtHoRiZaTiOn" explicit header is preserved', async () => {
+    const seen: string[] = [];
+    probeAdapter(seen);
+    await api.get('/pw1r2-probe', { headers: { aUtHoRiZaTiOn: `Bearer ${SENTINELS[2]}` } });
+    expect(seen[0]).toBe(`Bearer ${SENTINELS[2]}`);
+  });
+
+  it('explicit EMPTY Authorization is the caller choice: no store token injected (fail closed)', async () => {
+    const seen: string[] = [];
+    probeAdapter(seen);
+    await api.get('/pw1r2-probe', { headers: { Authorization: '' } });
+    expect(seen[0]).toBe('');
+    expect(seen[0]).not.toContain(STORE_TOKEN);
+  });
+
+  it('no explicit header: store token IS injected', async () => {
+    const seen: string[] = [];
+    probeAdapter(seen);
+    await api.get('/pw1r2-probe');
+    expect(seen[0]).toBe(`Bearer ${STORE_TOKEN}`);
+  });
+
+  it('console.debug serialization leaks NO sentinel in any casing; only [REDACTED] appears', async () => {
+    const seen: string[] = [];
+    probeAdapter(seen);
+    const calls: string[] = [];
+    const spy = vi.spyOn(console, 'debug').mockImplementation((...args: unknown[]) => {
+      // Serialize EVERY argument exactly as a logger would
+      calls.push(args.map((a) => {
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' '));
+    });
+    try {
+      await api.get('/pw1r2-probe', { headers: { Authorization: `Bearer ${SENTINELS[0]}` } });
+      await api.get('/pw1r2-probe', { headers: { authorization: `Bearer ${SENTINELS[1]}` } });
+      await api.get('/pw1r2-probe', { headers: { aUtHoRiZaTiOn: `Bearer ${SENTINELS[2]}` } });
+    } finally {
+      spy.mockRestore();
+    }
+    const all = calls.join(' ' + String.fromCharCode(10) + ' ');
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+    for (const snt of SENTINELS) {
+      expect(all, `sentinel leaked into dev log: ${snt}`).not.toContain(snt);
+      expect(all).not.toContain(snt.toUpperCase());
+    }
+    expect(all).not.toContain('Bearer ');
+    expect(all).toContain('[REDACTED]');
   });
 });
 

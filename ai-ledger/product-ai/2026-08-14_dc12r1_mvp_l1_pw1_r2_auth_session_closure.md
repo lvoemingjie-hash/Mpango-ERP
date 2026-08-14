@@ -16,6 +16,19 @@
 > preserves caller-provided Authorization and only injects the store token when
 > the header is absent. See the PW1-R2-R1 section at the end of this ledger.
 
+> ## VERDICT CORRECTION (PW1-R2-R2, 2026-08-14)
+>
+> The PW1-R2-R1 PASS verdict is **SUPERSEDED_BY_PW1_R2_R2_CASE_INSENSITIVE_AUTHORIZATION_CLOSURE**.
+>
+> Reason: the R2-R1 presence check used `config.headers.Authorization` property
+> access and the dev-log redaction only replaced the canonical uppercase key.
+> A caller-provided `authorization` (lowercase/mixed-case) header was invisible
+> to the check — the store token would overwrite it — and such a header leaked
+> verbatim into dev logs. PW1-R2-R2 (same branch, later commit) closes both:
+> presence via the AxiosHeaders case-insensitive API (`has`/`get`/`set`), an
+> explicitly EMPTY Authorization treated as the caller's fail-closed choice,
+> and case-insensitive log redaction over the serialized header object.
+
 ## Baseline & Branch
 
 - Baseline: `d2e7e44cf23e91cabfab545c494abd342fec3062` (verified: worktree HEAD, 0 tracked mods pre-edit)
@@ -196,3 +209,43 @@ Evidence: `pw1_r2_evidence/mutations/M12_token_only_guards_RED.txt`,
 7. `git diff --check` clean; detect-secrets 0 findings; mojibake 0.
 8. Interceptor impact analysis recorded (GitNexus limitation + grep census).
 9. Full 162-node PW1 NOT run (awaiting Kilo).
+
+---
+
+# PW1-R2-R2 — Case-Insensitive Authorization Closure (same branch)
+
+## Scope
+
+| File | Change |
+|---|---|
+| `frontend/src/services/api.ts` | presence check via `headers.has('Authorization')`; injection via `headers.set(...)`; BOTH refresh retry sites also use `set()`; explicit EMPTY Authorization = caller's fail-closed choice (no store injection); dev-log redaction serializes via `toJSON()` and replaces EVERY casing matching `/^authorization$/i` (no spread) |
+| `frontend/src/tests/Pw1R2AuthSessionClosure.test.tsx` | `authOf` reads via case-insensitive `headers.get()`; new 6-test suite (upper/lower/mixed preservation, empty fail-closed, store injection only when absent, console.debug serialization sentinel) |
+| ledger (this file) | R2-R1 verdict superseded (above) |
+| `pw1r2-evidence/` | replacement evidence |
+
+## Mandatory tests (all green)
+
+1. UPPERCASE explicit header preserved. 2. lowercase preserved. 3. mixed-case
+preserved. 4. explicit empty header → NO store injection (fail closed).
+5. no header → store token injected. 6. `authOf` uses `headers.get()`.
+7. console.debug serialized (all args, JSON) → no sentinel in any casing, only
+`[REDACTED]`; no `Bearer ` substring at all. 8. identity/contextual/refreshed
+three-token suite retained and green. 9-10. mutation RED (below). 11. real
+staging/JWT in-memory MATCH re-verified (MATCH only, no token recorded).
+
+## Mutation RED (restored + re-verified GREEN after each)
+
+- **R2-MUT-A** (`.Authorization` property check restored): 3 tests fail —
+  lowercase, mixed-case, and empty-header.
+- **R2-MUT-B** (uppercase-only log redaction restored): sentinel test fails —
+  `explicit-lower-token` leaks into the serialized dev log.
+- Evidence: `pw1r2-evidence/mutations/R2_MUT_{A,B}_*_RED.txt`
+
+## Gates
+
+1. Focused Vitest **32/32**. 2. Full `pnpm vitest run` **323/323, 0 failed**.
+3. `pnpm build` exit 0. 4. Real staging/JWT PW1-R1 auth matrix **9/9**.
+5. Browser in-memory comparison **MATCH**; mpango-auth user facts
+   (tenant_id/tenant_schema/permissions/tenantCode) PASS.
+6. `git diff --check` clean; detect-secrets 0 findings (evidence attachments
+   decoded + token-verified); mojibake 0. 7. Full 162-node PW1 NOT run.

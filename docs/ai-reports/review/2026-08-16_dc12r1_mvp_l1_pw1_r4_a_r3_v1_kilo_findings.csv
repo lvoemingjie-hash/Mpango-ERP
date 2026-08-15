@@ -1,0 +1,33 @@
+Category,Check,Target,Observed,Result,Severity,Notes
+ProofGate,Remote equality,origin/zcode/...tenant-statement-cache-closure,remote SHA == 5e91e97 candidate,PASS,INFO,
+ProofGate,Direct parent,5e91e97~1,== aba791d,PASS,INFO,
+ProofGate,Aggregate scope count,2b7b959..5e91e97,exactly 4 files,PASS,INFO,
+ProofGate,Aggregate scope exact set,4 approved paths,exact path set matches task,PASS,INFO,
+ProofGate,R3 delta count,aba791d..5e91e97,exactly 3 files,PASS,INFO,session comment + R4-A test + ledger
+ProofGate,session.py AST identity,aba791d vs candidate,AST_EQUAL=YES,PASS,INFO,comment-only delta in R3 span
+Production,Only behavioral repair,backend/database/session.py,prepared_statement_cache_size=0 is sole runtime change,PASS,P1,
+Production,No retries / swallowing / per-request dispose,product code,no such repair patterns found,PASS,P1,
+Production,No per-tenant engines,product code,no such repair pattern found,PASS,P1,
+Production,Exact-route GREEN production-shaped,R4-A test,real /api/v1/client/orders route via real stack,PASS,P1,
+Production,Exact-route RED causal,R4-A test,legacy engine on same exact route reproduces InvalidCachedStatementError,PASS,P1,
+Production,Real tenant dependencies exercised,R4-A setup,public bindings + tenant roles/perms/orders seeded and consumed,PASS,P1,
+Cleanup,cleanup_drop synthetic bypass absent,R4-A test source,no cleanup_drop branch remains,PASS,P1,
+Cleanup,Original error raised through real path,_setup_two_tenants,user_seed/other fail_at inject through real path,PASS,P1,
+Cleanup,cleanup_error raised by real drop path,_drop_owned_schemas(forced_error=...),failure surfaces through actual helper call,PASS,P1,
+Cleanup,BaseExceptionGroup exact membership,dual-error test,exactly 2 members by object identity,PASS,P1,
+Cleanup,Cleanup-success path preserves object identity,user_seed identity test,ei.value is original_error,PASS,P1,
+Cleanup,Finally path proves zero schema residue,dual-error test finally,real drop helper + fresh-engine pg_namespace count == 0,PASS,P1,
+Cleanup,Fixture teardown no masking,two_tenants fixture,teardown errors grouped not swallowed,PASS,P1,
+Cleanup,Public-table residue audit,R4-A source,no cleanup of public.retailers/wholesalers/bindings found,PASS,P2,report explicitly does not over-claim zero DB residue
+H5Truth,RED/GREEN use dedicated cache-enabled engines,H5 test source,boundaries implemented as documented,PASS,P1,
+H5Truth,POLICY only production-global-engine leg,H5 test source,policy leg alone uses AsyncSessionLocal/global engine,PASS,P1,
+H5Truth,No stale per-pool cache wording,session.py + ledger,corrected to per-DBAPI-connection wording,PASS,P1,
+H5Truth,No historical evidence presented as current,ledger text,off-branch evidence marked historical/SHA-only,PASS,INFO,
+H5Truth,Node count reconciliation,R4-A + H5 source,9 tests + 5 tests = 14 total,PASS,INFO,
+Runtime,Focused 14/14 local execution,host support,not claimed locally; no ready backend pytest env in candidate worktree,PASS,INFO,committed evidence relied on only
+Quality,git diff --check,aggregate span,clean,PASS,INFO,
+Quality,py_compile,3 changed python files,clean,PASS,INFO,
+Quality,scoped detect-secrets,4 changed files,clean,PASS,INFO,
+Quality,UTF-8 / mojibake,changed files,0 U+FFFD hits,PASS,INFO,
+Quality,GitNexus analyze/status,candidate worktree,indexed commit=current commit=5e91e97 up-to-date,PASS,INFO,
+Accounting,Findings accounting gap,review findings,zero,PASS,INFO,

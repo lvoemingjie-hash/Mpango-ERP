@@ -1,0 +1,86 @@
+{
+  "target": {
+    "id": "Class:backend/core/rate_limiter.py:RateLimiter",
+    "name": "RateLimiter",
+    "type": "Class",
+    "filePath": "backend/core/rate_limiter.py"
+  },
+  "direction": "upstream",
+  "impactedCount": 7,
+  "risk": "LOW",
+  "summary": {
+    "direct": 3,
+    "processes_affected": 0,
+    "modules_affected": 1
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Tests",
+      "hits": 2,
+      "impact": "direct"
+    }
+  ],
+  "byDepth": {
+    "1": [
+      {
+        "depth": 1,
+        "id": "Function:backend/core/rate_limiter.py:get_rate_limiter",
+        "name": "get_rate_limiter",
+        "filePath": "backend/core/rate_limiter.py",
+        "relationType": "CALLS",
+        "confidence": 0.95
+      },
+      {
+        "depth": 1,
+        "id": "File:backend/main.py",
+        "name": "main.py",
+        "filePath": "backend/main.py",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 1,
+        "id": "File:backend/api/middleware/rate_limiting.py",
+        "name": "rate_limiting.py",
+        "filePath": "backend/api/middleware/rate_limiting.py",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      }
+    ],
+    "2": [
+      {
+        "depth": 2,
+        "id": "Function:backend/api/middleware/rate_limiting.py:dispatch",
+        "name": "dispatch",
+        "filePath": "backend/api/middleware/rate_limiting.py",
+        "relationType": "CALLS",
+        "confidence": 0.9
+      },
+      {
+        "depth": 2,
+        "id": "File:backend/api/dependencies_jobs.py",
+        "name": "dependencies_jobs.py",
+        "filePath": "backend/api/dependencies_jobs.py",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:backend/api/app.py",
+        "name": "app.py",
+        "filePath": "backend/api/app.py",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      },
+      {
+        "depth": 2,
+        "id": "File:backend/api/v1/exports.py",
+        "name": "exports.py",
+        "filePath": "backend/api/v1/exports.py",
+        "relationType": "IMPORTS",
+        "confidence": 1
+      }
+    ]
+  }
+}

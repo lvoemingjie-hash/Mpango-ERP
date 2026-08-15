@@ -11,6 +11,7 @@ from auth.strategy import AuthStrategy
 from core.structured_logging import get_logger
 from core.error_codes import ErrorCode, MpangoAPIException
 from db.tenant_filter import reset_current_tenant, set_current_tenant
+from api.middleware.rate_limiting import enforce_rate_limit_on_auth_rejection
 
 __all__ = ["AuthenticationMiddleware"]
 
@@ -81,6 +82,14 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     request.state.tenant_id = str(tenant_ctx.tenant_id)
                     request.state.tenant_schema = tenant_ctx.tenant_schema
 
+                    # PW1-R3: verified identity principal for downstream
+                    # consumers (S2-5 rate limiter). Derived EXCLUSIVELY from
+                    # the server-side verified JWT (auth_ctx.token) — never
+                    # from client-supplied headers or claims. Identity-only
+                    # tokens never reach this branch (tenant_ctx is None), so
+                    # they stay on the anonymous IP bucket by design.
+                    request.state.user_id = str(auth_ctx.token.user_id)
+
             response = await call_next(request)
 
             if tenant_ctx:
@@ -93,6 +102,17 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             if tenant_ctx:
                 from api.context.tenant import finalize_tenant_context
                 await finalize_tenant_context(tenant_ctx, success=False)
+
+            # PW1-R3: rejected-auth requests (invalid/expired/malformed token,
+            # unknown tenant user) return here WITHOUT reaching the inner
+            # rate-limiting middleware. Rate-limit the rejection path with the
+            # same anonymous IP bucket so a flood of garbage Authorization
+            # headers can never bypass rate limiting (fail-open on limiter
+            # errors, consistent with the S2-5 design). Exempt paths keep the
+            # exact same exclusions as RateLimitingMiddleware.
+            limited = await enforce_rate_limit_on_auth_rejection(request)
+            if limited is not None:
+                return limited
 
             # BaseHTTPMiddleware cannot propagate HTTPException to FastAPI's
             # exception handlers — re-raising would produce an unhandled 500.

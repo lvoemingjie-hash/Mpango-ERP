@@ -60,19 +60,30 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
         allow_headers=["*"],
     )
 
-    # Authentication middleware (sets tenant and user context)
+    # PW1-R3: rate-limit context closure — middleware ORDER matters.
+    # Starlette add_middleware makes the LAST-registered middleware the
+    # OUTERMOST (first to see each request). The rate limiter must observe the
+    # VERIFIED tenant/user context attached by AuthenticationMiddleware, so
+    # AuthenticationMiddleware has to run FIRST — it must therefore be added
+    # AFTER RateLimitingMiddleware below. The previous registration order
+    # (auth first, rate limiting second) inverted this and left every request
+    # — including fully authenticated ones — on the anonymous IP bucket
+    # (100 req/min), which 429-stormed the PW1 browser matrix.
+    # Rejected-auth requests (invalid/expired/malformed tokens) never reach
+    # the inner limiter; AuthenticationMiddleware rate-limits its own
+    # rejection path with the same IP bucket so no unlimited bypass exists.
+    from api.middleware.rate_limiting import RateLimitingMiddleware
+    app.add_middleware(RateLimitingMiddleware)
+
+    logger.info("Rate limiting middleware registered")
+
+    # Authentication middleware (sets verified tenant and user context)
     from api.middleware.auth import AuthenticationMiddleware
     from auth.factory import get_auth_strategy
 
     app.add_middleware(AuthenticationMiddleware, strategy=get_auth_strategy())
 
     logger.info("Authentication middleware registered")
-
-    # S2-5: Rate limiting middleware (AFTER auth, BEFORE business logic)
-    from api.middleware.rate_limiting import RateLimitingMiddleware
-    app.add_middleware(RateLimitingMiddleware)
-
-    logger.info("Rate limiting middleware registered")
 
     # Idempotency middleware
     from api.middleware.idempotency import IdempotencyMiddleware

@@ -24,12 +24,15 @@ statements at runtime. Consequently the *global-engine* GREEN leg no longer
 causally proves anything about dispose (it would pass even without it) and
 has been reshaped:
 
-* RED    - caching engine, no dispose, same SQL re-executed after DDL -> error
+* RED    - a DEDICATED cache-enabled engine (test-local, dialect defaults,
+           pool_size=1), no dispose, same SQL re-executed after DDL -> error
            (unchanged; still the causal core).
-* GREEN  - caching engine, dispose between DDL and re-execution of the SAME
-           SQL -> success (dispose mechanism proven where caching exists).
-* POLICY - the production global engine re-executes the SAME SQL after DDL
-           WITHOUT dispose and must succeed; this leg fails if
+* GREEN  - a DEDICATED cache-enabled engine, dispose between DDL and
+           re-execution of the SAME SQL -> success (dispose mechanism proven
+           where caching exists). Neither RED nor GREEN touches the
+           production global engine.
+* POLICY - the ONLY leg on the production global engine: re-executes the SAME
+           SQL after DDL WITHOUT dispose and must succeed; this leg fails if
            ``prepared_statement_cache_size=0`` is ever removed from
            ``database/session.py`` (mutation-verified in
            ``test_pw1r4_cross_tenant_statement_cache.py``).
@@ -213,6 +216,17 @@ async def test_green_dispose_clears_stale_plans_on_caching_engine():
         },
     )
 
+    # PW1-R4-A-R1: ddl_engine is created BEFORE the protected try so the
+    # outer finally can never observe an unbound name if phase 1 fails.
+    ddl_engine = create_async_engine(
+        _async_db_url(),
+        pool_size=1,
+        max_overflow=0,
+        connect_args={
+            "server_settings": {"application_name": _unique_app_name(), "jit": "off"},
+        },
+    )
+
     try:
         # Phase 1: create table + cache the SELECT plan on the caching engine.
         async with AsyncSession(green_engine) as session:
@@ -233,16 +247,9 @@ async def test_green_dispose_clears_stale_plans_on_caching_engine():
             assert result.scalar() == "before"
             await session.commit()
 
-        # Phase 2: DDL that changes the SELECTED column's type OID, from a
-        # SECOND engine so invalidation arrives from outside the pool.
-        ddl_engine = create_async_engine(
-    _async_db_url(),
-            pool_size=1,
-            max_overflow=0,
-            connect_args={
-                "server_settings": {"application_name": _unique_app_name(), "jit": "off"},
-            },
-        )
+        # Phase 2: DDL that changes the SELECTED column's type OID, from the
+        # SECOND engine (created above, before the protected try) so
+        # invalidation arrives from outside the pool.
         try:
             async with AsyncSession(ddl_engine) as session:
                 await session.execute(

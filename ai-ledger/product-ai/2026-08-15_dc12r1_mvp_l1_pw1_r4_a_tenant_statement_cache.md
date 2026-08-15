@@ -3,12 +3,21 @@
 ## Base & Branch
 
 - Base: `2b7b959815a8f2454811303ca1bd13c64c413bb4` (verified: worktree HEAD at branch creation, clean tree)
+
+> ## PW1-R4-A-R1 correction (2026-08-15, same branch, fast-forward)
+>
+> This original R4-A section is superseded by the R1 closure below. Key
+> corrections: evidence artifacts were removed from the branch scope (final
+> aggregate diff = exactly the 4 approved files); the exact production route
+> GET /api/v1/client/orders?page=1&size=100 is now the causal surface;
+> setup is fail-closed with forced-failure proofs; H5 ddl_engine binding
+> risk fixed; wording corrected (per-POOL, not per-connection).
 - Parent chain: `2b7b959` (R3-R2-R1) ← `11148b6` ← `1181ffe` ← `07013d2` (R3) ← `9f5d677` (R2-R2) ← … ← `d2e7e44` (baseline)
 - Branch: `zcode/dc12r1-mvp-l1-pw1-r4-a-tenant-statement-cache-closure-2026-08-15`
 
 ## Root cause (reproduced empirically on real PG16, pool_size=1)
 
-The SQLAlchemy asyncpg dialect keeps a per-pool LRU of server prepared
+The SQLAlchemy asyncpg dialect keeps a per-POOL LRU of server prepared
 statements keyed ONLY by SQL text. Tenant routing is per-transaction
 `SET LOCAL search_path` on a SHARED pool, so a statement planned for one
 tenant's relation OIDs can be re-executed on a pooled connection after
@@ -130,3 +139,78 @@ TEST_DATABASE_URL=... REDIS_URL=... MPANGO_ENV=test \
 - Reconciliation (`pw1r4a-evidence/gate_reconciliation.txt`): skip-location
   sets identical (48=48), xfail node-ID sets identical (15=15).
 - 3635 = prior 3630 + 5 new nodes (4 R4-A + 1 H5 POLICY).
+
+---
+
+# PW1-R4-A-R1 — Exact route, fail-closed cleanup and scope truth (same branch)
+
+## 1. Exact-route causal proof (the production route, not /auth/me)
+
+`GET /api/v1/client/orders?page=1&size=100` through the REAL stack:
+JwtAuthStrategy (production wiring via configure_app), AuthenticationMiddleware
+tenant context (real tenant DB session + ORM user load), real
+`resolve_client_identity` (authoritative binding lookup), real
+`RequirePermission("client:orders:read")`, real `get_orders_for_retailer`.
+Two formally bootstrapped tenants carry the required readiness rows
+(retailer_operator role + client:orders:read permission + active
+wholesaler_retailer_binding keyed on token.tenant_id = seeded
+public.wholesalers.id + retailer + one tenant-distinct order).
+
+- GREEN: A -> B -> DDL -> A and B -> A cycles — every request 200, exactly 1
+  own order, correct tenant marker, zero cross-tenant leakage.
+- CAUSAL RED: the same exact route with the tenant-context session factory
+  rerouted onto a legacy engine (production config minus the fix) fails after
+  the DDL storm with InvalidCachedStatementError in the error chain.
+- Mutation: removing `prepared_statement_cache_size=0` from session.py turns
+  the exact-route GREEN and engine legs RED (2 failed), restored GREEN 8/8.
+  (R1_MUTATION_fix_removed_RED evidence, kept off-branch.)
+
+## 2. Fail-closed setup (owned-schema tracking from the first bootstrap)
+
+`_setup_two_tenants` wraps EVERY step from the first bootstrap in try/finally
+with an `owned` schema list; any failure drops all owned schemas, asserts
+zero `pg_namespace` residue, and propagates the ORIGINAL exception (a cleanup
+failure is chained, never masking). `ddl_engine` is created before the
+protected path returns. Forced-failure tests (order-independent, each
+verified GREEN individually and in reverse order):
+- second-bootstrap failure -> tenant A cleaned, zero residue
+- user-seed failure -> both tenants cleaned, zero residue
+- before-ddl_engine failure -> both tenants cleaned, zero residue
+
+## 3. H5 truth repairs
+
+- GREEN-leg `ddl_engine` hoisted BEFORE the protected try (unbound-name risk
+  eliminated if phase 1 fails).
+- Docstring now states precisely: RED/GREEN use DEDICATED cache-enabled
+  engines; ONLY the POLICY leg uses the production global engine.
+- No weakening: RED unchanged; dispose-GREEN same-SQL causal; POLICY leg
+  mutation-sensitive.
+
+## 4. Exact scope truth
+
+- All `pw1r4a-evidence/*` artifacts REMOVED from the branch; `f348f4a`
+  retains its historical copy. Final aggregate `2b7b959..HEAD` contains
+  EXACTLY the 4 approved files: backend/database/session.py,
+  backend/tests/test_dc12r1_h5_prepared_statement_cache_isolation.py,
+  backend/tests/test_pw1r4_cross_tenant_statement_cache.py, and this ledger.
+- `git diff --check 2b7b959..HEAD` exits 0.
+
+## 5. Evidence facts corrected
+
+- Cache wording: per-POOL (SQLAlchemy asyncpg dialect per-pool LRU), not
+  per-connection.
+- GitNexus impact: HIGH risk, 3 DIRECT impacted (seed, find_user_across_tenants,
+  get_tenant_db_session), 6 total impacted (create_tenant_session chain).
+- Route suite is now 8 tests (exact-route GREEN + exact-route causal RED +
+  engine GREEN + legacy RED + no-leak + 3 forced-failure cleanup tests);
+  H5 suite is 5 tests; combined focused run 13/13 both natural and reverse
+  order.
+
+## 6. Gates (this round)
+
+- R4-A (8) + H5 (5): natural order 13/13; reverse order 13/13.
+- Forced-failure tests order-independent (reverse run green).
+- Two independent fresh PG16+Redis7 full backend suites with node, skip,
+  xfail and accounting reconciliation (see gate evidence off-branch).
+- py_compile, git diff --check, scoped detect-secrets, strict UTF-8,
+  GitNexus re-analyze — clean.

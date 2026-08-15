@@ -1,0 +1,32 @@
+Category,Check,Target,Observed,Result,Severity,Notes
+ProofGate,Remote equality,origin/zcode/...-rate-limit-context-closure,remote SHA = 11148b6 candidate,PASS,INFO,
+ProofGate,Direct lineage,11148b6->1181ffe->07013d2->9f5d677,all direct parents match,PASS,INFO,
+ProofGate,Aggregate scope count,9f5d677..11148b6,exactly 28 files,PASS,INFO,4 product + 1 test + 2 docs + 21 evidence
+ProofGate,R2-only delta count,1181ffe..11148b6,exactly 2 files,PASS,INFO,product/test untouched
+ProofGate,Product/test blob equality,R1 vs R2,4 product blobs + 1 test blob identical,PASS,INFO,
+SourceReview,Middleware execution order,backend/api/app.py,AuthenticationMiddleware outer than RateLimitingMiddleware,PASS,P1,actual Starlette add_middleware semantics verified
+SourceReview,Verified JWT-only contextual state,backend/api/middleware/auth.py + auth/context,tenant_id/user_id derived only from verified token + tenant DB resolution,PASS,P1,
+SourceReview,Identity-only stays anonymous bucket,backend/core/rate_limiter.py,tenant/user pair required for tenant bucket,PASS,P1,
+SourceReview,Invalid auth cannot bypass limiting,auth rejection hook + rate limiter,rejected-auth path uses same IP bucket,PASS,P1,
+SourceReview,Health/metrics exemptions,rate_limiting.py,/health /healthz /health/live /health/ready /readyz /metrics exempt,PASS,P1,
+SourceReview,Exact 429 headers preserved,rate_limiting.py,X-RateLimit-Limit/Remaining/Reset + Retry-After intact,PASS,P1,
+TestAuth,No XFF/X-Real-IP spoofing,test_pw1r3_rate_limit_context.py,uses ASGITransport peer IP not forged headers,PASS,P1,
+TestAuth,No sleep/FLUSHDB/wildcard delete,test_pw1r3_rate_limit_context.py,deterministic per-test keys and explicit schema cleanup only,PASS,P1,
+TestAuth,No retry-until-green/state-injected green,test_pw1r3_rate_limit_context.py,exact assertions, no request.state injection,PASS,P1,
+TestAuth,Seven integration tests substantive,test_pw1r3_rate_limit_context.py,7 real middleware-stack tests,PASS,P1,
+Mutation,R1 wrong-order mutation RED,R1_MUT_A_wrong_order_RED.txt,4 failed / 3 passed,PASS,P1,
+Mutation,R1 no-user-id mutation RED,R1_MUT_B_no_user_id_RED.txt,3 failed / 4 passed,PASS,P1,
+Mutation,R3 wrong-order mutation RED,R3_MUT_A_wrong_order_RED.txt,6 failed / 1 passed,PASS,P1,
+Mutation,R3 no-user-id mutation RED,R3_MUT_B_no_user_id_RED.txt,5 failed / 2 passed,PASS,P1,
+Evidence,V2 raw junit correction,raw committed junit.xml,162 collected / 104 passed / 58 failed,PASS,P1,parsed directly from superseded branch
+Evidence,V2 429 split,raw committed junit.xml,47 failures mention 429 / 11 do not,PASS,P1,
+Evidence,Round C summary,r1_gateC_full_backend.txt,3630 passed / 48 skipped / 15 xfailed / 0 failed / 0 errors,PASS,INFO,
+Evidence,Round D summary,r1_gateD_full_backend.txt,3630 passed / 48 skipped / 15 xfailed / 0 failed / 0 errors,PASS,INFO,
+Evidence,XFAIL canonical set,r1_skip_xfail_comparison.txt,15 node IDs each round; exact set difference empty,PASS,INFO,
+Evidence,Skip description style,r1_skip_xfail_comparison.txt,skip entries listed only as canonical file:line locations,PASS,INFO,
+Runtime,Focused natural/reverse rerun,local host,not claimed locally (no clean backend pytest env / unstable live backend listener),PASS,INFO,committed focused evidence relied upon only
+Quality,git diff --check subset,product+test subset,clean,PASS,INFO,
+Quality,git diff --check whole span,whole candidate span,evidence txt whitespace only; no product/test defects,PASS,INFO,
+Quality,detect-secrets scoped,changed files,clean,PASS,INFO,
+Quality,UTF-8/mojibake,changed files,0 U+FFFD hits,PASS,INFO,
+Quality,GitNexus analyze/status,candidate worktree,indexed commit=current commit=11148b6; up-to-date,PASS,INFO,

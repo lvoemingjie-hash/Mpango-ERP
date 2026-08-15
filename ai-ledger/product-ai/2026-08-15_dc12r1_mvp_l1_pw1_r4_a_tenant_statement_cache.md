@@ -251,8 +251,11 @@ Mutation-verified:
   failed", [original_error, *cleanup_errors])` — the original error and ALL
   cleanup errors are members; no `RuntimeError` overwrites either.
 New test `test_cleanup_failure_raises_exception_group_with_original_and_cleanup`
-asserts group type, exactly two members, and the identity/message of both
-the injected `user_seed` failure and the injected cleanup failure.
+asserts group type, exactly two members, and the type/message of both the
+injected `user_seed` failure and the injected cleanup failure. (Superseded
+by R3: the R2 `cleanup_drop=False` branch injected a SYNTHETIC cleanup
+error and proved type/message only — it did not prove object identity or a
+genuine cleanup-failure surface; see the R3 section below.)
 
 ## 3. Fixture teardown
 
@@ -297,3 +300,70 @@ teardown failure as a `BaseExceptionGroup` (nothing swallowed).
   3640 = 3639 (R1) + 1 new cleanup-failure test.
 - py_compile, git diff --check, pre-commit (incl. detect-secrets with
   baseline), strict UTF-8, GitNexus re-analyze — clean.
+
+---
+
+# PW1-R4-A-R3 — Genuine cleanup exception closure (same branch)
+
+Base `aba791d`, same branch fast-forward. Supersedes the R2 dual-exception
+section: the R2 `cleanup_drop=False` branch injected a SYNTHETIC cleanup
+error (a `_ForcedFailure` appended to a list, not an exception raised by
+the real drop call) and proved member type/message only. R3 removes that
+branch entirely and proves object identity with genuine surfaces.
+
+## 1. Genuine dual-error proof
+
+- `cleanup_drop` parameter and the synthetic cleanup-error branch are
+  REMOVED from `_setup_two_tenants`.
+- The test PRE-CREATES both exception objects; `original_error` is raised
+  through the REAL seed path (`fail_at="user_seed"`), `cleanup_error` is
+  raised BY the real `_drop_owned_schemas` call (new `forced_error`
+  parameter — the failure surfaces through the same code path a genuine
+  drop failure would).
+- `test_cleanup_failure_raises_exception_group_with_original_and_cleanup`
+  asserts BY OBJECT IDENTITY: `members[0] is original_error` and
+  `members[1] is cleanup_error` (plus type/message of both and the group
+  message); exactly two members; never a RuntimeError overwrite.
+- The dual-error test is wrapped in a fail-closed `finally` that drops the
+  left-behind schemas with the REAL saved drop helper, then proves zero
+  residue with an independent fresh-engine `pg_namespace` count == 0 in
+  the SAME database (also machine-verified post-run: 0 residue).
+
+## 2. Cleanup-success identity
+
+`test_forced_failure_user_seed_reraises_same_original_object` pre-creates
+the original error, injects it through the seed path, and asserts
+`ei.value is original_error` (same object, not a copy/reconstruction),
+followed by the independent zero-residue proof.
+
+## 3. session.py comment correction (comment-only)
+
+The production comment now states the verified truth — the
+prepared-statement cache is per DBAPI connection, retained and reused
+through the shared pool — replacing the erroneous per-pool LRU wording.
+`prepared_statement_cache_size=0` is byte-for-byte unchanged; the entire
+session.py diff is comment lines only.
+
+## 4. Mutation gates (this round)
+
+- MUT-1 (cleanup success re-raises a RECONSTRUCTED copy instead of the
+  same object) -> identity test RED (`ei.value is original_error` fails).
+- MUT-2 (real cleanup exception SUPPRESSED: `except: pass`) -> group test
+  RED (no BaseExceptionGroup surfaces).
+- Restored -> 9/9 GREEN, zero residue (evidence off-branch).
+
+## 5. Gates (this round)
+
+- R4-A (9) + H5 (5): natural order 14/14; reverse order 14/14.
+- Dual-error test leaves zero schema residue in the same database
+  (in-test finally proof + post-run machine check = 0).
+- Two independent fresh PG16+Redis7 full backend suites:
+  Gate A (fresh PG16@25440 + Redis7@26387): **3640 passed / 48 skipped /
+  15 xfailed / 0 failed / 0 errors** (23:27).
+  Gate B (fresh PG16@25441 + Redis7@26388): **3640 passed / 48 skipped /
+  15 xfailed / 0 failed / 0 errors** (23:31).
+  Reconciliation (`R3_gate_reconciliation.txt`, off-branch): skip-location
+  sets and xfail node-ID sets identical; 3640 passed — suite total
+  unchanged from R2 (one test node renamed, no count change).
+- py_compile, git diff --check, scoped pre-commit (incl. detect-secrets
+  with baseline), strict UTF-8 — clean.

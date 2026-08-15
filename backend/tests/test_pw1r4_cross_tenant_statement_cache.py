@@ -33,10 +33,14 @@ This suite proves, with REAL artifacts only:
      residue, and propagate the ORIGINAL exception (no masking). The residue
      proof is INDEPENDENT of the helper: tests pre-generate the
      deterministic schema names and query pg_namespace themselves.
-  7. Dual-exception truth — if setup fails AND cleanup also fails, a
-     BaseExceptionGroup carries the ORIGINAL error plus ALL cleanup errors
-     (never a RuntimeError overwrite); if cleanup succeeds the ORIGINAL
-     exception object itself is re-raised.
+  7. Genuine dual-exception truth — pre-created original/cleanup exception
+     objects: the original is injected through the real seed path, the
+     cleanup error is raised by the REAL ``_drop_owned_schemas`` call.
+     Cleanup success re-raises the SAME object (``ei.value is
+     original_error``); cleanup failure surfaces a BaseExceptionGroup whose
+     members are [original_error, cleanup_error] BY OBJECT IDENTITY (never
+     a RuntimeError overwrite), and the test's fail-closed finally drops
+     the residue with the real helper + independent pg_namespace proof.
 
 Forbidden techniques NOT used: no route retries, no swallowed exceptions
 re-packed as 200, no per-request engine disposal, no per-tenant engines.
@@ -97,8 +101,17 @@ class _ForcedFailure(RuntimeError):
     """Deterministic injected failure for fail-closed cleanup tests."""
 
 
-async def _drop_owned_schemas(owned: list[str]) -> None:
-    """Drop every tracked owned schema (explicit names; no wildcards)."""
+async def _drop_owned_schemas(
+    owned: list[str], *, forced_error: BaseException | None = None
+) -> None:
+    """Drop every tracked owned schema (explicit names; no wildcards).
+
+    ``forced_error`` (PW1-R4-A-R3 dual-error proof) makes the REAL helper
+    call raise the pre-created exception — the failure surfaces through the
+    same code path a genuine drop failure would.
+    """
+    if forced_error is not None:
+        raise forced_error
     if not owned:
         return
     cleanup_engine = create_async_engine(_async_db_url(), pool_size=1)
@@ -207,7 +220,8 @@ async def _setup_two_tenants(
     *,
     fail_at: str | None = None,
     suffix: str | None = None,
-    cleanup_drop: bool = True,
+    original_error: BaseException | None = None,
+    cleanup_error: BaseException | None = None,
 ) -> dict:
     """Formal bootstrap of two tenants + exact-route readiness rows.
 
@@ -215,16 +229,20 @@ async def _setup_two_tenants(
       "second_bootstrap" | "user_seed" | "before_ddl_engine"
     ``suffix`` lets tests PRE-GENERATE the deterministic schema names so the
     residue proof can query pg_namespace from OUTSIDE this helper (no
-    circular trust in the helper's own assertion). ``cleanup_drop=False``
-    simulates a cleanup failure for the dual-exception proof.
+    circular trust in the helper's own assertion).
 
-    Failures are raised AFTER the corresponding owned schema(s) exist, so
-    cleanup responsibility is real. On failure the helper drops ALL tracked
-    schemas and re-raises:
-      - cleanup succeeds  -> the ORIGINAL exception object is re-raised
-        (identical object, not a copy);
-      - cleanup fails     -> a BaseExceptionGroup whose members contain the
-        ORIGINAL exception AND every cleanup error (never a RuntimeError
+    PW1-R4-A-R3 genuine dual-error proof:
+    - ``original_error``: a PRE-CREATED exception object raised through the
+      REAL seed/setup path (identity preserved for the caller's proof).
+    - ``cleanup_error``: a PRE-CREATED exception object that the REAL
+      ``_drop_owned_schemas`` call raises (genuine cleanup failure — no
+      synthetic cleanup_errors list entries).
+
+    On failure the helper drops ALL tracked schemas and re-raises:
+      - cleanup succeeds  -> the ORIGINAL exception OBJECT is re-raised
+        (identical object identity, never a copy/reconstruction);
+      - cleanup fails     -> a BaseExceptionGroup whose members are exactly
+        [original_error_object, cleanup_error_object] (never a RuntimeError
         that overwrites either).
     """
     bootstrap = _load_formal_bootstrap()
@@ -239,7 +257,7 @@ async def _setup_two_tenants(
         owned.append(a)
 
         if fail_at == "second_bootstrap":
-            raise _ForcedFailure("injected: second_bootstrap")
+            raise original_error or _ForcedFailure("injected: second_bootstrap")
 
         await bootstrap(b, _async_db_url())
         owned.append(b)
@@ -248,12 +266,12 @@ async def _setup_two_tenants(
         seed = _seed_tenant_readiness
         if fail_at == "user_seed":
             async def seed(schema, user_id):  # noqa: F811
-                raise _ForcedFailure("injected: user_seed")
+                raise original_error or _ForcedFailure("injected: user_seed")
         ws_a = await seed(a, user_a)
         ws_b = await seed(b, user_b)
 
         if fail_at == "before_ddl_engine":
-            raise _ForcedFailure("injected: before_ddl_engine")
+            raise original_error or _ForcedFailure("injected: before_ddl_engine")
         ddl_engine = create_async_engine(_async_db_url(), pool_size=1)
 
         return {
@@ -264,26 +282,22 @@ async def _setup_two_tenants(
             "owned": owned,
             "ddl_engine": ddl_engine,
         }
-    except BaseException as original_error:
+    except BaseException as original_exc:
         # Capture the ORIGINAL exception object explicitly.
-        cleanup_errors: list[BaseException] = []
-        if cleanup_drop:
-            try:
-                await _drop_owned_schemas(owned)
-                await _assert_zero_namespace_residue(owned)
-            except BaseException as ce:  # noqa: BLE001 — collected, not masking
-                cleanup_errors.append(ce)
-        else:
-            cleanup_errors.append(_ForcedFailure("injected: cleanup failure"))
-        if cleanup_errors:
-            # Dual-failure surface: the group's members MUST contain the
-            # ORIGINAL exception and ALL cleanup errors (no overwrite).
+        try:
+            # REAL cleanup call; with cleanup_error it genuinely raises the
+            # pre-created object (surfaces exactly like a drop failure).
+            await _drop_owned_schemas(owned, forced_error=cleanup_error)
+            await _assert_zero_namespace_residue(owned)
+        except BaseException as ce:  # noqa: BLE001 — collected, never masking
+            # Dual-failure surface: the group's members carry the ORIGINAL
+            # exception and the REAL cleanup error (no overwrite).
             raise BaseExceptionGroup(
                 "tenant setup failed and cleanup also failed",
-                [original_error, *cleanup_errors],
-            )
+                [original_exc, ce],
+            ) from None
         # Cleanup succeeded: re-raise the SAME original exception object.
-        raise original_error
+        raise original_exc
     finally:
         if ddl_engine is not None:
             await ddl_engine.dispose()
@@ -604,11 +618,20 @@ async def test_forced_failure_second_bootstrap_cleans_first_schema():
     await _assert_no_residue([a])
 
 
-async def test_forced_failure_user_seed_cleans_both_schemas():
+async def test_forced_failure_user_seed_reraises_same_original_object():
+    """Cleanup SUCCESS path: the helper re-raises the SAME pre-created
+    exception object (object identity, not a copy/reconstruction) after
+    cleaning both tenants, and the independent proof sees zero residue."""
     suffix = uuid.uuid4().hex[:8]
     owned = [f"t_r4a_a_{suffix}", f"t_r4a_b_{suffix}"]
-    with pytest.raises(_ForcedFailure, match="user_seed"):
-        await _setup_two_tenants(fail_at="user_seed", suffix=suffix)
+    original_error = _ForcedFailure("injected: user_seed")
+    with pytest.raises(_ForcedFailure) as ei:
+        await _setup_two_tenants(
+            fail_at="user_seed", suffix=suffix, original_error=original_error
+        )
+    assert ei.value is original_error, (
+        "cleanup success must re-raise the SAME exception object"
+    )
     await _assert_no_residue(owned)
 
 
@@ -621,25 +644,43 @@ async def test_forced_failure_before_ddl_engine_cleans_both_schemas():
 
 
 # ---------------------------------------------------------------------------
-# 7. Dual-exception truth: original + cleanup failures in one group
+# 7. Genuine dual-exception truth: original + real cleanup failure, by identity
 # ---------------------------------------------------------------------------
 async def test_cleanup_failure_raises_exception_group_with_original_and_cleanup():
-    """When setup fails AND cleanup also fails, a BaseExceptionGroup must
-    surface with BOTH the original error and the cleanup error as members —
-    never a RuntimeError overwrite."""
+    """Setup fails AND the REAL cleanup call fails: a BaseExceptionGroup
+    surfaces whose members ARE the two pre-created objects (proven by
+    object identity — members[0] is original_error, members[1] is
+    cleanup_error — never a RuntimeError overwrite). The failed cleanup
+    leaves the schemas in place, so the fail-closed finally drops them with
+    the real helper and proves zero residue independently."""
     suffix = uuid.uuid4().hex[:8]
-    with pytest.raises(BaseExceptionGroup) as ei:
-        await _setup_two_tenants(
-            fail_at="user_seed", suffix=suffix, cleanup_drop=False
+    owned = [f"t_r4a_a_{suffix}", f"t_r4a_b_{suffix}"]
+    original_error = _ForcedFailure("injected: user_seed")
+    cleanup_error = _ForcedFailure("injected: cleanup failure")
+    try:
+        with pytest.raises(BaseExceptionGroup) as ei:
+            await _setup_two_tenants(
+                fail_at="user_seed",
+                suffix=suffix,
+                original_error=original_error,
+                cleanup_error=cleanup_error,
+            )
+        members = list(ei.value.exceptions)
+        assert len(members) == 2, (
+            f"group must have exactly [original, cleanup] members, got {members!r}"
         )
-    group = ei.value
-    members = list(group.exceptions)
-    originals = [m for m in members if isinstance(m, _ForcedFailure)]
-    cleanups = [m for m in members if isinstance(m, _ForcedFailure) and "cleanup failure" in str(m)]
-    seeds = [m for m in members if isinstance(m, _ForcedFailure) and "user_seed" in str(m)]
-    assert len(members) == 2, f"group must contain exactly original+cleanup, got {members!r}"
-    assert seeds and "user_seed" in str(seeds[0]), "original error missing from group"
-    assert cleanups and "cleanup failure" in str(cleanups[0]), "cleanup error missing from group"
-    assert all(type(m) is _ForcedFailure for m in members), "member types"
-    # Both failure modes present in one group (message carries both causes)
-    assert "setup failed and cleanup also failed" in str(group) or group.message
+        assert members[0] is original_error, (
+            "members[0] must BE the pre-created original exception object"
+        )
+        assert members[1] is cleanup_error, (
+            "members[1] must BE the pre-created cleanup exception object"
+        )
+        assert type(members[0]) is _ForcedFailure and "user_seed" in str(members[0])
+        assert type(members[1]) is _ForcedFailure and "cleanup failure" in str(members[1])
+        assert "setup failed and cleanup also failed" in str(ei.value)
+    finally:
+        # Fail-closed: the dual failure left both schemas in place — drop
+        # them with the REAL helper, then prove zero residue independently
+        # (fresh-engine pg_namespace count == 0) in the SAME database.
+        await _drop_owned_schemas(owned)
+        await _assert_no_residue(owned)

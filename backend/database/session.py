@@ -35,8 +35,9 @@ async_engine = create_async_engine(
     connect_args={
         "command_timeout": settings.DB_CONNECT_TIMEOUT,
         # PW1-R4-A: cross-tenant prepared-statement runtime closure.
-        # The SQLAlchemy asyncpg dialect maintains a per-pool LRU of server
-        # prepared statements keyed ONLY by SQL text. Because tenant routing
+        # The prepared-statement cache is per DBAPI connection; those
+        # connections are retained and reused by the shared pool, and the
+        # cached statements are keyed ONLY by SQL text. Because tenant routing
         # is per-transaction search_path on a SHARED pool, a statement planned
         # for one tenant's relation OIDs can be re-executed on a pooled
         # connection after another tenant's provisioning/migration DDL has

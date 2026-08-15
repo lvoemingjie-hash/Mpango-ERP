@@ -2,7 +2,8 @@
 
 Root Cause
 ==========
-asyncpg maintains a per-connection prepared-statement cache.  When DDL alters
+The prepared-statement cache is per DBAPI connection; those connections
+are retained and reused by the shared pool.  When DDL alters
 a table's structure (especially a column type change), PostgreSQL invalidates
 the cached plan.  In a test session where I2A runs before I2B, pooled
 connections carry stale plans that raise ``InvalidCachedStatementError`` on
@@ -18,8 +19,8 @@ PW1-R4-A runtime policy update
 ==============================
 
 The production engine now sets ``prepared_statement_cache_size=0``
-(``database/session.py``): the SQLAlchemy asyncpg dialect no longer reuses
-pooled prepared statements, so DDL invalidation cannot poison cross-request
+(``database/session.py``): the per-DBAPI-connection prepared-statement cache
+is disabled (size 0), so DDL invalidation cannot poison cross-request
 statements at runtime. Consequently the *global-engine* GREEN leg no longer
 causally proves anything about dispose (it would pass even without it) and
 has been reshaped:
@@ -39,9 +40,17 @@ has been reshaped:
 
 Causal Proof
 ============
-These tests prove RED (without dispose → error) and GREEN (with dispose →
-success) using the actual global engine boundary.  No mocks, no conditional
-pass, no silent-re-prepare acceptance.
+RED and GREEN both run on DEDICATED cache-enabled engines (test-local,
+dialect defaults with the asyncpg statement cache enabled) — the only
+boundary where statement caching actually exists, since the production
+global engine now disables it.  RED proves "same SQL re-executed after DDL
+WITHOUT dispose -> error"; GREEN proves the identical shape WITH a dispose
+between DDL and re-execution -> success, so GREEN is dispose-causal and
+cannot accidentally pass.  POLICY is the ONLY leg on the production global
+engine: it re-executes the SAME SQL after DDL WITHOUT dispose and must
+succeed — a leg that fails if ``prepared_statement_cache_size=0`` is ever
+removed from ``database/session.py``.  No mocks, no conditional pass, no
+silent-re-prepare acceptance.
 
 Cleanup is fail-closed: every created schema is dropped in a finally block
 with a ``pg_namespace`` assertion verifying zero residue.
@@ -195,7 +204,7 @@ async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
 
 
 # ---------------------------------------------------------------------------
-# Test 2: GREEN — dispose clears stale plans via the actual global engine
+# Test 2: GREEN — dispose clears stale plans on a dedicated cache-enabled engine
 # ---------------------------------------------------------------------------
 
 async def test_green_dispose_clears_stale_plans_on_caching_engine():

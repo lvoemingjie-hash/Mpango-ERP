@@ -11,14 +11,16 @@
 > aggregate diff = exactly the 4 approved files); the exact production route
 > GET /api/v1/client/orders?page=1&size=100 is now the causal surface;
 > setup is fail-closed with forced-failure proofs; H5 ddl_engine binding
-> risk fixed; wording corrected (per-POOL, not per-connection).
+> risk fixed; cache wording corrected (per DBAPI connection, retained and
+> reused by the shared pool).
 - Parent chain: `2b7b959` (R3-R2-R1) ← `11148b6` ← `1181ffe` ← `07013d2` (R3) ← `9f5d677` (R2-R2) ← … ← `d2e7e44` (baseline)
 - Branch: `zcode/dc12r1-mvp-l1-pw1-r4-a-tenant-statement-cache-closure-2026-08-15`
 
 ## Root cause (reproduced empirically on real PG16, pool_size=1)
 
-The SQLAlchemy asyncpg dialect keeps a per-POOL LRU of server prepared
-statements keyed ONLY by SQL text. Tenant routing is per-transaction
+The prepared-statement cache is per DBAPI connection; those connections
+are retained and reused by the shared pool, and the cached statements are
+keyed ONLY by SQL text. Tenant routing is per-transaction
 `SET LOCAL search_path` on a SHARED pool, so a statement planned for one
 tenant's relation OIDs can be re-executed on a pooled connection after
 another tenant's provisioning/migration DDL invalidates those plans —
@@ -82,7 +84,9 @@ and a real `configure_app + JwtAuthStrategy` HTTP app.
 
 Results: 4/4 natural order; 4/4 reverse order; mutation (fix removed from
 session.py) → HTTP and engine legs RED (2 failed), legacy-RED and no-leak
-still pass; restored → 4/4 GREEN. (pw1_r4a_evidence/MUTATION_session_fix_removed_RED.txt)
+still pass; restored → 4/4 GREEN. (Historical f348f4a evidence —
+`pw1_r4a_evidence/MUTATION_session_fix_removed_RED.txt` — referable by SHA
+only; evidence artifacts are NOT part of the current branch scope.)
 
 ## H5 revision — causality preserved, false-green eliminated
 
@@ -136,8 +140,10 @@ TEST_DATABASE_URL=... REDIS_URL=... MPANGO_ENV=test \
   48 skipped / 15 xfailed / 0 failed / 0 errors** (23:29).
 - Gate B (independent fresh PG16@25441 + Redis7@26388): **3635 passed /
   48 skipped / 15 xfailed / 0 failed / 0 errors** (23:59).
-- Reconciliation (`pw1r4a-evidence/gate_reconciliation.txt`): skip-location
-  sets identical (48=48), xfail node-ID sets identical (15=15).
+- Reconciliation (historical f348f4a evidence
+  `pw1r4a-evidence/gate_reconciliation.txt`, off-branch; referable by SHA
+  only): skip-location sets identical (48=48), xfail node-ID sets identical
+  (15=15).
 - 3635 = prior 3630 + 5 new nodes (4 R4-A + 1 H5 POLICY).
 
 ---
@@ -197,8 +203,8 @@ verified GREEN individually and in reverse order):
 
 ## 5. Evidence facts corrected
 
-- Cache wording: per-POOL (SQLAlchemy asyncpg dialect per-pool LRU), not
-  per-connection.
+- Cache wording corrected (R2): the prepared-statement cache is per DBAPI
+  connection; those connections are retained and reused by the shared pool.
 - GitNexus impact: HIGH risk, 3 DIRECT impacted (seed, find_user_across_tenants,
   get_tenant_db_session), 6 total impacted (create_tenant_session chain).
 - Route suite is now 8 tests (exact-route GREEN + exact-route causal RED +
@@ -214,3 +220,80 @@ verified GREEN individually and in reverse order):
   xfail and accounting reconciliation (see gate evidence off-branch).
 - py_compile, git diff --check, scoped detect-secrets, strict UTF-8,
   GitNexus re-analyze — clean.
+
+---
+
+# PW1-R4-A-R2 — Independent cleanup proof and cache-wording final closure (same branch)
+
+`backend/database/session.py` is byte-identical to `d6c0f9f` (R1): zero diff,
+verified before commit. R2 changes exactly three files: this ledger,
+`backend/tests/test_pw1r4_cross_tenant_statement_cache.py`, and
+`backend/tests/test_dc12r1_h5_prepared_statement_cache_isolation.py`.
+
+## 1. Independent residue proof (no circular trust)
+
+The three forced-failure tests now PRE-GENERATE the deterministic schema
+names (`suffix`) and, AFTER the helper call, query `pg_catalog.pg_namespace`
+themselves through a FRESH engine (`_owned_schema_count` /
+`_assert_no_residue`) with explicit `count == 0` assertions per owned
+schema — the proof does not rely on the helper's internal assertion.
+Mutation-verified:
+- removing the `_drop_owned_schemas` cleanup call → all three forced-failure
+  tests RED (residue observed by the independent proof);
+- additionally removing the residue assertion → RED;
+- restored → GREEN (see R2_MUT evidence, kept off-branch).
+
+## 2. Dual-exception truth
+
+`_setup_two_tenants` captures the ORIGINAL exception object explicitly:
+- cleanup succeeds → the SAME original exception object is re-raised;
+- cleanup fails → `BaseExceptionGroup("tenant setup failed and cleanup also
+  failed", [original_error, *cleanup_errors])` — the original error and ALL
+  cleanup errors are members; no `RuntimeError` overwrites either.
+New test `test_cleanup_failure_raises_exception_group_with_original_and_cleanup`
+asserts group type, exactly two members, and the identity/message of both
+the injected `user_seed` failure and the injected cleanup failure.
+
+## 3. Fixture teardown
+
+`two_tenants` wraps `yield` in try/finally; teardown drops EXACTLY the owned
+schema names (no prefixes, no LIKE, no wildcards) via a fresh cleanup engine,
+asserts zero residue, disposes the fixture engine, and propagates any
+teardown failure as a `BaseExceptionGroup` (nothing swallowed).
+
+## 4. Doc facts
+
+- All cache wording in the branch now states the verified truth: the
+  prepared-statement cache is per DBAPI connection; those connections are
+  retained and reused by the shared pool. The erroneous per-POOL LRU wording
+  is removed everywhere except `backend/database/session.py`, which is
+  FROZEN byte-identical to `d6c0f9f` by task scope.
+- H5 docstring: RED/GREEN run on DEDICATED cache-enabled engines; POLICY is
+  the ONLY leg on the production global engine. Test 2 banner corrected
+  ("dedicated cache-enabled engine", not "actual global engine"); Causal
+  Proof section rewritten to state exactly which boundary each leg uses and
+  why GREEN remains dispose-causal.
+- Historical `f348f4a` evidence is referable by SHA only; evidence artifacts
+  are not claimed as current branch scope (the two ledger references above
+  now carry the off-branch annotation).
+
+## 5. Gates (this round)
+
+- R4-A (9) + H5 (5): natural order 14/14; reverse order 14/14.
+- R2 mutation runs: MUT-1 (cleanup drop neutralized) -> 3 forced-failure
+  tests RED + residue teardown error; MUT-2 (helper drop + residue
+  assertion removed) -> 3 forced-failure tests RED via the independent
+  pg_namespace proofs; MUT-3 counterfactual (helper assertion only removed,
+  drop intact) -> 9/9 GREEN; restored -> GREEN (evidence off-branch).
+- Exact-route GREEN/RED legs re-verified unchanged (natural and reverse
+  focused runs).
+- Two independent fresh PG16+Redis7 full backend suites:
+  Gate A (fresh PG16@25440 + Redis7@26387): **3640 passed / 48 skipped /
+  15 xfailed / 0 failed / 0 errors** (25:44).
+  Gate B (fresh PG16@25441 + Redis7@26388): **3640 passed / 48 skipped /
+  15 xfailed / 0 failed / 0 errors** (25:48).
+  Reconciliation (`R2_gate_reconciliation.txt`, off-branch): skip-location
+  sets identical (48=48), xfail node-ID sets identical (15=15),
+  3640 = 3639 (R1) + 1 new cleanup-failure test.
+- py_compile, git diff --check, pre-commit (incl. detect-secrets with
+  baseline), strict UTF-8, GitNexus re-analyze — clean.

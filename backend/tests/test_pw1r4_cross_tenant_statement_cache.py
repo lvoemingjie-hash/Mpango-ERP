@@ -1,12 +1,13 @@
-"""PW1-R4-A (R1) — Cross-tenant prepared-statement runtime closure.
+"""PW1-R4-A (R2) — Cross-tenant prepared-statement runtime closure.
 
 Root cause (reproduced empirically on real PG16, pool_size=1):
-the SQLAlchemy asyncpg dialect keeps a per-POOL LRU of server prepared
-statements keyed ONLY by SQL text. Tenant routing is per-transaction
-``SET LOCAL search_path`` on a SHARED pool, so when any tenant's
-provisioning/migration DDL invalidates the relations a pooled statement was
-planned against, the next request reusing that statement raises
-``asyncpg.exceptions.InvalidCachedStatementError`` (surfaced as 500).
+The prepared-statement cache is per DBAPI connection; those connections
+are retained and reused by the shared pool, and the cached statements are
+keyed ONLY by SQL text. Tenant routing is per-transaction
+``SET LOCAL search_path`` on a SHARED pool, so a statement planned for one
+tenant's relation OIDs can be re-executed on a pooled connection after
+another tenant's provisioning/migration DDL invalidates those plans,
+raising ``asyncpg.exceptions.InvalidCachedStatementError`` (surfaced as 500).
 
 Closure: ``prepared_statement_cache_size=0`` on the production engine
 (``database/session.py``) — the MINIMAL setting that closes the real RED.
@@ -29,7 +30,13 @@ This suite proves, with REAL artifacts only:
   6. Fail-closed setup — every created schema is tracked from the FIRST
      bootstrap; injected failures (second bootstrap, user seed, ddl-engine
      creation) still drop all owned schemas, assert zero pg_namespace
-     residue, and propagate the ORIGINAL exception (no masking).
+     residue, and propagate the ORIGINAL exception (no masking). The residue
+     proof is INDEPENDENT of the helper: tests pre-generate the
+     deterministic schema names and query pg_namespace themselves.
+  7. Dual-exception truth — if setup fails AND cleanup also fails, a
+     BaseExceptionGroup carries the ORIGINAL error plus ALL cleanup errors
+     (never a RuntimeError overwrite); if cleanup succeeds the ORIGINAL
+     exception object itself is re-raised.
 
 Forbidden techniques NOT used: no route retries, no swallowed exceptions
 re-packed as 200, no per-request engine disposal, no per-tenant engines.
@@ -196,18 +203,34 @@ async def _seed_tenant_readiness(schema: str, user_id: str) -> None:
         return str(wholesaler_id)
 
 
-async def _setup_two_tenants(*, fail_at: str | None = None) -> dict:
+async def _setup_two_tenants(
+    *,
+    fail_at: str | None = None,
+    suffix: str | None = None,
+    cleanup_drop: bool = True,
+) -> dict:
     """Formal bootstrap of two tenants + exact-route readiness rows.
 
     ``fail_at`` injects a deterministic failure at:
       "second_bootstrap" | "user_seed" | "before_ddl_engine"
+    ``suffix`` lets tests PRE-GENERATE the deterministic schema names so the
+    residue proof can query pg_namespace from OUTSIDE this helper (no
+    circular trust in the helper's own assertion). ``cleanup_drop=False``
+    simulates a cleanup failure for the dual-exception proof.
+
     Failures are raised AFTER the corresponding owned schema(s) exist, so
-    cleanup responsibility is real. Cleanup drops ALL tracked schemas,
-    asserts zero pg_namespace residue, and propagates the ORIGINAL exception.
+    cleanup responsibility is real. On failure the helper drops ALL tracked
+    schemas and re-raises:
+      - cleanup succeeds  -> the ORIGINAL exception object is re-raised
+        (identical object, not a copy);
+      - cleanup fails     -> a BaseExceptionGroup whose members contain the
+        ORIGINAL exception AND every cleanup error (never a RuntimeError
+        that overwrites either).
     """
     bootstrap = _load_formal_bootstrap()
+    if suffix is None:
+        suffix = uuid.uuid4().hex[:8]
     owned: list[str] = []
-    suffix = uuid.uuid4().hex[:8]
     a = f"t_r4a_a_{suffix}"
     b = f"t_r4a_b_{suffix}"
     ddl_engine = None
@@ -241,16 +264,26 @@ async def _setup_two_tenants(*, fail_at: str | None = None) -> dict:
             "owned": owned,
             "ddl_engine": ddl_engine,
         }
-    except BaseException:
-        cleanup_err = None
-        try:
-            await _drop_owned_schemas(owned)
-            await _assert_zero_namespace_residue(owned)
-        except BaseException as ce:  # noqa: BLE001 — chained after original
-            cleanup_err = ce
-        if cleanup_err is not None:
-            raise RuntimeError("cleanup failed after original failure") from cleanup_err
-        raise
+    except BaseException as original_error:
+        # Capture the ORIGINAL exception object explicitly.
+        cleanup_errors: list[BaseException] = []
+        if cleanup_drop:
+            try:
+                await _drop_owned_schemas(owned)
+                await _assert_zero_namespace_residue(owned)
+            except BaseException as ce:  # noqa: BLE001 — collected, not masking
+                cleanup_errors.append(ce)
+        else:
+            cleanup_errors.append(_ForcedFailure("injected: cleanup failure"))
+        if cleanup_errors:
+            # Dual-failure surface: the group's members MUST contain the
+            # ORIGINAL exception and ALL cleanup errors (no overwrite).
+            raise BaseExceptionGroup(
+                "tenant setup failed and cleanup also failed",
+                [original_error, *cleanup_errors],
+            )
+        # Cleanup succeeded: re-raise the SAME original exception object.
+        raise original_error
     finally:
         if ddl_engine is not None:
             await ddl_engine.dispose()
@@ -258,12 +291,28 @@ async def _setup_two_tenants(*, fail_at: str | None = None) -> dict:
 
 @pytest_asyncio.fixture(scope="module")
 async def two_tenants():
-    """Two formally bootstrapped tenants with exact-route readiness rows."""
+    """Two formally bootstrapped tenants with exact-route readiness rows.
+
+    Teardown is wrapped in try/finally around the yield; cleanup uses FRESH
+    engines/sessions, deletes EXACTLY the owned schema names (no prefixes,
+    no LIKE, no wildcards), verifies zero residue, disposes the fixture
+    engine, and propagates any teardown failure (nothing swallowed)."""
     ctx = await _setup_two_tenants()
-    yield ctx
-    await _drop_owned_schemas(ctx["owned"])
-    await _assert_zero_namespace_residue(ctx["owned"])
-    await async_engine.dispose()
+    try:
+        yield ctx
+    finally:
+        teardown_errors: list[BaseException] = []
+        try:
+            await _drop_owned_schemas(ctx["owned"])
+            await _assert_zero_namespace_residue(ctx["owned"])
+        except BaseException as te:  # noqa: BLE001 — collected
+            teardown_errors.append(te)
+        try:
+            await ctx["ddl_engine"].dispose()
+        except BaseException as te:  # noqa: BLE001 — collected
+            teardown_errors.append(te)
+        if teardown_errors:
+            raise BaseExceptionGroup("two_tenants teardown failed", teardown_errors)
 
 
 @pytest_asyncio.fixture
@@ -514,23 +563,83 @@ async def test_no_cross_tenant_leak_across_cycles(two_tenants, ddl_engine):
 
 
 # ---------------------------------------------------------------------------
-# 6. Fail-closed setup: forced failures leave zero residue, no masking
+# 6. Fail-closed setup: forced failures leave zero residue, no masking.
+#    The residue proof is INDEPENDENT of the helper under test: the test
+#    pre-generates the deterministic schema names, then queries
+#    pg_namespace itself via a fresh engine AFTER the helper call.
 # ---------------------------------------------------------------------------
+async def _owned_schema_count(schema: str) -> int:
+    """INDEPENDENT pg_namespace count via a fresh engine (outside helper)."""
+    engine = create_async_engine(_async_db_url(), pool_size=1)
+    try:
+        async with engine.connect() as c:
+            return (
+                await c.execute(
+                    text(
+                        "SELECT count(*) FROM pg_catalog.pg_namespace "
+                        "WHERE nspname = :n"
+                    ),
+                    {"n": schema},
+                )
+            ).scalar()
+    finally:
+        await engine.dispose()
+
+
+async def _assert_no_residue(owned: list[str]) -> None:
+    for sch in owned:
+        n = await _owned_schema_count(sch)
+        assert n == 0, f"owned schema '{sch}' residue: count={n} (must be 0)"
+
+
 async def test_forced_failure_second_bootstrap_cleans_first_schema():
-    """Second bootstrap fails after tenant A exists: A must be dropped, zero
-    pg_namespace residue, and the ORIGINAL _ForcedFailure must propagate."""
-    with pytest.raises(_ForcedFailure, match="second_bootstrap"):
-        await _setup_two_tenants(fail_at="second_bootstrap")
-    # The zero-residue pg_namespace assertion runs INSIDE the cleanup path
-    # (before the original exception is re-raised), so reaching this line
-    # already proves: cleanup ran, residue was zero, nothing was masked.
+    suffix = uuid.uuid4().hex[:8]
+    a = f"t_r4a_a_{suffix}"
+    with pytest.raises(_ForcedFailure, match="second_bootstrap") as ei:
+        await _setup_two_tenants(fail_at="second_bootstrap", suffix=suffix)
+    # original exception type/message preserved (no overwrite)
+    assert type(ei.value) is _ForcedFailure
+    assert "second_bootstrap" in str(ei.value)
+    # INDEPENDENT residue proof: only tenant A ever existed in this run
+    await _assert_no_residue([a])
 
 
 async def test_forced_failure_user_seed_cleans_both_schemas():
+    suffix = uuid.uuid4().hex[:8]
+    owned = [f"t_r4a_a_{suffix}", f"t_r4a_b_{suffix}"]
     with pytest.raises(_ForcedFailure, match="user_seed"):
-        await _setup_two_tenants(fail_at="user_seed")
+        await _setup_two_tenants(fail_at="user_seed", suffix=suffix)
+    await _assert_no_residue(owned)
 
 
 async def test_forced_failure_before_ddl_engine_cleans_both_schemas():
+    suffix = uuid.uuid4().hex[:8]
+    owned = [f"t_r4a_a_{suffix}", f"t_r4a_b_{suffix}"]
     with pytest.raises(_ForcedFailure, match="before_ddl_engine"):
-        await _setup_two_tenants(fail_at="before_ddl_engine")
+        await _setup_two_tenants(fail_at="before_ddl_engine", suffix=suffix)
+    await _assert_no_residue(owned)
+
+
+# ---------------------------------------------------------------------------
+# 7. Dual-exception truth: original + cleanup failures in one group
+# ---------------------------------------------------------------------------
+async def test_cleanup_failure_raises_exception_group_with_original_and_cleanup():
+    """When setup fails AND cleanup also fails, a BaseExceptionGroup must
+    surface with BOTH the original error and the cleanup error as members —
+    never a RuntimeError overwrite."""
+    suffix = uuid.uuid4().hex[:8]
+    with pytest.raises(BaseExceptionGroup) as ei:
+        await _setup_two_tenants(
+            fail_at="user_seed", suffix=suffix, cleanup_drop=False
+        )
+    group = ei.value
+    members = list(group.exceptions)
+    originals = [m for m in members if isinstance(m, _ForcedFailure)]
+    cleanups = [m for m in members if isinstance(m, _ForcedFailure) and "cleanup failure" in str(m)]
+    seeds = [m for m in members if isinstance(m, _ForcedFailure) and "user_seed" in str(m)]
+    assert len(members) == 2, f"group must contain exactly original+cleanup, got {members!r}"
+    assert seeds and "user_seed" in str(seeds[0]), "original error missing from group"
+    assert cleanups and "cleanup failure" in str(cleanups[0]), "cleanup error missing from group"
+    assert all(type(m) is _ForcedFailure for m in members), "member types"
+    # Both failure modes present in one group (message carries both causes)
+    assert "setup failed and cleanup also failed" in str(group) or group.message

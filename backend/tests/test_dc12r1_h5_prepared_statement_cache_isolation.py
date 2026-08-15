@@ -14,6 +14,26 @@ Repair
 calls ``async_engine.dispose()`` on the **actual global engine** after
 module-scoped provisioning DDL completes.
 
+PW1-R4-A runtime policy update
+==============================
+
+The production engine now sets ``prepared_statement_cache_size=0``
+(``database/session.py``): the SQLAlchemy asyncpg dialect no longer reuses
+pooled prepared statements, so DDL invalidation cannot poison cross-request
+statements at runtime. Consequently the *global-engine* GREEN leg no longer
+causally proves anything about dispose (it would pass even without it) and
+has been reshaped:
+
+* RED    - caching engine, no dispose, same SQL re-executed after DDL -> error
+           (unchanged; still the causal core).
+* GREEN  - caching engine, dispose between DDL and re-execution of the SAME
+           SQL -> success (dispose mechanism proven where caching exists).
+* POLICY - the production global engine re-executes the SAME SQL after DDL
+           WITHOUT dispose and must succeed; this leg fails if
+           ``prepared_statement_cache_size=0`` is ever removed from
+           ``database/session.py`` (mutation-verified in
+           ``test_pw1r4_cross_tenant_statement_cache.py``).
+
 Causal Proof
 ============
 These tests prove RED (without dispose → error) and GREEN (with dispose →
@@ -175,16 +195,27 @@ async def test_red_ddl_without_dispose_raises_invalid_cached_statement():
 # Test 2: GREEN — dispose clears stale plans via the actual global engine
 # ---------------------------------------------------------------------------
 
-async def test_green_dispose_via_global_engine_clears_stale_plans():
-    """CAUSAL GREEN: Use the ACTUAL global engine from database.session."""
-    from database.session import async_engine, AsyncSessionLocal
+async def test_green_dispose_clears_stale_plans_on_caching_engine():
+    """CAUSAL GREEN (reshaped by PW1-R4-A): a CACHING engine re-executes the
+    SAME SQL after DDL and a dispose — must succeed. Without the dispose this
+    exact shape is proven RED by the test above, so the GREEN is
+    dispose-causal, not accidentally green under the new runtime policy.
+    """
 
     schema = f"h5_green_{uuid.uuid4().hex[:8]}"
+    green_engine = create_async_engine(
+        _async_db_url(),
+        pool_size=1,
+        max_overflow=0,
+        connect_args={
+            "statement_cache_size": 100,
+            "server_settings": {"application_name": _unique_app_name(), "jit": "off"},
+        },
+    )
 
     try:
-        # Phase 1: create table + cache a SELECT on the GLOBAL engine.
-        async with AsyncSessionLocal() as session:
-            session.info["tenant_schema"] = "public"
+        # Phase 1: create table + cache the SELECT plan on the caching engine.
+        async with AsyncSession(green_engine) as session:
             await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
             await session.execute(
                 text(f'CREATE TABLE "{schema}".t_green (id int, label text)')
@@ -195,48 +226,125 @@ async def test_green_dispose_via_global_engine_clears_stale_plans():
             )
             await session.commit()
 
-        async with AsyncSessionLocal() as session:
-            session.info["tenant_schema"] = "public"
+        async with AsyncSession(green_engine) as session:
             result = await session.execute(
                 text(f'SELECT label FROM "{schema}".t_green WHERE id = 1')
             )
             assert result.scalar() == "before"
             await session.commit()
 
-        # Phase 2: DDL.
-        async with AsyncSessionLocal() as session:
-            session.info["tenant_schema"] = "public"
-            await session.execute(
-                text(f'ALTER TABLE "{schema}".t_green ADD COLUMN extra int DEFAULT 0')
-            )
-            await session.commit()
+        # Phase 2: DDL that changes the SELECTED column's type OID, from a
+        # SECOND engine so invalidation arrives from outside the pool.
+        ddl_engine = create_async_engine(
+    _async_db_url(),
+            pool_size=1,
+            max_overflow=0,
+            connect_args={
+                "server_settings": {"application_name": _unique_app_name(), "jit": "off"},
+            },
+        )
+        try:
+            async with AsyncSession(ddl_engine) as session:
+                await session.execute(
+                    text(
+                        f'ALTER TABLE "{schema}".t_green '
+                        f'ALTER COLUMN label TYPE varchar(100) USING label::varchar(100)'
+                    )
+                )
+                await session.commit()
 
-        # Phase 3: DISPOSE the global engine (the H5 repair).
-        await async_engine.dispose()
+            # Phase 3: DISPOSE (the H5 repair) — closes every pooled connection.
+            await green_engine.dispose()
 
-        # Phase 4: re-execute on a FRESH connection — must succeed.
-        async with AsyncSessionLocal() as session:
-            session.info["tenant_schema"] = "public"
-            result = await session.execute(
-                text(f'SELECT label, extra FROM "{schema}".t_green WHERE id = 1')
-            )
-            row = result.fetchone()
-            assert row is not None
-            assert row.label == "before"
-            assert row.extra == 0
-            await session.commit()
+            # Phase 4: re-execution of the SAME SQL on a fresh connection.
+            async with AsyncSession(green_engine) as session:
+                result = await session.execute(
+                    text(f'SELECT label FROM "{schema}".t_green WHERE id = 1')
+                )
+                assert result.scalar() == "before"
+                await session.commit()
+        finally:
+            await ddl_engine.dispose()
 
     finally:
         # Fail-closed cleanup: schema drop + pg_namespace assertion.
         cleanup_error: Exception | None = None
         try:
-            async with AsyncSessionLocal() as session:
-                session.info["tenant_schema"] = "public"
+            async with AsyncSession(ddl_engine) as session:
                 await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
                 await session.commit()
                 await _assert_schema_absent(session, schema)
         except Exception as exc:
             cleanup_error = exc
+        finally:
+            await green_engine.dispose()
+        if cleanup_error is not None:
+            raise cleanup_error
+
+
+async def test_runtime_policy_global_engine_survives_ddl_without_dispose():
+    """PW1-R4-A runtime policy: the PRODUCTION global engine re-executes the
+    SAME SQL after DDL invalidation WITHOUT dispose and must succeed. Fails
+    if ``prepared_statement_cache_size=0`` is removed from database/session.py.
+    """
+    from database.session import AsyncSessionLocal
+
+    schema = f"h5_policy_{uuid.uuid4().hex[:8]}"
+    select_sql = f'SELECT label FROM "{schema}".t_policy WHERE id = 1'
+    ddl_engine = create_async_engine(
+        _async_db_url(),
+        pool_size=1,
+        max_overflow=0,
+        connect_args={
+            "server_settings": {"application_name": _unique_app_name(), "jit": "off"},
+        },
+    )
+
+    try:
+        async with AsyncSessionLocal() as session:
+            session.info["tenant_schema"] = "public"
+            await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+            await session.execute(
+                text(f'CREATE TABLE "{schema}".t_policy (id int, label text)')
+            )
+            await session.execute(
+                text(f'INSERT INTO "{schema}".t_policy VALUES (1, :lbl)'),
+                {"lbl": "policy"},
+            )
+            await session.commit()
+        async with AsyncSessionLocal() as session:
+            session.info["tenant_schema"] = "public"
+            result = await session.execute(text(select_sql))
+            assert result.scalar() == "policy"
+            await session.commit()
+
+        async with AsyncSession(ddl_engine) as session:
+            await session.execute(
+                text(
+                    f'ALTER TABLE "{schema}".t_policy '
+                    f'ALTER COLUMN label TYPE varchar(100) USING label::varchar(100)'
+                )
+            )
+            await session.commit()
+
+        # NO dispose — the runtime policy must make this safe.
+        async with AsyncSessionLocal() as session:
+            session.info["tenant_schema"] = "public"
+            result = await session.execute(text(select_sql))
+            assert result.scalar() == "policy"
+            await session.commit()
+
+    finally:
+        cleanup_error: Exception | None = None
+        try:
+            async with AsyncSession(ddl_engine) as session:
+                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                await session.commit()
+                await _assert_schema_absent(session, schema)
+        except Exception as exc:
+            cleanup_error = exc
+        finally:
+            await ddl_engine.dispose()
         if cleanup_error is not None:
             raise cleanup_error
 

@@ -34,6 +34,21 @@ async_engine = create_async_engine(
     pool_timeout=settings.DB_CONNECT_TIMEOUT,
     connect_args={
         "command_timeout": settings.DB_CONNECT_TIMEOUT,
+        # PW1-R4-A: cross-tenant prepared-statement runtime closure.
+        # The SQLAlchemy asyncpg dialect maintains a per-pool LRU of server
+        # prepared statements keyed ONLY by SQL text. Because tenant routing
+        # is per-transaction search_path on a SHARED pool, a statement planned
+        # for one tenant's relation OIDs can be re-executed on a pooled
+        # connection after another tenant's provisioning/migration DDL has
+        # invalidated those plans -> asyncpg InvalidCachedStatementError (500
+        # to the requesting tenant). Disabling the dialect-level prepared
+        # statement cache (0) makes every execution use a fresh statement
+        # bound to the CURRENT transaction's search_path. Empirically on
+        # PG16 + pool_size=1, this single setting closes the A->B->A
+        # InvalidCachedStatementError reproduction; asyncpg's own
+        # statement_cache_size=0 is NOT used (it raises BufferError on
+        # asyncpg 0.31 in this driver path).
+        "prepared_statement_cache_size": 0,
         "server_settings": {
             "application_name": settings.APP_NAME,
             "jit": "off"  # Disable JIT for better consistency

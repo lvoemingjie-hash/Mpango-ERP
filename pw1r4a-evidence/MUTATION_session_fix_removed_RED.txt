@@ -1,0 +1,631 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-8.4.2, pluggy-1.6.0
+rootdir: C:\Users\Jeff0\pw1_r2_worktree\backend
+configfile: pytest.ini
+plugins: anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 9 items
+
+tests\test_dc12r1_h5_prepared_statement_cache_isolation.py ..F..         [ 55%]
+tests\test_pw1r4_cross_tenant_statement_cache.py FF..                    [100%]
+
+================================== FAILURES ===================================
+_______ test_runtime_policy_global_engine_survives_ddl_without_dispose ________
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:550: in _prepare_and_execute
+    self._rows = deque(await prepared_stmt.fetch(*parameters))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py:177: in fetch
+    data = await self.__bind_execute(args, 0, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py:268: in __bind_execute
+    data, status, _ = await self.__do_execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py:257: in __do_execute
+    return await executor(protocol)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+asyncpg/protocol/protocol.pyx:205: in bind_execute
+    ???
+E   asyncpg.exceptions.InvalidCachedStatementError: cached statement plan is invalid due to a database schema or configuration change
+
+The above exception was the direct cause of the following exception:
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:585: in execute
+    self._adapt_connection.await_(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:563: in _prepare_and_execute
+    self._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:513: in _handle_exception
+    self._adapt_connection._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:797: in _handle_exception
+    raise translated_error from error
+E   sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.InvalidCachedStatementError: <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+
+The above exception was the direct cause of the following exception:
+tests\test_dc12r1_h5_prepared_statement_cache_isolation.py:333: in test_runtime_policy_global_engine_survives_ddl_without_dispose
+    result = await session.execute(text(select_sql))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\ext\asyncio\session.py:449: in execute
+    result = await greenlet_spawn(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py:2351: in execute
+    return self._execute_internal(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py:2258: in _execute_internal
+    result = conn.execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:585: in execute
+    self._adapt_connection.await_(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:563: in _prepare_and_execute
+    self._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:513: in _handle_exception
+    self._adapt_connection._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:797: in _handle_exception
+    raise translated_error from error
+E   sqlalchemy.exc.NotSupportedError: (sqlalchemy.dialects.postgresql.asyncpg.InvalidCachedStatementError) <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+E   [SQL: SELECT label FROM "h5_policy_7a29bf7b".t_policy WHERE id = 1]
+E   (Background on this error at: https://sqlalche.me/e/20/tw8g)
+___________________ test_http_abab_cycles_survive_ddl_storm ___________________
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:550: in _prepare_and_execute
+    self._rows = deque(await prepared_stmt.fetch(*parameters))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py:177: in fetch
+    data = await self.__bind_execute(args, 0, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py:268: in __bind_execute
+    data, status, _ = await self.__do_execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py:257: in __do_execute
+    return await executor(protocol)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+asyncpg/protocol/protocol.pyx:205: in bind_execute
+    ???
+E   asyncpg.exceptions.InvalidCachedStatementError: cached statement plan is invalid due to a database schema or configuration change
+
+The above exception was the direct cause of the following exception:
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:585: in execute
+    self._adapt_connection.await_(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:563: in _prepare_and_execute
+    self._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:513: in _handle_exception
+    self._adapt_connection._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:797: in _handle_exception
+    raise translated_error from error
+E   sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.InvalidCachedStatementError: <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+
+The above exception was the direct cause of the following exception:
+tests\test_pw1r4_cross_tenant_statement_cache.py:200: in test_http_abab_cycles_survive_ddl_storm
+    assert await me(ta) == two_tenants["a"]["tenant_id"]
+           ^^^^^^^^^^^^
+tests\test_pw1r4_cross_tenant_statement_cache.py:190: in me
+    r = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\httpx\_client.py:1768: in get
+    return await self.request(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\httpx\_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\httpx\_client.py:1629: in send
+    response = await self._send_handling_auth(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\httpx\_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\httpx\_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\httpx\_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\httpx\_transports\asgi.py:170: in handle_async_request
+    await self.app(scope, receive, send)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\fastapi\applications.py:1135: in __call__
+    await super().__call__(scope, receive, send)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\applications.py:107: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python312\Lib\contextlib.py:158: in __exit__
+    self.gen.throw(value)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api\middleware\idempotency.py:85: in dispatch
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+..\..\AppData\Local\Programs\Python\Python312\Lib\contextlib.py:158: in __exit__
+    self.gen.throw(value)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api\middleware\auth.py:50: in dispatch
+    tenant_ctx = await self._strategy.resolve_tenant_context(auth_ctx)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+auth\strategies\jwt.py:35: in resolve_tenant_context
+    return await resolve_tenant_context(auth_ctx.token)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api\context\tenant.py:89: in resolve_tenant_context
+    user = await get_user_with_permissions(session, token.user_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+crud\user.py:151: in get_user_with_permissions
+    result = await db.execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\ext\asyncio\session.py:449: in execute
+    result = await greenlet_spawn(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py:2351: in execute
+    return self._execute_internal(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py:2249: in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\context.py:306: in orm_execute_statement
+    result = conn.execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:585: in execute
+    self._adapt_connection.await_(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:563: in _prepare_and_execute
+    self._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:513: in _handle_exception
+    self._adapt_connection._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:797: in _handle_exception
+    raise translated_error from error
+E   sqlalchemy.exc.NotSupportedError: (sqlalchemy.dialects.postgresql.asyncpg.InvalidCachedStatementError) <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+E   [SQL: SELECT users.email, users.password_hash, users.full_name, users.is_active, users.id, users.created_at, users.updated_at, users.is_deleted, users.deleted_at, users.created_by, users.updated_by 
+E   FROM users 
+E   WHERE users.id = $1::UUID]
+E   [parameters: (UUID('565c30eb-1f24-42bc-8e74-8440f8f9f085'),)]
+E   (Background on this error at: https://sqlalche.me/e/20/tw8g)
+---------------------------- Captured stdout setup ----------------------------
+[reconcile] t_r4a_a_cf2ee09e.payments: ensured ix_payments_order_id
+[reconcile] t_r4a_a_cf2ee09e.payments: ensured uq_payments_transaction_id
+[reconcile] t_r4a_a_cf2ee09e.retailer_prices: contract validated, indexes ensured
+[reconcile] t_r4a_a_cf2ee09e: granted schema USAGE to reporting_role
+[reconcile] t_r4a_a_cf2ee09e: created mv_sales_daily
+[reconcile] t_r4a_a_cf2ee09e: ensured idx_mv_sales_daily_u1
+[reconcile] t_r4a_a_cf2ee09e: ensured reporting_role table privileges
+[reconcile] t_r4a_a_cf2ee09e.import_runs: ensured indexes
+[reconcile] t_r4a_a_cf2ee09e: ensured U4 intake apply audit contract
+[reconcile] t_r4a_a_cf2ee09e: ensured DC-12R1-S1 retailer_operator RBAC + email index
+[reconcile] t_r4a_a_cf2ee09e: ensured DC-12R1-S3-S2B-I1 payment_declarations + receipt_sequences + receipt_number
+[bootstrap] Tenant schema 't_r4a_a_cf2ee09e' ready (19 tables, reconciled).
+[reconcile] t_r4a_b_cf2ee09e.payments: ensured ix_payments_order_id
+[reconcile] t_r4a_b_cf2ee09e.payments: ensured uq_payments_transaction_id
+[reconcile] t_r4a_b_cf2ee09e.retailer_prices: contract validated, indexes ensured
+[reconcile] t_r4a_b_cf2ee09e: granted schema USAGE to reporting_role
+[reconcile] t_r4a_b_cf2ee09e: created mv_sales_daily
+[reconcile] t_r4a_b_cf2ee09e: ensured idx_mv_sales_daily_u1
+[reconcile] t_r4a_b_cf2ee09e: ensured reporting_role table privileges
+[reconcile] t_r4a_b_cf2ee09e.import_runs: ensured indexes
+[reconcile] t_r4a_b_cf2ee09e: ensured U4 intake apply audit contract
+[reconcile] t_r4a_b_cf2ee09e: ensured DC-12R1-S1 retailer_operator RBAC + email index
+[reconcile] t_r4a_b_cf2ee09e: ensured DC-12R1-S3-S2B-I1 payment_declarations + receipt_sequences + receipt_number
+[bootstrap] Tenant schema 't_r4a_b_cf2ee09e' ready (19 tables, reconciled).
+------------------------------ Captured log call ------------------------------
+ERROR    api.middleware.auth:auth.py:132 Authentication middleware error: NotSupportedError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 550, in _prepare_and_execute
+    self._rows = deque(await prepared_stmt.fetch(*parameters))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py", line 177, in fetch
+    data = await self.__bind_execute(args, 0, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py", line 268, in __bind_execute
+    data, status, _ = await self.__do_execute(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py", line 257, in __do_execute
+    return await executor(protocol)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "asyncpg/protocol/protocol.pyx", line 205, in bind_execute
+asyncpg.exceptions.InvalidCachedStatementError: cached statement plan is invalid due to a database schema or configuration change
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.InvalidCachedStatementError: <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\pw1_r2_worktree\backend\api\middleware\auth.py", line 50, in dispatch
+    tenant_ctx = await self._strategy.resolve_tenant_context(auth_ctx)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\pw1_r2_worktree\backend\auth\strategies\jwt.py", line 35, in resolve_tenant_context
+    return await resolve_tenant_context(auth_ctx.token)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\pw1_r2_worktree\backend\api\context\tenant.py", line 89, in resolve_tenant_context
+    user = await get_user_with_permissions(session, token.user_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\pw1_r2_worktree\backend\crud\user.py", line 151, in get_user_with_permissions
+    result = await db.execute(
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 449, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.exc.NotSupportedError: (sqlalchemy.dialects.postgresql.asyncpg.InvalidCachedStatementError) <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+[SQL: SELECT users.email, users.password_hash, users.full_name, users.is_active, users.id, users.created_at, users.updated_at, users.is_deleted, users.deleted_at, users.created_by, users.updated_by 
+FROM users 
+WHERE users.id = $1::UUID]
+[parameters: (UUID('565c30eb-1f24-42bc-8e74-8440f8f9f085'),)]
+(Background on this error at: https://sqlalche.me/e/20/tw8g)
+ERROR    core.error_codes:error_codes.py:437 Unhandled exception: NotSupportedError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 550, in _prepare_and_execute
+    self._rows = deque(await prepared_stmt.fetch(*parameters))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py", line 177, in fetch
+    data = await self.__bind_execute(args, 0, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py", line 268, in __bind_execute
+    data, status, _ = await self.__do_execute(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py", line 257, in __do_execute
+    return await executor(protocol)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "asyncpg/protocol/protocol.pyx", line 205, in bind_execute
+asyncpg.exceptions.InvalidCachedStatementError: cached statement plan is invalid due to a database schema or configuration change
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.InvalidCachedStatementError: <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\pw1_r2_worktree\backend\api\middleware\idempotency.py", line 85, in dispatch
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\pw1_r2_worktree\backend\api\middleware\auth.py", line 50, in dispatch
+    tenant_ctx = await self._strategy.resolve_tenant_context(auth_ctx)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\pw1_r2_worktree\backend\auth\strategies\jwt.py", line 35, in resolve_tenant_context
+    return await resolve_tenant_context(auth_ctx.token)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\pw1_r2_worktree\backend\api\context\tenant.py", line 89, in resolve_tenant_context
+    user = await get_user_with_permissions(session, token.user_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\pw1_r2_worktree\backend\crud\user.py", line 151, in get_user_with_permissions
+    result = await db.execute(
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 449, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.exc.NotSupportedError: (sqlalchemy.dialects.postgresql.asyncpg.InvalidCachedStatementError) <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+[SQL: SELECT users.email, users.password_hash, users.full_name, users.is_active, users.id, users.created_at, users.updated_at, users.is_deleted, users.deleted_at, users.created_by, users.updated_by 
+FROM users 
+WHERE users.id = $1::UUID]
+[parameters: (UUID('565c30eb-1f24-42bc-8e74-8440f8f9f085'),)]
+(Background on this error at: https://sqlalche.me/e/20/tw8g)
+__________________ test_engine_aba_cycles_survive_ddl_storm ___________________
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:550: in _prepare_and_execute
+    self._rows = deque(await prepared_stmt.fetch(*parameters))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py:177: in fetch
+    data = await self.__bind_execute(args, 0, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py:268: in __bind_execute
+    data, status, _ = await self.__do_execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\asyncpg\prepared_stmt.py:257: in __do_execute
+    return await executor(protocol)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+asyncpg/protocol/protocol.pyx:205: in bind_execute
+    ???
+E   asyncpg.exceptions.InvalidCachedStatementError: cached statement plan is invalid due to a database schema or configuration change
+
+The above exception was the direct cause of the following exception:
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:585: in execute
+    self._adapt_connection.await_(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:563: in _prepare_and_execute
+    self._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:513: in _handle_exception
+    self._adapt_connection._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:797: in _handle_exception
+    raise translated_error from error
+E   sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.InvalidCachedStatementError: <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+
+The above exception was the direct cause of the following exception:
+tests\test_pw1r4_cross_tenant_statement_cache.py:226: in test_engine_aba_cycles_survive_ddl_storm
+    email_b = await user_full_name(b)
+              ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_pw1r4_cross_tenant_statement_cache.py:219: in user_full_name
+    result = await session.execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\ext\asyncio\session.py:449: in execute
+    result = await greenlet_spawn(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py:2351: in execute
+    return self._execute_internal(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\orm\session.py:2258: in _execute_internal
+    result = conn.execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:585: in execute
+    self._adapt_connection.await_(
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:563: in _prepare_and_execute
+    self._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:513: in _handle_exception
+    self._adapt_connection._handle_exception(error)
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py:797: in _handle_exception
+    raise translated_error from error
+E   sqlalchemy.exc.NotSupportedError: (sqlalchemy.dialects.postgresql.asyncpg.InvalidCachedStatementError) <class 'asyncpg.exceptions.InvalidCachedStatementError'>: cached statement plan is invalid due to a database schema or configuration change (SQLAlchemy asyncpg dialect will now invalidate all prepared caches in response to this exception)
+E   [SQL: SELECT full_name FROM users WHERE id = $1]
+E   [parameters: ('d71177c9-cf95-4915-a122-436a0a16d25b',)]
+E   (Background on this error at: https://sqlalche.me/e/20/tw8g)
+============================== warnings summary ===============================
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_http_abab_cycles_survive_ddl_storm
+  C:\Users\Jeff0\pw1_r2_worktree\backend\database\base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_http_abab_cycles_survive_ddl_storm
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_http_abab_cycles_survive_ddl_storm
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_http_abab_cycles_survive_ddl_storm
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_http_abab_cycles_survive_ddl_storm
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:646: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_dc12r1_h5_prepared_statement_cache_isolation.py::test_runtime_policy_global_engine_survives_ddl_without_dispose
+FAILED tests/test_pw1r4_cross_tenant_statement_cache.py::test_http_abab_cycles_survive_ddl_storm
+FAILED tests/test_pw1r4_cross_tenant_statement_cache.py::test_engine_aba_cycles_survive_ddl_storm
+=================== 3 failed, 6 passed, 5 warnings in 9.74s ===================

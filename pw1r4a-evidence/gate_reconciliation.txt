@@ -1,0 +1,70 @@
+PW1-R4-A full-suite reconciliation (pytest -q -rsx, fresh PG16+Redis7 stacks)
+gate A: 3635 passed / 48 skipped / 15 xfailed / 0 failed / 0 errors
+gate B: 3635 passed / 48 skipped / 15 xfailed / 0 failed / 0 errors
+skip-location sets identical: True
+xfailed node-ID sets identical: True
+--- XFAIL node IDs (canonical, 15) ---
+tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_overpayment_rejected_with_400
+tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_excessive_size
+tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_invalid_page
+tests/test_request_validation.py::TestRequestValidation::test_order_create_rejects_empty_items
+tests/test_request_validation.py::TestRequestValidation::test_order_item_rejects_invalid_quantity
+tests/test_request_validation.py::TestRequestValidation::test_user_create_rejects_missing_email
+tests/test_request_validation.py::TestRequestValidation::test_validation_error_has_structured_response
+tests/test_route_coverage.py::TestOpenAPIRouteCoverage::test_stub_endpoints_return_501
+tests/test_route_coverage.py::TestRoutePathParameters::test_order_id_path_parameter_accepted
+tests/test_route_coverage.py::TestRoutePathParameters::test_user_id_path_parameter_accepted
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/inventory/stocks-Stock]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/orders-Orders]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/payments-Payments]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/pricing/prices-Pricing]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/skus-Products/SKUs]
+--- SKIPPED canonical locations (48) ---
+tests\test_alembic_migrations.py:41
+tests\test_alembic_migrations.py:50
+tests\test_alembic_migrations.py:59
+tests\test_payments_schema_contract.py:304
+tests\test_payments_schema_contract.py:307
+tests\test_payments_schema_contract.py:312
+tests\test_payments_schema_contract.py:315
+tests\test_payments_schema_contract.py:320
+tests\test_payments_schema_contract.py:325
+tests\test_payments_schema_contract.py:542
+tests\test_payments_schema_contract.py:545
+tests\test_payments_schema_contract.py:550
+tests\test_payments_schema_contract.py:553
+tests\test_payments_schema_contract.py:558
+tests\test_payments_schema_contract.py:561
+tests\test_payments_schema_contract.py:566
+tests\test_payments_schema_contract.py:571
+tests\test_payments_schema_contract.py:576
+tests\test_payments_schema_contract.py:583
+tests\test_payments_schema_contract.py:589
+tests\test_payments_schema_contract.py:597
+tests\test_payments_schema_contract.py:602
+tests\test_route_coverage.py:164
+tests\test_route_coverage.py:171
+tests\test_route_coverage.py:46
+tests\test_s3_profiling.py:111
+tests\test_s3_profiling.py:96
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:290
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:315
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:322
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:328
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:345
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:367
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:581
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:585
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:589
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:593
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:597
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:601
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:605
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:613
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:617
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:621
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:625
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:643
+tests\test_s3b_fresh_tenant_live_runtime_proof.py:660
+tests\test_s5c_runtime_sku_import_http_integration.py:125
+tests\test_s5c_runtime_sku_import_http_integration.py:54

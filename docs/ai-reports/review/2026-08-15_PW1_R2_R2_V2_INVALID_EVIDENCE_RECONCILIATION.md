@@ -1,34 +1,44 @@
 # INVALID_EVIDENCE_RECONCILIATION — OpenCode V2 Full Browser Report
 
 **Supersedes**: `reports/dc12r1-mvp-l1-pw1-r2-r2-v2-opencode-full-browser-2026-08-15` (ba9da9b)
-**Date**: 2026-08-15 (PW1-R3)
+**Date**: 2026-08-15 (PW1-R3; facts corrected by PW1-R3-R1)
 **Status**: INVALID_EVIDENCE_RECONCILIATION — superseded; preserved as historical evidence.
 
-## Why the V2 evidence chain is invalid
+## Corrected facts (verified against the committed V2 artifacts, 2026-08-15)
 
-1. **JUnit contains ZERO failure cases** despite the report claiming 82 failed
-   nodes (`evidence/pw1-r2-r2-v2/junit.xml` has no `<failure>` elements at
-   all). The claimed node-level outcomes are not backed by the machine-derived
-   JUnit accounting.
-2. **No raw Playwright JSON** — `results.json` is a hand-built summary
-   (verdict/reason/stats), not machine-derived per-node evidence.
-3. The "all 82 failures are HTTP 429" attribution is therefore **unproven at
-   node level**; the per-spec breakdown (auth-matrix 2 fail, phase1 3 fail,
-   phase2 1 fail, ...) cannot be reconciled with the "all 429" claim from the
-   committed artifacts.
-4. The browser environment was also unsound for the intended comparison: the
-   authenticated browser sessions were being rate-limited on the anonymous
-   per-IP bucket (limit 100/min) because the middleware order defect
-   (PW1-R3 root cause) left every request — authenticated or not — on
-   `rate_limit:ip:{ip}`. A full 162-node run under that defect measures the
-   defect, not the product.
+| Metric | V2 report claimed | Artifact-verified (V2 junit.xml) |
+|---|---|---|
+| Collected | 162 | **162** testcases ✓ |
+| Passed | 80 | **104** (162 − 58) |
+| Failed | 82 | **58** `<failure>` blocks |
+| 429-caused failures | "all 82" | **47** failure blocks mention 429 (message or body) |
+| Non-429 failures | — | **11** failure blocks do not mention 429 (incl. 3× "public auth pages are reachable anonymously", Phase 4 idempotency/print nodes, Phase 5 isolation nodes) |
+
+## Why the evidence chain is invalid
+
+1. The report's headline numbers (80 passed / 82 failed, "all 429") contradict
+   the machine-derived JUnit accounting (104 passed / 58 failed; 47 with 429,
+   11 without). The narrative is not reconcilable with the committed artifact.
+2. No raw Playwright per-node JSON exists on the branch; `results.json` is a
+   hand-built summary. Node-level attribution is therefore unverifiable.
+3. The 11 non-429 failures (element-visibility/timeout-class errors) were
+   neither counted nor root-caused in the report.
+
+## Correction of PW1-R3's own earlier audit note
+
+PW1-R3's first marker (commit 07013d2) claimed the V2 JUnit contained "zero
+failure cases" — that was an audit REGEX error by the reviewer (the failure
+elements exist but attribute ordering did not match the pattern used). The
+correct audit is the table above: 162 testcases / 58 failures / 47 with 429 /
+11 without. The supersede verdict stands, for the corrected reason: the
+REPORTED counts contradict the machine artifacts.
 
 ## Disposition
 
 - The V2 branch and its artifacts remain untouched as historical evidence.
-- PW1-R3 closes the underlying product defect (authenticated contextual
-  requests now use `rate_limit:tenant:{tenant_id}:{user_id}` limit 1000;
-  anonymous/identity-only stay on the IP bucket limit 100; rejected auth is
-  rate-limited on the same IP bucket so no unlimited bypass exists).
+- PW1-R3 closes the underlying product defect (contextual JWTs use
+  `rate_limit:tenant:{tenant_id}:{user_id}` limit 1000; anonymous/identity-only
+  stay on the IP bucket limit 100; rejected auth is rate-limited on the same
+  IP bucket — no unlimited bypass).
 - Browser acceptance reruns (162/162 with machine-derived JUnit accounting)
-  are to be executed by OpenCode after the PW1-R3 Kilo bounded source review.
+  are to be executed by OpenCode after the PW1-R3-R1 Kilo bounded source review.

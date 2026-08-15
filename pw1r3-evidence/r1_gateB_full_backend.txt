@@ -1,0 +1,1077 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-8.4.2, pluggy-1.6.0
+rootdir: C:\Users\Jeff0\pw1_r2_worktree\backend
+configfile: pytest.ini
+plugins: anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 3693 items
+
+tests\api\test_wholesaler.py ....                                        [  0%]
+tests\b6_hardening\test_b6_global_tenant_filter.py ......                [  0%]
+tests\b6_hardening\test_b6_payment_atomicity.py .                        [  0%]
+tests\b6_hardening\test_b6_payments_api.py ....                          [  0%]
+tests\business\test_financial_loop.py ...                                [  0%]
+tests\business\test_s4_order_fulfillment_inventory_invariants.py ......  [  0%]
+tests\business\test_s4b_inventory_reversal_invariants.py .........       [  0%]
+tests\business\test_s4c_concurrent_fulfillment_oversell_invariants.py .. [  0%]
+...                                                                      [  1%]
+tests\business\test_s4d_inventory_movement_ledger_integrity.py ......... [  1%]
+                                                                         [  1%]
+tests\business\test_s4e_reservation_schema_contract.py ...               [  1%]
+tests\business\test_s4e_stock_reservation_lifecycle_audit.py ........... [  1%]
+.                                                                        [  1%]
+tests\business\test_s4f_business_invariant_closeout.py ........          [  1%]
+tests\security\test_exploit_guardrail.py ...                             [  1%]
+tests\security\test_jwt_boundaries.py ...........                        [  2%]
+tests\test_alembic_migrations.py sss....                                 [  2%]
+tests\test_auth_bypass.py .....                                          [  2%]
+tests\test_auth_regressions.py ..                                        [  2%]
+tests\test_b5_real_db.py ....                                            [  2%]
+tests\test_crud_scoped.py ..                                             [  2%]
+tests\test_dc10e_export_worker_tenant_context.py ........                [  3%]
+tests\test_dc10f_payment_method_integrity.py ....                        [  3%]
+tests\test_dc10f_r1_payment_method_migration.py ........................ [  3%]
+                                                                         [  3%]
+tests\test_dc10g_platform_uuid_export_error_hardening.py ........        [  4%]
+tests\test_dc10k_finance_receivables_runtime.py ..                       [  4%]
+tests\test_dc10l_order_status_enum_reconciliation.py ........            [  4%]
+tests\test_dc11d_payment_replay_concurrency_integrity.py ..........      [  4%]
+tests\test_dc11p0_platform_operator_identity_contract.py ............... [  4%]
+.                                                                        [  4%]
+tests\test_dc11p1_platform_operator_schema.py .......................... [  5%]
+..........                                                               [  5%]
+tests\test_dc11t2_async_test_utils.py ..............                     [  6%]
+tests\test_dc11t4c_reporting_bootstrap_contract.py ....                  [  6%]
+tests\test_dc11t4h_receivable_collection_integrity.py .............      [  6%]
+tests\test_dc12a_r2_credential_email_links.py ..............             [  7%]
+tests\test_dc12a_r3_orchestration_link_regression.py ...                 [  7%]
+tests\test_dc12r1_contract_d_r5_node_csv.py .....                        [  7%]
+tests\test_dc12r1_contract_d_r7_gen_fail_closed.py .......               [  7%]
+tests\test_dc12r1_contract_d_statement_print.py ........................ [  8%]
+...................................................                      [  9%]
+tests\test_dc12r1_h2_structured_http_error_contract.py ................. [ 10%]
+...........................                                              [ 10%]
+tests\test_dc12r1_h4_event_loop_pool_isolation.py .......                [ 10%]
+tests\test_dc12r1_h5_prepared_statement_cache_isolation.py ....          [ 11%]
+tests\test_dc12r1_h7_bcrypt_manifest_parity.py ......................... [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 15%]
+.......                                                                  [ 15%]
+tests\test_dc12r1_h7_setup_preflight.py ................................ [ 16%]
+........................................................................ [ 18%]
+........................................                                 [ 19%]
+tests\test_dc12r1_s1_h1_verification_token_terminal_state.py ......      [ 19%]
+tests\test_dc12r1_s1_r1_corrections.py ........                          [ 20%]
+tests\test_dc12r1_s1_r2_strict_mapping.py ....                           [ 20%]
+tests\test_dc12r1_s1_r3_migration_contract.py ...........                [ 20%]
+tests\test_dc12r1_s1_r4_exact_catalog.py ........                        [ 20%]
+tests\test_dc12r1_s1_r5_migration_preflight_exact_catalog.py ........... [ 21%]
+..............................                                           [ 21%]
+tests\test_dc12r1_s1_r5a_permission_registry_parity.py ....              [ 21%]
+tests\test_dc12r1_s1_retailer_identity.py ..............                 [ 22%]
+tests\test_dc12r1_s2_supplier_scoped_retailer_login.py ................. [ 22%]
+.................................                                        [ 23%]
+tests\test_dc12r1_s3_s1_catalog_order_hardening.py ..................... [ 24%]
+......................                                                   [ 24%]
+tests\test_dc12r1_s3_s2_read_only_retailer_finance.py .......            [ 25%]
+tests\test_dc12r1_s3_s2b_i1_financial_schema_foundation.py ............. [ 25%]
+.......................                                                  [ 26%]
+tests\test_dc12r1_s3_s2b_i1_r3_migration_preflight.py ..............     [ 26%]
+tests\test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py .............. [ 26%]
+...............                                                          [ 27%]
+tests\test_dc12r1_s3_s2b_i2a_canonical_payment_service.py .............. [ 27%]
+....                                                                     [ 27%]
+tests\test_dc12r1_s3_s2b_i2b_payment_declarations.py ................... [ 28%]
+.......................                                                  [ 28%]
+tests\test_dc12r1_s3_s2b_i2c_i1_printable_records.py ................... [ 29%]
+.................                                                        [ 29%]
+tests\test_dc1e_validation_error_serialization.py ..                     [ 29%]
+tests\test_dc1g_retailer_registration_binding_balance.py ..              [ 29%]
+tests\test_dc2h_production_smtp_compose_wiring.py ...                    [ 30%]
+tests\test_dc2m2_legacy_tenant_reconciliation_forward_migration.py ..... [ 30%]
+......                                                                   [ 30%]
+tests\test_dc3b_credential_recovery_backend.py ................          [ 30%]
+tests\test_dc5a_login_email_normalization.py .                           [ 30%]
+tests\test_finance_receivables_api.py .......................            [ 31%]
+tests\test_global_tenant_filter.py ......                                [ 31%]
+tests\test_health.py ........                                            [ 31%]
+tests\test_idempotency.py ............                                   [ 32%]
+tests\test_jwt_utils.py ........                                         [ 32%]
+tests\test_models_structure.py ........                                  [ 32%]
+tests\test_order_creation.py .                                           [ 32%]
+tests\test_orders_api.py ..........                                      [ 32%]
+tests\test_p25ed_platform_system_db_context.py ..........                [ 33%]
+tests\test_password_utils.py ....                                        [ 33%]
+tests\test_payment_atomicity.py ..                                       [ 33%]
+tests\test_payments_api.py ....                                          [ 33%]
+tests\test_payments_schema_contract.py ........ssssss.............ssssss [ 34%]
+sssssss                                                                  [ 34%]
+tests\test_phase3_pricing.py ................                            [ 34%]
+tests\test_phase4_pricing_safe_orders.py ..................              [ 35%]
+tests\test_phase5_order_payment.py ..............................x...... [ 36%]
+.................                                                        [ 36%]
+tests\test_platform_audit.py ..................                          [ 37%]
+tests\test_platform_audit_api.py ....................................... [ 38%]
+....                                                                     [ 38%]
+tests\test_platform_p0.py .............                                  [ 38%]
+tests\test_platform_p10_contracts.py ................................... [ 39%]
+........................................................................ [ 41%]
+..................................................................       [ 43%]
+tests\test_platform_p11c0_legacy_guard.py ........................       [ 44%]
+tests\test_platform_p12_support_console.py ............................. [ 44%]
+.................................                                        [ 45%]
+tests\test_platform_p13_operations_cockpit.py .......................... [ 46%]
+......................................                                   [ 47%]
+tests\test_platform_p15_incident_triage.py ............................. [ 48%]
+..                                                                       [ 48%]
+tests\test_platform_p17_registry.py .................................... [ 49%]
+......................                                                   [ 49%]
+tests\test_platform_p17dc_backup_migration.py .........                  [ 50%]
+tests\test_platform_p17dc_backup_models.py ..............                [ 50%]
+tests\test_platform_p17dc_backup_registry_read.py ...................... [ 51%]
+....                                                                     [ 51%]
+tests\test_platform_p18_controlled_actions.py .......................... [ 52%]
+..........................                                               [ 52%]
+tests\test_platform_p18d_real_registry.py ............                   [ 53%]
+tests\test_platform_p19_approval_workflow.py ........................... [ 53%]
+................                                                         [ 54%]
+tests\test_platform_p20_durable_approval_governance.py ................. [ 54%]
+......................................................                   [ 56%]
+tests\test_platform_p21_durable_approval_adapter_implementation.py ..... [ 56%]
+..................                                                       [ 56%]
+tests\test_platform_p21_durable_approval_adapter_skeleton.py ........... [ 57%]
+.....................                                                    [ 57%]
+tests\test_platform_p21_durable_approval_migration.py ......             [ 57%]
+tests\test_platform_p21_durable_approval_models.py ..................... [ 58%]
+.....                                                                    [ 58%]
+tests\test_platform_p21_durable_approval_schema.py ..................... [ 59%]
+..........                                                               [ 59%]
+tests\test_platform_p21dd_runtime_storage_cutover_gate.py .............. [ 59%]
+......................                                                   [ 60%]
+tests\test_platform_p21e_durable_approval_runtime_closeout.py ........   [ 60%]
+tests\test_platform_p22_controlled_execution.py ........................ [ 61%]
+.....................................                                    [ 62%]
+tests\test_platform_p22e1_runtime_governed_adapter_seam.py ............. [ 62%]
+................                                                         [ 62%]
+tests\test_platform_p22e3_backup_check_source_probe.py ................. [ 63%]
+...........                                                              [ 63%]
+tests\test_platform_p22g_governed_backup_check.py ...................... [ 64%]
+....                                                                     [ 64%]
+tests\test_platform_p23_operator_task_queue.py ......................... [ 65%]
+.................                                                        [ 65%]
+tests\test_platform_p23_source_materialization.py ...................... [ 66%]
+....................                                                     [ 66%]
+tests\test_platform_p24_incident_runbook_closeout.py ................... [ 67%]
+.....................                                                    [ 67%]
+tests\test_platform_p25eb_durable_approval_resolver_integration.py ..... [ 67%]
+.....                                                                    [ 68%]
+tests\test_platform_stats_api.py .............                           [ 68%]
+tests\test_pw1r3_rate_limit_context.py .......                           [ 68%]
+tests\test_r4_middleware_tenant_context_contract.py ...                  [ 68%]
+tests\test_rbac_enforcement.py .......................                   [ 69%]
+tests\test_receivables_service.py ...............                        [ 69%]
+tests\test_reliability.py ....................                           [ 70%]
+tests\test_request_validation.py ...xxxxxx                               [ 70%]
+tests\test_route_authorization_policy.py ............................... [ 71%]
+....                                                                     [ 71%]
+tests\test_route_coverage.py sx.xxss                                     [ 71%]
+tests\test_s3_profiling.py .........ss.........                          [ 72%]
+tests\test_s3a_fresh_tenant_runtime_smoke.py .............               [ 72%]
+tests\test_s3b_fresh_tenant_live_runtime_proof.py ...sssssssssssssssssss [ 73%]
+                                                                         [ 73%]
+tests\test_s3b_simple.py .                                               [ 73%]
+tests\test_s3c_cache.py ..........                                       [ 73%]
+tests\test_s3c_integration.py ......                                     [ 73%]
+tests\test_s3c_self_contained_fresh_tenant_live_proof.py ............... [ 73%]
+..                                                                       [ 74%]
+tests\test_s4_jobs_local.py ...........                                  [ 74%]
+tests\test_s4_jobs_persistence.py .....                                  [ 74%]
+tests\test_s4g_migration_infrastructure_hardening.py .....               [ 74%]
+tests\test_s5_5_ledger_hardening.py ...........                          [ 74%]
+tests\test_s5_ledger.py ...............                                  [ 75%]
+tests\test_s5_order_state_machine.py ...............                     [ 75%]
+tests\test_s5a_fresh_tenant_real_user_journey_gate.py ...                [ 75%]
+tests\test_s5c_runtime_sku_import_http_integration.py ss                 [ 75%]
+tests\test_s5d4b_settled_cash_payment.py ............                    [ 76%]
+tests\test_s5d5_payment_ledger_runtime_invariant.py .....                [ 76%]
+tests\test_s5d6_multi_partial_payment_state_machine.py ..                [ 76%]
+tests\test_s6_2_materialized_views.py .....                              [ 76%]
+tests\test_s6_3_dashboard_api.py ...........................             [ 77%]
+tests\test_s6_4_async_exports.py ......................................  [ 78%]
+tests\test_s6_p_reporting_constraints.py ........                        [ 78%]
+tests\test_s6b_payment_write_path_unification.py .                       [ 78%]
+tests\test_s6c_reset_staging_current_head_gate.py ....                   [ 78%]
+tests\test_s6e_rbac_permission_registry_drift_gate.py ......             [ 78%]
+tests\test_s7_1_policy.py .............................................. [ 80%]
+.........                                                                [ 80%]
+tests\test_s7_2_enforcement.py ......................................    [ 81%]
+tests\test_s7_4_t3_resolver_api.py ....................................  [ 82%]
+tests\test_s7_4_tenant_assets.py ....................................... [ 83%]
+...............                                                          [ 83%]
+tests\test_s7_5_headless_usage.py ...................................... [ 84%]
+....                                                                     [ 84%]
+tests\test_schema_security.py ......                                     [ 85%]
+tests\test_search_path.py .                                              [ 85%]
+tests\test_security_privacy.py .................                         [ 85%]
+tests\test_security_s2_5.py ..............................               [ 86%]
+tests\test_tenant_isolation.py ....                                      [ 86%]
+tests\test_test_mode_auth_bypass.py .                                    [ 86%]
+tests\test_token_properties.py .....                                     [ 86%]
+tests\test_u1_bootstrap_permission_completeness.py .........             [ 86%]
+tests\test_u1r1_bootstrap_completeness.py .................xxxxx...      [ 87%]
+tests\test_u3b1_contract_foundation.py ...........................       [ 88%]
+tests\test_u3b2_live_db_import_preview_validate.py ..............        [ 88%]
+tests\test_u3b2_preview_validate.py .................................... [ 89%]
+.................................                                        [ 90%]
+tests\test_u3c_import_apply.py ................................          [ 91%]
+tests\test_u3c_live_db_apply.py ........                                 [ 91%]
+tests\test_u3e_e2e_hardening.py ..........................               [ 92%]
+tests\test_u4c_intake_api_contract.py ............                       [ 92%]
+tests\test_u4c_intake_backend_schema.py ......                           [ 92%]
+tests\test_u4d_intake_parser_preview.py ...............                  [ 93%]
+tests\test_u4ib1_intake_apply_audit_schema.py ....                       [ 93%]
+tests\test_u4ib2_intake_apply_service.py .............                   [ 93%]
+tests\test_u6b_tenant_onboarding_schema.py ...........                   [ 93%]
+tests\test_u6c_signup_email_verification_skeleton.py ..........          [ 94%]
+tests\test_u6d_verify_email_endpoint.py ........                         [ 94%]
+tests\test_u6e0_onboarding_status_token_schema.py ........               [ 94%]
+tests\test_u6e_onboarding_status_endpoint.py .............               [ 94%]
+tests\test_u6f_onboarding_auth_chain_closeout.py .......                 [ 95%]
+tests\test_u6g_tenant_provisioning_contract.py .......                   [ 95%]
+tests\test_u6h0_tenant_provisioning_schema_gap_decision.py ............. [ 95%]
+.....                                                                    [ 95%]
+tests\test_u6h1_tenant_provisioning_service_skeleton.py ..........       [ 96%]
+tests\test_u6h2_tenant_provisioning_wholesaler_schema.py ..............  [ 96%]
+tests\test_u6h3_tenant_provisioning_reconcile_cleanup.py ........        [ 96%]
+tests\test_u6i0_owner_credential_setup_contract.py .........             [ 96%]
+tests\test_u6i1_owner_credential_setup_schema.py ......                  [ 97%]
+tests\test_u6i2_owner_credential_setup_token_issue.py ..............     [ 97%]
+tests\test_u6i3_owner_credential_setup_consume.py ............           [ 97%]
+tests\test_u6i4_first_admin_rbac_creation.py .........                   [ 98%]
+tests\test_u6i5_owner_credential_setup_endpoint.py .............         [ 98%]
+tests\test_u6i6_onboarding_e2e_closeout.py .                             [ 98%]
+tests\test_u6k_production_smtp_email_delivery.py .....                   [ 98%]
+tests\test_u6l_email_verified_onboarding_orchestration.py .......        [ 98%]
+tests\test_users_roles_api.py .......................                    [ 99%]
+tests\test_uuid_serialization.py .....                                   [ 99%]
+tests\test_v019_camel_adapter.py .................                       [100%]
+
+============================== warnings summary ===============================
+..\..\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\_pytest\config\__init__.py:833
+  C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\_pytest\config\__init__.py:833: PytestAssertRewriteWarning: Module already imported so cannot be rewritten; tests.reporting_bootstrap_contract_helpers
+    self.import_plugin(import_spec)
+
+database\base.py:7
+  C:\Users\Jeff0\pw1_r2_worktree\backend\database\base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+core\structured_logging.py:89: 33 warnings
+tests/business/test_financial_loop.py: 35 warnings
+tests/business/test_s4_order_fulfillment_inventory_invariants.py: 21 warnings
+tests/business/test_s4b_inventory_reversal_invariants.py: 47 warnings
+tests/business/test_s4c_concurrent_fulfillment_oversell_invariants.py: 32 warnings
+tests/business/test_s4d_inventory_movement_ledger_integrity.py: 49 warnings
+tests/business/test_s4e_reservation_schema_contract.py: 2 warnings
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py: 47 warnings
+tests/business/test_s4f_business_invariant_closeout.py: 49 warnings
+tests/security/test_exploit_guardrail.py: 3 warnings
+tests/test_auth_bypass.py: 5 warnings
+tests/test_b5_real_db.py: 18 warnings
+tests/test_dc10e_export_worker_tenant_context.py: 13 warnings
+tests/test_dc10f_payment_method_integrity.py: 4 warnings
+tests/test_dc10f_r1_payment_method_migration.py: 42 warnings
+tests/test_dc10g_platform_uuid_export_error_hardening.py: 1 warning
+tests/test_dc10k_finance_receivables_runtime.py: 2 warnings
+tests/test_dc10l_order_status_enum_reconciliation.py: 10 warnings
+tests/test_dc11d_payment_replay_concurrency_integrity.py: 35 warnings
+tests/test_security_privacy.py: 1 warning
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\structured_logging.py:89: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat() + "Z",
+
+tests\test_idempotency.py:32
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_idempotency.py:32: PytestCollectionWarning: cannot collect test class 'TestIdempotencyMiddleware' because it has a __init__ constructor (from: tests/test_idempotency.py)
+    class TestIdempotencyMiddleware:
+
+tests\test_s3c_cache.py:20
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_s3c_cache.py:20: PytestCollectionWarning: cannot collect test class 'TestUser' because it has a __init__ constructor (from: tests/test_s3c_cache.py)
+    class TestUser(BaseModel):
+
+tests/business/test_s4_order_fulfillment_inventory_invariants.py: 3 warnings
+tests/business/test_s4b_inventory_reversal_invariants.py: 6 warnings
+tests/business/test_s4c_concurrent_fulfillment_oversell_invariants.py: 6 warnings
+tests/business/test_s4d_inventory_movement_ledger_integrity.py: 6 warnings
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py: 5 warnings
+tests/business/test_s4f_business_invariant_closeout.py: 3 warnings
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py: 1 warning
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\orders.py:983: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/business/test_s4b_inventory_reversal_invariants.py::test_return_after_fulfillment_restores_stock_and_writes_restock_movement
+tests/business/test_s4b_inventory_reversal_invariants.py::test_duplicate_return_restores_inventory_exactly_once
+tests/business/test_s4b_inventory_reversal_invariants.py::test_return_restock_is_tenant_schema_isolated
+tests/business/test_s4b_inventory_reversal_invariants.py::test_return_posts_refund_ledger_and_inventory_restock
+tests/business/test_s4d_inventory_movement_ledger_integrity.py::test_return_movement_math_sequence_reference_and_type
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_return_restores_on_hand_without_creating_reservation
+tests/business/test_s4f_business_invariant_closeout.py::test_return_restores_on_hand_without_re_reserving_and_duplicate_is_stable
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py::test_s5a_fresh_tenant_real_user_journey_gate
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\orders.py:1133: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/business/test_s4b_inventory_reversal_invariants.py::test_confirmed_cancel_does_not_change_stock_or_write_inventory_movement
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_cancel_releases_only_this_order_reservation_rows
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_duplicate_cancel_does_not_double_release_reservation
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_reserve_release_and_consume_movement_boundaries
+tests/business/test_s4f_business_invariant_closeout.py::test_cancel_confirmed_releases_reservation_and_paid_or_fulfilled_cancel_is_rejected
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\orders.py:1043: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/business/test_s4d_inventory_movement_ledger_integrity.py::test_manual_adjustment_movements_use_manual_reference_and_math
+tests/business/test_s4d_inventory_movement_ledger_integrity.py::test_manual_adjustment_movements_use_manual_reference_and_math
+tests/business/test_s4d_inventory_movement_ledger_integrity.py::test_movement_list_endpoint_matches_database
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\inventory.py:233: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/business/test_s4d_inventory_movement_ledger_integrity.py::test_movement_list_endpoint_matches_database
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\inventory.py:300: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return DataResponse(success=True, data=data, timestamp=datetime.utcnow())
+
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py: 14 warnings
+tests/business/test_s4f_business_invariant_closeout.py: 8 warnings
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py: 2 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\orders.py:644: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py: 4 warnings
+tests/business/test_s4f_business_invariant_closeout.py: 4 warnings
+tests/test_dc11d_payment_replay_concurrency_integrity.py: 9 warnings
+tests/test_dc11t4h_receivable_collection_integrity.py: 15 warnings
+tests/test_dc12r1_contract_d_statement_print.py: 30 warnings
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py: 22 warnings
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py: 7 warnings
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py: 11 warnings
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py: 1 warning
+tests/test_s5d4b_settled_cash_payment.py: 1 warning
+tests/test_s5d5_payment_ledger_runtime_invariant.py: 7 warnings
+tests/test_s5d6_multi_partial_payment_state_machine.py: 6 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\repositories\payment_repository.py:288: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py: 4 warnings
+tests/business/test_s4f_business_invariant_closeout.py: 4 warnings
+tests/test_dc11d_payment_replay_concurrency_integrity.py: 7 warnings
+tests/test_dc11t4h_receivable_collection_integrity.py: 15 warnings
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py: 7 warnings
+tests/test_phase5_order_payment.py: 11 warnings
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py: 1 warning
+tests/test_s5d4b_settled_cash_payment.py: 6 warnings
+tests/test_s5d5_payment_ledger_runtime_invariant.py: 7 warnings
+tests/test_s5d6_multi_partial_payment_state_machine.py: 6 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\orders.py:891: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/security/test_jwt_boundaries.py: 8 warnings
+tests/test_dc12r1_contract_d_statement_print.py: 92 warnings
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py: 2 warnings
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py: 1 warning
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py: 56 warnings
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py: 32 warnings
+tests/test_dc3b_credential_recovery_backend.py: 20 warnings
+tests/test_platform_p10_contracts.py: 4 warnings
+tests/test_pw1r3_rate_limit_context.py: 1 warning
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py: 2 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\security.py:108: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/security/test_jwt_boundaries.py: 3 warnings
+tests/test_dc12r1_contract_d_statement_print.py: 186 warnings
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py: 46 warnings
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py: 62 warnings
+tests/test_dc12r1_s3_s2_read_only_retailer_finance.py: 12 warnings
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py: 98 warnings
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py: 90 warnings
+tests/test_dc3b_credential_recovery_backend.py: 14 warnings
+tests/test_jwt_utils.py: 8 warnings
+tests/test_pw1r3_rate_limit_context.py: 3 warnings
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py: 15 warnings
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py: 2 warnings
+tests/test_token_properties.py: 140 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_auth_regressions.py: 1 warning
+tests/test_dc12r1_contract_d_statement_print.py: 46 warnings
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py: 28 warnings
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py: 16 warnings
+tests/test_dc3b_credential_recovery_backend.py: 7 warnings
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py: 1 warning
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:426: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_auth_regressions.py::test_get_current_user_identity_token_returns_nullable_email
+tests/test_pw1r3_rate_limit_context.py::test_identity_only_jwt_uses_ip_limit_100
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:618: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_b5_real_db.py::TestB5RealDB::test_idempotency_violation
+tests/test_b5_real_db.py::TestB5RealDB::test_transfer_payment_first
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestNamespaceIsolation::test_direct_pay_rejects_reserved_prefix
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_direct_payment_reserved_namespace_rejected
+tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_structured_full_payment_returns_200
+tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_partial_payment_returns_partially_paid
+tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_overpayment_rejected_with_400
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\middleware\idempotency.py:218: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "expires_at": datetime.utcnow() + timedelta(minutes=5)
+
+tests/test_dc10f_payment_method_integrity.py: 2 warnings
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py: 4 warnings
+tests/test_dc1e_validation_error_serialization.py: 2 warnings
+tests/test_request_validation.py: 104 warnings
+tests/test_u1r1_bootstrap_completeness.py: 10 warnings
+  C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\starlette\_exception_handler.py:59: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    response = await handler(conn, exc)
+
+tests/test_dc10k_finance_receivables_runtime.py: 1 warning
+tests/test_finance_receivables_api.py: 19 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\finance.py:414: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_sequential_same_financial_result_replay_creates_one_financial_result
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_concurrent_same_financial_result_replay_creates_one_financial_result
+tests/test_dc11t4h_receivable_collection_integrity.py::test_credit_collection_idempotent_replay_has_no_duplicate_ledger
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\orders.py:216: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc11t4c_reporting_bootstrap_contract.py: 1 warning
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py: 4 warnings
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py: 112 warnings
+tests/test_platform_p17dc_backup_migration.py: 14 warnings
+tests/test_platform_p21_durable_approval_adapter_implementation.py: 1 warning
+tests/test_platform_p21_durable_approval_migration.py: 11 warnings
+tests/test_platform_p21_durable_approval_schema.py: 1 warning
+tests/test_platform_p21dd_runtime_storage_cutover_gate.py: 1 warning
+tests/test_platform_p21e_durable_approval_runtime_closeout.py: 1 warning
+tests/test_s4g_migration_infrastructure_hardening.py: 2 warnings
+tests/test_u6f_onboarding_auth_chain_closeout.py: 1 warning
+tests/test_u6i1_owner_credential_setup_schema.py: 1 warning
+  C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\alembic\config.py:612: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+tests/test_dc11t4h_receivable_collection_integrity.py::test_credit_sale_partial_final_collection_and_finance_summary
+tests/test_finance_receivables_api.py::test_get_receivables_summary_returns_200_shape
+tests/test_finance_receivables_api.py::test_get_receivables_summary_calls_service_once
+tests/test_finance_receivables_api.py::test_get_receivables_summary_empty_result
+tests/test_finance_receivables_api.py::test_receivables_response_has_stable_keys
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\finance.py:364: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_contract_d_statement_print.py: 47 warnings
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py: 22 warnings
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py: 31 warnings
+tests/test_dc12r1_s3_s2_read_only_retailer_finance.py: 6 warnings
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py: 21 warnings
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py: 29 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\client\auth.py:314: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_contract_d_statement_print.py: 30 warnings
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py: 17 warnings
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py: 11 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\client\orders.py:624: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_contract_d_statement_print.py: 46 warnings
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py: 1 warning
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py: 28 warnings
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py: 16 warnings
+tests/test_dc3b_credential_recovery_backend.py: 8 warnings
+tests/test_dc5a_login_email_normalization.py: 1 warning
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py: 1 warning
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:310: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_both_routes_reference_the_same_shared_mapper
+  tests\test_dc12r1_contract_d_statement_print.py:2919: PytestWarning: The test <Function test_both_routes_reference_the_same_shared_mapper> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_both_routes_reference_the_same_shared_mapper(self):
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[view-ok]
+  tests\test_dc12r1_contract_d_statement_print.py:2935: PytestWarning: The test <Function test_byte_contract_table[view-ok]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[not_found-404]
+  tests\test_dc12r1_contract_d_statement_print.py:2935: PytestWarning: The test <Function test_byte_contract_table[not_found-404]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[period-400]
+  tests\test_dc12r1_contract_d_statement_print.py:2935: PytestWarning: The test <Function test_byte_contract_table[period-400]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[range-too-large-400]
+  tests\test_dc12r1_contract_d_statement_print.py:2935: PytestWarning: The test <Function test_byte_contract_table[range-too-large-400]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[ledger-scope-409]
+  tests\test_dc12r1_contract_d_statement_print.py:2935: PytestWarning: The test <Function test_byte_contract_table[ledger-scope-409]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[internal-inconsistent-409]
+  tests\test_dc12r1_contract_d_statement_print.py:2935: PytestWarning: The test <Function test_byte_contract_table[internal-inconsistent-409]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[reconciliation-409]
+  tests\test_dc12r1_contract_d_statement_print.py:2935: PytestWarning: The test <Function test_byte_contract_table[reconciliation-409]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[fallback-404]
+  tests\test_dc12r1_contract_d_statement_print.py:2935: PytestWarning: The test <Function test_byte_contract_table[fallback-404]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[not_found]
+  tests\test_dc12r1_contract_d_statement_print.py:3010: PytestWarning: The test <Function test_supplier_and_client_mapping_are_identical[not_found]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[period]
+  tests\test_dc12r1_contract_d_statement_print.py:3010: PytestWarning: The test <Function test_supplier_and_client_mapping_are_identical[period]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[range]
+  tests\test_dc12r1_contract_d_statement_print.py:3010: PytestWarning: The test <Function test_supplier_and_client_mapping_are_identical[range]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[scope]
+  tests\test_dc12r1_contract_d_statement_print.py:3010: PytestWarning: The test <Function test_supplier_and_client_mapping_are_identical[scope]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[inconsistent]
+  tests\test_dc12r1_contract_d_statement_print.py:3010: PytestWarning: The test <Function test_supplier_and_client_mapping_are_identical[inconsistent]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[recon]
+  tests\test_dc12r1_contract_d_statement_print.py:3010: PytestWarning: The test <Function test_supplier_and_client_mapping_are_identical[recon]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[fallback]
+  tests\test_dc12r1_contract_d_statement_print.py:3010: PytestWarning: The test <Function test_supplier_and_client_mapping_are_identical[fallback]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize(
+
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_mutation_evidence_one_sided_drift_is_detectable
+  tests\test_dc12r1_contract_d_statement_print.py:3040: PytestWarning: The test <Function test_mutation_evidence_one_sided_drift_is_detectable> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_mutation_evidence_one_sided_drift_is_detectable(self):
+
+tests/test_dc12r1_h2_structured_http_error_contract.py::TestErrorCodePreservation::test_explicit_public_details_preserved
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestMalformedCode422::test_special_chars_code_returns_422
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestMalformedCode422::test_symbol_code_executes_zero_sql
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestProductionErrorContract::test_422_malformed_code_is_clean_envelope
+  C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\fastapi\routing.py:243: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+tests/test_dc12r1_s1_h1_verification_token_terminal_state.py: 6 warnings
+tests/test_u6c_signup_email_verification_skeleton.py: 10 warnings
+tests/test_u6d_verify_email_endpoint.py: 7 warnings
+tests/test_u6e_onboarding_status_endpoint.py: 14 warnings
+tests/test_u6f_onboarding_auth_chain_closeout.py: 9 warnings
+tests/test_u6i6_onboarding_e2e_closeout.py: 1 warning
+tests/test_u6k_production_smtp_email_delivery.py: 4 warnings
+tests/test_u6l_email_verified_onboarding_orchestration.py: 7 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:139: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_s1_h1_verification_token_terminal_state.py: 1 warning
+tests/test_u6d_verify_email_endpoint.py: 3 warnings
+tests/test_u6e_onboarding_status_endpoint.py: 1 warning
+tests/test_u6f_onboarding_auth_chain_closeout.py: 3 warnings
+tests/test_u6i6_onboarding_e2e_closeout.py: 1 warning
+tests/test_u6l_email_verified_onboarding_orchestration.py: 5 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:182: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_compatible_setup_token_table_accepted
+  tests\test_dc12r1_s1_r3_migration_contract.py:90: PytestWarning: The test <Function test_compatible_setup_token_table_accepted> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_compatible_setup_token_table_accepted():
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[wrong_purpose_check-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'wrong_purpose'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql0]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[wrong_purpose_check-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'wrong_purpose'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql0]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[missing_used_revoked_check-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            \n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql1]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[missing_used_revoked_check-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            \n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql1]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[token_hash_not_unique-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL)\n        )\n    -extra_sql2]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[token_hash_not_unique-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL)\n        )\n    -extra_sql2]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[fk_missing_cascade-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id),\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql3]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[fk_missing_cascade-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id),\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql3]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[wrong_column_type-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash TEXT NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql4]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[wrong_column_type-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash TEXT NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql4]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[nullable_should_be_not_null-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128),\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql5]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[nullable_should_be_not_null-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128),\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql5]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[missing_issued_by_column-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            \n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql6]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[missing_issued_by_column-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            \n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql6]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[nonunique_active_index-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql7]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[nonunique_active_index-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql7]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[wrong_key_in_active_index-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql8]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[wrong_key_in_active_index-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql8]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[wrong_predicate_in_active_index-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql9]
+  tests\test_dc12r1_s1_r3_migration_contract.py:104: PytestWarning: The test <Function test_malformed_setup_token_table_rejected[wrong_predicate_in_active_index-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql9]> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    @pytest.mark.parametrize("label,replace_ddl,extra_sql", [
+
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRefreshPreservesContext::test_refresh_returns_same_tenant_context
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:519: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRefreshPreservesContext::test_logout_succeeds
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:553: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRealRegisteredRouteDenials::test_retailer_can_still_use_permitted_client_route
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestHappyPathPreserved::test_catalog_readable
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\client\products.py:136: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py: 10 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\client\orders.py:214: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestHappyPathPreserved::test_order_lifecycle
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestDualKeyDbScoping::test_list_excludes_wrong_retailer
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestSameSchemaWrongEntityExclusion::test_list_excludes_wrong_wholesaler
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentityHttp::test_list_malformed_wholesaler_id
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentityHttp::test_list_malformed_retailer_id
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\client\orders.py:274: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestHappyPathPreserved::test_order_lifecycle
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\client\orders.py:316: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestHappyPathPreserved::test_order_lifecycle
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\client\orders.py:443: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestGap07GovernanceFreeze::test_no_client_route_requires_client_payments_create
+  tests\test_dc12r1_s3_s1_catalog_order_hardening.py:560: PytestWarning: The test <Function test_no_client_route_requires_client_payments_create> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_no_client_route_requires_client_payments_create(self):
+
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestGap07GovernanceFreeze::test_no_unexpected_client_mutation_route
+  tests\test_dc12r1_s3_s1_catalog_order_hardening.py:565: PytestWarning: The test <Function test_no_unexpected_client_mutation_route> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_no_unexpected_client_mutation_route(self):
+
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestClientRouteAllowlist::test_exact_client_route_inventory
+  tests\test_dc12r1_s3_s1_catalog_order_hardening.py:632: PytestWarning: The test <Function test_exact_client_route_inventory> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_exact_client_route_inventory(self):
+
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestClientRouteAllowlist::test_client_payment_and_finance_routes_are_get_only
+  tests\test_dc12r1_s3_s1_catalog_order_hardening.py:689: PytestWarning: The test <Function test_client_payment_and_finance_routes_are_get_only> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_client_payment_and_finance_routes_are_get_only(self):
+
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestOrmMetadataParity::test_receipt_sequence_business_date_is_char8
+  tests\test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:296: PytestWarning: The test <Function test_receipt_sequence_business_date_is_char8> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_receipt_sequence_business_date_is_char8(self):
+
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestOrmMetadataParity::test_receipt_sequence_next_seq_is_integer_not_null
+  tests\test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:302: PytestWarning: The test <Function test_receipt_sequence_next_seq_is_integer_not_null> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_receipt_sequence_next_seq_is_integer_not_null(self):
+
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestOrmMetadataParity::test_declared_amount_is_numeric_12_2
+  tests\test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:308: PytestWarning: The test <Function test_declared_amount_is_numeric_12_2> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_declared_amount_is_numeric_12_2(self):
+
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestOrmMetadataParity::test_payment_declaration_has_no_is_deleted
+  tests\test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:315: PytestWarning: The test <Function test_payment_declaration_has_no_is_deleted> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_payment_declaration_has_no_is_deleted(self):
+
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestOrmMetadataParity::test_check_constraints_on_metadata
+  tests\test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:319: PytestWarning: The test <Function test_check_constraints_on_metadata> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_check_constraints_on_metadata(self):
+
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestOrmMetadataParity::test_fk_restrict_on_order_id
+  tests\test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:327: PytestWarning: The test <Function test_fk_restrict_on_order_id> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_fk_restrict_on_order_id(self):
+
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestOrmMetadataParity::test_fk_restrict_on_confirmation_payment_id
+  tests\test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:333: PytestWarning: The test <Function test_fk_restrict_on_confirmation_payment_id> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_fk_restrict_on_confirmation_payment_id(self):
+
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestOrmMetadataParity::test_model_exports
+  tests\test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:339: PytestWarning: The test <Function test_model_exports> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_model_exports(self):
+
+tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestOrmMetadataAllIndexes::test_payment_declarations_indexes_in_metadata
+  tests\test_dc12r1_s3_s2b_i1_r3_migration_preflight.py:177: PytestWarning: The test <Function test_payment_declarations_indexes_in_metadata> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_payment_declarations_indexes_in_metadata(self):
+
+tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestOrmMetadataAllIndexes::test_all_three_check_constraints_present
+  tests\test_dc12r1_s3_s2b_i1_r3_migration_preflight.py:190: PytestWarning: The test <Function test_all_three_check_constraints_present> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_all_three_check_constraints_present(self):
+
+tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestOrmMetadataAllIndexes::test_receipt_sequence_char8_pk
+  tests\test_dc12r1_s3_s2b_i1_r3_migration_preflight.py:198: PytestWarning: The test <Function test_receipt_sequence_char8_pk> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_receipt_sequence_char8_pk(self):
+
+tests/test_dc1e_validation_error_serialization.py::test_validation_exception_handler_json_encodes_decimal_uuid_datetime_and_nested_values
+tests/test_dc1e_validation_error_serialization.py::test_validation_exception_handler_json_encodes_decimal_uuid_datetime_and_nested_values
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_dc1e_validation_error_serialization.py:87: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    response = await validation_exception_handler(request, exc)
+
+tests/test_dc3b_credential_recovery_backend.py: 14 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:737: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py::test_reset_with_valid_token_updates_password
+tests/test_dc3b_credential_recovery_backend.py::test_invalid_states_fail_neutrally
+tests/test_dc3b_credential_recovery_backend.py::test_reset_updates_both_tenant_copies
+tests/test_dc3b_credential_recovery_backend.py::test_login_succeeds_after_reset_with_multiple_copies
+tests/test_dc3b_credential_recovery_backend.py::test_no_internal_ids_tokens_hashes_in_public_responses
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:811: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py::test_setup_credential_propagates_to_other_tenant_copies
+tests/test_u6i5_owner_credential_setup_endpoint.py::test_setup_credential_succeeds_for_valid_token_and_password
+tests/test_u6i5_owner_credential_setup_endpoint.py::test_duplicate_setup_is_idempotent
+tests/test_u6i5_owner_credential_setup_endpoint.py::test_replay_with_different_password_does_not_change_password_hash
+tests/test_u6i5_owner_credential_setup_endpoint.py::test_tenant_isolation_only_writes_requested_schema
+tests/test_u6i5_owner_credential_setup_endpoint.py::test_response_never_exposes_sensitive_data
+tests/test_u6i6_onboarding_e2e_closeout.py::test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_admin_rbac
+tests/test_u6l_email_verified_onboarding_orchestration.py::test_emailed_setup_token_can_create_first_admin_rbac_and_status_is_public_active
+tests/test_u6l_email_verified_onboarding_orchestration.py::test_repeated_internal_orchestration_does_not_duplicate_tenant_token_or_admin_rows
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:701: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection
+tests/test_dc3b_credential_recovery_backend.py::test_r1_no_internal_mapping_in_public_responses
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:489: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_health.py::TestHealthEndpoints::test_health_check_returns_healthy
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_health.py:53: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_health.py::TestHealthEndpoints::test_liveness_check_returns_healthy
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_health.py:63: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_health.py::TestHealthEndpoints::test_readiness_check_healthy_when_db_ok
+tests/test_health.py::TestHealthEndpoints::test_readiness_check_unhealthy_when_db_fails
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_health.py:76: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_health.py::TestHealthSchemas::test_health_status_schema
+tests/test_health.py::TestHealthSchemas::test_readiness_status_schema
+tests/test_health.py::TestHealthSchemas::test_health_status_defaults
+tests/test_health.py::TestHealthSchemas::test_readiness_status_with_multiple_checks
+  C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\pydantic\main.py:250: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+
+tests/test_idempotency.py::TestIdempotencyMiddlewareCaching::test_cache_response
+tests/test_idempotency.py::TestIdempotencyMiddlewareCaching::test_get_cached_response_returns_cached
+tests/test_idempotency.py::TestIdempotencyMiddlewareCaching::test_remove_cache
+tests/test_idempotency.py::TestIdempotencyCacheManagement::test_clear_idempotency_cache
+tests/test_idempotency.py::TestIdempotencyCacheManagement::test_clear_idempotency_cache
+tests/test_idempotency.py::TestIdempotencyCacheManagement::test_cleanup_expired_entries
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_idempotency.py:82: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "expires_at": datetime.utcnow() + IDEMPOTENCY_TTL,
+
+tests/test_idempotency.py::TestIdempotencyMiddlewareCaching::test_get_cached_response_returns_cached
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_idempotency.py:59: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if datetime.utcnow() > cached["expires_at"]:
+
+tests/test_idempotency.py::TestIdempotencyMiddlewareCaching::test_mark_in_progress
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_idempotency.py:69: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "expires_at": datetime.utcnow() + timedelta(minutes=5)
+
+tests/test_idempotency.py::TestIdempotencyCacheManagement::test_cleanup_expired_entries
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_idempotency.py:377: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "expires_at": datetime.utcnow() - timedelta(hours=1),
+
+tests/test_idempotency.py::TestIdempotencyCacheManagement::test_cleanup_expired_entries
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_idempotency.py:100: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_phase4_pricing_safe_orders.py::TestWholesalerOrderCreationAPI::test_create_order_slim_shape_happy_path
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py::test_s5a_fresh_tenant_real_user_journey_gate
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\orders.py:495: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_phase4_pricing_safe_orders.py::TestPricingListAPI::test_list_prices_happy_path
+tests/test_s3a_fresh_tenant_runtime_smoke.py::TestFreshTenantAdminSmoke::test_pricing_prices
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\pricing.py:110: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_phase4_pricing_safe_orders.py::TestPricingSetAPI::test_set_price_creates_new
+tests/test_phase4_pricing_safe_orders.py::TestPricingSetAPI::test_set_price_updates_existing
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py::test_s5a_fresh_tenant_real_user_journey_gate
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\pricing.py:161: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_phase5_order_payment.py::test_order_service_transition_confirmed_to_paid
+  C:\Users\Jeff0\pw1_r2_worktree\backend\services\ledger_service.py:79: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.db.add(entry)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_structured_full_payment_returns_200
+tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_partial_payment_returns_partially_paid
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\middleware\idempotency.py:231: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "expires_at": datetime.utcnow() + self._ttl,
+
+tests/test_platform_p11c0_legacy_guard.py::TestHealthInfoUnauthenticated::test_health_no_auth_required
+tests/test_platform_p11c0_legacy_guard.py::TestHealthInfoUnauthenticated::test_health_does_not_expose_tenant_data
+tests/test_platform_p11c0_legacy_guard.py::TestHealthInfoUnauthenticated::test_health_shape_unchanged
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\platform\health.py:32: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat(),
+
+tests/test_pw1r3_rate_limit_context.py: 107 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:646: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_pw1r3_rate_limit_context.py::test_health_endpoints_are_exempt_from_rate_limiting
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\health.py:167: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_receivables_service.py::test_retailer_summary_aggregates_totals
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_receivables_service.py:70: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_order_a.created_at = datetime.utcnow()
+
+tests/test_receivables_service.py::test_retailer_summary_aggregates_totals
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_receivables_service.py:77: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_order_b.created_at = datetime.utcnow()
+
+tests/test_receivables_service.py::test_order_list_classifies_credit_receivable
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_receivables_service.py:220: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_order.created_at = datetime.utcnow()
+
+tests/test_receivables_service.py::test_order_list_classifies_unpaid_order
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_receivables_service.py:290: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_order.created_at = datetime.utcnow()
+
+tests/test_receivables_service.py::test_order_list_supports_retailer_filter
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_receivables_service.py:358: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_order.created_at = datetime.utcnow()
+
+tests/test_receivables_service.py: 25 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_receivables_service.py:569: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_order.created_at = datetime.utcnow()
+
+tests/test_receivables_service.py: 25 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_receivables_service.py:651: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_order.created_at = datetime.utcnow()
+
+tests/test_route_coverage.py::TestOpenAPIRouteCoverage::test_health_endpoint_exists
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\health.py:143: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_s3_profiling.py::TestSQLProfilingMetrics::test_metrics_endpoint_accessible
+  C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\prometheus_client\metrics.py:250: RuntimeWarning: coroutine 'Connection._cancel' was never awaited
+    yield Sample(suffix, dict(series_labels + list(sample_labels.items())), value, timestamp, exemplar)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s3a_fresh_tenant_runtime_smoke.py::TestFreshTenantAdminSmoke::test_orders_list
+tests/test_s3a_fresh_tenant_runtime_smoke.py::TestFreshTenantAdminAuthGateSemantics::test_fresh_admin_token_passes_require_permission
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_orders_list
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\orders.py:350: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_s3a_fresh_tenant_runtime_smoke.py::TestFreshTenantAdminSmoke::test_skus_list
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_skus_list
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\skus.py:138: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_s3a_fresh_tenant_runtime_smoke.py::TestFreshTenantAdminSmoke::test_inventory_stocks
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_inventory_stocks
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\inventory.py:83: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_s3a_fresh_tenant_runtime_smoke.py::TestFreshTenantAdminSmoke::test_payments_list
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_payments_list
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\payments.py:61: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_s3a_fresh_tenant_runtime_smoke.py::TestFreshTenantAdminSmoke::test_retailers_list
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_retailers_list
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmoke::test_sidebar_endpoint_returns_200[GET-/api/v1/retailers-Customers]
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\retailers.py:296: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return DataResponse(success=True, data=data, timestamp=datetime.utcnow())
+
+tests/test_s3a_fresh_tenant_runtime_smoke.py::TestFreshTenantAdminSmoke::test_retailer_bindings
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_retailer_bindings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\retailers.py:250: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return DataResponse(success=True, data=BindingListData(items=items), timestamp=datetime.utcnow())
+
+tests/test_s4_jobs_local.py: 80 warnings
+tests/test_s4_jobs_persistence.py: 38 warnings
+  C:\Users\Jeff0\dc12r1_mvp_l1_r0_deploy_1779289316\.venv_deploy\Lib\site-packages\sqlalchemy\sql\schema.py:3624: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore
+
+tests/test_s4_jobs_local.py: 19 warnings
+tests/test_s4_jobs_persistence.py: 9 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\jobs\local_queue.py:167: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "enqueued_at": datetime.utcnow(),
+
+tests/test_s4_jobs_local.py: 23 warnings
+tests/test_s4_jobs_persistence.py: 11 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\jobs\local_queue.py:245: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    job_record["started_at"] = datetime.utcnow()
+
+tests/test_s4_jobs_local.py: 23 warnings
+tests/test_s4_jobs_persistence.py: 11 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\jobs\local_queue.py:259: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    started_at=datetime.utcnow(),
+
+tests/test_s4_jobs_local.py: 17 warnings
+tests/test_s4_jobs_persistence.py: 8 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\jobs\local_queue.py:285: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    job_record["completed_at"] = datetime.utcnow()
+
+tests/test_s4_jobs_local.py: 17 warnings
+tests/test_s4_jobs_persistence.py: 8 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\jobs\local_queue.py:295: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    completed_at=datetime.utcnow()
+
+tests/test_s4_jobs_local.py::test_job_failure_handling
+tests/test_s4_jobs_local.py::test_job_failure_handling
+tests/test_s4_jobs_local.py::test_job_failure_handling
+tests/test_s4_jobs_local.py::test_job_metrics
+tests/test_s4_jobs_local.py::test_job_metrics
+tests/test_s4_jobs_local.py::test_job_metrics
+tests/test_s4_jobs_persistence.py::test_job_retry_on_failure
+tests/test_s4_jobs_persistence.py::test_job_max_retries_reached
+tests/test_s4_jobs_persistence.py::test_job_max_retries_reached
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\jobs\local_queue.py:320: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    job_record["completed_at"] = datetime.utcnow()
+
+tests/test_s4_jobs_local.py::test_job_failure_handling
+tests/test_s4_jobs_local.py::test_job_failure_handling
+tests/test_s4_jobs_local.py::test_job_metrics
+tests/test_s4_jobs_local.py::test_job_metrics
+tests/test_s4_jobs_persistence.py::test_job_retry_on_failure
+tests/test_s4_jobs_persistence.py::test_job_max_retries_reached
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\jobs\local_queue.py:344: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow()
+
+tests/test_s4_jobs_local.py::test_job_failure_handling
+tests/test_s4_jobs_local.py::test_job_metrics
+tests/test_s4_jobs_persistence.py::test_job_max_retries_reached
+  C:\Users\Jeff0\pw1_r2_worktree\backend\core\jobs\local_queue.py:373: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    completed_at=datetime.utcnow()
+
+tests/test_u3c_import_apply.py::TestCorruptedValidatedRows::test_missing_sku_code_column_raises_422
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_u3c_import_apply.py:611: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await ImportService().apply(
+
+tests/test_u3c_import_apply.py::TestCorruptedValidatedRows::test_empty_sku_code_raises_422
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_u3c_import_apply.py:632: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await ImportService().apply(
+
+tests/test_u3c_import_apply.py::TestCorruptedValidatedRows::test_mixed_valid_and_corrupt_fails_entirely
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_u3c_import_apply.py:655: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await ImportService().apply(
+
+tests/test_u3c_import_apply.py::TestCorruptedValidatedRows::test_all_rows_corrupt_no_db_add
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_u3c_import_apply.py:678: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await ImportService().apply(
+
+tests/test_u3e_e2e_hardening.py::TestE2EFailClosed::test_all_corrupt_rows_zero_db_add
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_u3e_e2e_hardening.py:583: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await svc.apply(
+
+tests/test_u3e_e2e_hardening.py::TestE2EFailClosed::test_all_empty_sku_codes_zero_db_add
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_u3e_e2e_hardening.py:620: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await svc.apply(
+
+tests/test_u3e_e2e_hardening.py::TestE2EFailClosed::test_mixed_valid_corrupt_raises_422_not_applied
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_u3e_e2e_hardening.py:662: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await svc.apply(
+
+tests/test_u4c_intake_api_contract.py::test_contextual_tenant_user_with_intake_create_can_create_workspace
+tests/test_u4c_intake_api_contract.py::test_contextual_tenant_user_with_intake_read_can_list_and_detail_created_workspace
+tests/test_u4d_intake_parser_preview.py::test_upload_mapping_validation_rows_and_issues_are_staging_only
+tests/test_u4d_intake_parser_preview.py::test_upload_requires_create_or_update_permission
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\intake.py:269: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u4c_intake_api_contract.py::test_contextual_tenant_user_with_intake_read_can_list_and_detail_created_workspace
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\intake.py:315: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u4c_intake_api_contract.py::test_contextual_tenant_user_with_intake_read_can_list_and_detail_created_workspace
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\intake.py:353: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u4d_intake_parser_preview.py::test_upload_mapping_validation_rows_and_issues_are_staging_only
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\intake.py:391: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return DataResponse(success=True, data=_upload_to_read(upload), timestamp=datetime.utcnow())
+
+tests/test_u4d_intake_parser_preview.py::test_upload_mapping_validation_rows_and_issues_are_staging_only
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\intake.py:432: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u4d_intake_parser_preview.py::test_upload_mapping_validation_rows_and_issues_are_staging_only
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\intake.py:471: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u4d_intake_parser_preview.py::test_upload_mapping_validation_rows_and_issues_are_staging_only
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\intake.py:548: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u4d_intake_parser_preview.py::test_upload_mapping_validation_rows_and_issues_are_staging_only
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\intake.py:597: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u4ib2_intake_apply_service.py::test_successful_apply_creates_skus_and_updates_audit
+tests/test_u4ib2_intake_apply_service.py::test_repeated_apply_returns_already_applied_without_duplicate_skus
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\intake.py:503: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u6e_onboarding_status_endpoint.py::test_valid_body_status_token_returns_pending_email_verification
+tests/test_u6e_onboarding_status_endpoint.py::test_after_verify_email_valid_status_token_returns_active
+tests/test_u6e_onboarding_status_endpoint.py::test_status_response_never_exposes_sensitive_internal_details
+tests/test_u6e_onboarding_status_endpoint.py::test_onboarding_status_has_no_tenant_schema_users_roles_or_rbac_side_effects
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisions_without_admin
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisions_without_admin
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_closeout_provisions_tenant_but_defers_admin_rbac_until_setup_credential
+tests/test_u6i6_onboarding_e2e_closeout.py::test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_admin_rbac
+tests/test_u6l_email_verified_onboarding_orchestration.py::test_emailed_setup_token_can_create_first_admin_rbac_and_status_is_public_active
+  C:\Users\Jeff0\pw1_r2_worktree\backend\api\v1\auth.py:214: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_uuid_serialization.py: 20 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_uuid_serialization.py:49: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/test_uuid_serialization.py: 20 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_uuid_serialization.py:50: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow()
+
+tests/test_uuid_serialization.py: 20 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_uuid_serialization.py:98: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/test_uuid_serialization.py: 20 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_uuid_serialization.py:99: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow()
+
+tests/test_uuid_serialization.py: 20 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_uuid_serialization.py:198: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/test_uuid_serialization.py: 20 warnings
+  C:\Users\Jeff0\pw1_r2_worktree\backend\tests\test_uuid_serialization.py:199: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+== 3630 passed, 48 skipped, 15 xfailed, 3143 warnings in 1252.35s (0:20:52) ===

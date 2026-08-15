@@ -104,3 +104,67 @@ DATABASE_URL=... python -m alembic upgrade head
 TEST_DATABASE_URL=... REDIS_URL=... MPANGO_ENV=test MPANGO_ALLOW_TEMP_DB_CREATE=1 \
   python -m pytest tests/test_pw1r3_rate_limit_context.py -q
 ```
+
+---
+
+# PW1-R3-R1 — Evidence-truth and deterministic-test correction (same branch)
+
+## 1. Product files byte-unchanged
+`git diff 07013d2 --stat -- backend/api/app.py backend/api/middleware/auth.py
+backend/api/middleware/rate_limiting.py backend/core/rate_limiter.py` = **0
+lines**. All R1 work touched only the test file, ledger/report, and evidence.
+
+## 2. V2 facts corrected (artifact-verified)
+V2 `junit.xml` (committed on the V2 branch) actually contains **162
+testcases / 58 failures ⇒ 104 passed**; **47** failure blocks mention 429,
+**11** do not (incl. 3× "public auth pages are reachable anonymously",
+Phase 4 idempotency/print nodes, Phase 5 isolation nodes). The V2 report's
+80/82/"all 429" contradicts its own JUnit → INVALID_EVIDENCE_RECONCILIATION.
+PW1-R3's own earlier "zero failure cases" claim was a reviewer regex error
+and is corrected in the marker.
+
+## 3. Branch inventory — 18 files, 4+1+2+11
+- 4 product: `backend/api/app.py`, `backend/api/middleware/auth.py`,
+  `backend/api/middleware/rate_limiting.py`, `backend/core/rate_limiter.py`
+- 1 test: `backend/tests/test_pw1r3_rate_limit_context.py`
+- 2 ledger/report: `ai-ledger/product-ai/2026-08-15_...r3...md`,
+  `docs/ai-reports/review/2026-08-15_PW1_R2_R2_V2_INVALID_EVIDENCE_RECONCILIATION.md`
+- 11 evidence: `pw1r3-evidence/{impact_×6, gate1/2_full_backend, frontend_full_vitest,
+  R3_MUT_A/B}` (+ R1 additions below)
+
+## 4. Two backend rounds, truthfully recorded; skip/xfail set comparison
+R1 re-ran both full rounds with `-rN` so node sets are machine-captured:
+- Round A: 3630 passed / 48 skipped / 15 xfailed / 0 failed / 0 errors
+- Round B: 3630 passed / 48 skipped / 15 xfailed / 0 failed / 0 errors
+- skipped/xfailed node sets extracted; see `r1_gateA/B_full_backend.txt` and
+  the set-comparison summary in `pw1r3-evidence/r1_skip_xfail_comparison.txt`.
+
+## 5. Deterministic test keys (no conditional assertions)
+The suite now uses a task-exclusive Redis DB (`PW1R3_TEST_REDIS_URL`, default
+.../15) with exact task-owned keys and a deterministic start per test:
+- tenant bucket: fresh UUIDs per test (function-scoped `rl_tenant`),
+- anonymous bucket: per-RUN random `10.x.y.*` ASGI client peer per test
+  (transport-level peer, NOT XFF/X-Real-IP spoofing) — each test begins at
+  count 0 even across rapid consecutive runs.
+- No FLUSHDB, no SCAN/wildcard delete, no retries-until-green, no sleeps.
+- The (401,429)/(200,429) conditional assertions are gone: every test now
+  asserts a single exact status.
+
+## 6. Sleeps removed
+No `time.sleep` remains; window-alignment is unnecessary with per-run keys
+(no `asyncio.sleep` needed either).
+
+## 7. Wording corrected
+"provisioned tenant user" → "synthetic real-PG auth schema": the tenant
+schema + user are created by the test via direct DDL/INSERT (not the formal
+owner/retailer lifecycle); the docstring and ledger now say exactly that.
+
+## 8. Re-runs (all GREEN)
+- Natural order ×3 rapid consecutive: 7/7 each
+- Reverse order: 7/7
+- MUT-A (wrong middleware order): RED 4 failed; restored → GREEN
+- MUT-B (user_id omitted): RED 3 failed; restored → GREEN
+- Fresh full-stack rounds A/B above.
+
+## 9. Push-only
+Only the isolated branch is pushed; no merge, no OpenCode browser gate started.

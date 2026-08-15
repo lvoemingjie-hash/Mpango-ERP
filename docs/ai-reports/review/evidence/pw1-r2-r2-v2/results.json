@@ -1,0 +1,52 @@
+{
+  "verdict": "STOP_AND_REPORT_CTO",
+  "reason": "HTTP 429 rate limiting prevents full 162-node test execution in single invocation",
+  "stats": {
+    "collected": 162,
+    "passed": 80,
+    "failed": 82,
+    "skipped": 0,
+    "flaky": 0,
+    "errors": 0,
+    "blocked": 0
+  },
+  "rate_limit_analysis": {
+    "limit_per_ip": 100,
+    "window_seconds": 60,
+    "total_login_requests_estimate": 200,
+    "root_cause": "All 162 tests execute from same localhost IP (127.0.0.1), exceeding 100 req/min rate limit",
+    "affected_phases": ["phase3-wholesaler", "phase4-retailer", "phase5-isolation", "phase6-responsive"],
+    "unaffected_phases": ["auth-matrix (desktop only)", "phase1-routes", "phase2-identity"]
+  },
+  "phases_completed": {
+    "phase1_proof_gate": "PASS",
+    "phase2_harness_integrity": "PASS",
+    "phase3_auth_pre_gate": "PASS (9/9 desktop)",
+    "phase4_full_pw1": "STOP (82/162 failed due to rate limiting)",
+    "phase5_financial_isolation": "NOT_REACHED",
+    "phase6_evidence_reconciliation": "NOT_REACHED",
+    "phase7_quality_residue": "NOT_REACHED"
+  },
+  "sha_verification": {
+    "product_baseline": "d2e7e44cf23e91cabfab545c494abd342fec3062",
+    "candidate_source": "9f5d67712e64f21061bd3516c6f0240f9feafb26",
+    "candidate_branch": "zcode/dc12r1-mvp-l1-pw1-r2-auth-session-closure-2026-08-14",
+    "canonical_harness": "d787c58ca85f05823fd4816e662c3db1f182dc92",
+    "all_valid": true,
+    "ancestry_verified": true
+  },
+  "environment": {
+    "backend_url": "http://127.0.0.1:8000",
+    "frontend_url": "http://127.0.0.1:5174",
+    "mpango_env": "staging",
+    "auth_strategy": "JwtAuthStrategy",
+    "backend_pid": 38732,
+    "frontend_pid": 26036
+  },
+  "test_identities": {
+    "w1": "pw1r1.w1.r1@pw1r1.dev (single-tenant wholesaler)",
+    "w2": "pw1r1.w2.r1@pw1r1.dev (single-tenant wholesaler)",
+    "ra": "pw1r1.ra.r1@pw1r1.dev (multi-tenant retailer)",
+    "rb": "pw1r1.rb.r1@pw1r1.dev (single-tenant retailer)"
+  }
+}

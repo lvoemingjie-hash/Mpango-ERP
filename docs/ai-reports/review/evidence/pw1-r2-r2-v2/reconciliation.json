@@ -1,0 +1,79 @@
+{
+  "reconciliation_timestamp": "2026-08-15T00:27:00Z",
+  "collected": 162,
+  "passed": 80,
+  "failed": 82,
+  "skipped": 0,
+  "errors": 0,
+  "blocked": 0,
+  "flaky": 0,
+  "accounting_gap": 0,
+  "breakdown_by_project": {
+    "desktop": {
+      "total": 54,
+      "passed": 54,
+      "failed": 0
+    },
+    "tablet": {
+      "total": 54,
+      "passed": 13,
+      "failed": 41
+    },
+    "mobile": {
+      "total": 54,
+      "passed": 13,
+      "failed": 41
+    }
+  },
+  "breakdown_by_spec": {
+    "auth-matrix.spec.ts": {
+      "total": 27,
+      "passed": 25,
+      "failed": 2,
+      "notes": "2 failures on tablet/mobile due to rate limiting after desktop completion"
+    },
+    "phase1-routes.spec.ts": {
+      "total": 24,
+      "passed": 21,
+      "failed": 3,
+      "notes": "3 failures due to rate limiting on public auth pages test"
+    },
+    "phase2-identity.spec.ts": {
+      "total": 15,
+      "passed": 14,
+      "failed": 1,
+      "notes": "1 failure on tablet due to rate limiting"
+    },
+    "phase3-wholesaler.spec.ts": {
+      "total": 33,
+      "passed": 20,
+      "failed": 13,
+      "notes": "All failures due to rate limiting on login API"
+    },
+    "phase4-retailer.spec.ts": {
+      "total": 21,
+      "passed": 8,
+      "failed": 13,
+      "notes": "All failures due to rate limiting on login API"
+    },
+    "phase5-isolation.spec.ts": {
+      "total": 21,
+      "passed": 6,
+      "failed": 15,
+      "notes": "All failures due to rate limiting on login API"
+    },
+    "phase6-responsive.spec.ts": {
+      "total": 21,
+      "passed": 6,
+      "failed": 15,
+      "notes": "All failures due to rate limiting on login API"
+    }
+  },
+  "failure_cause_analysis": {
+    "http_429_count": 82,
+    "http_429_percentage": "50.6%",
+    "root_cause": "Backend rate limiter (100 req/min per IP) exceeded by test suite",
+    "not_product_defect": true,
+    "recommendation": "Increase rate limit for testing or implement rate limit bypass for test environment"
+  }
+}

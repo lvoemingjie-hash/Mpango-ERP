@@ -1,0 +1,3491 @@
+<testsuites id="" name="" tests="162" failures="58" skipped="0" errors="24" time="241.743336">
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="desktop" tests="9" failures="0" skipped="0" time="10.258" errors="0">
+<testcase name="PW1-R1 auth matrix (real JWT) › W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts" time="1.233">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts" time="1.086">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts" time="1.344">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts" time="0.879">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts" time="0.867">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts" time="1.687">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts" time="1.647">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › /select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts" time="0.488">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts" time="1.027">
+</testcase>
+</testsuite>
+<testsuite name="phase1-routes.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="desktop" tests="8" failures="1" skipped="0" time="4.575" errors="0">
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › backend health endpoints are 200 (live/ready)" classname="phase1-routes.spec.ts" time="0.055">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › frontend serves the SPA shell" classname="phase1-routes.spec.ts" time="0.031">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › wholesaler routes redirect anonymous users to /login" classname="phase1-routes.spec.ts" time="1.241">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › retailer /client routes redirect anonymous users to retailer portal or /login" classname="phase1-routes.spec.ts" time="0.406">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › /client/login alias redirects to /retail/login preserving w" classname="phase1-routes.spec.ts" time="0.394">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › public auth pages are reachable anonymously" classname="phase1-routes.spec.ts" time="0.457">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(locator).toBeVisible() failed" type="expect.toBeVisible">
+<![CDATA[  [desktop] › phase1-routes.spec.ts:42:7 › PW1-R1 Phase 1: routes & navigation › public auth pages are reachable anonymously 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('button[type="submit"], form')
+    Expected: visible
+    Error: strict mode violation: locator('button[type="submit"], form') resolved to 2 elements:
+        1) <form novalidate="" class="space-y-5 rounded-xl bg-white p-6 shadow-sm">…</form> aka getByText('EmailPasswordSign InForgot')
+        2) <button type="submit" class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">Sign In</button> aka getByRole('button', { name: 'Sign In' })
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('button[type="submit"], form')
+
+
+      43 |     for (const path of ['/login', '/forgot-password']) {
+      44 |       await page.goto(path);
+    > 45 |       await expect(page.locator('button[type="submit"], form')).toBeVisible();
+         |                                                                 ^
+      46 |       expect(page.url().includes(path)).toBeTruthy();
+      47 |     }
+      48 |   });
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase1-routes.spec.ts:45:65
+
+    Error Context: ..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › unknown route renders the 404 page (no crash)" classname="phase1-routes.spec.ts" time="0.557">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › invalid portal code shows controlled invalid-portal state with zero login API calls" classname="phase1-routes.spec.ts" time="1.434">
+</testcase>
+</testsuite>
+<testsuite name="phase2-identity.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="desktop" tests="5" failures="0" skipped="0" time="4.664" errors="0">
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › legacy localStorage keys (access_token/user) do NOT authenticate" classname="phase2-identity.spec.ts" time="0.676">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › forged mpango-auth with invalid JWT is rejected by the backend" classname="phase2-identity.spec.ts" time="0.769">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a wholesaler session (hydration)" classname="phase2-identity.spec.ts" time="1.22">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a retailer session at /client" classname="phase2-identity.spec.ts" time="0.993">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › login form submits real credentials to the real API (request body audit)" classname="phase2-identity.spec.ts" time="1.006">
+</testcase>
+</testsuite>
+<testsuite name="phase3-wholesaler.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="desktop" tests="11" failures="6" skipped="0" time="30.426" errors="1">
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page / renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.292">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /orders renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.291">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /inventory renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.299">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /skus renders authenticated content" classname="phase3-wholesaler.spec.ts" time="21.03">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-bcf1d-nders-authenticated-content-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-bcf1d-nders-authenticated-content-desktop\trace.zip]]
+]]>
+</system-out>
+<error message="page.waitForURL: Timeout 20000ms exceeded." type="TimeoutError">
+<![CDATA[  [desktop] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /skus renders authenticated content 
+
+    TimeoutError: page.waitForURL: Timeout 20000ms exceeded.
+    =========================== logs ===========================
+    waiting for navigation until "load"
+    ============================================================
+
+       at helpers.ts:153
+
+      151 |     const sel = await selectP;
+      152 |     expect(sel.status(), 'auto select-tenant').toBe(200); // REAL 200 (old PW1 403 class defect)
+    > 153 |     await page.waitForURL(u => !u.pathname.endsWith('/login') && !u.pathname.includes('select-workspace'), { timeout: 20000 });
+          |                ^
+      154 |     await expect(page).toHaveURL(/\/$/);
+      155 |   } else {
+      156 |     await page.waitForURL('**/select-workspace', { timeout: 20000 });
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:153:16)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-bcf1d-nders-authenticated-content-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-bcf1d-nders-authenticated-content-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-bcf1d-nders-authenticated-content-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /retailers renders authenticated content" classname="phase3-wholesaler.spec.ts" time="0.708">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [desktop] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /retailers renders authenticated content 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /finance renders authenticated content" classname="phase3-wholesaler.spec.ts" time="0.682">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [desktop] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /finance renders authenticated content 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /payments renders authenticated content" classname="phase3-wholesaler.spec.ts" time="0.682">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [desktop] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /payments renders authenticated content 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /declarations renders authenticated content" classname="phase3-wholesaler.spec.ts" time="0.743">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [desktop] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /declarations renders authenticated content 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › dashboard shows the app shell with user context" classname="phase3-wholesaler.spec.ts" time="0.77">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [desktop] › phase3-wholesaler.spec.ts:41:7 › PW1-R1 Phase 3: wholesaler journey › dashboard shows the app shell with user context 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler cannot open retailer /client routes (boundary redirect)" classname="phase3-wholesaler.spec.ts" time="0.709">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [desktop] › phase3-wholesaler.spec.ts:46:7 › PW1-R1 Phase 3: wholesaler journey › wholesaler cannot open retailer /client routes (boundary redirect) 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › logout returns to /login and clears the session" classname="phase3-wholesaler.spec.ts" time="1.22">
+</testcase>
+</testsuite>
+<testsuite name="phase4-retailer.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="desktop" tests="7" failures="4" skipped="0" time="7.999" errors="0">
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer portal: catalog page renders supplier products incl. the setup SKU" classname="phase4-retailer.spec.ts" time="1.806">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer creates an order through the real API (journey precondition)" classname="phase4-retailer.spec.ts" time="0.058">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="order create ({&quot;code&quot;:&quot;ORDER_VALIDATION_FAILED&quot;,&quot;message&quot;:&quot;Some items cannot be ordered&quot;,&quot;request_id&quot;:&quot;be52b550-71df-4101-82e4-98ec5b855cfe&quot;})" type="expect.toBe">
+<![CDATA[  [desktop] › phase4-retailer.spec.ts:45:7 › PW1-R1 Phase 4: retailer journey › retailer creates an order through the real API (journey precondition) 
+
+    Error: order create ({"code":"ORDER_VALIDATION_FAILED","message":"Some items cannot be ordered","request_id":"be52b550-71df-4101-82e4-98ec5b855cfe"})
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 400
+
+      48 |       items: [{ sku_code: skuCode, quantity: 3 }], notes: 'PW1R1 phase4 order',
+      49 |     });
+    > 50 |     expect(order.status, `order create (${JSON.stringify(order.body).slice(0, 200)})`).toBe(201);
+         |                                                                                        ^
+      51 |     expect(order.body.data?.id).toBeTruthy();
+      52 |   });
+      53 |
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:50:88
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer orders page lists own orders via the browser" classname="phase4-retailer.spec.ts" time="2.238">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes" classname="phase4-retailer.spec.ts" time="0.185">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [desktop] › phase4-retailer.spec.ts:62:7 › PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 400
+
+      66 |       items: [{ sku_code: skuCode, quantity: 2 }], notes: 'PW1R1 idempotency order',
+      67 |     });
+    > 68 |     expect(order.status).toBe(201);
+         |                          ^
+      69 |     const orderId = order.body.data.id;
+      70 |
+      71 |     const payload = { declared_amount: '150.00', method: 'mobile_money', transfer_reference: 'PW1R1-IDEM-001' };
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:68:26
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence)" classname="phase4-retailer.spec.ts" time="1.079">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [desktop] › phase4-retailer.spec.ts:110:7 › PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 400
+
+      113 |       items: [{ sku_code: skuCode, quantity: 1 }], notes: 'PW1R1 double-click order',
+      114 |     });
+    > 115 |     expect(order.status).toBe(201);
+          |                          ^
+      116 |     const orderId = order.body.data.id;
+      117 |
+      118 |     const before = await apiGet('/client/declarations?page=1&size=100', rbToken!);
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:115:26
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer finance/payments/declarations pages render without errors" classname="phase4-retailer.spec.ts" time="1.668">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer print page issues NO mutating requests" classname="phase4-retailer.spec.ts" time="0.965">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [desktop] › phase4-retailer.spec.ts:155:7 › PW1-R1 Phase 4: retailer journey › retailer print page issues NO mutating requests 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 400
+
+      158 |       items: [{ sku_code: skuCode, quantity: 1 }], notes: 'PW1R1 print order',
+      159 |     });
+    > 160 |     expect(order.status).toBe(201);
+          |                          ^
+      161 |     await loginRetailerPortal(page, IDS.rb.tenant_code!, IDS.rb);
+      162 |     const mutating: string[] = [];
+      163 |     page.on('request', r => {
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:160:26
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-desktop\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+</testsuite>
+<testsuite name="phase5-isolation.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="desktop" tests="7" failures="4" skipped="0" time="6.568" errors="0">
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-retailer: RB cannot read RA order by id (API isolation)" classname="phase5-isolation.spec.ts" time="1.128">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [desktop] › phase5-isolation.spec.ts:15:7 › PW1-R1 Phase 5: isolation & negative paths › cross-retailer: RB cannot read RA order by id (API isolation) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 400
+
+      29 |       expect(sku.status).toBe(201);
+      30 |       const raOrder = await apiPost('/client/orders', raToken, { items: [{ sku_code: skuCode, quantity: 1 }] });
+    > 31 |       expect(raOrder.status).toBe(201);
+         |                              ^
+      32 |       raOrderId = raOrder.body.data.id;
+      33 |     }
+      34 |
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:31:30
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" classname="phase5-isolation.spec.ts" time="0.46">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: RA W2-context cannot use W1-only data paths" classname="phase5-isolation.spec.ts" time="0.668">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [desktop] › phase5-isolation.spec.ts:54:7 › PW1-R1 Phase 5: isolation & negative paths › cross-tenant: RA W2-context cannot use W1-only data paths 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 500
+
+      58 |     // W2 tenant has no RB orders; listing own orders in W2 context is empty
+      59 |     const own = await apiGet('/client/orders?page=1&size=100', raW2);
+    > 60 |     expect(own.status).toBe(200);
+         |                        ^
+      61 |     const items: any[] = own.body.data?.items ?? [];
+      62 |     // Any order visible to RA@W2 must not reference W1-side notes
+      63 |     for (const o of items) {
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:60:24
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › malformed IDs return neutral structured errors (no internals leaked)" classname="phase5-isolation.spec.ts" time="0.471">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › unauthenticated API access is rejected with structured 401 (no leak)" classname="phase5-isolation.spec.ts" time="0.013">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [desktop] › phase5-isolation.spec.ts:80:7 › PW1-R1 Phase 5: isolation & negative paths › unauthenticated API access is rejected with structured 401 (no leak) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "UNAUTHENTICATED"
+    Received: "INVALID_TOKEN"
+
+      81 |     const res = await apiGet('/orders', 'not-a-real-token');
+      82 |     expect(res.status).toBe(401);
+    > 83 |     expect(res.body?.code).toBe('UNAUTHENTICATED');
+         |                            ^
+      84 |     expect(JSON.stringify(res.body)).not.toMatch(/Traceback|sqlalchemy/i);
+      85 |   });
+      86 |
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:83:28
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › browser: RB portal session never exposes W2 tenant data" classname="phase5-isolation.spec.ts" time="2.58">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › RB orders page contains no RA-created orders (page-level isolation)" classname="phase5-isolation.spec.ts" time="1.248">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [desktop] › phase5-isolation.spec.ts:96:7 › PW1-R1 Phase 5: isolation & negative paths › RB orders page contains no RA-created orders (page-level isolation) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 400
+
+      105 |       items: [{ sku_code: skuCode, quantity: 1 }], notes: 'RA-ONLY-VISIBLE-ORDER',
+      106 |     });
+    > 107 |     expect(raOrder.status).toBe(201);
+          |                            ^
+      108 |
+      109 |     // RB views own orders page — must not see RA's order note anywhere
+      110 |     await loginRetailerPortal(page, IDS.rb.tenant_code!, IDS.rb);
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:107:28
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+</testsuite>
+<testsuite name="phase6-responsive.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="desktop" tests="7" failures="2" skipped="0" time="6.147" errors="0">
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler dashboard: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="1.111">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="1.335">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer catalog: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="0.819">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="1.136">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › login forms have labels and keyboard-accessible inputs" classname="phase6-responsive.spec.ts" time="0.469">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › no unexpected network failures during a login journey" classname="phase6-responsive.spec.ts" time="0.565">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [desktop] › phase6-responsive.spec.ts:60:7 › PW1-R1 Phase 6: responsive & usability › no unexpected network failures during a login journey 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:61:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-desktop\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › print stub: window.print callable on print pages without errors" classname="phase6-responsive.spec.ts" time="0.712">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-desktop\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [desktop] › phase6-responsive.spec.ts:68:7 › PW1-R1 Phase 6: responsive & usability › print stub: window.print callable on print pages without errors 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:72:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-desktop\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+</testsuite>
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="tablet" tests="9" failures="8" skipped="0" time="6.231" errors="0">
+<testcase name="PW1-R1 auth matrix (real JWT) › W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts" time="0.7">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › auth-matrix.spec.ts:18:7 › PW1-R1 auth matrix (real JWT) › W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on / 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:19:5
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts" time="0.717">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w2.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › auth-matrix.spec.ts:28:7 › PW1-R1 auth matrix (real JWT) › W2 second wholesaler admin: independent tenant, login + select-tenant 200 
+
+    Error: login API for pw1r1.w2.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:29:5
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts" time="0.655">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [tablet] › auth-matrix.spec.ts:36:7 › PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+      41 |     await page.click('button[type="submit"]');
+      42 |     const resp = await loginRespP;
+    > 43 |     expect(resp.status()).toBe(200);
+         |                           ^
+      44 |     const body = await resp.json();
+      45 |     const tenants = body.data.available_tenants;
+      46 |     expect(tenants.length).toBe(2); // multi-tenant identity via formal retailer double-binding
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:43:27
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts" time="0.85">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-1ba33-uth-API-200-lands-on-client-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-1ba33-uth-API-200-lands-on-client-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [tablet] › auth-matrix.spec.ts:68:7 › PW1-R1 auth matrix (real JWT) › RB retailer portal login: client auth API 200, lands on /client 
+
+    Error: client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:69:5
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-1ba33-uth-API-200-lands-on-client-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-1ba33-uth-API-200-lands-on-client-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-1ba33-uth-API-200-lands-on-client-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts" time="0.715">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-75d52-t-W1-portal-lands-on-client-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-75d52-t-W1-portal-lands-on-client-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.ra.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [tablet] › auth-matrix.spec.ts:73:7 › PW1-R1 auth matrix (real JWT) › RA retailer portal login at W1 portal: lands on /client 
+
+    Error: client login API for pw1r1.ra.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:74:5
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-75d52-t-W1-portal-lands-on-client-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-75d52-t-W1-portal-lands-on-client-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-75d52-t-W1-portal-lands-on-client-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts" time="0.663">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [tablet] › auth-matrix.spec.ts:78:7 › PW1-R1 auth matrix (real JWT) › wrong password on wholesaler login: API 401, stays on /login, no token persisted 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 401
+    Received: 429
+
+      84 |     await page.click('button[type="submit"]');
+      85 |     const resp = await loginRespP;
+    > 86 |     expect(resp.status()).toBe(401);
+         |                           ^
+      87 |     const errBody = await resp.json();
+      88 |     expect(errBody.code).toBe('INVALID_CREDENTIALS');
+      89 |     await page.waitForTimeout(800);
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:86:27
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-153f4-on-login-no-token-persisted-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts" time="0.814">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-18877-s-on-portal-neutral-message-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-18877-s-on-portal-neutral-message-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [tablet] › auth-matrix.spec.ts:96:7 › PW1-R1 auth matrix (real JWT) › wrong password on retailer portal: API 401, stays on portal, neutral message 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 401
+    Received: 429
+
+      102 |     await page.click('button[type="submit"]');
+      103 |     const resp = await loginRespP;
+    > 104 |     expect(resp.status()).toBe(401);
+          |                           ^
+      105 |     await page.waitForTimeout(800);
+      106 |     await expect(page).toHaveURL(new RegExp(`/retail/login`));
+      107 |     await expect(page.locator('text=Invalid credentials').first()).toBeVisible();
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:104:27
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-18877-s-on-portal-neutral-message-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-18877-s-on-portal-neutral-message-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-18877-s-on-portal-neutral-message-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › /select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts" time="0.53">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts" time="0.587">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-72a1e-ession-and-returns-to-login-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-72a1e-ession-and-returns-to-login-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › auth-matrix.spec.ts:118:7 › PW1-R1 auth matrix (real JWT) › logout clears mpango-auth session and returns to /login 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:119:5
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-72a1e-ession-and-returns-to-login-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-72a1e-ession-and-returns-to-login-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-72a1e-ession-and-returns-to-login-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+</testsuite>
+<testsuite name="phase1-routes.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="tablet" tests="8" failures="1" skipped="0" time="4.771" errors="0">
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › backend health endpoints are 200 (live/ready)" classname="phase1-routes.spec.ts" time="0.074">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › frontend serves the SPA shell" classname="phase1-routes.spec.ts" time="0.02">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › wholesaler routes redirect anonymous users to /login" classname="phase1-routes.spec.ts" time="1.404">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › retailer /client routes redirect anonymous users to retailer portal or /login" classname="phase1-routes.spec.ts" time="0.382">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › /client/login alias redirects to /retail/login preserving w" classname="phase1-routes.spec.ts" time="0.42">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › public auth pages are reachable anonymously" classname="phase1-routes.spec.ts" time="0.505">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(locator).toBeVisible() failed" type="expect.toBeVisible">
+<![CDATA[  [tablet] › phase1-routes.spec.ts:42:7 › PW1-R1 Phase 1: routes & navigation › public auth pages are reachable anonymously 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('button[type="submit"], form')
+    Expected: visible
+    Error: strict mode violation: locator('button[type="submit"], form') resolved to 2 elements:
+        1) <form novalidate="" class="space-y-5 rounded-xl bg-white p-6 shadow-sm">…</form> aka getByText('EmailPasswordSign InForgot')
+        2) <button type="submit" class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">Sign In</button> aka getByRole('button', { name: 'Sign In' })
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('button[type="submit"], form')
+
+
+      43 |     for (const path of ['/login', '/forgot-password']) {
+      44 |       await page.goto(path);
+    > 45 |       await expect(page.locator('button[type="submit"], form')).toBeVisible();
+         |                                                                 ^
+      46 |       expect(page.url().includes(path)).toBeTruthy();
+      47 |     }
+      48 |   });
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase1-routes.spec.ts:45:65
+
+    Error Context: ..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › unknown route renders the 404 page (no crash)" classname="phase1-routes.spec.ts" time="0.536">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › invalid portal code shows controlled invalid-portal state with zero login API calls" classname="phase1-routes.spec.ts" time="1.43">
+</testcase>
+</testsuite>
+<testsuite name="phase2-identity.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="tablet" tests="5" failures="0" skipped="0" time="19.659" errors="1">
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › legacy localStorage keys (access_token/user) do NOT authenticate" classname="phase2-identity.spec.ts" time="0.634">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › forged mpango-auth with invalid JWT is rejected by the backend" classname="phase2-identity.spec.ts" time="15.777">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase2-identity-PW1-R1-Pha-ff3bc--is-rejected-by-the-backend-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase2-identity-PW1-R1-Pha-ff3bc--is-rejected-by-the-backend-tablet\trace.zip]]
+]]>
+</system-out>
+<error message="page.waitForURL: Timeout 15000ms exceeded." type="TimeoutError">
+<![CDATA[  [tablet] › phase2-identity.spec.ts:28:7 › PW1-R1 Phase 2: identity & hydration › forged mpango-auth with invalid JWT is rejected by the backend 
+
+    TimeoutError: page.waitForURL: Timeout 15000ms exceeded.
+    =========================== logs ===========================
+    waiting for navigation to "**/login" until "load"
+    ============================================================
+
+      37 |     await page.goto('/');
+      38 |     // Forged token cannot pass JwtAuthStrategy: back to /login
+    > 39 |     await page.waitForURL('**/login', { timeout: 15000 });
+         |                ^
+      40 |   });
+      41 |
+      42 |   test('REAL mpango-auth format restores a wholesaler session (hydration)', async ({ page }) => {
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase2-identity.spec.ts:39:16
+
+    Error Context: ..\test-results\phase2-identity-PW1-R1-Pha-ff3bc--is-rejected-by-the-backend-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase2-identity-PW1-R1-Pha-ff3bc--is-rejected-by-the-backend-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase2-identity-PW1-R1-Pha-ff3bc--is-rejected-by-the-backend-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a wholesaler session (hydration)" classname="phase2-identity.spec.ts" time="1.275">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a retailer session at /client" classname="phase2-identity.spec.ts" time="0.996">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › login form submits real credentials to the real API (request body audit)" classname="phase2-identity.spec.ts" time="0.977">
+</testcase>
+</testsuite>
+<testsuite name="phase3-wholesaler.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="tablet" tests="11" failures="4" skipped="0" time="12.47" errors="0">
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page / renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.261">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /orders renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.348">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /inventory renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.296">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /skus renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.293">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /retailers renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.24">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /finance renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.211">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /payments renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.217">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /declarations renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.416">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="console errors on /declarations: [&quot;Failed to load resource: the server responded with a status of 429 (Too Many Requests)&quot;,&quot;Failed to load resource: the server responded with a status of 429 (Too Many Requests)&quot;]" type="expect.toEqual">
+<![CDATA[  [tablet] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /declarations renders authenticated content 
+
+    Error: console errors on /declarations: ["Failed to load resource: the server responded with a status of 429 (Too Many Requests)","Failed to load resource: the server responded with a status of 429 (Too Many Requests)"]
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 4
+
+    - Array []
+    + Array [
+    +   "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+    +   "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+    + ]
+
+      34 |       // No unexpected console/page errors on wholesaler pages
+      35 |       const s: any = collector.summary();
+    > 36 |       expect(s.nonBenignConsoleErrors, `console errors on ${path}: ${JSON.stringify(s.nonBenignConsoleErrors)}`).toEqual([]);
+         |                                                                                                                  ^
+      37 |       expect(s.pageErrors).toEqual([]);
+      38 |     });
+      39 |   }
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:36:114
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › dashboard shows the app shell with user context" classname="phase3-wholesaler.spec.ts" time="0.782">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › phase3-wholesaler.spec.ts:41:7 › PW1-R1 Phase 3: wholesaler journey › dashboard shows the app shell with user context 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler cannot open retailer /client routes (boundary redirect)" classname="phase3-wholesaler.spec.ts" time="0.76">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › phase3-wholesaler.spec.ts:46:7 › PW1-R1 Phase 3: wholesaler journey › wholesaler cannot open retailer /client routes (boundary redirect) 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › logout returns to /login and clears the session" classname="phase3-wholesaler.spec.ts" time="0.646">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › phase3-wholesaler.spec.ts:52:7 › PW1-R1 Phase 3: wholesaler journey › logout returns to /login and clears the session 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+</testsuite>
+<testsuite name="phase4-retailer.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="tablet" tests="7" failures="1" skipped="0" time="2.064" errors="6">
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer portal: catalog page renders supplier products incl. the setup SKU" classname="phase4-retailer.spec.ts" time="0.249">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase4-retailer.spec.ts:36:7 › PW1-R1 Phase 4: retailer journey › retailer portal: catalog page renders supplier products incl. the setup SKU 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:37:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer creates an order through the real API (journey precondition)" classname="phase4-retailer.spec.ts" time="0.026">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase4-retailer.spec.ts:45:7 › PW1-R1 Phase 4: retailer journey › retailer creates an order through the real API (journey precondition) 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:46:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer orders page lists own orders via the browser" classname="phase4-retailer.spec.ts" time="0.261">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase4-retailer.spec.ts:54:7 › PW1-R1 Phase 4: retailer journey › retailer orders page lists own orders via the browser 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:55:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes" classname="phase4-retailer.spec.ts" time="0.257">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase4-retailer.spec.ts:62:7 › PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:63:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence)" classname="phase4-retailer.spec.ts" time="0.29">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase4-retailer.spec.ts:110:7 › PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence) 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:111:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer finance/payments/declarations pages render without errors" classname="phase4-retailer.spec.ts" time="0.714">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [tablet] › phase4-retailer.spec.ts:144:7 › PW1-R1 Phase 4: retailer journey › retailer finance/payments/declarations pages render without errors 
+
+    Error: client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:145:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer print page issues NO mutating requests" classname="phase4-retailer.spec.ts" time="0.267">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase4-retailer.spec.ts:155:7 › PW1-R1 Phase 4: retailer journey › retailer print page issues NO mutating requests 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:156:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="phase5-isolation.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="tablet" tests="7" failures="2" skipped="0" time="1.112" errors="5">
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-retailer: RB cannot read RA order by id (API isolation)" classname="phase5-isolation.spec.ts" time="0.026">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase5-isolation.spec.ts:15:7 › PW1-R1 Phase 5: isolation & negative paths › cross-retailer: RB cannot read RA order by id (API isolation) 
+
+    Error: apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:17:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" classname="phase5-isolation.spec.ts" time="0.026">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w2.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase5-isolation.spec.ts:43:7 › PW1-R1 Phase 5: isolation & negative paths › cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB 
+
+    Error: apiLogin pw1r1.w2.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:44:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: RA W2-context cannot use W1-only data paths" classname="phase5-isolation.spec.ts" time="0.031">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase5-isolation.spec.ts:54:7 › PW1-R1 Phase 5: isolation & negative paths › cross-tenant: RA W2-context cannot use W1-only data paths 
+
+    Error: apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:56:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › malformed IDs return neutral structured errors (no internals leaked)" classname="phase5-isolation.spec.ts" time="0.032">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.rb.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase5-isolation.spec.ts:69:7 › PW1-R1 Phase 5: isolation & negative paths › malformed IDs return neutral structured errors (no internals leaked) 
+
+    Error: apiLogin pw1r1.rb.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:70:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › unauthenticated API access is rejected with structured 401 (no leak)" classname="phase5-isolation.spec.ts" time="0.038">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [tablet] › phase5-isolation.spec.ts:80:7 › PW1-R1 Phase 5: isolation & negative paths › unauthenticated API access is rejected with structured 401 (no leak) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 401
+    Received: 429
+
+      80 |   test('unauthenticated API access is rejected with structured 401 (no leak)', async () => {
+      81 |     const res = await apiGet('/orders', 'not-a-real-token');
+    > 82 |     expect(res.status).toBe(401);
+         |                        ^
+      83 |     expect(res.body?.code).toBe('UNAUTHENTICATED');
+      84 |     expect(JSON.stringify(res.body)).not.toMatch(/Traceback|sqlalchemy/i);
+      85 |   });
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:82:24
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › browser: RB portal session never exposes W2 tenant data" classname="phase5-isolation.spec.ts" time="0.714">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [tablet] › phase5-isolation.spec.ts:87:7 › PW1-R1 Phase 5: isolation & negative paths › browser: RB portal session never exposes W2 tenant data 
+
+    Error: client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:88:5
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › RB orders page contains no RA-created orders (page-level isolation)" classname="phase5-isolation.spec.ts" time="0.245">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--tablet\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [tablet] › phase5-isolation.spec.ts:96:7 › PW1-R1 Phase 5: isolation & negative paths › RB orders page contains no RA-created orders (page-level isolation) 
+
+    Error: apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:98:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="phase6-responsive.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="tablet" tests="7" failures="6" skipped="0" time="4.727" errors="0">
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler dashboard: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="0.664">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › phase6-responsive.spec.ts:17:7 › PW1-R1 Phase 6: responsive & usability › wholesaler dashboard: no horizontal overflow, no console/page errors 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:18:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="0.771">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › phase6-responsive.spec.ts:25:7 › PW1-R1 Phase 6: responsive & usability › wholesaler orders page: no horizontal overflow 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:26:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer catalog: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="0.718">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [tablet] › phase6-responsive.spec.ts:32:7 › PW1-R1 Phase 6: responsive & usability › retailer catalog: no horizontal overflow, no console/page errors 
+
+    Error: client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:33:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="0.719">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [tablet] › phase6-responsive.spec.ts:40:7 › PW1-R1 Phase 6: responsive & usability › retailer orders page: no horizontal overflow 
+
+    Error: client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:41:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › login forms have labels and keyboard-accessible inputs" classname="phase6-responsive.spec.ts" time="0.591">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › no unexpected network failures during a login journey" classname="phase6-responsive.spec.ts" time="0.607">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › phase6-responsive.spec.ts:60:7 › PW1-R1 Phase 6: responsive & usability › no unexpected network failures during a login journey 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:61:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › print stub: window.print callable on print pages without errors" classname="phase6-responsive.spec.ts" time="0.657">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-tablet\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [tablet] › phase6-responsive.spec.ts:68:7 › PW1-R1 Phase 6: responsive & usability › print stub: window.print callable on print pages without errors 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:72:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-418a9--print-pages-without-errors-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+</testsuite>
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="mobile" tests="9" failures="3" skipped="0" time="8.865" errors="0">
+<testcase name="PW1-R1 auth matrix (real JWT) › W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts" time="0.668">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › auth-matrix.spec.ts:18:7 › PW1-R1 auth matrix (real JWT) › W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on / 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:19:5
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts" time="0.692">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w2.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › auth-matrix.spec.ts:28:7 › PW1-R1 auth matrix (real JWT) › W2 second wholesaler admin: independent tenant, login + select-tenant 200 
+
+    Error: login API for pw1r1.w2.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:29:5
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-6390a-ant-login-select-tenant-200-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts" time="0.655">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [mobile] › auth-matrix.spec.ts:36:7 › PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+      41 |     await page.click('button[type="submit"]');
+      42 |     const resp = await loginRespP;
+    > 43 |     expect(resp.status()).toBe(200);
+         |                           ^
+      44 |     const body = await resp.json();
+      45 |     const tenants = body.data.available_tenants;
+      46 |     expect(tenants.length).toBe(2); // multi-tenant identity via formal retailer double-binding
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\auth-matrix.spec.ts:43:27
+
+    Error Context: ..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\auth-matrix-PW1-R1-auth-ma-7c0e8-nts-into-workspace-selector-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts" time="1.008">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts" time="0.839">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts" time="1.738">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts" time="1.666">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › /select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts" time="0.469">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts" time="1.13">
+</testcase>
+</testsuite>
+<testsuite name="phase1-routes.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="mobile" tests="8" failures="1" skipped="0" time="4.577" errors="0">
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › backend health endpoints are 200 (live/ready)" classname="phase1-routes.spec.ts" time="0.056">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › frontend serves the SPA shell" classname="phase1-routes.spec.ts" time="0.017">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › wholesaler routes redirect anonymous users to /login" classname="phase1-routes.spec.ts" time="1.166">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › retailer /client routes redirect anonymous users to retailer portal or /login" classname="phase1-routes.spec.ts" time="0.406">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › /client/login alias redirects to /retail/login preserving w" classname="phase1-routes.spec.ts" time="0.474">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › public auth pages are reachable anonymously" classname="phase1-routes.spec.ts" time="0.488">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(locator).toBeVisible() failed" type="expect.toBeVisible">
+<![CDATA[  [mobile] › phase1-routes.spec.ts:42:7 › PW1-R1 Phase 1: routes & navigation › public auth pages are reachable anonymously 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('button[type="submit"], form')
+    Expected: visible
+    Error: strict mode violation: locator('button[type="submit"], form') resolved to 2 elements:
+        1) <form novalidate="" class="space-y-5 rounded-xl bg-white p-6 shadow-sm">…</form> aka getByText('EmailPasswordSign InForgot')
+        2) <button type="submit" class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">Sign In</button> aka getByRole('button', { name: 'Sign In' })
+
+    Call log:
+      - Expect "toBeVisible" with timeout 10000ms
+      - waiting for locator('button[type="submit"], form')
+
+
+      43 |     for (const path of ['/login', '/forgot-password']) {
+      44 |       await page.goto(path);
+    > 45 |       await expect(page.locator('button[type="submit"], form')).toBeVisible();
+         |                                                                 ^
+      46 |       expect(page.url().includes(path)).toBeTruthy();
+      47 |     }
+      48 |   });
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase1-routes.spec.ts:45:65
+
+    Error Context: ..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase1-routes-PW1-R1-Phase-e4a53-s-are-reachable-anonymously-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › unknown route renders the 404 page (no crash)" classname="phase1-routes.spec.ts" time="0.518">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › invalid portal code shows controlled invalid-portal state with zero login API calls" classname="phase1-routes.spec.ts" time="1.452">
+</testcase>
+</testsuite>
+<testsuite name="phase2-identity.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="mobile" tests="5" failures="0" skipped="0" time="4.558" errors="0">
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › legacy localStorage keys (access_token/user) do NOT authenticate" classname="phase2-identity.spec.ts" time="0.651">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › forged mpango-auth with invalid JWT is rejected by the backend" classname="phase2-identity.spec.ts" time="0.859">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a wholesaler session (hydration)" classname="phase2-identity.spec.ts" time="1.123">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a retailer session at /client" classname="phase2-identity.spec.ts" time="0.947">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › login form submits real credentials to the real API (request body audit)" classname="phase2-identity.spec.ts" time="0.978">
+</testcase>
+</testsuite>
+<testsuite name="phase3-wholesaler.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="mobile" tests="11" failures="7" skipped="0" time="10.51" errors="0">
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page / renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.291">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /orders renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.238">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /inventory renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.263">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /skus renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.345">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /retailers renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.321">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="console errors on /retailers: [&quot;Failed to load resource: the server responded with a status of 429 (Too Many Requests)&quot;,&quot;Failed to load resource: the server responded with a status of 429 (Too Many Requests)&quot;,&quot;Failed to load resource: the server responded with a status of 429 (Too Many Requests)&quot;]" type="expect.toEqual">
+<![CDATA[  [mobile] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /retailers renders authenticated content 
+
+    Error: console errors on /retailers: ["Failed to load resource: the server responded with a status of 429 (Too Many Requests)","Failed to load resource: the server responded with a status of 429 (Too Many Requests)","Failed to load resource: the server responded with a status of 429 (Too Many Requests)"]
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 5
+
+    - Array []
+    + Array [
+    +   "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+    +   "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+    +   "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+    + ]
+
+      34 |       // No unexpected console/page errors on wholesaler pages
+      35 |       const s: any = collector.summary();
+    > 36 |       expect(s.nonBenignConsoleErrors, `console errors on ${path}: ${JSON.stringify(s.nonBenignConsoleErrors)}`).toEqual([]);
+         |                                                                                                                  ^
+      37 |       expect(s.pageErrors).toEqual([]);
+      38 |     });
+      39 |   }
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:36:114
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-40153-nders-authenticated-content-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /finance renders authenticated content" classname="phase3-wholesaler.spec.ts" time="0.666">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /finance renders authenticated content 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-429ec-nders-authenticated-content-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /payments renders authenticated content" classname="phase3-wholesaler.spec.ts" time="0.697">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /payments renders authenticated content 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-7e263-nders-authenticated-content-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /declarations renders authenticated content" classname="phase3-wholesaler.spec.ts" time="0.671">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › phase3-wholesaler.spec.ts:28:9 › PW1-R1 Phase 3: wholesaler journey › wholesaler page /declarations renders authenticated content 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-8bddd-nders-authenticated-content-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › dashboard shows the app shell with user context" classname="phase3-wholesaler.spec.ts" time="0.674">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › phase3-wholesaler.spec.ts:41:7 › PW1-R1 Phase 3: wholesaler journey › dashboard shows the app shell with user context 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-5cbd0-app-shell-with-user-context-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler cannot open retailer /client routes (boundary redirect)" classname="phase3-wholesaler.spec.ts" time="0.673">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › phase3-wholesaler.spec.ts:46:7 › PW1-R1 Phase 3: wholesaler journey › wholesaler cannot open retailer /client routes (boundary redirect) 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-ec9d3-t-routes-boundary-redirect--mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › logout returns to /login and clears the session" classname="phase3-wholesaler.spec.ts" time="0.671">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › phase3-wholesaler.spec.ts:52:7 › PW1-R1 Phase 3: wholesaler journey › logout returns to /login and clears the session 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase3-wholesaler.spec.ts:13:5
+
+    Error Context: ..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase3-wholesaler-PW1-R1-P-5dd3a-ogin-and-clears-the-session-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+</testsuite>
+<testsuite name="phase4-retailer.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="mobile" tests="7" failures="1" skipped="0" time="1.975" errors="6">
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer portal: catalog page renders supplier products incl. the setup SKU" classname="phase4-retailer.spec.ts" time="0.268">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase4-retailer.spec.ts:36:7 › PW1-R1 Phase 4: retailer journey › retailer portal: catalog page renders supplier products incl. the setup SKU 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:37:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-79d8f-products-incl-the-setup-SKU-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer creates an order through the real API (journey precondition)" classname="phase4-retailer.spec.ts" time="0.031">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase4-retailer.spec.ts:45:7 › PW1-R1 Phase 4: retailer journey › retailer creates an order through the real API (journey precondition) 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:46:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-6cdb4-l-API-journey-precondition--mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer orders page lists own orders via the browser" classname="phase4-retailer.spec.ts" time="0.253">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase4-retailer.spec.ts:54:7 › PW1-R1 Phase 4: retailer journey › retailer orders page lists own orders via the browser 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:55:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-b5a6a--own-orders-via-the-browser-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes" classname="phase4-retailer.spec.ts" time="0.239">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase4-retailer.spec.ts:62:7 › PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:63:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence)" classname="phase4-retailer.spec.ts" time="0.232">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase4-retailer.spec.ts:110:7 › PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence) 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:111:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer finance/payments/declarations pages render without errors" classname="phase4-retailer.spec.ts" time="0.696">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [mobile] › phase4-retailer.spec.ts:144:7 › PW1-R1 Phase 4: retailer journey › retailer finance/payments/declarations pages render without errors 
+
+    Error: client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:145:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-35033-pages-render-without-errors-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer print page issues NO mutating requests" classname="phase4-retailer.spec.ts" time="0.256">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase4-retailer.spec.ts:155:7 › PW1-R1 Phase 4: retailer journey › retailer print page issues NO mutating requests 
+
+    Error: apiLogin pw1r1.w1.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at ensureData (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:21:14)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase4-retailer.spec.ts:156:5
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-2c899-issues-NO-mutating-requests-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="phase5-isolation.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="mobile" tests="7" failures="2" skipped="0" time="1.153" errors="5">
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-retailer: RB cannot read RA order by id (API isolation)" classname="phase5-isolation.spec.ts" time="0.026">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase5-isolation.spec.ts:15:7 › PW1-R1 Phase 5: isolation & negative paths › cross-retailer: RB cannot read RA order by id (API isolation) 
+
+    Error: apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:17:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-d9839--order-by-id-API-isolation--mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" classname="phase5-isolation.spec.ts" time="0.026">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.w2.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase5-isolation.spec.ts:43:7 › PW1-R1 Phase 5: isolation & negative paths › cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB 
+
+    Error: apiLogin pw1r1.w2.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:44:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-a70c2-contain-W1-only-retailer-RB-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: RA W2-context cannot use W1-only data paths" classname="phase5-isolation.spec.ts" time="0.028">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase5-isolation.spec.ts:54:7 › PW1-R1 Phase 5: isolation & negative paths › cross-tenant: RA W2-context cannot use W1-only data paths 
+
+    Error: apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:56:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-e09ba-nnot-use-W1-only-data-paths-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › malformed IDs return neutral structured errors (no internals leaked)" classname="phase5-isolation.spec.ts" time="0.031">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.rb.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase5-isolation.spec.ts:69:7 › PW1-R1 Phase 5: isolation & negative paths › malformed IDs return neutral structured errors (no internals leaked) 
+
+    Error: apiLogin pw1r1.rb.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:70:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-e9b4b-errors-no-internals-leaked--mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › unauthenticated API access is rejected with structured 401 (no leak)" classname="phase5-isolation.spec.ts" time="0.042">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [mobile] › phase5-isolation.spec.ts:80:7 › PW1-R1 Phase 5: isolation & negative paths › unauthenticated API access is rejected with structured 401 (no leak) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 401
+    Received: 429
+
+      80 |   test('unauthenticated API access is rejected with structured 401 (no leak)', async () => {
+      81 |     const res = await apiGet('/orders', 'not-a-real-token');
+    > 82 |     expect(res.status).toBe(401);
+         |                        ^
+      83 |     expect(res.body?.code).toBe('UNAUTHENTICATED');
+      84 |     expect(JSON.stringify(res.body)).not.toMatch(/Traceback|sqlalchemy/i);
+      85 |   });
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:82:24
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-dd772-ith-structured-401-no-leak--mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › browser: RB portal session never exposes W2 tenant data" classname="phase5-isolation.spec.ts" time="0.736">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [mobile] › phase5-isolation.spec.ts:87:7 › PW1-R1 Phase 5: isolation & negative paths › browser: RB portal session never exposes W2 tenant data 
+
+    Error: client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:88:5
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-03465-ever-exposes-W2-tenant-data-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › RB orders page contains no RA-created orders (page-level isolation)" classname="phase5-isolation.spec.ts" time="0.264">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--mobile\trace.zip]]
+]]>
+</system-out>
+<error message="apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429" type="Error">
+<![CDATA[  [mobile] › phase5-isolation.spec.ts:96:7 › PW1-R1 Phase 5: isolation & negative paths › RB orders page contains no RA-created orders (page-level isolation) 
+
+    Error: apiLogin pw1r1.ra.r1@pw1r1.dev: HTTP 429
+
+       at helpers.ts:204
+
+      202 |     body: JSON.stringify({ email, password }),
+      203 |   });
+    > 204 |   if (res.status !== 200) throw new Error(`apiLogin ${email}: HTTP ${res.status}`);
+          |                                 ^
+      205 |   const body = await res.json();
+      206 |   return { token: body.data.access_token, tenants: body.data.available_tenants, userId: body.data.user_id };
+      207 | }
+        at apiLogin (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:204:33)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase5-isolation.spec.ts:98:16
+
+    Error Context: ..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase5-isolation-PW1-R1-Ph-090bb-rders-page-level-isolation--mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+</testsuite>
+<testsuite name="phase6-responsive.spec.ts" timestamp="2026-08-15T00:23:01.082Z" hostname="mobile" tests="7" failures="5" skipped="0" time="7.087" errors="0">
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler dashboard: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="0.748">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › phase6-responsive.spec.ts:17:7 › PW1-R1 Phase 6: responsive & usability › wholesaler dashboard: no horizontal overflow, no console/page errors 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:18:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="0.665">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › phase6-responsive.spec.ts:25:7 › PW1-R1 Phase 6: responsive & usability › wholesaler orders page: no horizontal overflow 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:26:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer catalog: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="0.774">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [mobile] › phase6-responsive.spec.ts:32:7 › PW1-R1 Phase 6: responsive & usability › retailer catalog: no horizontal overflow, no console/page errors 
+
+    Error: client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:33:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-4f836-flow-no-console-page-errors-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="0.762">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE" type="expect.toBe">
+<![CDATA[  [mobile] › phase6-responsive.spec.ts:40:7 › PW1-R1 Phase 6: responsive & usability › retailer orders page: no horizontal overflow 
+
+    Error: client login API for pw1r1.rb.r1@pw1r1.dev @TR16BB078F3A444E409D0BA80AE9D3CE
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:180
+
+      178 |
+      179 |   const resp = await loginRespP;
+    > 180 |   expect(resp.status(), `client login API for ${identity.email} @${wCode}`).toBe(200);
+          |                                                                             ^
+      181 |   const body = await resp.json();
+      182 |   expect(body.data?.tokens?.access_token, 'client contextual token').toBeTruthy();
+      183 |   expect(body.data?.wholesaler?.code, 'wholesaler code in response').toBe(wCode);
+        at loginRetailerPortal (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:180:77)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:41:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-360aa-page-no-horizontal-overflow-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › login forms have labels and keyboard-accessible inputs" classname="phase6-responsive.spec.ts" time="0.572">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › no unexpected network failures during a login journey" classname="phase6-responsive.spec.ts" time="0.587">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-mobile\error-context.md]]
+
+[[ATTACHMENT|..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="login API for pw1r1.w1.r1@pw1r1.dev" type="expect.toBe">
+<![CDATA[  [mobile] › phase6-responsive.spec.ts:60:7 › PW1-R1 Phase 6: responsive & usability › no unexpected network failures during a login journey 
+
+    Error: login API for pw1r1.w1.r1@pw1r1.dev
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 429
+
+       at helpers.ts:138
+
+      136 |
+      137 |   const resp = await loginRespP;
+    > 138 |   expect(resp.status(), `login API for ${identity.email}`).toBe(200); // REAL 200 required
+          |                                                            ^
+      139 |   const body = await resp.json();
+      140 |   expect(body.data?.access_token, 'identity access_token in response').toBeTruthy();
+      141 |   expect(body.data?.token_type).toBe('bearer');
+        at loginWholesaler (C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\helpers.ts:138:60)
+        at C:\Users\Jeff0\pw1r1\real-jwt-browser-review-2026-08-14\tests\phase6-responsive.spec.ts:61:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-49cb6-ures-during-a-login-journey-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › print stub: window.print callable on print pages without errors" classname="phase6-responsive.spec.ts" time="2.979">
+</testcase>
+</testsuite>
+</testsuites>

@@ -1,3 +1,10 @@
+> ## SUPERSEDED_BY_PW1_R3_R1 (2026-08-15)
+>
+> This original R3 section is superseded by the PW1-R3-R1 correction section
+> below (evidence-truth and deterministic-test correction). Product code and
+> the test suite remain byte-identical to the parent; the corrections are
+> factual/evidentiary only.
+
 # DC-12R1-MVP-L1-PW1-R3 — Authenticated Rate-Limit Context Closure (2026-08-15)
 
 ## Base & Branch
@@ -123,21 +130,30 @@ Phase 4 idempotency/print nodes, Phase 5 isolation nodes). The V2 report's
 PW1-R3's own earlier "zero failure cases" claim was a reviewer regex error
 and is corrected in the marker.
 
-## 3. Branch inventory — 18 files, 4+1+2+11
+## 3. Branch inventory — 28 files (aggregate 9f5d677..HEAD): 4+1+2+21
 - 4 product: `backend/api/app.py`, `backend/api/middleware/auth.py`,
   `backend/api/middleware/rate_limiting.py`, `backend/core/rate_limiter.py`
 - 1 test: `backend/tests/test_pw1r3_rate_limit_context.py`
-- 2 ledger/report: `ai-ledger/product-ai/2026-08-15_...r3...md`,
+- 2 docs: `ai-ledger/product-ai/2026-08-15_...r3...md`,
   `docs/ai-reports/review/2026-08-15_PW1_R2_R2_V2_INVALID_EVIDENCE_RECONCILIATION.md`
-- 11 evidence: `pw1r3-evidence/{impact_×6, gate1/2_full_backend, frontend_full_vitest,
-  R3_MUT_A/B}` (+ R1 additions below)
+- 21 evidence: `pw1r3-evidence/` (11 original: impact_×6, gate1/2_full_backend,
+  frontend_full_vitest, R3_MUT_A/B; 10 R1-new: R1_MUT_A/B, r1_gateA/B/C/D,
+  r1_natural_order(_second), r1_reverse_order, r1_skip_xfail_comparison)
+
+R1 delta (07013d2..HEAD) = **13 files: 3 modified + 10 new evidence**
+(3 M: ledger MD, docs marker MD, test file; 10 A: evidence above).
 
 ## 4. Two backend rounds, truthfully recorded; skip/xfail set comparison
 R1 re-ran both full rounds with `-rN` so node sets are machine-captured:
 - Round A: 3630 passed / 48 skipped / 15 xfailed / 0 failed / 0 errors
 - Round B: 3630 passed / 48 skipped / 15 xfailed / 0 failed / 0 errors
-- skipped/xfailed node sets extracted; see `r1_gateA/B_full_backend.txt` and
-  the set-comparison summary in `pw1r3-evidence/r1_skip_xfail_comparison.txt`.
+- R1 re-ran both full rounds with `-rsx`; machine-captured per-round sets in
+  `pw1r3-evidence/r1_skip_xfail_comparison.txt`: Round C and Round D each have
+  **15 complete xfail node IDs** (full node text before " - reason"), exact
+  set difference EMPTY; 48 canonical skip LOCATIONS (file:line) each,
+  identical across rounds. SKIPPED entries are recorded as canonical skip
+  locations, NOT asserted as JUnit node IDs (no JUnit node evidence exists for
+  them).
 
 ## 5. Deterministic test keys (no conditional assertions)
 The suite now uses a task-exclusive Redis DB (`PW1R3_TEST_REDIS_URL`, default
@@ -168,3 +184,17 @@ owner/retailer lifecycle); the docstring and ledger now say exactly that.
 
 ## 9. Push-only
 Only the isolated branch is pushed; no merge, no OpenCode browser gate started.
+
+## PW1-R3-R2 note (docs/evidence only; product + test byte-identical)
+- Aggregate branch scope corrected to **28 files = 4 product + 1 test + 2 docs
+  + 21 evidence**; R1 delta recorded separately as **13 files = 3 modified +
+  10 new evidence** (verified via `git diff --name-status`).
+- xfail comparison rebuilt from full node text before " - reason": Round C and
+  Round D each contain **15 complete unique xfail node IDs**; exact set
+  difference = EMPTY. (The earlier "11" was a truncated-extraction artifact.)
+- SKIPPED summary entries are recorded as **canonical skip locations**
+  (file:line) — not claimed as JUnit node IDs, because no JUnit node evidence
+  exists for them.
+- The original R3 section is marked SUPERSEDED_BY_PW1_R3_R1 (banner above).
+- No backend/full-suite rerun was performed for this round: product code and
+  the test suite are byte-identical to 1181ffe.

@@ -1,8 +1,27 @@
-round C: skipped=48 xfailed=11
-round D: skipped=48 xfailed=11
-skipped sets identical: True
-xfailed sets identical: True
---- SKIPPED (canonical, 48) ---
+PW1-R3-R1 skip/xfail comparison (pytest -rsx, rounds C and D, fresh stacks)
+round C: canonical skip locations=48, xfail node IDs=15
+round D: canonical skip locations=48, xfail node IDs=15
+xfail node-ID sets identical: True (exact set difference empty)
+skip-location sets identical: True
+NOTE: SKIPPED entries are canonical skip LOCATIONS (file:line) — the
+summary counts 48 skipped tests; these are NOT asserted as JUnit node IDs.
+--- XFAIL node IDs (canonical, 15) ---
+tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_overpayment_rejected_with_400
+tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_excessive_size
+tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_invalid_page
+tests/test_request_validation.py::TestRequestValidation::test_order_create_rejects_empty_items
+tests/test_request_validation.py::TestRequestValidation::test_order_item_rejects_invalid_quantity
+tests/test_request_validation.py::TestRequestValidation::test_user_create_rejects_missing_email
+tests/test_request_validation.py::TestRequestValidation::test_validation_error_has_structured_response
+tests/test_route_coverage.py::TestOpenAPIRouteCoverage::test_stub_endpoints_return_501
+tests/test_route_coverage.py::TestRoutePathParameters::test_order_id_path_parameter_accepted
+tests/test_route_coverage.py::TestRoutePathParameters::test_user_id_path_parameter_accepted
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/inventory/stocks-Stock]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/orders-Orders]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/payments-Payments]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/pricing/prices-Pricing]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/skus-Products/SKUs]
+--- SKIPPED canonical locations (canonical, 48) ---
 tests\test_alembic_migrations.py:41
 tests\test_alembic_migrations.py:50
 tests\test_alembic_migrations.py:59
@@ -51,15 +70,3 @@ tests\test_s3b_fresh_tenant_live_runtime_proof.py:643
 tests\test_s3b_fresh_tenant_live_runtime_proof.py:660
 tests\test_s5c_runtime_sku_import_http_integration.py:125
 tests\test_s5c_runtime_sku_import_http_integration.py:54
---- XFAIL (canonical, 11) ---
-tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_overpayment_rejected_with_400
-tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_excessive_size
-tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_invalid_page
-tests/test_request_validation.py::TestRequestValidation::test_order_create_rejects_empty_items
-tests/test_request_validation.py::TestRequestValidation::test_order_item_rejects_invalid_quantity
-tests/test_request_validation.py::TestRequestValidation::test_user_create_rejects_missing_email
-tests/test_request_validation.py::TestRequestValidation::test_validation_error_has_structured_response
-tests/test_route_coverage.py::TestOpenAPIRouteCoverage::test_stub_endpoints_return_501
-tests/test_route_coverage.py::TestRoutePathParameters::test_order_id_path_parameter_accepted
-tests/test_route_coverage.py::TestRoutePathParameters::test_user_id_path_parameter_accepted
-tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-

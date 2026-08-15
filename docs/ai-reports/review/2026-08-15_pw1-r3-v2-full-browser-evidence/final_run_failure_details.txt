@@ -1,0 +1,33 @@
+﻿[3x]  | phase1-routes.spec.ts | public auth pages are reachable anonymously
+    ERR: Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed  Locator: locator('button[type="submit"], form') Expected: visible Error: strict mode violation: locator('button[type="submit"], form') resolved to 2 elements:     1) <form novalidate="" class="space-y-5 rounde
+
+[3x]  | phase4-retailer.spec.ts | financial idempotency: repeated declaration with the same key produces ZERO extra writes
+    ERR: Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m  Expected: [32m201[39m Received: [31m400[39m    66 |       items: [{ sku_code: skuCode, quantity: 2 }], notes: 'PW1R1 idempotency order',   67 |     }); > 68 |     expect(order.st
+
+[3x]  | phase4-retailer.spec.ts | retailer creates an order through the real API (journey precondition)
+    ERR: Error: order create ({"code":"ORDER_VALIDATION_FAILED","message":"Some items cannot be ordered","request_id":"521f713f-0c9c-4132-8b2b-1ec2b70e93b6"})  [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m  Expected: [32m201[39m Received: [31
+
+[3x]  | phase4-retailer.spec.ts | retailer print page issues NO mutating requests
+    ERR: Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m  Expected: [32m201[39m Received: [31m400[39m    158 |       items: [{ sku_code: skuCode, quantity: 1 }], notes: 'PW1R1 print order',   159 |     }); > 160 |     expect(order.statu
+
+[3x]  | phase4-retailer.spec.ts | UI double-click on declare submit creates exactly one declaration (browser evidence)
+    ERR: Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m  Expected: [32m201[39m Received: [31m400[39m    113 |       items: [{ sku_code: skuCode, quantity: 1 }], notes: 'PW1R1 double-click order',   114 |     }); > 115 |     expect(orde
+
+[3x]  | phase5-isolation.spec.ts | cross-retailer: RB cannot read RA order by id (API isolation)
+    ERR: Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m  Expected: [32m201[39m Received: [31m400[39m    29 |       expect(sku.status).toBe(201);   30 |       const raOrder = await apiPost('/client/orders', raToken, { items: [{ sku_code
+
+[3x]  | phase5-isolation.spec.ts | cross-tenant: RA W2-context cannot use W1-only data paths
+    ERR: Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m  Expected: [32m200[39m Received: [31m500[39m    58 |     // W2 tenant has no RB orders; listing own orders in W2 context is empty   59 |     const own = await apiGet('/client/orde
+
+[3x]  | phase5-isolation.spec.ts | RB orders page contains no RA-created orders (page-level isolation)
+    ERR: Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m  Expected: [32m201[39m Received: [31m400[39m    105 |       items: [{ sku_code: skuCode, quantity: 1 }], notes: 'RA-ONLY-VISIBLE-ORDER',   106 |     }); > 107 |     expect(raOrder
+
+[3x]  | phase5-isolation.spec.ts | unauthenticated API access is rejected with structured 401 (no leak)
+    ERR: Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m  Expected: [32m"UNAUTHENTICATED"[39m Received: [31m"INVALID_TOKEN"[39m    81 |     const res = await apiGet('/orders', 'not-a-real-token');   82 |     expect(res.status).toBe(401)
+
+[1x]  | phase6-responsive.spec.ts | wholesaler dashboard: no horizontal overflow, no console/page errors
+    ERR: Error: wholesaler dashboard horizontal overflow (scrollWidth-clientWidth)  [2mexpect([22m[31mreceived[39m[2m).[22mtoBeLessThanOrEqual[2m([22m[32mexpected[39m[2m)[22m  Expected: <= [32m1[39m Received:    [31m374[39m    10 | async function assertNoHorizontalOverflow(page: import('@play
+
+[1x]  | phase6-responsive.spec.ts | wholesaler orders page: no horizontal overflow
+    ERR: Error: wholesaler orders horizontal overflow (scrollWidth-clientWidth)  [2mexpect([22m[31mreceived[39m[2m).[22mtoBeLessThanOrEqual[2m([22m[32mexpected[39m[2m)[22m  Expected: <= [32m1[39m Received:    [31m346[39m    10 | async function assertNoHorizontalOverflow(page: import('@playwri
+

@@ -1,0 +1,4319 @@
+﻿Listing tests:
+  [desktop] 鈥?auth-matrix.spec.ts:18:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /
+  [desktop] 鈥?auth-matrix.spec.ts:28:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W2 second wholesaler admin: independent tenant, login + select-tenant 200
+  [desktop] 鈥?auth-matrix.spec.ts:36:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA multi-tenant login: response carries 2 availableTenants into workspace selector
+  [desktop] 鈥?auth-matrix.spec.ts:68:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RB retailer portal login: client auth API 200, lands on /client
+  [desktop] 鈥?auth-matrix.spec.ts:73:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA retailer portal login at W1 portal: lands on /client
+  [desktop] 鈥?auth-matrix.spec.ts:78:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on wholesaler login: API 401, stays on /login, no token persisted
+  [desktop] 鈥?auth-matrix.spec.ts:96:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on retailer portal: API 401, stays on portal, neutral message
+  [desktop] 鈥?auth-matrix.spec.ts:112:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?/select-workspace direct access without navigation state redirects to /login
+  [desktop] 鈥?auth-matrix.spec.ts:118:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?logout clears mpango-auth session and returns to /login
+  [desktop] 鈥?phase1-routes.spec.ts:10:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?backend health endpoints are 200 (live/ready)
+  [desktop] 鈥?phase1-routes.spec.ts:17:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?frontend serves the SPA shell
+  [desktop] 鈥?phase1-routes.spec.ts:24:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?wholesaler routes redirect anonymous users to /login
+  [desktop] 鈥?phase1-routes.spec.ts:32:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?retailer /client routes redirect anonymous users to retailer portal or /login
+  [desktop] 鈥?phase1-routes.spec.ts:37:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?/client/login alias redirects to /retail/login preserving w
+  [desktop] 鈥?phase1-routes.spec.ts:42:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?public auth pages are reachable anonymously
+  [desktop] 鈥?phase1-routes.spec.ts:50:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?unknown route renders the 404 page (no crash)
+  [desktop] 鈥?phase1-routes.spec.ts:55:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?invalid portal code shows controlled invalid-portal state with zero login API calls
+  [desktop] 鈥?phase2-identity.spec.ts:14:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?legacy localStorage keys (access_token/user) do NOT authenticate
+  [desktop] 鈥?phase2-identity.spec.ts:28:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?forged mpango-auth with invalid JWT is rejected by the backend
+  [desktop] 鈥?phase2-identity.spec.ts:42:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a wholesaler session (hydration)
+  [desktop] 鈥?phase2-identity.spec.ts:65:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a retailer session at /client
+  [desktop] 鈥?phase2-identity.spec.ts:86:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?login form submits real credentials to the real API (request body audit)
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page / renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /orders renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /inventory renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /skus renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /retailers renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /finance renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /payments renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /declarations renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:41:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?dashboard shows the app shell with user context
+  [desktop] 鈥?phase3-wholesaler.spec.ts:46:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler cannot open retailer /client routes (boundary redirect)
+  [desktop] 鈥?phase3-wholesaler.spec.ts:52:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?logout returns to /login and clears the session
+  [desktop] 鈥?phase4-retailer.spec.ts:36:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer portal: catalog page renders supplier products incl. the setup SKU
+  [desktop] 鈥?phase4-retailer.spec.ts:45:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer creates an order through the real API (journey precondition)
+  [desktop] 鈥?phase4-retailer.spec.ts:54:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer orders page lists own orders via the browser
+  [desktop] 鈥?phase4-retailer.spec.ts:62:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?financial idempotency: repeated declaration with the same key produces ZERO extra writes
+  [desktop] 鈥?phase4-retailer.spec.ts:110:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?UI double-click on declare submit creates exactly one declaration (browser evidence)
+  [desktop] 鈥?phase4-retailer.spec.ts:144:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer finance/payments/declarations pages render without errors
+  [desktop] 鈥?phase4-retailer.spec.ts:155:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer print page issues NO mutating requests
+  [desktop] 鈥?phase5-isolation.spec.ts:15:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-retailer: RB cannot read RA order by id (API isolation)
+  [desktop] 鈥?phase5-isolation.spec.ts:43:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB
+  [desktop] 鈥?phase5-isolation.spec.ts:54:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: RA W2-context cannot use W1-only data paths
+  [desktop] 鈥?phase5-isolation.spec.ts:69:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?malformed IDs return neutral structured errors (no internals leaked)
+  [desktop] 鈥?phase5-isolation.spec.ts:80:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?unauthenticated API access is rejected with structured 401 (no leak)
+  [desktop] 鈥?phase5-isolation.spec.ts:87:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?browser: RB portal session never exposes W2 tenant data
+  [desktop] 鈥?phase5-isolation.spec.ts:96:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?RB orders page contains no RA-created orders (page-level isolation)
+  [desktop] 鈥?phase6-responsive.spec.ts:17:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler dashboard: no horizontal overflow, no console/page errors
+  [desktop] 鈥?phase6-responsive.spec.ts:25:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler orders page: no horizontal overflow
+  [desktop] 鈥?phase6-responsive.spec.ts:32:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer catalog: no horizontal overflow, no console/page errors
+  [desktop] 鈥?phase6-responsive.spec.ts:40:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer orders page: no horizontal overflow
+  [desktop] 鈥?phase6-responsive.spec.ts:47:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?login forms have labels and keyboard-accessible inputs
+  [desktop] 鈥?phase6-responsive.spec.ts:60:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?no unexpected network failures during a login journey
+  [desktop] 鈥?phase6-responsive.spec.ts:68:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?print stub: window.print callable on print pages without errors
+  [tablet] 鈥?auth-matrix.spec.ts:18:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /
+  [tablet] 鈥?auth-matrix.spec.ts:28:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W2 second wholesaler admin: independent tenant, login + select-tenant 200
+  [tablet] 鈥?auth-matrix.spec.ts:36:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA multi-tenant login: response carries 2 availableTenants into workspace selector
+  [tablet] 鈥?auth-matrix.spec.ts:68:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RB retailer portal login: client auth API 200, lands on /client
+  [tablet] 鈥?auth-matrix.spec.ts:73:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA retailer portal login at W1 portal: lands on /client
+  [tablet] 鈥?auth-matrix.spec.ts:78:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on wholesaler login: API 401, stays on /login, no token persisted
+  [tablet] 鈥?auth-matrix.spec.ts:96:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on retailer portal: API 401, stays on portal, neutral message
+  [tablet] 鈥?auth-matrix.spec.ts:112:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?/select-workspace direct access without navigation state redirects to /login
+  [tablet] 鈥?auth-matrix.spec.ts:118:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?logout clears mpango-auth session and returns to /login
+  [tablet] 鈥?phase1-routes.spec.ts:10:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?backend health endpoints are 200 (live/ready)
+  [tablet] 鈥?phase1-routes.spec.ts:17:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?frontend serves the SPA shell
+  [tablet] 鈥?phase1-routes.spec.ts:24:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?wholesaler routes redirect anonymous users to /login
+  [tablet] 鈥?phase1-routes.spec.ts:32:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?retailer /client routes redirect anonymous users to retailer portal or /login
+  [tablet] 鈥?phase1-routes.spec.ts:37:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?/client/login alias redirects to /retail/login preserving w
+  [tablet] 鈥?phase1-routes.spec.ts:42:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?public auth pages are reachable anonymously
+  [tablet] 鈥?phase1-routes.spec.ts:50:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?unknown route renders the 404 page (no crash)
+  [tablet] 鈥?phase1-routes.spec.ts:55:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?invalid portal code shows controlled invalid-portal state with zero login API calls
+  [tablet] 鈥?phase2-identity.spec.ts:14:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?legacy localStorage keys (access_token/user) do NOT authenticate
+  [tablet] 鈥?phase2-identity.spec.ts:28:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?forged mpango-auth with invalid JWT is rejected by the backend
+  [tablet] 鈥?phase2-identity.spec.ts:42:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a wholesaler session (hydration)
+  [tablet] 鈥?phase2-identity.spec.ts:65:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a retailer session at /client
+  [tablet] 鈥?phase2-identity.spec.ts:86:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?login form submits real credentials to the real API (request body audit)
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page / renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /orders renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /inventory renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /skus renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /retailers renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /finance renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /payments renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /declarations renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:41:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?dashboard shows the app shell with user context
+  [tablet] 鈥?phase3-wholesaler.spec.ts:46:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler cannot open retailer /client routes (boundary redirect)
+  [tablet] 鈥?phase3-wholesaler.spec.ts:52:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?logout returns to /login and clears the session
+  [tablet] 鈥?phase4-retailer.spec.ts:36:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer portal: catalog page renders supplier products incl. the setup SKU
+  [tablet] 鈥?phase4-retailer.spec.ts:45:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer creates an order through the real API (journey precondition)
+  [tablet] 鈥?phase4-retailer.spec.ts:54:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer orders page lists own orders via the browser
+  [tablet] 鈥?phase4-retailer.spec.ts:62:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?financial idempotency: repeated declaration with the same key produces ZERO extra writes
+  [tablet] 鈥?phase4-retailer.spec.ts:110:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?UI double-click on declare submit creates exactly one declaration (browser evidence)
+  [tablet] 鈥?phase4-retailer.spec.ts:144:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer finance/payments/declarations pages render without errors
+  [tablet] 鈥?phase4-retailer.spec.ts:155:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer print page issues NO mutating requests
+  [tablet] 鈥?phase5-isolation.spec.ts:15:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-retailer: RB cannot read RA order by id (API isolation)
+  [tablet] 鈥?phase5-isolation.spec.ts:43:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB
+  [tablet] 鈥?phase5-isolation.spec.ts:54:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: RA W2-context cannot use W1-only data paths
+  [tablet] 鈥?phase5-isolation.spec.ts:69:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?malformed IDs return neutral structured errors (no internals leaked)
+  [tablet] 鈥?phase5-isolation.spec.ts:80:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?unauthenticated API access is rejected with structured 401 (no leak)
+  [tablet] 鈥?phase5-isolation.spec.ts:87:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?browser: RB portal session never exposes W2 tenant data
+  [tablet] 鈥?phase5-isolation.spec.ts:96:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?RB orders page contains no RA-created orders (page-level isolation)
+  [tablet] 鈥?phase6-responsive.spec.ts:17:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler dashboard: no horizontal overflow, no console/page errors
+  [tablet] 鈥?phase6-responsive.spec.ts:25:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler orders page: no horizontal overflow
+  [tablet] 鈥?phase6-responsive.spec.ts:32:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer catalog: no horizontal overflow, no console/page errors
+  [tablet] 鈥?phase6-responsive.spec.ts:40:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer orders page: no horizontal overflow
+  [tablet] 鈥?phase6-responsive.spec.ts:47:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?login forms have labels and keyboard-accessible inputs
+  [tablet] 鈥?phase6-responsive.spec.ts:60:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?no unexpected network failures during a login journey
+  [tablet] 鈥?phase6-responsive.spec.ts:68:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?print stub: window.print callable on print pages without errors
+  [mobile] 鈥?auth-matrix.spec.ts:18:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /
+  [mobile] 鈥?auth-matrix.spec.ts:28:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W2 second wholesaler admin: independent tenant, login + select-tenant 200
+  [mobile] 鈥?auth-matrix.spec.ts:36:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA multi-tenant login: response carries 2 availableTenants into workspace selector
+  [mobile] 鈥?auth-matrix.spec.ts:68:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RB retailer portal login: client auth API 200, lands on /client
+  [mobile] 鈥?auth-matrix.spec.ts:73:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA retailer portal login at W1 portal: lands on /client
+  [mobile] 鈥?auth-matrix.spec.ts:78:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on wholesaler login: API 401, stays on /login, no token persisted
+  [mobile] 鈥?auth-matrix.spec.ts:96:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on retailer portal: API 401, stays on portal, neutral message
+  [mobile] 鈥?auth-matrix.spec.ts:112:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?/select-workspace direct access without navigation state redirects to /login
+  [mobile] 鈥?auth-matrix.spec.ts:118:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?logout clears mpango-auth session and returns to /login
+  [mobile] 鈥?phase1-routes.spec.ts:10:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?backend health endpoints are 200 (live/ready)
+  [mobile] 鈥?phase1-routes.spec.ts:17:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?frontend serves the SPA shell
+  [mobile] 鈥?phase1-routes.spec.ts:24:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?wholesaler routes redirect anonymous users to /login
+  [mobile] 鈥?phase1-routes.spec.ts:32:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?retailer /client routes redirect anonymous users to retailer portal or /login
+  [mobile] 鈥?phase1-routes.spec.ts:37:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?/client/login alias redirects to /retail/login preserving w
+  [mobile] 鈥?phase1-routes.spec.ts:42:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?public auth pages are reachable anonymously
+  [mobile] 鈥?phase1-routes.spec.ts:50:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?unknown route renders the 404 page (no crash)
+  [mobile] 鈥?phase1-routes.spec.ts:55:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?invalid portal code shows controlled invalid-portal state with zero login API calls
+  [mobile] 鈥?phase2-identity.spec.ts:14:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?legacy localStorage keys (access_token/user) do NOT authenticate
+  [mobile] 鈥?phase2-identity.spec.ts:28:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?forged mpango-auth with invalid JWT is rejected by the backend
+  [mobile] 鈥?phase2-identity.spec.ts:42:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a wholesaler session (hydration)
+  [mobile] 鈥?phase2-identity.spec.ts:65:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a retailer session at /client
+  [mobile] 鈥?phase2-identity.spec.ts:86:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?login form submits real credentials to the real API (request body audit)
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page / renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /orders renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /inventory renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /skus renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /retailers renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /finance renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /payments renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /declarations renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:41:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?dashboard shows the app shell with user context
+  [mobile] 鈥?phase3-wholesaler.spec.ts:46:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler cannot open retailer /client routes (boundary redirect)
+  [mobile] 鈥?phase3-wholesaler.spec.ts:52:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?logout returns to /login and clears the session
+  [mobile] 鈥?phase4-retailer.spec.ts:36:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer portal: catalog page renders supplier products incl. the setup SKU
+  [mobile] 鈥?phase4-retailer.spec.ts:45:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer creates an order through the real API (journey precondition)
+  [mobile] 鈥?phase4-retailer.spec.ts:54:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer orders page lists own orders via the browser
+  [mobile] 鈥?phase4-retailer.spec.ts:62:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?financial idempotency: repeated declaration with the same key produces ZERO extra writes
+  [mobile] 鈥?phase4-retailer.spec.ts:110:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?UI double-click on declare submit creates exactly one declaration (browser evidence)
+  [mobile] 鈥?phase4-retailer.spec.ts:144:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer finance/payments/declarations pages render without errors
+  [mobile] 鈥?phase4-retailer.spec.ts:155:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer print page issues NO mutating requests
+  [mobile] 鈥?phase5-isolation.spec.ts:15:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-retailer: RB cannot read RA order by id (API isolation)
+  [mobile] 鈥?phase5-isolation.spec.ts:43:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB
+  [mobile] 鈥?phase5-isolation.spec.ts:54:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: RA W2-context cannot use W1-only data paths
+  [mobile] 鈥?phase5-isolation.spec.ts:69:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?malformed IDs return neutral structured errors (no internals leaked)
+  [mobile] 鈥?phase5-isolation.spec.ts:80:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?unauthenticated API access is rejected with structured 401 (no leak)
+  [mobile] 鈥?phase5-isolation.spec.ts:87:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?browser: RB portal session never exposes W2 tenant data
+  [mobile] 鈥?phase5-isolation.spec.ts:96:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?RB orders page contains no RA-created orders (page-level isolation)
+  [mobile] 鈥?phase6-responsive.spec.ts:17:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler dashboard: no horizontal overflow, no console/page errors
+  [mobile] 鈥?phase6-responsive.spec.ts:25:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler orders page: no horizontal overflow
+  [mobile] 鈥?phase6-responsive.spec.ts:32:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer catalog: no horizontal overflow, no console/page errors
+  [mobile] 鈥?phase6-responsive.spec.ts:40:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer orders page: no horizontal overflow
+  [mobile] 鈥?phase6-responsive.spec.ts:47:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?login forms have labels and keyboard-accessible inputs
+  [mobile] 鈥?phase6-responsive.spec.ts:60:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?no unexpected network failures during a login journey
+  [mobile] 鈥?phase6-responsive.spec.ts:68:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?print stub: window.print callable on print pages without errors
+Total: 162 tests in 7 files
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\Jeff0\\pw1r3_harness\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--list"
+    ],
+    "configFile": "C:\\Users\\Jeff0\\pw1r3_harness\\playwright.config.js",
+    "rootDir": "C:/Users/Jeff0/pw1r3_harness/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {},
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Jeff0/pw1r3_harness/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "desktop",
+        "name": "desktop",
+        "testDir": "C:/Users/Jeff0/pw1r3_harness/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/pw1r3_harness/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "tablet",
+        "name": "tablet",
+        "testDir": "C:/Users/Jeff0/pw1r3_harness/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/pw1r3_harness/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "mobile",
+        "name": "mobile",
+        "testDir": "C:/Users/Jeff0/pw1r3_harness/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        null
+      ],
+      [
+        "junit",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "auth-matrix.spec.ts",
+      "file": "auth-matrix.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 auth matrix (real JWT)",
+          "file": "auth-matrix.spec.ts",
+          "line": 16,
+          "column": 6,
+          "specs": [
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-b3751c7819936499765f",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-d7a7f34845d9d4f8a341",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9460476de98aab76eed4",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-75fd33162025d2177339",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-63350d86b5a3c445283e",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9039d00c6ba374926db0",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-bc98695f73a4339b1921",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-5400f1b088e6d19449b7",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9b7ea5304713ba1a14cc",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            },
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-c93f1619202c0080aa61",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-f6f07b334daad718276c",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-4075161975b01271e7c3",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-8419eb016d1671ffc751",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-c377e1466326ac157169",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-4704d98c4e5a67ba5f69",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-248d2584cb9d2d00e411",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-a75eaf8a6b4ca3567991",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-39007ea1b7d0ff8400aa",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            },
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-778fec5a5c497dba3eb2",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-7818f60f8c4cc3a31ac5",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-b241e838776c12963156",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-df521b10f92f6de30b7e",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-adeac458fbe939ae0fd2",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-6d85af05726d07289849",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-1482f473c2b626c9b204",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-4c7f83f3ef93148331e9",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-1e80592c2ca2f997e907",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase1-routes.spec.ts",
+      "file": "phase1-routes.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 1: routes & navigation",
+          "file": "phase1-routes.spec.ts",
+          "line": 8,
+          "column": 6,
+          "specs": [
+            {
+              "title": "backend health endpoints are 200 (live/ready)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-01e531d8f25e4724b72d",
+              "file": "phase1-routes.spec.ts",
+              "line": 10,
+              "column": 7
+            },
+            {
+              "title": "frontend serves the SPA shell",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-b8accaf87d53aedf5e58",
+              "file": "phase1-routes.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "wholesaler routes redirect anonymous users to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-7e3ff960b74b517ad54e",
+              "file": "phase1-routes.spec.ts",
+              "line": 24,
+              "column": 7
+            },
+            {
+              "title": "retailer /client routes redirect anonymous users to retailer portal or /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-5ac9d55a8b5befbb2f4c",
+              "file": "phase1-routes.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "/client/login alias redirects to /retail/login preserving w",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-a10e56e5953122ba2a33",
+              "file": "phase1-routes.spec.ts",
+              "line": 37,
+              "column": 7
+            },
+            {
+              "title": "public auth pages are reachable anonymously",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-851e70525fa14ee24185",
+              "file": "phase1-routes.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "unknown route renders the 404 page (no crash)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-8be2f33d6817e9750da1",
+              "file": "phase1-routes.spec.ts",
+              "line": 50,
+              "column": 7
+            },
+            {
+              "title": "invalid portal code shows controlled invalid-portal state with zero login API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-464c5734c7b1e56313fe",
+              "file": "phase1-routes.spec.ts",
+              "line": 55,
+              "column": 7
+            },
+            {
+              "title": "backend health endpoints are 200 (live/ready)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-fa2892d6b58b268511b5",
+              "file": "phase1-routes.spec.ts",
+              "line": 10,
+              "column": 7
+            },
+            {
+              "title": "frontend serves the SPA shell",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-856262a81466f4a08a3b",
+              "file": "phase1-routes.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "wholesaler routes redirect anonymous users to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-005e0218fdc19a9649b3",
+              "file": "phase1-routes.spec.ts",
+              "line": 24,
+              "column": 7
+            },
+            {
+              "title": "retailer /client routes redirect anonymous users to retailer portal or /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-0688af78e793d531b314",
+              "file": "phase1-routes.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "/client/login alias redirects to /retail/login preserving w",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-702cb83c35ad575922c2",
+              "file": "phase1-routes.spec.ts",
+              "line": 37,
+              "column": 7
+            },
+            {
+              "title": "public auth pages are reachable anonymously",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-604dffc0be94ae82102a",
+              "file": "phase1-routes.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "unknown route renders the 404 page (no crash)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-4fb42f339517a35fff71",
+              "file": "phase1-routes.spec.ts",
+              "line": 50,
+              "column": 7
+            },
+            {
+              "title": "invalid portal code shows controlled invalid-portal state with zero login API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-611761529c16a3722999",
+              "file": "phase1-routes.spec.ts",
+              "line": 55,
+              "column": 7
+            },
+            {
+              "title": "backend health endpoints are 200 (live/ready)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-889946520801e4a42e3c",
+              "file": "phase1-routes.spec.ts",
+              "line": 10,
+              "column": 7
+            },
+            {
+              "title": "frontend serves the SPA shell",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-9558655cc76621625962",
+              "file": "phase1-routes.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "wholesaler routes redirect anonymous users to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-41cda4fa91669ffbdb7f",
+              "file": "phase1-routes.spec.ts",
+              "line": 24,
+              "column": 7
+            },
+            {
+              "title": "retailer /client routes redirect anonymous users to retailer portal or /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-39bc3226d5b9047fef18",
+              "file": "phase1-routes.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "/client/login alias redirects to /retail/login preserving w",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-a7b81a09f932c7e2d82f",
+              "file": "phase1-routes.spec.ts",
+              "line": 37,
+              "column": 7
+            },
+            {
+              "title": "public auth pages are reachable anonymously",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-e31536ef33ed6cb18bd4",
+              "file": "phase1-routes.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "unknown route renders the 404 page (no crash)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-ca09a21572c85a5b56f3",
+              "file": "phase1-routes.spec.ts",
+              "line": 50,
+              "column": 7
+            },
+            {
+              "title": "invalid portal code shows controlled invalid-portal state with zero login API calls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9b1b12f7873389e7b007-5dba8e138c273de6d57b",
+              "file": "phase1-routes.spec.ts",
+              "line": 55,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase2-identity.spec.ts",
+      "file": "phase2-identity.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 2: identity & hydration",
+          "file": "phase2-identity.spec.ts",
+          "line": 12,
+          "column": 6,
+          "specs": [
+            {
+              "title": "legacy localStorage keys (access_token/user) do NOT authenticate",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-521aa9b007640c86f58b",
+              "file": "phase2-identity.spec.ts",
+              "line": 14,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-964bc5b3c0afaee9b6bf",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "REAL mpango-auth format restores a wholesaler session (hydration)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-0cd67809fc8b9de5adc5",
+              "file": "phase2-identity.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "REAL mpango-auth format restores a retailer session at /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-ee3d2976184c87a13da7",
+              "file": "phase2-identity.spec.ts",
+              "line": 65,
+              "column": 7
+            },
+            {
+              "title": "login form submits real credentials to the real API (request body audit)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-e3adc3328b7fa725f14d",
+              "file": "phase2-identity.spec.ts",
+              "line": 86,
+              "column": 7
+            },
+            {
+              "title": "legacy localStorage keys (access_token/user) do NOT authenticate",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-35b0604f3c548f970b6e",
+              "file": "phase2-identity.spec.ts",
+              "line": 14,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-7cfb6b5744329468f66e",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "REAL mpango-auth format restores a wholesaler session (hydration)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-73a7bcfad7dfa4fa0660",
+              "file": "phase2-identity.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "REAL mpango-auth format restores a retailer session at /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-d5768ee338f29de654af",
+              "file": "phase2-identity.spec.ts",
+              "line": 65,
+              "column": 7
+            },
+            {
+              "title": "login form submits real credentials to the real API (request body audit)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-c4f7347117fd39570e39",
+              "file": "phase2-identity.spec.ts",
+              "line": 86,
+              "column": 7
+            },
+            {
+              "title": "legacy localStorage keys (access_token/user) do NOT authenticate",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-e3de37b1c16c2481e16e",
+              "file": "phase2-identity.spec.ts",
+              "line": 14,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-fb7431cf9231bc9f6c82",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "REAL mpango-auth format restores a wholesaler session (hydration)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-8b46b534062f9384362b",
+              "file": "phase2-identity.spec.ts",
+              "line": 42,
+              "column": 7
+            },
+            {
+              "title": "REAL mpango-auth format restores a retailer session at /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-aaf6b07b31ba5a6f035c",
+              "file": "phase2-identity.spec.ts",
+              "line": 65,
+              "column": 7
+            },
+            {
+              "title": "login form submits real credentials to the real API (request body audit)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-0c9d002cec0f91082b59",
+              "file": "phase2-identity.spec.ts",
+              "line": 86,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase3-wholesaler.spec.ts",
+      "file": "phase3-wholesaler.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 3: wholesaler journey",
+          "file": "phase3-wholesaler.spec.ts",
+          "line": 11,
+          "column": 6,
+          "specs": [
+            {
+              "title": "wholesaler page / renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-bb2ade165d4be6e19f67",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /orders renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-324b9df2173c928e026e",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /inventory renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-138831f3b74d5fcce85f",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /skus renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-9e0414a82df47023b37e",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /retailers renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-7dd6acfdc104aa989af4",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /finance renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-76c99eb53049eb95b577",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /payments renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-48374211c2ace7a99097",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /declarations renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-6b01a31b70fbcd356684",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "dashboard shows the app shell with user context",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-b55fe8a847a4a7057531",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 41,
+              "column": 7
+            },
+            {
+              "title": "wholesaler cannot open retailer /client routes (boundary redirect)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-591d048c9f5f1ca62368",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 46,
+              "column": 7
+            },
+            {
+              "title": "logout returns to /login and clears the session",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-b277352ce2cedd773186",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 52,
+              "column": 7
+            },
+            {
+              "title": "wholesaler page / renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-894a5959cc30686236d2",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /orders renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-2f505ced45dce62dc861",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /inventory renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-a0d29972bbd56d8708a8",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /skus renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-bf650dac77d993ecbc9b",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /retailers renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-c48417a5f02c5df470d7",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /finance renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-7458abce19c6f3500229",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /payments renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-0d4e4dd1ca938d7c81e8",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /declarations renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-f19599726080e2d16770",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "dashboard shows the app shell with user context",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-3e7f9234d5942ca515f1",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 41,
+              "column": 7
+            },
+            {
+              "title": "wholesaler cannot open retailer /client routes (boundary redirect)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-65607614af823ab46d64",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 46,
+              "column": 7
+            },
+            {
+              "title": "logout returns to /login and clears the session",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-3f09f121ab0b1fba4334",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 52,
+              "column": 7
+            },
+            {
+              "title": "wholesaler page / renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-ee65907928f966dbff63",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /orders renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-d3f63694f49f69394ecf",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /inventory renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-8e0a76c50c5404c03ae8",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /skus renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-4bbc52ed37db52db1259",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /retailers renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-34c67353234145f3698c",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /finance renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-4179866004676e5a568e",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /payments renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-a30ebea23ee313f54f11",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "wholesaler page /declarations renders authenticated content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-56c0812df57db2c3cdc6",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 28,
+              "column": 9
+            },
+            {
+              "title": "dashboard shows the app shell with user context",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-8aab9f53723f1a9d6551",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 41,
+              "column": 7
+            },
+            {
+              "title": "wholesaler cannot open retailer /client routes (boundary redirect)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-7a0fdee205d302fb1379",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 46,
+              "column": 7
+            },
+            {
+              "title": "logout returns to /login and clears the session",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "be4b4b3c7f69343b41e8-24563d60868f77fc9630",
+              "file": "phase3-wholesaler.spec.ts",
+              "line": 52,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase4-retailer.spec.ts",
+      "file": "phase4-retailer.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 4: retailer journey",
+          "file": "phase4-retailer.spec.ts",
+          "line": 34,
+          "column": 6,
+          "specs": [
+            {
+              "title": "retailer portal: catalog page renders supplier products incl. the setup SKU",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-a813b617b77ad8a298aa",
+              "file": "phase4-retailer.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "retailer creates an order through the real API (journey precondition)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-ec5881b8cd3b5226b774",
+              "file": "phase4-retailer.spec.ts",
+              "line": 45,
+              "column": 7
+            },
+            {
+              "title": "retailer orders page lists own orders via the browser",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-f306ac821889e0af3f90",
+              "file": "phase4-retailer.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "financial idempotency: repeated declaration with the same key produces ZERO extra writes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-edfbb3f6a37214a46b09",
+              "file": "phase4-retailer.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "UI double-click on declare submit creates exactly one declaration (browser evidence)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-ffdd16650825979a9b8a",
+              "file": "phase4-retailer.spec.ts",
+              "line": 110,
+              "column": 7
+            },
+            {
+              "title": "retailer finance/payments/declarations pages render without errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-4993be1db12ef8773d9a",
+              "file": "phase4-retailer.spec.ts",
+              "line": 144,
+              "column": 7
+            },
+            {
+              "title": "retailer print page issues NO mutating requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-6b86ec38f2553a342b82",
+              "file": "phase4-retailer.spec.ts",
+              "line": 155,
+              "column": 7
+            },
+            {
+              "title": "retailer portal: catalog page renders supplier products incl. the setup SKU",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-48b04e46f35e9876f597",
+              "file": "phase4-retailer.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "retailer creates an order through the real API (journey precondition)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-4649f82b8d9c5329e3ba",
+              "file": "phase4-retailer.spec.ts",
+              "line": 45,
+              "column": 7
+            },
+            {
+              "title": "retailer orders page lists own orders via the browser",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-613091b5718568581f1c",
+              "file": "phase4-retailer.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "financial idempotency: repeated declaration with the same key produces ZERO extra writes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-90a86fe2dd474a6cfff4",
+              "file": "phase4-retailer.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "UI double-click on declare submit creates exactly one declaration (browser evidence)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-cb45af618dafa5d5edda",
+              "file": "phase4-retailer.spec.ts",
+              "line": 110,
+              "column": 7
+            },
+            {
+              "title": "retailer finance/payments/declarations pages render without errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-aa68e1ab24ec37db2ecd",
+              "file": "phase4-retailer.spec.ts",
+              "line": 144,
+              "column": 7
+            },
+            {
+              "title": "retailer print page issues NO mutating requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-c349817f540b60a00391",
+              "file": "phase4-retailer.spec.ts",
+              "line": 155,
+              "column": 7
+            },
+            {
+              "title": "retailer portal: catalog page renders supplier products incl. the setup SKU",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-387ef9a35981e59984a8",
+              "file": "phase4-retailer.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "retailer creates an order through the real API (journey precondition)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-5958391587ae35d36f1a",
+              "file": "phase4-retailer.spec.ts",
+              "line": 45,
+              "column": 7
+            },
+            {
+              "title": "retailer orders page lists own orders via the browser",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-af22fad4ffd9ba02ed13",
+              "file": "phase4-retailer.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "financial idempotency: repeated declaration with the same key produces ZERO extra writes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-3efdfbbeb12d15b2b6c0",
+              "file": "phase4-retailer.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "UI double-click on declare submit creates exactly one declaration (browser evidence)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-79edb51dc786095677c3",
+              "file": "phase4-retailer.spec.ts",
+              "line": 110,
+              "column": 7
+            },
+            {
+              "title": "retailer finance/payments/declarations pages render without errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-d840caf98fc4dad6981a",
+              "file": "phase4-retailer.spec.ts",
+              "line": 144,
+              "column": 7
+            },
+            {
+              "title": "retailer print page issues NO mutating requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "16631921d5692b4921f0-7ebff8f7558a1e7c7cde",
+              "file": "phase4-retailer.spec.ts",
+              "line": 155,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase5-isolation.spec.ts",
+      "file": "phase5-isolation.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 5: isolation & negative paths",
+          "file": "phase5-isolation.spec.ts",
+          "line": 13,
+          "column": 6,
+          "specs": [
+            {
+              "title": "cross-retailer: RB cannot read RA order by id (API isolation)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-0494bc8195fd9388a3a5",
+              "file": "phase5-isolation.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-039b62e330a2c9b9f2b9",
+              "file": "phase5-isolation.spec.ts",
+              "line": 43,
+              "column": 7
+            },
+            {
+              "title": "cross-tenant: RA W2-context cannot use W1-only data paths",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-168059166db8e592b019",
+              "file": "phase5-isolation.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "malformed IDs return neutral structured errors (no internals leaked)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-9a5b68248719a3835f1b",
+              "file": "phase5-isolation.spec.ts",
+              "line": 69,
+              "column": 7
+            },
+            {
+              "title": "unauthenticated API access is rejected with structured 401 (no leak)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-37a5aa9c8a9f325140b7",
+              "file": "phase5-isolation.spec.ts",
+              "line": 80,
+              "column": 7
+            },
+            {
+              "title": "browser: RB portal session never exposes W2 tenant data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-32a72ae6da36108f7194",
+              "file": "phase5-isolation.spec.ts",
+              "line": 87,
+              "column": 7
+            },
+            {
+              "title": "RB orders page contains no RA-created orders (page-level isolation)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-6635675846cfad9ae558",
+              "file": "phase5-isolation.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "cross-retailer: RB cannot read RA order by id (API isolation)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-c9de413d2c133cebab37",
+              "file": "phase5-isolation.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-c7eb42139fe286ea28ba",
+              "file": "phase5-isolation.spec.ts",
+              "line": 43,
+              "column": 7
+            },
+            {
+              "title": "cross-tenant: RA W2-context cannot use W1-only data paths",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-8797abc6824eb806da20",
+              "file": "phase5-isolation.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "malformed IDs return neutral structured errors (no internals leaked)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-97bd320b975116f87625",
+              "file": "phase5-isolation.spec.ts",
+              "line": 69,
+              "column": 7
+            },
+            {
+              "title": "unauthenticated API access is rejected with structured 401 (no leak)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-1c20f660ccc3b3e749d6",
+              "file": "phase5-isolation.spec.ts",
+              "line": 80,
+              "column": 7
+            },
+            {
+              "title": "browser: RB portal session never exposes W2 tenant data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-2c9dca9e7861c5b24786",
+              "file": "phase5-isolation.spec.ts",
+              "line": 87,
+              "column": 7
+            },
+            {
+              "title": "RB orders page contains no RA-created orders (page-level isolation)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-5307ee3202879ab55bef",
+              "file": "phase5-isolation.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "cross-retailer: RB cannot read RA order by id (API isolation)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-49b8510412eea6088696",
+              "file": "phase5-isolation.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-e104472ac303b7c7e7a8",
+              "file": "phase5-isolation.spec.ts",
+              "line": 43,
+              "column": 7
+            },
+            {
+              "title": "cross-tenant: RA W2-context cannot use W1-only data paths",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-279414c6893d9ad2e868",
+              "file": "phase5-isolation.spec.ts",
+              "line": 54,
+              "column": 7
+            },
+            {
+              "title": "malformed IDs return neutral structured errors (no internals leaked)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-f257e468221d52c497a4",
+              "file": "phase5-isolation.spec.ts",
+              "line": 69,
+              "column": 7
+            },
+            {
+              "title": "unauthenticated API access is rejected with structured 401 (no leak)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-2ca808515d87e5622e09",
+              "file": "phase5-isolation.spec.ts",
+              "line": 80,
+              "column": 7
+            },
+            {
+              "title": "browser: RB portal session never exposes W2 tenant data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-d6263d34bad1e713dd7f",
+              "file": "phase5-isolation.spec.ts",
+              "line": 87,
+              "column": 7
+            },
+            {
+              "title": "RB orders page contains no RA-created orders (page-level isolation)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8e5dfe3228f26379e2c2-7952279210b0fdaa3601",
+              "file": "phase5-isolation.spec.ts",
+              "line": 96,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase6-responsive.spec.ts",
+      "file": "phase6-responsive.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 6: responsive & usability",
+          "file": "phase6-responsive.spec.ts",
+          "line": 15,
+          "column": 6,
+          "specs": [
+            {
+              "title": "wholesaler dashboard: no horizontal overflow, no console/page errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-a024d6658b76168d4b48",
+              "file": "phase6-responsive.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "wholesaler orders page: no horizontal overflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-532bc2da13b9df477edb",
+              "file": "phase6-responsive.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "retailer catalog: no horizontal overflow, no console/page errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-352b07ee91676d5b033d",
+              "file": "phase6-responsive.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "retailer orders page: no horizontal overflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-a25c6a3c092f0ef60ed3",
+              "file": "phase6-responsive.spec.ts",
+              "line": 40,
+              "column": 7
+            },
+            {
+              "title": "login forms have labels and keyboard-accessible inputs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-52ff8529164aecdcf150",
+              "file": "phase6-responsive.spec.ts",
+              "line": 47,
+              "column": 7
+            },
+            {
+              "title": "no unexpected network failures during a login journey",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-02b1fc5d63df6b59f323",
+              "file": "phase6-responsive.spec.ts",
+              "line": 60,
+              "column": 7
+            },
+            {
+              "title": "print stub: window.print callable on print pages without errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-3afcce8bd45792272ad5",
+              "file": "phase6-responsive.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "wholesaler dashboard: no horizontal overflow, no console/page errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-3504c0180199c8a16ab5",
+              "file": "phase6-responsive.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "wholesaler orders page: no horizontal overflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-ed80998d4484ef757c6c",
+              "file": "phase6-responsive.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "retailer catalog: no horizontal overflow, no console/page errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-c781164ea8a43b92cdf0",
+              "file": "phase6-responsive.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "retailer orders page: no horizontal overflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-6aa1cf5aac8f68586629",
+              "file": "phase6-responsive.spec.ts",
+              "line": 40,
+              "column": 7
+            },
+            {
+              "title": "login forms have labels and keyboard-accessible inputs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-951dec844cf7ce33fec1",
+              "file": "phase6-responsive.spec.ts",
+              "line": 47,
+              "column": 7
+            },
+            {
+              "title": "no unexpected network failures during a login journey",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-87800c04fd764d3f1935",
+              "file": "phase6-responsive.spec.ts",
+              "line": 60,
+              "column": 7
+            },
+            {
+              "title": "print stub: window.print callable on print pages without errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-3c21b2beec3a6fe69cc7",
+              "file": "phase6-responsive.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "wholesaler dashboard: no horizontal overflow, no console/page errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-f68655a7992c0359eb92",
+              "file": "phase6-responsive.spec.ts",
+              "line": 17,
+              "column": 7
+            },
+            {
+              "title": "wholesaler orders page: no horizontal overflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-1b444db3111ea25cd47b",
+              "file": "phase6-responsive.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "retailer catalog: no horizontal overflow, no console/page errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-dd596ac6d0d2488f4df6",
+              "file": "phase6-responsive.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "retailer orders page: no horizontal overflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-24c142337fbd18c86028",
+              "file": "phase6-responsive.spec.ts",
+              "line": 40,
+              "column": 7
+            },
+            {
+              "title": "login forms have labels and keyboard-accessible inputs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-48b1cbabca53728eb05e",
+              "file": "phase6-responsive.spec.ts",
+              "line": 47,
+              "column": 7
+            },
+            {
+              "title": "no unexpected network failures during a login journey",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-bfc8f027fb44b7cd2fc7",
+              "file": "phase6-responsive.spec.ts",
+              "line": 60,
+              "column": 7
+            },
+            {
+              "title": "print stub: window.print callable on print pages without errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "f3135e3ea3c87c47adab-f9e835777b9383ab993e",
+              "file": "phase6-responsive.spec.ts",
+              "line": 68,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-15T08:13:22.822Z",
+    "duration": 398.3810000000001,
+    "expected": 0,
+    "skipped": 162,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
+<testsuites id="" name="" tests="162" failures="0" skipped="162" errors="0" time="0.3983810000000001">
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="desktop" tests="9" failures="0" skipped="9" time="0" errors="0">
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?/select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase1-routes.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="desktop" tests="8" failures="0" skipped="8" time="0" errors="0">
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?backend health endpoints are 200 (live/ready)" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?frontend serves the SPA shell" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?wholesaler routes redirect anonymous users to /login" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?retailer /client routes redirect anonymous users to retailer portal or /login" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?/client/login alias redirects to /retail/login preserving w" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?public auth pages are reachable anonymously" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?unknown route renders the 404 page (no crash)" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?invalid portal code shows controlled invalid-portal state with zero login API calls" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase2-identity.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="desktop" tests="5" failures="0" skipped="5" time="0" errors="0">
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?legacy localStorage keys (access_token/user) do NOT authenticate" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?forged mpango-auth with invalid JWT is rejected by the backend" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?REAL mpango-auth format restores a wholesaler session (hydration)" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?REAL mpango-auth format restores a retailer session at /client" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?login form submits real credentials to the real API (request body audit)" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase3-wholesaler.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="desktop" tests="11" failures="0" skipped="11" time="0" errors="0">
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page / renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /orders renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /inventory renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /skus renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /retailers renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /finance renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /payments renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /declarations renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?dashboard shows the app shell with user context" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler cannot open retailer /client routes (boundary redirect)" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?logout returns to /login and clears the session" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase4-retailer.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="desktop" tests="7" failures="0" skipped="7" time="0" errors="0">
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer portal: catalog page renders supplier products incl. the setup SKU" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer creates an order through the real API (journey precondition)" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer orders page lists own orders via the browser" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?financial idempotency: repeated declaration with the same key produces ZERO extra writes" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?UI double-click on declare submit creates exactly one declaration (browser evidence)" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer finance/payments/declarations pages render without errors" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer print page issues NO mutating requests" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase5-isolation.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="desktop" tests="7" failures="0" skipped="7" time="0" errors="0">
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?cross-retailer: RB cannot read RA order by id (API isolation)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?cross-tenant: RA W2-context cannot use W1-only data paths" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?malformed IDs return neutral structured errors (no internals leaked)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?unauthenticated API access is rejected with structured 401 (no leak)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?browser: RB portal session never exposes W2 tenant data" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?RB orders page contains no RA-created orders (page-level isolation)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase6-responsive.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="desktop" tests="7" failures="0" skipped="7" time="0" errors="0">
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?wholesaler dashboard: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?wholesaler orders page: no horizontal overflow" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?retailer catalog: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?retailer orders page: no horizontal overflow" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?login forms have labels and keyboard-accessible inputs" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?no unexpected network failures during a login journey" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?print stub: window.print callable on print pages without errors" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="tablet" tests="9" failures="0" skipped="9" time="0" errors="0">
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?/select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase1-routes.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="tablet" tests="8" failures="0" skipped="8" time="0" errors="0">
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?backend health endpoints are 200 (live/ready)" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?frontend serves the SPA shell" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?wholesaler routes redirect anonymous users to /login" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?retailer /client routes redirect anonymous users to retailer portal or /login" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?/client/login alias redirects to /retail/login preserving w" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?public auth pages are reachable anonymously" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?unknown route renders the 404 page (no crash)" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?invalid portal code shows controlled invalid-portal state with zero login API calls" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase2-identity.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="tablet" tests="5" failures="0" skipped="5" time="0" errors="0">
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?legacy localStorage keys (access_token/user) do NOT authenticate" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?forged mpango-auth with invalid JWT is rejected by the backend" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?REAL mpango-auth format restores a wholesaler session (hydration)" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?REAL mpango-auth format restores a retailer session at /client" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?login form submits real credentials to the real API (request body audit)" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase3-wholesaler.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="tablet" tests="11" failures="0" skipped="11" time="0" errors="0">
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page / renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /orders renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /inventory renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /skus renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /retailers renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /finance renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /payments renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /declarations renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?dashboard shows the app shell with user context" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler cannot open retailer /client routes (boundary redirect)" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?logout returns to /login and clears the session" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase4-retailer.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="tablet" tests="7" failures="0" skipped="7" time="0" errors="0">
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer portal: catalog page renders supplier products incl. the setup SKU" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer creates an order through the real API (journey precondition)" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer orders page lists own orders via the browser" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?financial idempotency: repeated declaration with the same key produces ZERO extra writes" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?UI double-click on declare submit creates exactly one declaration (browser evidence)" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer finance/payments/declarations pages render without errors" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer print page issues NO mutating requests" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase5-isolation.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="tablet" tests="7" failures="0" skipped="7" time="0" errors="0">
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?cross-retailer: RB cannot read RA order by id (API isolation)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?cross-tenant: RA W2-context cannot use W1-only data paths" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?malformed IDs return neutral structured errors (no internals leaked)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?unauthenticated API access is rejected with structured 401 (no leak)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?browser: RB portal session never exposes W2 tenant data" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?RB orders page contains no RA-created orders (page-level isolation)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase6-responsive.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="tablet" tests="7" failures="0" skipped="7" time="0" errors="0">
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?wholesaler dashboard: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?wholesaler orders page: no horizontal overflow" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?retailer catalog: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?retailer orders page: no horizontal overflow" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?login forms have labels and keyboard-accessible inputs" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?no unexpected network failures during a login journey" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?print stub: window.print callable on print pages without errors" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="mobile" tests="9" failures="0" skipped="9" time="0" errors="0">
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?/select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) 鈥?logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase1-routes.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="mobile" tests="8" failures="0" skipped="8" time="0" errors="0">
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?backend health endpoints are 200 (live/ready)" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?frontend serves the SPA shell" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?wholesaler routes redirect anonymous users to /login" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?retailer /client routes redirect anonymous users to retailer portal or /login" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?/client/login alias redirects to /retail/login preserving w" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?public auth pages are reachable anonymously" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?unknown route renders the 404 page (no crash)" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation 鈥?invalid portal code shows controlled invalid-portal state with zero login API calls" classname="phase1-routes.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase2-identity.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="mobile" tests="5" failures="0" skipped="5" time="0" errors="0">
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?legacy localStorage keys (access_token/user) do NOT authenticate" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?forged mpango-auth with invalid JWT is rejected by the backend" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?REAL mpango-auth format restores a wholesaler session (hydration)" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?REAL mpango-auth format restores a retailer session at /client" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration 鈥?login form submits real credentials to the real API (request body audit)" classname="phase2-identity.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase3-wholesaler.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="mobile" tests="11" failures="0" skipped="11" time="0" errors="0">
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page / renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /orders renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /inventory renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /skus renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /retailers renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /finance renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /payments renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /declarations renders authenticated content" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?dashboard shows the app shell with user context" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler cannot open retailer /client routes (boundary redirect)" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey 鈥?logout returns to /login and clears the session" classname="phase3-wholesaler.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase4-retailer.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="mobile" tests="7" failures="0" skipped="7" time="0" errors="0">
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer portal: catalog page renders supplier products incl. the setup SKU" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer creates an order through the real API (journey precondition)" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer orders page lists own orders via the browser" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?financial idempotency: repeated declaration with the same key produces ZERO extra writes" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?UI double-click on declare submit creates exactly one declaration (browser evidence)" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer finance/payments/declarations pages render without errors" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey 鈥?retailer print page issues NO mutating requests" classname="phase4-retailer.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase5-isolation.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="mobile" tests="7" failures="0" skipped="7" time="0" errors="0">
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?cross-retailer: RB cannot read RA order by id (API isolation)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?cross-tenant: RA W2-context cannot use W1-only data paths" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?malformed IDs return neutral structured errors (no internals leaked)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?unauthenticated API access is rejected with structured 401 (no leak)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?browser: RB portal session never exposes W2 tenant data" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths 鈥?RB orders page contains no RA-created orders (page-level isolation)" classname="phase5-isolation.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="phase6-responsive.spec.ts" timestamp="2026-08-15T08:13:23.220Z" hostname="mobile" tests="7" failures="0" skipped="7" time="0" errors="0">
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?wholesaler dashboard: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?wholesaler orders page: no horizontal overflow" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?retailer catalog: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?retailer orders page: no horizontal overflow" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?login forms have labels and keyboard-accessible inputs" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?no unexpected network failures during a login journey" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability 鈥?print stub: window.print callable on print pages without errors" classname="phase6-responsive.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+</testsuites>

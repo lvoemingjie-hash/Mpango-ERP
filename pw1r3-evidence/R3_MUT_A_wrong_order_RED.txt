@@ -38,7 +38,7 @@ ___________ test_contextual_burst_stays_admitted_well_past_ip_limit ___________
 tests\test_pw1r3_rate_limit_context.py:219: in test_contextual_burst_stays_admitted_well_past_ip_limit
     assert resp.headers.get("X-RateLimit-Limit") == "1000"
 E   AssertionError: assert '100' == '1000'
-E     
+E
 E     - 1000
 E     ?    -
 E     + 100

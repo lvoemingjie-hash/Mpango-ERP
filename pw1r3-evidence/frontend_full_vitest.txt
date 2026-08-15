@@ -3585,4 +3585,3 @@ React Router caught the following error during render TypeError: Cannot read pro
 [2m      Tests [22m [1m[32m323 passed[39m[22m[90m (323)[39m
 [2m   Start at [22m 10:42:54
 [2m   Duration [22m 20.52s[2m (transform 4.23s, setup 6.25s, collect 53.29s, tests 47.19s, environment 60.32s, prepare 16.57s)[22m
-

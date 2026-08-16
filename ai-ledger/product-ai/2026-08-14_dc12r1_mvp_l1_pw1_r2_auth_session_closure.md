@@ -159,6 +159,13 @@ Evidence: `pw1_r2_evidence/mutations/M12_token_only_guards_RED.txt`,
 | ledger (this file) | R2 verdict superseded (above) |
 | `pw1r2-evidence/` | replacement evidence (impact, mutations, gates) |
 
+> **PW1-R4-A-M0 packaging note (2026-08-16):** the raw
+> `pw1r2-evidence/` artifacts were REMOVED from the protected-target merge
+> tree (packaging-only commit). They are retained verbatim in the
+> historical commits and report branches (e.g. the PW1-R2 closure branch
+> history); the references below are historical pointers, not claims about
+> the current merge tree. No source/test blob changed.
+
 ## Fix contract verification
 
 1. Interceptor impact: GitNexus has no symbol for the anonymous interceptor

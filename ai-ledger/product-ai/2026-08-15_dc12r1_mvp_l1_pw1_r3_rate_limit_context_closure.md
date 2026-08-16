@@ -140,6 +140,14 @@ and is corrected in the marker.
   frontend_full_vitest, R3_MUT_A/B; 10 R1-new: R1_MUT_A/B, r1_gateA/B/C/D,
   r1_natural_order(_second), r1_reverse_order, r1_skip_xfail_comparison)
 
+> **PW1-R4-A-M0 packaging note (2026-08-16):** the raw
+> `pw1r3-evidence/` artifacts were REMOVED from the protected-target merge
+> tree (packaging-only commit). They are retained verbatim in the
+> historical commits and report branches (e.g. the PW1-R3 closure branch
+> history, 07013d2); the references above and below are historical
+> pointers, not claims about the current merge tree. No source/test blob
+> changed.
+
 R1 delta (07013d2..HEAD) = **13 files: 3 modified + 10 new evidence**
 (3 M: ledger MD, docs marker MD, test file; 10 A: evidence above).
 

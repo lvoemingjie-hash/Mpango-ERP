@@ -1,0 +1,9 @@
+{
+  "required_greens": {
+    "phase4:70 x3": true,
+    "phase4:118 x3": true,
+    "phase2-identity:28 x3": true,
+    "phase5 isolation all nodes": true
+  },
+  "all_green": true
+}

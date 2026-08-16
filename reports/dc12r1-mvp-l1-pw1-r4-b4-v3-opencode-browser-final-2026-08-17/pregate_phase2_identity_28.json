@@ -1,0 +1,533 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\Jeff0\\pw1r4b_worktree\\pw1r4b\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "phase2-identity.spec.ts:28",
+      "--project=desktop",
+      "--repeat-each=10",
+      "--workers=1",
+      "--retries=0"
+    ],
+    "configFile": "C:\\Users\\Jeff0\\pw1r4b_worktree\\pw1r4b\\playwright.config.js",
+    "rootDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/test-results",
+        "repeatEach": 10,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "desktop",
+        "name": "desktop",
+        "testDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "tablet",
+        "name": "tablet",
+        "testDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "mobile",
+        "name": "mobile",
+        "testDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        null
+      ],
+      [
+        "junit",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "phase2-identity.spec.ts",
+      "file": "phase2-identity.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 Phase 2: identity & hydration",
+          "file": "phase2-identity.spec.ts",
+          "line": 12,
+          "column": 6,
+          "specs": [
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 900,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:34.032Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-964bc5b3c0afaee9b6bf",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 899,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:35.976Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9pbnZlbnRvcnkvc3RvY2tzP3BhZ2U9MSZzaXplPTUwIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9pbnZlbnRvcnkvc3RvY2tzP3BhZ2U9MSZzaXplPTUwIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9pbnZlbnRvcnkvc3RvY2tzP3BhZ2U9MSZzaXplPTUwIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9pbnZlbnRvcnkvc3RvY2tzP3BhZ2U9MSZzaXplPTUwIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-ba313867ceed2c3b3029",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 846,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:38.058Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-a3e2026ad2ba49e9863f",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 831,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:39.934Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-80f0de47d429befcf707",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 832,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:41.800Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9pbnZlbnRvcnkvc3RvY2tzP3BhZ2U9MSZzaXplPTUwIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9pbnZlbnRvcnkvc3RvY2tzP3BhZ2U9MSZzaXplPTUwIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-ddeeaa71198df96c10c1",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 801,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:43.804Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-013a8f899acdd8186d30",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 835,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:45.649Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9pbnZlbnRvcnkvc3RvY2tzP3BhZ2U9MSZzaXplPTUwIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9pbnZlbnRvcnkvc3RvY2tzP3BhZ2U9MSZzaXplPTUwIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-ca2b65c0268e825fe33e",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 846,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:47.467Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-e989d8d2ebb4521a72fb",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 946,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:49.278Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2Rhc2hib2FyZHMvY2hhcnRzL3NhbGVzLXRyZW5kP2dyYW51bGFyaXR5PWRheSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-61683557d46336cdd958",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "forged mpango-auth with invalid JWT is rejected by the backend",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 808,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:43:51.270Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiCiAgXSwKICAicGFnZUVycm9ycyI6IFtdLAogICJyZXF1ZXN0RmFpbGVkIjogW10sCiAgImh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2twaS9zdW1tYXJ5IiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfSwKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL29yZGVycz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9vcmRlcnM/cGFnZT0xJnNpemU9NTAiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvZGFzaGJvYXJkcy9rcGkvc3VtbWFyeSIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9kYXNoYm9hcmRzL2NoYXJ0cy9zYWxlcy10cmVuZD9ncmFudWxhcml0eT1kYXkiLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9LAogICAgewogICAgICAidXJsIjogImh0dHA6Ly8xMjcuMC4wLjE6NTE3My9hcGkvdjEvaW52ZW50b3J5L3N0b2Nrcz9wYWdlPTEmc2l6ZT01MCIsCiAgICAgICJzdGF0dXMiOiA0MDEKICAgIH0sCiAgICB7CiAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo1MTczL2FwaS92MS9hdXRoL3JlZnJlc2giLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIsCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIiwKICAgICJGYWlsZWQgdG8gbG9hZCByZXNvdXJjZTogdGhlIHNlcnZlciByZXNwb25kZWQgd2l0aCBhIHN0YXR1cyBvZiA0MDEgKFVuYXV0aG9yaXplZCkiLAogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cc026100e112db1aa8cf-0d06ecf4496f71f80889",
+              "file": "phase2-identity.spec.ts",
+              "line": 28,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-16T20:43:33.463Z",
+    "duration": 19133.26,
+    "expected": 10,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

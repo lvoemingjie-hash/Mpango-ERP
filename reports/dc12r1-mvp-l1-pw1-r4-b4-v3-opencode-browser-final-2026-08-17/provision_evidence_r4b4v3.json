@@ -1,0 +1,164 @@
+{
+  "provisioned_at": "2026-08-17",
+  "canonical_names": {
+    "retailer_a": "PW1R1 Retailer A",
+    "retailer_b": "PW1R1 Retailer B"
+  },
+  "identity_emails": {
+    "w1": "pw1r4.w1.b4v3@pw1r4.dev",
+    "w2": "pw1r4.w2.b4v3@pw1r4.dev",
+    "ra": "pw1r4.ra.b4v3@pw1r4.dev",
+    "rb": "pw1r4.rb.b4v3@pw1r4.dev"
+  },
+  "steps": [
+    {
+      "step": "signup_create",
+      "registration_id": "ae6c76ad-bdf3-43f1-88aa-62e1028cf6bb",
+      "ok": true
+    },
+    {
+      "step": "verify_email_consume",
+      "ok": true
+    },
+    {
+      "step": "owner_setup_credential_http",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "login",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "select_tenant",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "me",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "signup_create",
+      "registration_id": "26618945-e09a-4853-9701-17ed3fa049fa",
+      "ok": true
+    },
+    {
+      "step": "verify_email_consume",
+      "ok": true
+    },
+    {
+      "step": "owner_setup_credential_http",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "login",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "select_tenant",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "me",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "retailer_register_http",
+      "status": 201,
+      "expected": 201,
+      "ok": true
+    },
+    {
+      "step": "retailer_setup_token_reissue",
+      "ok": true
+    },
+    {
+      "step": "retailer_setup_credential_http",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "login",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "select_tenant",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "me",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "retailer_register_http",
+      "status": 201,
+      "expected": 201,
+      "ok": true
+    },
+    {
+      "step": "retailer_setup_token_reissue",
+      "ok": true
+    },
+    {
+      "step": "retailer_setup_credential_http",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "login",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "select_tenant",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "me",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "negative_login_wrong_password_401",
+      "status": 401,
+      "ok": true
+    },
+    {
+      "step": "client_login_ra_w1",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "client_login_wrong_password_401",
+      "status": 401,
+      "ok": true
+    }
+  ]
+}

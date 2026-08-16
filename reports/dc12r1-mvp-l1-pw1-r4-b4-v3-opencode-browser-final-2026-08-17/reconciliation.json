@@ -1,0 +1,14 @@
+{
+  "product_candidate": "9f24d969e30a2c8ed3ae9e0eddebae170089292a",
+  "authoritative_harness": "db84b1325c51a484af55029ce3485d9995b0669a",
+  "nodes_total": 162,
+  "passed": 160,
+  "failed": 2,
+  "skipped": 0,
+  "errors": 0,
+  "flaky": 0,
+  "accounting_gap": 0,
+  "workers": 1,
+  "retries": 0,
+  "reconciled": true
+}

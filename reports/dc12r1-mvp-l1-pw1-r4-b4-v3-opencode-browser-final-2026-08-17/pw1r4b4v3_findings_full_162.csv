@@ -1,0 +1,163 @@
+idx,file,line,project,status,title
+1,auth-matrix.spec.ts,18,desktop,passed,"W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /"
+2,auth-matrix.spec.ts,28,desktop,passed,"W2 second wholesaler admin: independent tenant, login + select-tenant 200"
+3,auth-matrix.spec.ts,36,desktop,passed,RA multi-tenant login: response carries 2 availableTenants into workspace selector
+4,auth-matrix.spec.ts,68,desktop,passed,"RB retailer portal login: client auth API 200, lands on /client"
+5,auth-matrix.spec.ts,73,desktop,passed,RA retailer portal login at W1 portal: lands on /client
+6,auth-matrix.spec.ts,78,desktop,passed,"wrong password on wholesaler login: API 401, stays on /login, no token persisted"
+7,auth-matrix.spec.ts,96,desktop,passed,"wrong password on retailer portal: API 401, stays on portal, neutral message"
+8,auth-matrix.spec.ts,112,desktop,passed,/select-workspace direct access without navigation state redirects to /login
+9,auth-matrix.spec.ts,118,desktop,passed,logout clears mpango-auth session and returns to /login
+10,auth-matrix.spec.ts,18,tablet,passed,"W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /"
+11,auth-matrix.spec.ts,28,tablet,passed,"W2 second wholesaler admin: independent tenant, login + select-tenant 200"
+12,auth-matrix.spec.ts,36,tablet,passed,RA multi-tenant login: response carries 2 availableTenants into workspace selector
+13,auth-matrix.spec.ts,68,tablet,passed,"RB retailer portal login: client auth API 200, lands on /client"
+14,auth-matrix.spec.ts,73,tablet,passed,RA retailer portal login at W1 portal: lands on /client
+15,auth-matrix.spec.ts,78,tablet,passed,"wrong password on wholesaler login: API 401, stays on /login, no token persisted"
+16,auth-matrix.spec.ts,96,tablet,passed,"wrong password on retailer portal: API 401, stays on portal, neutral message"
+17,auth-matrix.spec.ts,112,tablet,passed,/select-workspace direct access without navigation state redirects to /login
+18,auth-matrix.spec.ts,118,tablet,passed,logout clears mpango-auth session and returns to /login
+19,auth-matrix.spec.ts,18,mobile,passed,"W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /"
+20,auth-matrix.spec.ts,28,mobile,passed,"W2 second wholesaler admin: independent tenant, login + select-tenant 200"
+21,auth-matrix.spec.ts,36,mobile,passed,RA multi-tenant login: response carries 2 availableTenants into workspace selector
+22,auth-matrix.spec.ts,68,mobile,passed,"RB retailer portal login: client auth API 200, lands on /client"
+23,auth-matrix.spec.ts,73,mobile,passed,RA retailer portal login at W1 portal: lands on /client
+24,auth-matrix.spec.ts,78,mobile,passed,"wrong password on wholesaler login: API 401, stays on /login, no token persisted"
+25,auth-matrix.spec.ts,96,mobile,passed,"wrong password on retailer portal: API 401, stays on portal, neutral message"
+26,auth-matrix.spec.ts,112,mobile,passed,/select-workspace direct access without navigation state redirects to /login
+27,auth-matrix.spec.ts,118,mobile,passed,logout clears mpango-auth session and returns to /login
+28,phase1-routes.spec.ts,10,desktop,passed,backend health endpoints are 200 (live/ready)
+29,phase1-routes.spec.ts,17,desktop,passed,frontend serves the SPA shell
+30,phase1-routes.spec.ts,24,desktop,passed,wholesaler routes redirect anonymous users to /login
+31,phase1-routes.spec.ts,32,desktop,passed,retailer /client routes redirect anonymous users to retailer portal or /login
+32,phase1-routes.spec.ts,37,desktop,passed,/client/login alias redirects to /retail/login preserving w
+33,phase1-routes.spec.ts,42,desktop,passed,public auth pages are reachable anonymously
+34,phase1-routes.spec.ts,54,desktop,passed,unknown route renders the 404 page (no crash)
+35,phase1-routes.spec.ts,59,desktop,passed,invalid portal code shows controlled invalid-portal state with zero login API calls
+36,phase1-routes.spec.ts,10,tablet,passed,backend health endpoints are 200 (live/ready)
+37,phase1-routes.spec.ts,17,tablet,passed,frontend serves the SPA shell
+38,phase1-routes.spec.ts,24,tablet,passed,wholesaler routes redirect anonymous users to /login
+39,phase1-routes.spec.ts,32,tablet,passed,retailer /client routes redirect anonymous users to retailer portal or /login
+40,phase1-routes.spec.ts,37,tablet,passed,/client/login alias redirects to /retail/login preserving w
+41,phase1-routes.spec.ts,42,tablet,passed,public auth pages are reachable anonymously
+42,phase1-routes.spec.ts,54,tablet,passed,unknown route renders the 404 page (no crash)
+43,phase1-routes.spec.ts,59,tablet,passed,invalid portal code shows controlled invalid-portal state with zero login API calls
+44,phase1-routes.spec.ts,10,mobile,passed,backend health endpoints are 200 (live/ready)
+45,phase1-routes.spec.ts,17,mobile,passed,frontend serves the SPA shell
+46,phase1-routes.spec.ts,24,mobile,passed,wholesaler routes redirect anonymous users to /login
+47,phase1-routes.spec.ts,32,mobile,passed,retailer /client routes redirect anonymous users to retailer portal or /login
+48,phase1-routes.spec.ts,37,mobile,passed,/client/login alias redirects to /retail/login preserving w
+49,phase1-routes.spec.ts,42,mobile,passed,public auth pages are reachable anonymously
+50,phase1-routes.spec.ts,54,mobile,passed,unknown route renders the 404 page (no crash)
+51,phase1-routes.spec.ts,59,mobile,passed,invalid portal code shows controlled invalid-portal state with zero login API calls
+52,phase2-identity.spec.ts,14,desktop,passed,legacy localStorage keys (access_token/user) do NOT authenticate
+53,phase2-identity.spec.ts,28,desktop,passed,forged mpango-auth with invalid JWT is rejected by the backend
+54,phase2-identity.spec.ts,42,desktop,passed,REAL mpango-auth format restores a wholesaler session (hydration)
+55,phase2-identity.spec.ts,65,desktop,passed,REAL mpango-auth format restores a retailer session at /client
+56,phase2-identity.spec.ts,86,desktop,passed,login form submits real credentials to the real API (request body audit)
+57,phase2-identity.spec.ts,14,tablet,passed,legacy localStorage keys (access_token/user) do NOT authenticate
+58,phase2-identity.spec.ts,28,tablet,passed,forged mpango-auth with invalid JWT is rejected by the backend
+59,phase2-identity.spec.ts,42,tablet,passed,REAL mpango-auth format restores a wholesaler session (hydration)
+60,phase2-identity.spec.ts,65,tablet,passed,REAL mpango-auth format restores a retailer session at /client
+61,phase2-identity.spec.ts,86,tablet,passed,login form submits real credentials to the real API (request body audit)
+62,phase2-identity.spec.ts,14,mobile,passed,legacy localStorage keys (access_token/user) do NOT authenticate
+63,phase2-identity.spec.ts,28,mobile,passed,forged mpango-auth with invalid JWT is rejected by the backend
+64,phase2-identity.spec.ts,42,mobile,passed,REAL mpango-auth format restores a wholesaler session (hydration)
+65,phase2-identity.spec.ts,65,mobile,passed,REAL mpango-auth format restores a retailer session at /client
+66,phase2-identity.spec.ts,86,mobile,passed,login form submits real credentials to the real API (request body audit)
+67,phase3-wholesaler.spec.ts,28,desktop,passed,wholesaler page / renders authenticated content
+68,phase3-wholesaler.spec.ts,28,desktop,passed,wholesaler page /orders renders authenticated content
+69,phase3-wholesaler.spec.ts,28,desktop,passed,wholesaler page /inventory renders authenticated content
+70,phase3-wholesaler.spec.ts,28,desktop,passed,wholesaler page /skus renders authenticated content
+71,phase3-wholesaler.spec.ts,28,desktop,passed,wholesaler page /retailers renders authenticated content
+72,phase3-wholesaler.spec.ts,28,desktop,passed,wholesaler page /finance renders authenticated content
+73,phase3-wholesaler.spec.ts,28,desktop,passed,wholesaler page /payments renders authenticated content
+74,phase3-wholesaler.spec.ts,28,desktop,passed,wholesaler page /declarations renders authenticated content
+75,phase3-wholesaler.spec.ts,41,desktop,passed,dashboard shows the app shell with user context
+76,phase3-wholesaler.spec.ts,46,desktop,passed,wholesaler cannot open retailer /client routes (boundary redirect)
+77,phase3-wholesaler.spec.ts,52,desktop,passed,logout returns to /login and clears the session
+78,phase3-wholesaler.spec.ts,28,tablet,passed,wholesaler page / renders authenticated content
+79,phase3-wholesaler.spec.ts,28,tablet,passed,wholesaler page /orders renders authenticated content
+80,phase3-wholesaler.spec.ts,28,tablet,passed,wholesaler page /inventory renders authenticated content
+81,phase3-wholesaler.spec.ts,28,tablet,passed,wholesaler page /skus renders authenticated content
+82,phase3-wholesaler.spec.ts,28,tablet,passed,wholesaler page /retailers renders authenticated content
+83,phase3-wholesaler.spec.ts,28,tablet,passed,wholesaler page /finance renders authenticated content
+84,phase3-wholesaler.spec.ts,28,tablet,passed,wholesaler page /payments renders authenticated content
+85,phase3-wholesaler.spec.ts,28,tablet,passed,wholesaler page /declarations renders authenticated content
+86,phase3-wholesaler.spec.ts,41,tablet,passed,dashboard shows the app shell with user context
+87,phase3-wholesaler.spec.ts,46,tablet,passed,wholesaler cannot open retailer /client routes (boundary redirect)
+88,phase3-wholesaler.spec.ts,52,tablet,passed,logout returns to /login and clears the session
+89,phase3-wholesaler.spec.ts,28,mobile,passed,wholesaler page / renders authenticated content
+90,phase3-wholesaler.spec.ts,28,mobile,passed,wholesaler page /orders renders authenticated content
+91,phase3-wholesaler.spec.ts,28,mobile,passed,wholesaler page /inventory renders authenticated content
+92,phase3-wholesaler.spec.ts,28,mobile,passed,wholesaler page /skus renders authenticated content
+93,phase3-wholesaler.spec.ts,28,mobile,passed,wholesaler page /retailers renders authenticated content
+94,phase3-wholesaler.spec.ts,28,mobile,passed,wholesaler page /finance renders authenticated content
+95,phase3-wholesaler.spec.ts,28,mobile,passed,wholesaler page /payments renders authenticated content
+96,phase3-wholesaler.spec.ts,28,mobile,passed,wholesaler page /declarations renders authenticated content
+97,phase3-wholesaler.spec.ts,41,mobile,passed,dashboard shows the app shell with user context
+98,phase3-wholesaler.spec.ts,46,mobile,passed,wholesaler cannot open retailer /client routes (boundary redirect)
+99,phase3-wholesaler.spec.ts,52,mobile,passed,logout returns to /login and clears the session
+100,phase4-retailer.spec.ts,44,desktop,passed,retailer portal: catalog page renders supplier products incl. the setup SKU
+101,phase4-retailer.spec.ts,53,desktop,passed,retailer creates an order through the real API (journey precondition)
+102,phase4-retailer.spec.ts,62,desktop,passed,retailer orders page lists own orders via the browser
+103,phase4-retailer.spec.ts,70,desktop,passed,financial idempotency: repeated declaration with the same key produces ZERO extra writes
+104,phase4-retailer.spec.ts,118,desktop,passed,UI double-click on declare submit creates exactly one declaration (browser evidence)
+105,phase4-retailer.spec.ts,153,desktop,passed,retailer finance/payments/declarations pages render without errors
+106,phase4-retailer.spec.ts,164,desktop,passed,retailer print page issues NO mutating requests
+107,phase4-retailer.spec.ts,44,tablet,passed,retailer portal: catalog page renders supplier products incl. the setup SKU
+108,phase4-retailer.spec.ts,53,tablet,passed,retailer creates an order through the real API (journey precondition)
+109,phase4-retailer.spec.ts,62,tablet,passed,retailer orders page lists own orders via the browser
+110,phase4-retailer.spec.ts,70,tablet,passed,financial idempotency: repeated declaration with the same key produces ZERO extra writes
+111,phase4-retailer.spec.ts,118,tablet,passed,UI double-click on declare submit creates exactly one declaration (browser evidence)
+112,phase4-retailer.spec.ts,153,tablet,passed,retailer finance/payments/declarations pages render without errors
+113,phase4-retailer.spec.ts,164,tablet,passed,retailer print page issues NO mutating requests
+114,phase4-retailer.spec.ts,44,mobile,passed,retailer portal: catalog page renders supplier products incl. the setup SKU
+115,phase4-retailer.spec.ts,53,mobile,passed,retailer creates an order through the real API (journey precondition)
+116,phase4-retailer.spec.ts,62,mobile,passed,retailer orders page lists own orders via the browser
+117,phase4-retailer.spec.ts,70,mobile,passed,financial idempotency: repeated declaration with the same key produces ZERO extra writes
+118,phase4-retailer.spec.ts,118,mobile,passed,UI double-click on declare submit creates exactly one declaration (browser evidence)
+119,phase4-retailer.spec.ts,153,mobile,passed,retailer finance/payments/declarations pages render without errors
+120,phase4-retailer.spec.ts,164,mobile,passed,retailer print page issues NO mutating requests
+121,phase5-isolation.spec.ts,15,desktop,passed,cross-retailer: RB cannot read RA order by id (API isolation)
+122,phase5-isolation.spec.ts,49,desktop,passed,cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB
+123,phase5-isolation.spec.ts,60,desktop,passed,cross-tenant: RA W2-context cannot use W1-only data paths
+124,phase5-isolation.spec.ts,75,desktop,passed,malformed IDs return neutral structured errors (no internals leaked)
+125,phase5-isolation.spec.ts,86,desktop,passed,unauthenticated API access is rejected with structured 401 (no leak)
+126,phase5-isolation.spec.ts,103,desktop,passed,browser: RB portal session never exposes W2 tenant data
+127,phase5-isolation.spec.ts,112,desktop,passed,RB orders page contains no RA-created orders (page-level isolation)
+128,phase5-isolation.spec.ts,15,tablet,passed,cross-retailer: RB cannot read RA order by id (API isolation)
+129,phase5-isolation.spec.ts,49,tablet,passed,cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB
+130,phase5-isolation.spec.ts,60,tablet,passed,cross-tenant: RA W2-context cannot use W1-only data paths
+131,phase5-isolation.spec.ts,75,tablet,passed,malformed IDs return neutral structured errors (no internals leaked)
+132,phase5-isolation.spec.ts,86,tablet,passed,unauthenticated API access is rejected with structured 401 (no leak)
+133,phase5-isolation.spec.ts,103,tablet,passed,browser: RB portal session never exposes W2 tenant data
+134,phase5-isolation.spec.ts,112,tablet,passed,RB orders page contains no RA-created orders (page-level isolation)
+135,phase5-isolation.spec.ts,15,mobile,passed,cross-retailer: RB cannot read RA order by id (API isolation)
+136,phase5-isolation.spec.ts,49,mobile,passed,cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB
+137,phase5-isolation.spec.ts,60,mobile,passed,cross-tenant: RA W2-context cannot use W1-only data paths
+138,phase5-isolation.spec.ts,75,mobile,passed,malformed IDs return neutral structured errors (no internals leaked)
+139,phase5-isolation.spec.ts,86,mobile,passed,unauthenticated API access is rejected with structured 401 (no leak)
+140,phase5-isolation.spec.ts,103,mobile,passed,browser: RB portal session never exposes W2 tenant data
+141,phase5-isolation.spec.ts,112,mobile,passed,RB orders page contains no RA-created orders (page-level isolation)
+142,phase6-responsive.spec.ts,17,desktop,passed,"wholesaler dashboard: no horizontal overflow, no console/page errors"
+143,phase6-responsive.spec.ts,25,desktop,passed,wholesaler orders page: no horizontal overflow
+144,phase6-responsive.spec.ts,32,desktop,passed,"retailer catalog: no horizontal overflow, no console/page errors"
+145,phase6-responsive.spec.ts,40,desktop,passed,retailer orders page: no horizontal overflow
+146,phase6-responsive.spec.ts,47,desktop,passed,login forms have labels and keyboard-accessible inputs
+147,phase6-responsive.spec.ts,60,desktop,passed,no unexpected network failures during a login journey
+148,phase6-responsive.spec.ts,68,desktop,passed,print stub: window.print callable on print pages without errors
+149,phase6-responsive.spec.ts,17,tablet,passed,"wholesaler dashboard: no horizontal overflow, no console/page errors"
+150,phase6-responsive.spec.ts,25,tablet,passed,wholesaler orders page: no horizontal overflow
+151,phase6-responsive.spec.ts,32,tablet,passed,"retailer catalog: no horizontal overflow, no console/page errors"
+152,phase6-responsive.spec.ts,40,tablet,passed,retailer orders page: no horizontal overflow
+153,phase6-responsive.spec.ts,47,tablet,passed,login forms have labels and keyboard-accessible inputs
+154,phase6-responsive.spec.ts,60,tablet,passed,no unexpected network failures during a login journey
+155,phase6-responsive.spec.ts,68,tablet,passed,print stub: window.print callable on print pages without errors
+156,phase6-responsive.spec.ts,17,mobile,failed,"wholesaler dashboard: no horizontal overflow, no console/page errors"
+157,phase6-responsive.spec.ts,25,mobile,failed,wholesaler orders page: no horizontal overflow
+158,phase6-responsive.spec.ts,32,mobile,passed,"retailer catalog: no horizontal overflow, no console/page errors"
+159,phase6-responsive.spec.ts,40,mobile,passed,retailer orders page: no horizontal overflow
+160,phase6-responsive.spec.ts,47,mobile,passed,login forms have labels and keyboard-accessible inputs
+161,phase6-responsive.spec.ts,60,mobile,passed,no unexpected network failures during a login journey
+162,phase6-responsive.spec.ts,68,mobile,passed,print stub: window.print callable on print pages without errors

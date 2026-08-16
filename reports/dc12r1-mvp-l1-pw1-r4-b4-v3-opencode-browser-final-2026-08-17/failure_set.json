@@ -1,0 +1,29 @@
+{
+  "failures": [
+    {
+      "file": "phase6-responsive.spec.ts",
+      "line": 17,
+      "project": "mobile",
+      "title": "wholesaler dashboard: no horizontal overflow, no console/page errors"
+    },
+    {
+      "file": "phase6-responsive.spec.ts",
+      "line": 25,
+      "project": "mobile",
+      "title": "wholesaler orders page: no horizontal overflow"
+    }
+  ],
+  "matches_required": true,
+  "required_failset": [
+    {
+      "file": "phase6-responsive.spec.ts",
+      "line": 17,
+      "project": "mobile"
+    },
+    {
+      "file": "phase6-responsive.spec.ts",
+      "line": 25,
+      "project": "mobile"
+    }
+  ]
+}

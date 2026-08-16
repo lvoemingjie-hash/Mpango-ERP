@@ -1,0 +1,1103 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\Jeff0\\pw1r4b_worktree\\pw1r4b\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "auth-matrix.spec.ts",
+      "--workers=1",
+      "--retries=0"
+    ],
+    "configFile": "C:\\Users\\Jeff0\\pw1r4b_worktree\\pw1r4b\\playwright.config.js",
+    "rootDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "desktop",
+        "name": "desktop",
+        "testDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "tablet",
+        "name": "tablet",
+        "testDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "mobile",
+        "name": "mobile",
+        "testDir": "C:/Users/Jeff0/pw1r4b_worktree/pw1r4b/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        null
+      ],
+      [
+        "junit",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "auth-matrix.spec.ts",
+      "file": "auth-matrix.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 auth matrix (real JWT)",
+          "file": "auth-matrix.spec.ts",
+          "line": 16,
+          "column": 6,
+          "specs": [
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1414,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:40.015Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogW10sCiAgInBhZ2VFcnJvcnMiOiBbXSwKICAicmVxdWVzdEZhaWxlZCI6IFtdLAogICJodHRwRXJyb3JzIjogW10sCiAgInVuZXhwZWN0ZWRIdHRwRXJyb3JzIjogW10sCiAgImJlbmlnbkNvbnNvbGVGaWx0ZXJlZCI6IFtdLAogICJub25CZW5pZ25Db25zb2xlRXJyb3JzIjogW10KfQ=="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-b3751c7819936499765f",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1103,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:42.740Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-d7a7f34845d9d4f8a341",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1411,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:43.860Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9460476de98aab76eed4",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 952,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:45.284Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-75fd33162025d2177339",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 888,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:46.248Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-63350d86b5a3c445283e",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1707,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:47.151Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdLAogICJwYWdlRXJyb3JzIjogW10sCiAgInJlcXVlc3RGYWlsZWQiOiBbXSwKICAiaHR0cEVycm9ycyI6IFsKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2F1dGgvbG9naW4iLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIgogIF0KfQ=="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9039d00c6ba374926db0",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1716,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:48.869Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdLAogICJwYWdlRXJyb3JzIjogW10sCiAgInJlcXVlc3RGYWlsZWQiOiBbXSwKICAiaHR0cEVycm9ycyI6IFsKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2NsaWVudC9hdXRoL2xvZ2luIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfQogIF0sCiAgInVuZXhwZWN0ZWRIdHRwRXJyb3JzIjogW10sCiAgImJlbmlnbkNvbnNvbGVGaWx0ZXJlZCI6IFtdLAogICJub25CZW5pZ25Db25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-bc98695f73a4339b1921",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 612,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:50.605Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-5400f1b088e6d19449b7",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1041,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:51.243Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9b7ea5304713ba1a14cc",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            },
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1190,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:53.138Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogW10sCiAgInBhZ2VFcnJvcnMiOiBbXSwKICAicmVxdWVzdEZhaWxlZCI6IFtdLAogICJodHRwRXJyb3JzIjogW10sCiAgInVuZXhwZWN0ZWRIdHRwRXJyb3JzIjogW10sCiAgImJlbmlnbkNvbnNvbGVGaWx0ZXJlZCI6IFtdLAogICJub25CZW5pZ25Db25zb2xlRXJyb3JzIjogW10KfQ=="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-c93f1619202c0080aa61",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1110,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:54.724Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-f6f07b334daad718276c",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1315,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:55.851Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-4075161975b01271e7c3",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 880,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:57.182Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-8419eb016d1671ffc751",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 887,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:58.074Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-c377e1466326ac157169",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1707,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:41:58.974Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdLAogICJwYWdlRXJyb3JzIjogW10sCiAgInJlcXVlc3RGYWlsZWQiOiBbXSwKICAiaHR0cEVycm9ycyI6IFsKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2F1dGgvbG9naW4iLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIgogIF0KfQ=="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-4704d98c4e5a67ba5f69",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1727,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:00.697Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdLAogICJwYWdlRXJyb3JzIjogW10sCiAgInJlcXVlc3RGYWlsZWQiOiBbXSwKICAiaHR0cEVycm9ycyI6IFsKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2NsaWVudC9hdXRoL2xvZ2luIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfQogIF0sCiAgInVuZXhwZWN0ZWRIdHRwRXJyb3JzIjogW10sCiAgImJlbmlnbkNvbnNvbGVGaWx0ZXJlZCI6IFtdLAogICJub25CZW5pZ25Db25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-248d2584cb9d2d00e411",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 523,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:02.442Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-a75eaf8a6b4ca3567991",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1123,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:02.977Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-39007ea1b7d0ff8400aa",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            },
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1202,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:04.934Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogW10sCiAgInBhZ2VFcnJvcnMiOiBbXSwKICAicmVxdWVzdEZhaWxlZCI6IFtdLAogICJodHRwRXJyb3JzIjogW10sCiAgInVuZXhwZWN0ZWRIdHRwRXJyb3JzIjogW10sCiAgImJlbmlnbkNvbnNvbGVGaWx0ZXJlZCI6IFtdLAogICJub25CZW5pZ25Db25zb2xlRXJyb3JzIjogW10KfQ=="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-778fec5a5c497dba3eb2",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1011,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:06.524Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-7818f60f8c4cc3a31ac5",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1370,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:07.552Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-b241e838776c12963156",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 937,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:08.935Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-df521b10f92f6de30b7e",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 923,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:09.886Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-adeac458fbe939ae0fd2",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1706,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:10.823Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdLAogICJwYWdlRXJyb3JzIjogW10sCiAgInJlcXVlc3RGYWlsZWQiOiBbXSwKICAiaHR0cEVycm9ycyI6IFsKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2F1dGgvbG9naW4iLAogICAgICAic3RhdHVzIjogNDAxCiAgICB9CiAgXSwKICAidW5leHBlY3RlZEh0dHBFcnJvcnMiOiBbXSwKICAiYmVuaWduQ29uc29sZUZpbHRlcmVkIjogW10sCiAgIm5vbkJlbmlnbkNvbnNvbGVFcnJvcnMiOiBbCiAgICAiRmFpbGVkIHRvIGxvYWQgcmVzb3VyY2U6IHRoZSBzZXJ2ZXIgcmVzcG9uZGVkIHdpdGggYSBzdGF0dXMgb2YgNDAxIChVbmF1dGhvcml6ZWQpIgogIF0KfQ=="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-6d85af05726d07289849",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1662,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:12.542Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "ewogICJjb25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdLAogICJwYWdlRXJyb3JzIjogW10sCiAgInJlcXVlc3RGYWlsZWQiOiBbXSwKICAiaHR0cEVycm9ycyI6IFsKICAgIHsKICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjUxNzMvYXBpL3YxL2NsaWVudC9hdXRoL2xvZ2luIiwKICAgICAgInN0YXR1cyI6IDQwMQogICAgfQogIF0sCiAgInVuZXhwZWN0ZWRIdHRwRXJyb3JzIjogW10sCiAgImJlbmlnbkNvbnNvbGVGaWx0ZXJlZCI6IFtdLAogICJub25CZW5pZ25Db25zb2xlRXJyb3JzIjogWwogICAgIkZhaWxlZCB0byBsb2FkIHJlc291cmNlOiB0aGUgc2VydmVyIHJlc3BvbmRlZCB3aXRoIGEgc3RhdHVzIG9mIDQwMSAoVW5hdXRob3JpemVkKSIKICBdCn0="
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-1482f473c2b626c9b204",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 483,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:14.216Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-4c7f83f3ef93148331e9",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1114,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-16T20:42:14.715Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-1e80592c2ca2f997e907",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-16T20:41:39.363Z",
+    "duration": 36730.713,
+    "expected": 27,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

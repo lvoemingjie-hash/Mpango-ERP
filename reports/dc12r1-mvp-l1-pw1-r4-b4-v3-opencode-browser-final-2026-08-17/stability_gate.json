@@ -1,0 +1,28 @@
+{
+  "auth_matrix": {
+    "nodes": 27,
+    "passed": 27,
+    "failed": 0,
+    "required": "27/27",
+    "result": "PASS"
+  },
+  "permission_context_precheck": {
+    "six_client_star_permissions_present": true,
+    "client_star_count": 6,
+    "client:payments:declare_present": true,
+    "declaration_path_reachable_GET_200": true,
+    "declaration_create_no_403_permission_denied": true,
+    "result": "PASS"
+  },
+  "phase2_identity_28_stability": {
+    "project": "desktop",
+    "repeat_each": 10,
+    "workers": 1,
+    "retries": 0,
+    "passed": 10,
+    "failed": 0,
+    "required": "10/10",
+    "result": "PASS"
+  },
+  "gate_decision": "PROCEED_TO_FULL_RUN"
+}

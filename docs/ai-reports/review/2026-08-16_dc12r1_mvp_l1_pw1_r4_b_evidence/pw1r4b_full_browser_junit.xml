@@ -1,0 +1,660 @@
+<testsuites id="" name="" tests="162" failures="8" skipped="0" errors="0" time="256.886916">
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="desktop" tests="9" failures="0" skipped="0" time="10.634" errors="0">
+<testcase name="PW1-R1 auth matrix (real JWT) › W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts" time="1.32">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts" time="1.073">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts" time="1.342">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts" time="0.931">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts" time="0.936">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts" time="1.737">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts" time="1.764">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › /select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts" time="0.484">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts" time="1.047">
+</testcase>
+</testsuite>
+<testsuite name="phase1-routes.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="desktop" tests="8" failures="0" skipped="0" time="4.786" errors="0">
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › backend health endpoints are 200 (live/ready)" classname="phase1-routes.spec.ts" time="0.06">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › frontend serves the SPA shell" classname="phase1-routes.spec.ts" time="0.011">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › wholesaler routes redirect anonymous users to /login" classname="phase1-routes.spec.ts" time="1.244">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › retailer /client routes redirect anonymous users to retailer portal or /login" classname="phase1-routes.spec.ts" time="0.465">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › /client/login alias redirects to /retail/login preserving w" classname="phase1-routes.spec.ts" time="0.421">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › public auth pages are reachable anonymously" classname="phase1-routes.spec.ts" time="0.711">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › unknown route renders the 404 page (no crash)" classname="phase1-routes.spec.ts" time="0.43">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › invalid portal code shows controlled invalid-portal state with zero login API calls" classname="phase1-routes.spec.ts" time="1.444">
+</testcase>
+</testsuite>
+<testsuite name="phase2-identity.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="desktop" tests="5" failures="0" skipped="0" time="4.765" errors="0">
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › legacy localStorage keys (access_token/user) do NOT authenticate" classname="phase2-identity.spec.ts" time="0.693">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › forged mpango-auth with invalid JWT is rejected by the backend" classname="phase2-identity.spec.ts" time="0.87">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a wholesaler session (hydration)" classname="phase2-identity.spec.ts" time="1.144">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a retailer session at /client" classname="phase2-identity.spec.ts" time="1.013">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › login form submits real credentials to the real API (request body audit)" classname="phase2-identity.spec.ts" time="1.045">
+</testcase>
+</testsuite>
+<testsuite name="phase3-wholesaler.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="desktop" tests="11" failures="0" skipped="0" time="14.003" errors="0">
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page / renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.281">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /orders renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.308">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /inventory renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.265">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /skus renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.309">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /retailers renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.247">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /finance renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.328">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /payments renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.282">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /declarations renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.272">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › dashboard shows the app shell with user context" classname="phase3-wholesaler.spec.ts" time="1.324">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler cannot open retailer /client routes (boundary redirect)" classname="phase3-wholesaler.spec.ts" time="1.312">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › logout returns to /login and clears the session" classname="phase3-wholesaler.spec.ts" time="1.075">
+</testcase>
+</testsuite>
+<testsuite name="phase4-retailer.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="desktop" tests="7" failures="2" skipped="0" time="27.749" errors="0">
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer portal: catalog page renders supplier products incl. the setup SKU" classname="phase4-retailer.spec.ts" time="1.905">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer creates an order through the real API (journey precondition)" classname="phase4-retailer.spec.ts" time="0.065">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer orders page lists own orders via the browser" classname="phase4-retailer.spec.ts" time="1.145">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes" classname="phase4-retailer.spec.ts" time="0.304">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\error-context.md]]
+
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="first declare ({&quot;code&quot;:&quot;DECLARATION_METHOD_INVALID&quot;,&quot;message&quot;:&quot;Declaration method must be one of: cash, transfer&quot;,&quot;request_id&quot;:&quot;bb9b3142-cbd7-46ed-9d2f-a8518a7b9f4a&quot;})" type="expect.toBe">
+<![CDATA[  [desktop] › phase4-retailer.spec.ts:70:7 › PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes 
+
+    Error: first declare ({"code":"DECLARATION_METHOD_INVALID","message":"Declaration method must be one of: cash, transfer","request_id":"bb9b3142-cbd7-46ed-9d2f-a8518a7b9f4a"})
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 400
+
+      90 |       'X-Declaration-Idempotency-Key': key,
+      91 |     });
+    > 92 |     expect(first.status, `first declare (${JSON.stringify(first.body).slice(0, 200)})`).toBe(201);
+         |                                                                                         ^
+      93 |     const firstId = first.body.data?.id;
+      94 |
+      95 |     // DUPLICATE submission — same key, same payload (double-submit / retry)
+        at C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase4-retailer.spec.ts:92:89
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence)" classname="phase4-retailer.spec.ts" time="18.385">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\error-context.md]]
+
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [desktop] › phase4-retailer.spec.ts:118:7 › PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+      147 |     const after = await apiGet('/client/declarations?page=1&size=100', rbToken!);
+      148 |     const afterCount = (after.body.data?.items ?? []).length;
+    > 149 |     expect(afterCount - beforeCount).toBe(1);
+          |                                      ^
+      150 |   });
+      151 |
+      152 |   test('retailer finance/payments/declarations pages render without errors', async ({ page, collector }) => {
+        at C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase4-retailer.spec.ts:149:38
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer finance/payments/declarations pages render without errors" classname="phase4-retailer.spec.ts" time="1.731">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer print page issues NO mutating requests" classname="phase4-retailer.spec.ts" time="4.214">
+</testcase>
+</testsuite>
+<testsuite name="phase5-isolation.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="desktop" tests="7" failures="0" skipped="0" time="9.879" errors="0">
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-retailer: RB cannot read RA order by id (API isolation)" classname="phase5-isolation.spec.ts" time="1.748">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" classname="phase5-isolation.spec.ts" time="0.4">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: RA W2-context cannot use W1-only data paths" classname="phase5-isolation.spec.ts" time="0.688">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › malformed IDs return neutral structured errors (no internals leaked)" classname="phase5-isolation.spec.ts" time="0.378">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › unauthenticated API access is rejected with structured 401 (no leak)" classname="phase5-isolation.spec.ts" time="0.011">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › browser: RB portal session never exposes W2 tenant data" classname="phase5-isolation.spec.ts" time="2.356">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › RB orders page contains no RA-created orders (page-level isolation)" classname="phase5-isolation.spec.ts" time="4.298">
+</testcase>
+</testsuite>
+<testsuite name="phase6-responsive.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="desktop" tests="7" failures="0" skipped="0" time="8.74" errors="0">
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler dashboard: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="1.052">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="1.259">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer catalog: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="0.909">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="1.136">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › login forms have labels and keyboard-accessible inputs" classname="phase6-responsive.spec.ts" time="0.487">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › no unexpected network failures during a login journey" classname="phase6-responsive.spec.ts" time="1.092">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › print stub: window.print callable on print pages without errors" classname="phase6-responsive.spec.ts" time="2.805">
+</testcase>
+</testsuite>
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="tablet" tests="9" failures="0" skipped="0" time="10.506" errors="0">
+<testcase name="PW1-R1 auth matrix (real JWT) › W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts" time="1.368">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts" time="1.019">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts" time="1.35">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts" time="0.89">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts" time="0.887">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts" time="1.705">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts" time="1.698">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › /select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts" time="0.493">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts" time="1.096">
+</testcase>
+</testsuite>
+<testsuite name="phase1-routes.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="tablet" tests="8" failures="0" skipped="0" time="4.926" errors="0">
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › backend health endpoints are 200 (live/ready)" classname="phase1-routes.spec.ts" time="0.058">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › frontend serves the SPA shell" classname="phase1-routes.spec.ts" time="0.012">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › wholesaler routes redirect anonymous users to /login" classname="phase1-routes.spec.ts" time="1.238">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › retailer /client routes redirect anonymous users to retailer portal or /login" classname="phase1-routes.spec.ts" time="0.439">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › /client/login alias redirects to /retail/login preserving w" classname="phase1-routes.spec.ts" time="0.448">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › public auth pages are reachable anonymously" classname="phase1-routes.spec.ts" time="0.712">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › unknown route renders the 404 page (no crash)" classname="phase1-routes.spec.ts" time="0.526">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › invalid portal code shows controlled invalid-portal state with zero login API calls" classname="phase1-routes.spec.ts" time="1.493">
+</testcase>
+</testsuite>
+<testsuite name="phase2-identity.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="tablet" tests="5" failures="0" skipped="0" time="4.682" errors="0">
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › legacy localStorage keys (access_token/user) do NOT authenticate" classname="phase2-identity.spec.ts" time="0.67">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › forged mpango-auth with invalid JWT is rejected by the backend" classname="phase2-identity.spec.ts" time="0.751">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a wholesaler session (hydration)" classname="phase2-identity.spec.ts" time="1.223">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a retailer session at /client" classname="phase2-identity.spec.ts" time="1.033">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › login form submits real credentials to the real API (request body audit)" classname="phase2-identity.spec.ts" time="1.005">
+</testcase>
+</testsuite>
+<testsuite name="phase3-wholesaler.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="tablet" tests="11" failures="0" skipped="0" time="14.373" errors="0">
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page / renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.558">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /orders renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.281">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /inventory renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.336">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /skus renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.331">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /retailers renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.336">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /finance renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.366">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /payments renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.344">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /declarations renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.27">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › dashboard shows the app shell with user context" classname="phase3-wholesaler.spec.ts" time="1.244">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler cannot open retailer /client routes (boundary redirect)" classname="phase3-wholesaler.spec.ts" time="1.235">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › logout returns to /login and clears the session" classname="phase3-wholesaler.spec.ts" time="1.072">
+</testcase>
+</testsuite>
+<testsuite name="phase4-retailer.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="tablet" tests="7" failures="2" skipped="0" time="27.939" errors="0">
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer portal: catalog page renders supplier products incl. the setup SKU" classname="phase4-retailer.spec.ts" time="1.973">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer creates an order through the real API (journey precondition)" classname="phase4-retailer.spec.ts" time="0.073">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer orders page lists own orders via the browser" classname="phase4-retailer.spec.ts" time="1.172">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes" classname="phase4-retailer.spec.ts" time="0.342">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\error-context.md]]
+
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="first declare ({&quot;code&quot;:&quot;DECLARATION_METHOD_INVALID&quot;,&quot;message&quot;:&quot;Declaration method must be one of: cash, transfer&quot;,&quot;request_id&quot;:&quot;50fa410f-abc6-40e7-9104-11bcc77a6eed&quot;})" type="expect.toBe">
+<![CDATA[  [tablet] › phase4-retailer.spec.ts:70:7 › PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes 
+
+    Error: first declare ({"code":"DECLARATION_METHOD_INVALID","message":"Declaration method must be one of: cash, transfer","request_id":"50fa410f-abc6-40e7-9104-11bcc77a6eed"})
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 400
+
+      90 |       'X-Declaration-Idempotency-Key': key,
+      91 |     });
+    > 92 |     expect(first.status, `first declare (${JSON.stringify(first.body).slice(0, 200)})`).toBe(201);
+         |                                                                                         ^
+      93 |     const firstId = first.body.data?.id;
+      94 |
+      95 |     // DUPLICATE submission — same key, same payload (double-submit / retry)
+        at C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase4-retailer.spec.ts:92:89
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence)" classname="phase4-retailer.spec.ts" time="18.454">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\error-context.md]]
+
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [tablet] › phase4-retailer.spec.ts:118:7 › PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+      147 |     const after = await apiGet('/client/declarations?page=1&size=100', rbToken!);
+      148 |     const afterCount = (after.body.data?.items ?? []).length;
+    > 149 |     expect(afterCount - beforeCount).toBe(1);
+          |                                      ^
+      150 |   });
+      151 |
+      152 |   test('retailer finance/payments/declarations pages render without errors', async ({ page, collector }) => {
+        at C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase4-retailer.spec.ts:149:38
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--tablet\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer finance/payments/declarations pages render without errors" classname="phase4-retailer.spec.ts" time="1.686">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer print page issues NO mutating requests" classname="phase4-retailer.spec.ts" time="4.239">
+</testcase>
+</testsuite>
+<testsuite name="phase5-isolation.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="tablet" tests="7" failures="0" skipped="0" time="9.566" errors="0">
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-retailer: RB cannot read RA order by id (API isolation)" classname="phase5-isolation.spec.ts" time="1.7">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" classname="phase5-isolation.spec.ts" time="0.406">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: RA W2-context cannot use W1-only data paths" classname="phase5-isolation.spec.ts" time="0.667">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › malformed IDs return neutral structured errors (no internals leaked)" classname="phase5-isolation.spec.ts" time="0.391">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › unauthenticated API access is rejected with structured 401 (no leak)" classname="phase5-isolation.spec.ts" time="0.011">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › browser: RB portal session never exposes W2 tenant data" classname="phase5-isolation.spec.ts" time="2.438">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › RB orders page contains no RA-created orders (page-level isolation)" classname="phase5-isolation.spec.ts" time="3.953">
+</testcase>
+</testsuite>
+<testsuite name="phase6-responsive.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="tablet" tests="7" failures="0" skipped="0" time="8.846" errors="0">
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler dashboard: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="1.079">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="1.334">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer catalog: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="0.911">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="1.17">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › login forms have labels and keyboard-accessible inputs" classname="phase6-responsive.spec.ts" time="0.524">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › no unexpected network failures during a login journey" classname="phase6-responsive.spec.ts" time="0.997">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › print stub: window.print callable on print pages without errors" classname="phase6-responsive.spec.ts" time="2.831">
+</testcase>
+</testsuite>
+<testsuite name="auth-matrix.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="mobile" tests="9" failures="0" skipped="0" time="10.228" errors="0">
+<testcase name="PW1-R1 auth matrix (real JWT) › W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" classname="auth-matrix.spec.ts" time="1.253">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › W2 second wholesaler admin: independent tenant, login + select-tenant 200" classname="auth-matrix.spec.ts" time="1.007">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA multi-tenant login: response carries 2 availableTenants into workspace selector" classname="auth-matrix.spec.ts" time="1.36">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RB retailer portal login: client auth API 200, lands on /client" classname="auth-matrix.spec.ts" time="0.911">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › RA retailer portal login at W1 portal: lands on /client" classname="auth-matrix.spec.ts" time="0.84">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on wholesaler login: API 401, stays on /login, no token persisted" classname="auth-matrix.spec.ts" time="1.658">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › wrong password on retailer portal: API 401, stays on portal, neutral message" classname="auth-matrix.spec.ts" time="1.685">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › /select-workspace direct access without navigation state redirects to /login" classname="auth-matrix.spec.ts" time="0.467">
+</testcase>
+<testcase name="PW1-R1 auth matrix (real JWT) › logout clears mpango-auth session and returns to /login" classname="auth-matrix.spec.ts" time="1.047">
+</testcase>
+</testsuite>
+<testsuite name="phase1-routes.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="mobile" tests="8" failures="0" skipped="0" time="4.867" errors="0">
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › backend health endpoints are 200 (live/ready)" classname="phase1-routes.spec.ts" time="0.072">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › frontend serves the SPA shell" classname="phase1-routes.spec.ts" time="0.012">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › wholesaler routes redirect anonymous users to /login" classname="phase1-routes.spec.ts" time="1.206">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › retailer /client routes redirect anonymous users to retailer portal or /login" classname="phase1-routes.spec.ts" time="0.448">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › /client/login alias redirects to /retail/login preserving w" classname="phase1-routes.spec.ts" time="0.423">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › public auth pages are reachable anonymously" classname="phase1-routes.spec.ts" time="0.735">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › unknown route renders the 404 page (no crash)" classname="phase1-routes.spec.ts" time="0.477">
+</testcase>
+<testcase name="PW1-R1 Phase 1: routes &amp; navigation › invalid portal code shows controlled invalid-portal state with zero login API calls" classname="phase1-routes.spec.ts" time="1.494">
+</testcase>
+</testsuite>
+<testsuite name="phase2-identity.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="mobile" tests="5" failures="0" skipped="0" time="4.593" errors="0">
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › legacy localStorage keys (access_token/user) do NOT authenticate" classname="phase2-identity.spec.ts" time="0.694">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › forged mpango-auth with invalid JWT is rejected by the backend" classname="phase2-identity.spec.ts" time="0.706">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a wholesaler session (hydration)" classname="phase2-identity.spec.ts" time="1.15">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › REAL mpango-auth format restores a retailer session at /client" classname="phase2-identity.spec.ts" time="0.989">
+</testcase>
+<testcase name="PW1-R1 Phase 2: identity &amp; hydration › login form submits real credentials to the real API (request body audit)" classname="phase2-identity.spec.ts" time="1.054">
+</testcase>
+</testsuite>
+<testsuite name="phase3-wholesaler.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="mobile" tests="11" failures="0" skipped="0" time="14.091" errors="0">
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page / renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.301">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /orders renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.284">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /inventory renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.312">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /skus renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.25">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /retailers renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.313">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /finance renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.254">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /payments renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.373">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler page /declarations renders authenticated content" classname="phase3-wholesaler.spec.ts" time="1.236">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › dashboard shows the app shell with user context" classname="phase3-wholesaler.spec.ts" time="1.34">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › wholesaler cannot open retailer /client routes (boundary redirect)" classname="phase3-wholesaler.spec.ts" time="1.366">
+</testcase>
+<testcase name="PW1-R1 Phase 3: wholesaler journey › logout returns to /login and clears the session" classname="phase3-wholesaler.spec.ts" time="1.062">
+</testcase>
+</testsuite>
+<testsuite name="phase4-retailer.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="mobile" tests="7" failures="2" skipped="0" time="27.766" errors="0">
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer portal: catalog page renders supplier products incl. the setup SKU" classname="phase4-retailer.spec.ts" time="1.875">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer creates an order through the real API (journey precondition)" classname="phase4-retailer.spec.ts" time="0.064">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer orders page lists own orders via the browser" classname="phase4-retailer.spec.ts" time="1.179">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes" classname="phase4-retailer.spec.ts" time="0.285">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\error-context.md]]
+
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="first declare ({&quot;code&quot;:&quot;DECLARATION_METHOD_INVALID&quot;,&quot;message&quot;:&quot;Declaration method must be one of: cash, transfer&quot;,&quot;request_id&quot;:&quot;157b0dfa-919b-47b8-9f1c-3d2d901ae7e7&quot;})" type="expect.toBe">
+<![CDATA[  [mobile] › phase4-retailer.spec.ts:70:7 › PW1-R1 Phase 4: retailer journey › financial idempotency: repeated declaration with the same key produces ZERO extra writes 
+
+    Error: first declare ({"code":"DECLARATION_METHOD_INVALID","message":"Declaration method must be one of: cash, transfer","request_id":"157b0dfa-919b-47b8-9f1c-3d2d901ae7e7"})
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 400
+
+      90 |       'X-Declaration-Idempotency-Key': key,
+      91 |     });
+    > 92 |     expect(first.status, `first declare (${JSON.stringify(first.body).slice(0, 200)})`).toBe(201);
+         |                                                                                         ^
+      93 |     const firstId = first.body.data?.id;
+      94 |
+      95 |     // DUPLICATE submission — same key, same payload (double-submit / retry)
+        at C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase4-retailer.spec.ts:92:89
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-014c1--produces-ZERO-extra-writes-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence)" classname="phase4-retailer.spec.ts" time="18.392">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\error-context.md]]
+
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [mobile] › phase4-retailer.spec.ts:118:7 › PW1-R1 Phase 4: retailer journey › UI double-click on declare submit creates exactly one declaration (browser evidence) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+      147 |     const after = await apiGet('/client/declarations?page=1&size=100', rbToken!);
+      148 |     const afterCount = (after.body.data?.items ?? []).length;
+    > 149 |     expect(afterCount - beforeCount).toBe(1);
+          |                                      ^
+      150 |   });
+      151 |
+      152 |   test('retailer finance/payments/declarations pages render without errors', async ({ page, collector }) => {
+        at C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase4-retailer.spec.ts:149:38
+
+    Error Context: ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase4-retailer-PW1-R1-Pha-4dcac-claration-browser-evidence--mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer finance/payments/declarations pages render without errors" classname="phase4-retailer.spec.ts" time="1.783">
+</testcase>
+<testcase name="PW1-R1 Phase 4: retailer journey › retailer print page issues NO mutating requests" classname="phase4-retailer.spec.ts" time="4.188">
+</testcase>
+</testsuite>
+<testsuite name="phase5-isolation.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="mobile" tests="7" failures="0" skipped="0" time="9.574" errors="0">
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-retailer: RB cannot read RA order by id (API isolation)" classname="phase5-isolation.spec.ts" time="1.691">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" classname="phase5-isolation.spec.ts" time="0.398">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › cross-tenant: RA W2-context cannot use W1-only data paths" classname="phase5-isolation.spec.ts" time="0.669">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › malformed IDs return neutral structured errors (no internals leaked)" classname="phase5-isolation.spec.ts" time="0.382">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › unauthenticated API access is rejected with structured 401 (no leak)" classname="phase5-isolation.spec.ts" time="0.012">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › browser: RB portal session never exposes W2 tenant data" classname="phase5-isolation.spec.ts" time="2.411">
+</testcase>
+<testcase name="PW1-R1 Phase 5: isolation &amp; negative paths › RB orders page contains no RA-created orders (page-level isolation)" classname="phase5-isolation.spec.ts" time="4.011">
+</testcase>
+</testsuite>
+<testsuite name="phase6-responsive.spec.ts" timestamp="2026-08-16T05:46:25.451Z" hostname="mobile" tests="7" failures="2" skipped="0" time="9.173" errors="0">
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler dashboard: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="1.244">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\error-context.md]]
+
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="wholesaler dashboard horizontal overflow (scrollWidth-clientWidth)" type="expect.toBeLessThanOrEqual">
+<![CDATA[  [mobile] › phase6-responsive.spec.ts:17:7 › PW1-R1 Phase 6: responsive & usability › wholesaler dashboard: no horizontal overflow, no console/page errors 
+
+    Error: wholesaler dashboard horizontal overflow (scrollWidth-clientWidth)
+
+    expect(received).toBeLessThanOrEqual(expected)
+
+    Expected: <= 1
+    Received:    375
+
+      10 | async function assertNoHorizontalOverflow(page: import('@playwright/test').Page, label: string) {
+      11 |   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    > 12 |   expect(overflow, `${label} horizontal overflow (scrollWidth-clientWidth)`).toBeLessThanOrEqual(1);
+         |                                                                              ^
+      13 | }
+      14 |
+      15 | test.describe('PW1-R1 Phase 6: responsive & usability', () => {
+        at assertNoHorizontalOverflow (C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase6-responsive.spec.ts:12:78)
+        at C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase6-responsive.spec.ts:19:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-f82e7-flow-no-console-page-errors-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › wholesaler orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="1.505">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\error-context.md]]
+
+[[ATTACHMENT|..\..\pw1r4b_worktree\pw1r4b\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\trace.zip]]
+]]>
+</system-out>
+<failure message="wholesaler orders horizontal overflow (scrollWidth-clientWidth)" type="expect.toBeLessThanOrEqual">
+<![CDATA[  [mobile] › phase6-responsive.spec.ts:25:7 › PW1-R1 Phase 6: responsive & usability › wholesaler orders page: no horizontal overflow 
+
+    Error: wholesaler orders horizontal overflow (scrollWidth-clientWidth)
+
+    expect(received).toBeLessThanOrEqual(expected)
+
+    Expected: <= 1
+    Received:    347
+
+      10 | async function assertNoHorizontalOverflow(page: import('@playwright/test').Page, label: string) {
+      11 |   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    > 12 |   expect(overflow, `${label} horizontal overflow (scrollWidth-clientWidth)`).toBeLessThanOrEqual(1);
+         |                                                                              ^
+      13 | }
+      14 |
+      15 | test.describe('PW1-R1 Phase 6: responsive & usability', () => {
+        at assertNoHorizontalOverflow (C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase6-responsive.spec.ts:12:78)
+        at C:\Users\Jeff0\pw1r4b_worktree\pw1r4b\tests\phase6-responsive.spec.ts:29:5
+
+    Error Context: ..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\trace.zip
+    Usage:
+
+        npx playwright show-trace ..\test-results\phase6-responsive-PW1-R1-P-a3fc5-page-no-horizontal-overflow-mobile\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer catalog: no horizontal overflow, no console/page errors" classname="phase6-responsive.spec.ts" time="1.072">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › retailer orders page: no horizontal overflow" classname="phase6-responsive.spec.ts" time="1.093">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › login forms have labels and keyboard-accessible inputs" classname="phase6-responsive.spec.ts" time="0.483">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › no unexpected network failures during a login journey" classname="phase6-responsive.spec.ts" time="0.986">
+</testcase>
+<testcase name="PW1-R1 Phase 6: responsive &amp; usability › print stub: window.print callable on print pages without errors" classname="phase6-responsive.spec.ts" time="2.79">
+</testcase>
+</testsuite>
+</testsuites>

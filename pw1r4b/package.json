@@ -1,0 +1,13 @@
+{
+  "name": "playwright_pw1_r1_2026-08-14",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DC-12R1-MVP-L1-PW1-R1 real-JWT browser evidence harness",
+  "scripts": {
+    "test": "node run-tests.js"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.62.1",
+    "playwright": "^1.62.1"
+  }
+}

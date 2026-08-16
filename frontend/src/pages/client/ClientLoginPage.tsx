@@ -83,7 +83,9 @@ export function ClientLoginPage() {
           tenant_id: data.tokens.tenant_id,
           tenant_schema: data.tokens.tenant_schema,
           roles: data.tokens.roles,
-          permissions: [],
+          // PW1-R4-B4: server-derived permission context, consumed verbatim.
+          // Never inferred from the retailer_operator role or hardcoded.
+          permissions: data.user.permissions,
         },
         data.wholesaler.code,
       );

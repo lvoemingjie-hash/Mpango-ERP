@@ -94,6 +94,8 @@ export interface RetailerLoginUser {
   id: string;
   email: string | null;
   full_name: string | null;
+  /** PW1-R4-B4: server-derived effective permission context (verbatim). */
+  permissions: string[];
 }
 
 export interface RetailerLoginRetailer {

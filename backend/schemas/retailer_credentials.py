@@ -122,11 +122,19 @@ class RetailerLoginData(BaseModel):
 
 
 class RetailerLoginUser(BaseModel):
-    """Authenticated user for the current session."""
+    """Authenticated user for the current session.
+
+    PW1-R4-B4: ``permissions`` is the SERVER-DERIVED effective permission
+    context of the verified tenant-local user (live roles joined to
+    non-deleted permissions; deduplicated; stably sorted). The frontend
+    must consume it verbatim — it must NEVER infer or hardcode permission
+    lists from the retailer_operator role name.
+    """
 
     id: str
     email: EmailStr | None = None
     full_name: str | None = None
+    permissions: list[str]
 
     model_config = ConfigDict(populate_by_name=True)
 

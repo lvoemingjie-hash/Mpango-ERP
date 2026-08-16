@@ -253,6 +253,30 @@ async def retailer_login(
     if role_row.fetchone() is None:
         _raise_invalid_credentials()
 
+    # --- 9b. Server-derived effective permissions (PW1-R4-B4) --------------
+    # The CURRENT permission context for THIS verified tenant-local user:
+    # only live (non-deleted) roles held by the user joined to non-deleted
+    # permissions. DISTINCT deduplicates across roles; ORDER BY p.code gives
+    # a stable order. The response carries this list verbatim — the frontend
+    # must NOT infer permissions from the retailer_operator role name, and
+    # this query never consults other users or other roles' grants.
+    perm_rows = await db.execute(
+        text(
+            f'SELECT DISTINCT p.code '
+            f'FROM "{tenant_schema}".permissions p '
+            f'JOIN "{tenant_schema}".role_permissions rp '
+            f'  ON rp.permission_id = p.id '
+            f'JOIN "{tenant_schema}".roles r ON r.id = rp.role_id '
+            f'JOIN "{tenant_schema}".user_roles ur ON ur.role_id = r.id '
+            f'WHERE ur.user_id = :user_id '
+            f'  AND p.is_deleted IS FALSE '
+            f'  AND r.is_deleted IS FALSE '
+            f'ORDER BY p.code'
+        ),
+        {"user_id": tenant_user_id},
+    )
+    effective_permissions = [row.code for row in perm_rows.fetchall()]
+
     # --- 10. Load + validate the retailer row BEFORE issuing tokens ---------
     # The binding must point at a non-deleted retailer. A missing/soft-deleted
     # retailer row is an integrity failure treated as a neutral 401.
@@ -300,6 +324,7 @@ async def retailer_login(
                 id=tenant_user_id,
                 email=user.email,
                 full_name=user.full_name,
+                permissions=effective_permissions,
             ),
             retailer=RetailerLoginRetailer(
                 id=str(binding.retailer_id),

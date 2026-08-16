@@ -138,6 +138,7 @@ test.describe('PW1-R1 Phase 4: retailer journey', () => {
     });
 
     const submit = page.locator('button[type="submit"]').first();
+    await page.fill('#amount', '150.00');
     await submit.click({ timeout: 10000 }).catch(() => {}); // first click
     await submit.click({ timeout: 3000 }).catch(() => {});   // immediate double-click
     await page.waitForTimeout(2500);

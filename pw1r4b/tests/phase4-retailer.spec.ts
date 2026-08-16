@@ -76,7 +76,7 @@ test.describe('PW1-R1 Phase 4: retailer journey', () => {
     expect(order.status).toBe(201);
     const orderId = order.body.data.id;
 
-    const payload = { declared_amount: '150.00', method: 'mobile_money', transfer_reference: 'PW1R1-IDEM-001' };
+    const payload = { declared_amount: '150.00', method: 'transfer', transfer_reference: 'PW1R1-IDEM-001' };
     const key = `pw1r1-idem-${Date.now().toString(36)}`;
 
     // Fingerprint BEFORE

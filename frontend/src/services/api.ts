@@ -27,15 +27,30 @@ const api = axios.create({
 // ---------------------------------------------------------------------------
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const { accessToken } = useAuthStore.getState();
-    if (accessToken && config.headers) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
+    // PW1-R2-R2 (case-insensitive authorization precedence): a caller-provided
+    // Authorization header ALWAYS wins, in ANY casing, including an explicitly
+    // EMPTY value (the caller's deliberate fail-closed choice). Only when the
+    // request carries no Authorization at all do we inject the Zustand store
+    // access token. Presence is decided through the AxiosHeaders
+    // case-insensitive API — never via `config.headers.Authorization` property
+    // access, which misses lowercase/mixed-case headers.
+    if (config.headers && !config.headers.has('Authorization')) {
+      const { accessToken } = useAuthStore.getState();
+      if (accessToken) {
+        config.headers.set('Authorization', `Bearer ${accessToken}`);
+      }
     }
 
-    // Security: redact sensitive headers in dev-mode logging
+    // Security: redact sensitive headers in dev-mode logging. Redaction is
+    // CASE-INSENSITIVE: the header object is serialized via toJSON() and every
+    // casing of the authorization key is replaced — never a spread that only
+    // rewrites the canonical uppercase key.
     if (import.meta.env.DEV) {
-      const safeHeaders = { ...config.headers } as Record<string, unknown>;
-      if (safeHeaders.Authorization) safeHeaders.Authorization = '[REDACTED]';
+      const rawHeaders = (config.headers?.toJSON?.() ?? {}) as Record<string, unknown>;
+      const safeHeaders: Record<string, unknown> = {};
+      for (const key of Object.keys(rawHeaders)) {
+        safeHeaders[key] = /^authorization$/i.test(key) ? '[REDACTED]' : rawHeaders[key];
+      }
       console.debug('[API →]', config.method?.toUpperCase(), config.url, {
         headers: safeHeaders,
       });
@@ -123,7 +138,7 @@ api.interceptors.response.use(
       return new Promise<string>((resolve, reject) => {
         failedQueue.push({ resolve, reject });
       }).then((newToken) => {
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        originalRequest.headers.set('Authorization', `Bearer ${newToken}`);
         return api(originalRequest);
       });
     }
@@ -167,7 +182,7 @@ api.interceptors.response.use(
       processQueue(null, newAccessToken);
 
       // Retry original request
-      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+      originalRequest.headers.set('Authorization', `Bearer ${newAccessToken}`);
       return api(originalRequest);
     } catch (refreshError) {
       // Refresh failed — clear everything, redirect to login

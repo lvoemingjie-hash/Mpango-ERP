@@ -137,14 +137,30 @@ class RateLimiter:
     
     async def _get_rate_limit_key(self, request: Request) -> Tuple[str, int]:
         """
-        Determine rate limit key and limit based on request.
-        
+        PW1-R3: determine the rate limit key from the VERIFIED server-side
+        JWT context only.
+
+        `request.state.tenant_id` / `request.state.user_id` are attached
+        exclusively by AuthenticationMiddleware, derived from the token that
+        JwtAuthStrategy verified server-side (never from client headers or
+        self-declared claims). A contextual JWT therefore maps to
+        ``rate_limit:tenant:{tenant_id}:{user_id}`` (limit 1000); everything
+        else — anonymous, identity-only, malformed or invalid Authorization —
+        maps to the per-IP bucket (limit 100). Invalid auth can never widen
+        the limit: rejection-path requests carry no tenant state, and the
+        AuthenticationMiddleware rejection hook applies this same IP bucket.
+
         Returns:
             Tuple of (redis_key_prefix, limit)
         """
-        # Check if user is authenticated
+        # Verified contextual context (set ONLY by AuthenticationMiddleware)
         tenant_id = getattr(request.state, 'tenant_id', None)
         user_id = getattr(request.state, 'user_id', None)
+        if tenant_id is not None and user_id is None:
+            # Defensive: a tenant_id without a verified user_id must never
+            # downgrade into an unclassified bucket ambiguity — treat as
+            # anonymous (IP bucket) rather than trusting a partial context.
+            tenant_id = None
         
         if tenant_id and user_id:
             # Authenticated: Use tenant + user

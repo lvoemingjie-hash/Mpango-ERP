@@ -1,0 +1,39 @@
+Category,Check,Target,Observed,Result,Severity,Notes
+ProofGate,Remote equality,origin/zcode/...r4-b4-retailer-permission-context,branch head == 9f24d969e30a2c8ed3ae9e0eddebae170089292a,PASS,INFO,
+ProofGate,Direct parent,9f24d96~1,== 888683ba23c14b48a102289a29f9b7adf674fdaf,PASS,INFO,
+ProofGate,Exact 7-file scope,888683ba..9f24d96,exactly 7 files,PASS,P1,
+ProofGate,No forbidden drift,7-file delta,no migration/JWT/RequirePermission/dep/lockfile/deploy/B3 harness change,PASS,P1,
+BackendAuth,Tenant-local permission source,backend/api/v1/client/auth.py,query constrained to current tenant_schema only,PASS,P1,
+BackendAuth,Verified tenant-local user prerequisite,retailer_login flow,password + active binding + tenant-local user verified before permission query,PASS,P1,
+BackendAuth,JOIN scope correctness,permissions/roles/user_roles/role_permissions query,current user only; no other users/roles/tenants,PASS,P1,
+BackendAuth,Soft-delete filters match model structure,backend/models/base.py + models/user.py,p.is_deleted and r.is_deleted real; join tables have no is_deleted,PASS,P1,
+BackendAuth,Dedup + stable order,SELECT DISTINCT + ORDER BY p.code,real deduplication and deterministic order,PASS,P1,
+BackendAuth,No foreign/non-client leak,backend test + query shape,admin/non-client permissions excluded,PASS,P1,
+BackendAuth,Empty-permission user semantics,backend test 4,login 200 with permissions=[] then 403 on guarded route,PASS,P1,
+BackendAuth,permissions required in response schema,backend/schemas/retailer_credentials.py,RetailerLoginUser.permissions is required,PASS,P1,
+BackendAuth,JWT issuance unchanged,candidate scope,no edits to core.security or token creation semantics,PASS,INFO,
+BackendAuth,RequirePermission unchanged,candidate scope,no edits to backend/api/middleware/rbac.py,PASS,INFO,
+FrontendAuth,ClientLoginPage uses only data.user.permissions,frontend/src/pages/client/ClientLoginPage.tsx,no hardcoded [] or role inference present,PASS,P1,
+FrontendAuth,No static six-permission fallback,ClientLoginPage.tsx,consumes permissions verbatim from response,PASS,P1,
+FrontendAuth,Auth store persists permissions,frontend/src/stores/authStore.ts,user object persisted in mpango-auth store,PASS,P1,
+FrontendAuth,Refresh preserves permissions,authStore.updateTokens + test T5,updateTokens changes tokens only and test proves permissions preserved,PASS,P1,
+FrontendAuth,Real AppRouter route execution,frontend/src/tests/Pw1R4B4RetailerPermissionContext.test.tsx,uses real <App />, AppRouter and guards,PASS,P1,
+FrontendAuth,Permission user mounts declaration/print routes,T3,declare and print routes mount with permission-holding user,PASS,P1,
+FrontendAuth,Empty-permission user redirected fail closed,T4,/client redirect and child routes do not mount,PASS,P1,
+Causality,Server permissions cleared would RED,source+tests,T1/backend permission tests would fail,PASS,P1,
+Causality,Missing permissions field fails closed,required schema + T1,no silent success path,PASS,P1,
+Causality,Restoring permissions:[] would RED,T1 exact permission equality,frontend mutation would fail,PASS,P1,
+Causality,No weak assertion/skip/xfail/source-grep-only pass,candidate scope,no such pattern found,PASS,P1,
+Evidence,Frontend focused natural,local execution,5/5 passed,PASS,INFO,independently executed on host
+Evidence,Frontend focused fixed shuffle,local execution,5/5 passed,PASS,INFO,independently executed on host
+Evidence,Frontend full vitest,local execution,328/328 passed,PASS,INFO,independently executed on host
+Evidence,Frontend build,local execution,exit 0,PASS,INFO,independently executed on host
+Evidence,Backend focused node count,backend test source,5 test nodes present,PASS,INFO,not locally executed
+Evidence,Backend focused/full gate ledger consistency,ledger statements,no internal contradiction found,PASS,INFO,not independently rerun on host
+Evidence,Backend local execution disclosure,host env,no backend pytest environment available,PASS,INFO,not claimed as local PASS
+Quality,py_compile,changed backend Python files,clean,PASS,INFO,
+Quality,git diff --check,888683ba..9f24d96,clean,PASS,INFO,
+Quality,scoped detect-secrets,7 changed files,clean,PASS,INFO,
+Quality,UTF-8/mojibake,7 changed files,0 U+FFFD hits,PASS,INFO,
+Quality,GitNexus analyze/status,candidate worktree,indexed/current commit 9f24d96; up-to-date,PASS,INFO,
+Accounting,Findings accounting gap,review packet,zero,PASS,INFO,

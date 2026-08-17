@@ -1,10 +1,10 @@
-# DC-12R1-MVP-L1-PW1-R4-C0-R1 — Mobile Horizontal Overflow Root-Cause Diagnostic
+# DC-12R1-MVP-L1-PW1-R4-C0-R2 — Mobile Horizontal Overflow Root-Cause Diagnostic (Scope Corrected)
 
-**Task:** PW1R4C0-R1 Phase 6 Responsive Overflow Diagnosis (Refined)
+**Task:** PW1R4C0-R2 Phase 6 Responsive Overflow Diagnosis — R4-C0-R2 Scope Correction
 **Date:** 2026-08-17
 **Product baseline:** `origin/product-dev-recovered` @ `9067e38f83edb38fcdb53fb5d5eea7e75e85cf5f`
 **Report branch:** `reports/dc12r1-mvp-l1-pw1-r4-c0-r1-mobile-overflow-diagnostic-2026-08-17`
-**Scope:** Diagnosis only. No code changes, no `overflow-x: hidden`, no assertion weakening, no clipping or hiding of required controls.
+**Scope:** Evidence/scope correction only — no product code changes. No `overflow-x: hidden` in fix or evidence. No assertion weakening, no clipping or hiding of required controls.
 
 ---
 
@@ -71,7 +71,7 @@ In CSS Flexbox, `min-width: auto` is the default. It means a flex item cannot sh
 | CF8 | CF7 + `header { padding: 8px }` | 0 | 0px | 100% |
 | CF9 | CF8 + `main { padding: 12px }` | 0 | 0px | 100% |
 | CF10 | CF9 + badge ellipsis | 0 | 0px | 100% |
-| CF11 | CF10 + content overflow hidden (safety) | 0 | 0px | 100% |
+| CF11 | CF10 + content/header `min-width: 0` final (no overflow hidden) | 0 | 0px | 100% |
 
 ### 3.2 Orders (baseline: 346px)
 
@@ -108,32 +108,53 @@ CF8-CF10 (header padding, main padding, badge ellipsis) contributed **0px** redu
 
 ## 5. R4-C1 Fix Scope Recommendation
 
-### Minimum Viable Responsive Fix
+### R4-C1 Mobile Navigation Contract (Pre-Implementation Spec)
+
+| Requirement | Detail |
+|-------------|--------|
+| **Drawer pattern** | Sidebar hidden on mobile, toggleable via hamburger button in Header |
+| **State owner** | `MainLayout.tsx` holds `sidebarOpen` boolean state |
+| **Header hamburger** | `Header.tsx` renders hamburger `<button>` on `<lg` breakpoint, passes `onClick` toggle callback |
+| **Sidebar as drawer** | On `<lg`: sidebar uses `translate-x` slide-in with backdrop overlay. On `lg+`: sidebar fixed visible as today |
+| **Close triggers** | Hamburger toggle, backdrop click, Escape key |
+| **Nav-after-close** | After drawer close, focus returns to hamburger button (a11y) |
+| **No hidden-without-alternative** | At no breakpoint is sidebar hidden without a hamburger/drawer replacement |
+
+### Minimum Viable Responsive Fix (CSS-only, 4 files)
 
 | File | Change | Tailwind Equivalent |
 |------|--------|-------------------|
-| `MainLayout.tsx:13` | `ml-64` to `lg:ml-64`, add `min-w-0` on content wrapper | Responsive margin + flex shrink |
-| `MainLayout.tsx:11` | Add `overflow-x-hidden` to root (safety net only) | Prevent runaway overflow |
-| `Sidebar.tsx:57` | Add `hidden lg:flex` on `<aside>` | Hide on mobile, show on desktop |
-| `Header.tsx:32` | Change `shrink-0` to `lg:shrink-0`, add `min-w-0` to header flex children | Allow mobile shrink |
+| `MainLayout.tsx:13` | `ml-64` to `lg:ml-64`, add `min-w-0` on content wrapper, add `sidebarOpen` state + drawer wrapper | Responsive margin + flex shrink |
+| `Sidebar.tsx:57` | Add `hidden lg:flex` on `<aside>`, accept `isOpen`/`onClose` props for mobile drawer mode | Hide on mobile, drawer on toggle |
+| `Header.tsx:32` | Change `shrink-0` to `lg:shrink-0`, add `min-w-0` to header flex children, add hamburger button on `<lg` | Allow mobile shrink + nav trigger |
 | `Header.tsx:56-58` | Badge gets `truncate` or `overflow-hidden text-ellipsis` on `<sm` | Truncate long tenant codes |
 | `Header.tsx:32` | `px-6` to `px-4 lg:px-6` | Reduce mobile padding |
+
+### Test Contract (R4-C1 Verification Criteria)
+
+| # | Test | Expected |
+|---|------|----------|
+| T1 | Hamburger button visible and accessible at 390px viewport | `aria-label`, `role="button"`, in tab order |
+| T2 | Drawer default-closed on mobile page load | Sidebar not in DOM accessibility tree or `aria-hidden="true"` |
+| T3 | Drawer openable via hamburger click | Sidebar slides in, backdrop visible |
+| T4 | Drawer closeable via hamburger, backdrop click, Escape | Sidebar slides out, backdrop removed |
+| T5 | Desktop sidebar visible at 1024px+ | Sidebar visible, hamburger hidden |
+| T6 | Mobile content has no fixed `ml-64` at 390px | `scrollWidth === clientWidth === 390` |
+| T7 | Long tenant code (32 chars) + long user name no page-level overflow | `scrollWidth === clientWidth === 390` |
+| T8 | Existing Sidebar nav link behavior unchanged on desktop | All 8 nav links functional, active state correct |
+| T9 | Existing Header breadcrumb + tenant badge + user block unchanged on desktop | All visible, same layout at 1024px+ |
 
 ### Regression Test Files Required
 
 | File | Purpose |
 |------|---------|
 | `pw1r4b/tests/phase6-responsive.spec.ts` | Existing mobile overflow regression (lines 17, 25) |
-| New: `phase6-responsive.spec.ts` additions | Test sidebar hidden on mobile, visible on lg breakpoint |
-| New: `phase6-responsive.spec.ts` additions | Test header truncation of long tenant codes on mobile |
-| New: `phase6-responsive.spec.ts` additions | Test all admin routes under 390px viewport (smoke test) |
+| New: `Pw1R4C1MainLayoutResponsive.test.tsx` | T1-T9 contract tests (hamburger, drawer, responsive sidebar, overflow) |
 
 ### Estimated Change Count
 
-- **3 product component files** modified
-- **1 test file** extended (3+ new test cases)
-- **0 new dependencies**
-- **Risk: LOW** — Tailwind responsive classes are additive; desktop (lg: 1024px+) behavior unchanged
+- **4 files** (3 modified + 1 new test file)
+- **Risk: MEDIUM** — 29 wholesaler/platform routes affected; desktop (lg: 1024px+) behavior unchanged; drawer pattern is standard UX
 
 ---
 
@@ -144,9 +165,9 @@ CF8-CF10 (header padding, main padding, badge ellipsis) contributed **0px** redu
 | `evidence/dom_measurements.json` | Full DOM width + ancestor chain JSON for both pages, all 11 CFs |
 | `evidence/findings.csv` | Machine-readable CF results (page, CF, delta, reduction %) |
 | `evidence/dashboard_before.png` | Before fix screenshot (390x844, device pixel ratio) |
-| `evidence/dashboard_after.png` | After fix screenshot (CF11 applied) |
+| `evidence/dashboard_after.png` | After fix screenshot (CF11: min-width:0 only, no overflow hidden) |
 | `evidence/orders_before.png` | Before fix screenshot |
-| `evidence/orders_after.png` | After fix screenshot |
+| `evidence/orders_after.png` | After fix screenshot (same fix, no overflow hidden) |
 | `evidence/sha256_manifest.txt` | SHA256 of all evidence files via git blob |
 
 ---

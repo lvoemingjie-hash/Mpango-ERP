@@ -2,7 +2,7 @@
   "dashboard": {
     "label": "Wholesaler Dashboard",
     "url": "/",
-    "beforeSS": "C:\\Users\\Jeff0\\AppData\\Local\\Temp\\opencode\\pw1r4c0r1_evidence\\dashboard_before.png",
+    "beforeSS": "evidence/dashboard_before.png",
     "beforeDOM": {
       "url": "http://127.0.0.1:5173/",
       "vp": 390,
@@ -1169,7 +1169,7 @@
         "headerShrink": "1"
       }
     ],
-    "afterSS": "C:\\Users\\Jeff0\\AppData\\Local\\Temp\\opencode\\pw1r4c0r1_evidence\\dashboard_after.png",
+    "afterSS": "evidence/dashboard_after.png",
     "afterDOM": {
       "url": "http://127.0.0.1:5173/",
       "vp": 390,
@@ -1230,7 +1230,7 @@
               "mr": "0px",
               "pl": "0px",
               "pr": "0px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "0%",
               "fg": "1",
               "fsh": "1"
@@ -1377,7 +1377,7 @@
               "mr": "0px",
               "pl": "8px",
               "pr": "8px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "auto",
               "fg": "0",
               "fsh": "1"
@@ -1406,7 +1406,7 @@
               "mr": "0px",
               "pl": "0px",
               "pr": "0px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "0%",
               "fg": "1",
               "fsh": "1"
@@ -1553,7 +1553,7 @@
               "mr": "0px",
               "pl": "12px",
               "pr": "12px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "auto",
               "fg": "0",
               "fsh": "1"
@@ -1845,7 +1845,7 @@
               "mr": "0px",
               "pl": "8px",
               "pr": "8px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "auto",
               "fg": "0",
               "fsh": "1"
@@ -1874,7 +1874,7 @@
               "mr": "0px",
               "pl": "0px",
               "pr": "0px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "0%",
               "fg": "1",
               "fsh": "1"
@@ -1976,7 +1976,7 @@
   "orders": {
     "label": "Wholesaler Orders",
     "url": "/orders",
-    "beforeSS": "C:\\Users\\Jeff0\\AppData\\Local\\Temp\\opencode\\pw1r4c0r1_evidence\\orders_before.png",
+    "beforeSS": "evidence/orders_before.png",
     "beforeDOM": {
       "url": "http://127.0.0.1:5173/orders",
       "vp": 390,
@@ -3143,7 +3143,7 @@
         "headerShrink": "1"
       }
     ],
-    "afterSS": "C:\\Users\\Jeff0\\AppData\\Local\\Temp\\opencode\\pw1r4c0r1_evidence\\orders_after.png",
+    "afterSS": "evidence/orders_after.png",
     "afterDOM": {
       "url": "http://127.0.0.1:5173/orders",
       "vp": 390,
@@ -3204,7 +3204,7 @@
               "mr": "0px",
               "pl": "0px",
               "pr": "0px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "0%",
               "fg": "1",
               "fsh": "1"
@@ -3351,7 +3351,7 @@
               "mr": "0px",
               "pl": "8px",
               "pr": "8px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "auto",
               "fg": "0",
               "fsh": "1"
@@ -3380,7 +3380,7 @@
               "mr": "0px",
               "pl": "0px",
               "pr": "0px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "0%",
               "fg": "1",
               "fsh": "1"
@@ -3527,7 +3527,7 @@
               "mr": "0px",
               "pl": "12px",
               "pr": "12px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "auto",
               "fg": "0",
               "fsh": "1"
@@ -3819,7 +3819,7 @@
               "mr": "0px",
               "pl": "8px",
               "pr": "8px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "auto",
               "fg": "0",
               "fsh": "1"
@@ -3848,7 +3848,7 @@
               "mr": "0px",
               "pl": "0px",
               "pr": "0px",
-              "ox": "hidden",
+              "ox": "visible",
               "fb": "0%",
               "fg": "1",
               "fsh": "1"

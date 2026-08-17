@@ -42,7 +42,23 @@ const navItems: NavItem[] = [
   // { label: 'Settings', path: '/settings', icon: Cog6ToothIcon },
 ];
 
-export function Sidebar() {
+export interface SidebarProps {
+  /**
+   * PW1-R4-C1 mobile contract: when true the off-canvas drawer (<lg only)
+   * is mounted. When false the drawer is fully unmounted, so its links are
+   * in neither the tab order nor the accessibility tree. The desktop
+   * (lg+) fixed 256px sidebar is unaffected by this state.
+   */
+  mobileOpen?: boolean;
+  /** Close callback for the mobile drawer (backdrop / internal use). */
+  onClose?: () => void;
+}
+
+/**
+ * Shared sidebar body (logo + navigation + logout), rendered both by the
+ * desktop fixed sidebar and by the mobile off-canvas drawer.
+ */
+function SidebarBody() {
   const location = useLocation();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
@@ -54,7 +70,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-gray-200 bg-white">
+    <>
       {/* Logo */}
       <div className="flex h-16 shrink-0 items-center gap-2 border-b border-gray-200 px-6">
         <div className="h-8 w-8 rounded-lg bg-primary-600 flex items-center justify-center">
@@ -247,6 +263,40 @@ export function Sidebar() {
           Logout
         </button>
       </div>
-    </aside >
+    </>
+  );
+}
+
+export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
+  return (
+    <>
+      {/* Desktop sidebar: fixed 256px, lg+ only (PW1-R4-C1 contract 4). */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-gray-200 bg-white lg:flex">
+        <SidebarBody />
+      </aside>
+
+      {/* Mobile off-canvas drawer (<lg). Mounted only while open, so the
+          closed drawer's links are in neither the tab order nor the
+          accessibility tree (contract 12). */}
+      {mobileOpen && (
+        <>
+          <div
+            data-testid="mobile-backdrop"
+            aria-hidden="true"
+            onClick={onClose}
+            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          />
+          <aside
+            id="mobile-navigation-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+            className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-white lg:hidden"
+          >
+            <SidebarBody />
+          </aside>
+        </>
+      )}
+    </>
   );
 }

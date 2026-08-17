@@ -1,0 +1,11 @@
+﻿# SHA256 Manifest - PW1R4C0-R1 Evidence
+# Generated: 2026-08-17T09:24:10Z
+# Branch: reports/dc12r1-mvp-l1-pw1-r4-c0-r1-mobile-overflow-diagnostic-2026-08-17
+# Baseline: 9067e38f83edb38fcdb53fb5d5eea7e75e85cf5f
+c1fee73d5a1325b5b5995fb7c499de437fafd371  24124  reports\dc12r1-mvp-l1-pw1-r4-c0-r1-mobile-overflow-diagnostic-2026-08-17\evidence\dashboard_after.png
+2e28b90ec60296889752591181c0c1d69a04a38c  26348  reports\dc12r1-mvp-l1-pw1-r4-c0-r1-mobile-overflow-diagnostic-2026-08-17\evidence\dashboard_before.png
+cf602d4ca005375f7d60e5287a2fa608ebd71869  91313  reports\dc12r1-mvp-l1-pw1-r4-c0-r1-mobile-overflow-diagnostic-2026-08-17\evidence\dom_measurements.json
+46d74a6a59dc55e3cba028f305be39267d710b1c  1404  reports\dc12r1-mvp-l1-pw1-r4-c0-r1-mobile-overflow-diagnostic-2026-08-17\evidence\findings.csv
+69145271166925daa0b1848795330aac5d93f890  22609  reports\dc12r1-mvp-l1-pw1-r4-c0-r1-mobile-overflow-diagnostic-2026-08-17\evidence\orders_after.png
+930321a0aedd28093293095fbc859aea251f4f34  21356  reports\dc12r1-mvp-l1-pw1-r4-c0-r1-mobile-overflow-diagnostic-2026-08-17\evidence\orders_before.png
+2078452918fa9809c3d56653301b30679542e352  8480  reports\dc12r1-mvp-l1-pw1-r4-c0-r1-mobile-overflow-diagnostic-2026-08-17\REPORT.md

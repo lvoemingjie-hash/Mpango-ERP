@@ -1,0 +1,54 @@
+ID,Phase,Check,Result,Severity,Notes
+F01,P1,Branch tip == candidate SHA,PASS,info,df7c8f15435e6821a4f18fbb476b091761933f8d
+F02,P1,Base 9067e38f is ancestor,PASS,info,merge-base --is-ancestor true
+F03,P1,product-dev-recovered unchanged,PASS,info,origin/product-dev-recovered == 9067e38f
+F04,P1,Delta exactly five files,PASS,info,2 layout src + 1 test + 1 ledger
+F05,P2,MainLayout owns drawer state,PASS,info,useState drawerOpen + hamburgerRef + location
+F06,P2,Mobile content no unconditional ml-64,PASS,info,wrapper uses lg:ml-64 only
+F07,P2,Desktop content retains lg:ml-64,PASS,info,T8 asserts presence
+F08,P2,min-w-0 applied appropriately,PASS,info,Header element itself lacks min-w-0; shrinkable children carry it (correct pattern)
+F09,P2,No overflow-x-hidden/clip/neg-margin masking,PASS,info,no such utilities in diff; hidden/lg:hidden are visibility toggles
+F10,P2,Desktop sidebar fixed 256px visible at lg+,PASS,info,aside fixed inset-y-0 left-0 w-64 hidden lg:flex
+F11,P2,Mobile drawer mounted only when open,PASS,info,{mobileOpen && (...)}
+F12,P2,Closed drawer links absent from tab/a11y tree,PASS,info,unmounted when closed; T2 verifies
+F13,P2,Hamburger aria-label/aria-expanded/aria-controls,PASS,info,present on button
+F14,P2,Drawer closes via hamburger/backdrop/Escape,PASS,info,all three paths wired
+F15,P2,Route navigation closes drawer,PASS,info,useEffect on location
+F16,P2,Escape/backdrop close restores focus,PASS,info,closeDrawer focuses hamburger
+F17,P2,Hamburger close retains focus,PASS,info,closeDrawer re-focuses hamburger
+F18,P2,Event listeners cleaned up,PASS,info,add/removeEventListener symmetric
+F19,P2,Long tenant/username/breadcrumb available while truncating,PASS,info,tenant+username title attr; breadcrumb text retained in DOM (no title attr)
+F20,P2,ClientLayout/auth/permissions/API/backend/payment untouched,PASS,info,only 5 authorized files changed
+F21,P3,Duplicate desktop/mobile nav a11y,PASS,info,desktop aside hidden <lg so not in a11y tree; T2/T3 count confirms
+F22,P3,role=dialog + aria-modal truthfulness,OBSERVATION,low,aria-modal declared but no focus trap / sibling aria-hidden; navigation fully accessible, not a blocker
+F23,P3,Backdrop layering + click,PASS,info,z-40 backdrop onClick close; z-50 drawer
+F24,P3,Keyboard reachability,PASS,info,hamburger button + drawer links focusable
+F25,P3,Focus after every close path,PASS,info,Escape/backdrop/hamburger restore; route-nav -> body (not required by contract)
+F26,P3,Direct Sidebar/Header tests source-compatible,PASS,info,optional props keep Header.test/SidebarOps passing (111/111)
+F27,P3,Platform navigation + logout unchanged,PASS,info,SidebarBody extracted unchanged; isIdentityPlatformOperator + logout intact
+F28,P3,No hidden mobile nav dead end,PASS,info,hamburger->drawer reachable and closable on <lg
+F29,P3,No desktop regression at lg,PASS,info,T7 confirms lg:flex sidebar / lg:hidden hamburger+drawer / lg:ml-64
+F30,P4,T1-T9 use real MainLayout/Header/Sidebar/MemoryRouter/Routes,PASS,info,no fake layout; renders real components
+F31,P4,No reject patterns (skip/xfail/only/conditional/hardcoded/mutation branch),PASS,info,manual scan of test file clean
+F32,P4,M1 unconditional ml-64 -> T8 RED,PASS,info,1 failed / 8 passed (verified)
+F33,P4,M2 remove header min-w-0 -> T9 RED,PASS,info,1 failed / 8 passed (verified)
+F34,P4,M3 remove hamburger+drawer -> T1/T3 RED,PASS,info,6 failed / 3 passed (verified)
+F35,P4,M4a remove Escape close -> T4 RED,PASS,info,2 failed / 7 passed (verified)
+F36,P4,M4b remove backdrop close -> T4 RED,PASS,info,2 failed / 7 passed (verified)
+F37,P4,M5 remove route-close -> T6 RED,PASS,info,1 failed / 8 passed (verified)
+F38,P4,M6 remove focus restore -> T5 RED,PASS,info,1 failed / 8 passed (verified)
+F39,P5,R4-C1 natural order 9/9,PASS,info,vitest run
+F40,P5,R4-C1 fixed-seed shuffle 9/9,PASS,info,--sequence.seed=42424
+F41,P5,Existing focused regressions 111/111,PASS,info,Header+Sidebar+PrintableWorkspace+PW1-R2
+F42,P5,Full frontend vitest 337/337,PASS,info,23 files / 337 tests
+F43,P5,Production build exit 0,PASS,info,tsc exit 0; vite built in 5.67s
+F44,P6,STOP_AND_REPORT_CTO retained,PASS,info,ledger line 84
+F45,P6,No retailer runtime success claimed,PASS,info,6 retailer 401 nodes reported as failed/blocked
+F46,P6,Six failures labeled runtime-fixture blocked,PASS,info,empty retailers/RBAC in pw1r4c0 DB
+F47,P6,Wholesaler 390px zero-overflow without full-browser PASS,PASS,info,scoped to wholesaler side
+F48,P6,Distinguishes GitNexus LOW from CTO rollout MEDIUM across 38 routes,PASS,info,truthful; recommendation: add explicit MEDIUM sentence (non-blocking)
+F49,P7,git diff --check clean,PASS,info,no whitespace errors on 5 files
+F50,P7,Scoped detect-secrets,PASS,info,tool unavailable; manual secret scan of 5 files = no matches; redacted-test-* placeholders only
+F51,P7,Strict UTF-8 / no BOM / no mojibake,PASS,info,all 5 files no-BOM
+F52,P7,GitNexus analyze/status/impact,PASS,info,MainLayout/Sidebar 0/LOW; Header 2/LOW (spurious backend declare_payment edge = graph noise)
+F53,P7,Candidate worktree clean / no source modification,PASS,info,git status --porcelain empty after reverts + cleanup

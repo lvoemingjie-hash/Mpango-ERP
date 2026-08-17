@@ -72,12 +72,18 @@ export function Header({ drawerOpen = false, hamburgerRef, onToggleDrawer }: Hea
         ))}
       </nav>
 
-      {/* Tenant + User Info — min-w-0 + truncate contract (no page clipping). */}
-      <div className="flex min-w-0 shrink-0 items-center gap-4">
+      {/* Tenant + User Info — min-w-0 + truncate contract (no page clipping).
+          The group may shrink below its content width so the header never
+          forces horizontal overflow at 390px; child min-w-0 + truncate
+          ellipsize instead of clipping the page. */}
+      <div className="flex min-w-0 items-center gap-2 lg:gap-4">
         {tenantCode && (
-          <div className="flex min-w-0 items-center gap-1.5 rounded-md bg-primary-50 px-2.5 py-1">
+          <div className="flex min-w-0 items-center gap-1.5 rounded-md bg-primary-50 px-2 py-1 lg:px-2.5">
             <BuildingOffice2Icon className="h-4 w-4 shrink-0 text-primary-600" />
-            <span className="max-w-[10rem] truncate text-xs font-semibold text-primary-700" title={tenantCode}>
+            <span
+              className="max-w-[6rem] truncate text-xs font-semibold text-primary-700 sm:max-w-[10rem]"
+              title={tenantCode}
+            >
               {tenantCode}
             </span>
           </div>

@@ -86,7 +86,7 @@ export function Header({ drawerOpen = false, hamburgerRef, onToggleDrawer }: Hea
           <div className="flex min-w-0 items-center gap-2">
             <UserCircleIcon className="h-8 w-8 shrink-0 text-gray-400" />
             <div className="min-w-0 text-right">
-              <p className="truncate text-sm font-medium text-gray-900" title={user.full_name || user.email}>
+              <p className="truncate text-sm font-medium text-gray-900" title={user.full_name || user.email || undefined}>
                 {user.full_name || user.email}
               </p>
               <p className="truncate text-xs text-gray-500">

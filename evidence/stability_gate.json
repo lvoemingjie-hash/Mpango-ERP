@@ -1,0 +1,9 @@
+{
+  "node": "phase2-identity.spec.ts:28 (forged mpango-auth with invalid JWT is rejected)",
+  "project": "desktop",
+  "runs": 10,
+  "passed": 10,
+  "failed": 0,
+  "method": "npx playwright test phase2-identity.spec.ts:28 --project=desktop repeated 10x",
+  "timestamp": "2026-08-17T14:35:17.337008+00:00"
+}

@@ -1,0 +1,13 @@
+{
+  "csv_rows": 162,
+  "csv_rows_expected": 162,
+  "list_nodes": 162,
+  "auth_matrix_nodes": 27,
+  "auth_matrix_passed": 25,
+  "auth_matrix_failed": 2,
+  "csv_passed": 25,
+  "csv_failed": 2,
+  "csv_not_run": 135,
+  "consistent": true,
+  "timestamp": "2026-08-17T14:35:17.337008+00:00"
+}

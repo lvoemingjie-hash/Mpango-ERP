@@ -1,0 +1,163 @@
+file,project,title,status,source
+auth-matrix.spec.ts,desktop,"W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",passed,auth_matrix_final_run
+auth-matrix.spec.ts,desktop,"W2 second wholesaler admin: independent tenant, login + select-tenant 200",passed,auth_matrix_final_run
+auth-matrix.spec.ts,desktop,RA multi-tenant login: response carries 2 availableTenants into workspace selector,passed,auth_matrix_final_run
+auth-matrix.spec.ts,desktop,"RB retailer portal login: client auth API 200, lands on /client",passed,auth_matrix_final_run
+auth-matrix.spec.ts,desktop,RA retailer portal login at W1 portal: lands on /client,passed,auth_matrix_final_run
+auth-matrix.spec.ts,desktop,"wrong password on wholesaler login: API 401, stays on /login, no token persisted",passed,auth_matrix_final_run
+auth-matrix.spec.ts,desktop,"wrong password on retailer portal: API 401, stays on portal, neutral message",passed,auth_matrix_final_run
+auth-matrix.spec.ts,desktop,/select-workspace direct access without navigation state redirects to /login,passed,auth_matrix_final_run
+auth-matrix.spec.ts,desktop,logout clears mpango-auth session and returns to /login,passed,auth_matrix_final_run
+auth-matrix.spec.ts,tablet,"W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",passed,auth_matrix_final_run
+auth-matrix.spec.ts,tablet,"W2 second wholesaler admin: independent tenant, login + select-tenant 200",passed,auth_matrix_final_run
+auth-matrix.spec.ts,tablet,RA multi-tenant login: response carries 2 availableTenants into workspace selector,passed,auth_matrix_final_run
+auth-matrix.spec.ts,tablet,"RB retailer portal login: client auth API 200, lands on /client",passed,auth_matrix_final_run
+auth-matrix.spec.ts,tablet,RA retailer portal login at W1 portal: lands on /client,passed,auth_matrix_final_run
+auth-matrix.spec.ts,tablet,"wrong password on wholesaler login: API 401, stays on /login, no token persisted",passed,auth_matrix_final_run
+auth-matrix.spec.ts,tablet,"wrong password on retailer portal: API 401, stays on portal, neutral message",passed,auth_matrix_final_run
+auth-matrix.spec.ts,tablet,/select-workspace direct access without navigation state redirects to /login,passed,auth_matrix_final_run
+auth-matrix.spec.ts,tablet,logout clears mpango-auth session and returns to /login,passed,auth_matrix_final_run
+auth-matrix.spec.ts,mobile,"W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",failed,auth_matrix_final_run
+auth-matrix.spec.ts,mobile,"W2 second wholesaler admin: independent tenant, login + select-tenant 200",passed,auth_matrix_final_run
+auth-matrix.spec.ts,mobile,RA multi-tenant login: response carries 2 availableTenants into workspace selector,passed,auth_matrix_final_run
+auth-matrix.spec.ts,mobile,"RB retailer portal login: client auth API 200, lands on /client",passed,auth_matrix_final_run
+auth-matrix.spec.ts,mobile,RA retailer portal login at W1 portal: lands on /client,passed,auth_matrix_final_run
+auth-matrix.spec.ts,mobile,"wrong password on wholesaler login: API 401, stays on /login, no token persisted",passed,auth_matrix_final_run
+auth-matrix.spec.ts,mobile,"wrong password on retailer portal: API 401, stays on portal, neutral message",passed,auth_matrix_final_run
+auth-matrix.spec.ts,mobile,/select-workspace direct access without navigation state redirects to /login,passed,auth_matrix_final_run
+auth-matrix.spec.ts,mobile,logout clears mpango-auth session and returns to /login,failed,auth_matrix_final_run
+phase1-routes.spec.ts,desktop,backend health endpoints are 200 (live/ready),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,desktop,frontend serves the SPA shell,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,desktop,wholesaler routes redirect anonymous users to /login,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,desktop,retailer /client routes redirect anonymous users to retailer portal or /login,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,desktop,/client/login alias redirects to /retail/login preserving w,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,desktop,public auth pages are reachable anonymously,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,desktop,unknown route renders the 404 page (no crash),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,desktop,invalid portal code shows controlled invalid-portal state with zero login API calls,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,tablet,backend health endpoints are 200 (live/ready),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,tablet,frontend serves the SPA shell,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,tablet,wholesaler routes redirect anonymous users to /login,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,tablet,retailer /client routes redirect anonymous users to retailer portal or /login,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,tablet,/client/login alias redirects to /retail/login preserving w,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,tablet,public auth pages are reachable anonymously,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,tablet,unknown route renders the 404 page (no crash),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,tablet,invalid portal code shows controlled invalid-portal state with zero login API calls,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,mobile,backend health endpoints are 200 (live/ready),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,mobile,frontend serves the SPA shell,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,mobile,wholesaler routes redirect anonymous users to /login,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,mobile,retailer /client routes redirect anonymous users to retailer portal or /login,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,mobile,/client/login alias redirects to /retail/login preserving w,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,mobile,public auth pages are reachable anonymously,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,mobile,unknown route renders the 404 page (no crash),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase1-routes.spec.ts,mobile,invalid portal code shows controlled invalid-portal state with zero login API calls,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,desktop,legacy localStorage keys (access_token/user) do NOT authenticate,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,desktop,forged mpango-auth with invalid JWT is rejected by the backend,NOT_RUN_PRE_GATE_BLOCKED,stability_probe_10_of_10_desktop
+phase2-identity.spec.ts,desktop,REAL mpango-auth format restores a wholesaler session (hydration),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,desktop,REAL mpango-auth format restores a retailer session at /client,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,desktop,login form submits real credentials to the real API (request body audit),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,tablet,legacy localStorage keys (access_token/user) do NOT authenticate,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,tablet,forged mpango-auth with invalid JWT is rejected by the backend,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,tablet,REAL mpango-auth format restores a wholesaler session (hydration),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,tablet,REAL mpango-auth format restores a retailer session at /client,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,tablet,login form submits real credentials to the real API (request body audit),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,mobile,legacy localStorage keys (access_token/user) do NOT authenticate,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,mobile,forged mpango-auth with invalid JWT is rejected by the backend,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,mobile,REAL mpango-auth format restores a wholesaler session (hydration),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,mobile,REAL mpango-auth format restores a retailer session at /client,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase2-identity.spec.ts,mobile,login form submits real credentials to the real API (request body audit),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,wholesaler page / renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,wholesaler page /orders renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,wholesaler page /inventory renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,wholesaler page /skus renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,wholesaler page /retailers renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,wholesaler page /finance renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,wholesaler page /payments renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,wholesaler page /declarations renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,dashboard shows the app shell with user context,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,wholesaler cannot open retailer /client routes (boundary redirect),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,desktop,logout returns to /login and clears the session,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,wholesaler page / renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,wholesaler page /orders renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,wholesaler page /inventory renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,wholesaler page /skus renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,wholesaler page /retailers renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,wholesaler page /finance renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,wholesaler page /payments renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,wholesaler page /declarations renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,dashboard shows the app shell with user context,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,wholesaler cannot open retailer /client routes (boundary redirect),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,tablet,logout returns to /login and clears the session,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,wholesaler page / renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,wholesaler page /orders renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,wholesaler page /inventory renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,wholesaler page /skus renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,wholesaler page /retailers renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,wholesaler page /finance renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,wholesaler page /payments renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,wholesaler page /declarations renders authenticated content,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,dashboard shows the app shell with user context,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,wholesaler cannot open retailer /client routes (boundary redirect),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase3-wholesaler.spec.ts,mobile,logout returns to /login and clears the session,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,desktop,retailer portal: catalog page renders supplier products incl. the setup SKU,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,desktop,retailer creates an order through the real API (journey precondition),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,desktop,retailer orders page lists own orders via the browser,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,desktop,financial idempotency: repeated declaration with the same key produces ZERO extra writes,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,desktop,UI double-click on declare submit creates exactly one declaration (browser evidence),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,desktop,retailer finance/payments/declarations pages render without errors,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,desktop,retailer print page issues NO mutating requests,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,tablet,retailer portal: catalog page renders supplier products incl. the setup SKU,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,tablet,retailer creates an order through the real API (journey precondition),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,tablet,retailer orders page lists own orders via the browser,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,tablet,financial idempotency: repeated declaration with the same key produces ZERO extra writes,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,tablet,UI double-click on declare submit creates exactly one declaration (browser evidence),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,tablet,retailer finance/payments/declarations pages render without errors,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,tablet,retailer print page issues NO mutating requests,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,mobile,retailer portal: catalog page renders supplier products incl. the setup SKU,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,mobile,retailer creates an order through the real API (journey precondition),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,mobile,retailer orders page lists own orders via the browser,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,mobile,financial idempotency: repeated declaration with the same key produces ZERO extra writes,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,mobile,UI double-click on declare submit creates exactly one declaration (browser evidence),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,mobile,retailer finance/payments/declarations pages render without errors,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase4-retailer.spec.ts,mobile,retailer print page issues NO mutating requests,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,desktop,cross-retailer: RB cannot read RA order by id (API isolation),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,desktop,cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,desktop,cross-tenant: RA W2-context cannot use W1-only data paths,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,desktop,malformed IDs return neutral structured errors (no internals leaked),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,desktop,unauthenticated API access is rejected with structured 401 (no leak),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,desktop,browser: RB portal session never exposes W2 tenant data,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,desktop,RB orders page contains no RA-created orders (page-level isolation),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,tablet,cross-retailer: RB cannot read RA order by id (API isolation),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,tablet,cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,tablet,cross-tenant: RA W2-context cannot use W1-only data paths,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,tablet,malformed IDs return neutral structured errors (no internals leaked),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,tablet,unauthenticated API access is rejected with structured 401 (no leak),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,tablet,browser: RB portal session never exposes W2 tenant data,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,tablet,RB orders page contains no RA-created orders (page-level isolation),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,mobile,cross-retailer: RB cannot read RA order by id (API isolation),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,mobile,cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,mobile,cross-tenant: RA W2-context cannot use W1-only data paths,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,mobile,malformed IDs return neutral structured errors (no internals leaked),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,mobile,unauthenticated API access is rejected with structured 401 (no leak),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,mobile,browser: RB portal session never exposes W2 tenant data,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase5-isolation.spec.ts,mobile,RB orders page contains no RA-created orders (page-level isolation),NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,desktop,"wholesaler dashboard: no horizontal overflow, no console/page errors",NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,desktop,wholesaler orders page: no horizontal overflow,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,desktop,"retailer catalog: no horizontal overflow, no console/page errors",NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,desktop,retailer orders page: no horizontal overflow,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,desktop,login forms have labels and keyboard-accessible inputs,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,desktop,no unexpected network failures during a login journey,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,desktop,print stub: window.print callable on print pages without errors,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,tablet,"wholesaler dashboard: no horizontal overflow, no console/page errors",NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,tablet,wholesaler orders page: no horizontal overflow,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,tablet,"retailer catalog: no horizontal overflow, no console/page errors",NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,tablet,retailer orders page: no horizontal overflow,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,tablet,login forms have labels and keyboard-accessible inputs,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,tablet,no unexpected network failures during a login journey,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,tablet,print stub: window.print callable on print pages without errors,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,mobile,"wholesaler dashboard: no horizontal overflow, no console/page errors",NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,mobile,wholesaler orders page: no horizontal overflow,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,mobile,"retailer catalog: no horizontal overflow, no console/page errors",NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,mobile,retailer orders page: no horizontal overflow,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,mobile,login forms have labels and keyboard-accessible inputs,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,mobile,no unexpected network failures during a login journey,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed
+phase6-responsive.spec.ts,mobile,print stub: window.print callable on print pages without errors,NOT_RUN_PRE_GATE_BLOCKED,full_matrix_not_executed

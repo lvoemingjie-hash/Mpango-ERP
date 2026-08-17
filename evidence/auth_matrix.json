@@ -1,0 +1,1165 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "tests/auth-matrix.spec.ts",
+      "--reporter=line,json"
+    ],
+    "configFile": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\playwright.config.js",
+    "rootDir": "C:/Users/Jeff0/MPANGO ERP/_r4c1v2_worktree/pw1r4b/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Jeff0/MPANGO ERP/_r4c1v2_worktree/pw1r4b/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "desktop",
+        "name": "desktop",
+        "testDir": "C:/Users/Jeff0/MPANGO ERP/_r4c1v2_worktree/pw1r4b/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/MPANGO ERP/_r4c1v2_worktree/pw1r4b/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "tablet",
+        "name": "tablet",
+        "testDir": "C:/Users/Jeff0/MPANGO ERP/_r4c1v2_worktree/pw1r4b/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/Jeff0/MPANGO ERP/_r4c1v2_worktree/pw1r4b/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "mobile",
+        "name": "mobile",
+        "testDir": "C:/Users/Jeff0/MPANGO ERP/_r4c1v2_worktree/pw1r4b/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "line"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "auth-matrix.spec.ts",
+      "file": "auth-matrix.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PW1-R1 auth matrix (real JWT)",
+          "file": "auth-matrix.spec.ts",
+          "line": 16,
+          "column": 6,
+          "specs": [
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1267,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:04.173Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "{\n  \"consoleErrors\": [],\n  \"pageErrors\": [],\n  \"requestFailed\": [],\n  \"httpErrors\": [],\n  \"unexpectedHttpErrors\": [],\n  \"benignConsoleFiltered\": [],\n  \"nonBenignConsoleErrors\": []\n}"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-b3751c7819936499765f",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1123,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:05.777Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-d7a7f34845d9d4f8a341",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1449,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:06.915Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9460476de98aab76eed4",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 949,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:08.383Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-75fd33162025d2177339",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 936,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:09.346Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-63350d86b5a3c445283e",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1723,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:10.297Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "{\n  \"consoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ],\n  \"pageErrors\": [],\n  \"requestFailed\": [],\n  \"httpErrors\": [\n    {\n      \"url\": \"http://127.0.0.1:5173/api/v1/auth/login\",\n      \"status\": 401\n    }\n  ],\n  \"unexpectedHttpErrors\": [],\n  \"benignConsoleFiltered\": [],\n  \"nonBenignConsoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ]\n}"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9039d00c6ba374926db0",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1675,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:12.031Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "{\n  \"consoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ],\n  \"pageErrors\": [],\n  \"requestFailed\": [],\n  \"httpErrors\": [\n    {\n      \"url\": \"http://127.0.0.1:5173/api/v1/client/auth/login\",\n      \"status\": 401\n    }\n  ],\n  \"unexpectedHttpErrors\": [],\n  \"benignConsoleFiltered\": [],\n  \"nonBenignConsoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ]\n}"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-bc98695f73a4339b1921",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 518,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:13.733Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-5400f1b088e6d19449b7",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop",
+                  "projectName": "desktop",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1099,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:14.264Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-9b7ea5304713ba1a14cc",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            },
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1250,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:16.124Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "{\n  \"consoleErrors\": [],\n  \"pageErrors\": [],\n  \"requestFailed\": [],\n  \"httpErrors\": [],\n  \"unexpectedHttpErrors\": [],\n  \"benignConsoleFiltered\": [],\n  \"nonBenignConsoleErrors\": []\n}"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-c93f1619202c0080aa61",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1012,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:17.685Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-f6f07b334daad718276c",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1359,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:18.713Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-4075161975b01271e7c3",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 911,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:20.089Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-8419eb016d1671ffc751",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 958,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:21.013Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-c377e1466326ac157169",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1703,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:21.986Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "{\n  \"consoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ],\n  \"pageErrors\": [],\n  \"requestFailed\": [],\n  \"httpErrors\": [\n    {\n      \"url\": \"http://127.0.0.1:5173/api/v1/auth/login\",\n      \"status\": 401\n    }\n  ],\n  \"unexpectedHttpErrors\": [],\n  \"benignConsoleFiltered\": [],\n  \"nonBenignConsoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ]\n}"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-4704d98c4e5a67ba5f69",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1669,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:23.705Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "{\n  \"consoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ],\n  \"pageErrors\": [],\n  \"requestFailed\": [],\n  \"httpErrors\": [\n    {\n      \"url\": \"http://127.0.0.1:5173/api/v1/client/auth/login\",\n      \"status\": 401\n    }\n  ],\n  \"unexpectedHttpErrors\": [],\n  \"benignConsoleFiltered\": [],\n  \"nonBenignConsoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ]\n}"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-248d2584cb9d2d00e411",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 486,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:25.390Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-a75eaf8a6b4ca3567991",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "tablet",
+                  "projectName": "tablet",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1072,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:25.887Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-39007ea1b7d0ff8400aa",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            },
+            {
+              "title": "W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11274,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('main, [data-testid=\"dashboard\"], nav, aside').first()\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('main, [data-testid=\"dashboard\"], nav, aside').first()\u001b[22m\n\u001b[2m    23 × locator resolved to <aside class=\"fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-gray-200 bg-white lg:flex\">…</aside>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('main, [data-testid=\"dashboard\"], nav, aside').first()\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('main, [data-testid=\"dashboard\"], nav, aside').first()\u001b[22m\n\u001b[2m    23 × locator resolved to <aside class=\"fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-gray-200 bg-white lg:flex\">…</aside>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n\n    at C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts:22:87",
+                        "location": {
+                          "file": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts",
+                          "column": 87,
+                          "line": 22
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 20 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveURL(\u001b[35m/\\/$/\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 21 |\u001b[39m     \u001b[90m// Authenticated page element (MainLayout sidebar renders)\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 22 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'main, [data-testid=\"dashboard\"], nav, aside'\u001b[39m)\u001b[33m.\u001b[39mfirst())\u001b[33m.\u001b[39mtoBeVisible()\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                                                                                       \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 23 |\u001b[39m     \u001b[36mconst\u001b[39m auth \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m readMpangoAuth(page)\u001b[33m;\u001b[39m\n \u001b[90m 24 |\u001b[39m     expect(auth\u001b[33m.\u001b[39mstate\u001b[33m.\u001b[39muser\u001b[33m?\u001b[39m\u001b[33m.\u001b[39mroles)\u001b[33m.\u001b[39mtoContain(\u001b[32m'admin'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 25 |\u001b[39m     expect(auth\u001b[33m.\u001b[39mstate\u001b[33m.\u001b[39mtenantCode)\u001b[33m.\u001b[39mtoBe(\u001b[33mIDS\u001b[39m\u001b[33m.\u001b[39mw1\u001b[33m.\u001b[39mtenant_code)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts",
+                            "column": 87,
+                            "line": 22
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('main, [data-testid=\"dashboard\"], nav, aside').first()\nExpected: visible\nReceived: hidden\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for locator('main, [data-testid=\"dashboard\"], nav, aside').first()\u001b[22m\n\u001b[2m    23 × locator resolved to <aside class=\"fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-gray-200 bg-white lg:flex\">…</aside>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n\n\n  20 |     await expect(page).toHaveURL(/\\/$/);\n  21 |     // Authenticated page element (MainLayout sidebar renders)\n> 22 |     await expect(page.locator('main, [data-testid=\"dashboard\"], nav, aside').first()).toBeVisible();\n     |                                                                                       ^\n  23 |     const auth = await readMpangoAuth(page);\n  24 |     expect(auth.state.user?.roles).toContain('admin');\n  25 |     expect(auth.state.tenantCode).toBe(IDS.w1.tenant_code);\n    at C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts:22:87"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:27.847Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "{\n  \"consoleErrors\": [],\n  \"pageErrors\": [],\n  \"requestFailed\": [],\n  \"httpErrors\": [],\n  \"unexpectedHttpErrors\": [],\n  \"benignConsoleFiltered\": [],\n  \"nonBenignConsoleErrors\": []\n}"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\test-results\\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--mobile\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\test-results\\auth-matrix-PW1-R1-auth-ma-5e137-select-tenant-200-lands-on--mobile\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts",
+                        "column": 87,
+                        "line": 22
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-778fec5a5c497dba3eb2",
+              "file": "auth-matrix.spec.ts",
+              "line": 18,
+              "column": 7
+            },
+            {
+              "title": "W2 second wholesaler admin: independent tenant, login + select-tenant 200",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1237,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:40.249Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-7818f60f8c4cc3a31ac5",
+              "file": "auth-matrix.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RA multi-tenant login: response carries 2 availableTenants into workspace selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1381,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:41.768Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-b241e838776c12963156",
+              "file": "auth-matrix.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "RB retailer portal login: client auth API 200, lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 938,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:43.161Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-df521b10f92f6de30b7e",
+              "file": "auth-matrix.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "RA retailer portal login at W1 portal: lands on /client",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 908,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:44.115Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-adeac458fbe939ae0fd2",
+              "file": "auth-matrix.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "wrong password on wholesaler login: API 401, stays on /login, no token persisted",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1706,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:45.042Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "{\n  \"consoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ],\n  \"pageErrors\": [],\n  \"requestFailed\": [],\n  \"httpErrors\": [\n    {\n      \"url\": \"http://127.0.0.1:5173/api/v1/auth/login\",\n      \"status\": 401\n    }\n  ],\n  \"unexpectedHttpErrors\": [],\n  \"benignConsoleFiltered\": [],\n  \"nonBenignConsoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ]\n}"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-6d85af05726d07289849",
+              "file": "auth-matrix.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "wrong password on retailer portal: API 401, stays on portal, neutral message",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1688,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:46.773Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "browser-evidence",
+                          "contentType": "application/json",
+                          "body": "{\n  \"consoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ],\n  \"pageErrors\": [],\n  \"requestFailed\": [],\n  \"httpErrors\": [\n    {\n      \"url\": \"http://127.0.0.1:5173/api/v1/client/auth/login\",\n      \"status\": 401\n    }\n  ],\n  \"unexpectedHttpErrors\": [],\n  \"benignConsoleFiltered\": [],\n  \"nonBenignConsoleErrors\": [\n    \"Failed to load resource: the server responded with a status of 401 (Unauthorized)\"\n  ]\n}"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-1482f473c2b626c9b204",
+              "file": "auth-matrix.spec.ts",
+              "line": 96,
+              "column": 7
+            },
+            {
+              "title": "/select-workspace direct access without navigation state redirects to /login",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 492,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:48.480Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-4c7f83f3ef93148331e9",
+              "file": "auth-matrix.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "logout clears mpango-auth session and returns to /login",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile",
+                  "projectName": "mobile",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11172,
+                      "error": {
+                        "message": "TimeoutError: locator.click: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Logout\"), a:has-text(\"Logout\"), [data-testid=\"logout\"], [aria-label=\"Logout\"]').first().first()\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-700 transition-colors\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    19 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is not visible\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n",
+                        "stack": "TimeoutError: locator.click: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Logout\"), a:has-text(\"Logout\"), [data-testid=\"logout\"], [aria-label=\"Logout\"]').first().first()\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-700 transition-colors\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    19 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is not visible\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\n    at C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts:127:26",
+                        "location": {
+                          "file": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts",
+                          "column": 26,
+                          "line": 127
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 125 |\u001b[39m       \u001b[36mif\u001b[39m (\u001b[36mawait\u001b[39m menu\u001b[33m.\u001b[39mcount() \u001b[33m>\u001b[39m \u001b[35m0\u001b[39m) \u001b[36mawait\u001b[39m menu\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n \u001b[90m 126 |\u001b[39m     }\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 127 |\u001b[39m     \u001b[36mawait\u001b[39m logout\u001b[33m.\u001b[39mfirst()\u001b[33m.\u001b[39mclick({ timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                          \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 128 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/login'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m15000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m 129 |\u001b[39m     \u001b[36mconst\u001b[39m auth \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m readMpangoAuth(page)\u001b[33m;\u001b[39m\n \u001b[90m 130 |\u001b[39m     expect(auth\u001b[33m?\u001b[39m\u001b[33m.\u001b[39mstate\u001b[33m?\u001b[39m\u001b[33m.\u001b[39maccessToken \u001b[33m?\u001b[39m\u001b[33m?\u001b[39m \u001b[36mnull\u001b[39m)\u001b[33m.\u001b[39mtoBeFalsy()\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts",
+                            "column": 26,
+                            "line": 127
+                          },
+                          "message": "TimeoutError: locator.click: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Logout\"), a:has-text(\"Logout\"), [data-testid=\"logout\"], [aria-label=\"Logout\"]').first().first()\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-700 transition-colors\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    19 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is not visible\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\n\n  125 |       if (await menu.count() > 0) await menu.click();\n  126 |     }\n> 127 |     await logout.first().click({ timeout: 10000 });\n      |                          ^\n  128 |     await page.waitForURL('**/login', { timeout: 15000 });\n  129 |     const auth = await readMpangoAuth(page);\n  130 |     expect(auth?.state?.accessToken ?? null).toBeFalsy();\n    at C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts:127:26"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-17T14:21:48.990Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\test-results\\auth-matrix-PW1-R1-auth-ma-72a1e-ession-and-returns-to-login-mobile\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\test-results\\auth-matrix-PW1-R1-auth-ma-72a1e-ession-and-returns-to-login-mobile\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Users\\Jeff0\\MPANGO ERP\\_r4c1v2_worktree\\pw1r4b\\tests\\auth-matrix.spec.ts",
+                        "column": 26,
+                        "line": 127
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "88b5c4f65e2cffa874e9-1e80592c2ca2f997e907",
+              "file": "auth-matrix.spec.ts",
+              "line": 118,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-17T14:21:03.526Z",
+    "duration": 57021.225000000006,
+    "expected": 25,
+    "skipped": 0,
+    "unexpected": 2,
+    "flaky": 0
+  }
+}

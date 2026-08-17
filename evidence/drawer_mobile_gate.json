@@ -1,0 +1,139 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R4-C1-V2 Phase 5 mobile drawer pre-gate",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "identity": "W1 wholesaler (real login)",
+  "checks": [
+    {
+      "check": "real login lands on authenticated route",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/"
+    },
+    {
+      "check": "hamburger visible @390",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "hamburger aria-label correct",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "hamburger aria-expanded=false initially",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "hamburger aria-controls points to drawer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "drawer absent from DOM when closed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "drawer absent from a11y tree when closed",
+      "ok": true,
+      "detail": "domCount=0"
+    },
+    {
+      "check": "dashboard no horizontal overflow (closed)",
+      "ok": true,
+      "detail": "{\"scrollW\":390,\"clientW\":390,\"masked\":[],\"truncatingText\":5}"
+    },
+    {
+      "check": "no overflow-x-hidden masking on dashboard",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "check": "drawer present in DOM after open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "drawer role=dialog aria-modal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "hamburger aria-expanded=true when open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "backdrop visible when open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "dashboard no horizontal overflow (drawer open)",
+      "ok": true,
+      "detail": "{\"scrollW\":390,\"clientW\":390,\"masked\":[],\"truncatingText\":5}"
+    },
+    {
+      "check": "Escape closes drawer (detached)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Escape restores focus to hamburger",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "hamburger aria-expanded=false after Escape",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "backdrop closes drawer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "backdrop close restores focus to hamburger",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "hamburger toggles drawer closed",
+      "ok": false,
+      "detail": "REAL-BROWSER DEFECT: open drawer (z-50, inset-y-0, w-64) overlays the header hamburger (z-20) — pointer click intercepted: locator.click: Timeout 8000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button[aria-label=\"Toggle navigation menu\"]')\u001b[22m\n\u001b[2m    - locator resolved to <button type=\"but"
+    },
+    {
+      "check": "Sales link navigates to /orders",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "drawer auto-closes after navigation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "orders no horizontal overflow",
+      "ok": true,
+      "detail": "{\"scrollW\":390,\"clientW\":390,\"masked\":[],\"truncatingText\":4}"
+    },
+    {
+      "check": "no overflow-x-hidden masking on orders",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "check": "orders no horizontal overflow (drawer open)",
+      "ok": true,
+      "detail": "{\"scrollW\":390,\"clientW\":390,\"masked\":[],\"truncatingText\":4}"
+    }
+  ],
+  "passed": 24,
+  "total": 25,
+  "all_passed": false,
+  "timestamp": "2026-08-17T14:31:55.287Z"
+}

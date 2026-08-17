@@ -1,0 +1,14 @@
+{
+  "required": {
+    "phase4:70 x3": "NOT_RUN (full matrix blocked)",
+    "phase4:118 x3": "NOT_RUN (full matrix blocked)",
+    "phase2-identity:28 x3": "desktop 10/10 stability PASS; tablet/mobile NOT_RUN (full matrix blocked)",
+    "phase5 isolation all": "NOT_RUN (full matrix blocked)",
+    "phase6-responsive:17 x3": "NOT_RUN (full matrix blocked)",
+    "phase6-responsive:25 x3": "NOT_RUN (full matrix blocked)",
+    "retailer catalog/orders x3": "NOT_RUN (full matrix blocked)",
+    "mobile drawer pre-gate all": "24/25 \u2014 FAIL (F3 hamburger-toggle pointer interception)",
+    "auth matrix 27/27 (pre-gate)": "25/27 \u2014 FAIL (F1, F2)"
+  },
+  "timestamp": "2026-08-17T14:35:17.337008+00:00"
+}

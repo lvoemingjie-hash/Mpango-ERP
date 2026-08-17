@@ -1,0 +1,34 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R4-C1-V2",
+  "executed": false,
+  "reason": "Phase 4 pre-gates not all passed: auth matrix 25/27 (2 structural mobile reds) and Phase 5 mobile drawer pre-gate 24/25 (hamburger-toggle pointer interception). Task rules forbid executing the authoritative full matrix unless every pre-gate is green.",
+  "expected": {
+    "files": 7,
+    "nodes": 162,
+    "workers": 1,
+    "retries": 0
+  },
+  "pre_gate_state": {
+    "backend_live_ready": {
+      "health": 200,
+      "ready": 200
+    },
+    "frontend": 200,
+    "auth_matrix": {
+      "passed": 25,
+      "failed": 2,
+      "total": 27
+    },
+    "identity_facts": "RA multi-tenant (W1+W2) / RB single-tenant (W1) verified over live HTTP",
+    "retailer_permissions": "six server-derived client:* permissions incl. client:payments:declare verified",
+    "declaration_route": "GET /api/v1/client/declarations = 200 (no 403)",
+    "stability_gate_phase2_identity_28_desktop": "10/10",
+    "playwright_list": "162 tests in 7 files",
+    "harness_purity": "no .only/.skip/.xfail; retries: 0",
+    "drawer_mobile_gate": {
+      "passed": 24,
+      "total": 25
+    }
+  },
+  "timestamp": "2026-08-17T14:35:17.337008+00:00"
+}

@@ -1,0 +1,143 @@
+{
+  "provisioned_at": "2026-08-17T14:12:54.857509+00:00",
+  "method": "official lifecycle via ASGITransport + staging dev sink",
+  "canonical_names": {
+    "retailer_a": "PW1R1 Retailer A",
+    "retailer_b": "PW1R1 Retailer B"
+  },
+  "identity_emails": {
+    "w1": "pw1r4c1.w1.r4c1v2@pw1r4.dev",
+    "w2": "pw1r4c1.w2.r4c1v2@pw1r4.dev",
+    "ra": "pw1r4c1.ra.r4c1v2@pw1r4.dev",
+    "rb": "pw1r4c1.rb.r4c1v2@pw1r4.dev"
+  },
+  "tenant_codes": {
+    "w1": "TRBDD17710B11E493688622F66167FB0",
+    "w2": "TR0C0F457AAAAE4521BDAF71EF8F4912"
+  },
+  "bindings": {
+    "ra": [
+      "TRBDD17710B11E493688622F66167FB0",
+      "TR0C0F457AAAAE4521BDAF71EF8F4912"
+    ],
+    "rb": [
+      "TRBDD17710B11E493688622F66167FB0"
+    ]
+  },
+  "steps": [
+    {
+      "step": "w1:signup_create",
+      "ok": true
+    },
+    {
+      "step": "w1:verify_email_consume",
+      "ok": true
+    },
+    {
+      "step": "w1:owner_setup_credential_http",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "step": "w1:login",
+      "ok": true,
+      "status": 200,
+      "expected": 200,
+      "tenants": 1
+    },
+    {
+      "step": "w1:select_tenant",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "step": "w2:signup_create",
+      "ok": true
+    },
+    {
+      "step": "w2:verify_email_consume",
+      "ok": true
+    },
+    {
+      "step": "w2:owner_setup_credential_http",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "step": "w2:login",
+      "ok": true,
+      "status": 200,
+      "expected": 200,
+      "tenants": 1
+    },
+    {
+      "step": "w2:select_tenant",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "step": "invitation:ra@w1",
+      "ok": true,
+      "code_len": 32
+    },
+    {
+      "step": "invitation:rb@w1",
+      "ok": true,
+      "code_len": 32
+    },
+    {
+      "step": "invitation:ra@w2",
+      "ok": true,
+      "code_len": 32
+    },
+    {
+      "step": "ra:retailer_registration",
+      "ok": true,
+      "binding_wholesaler": "da085395-a4f7-4dde-83cd-79436a9348cc"
+    },
+    {
+      "step": "rb:retailer_registration",
+      "ok": true,
+      "binding_wholesaler": "da085395-a4f7-4dde-83cd-79436a9348cc"
+    },
+    {
+      "step": "ra:retailer_registration",
+      "ok": true,
+      "binding_wholesaler": "54fd0048-5b43-48a6-9354-b103e2630e44"
+    },
+    {
+      "step": "ra:retailer_credential_setup_http",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "step": "rb:retailer_credential_setup_http",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    }
+  ],
+  "post_verification_live_http": {
+    "RA@W1": 200,
+    "RA@W2": 200,
+    "RB@W1": 200,
+    "RB@W2 (isolation, expect 401)": 401,
+    "W1_login_tenants": 1,
+    "W2_login_tenants": 1,
+    "retailer_permissions": [
+      "client:catalog:read",
+      "client:finance:read",
+      "client:orders:create",
+      "client:orders:read",
+      "client:payments:declare",
+      "client:payments:read"
+    ],
+    "client_payments_declare_present": true,
+    "declaration_route_status": 200
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R4-C1-V2 \u2014 Full Browser Independent Final",
+  "verdict": "STOP_AND_REPORT_CTO",
+  "pass_verdict_not_issued": "PASS_DC12R1_MVP_L1_PW1_R4_C1_V2_BROWSER_INDEPENDENT_FINAL requires 162/162 with all pre-gates green; not achieved.",
+  "blocking_findings": [
+    "F1",
+    "F2",
+    "F3"
+  ],
+  "full_matrix_executed": false,
+  "full_matrix_execution_forbidden_because": "Phase 4 pre-gates (auth matrix 27/27) and Phase 5 drawer pre-gate not fully passed",
+  "takeover_note": "opencode CLI hung 3x (log/db frozen >=15 min with busy-spin CPU; its frontend Start-Process failed silently; its backend ran with default env pointing at host:5432). Its pushed report commit dce73f4c claimed PASS via a vitest-only substitute (337 unit tests) while the task DB held 0 provisioned rows and the 162-node browser matrix was never executed. That commit is replaced by this evidence-based STOP report.",
+  "timestamp": "2026-08-17T14:35:17.337008+00:00"
+}

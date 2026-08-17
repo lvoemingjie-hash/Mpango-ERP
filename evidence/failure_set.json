@@ -1,0 +1,30 @@
+{
+  "count": 3,
+  "failures": [
+    {
+      "id": "F1",
+      "node": "auth-matrix.spec.ts:18 [mobile] W1 single-tenant wholesaler admin ...",
+      "gate": "Phase 4 pre-gate 3 (auth matrix 27/27)",
+      "observed": "expect(locator('main, [data-testid=dashboard], nav, aside').first()).toBeVisible() resolved to the DESKTOP <aside> which the candidate hides below lg (hidden lg:flex); aside precedes <main> in DOM so .first() returns the hidden element.",
+      "root_cause": "Candidate responsive change hides the desktop sidebar at mobile without preserving a first-matching visible element for the frozen harness locator; base 9067e38f kept the aside always visible (which the same harness relied on).",
+      "classification": "candidate-vs-frozen-harness structural regression (mobile)"
+    },
+    {
+      "id": "F2",
+      "node": "auth-matrix.spec.ts:118 [mobile] logout clears mpango-auth session ...",
+      "gate": "Phase 4 pre-gate 3 (auth matrix 27/27)",
+      "observed": "Logout button click timeout: the only Logout button in DOM sits inside the hidden desktop aside (the mobile drawer is unmounted when closed); the harness menu-fallback branch is skipped because logout.count() > 0.",
+      "root_cause": "At mobile the logout control is only reachable after opening the drawer; the frozen harness expects it visible (or behind a user menu) after login.",
+      "classification": "candidate-vs-frozen-harness structural regression (mobile)"
+    },
+    {
+      "id": "F3",
+      "node": "Phase 5 mobile drawer pre-gate \u2014 'hamburger toggles drawer closed'",
+      "gate": "Phase 5 (drawer pre-gate must fully pass)",
+      "observed": "locator.click timeout: while the drawer is open it (fixed inset-y-0 left-0 z-50 w-64) overlays the sticky header hamburger (z-20), so the hamburger cannot be clicked by a real pointer to close the drawer.",
+      "root_cause": "Drawer stacking/geometry covers the header control; vitest T4 'hamburger closes drawer' passes only because jsdom performs no hit-testing.",
+      "classification": "real-browser UI defect in candidate df7c8f15 (works: Escape close, backdrop close, focus restoration, route auto-close)"
+    }
+  ],
+  "timestamp": "2026-08-17T14:35:17.337008+00:00"
+}

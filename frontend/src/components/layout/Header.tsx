@@ -1,7 +1,7 @@
 import { useLocation } from 'react-router-dom';
 import { ChevronRightIcon, Bars3Icon } from '@heroicons/react/20/solid';
 import { UserCircleIcon } from '@heroicons/react/24/solid';
-import { BuildingOffice2Icon } from '@heroicons/react/24/outline';
+import { ArrowRightOnRectangleIcon, BuildingOffice2Icon } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/stores/authStore';
 
 /**
@@ -34,6 +34,7 @@ export interface HeaderProps {
 export function Header({ drawerOpen = false, hamburgerRef, onToggleDrawer }: HeaderProps) {
   const user = useAuthStore((s) => s.user);
   const tenantCode = useAuthStore((s) => s.tenantCode);
+  const logout = useAuthStore((s) => s.logout);
   const breadcrumbs = useBreadcrumbs();
   const roleLabel = Array.isArray(user?.roles) ? user.roles[0] : undefined;
 
@@ -75,8 +76,14 @@ export function Header({ drawerOpen = false, hamburgerRef, onToggleDrawer }: Hea
       {/* Tenant + User Info — min-w-0 + truncate contract (no page clipping).
           The group may shrink below its content width so the header never
           forces horizontal overflow at 390px; child min-w-0 + truncate
-          ellipsize instead of clipping the page. */}
-      <div className="flex min-w-0 items-center gap-2 lg:gap-4">
+          ellipsize instead of clipping the page.
+          R4-C1-R1 (F1): flex-1 + justify-end lets this group and the sibling
+          breadcrumb nav SPLIT the header's free space equally instead of the
+          content-sized basis consuming all of it — at 390px the nav would
+          otherwise collapse to 0px width and become invisible, breaking the
+          frozen harness's visible-first-landmark contract. Content stays
+          right-anchored, so the lg+ desktop look is unchanged. */}
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-2 lg:gap-4">
         {tenantCode && (
           <div className="flex min-w-0 items-center gap-1.5 rounded-md bg-primary-50 px-2 py-1 lg:px-2.5">
             <BuildingOffice2Icon className="h-4 w-4 shrink-0 text-primary-600" />
@@ -101,6 +108,25 @@ export function Header({ drawerOpen = false, hamburgerRef, onToggleDrawer }: Hea
             </div>
           </div>
         )}
+
+        {/* R4-C1-R1 (F2): a header-anchored logout action that is visible and
+            keyboard-accessible at EVERY viewport, including mobile while the
+            drawer is closed. The frozen browser harness clicks the FIRST
+            'Logout' match in DOM order — with the content column rendered
+            before the fixed Sidebar (F1), this button is that first match and
+            must remain visible at all widths (no responsive hiding of the
+            button itself; only its text label collapses below sm to keep the
+            390px no-overflow contract). It reuses the exact auth-store logout
+            action the sidebar uses — no duplicated auth path. */}
+        <button
+          type="button"
+          onClick={logout}
+          aria-label="Logout"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-gray-200 px-2 text-sm font-medium text-gray-600 transition-colors hover:bg-red-50 hover:text-red-700"
+        >
+          <ArrowRightOnRectangleIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="hidden sm:inline">Logout</span>
+        </button>
       </div>
     </header>
   );

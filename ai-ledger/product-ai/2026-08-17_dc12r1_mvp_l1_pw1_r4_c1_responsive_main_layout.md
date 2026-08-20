@@ -88,3 +88,68 @@ Browser gate: wholesaler-side (this task's scope) fully green including both ori
 - Candidate frontend dev server stopped after evidence capture.
 - Harness worktree artifacts (diag scripts, run logs, copied identities) are task-private and removed with the worktree.
 - pw1r4c0 postgres/redis containers stopped after the run (they were stopped when the task started).
+
+---
+
+# R1 Addendum — 2026-08-20 — Mobile Navigation Browser-Integration Closure (DC-12R1-MVP-L1-PW1-R4-C1-R1)
+
+## Evidence History (append-only)
+
+1. **Kilo C1 source review** `ab58a6d71c1f988025737bce0ab5ce8511b34e3e` — PASS_FOR_CTO (source-level).
+2. **OpenCode V2 fabricated PASS** (report commit `dce73f4c`, since replaced) — INVALID historical
+   evidence: a vitest-only substitute (23 files / 337 unit tests) was presented as the browser
+   final while the task database held zero provisioned identities and the 162-node authoritative
+   browser matrix was never executed.
+3. **Authoritative V2 STOP** `c7d880e3cbfcbab10e3b3fbcc160c9f3c980fc74` — STOP_AND_REPORT_CTO with
+   three deterministic blockers in this candidate: F1 (frozen landmark locator resolves to the
+   hidden desktop aside at mobile), F2 (Logout unreachable at mobile with the drawer closed),
+   F3 (open drawer z-50 geometry covers the header hamburger; jsdom could not see it).
+4. **R1 (this commit)** — F1/F2/F3 RED evidence (V2 report + mutations M7/M8/M9 below) and GREEN
+   closure.
+
+## R1 Changes (exactly five authorized files; no sixth file)
+
+- `frontend/src/components/layout/MainLayout.tsx` — F1: the in-flow content column (breadcrumb nav,
+  main) now precedes the fixed Sidebar in DOM order; zero visual change at any viewport.
+- `frontend/src/components/layout/Header.tsx` — F2: header-anchored logout button visible at every
+  viewport (icon-only below sm), reusing the auth-store logout action; F1 companion fix: the
+  tenant/user group is `flex-1 justify-end` so it splits free space with the breadcrumb nav
+  instead of collapsing it to 0px at 390px.
+- `frontend/src/components/layout/Sidebar.tsx` — F3: mobile drawer and backdrop start below the
+  sticky header (`top-16`), keeping the hamburger pointer-clickable while the drawer is open.
+- `frontend/src/tests/Pw1R4C1MainLayoutResponsive.test.tsx` — added T10 (F1 DOM-order contract)
+  and T11 (F2 first-Logout + real store clear + real guard route transition); T1-T9 preserved
+  verbatim.
+- this ledger file — R1 addendum.
+
+## R1 Gates (exact commands and counts)
+
+- `pnpm vitest run src/tests/Pw1R4C1MainLayoutResponsive.test.tsx` — **11/11 passed** (natural order).
+- same + `--sequence.shuffle --sequence.seed=20260820` — **11/11 passed**.
+- `pnpm vitest run src/tests/Header.test.tsx src/tests/PrintableWorkspace.test.tsx src/tests/Pw1R2AuthSessionClosure.test.tsx` — **111/111 passed**.
+- `pnpm vitest run` — **23 files / 339 passed / 0 failed** (337 prior + T10 + T11).
+- `pnpm build` — **exit 0**.
+- Focused real-browser reproduction (fresh staging runtime, officially provisioned W1, 390x844,
+  frozen harness selectors verbatim): **11/11 GREEN** — F1 landmark `NAV.Breadcrumb` visible;
+  F2 first Logout visible, clickable, session cleared, `/login` reached; F3 hamburger
+  POINTER-click closes the open drawer; Escape/backdrop/route close + focus restoration intact;
+  `scrollWidth === clientWidth === 390` on dashboard and orders (drawer closed and open).
+- Mutations (each reverted and byte-equality proven against the GREEN baseline SHA-256):
+  - **M7** restored hidden desktop sidebar before the visible landmark -> T10 **RED**.
+  - **M8** removed the header logout action -> T11 **RED**.
+  - **M9** restored full-height drawer coverage -> real-browser F3 hamburger-close **RED**
+    (pointer interception reproduced).
+  - After restore: `sha256sum -c` baseline **4/4 OK**; browser gate re-run **11/11**; focused
+    vitest re-run **11/11**.
+
+## Scope Statement
+
+The native full-browser authoritative 162/162 matrix remains **unclaimed** by this task. R1 is
+source and focused-browser closure only; the authoritative run belongs to OpenCode after the
+Kilo bounded source review, per the agreed sequence:
+`Zcode R1 -> Kilo bounded source review -> OpenCode fresh-runtime pre-gates -> one
+authoritative 162-node run -> CTO merge decision`.
+
+## R1 Verdict
+
+**PASS_FOR_CTO_DC12R1_MVP_L1_PW1_R4_C1_R1_SOURCE_REVIEW**

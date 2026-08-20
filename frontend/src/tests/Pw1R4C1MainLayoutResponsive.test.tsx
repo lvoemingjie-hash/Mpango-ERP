@@ -1,14 +1,20 @@
 /**
- * DC-12R1-MVP-L1-PW1-R4-C1 — Responsive MainLayout + Mobile Navigation tests (T1–T9).
+ * DC-12R1-MVP-L1-PW1-R4-C1 — Responsive MainLayout + Mobile Navigation tests (T1–T11).
  *
  * Renders the REAL MainLayout + Header + Sidebar with MemoryRouter/Routes.
  * No fake guards, no fake layout. Tests are order-independent (each renders
  * from scratch) so they pass in natural, shuffled and reverse order.
+ *
+ * R1 (2026-08-20) adds T10/T11 closing the authoritative V2 browser blockers:
+ *   F1 visible-first-landmark DOM order, F2 visible mobile logout.
+ *   (F3 hamburger-close geometry is proven by the real-browser reproduction
+ *   gate — jsdom performs no hit-testing, so it cannot live here.)
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { WholesalerRoute } from '@/router/guards';
 import { useAuthStore } from '@/stores/authStore';
 import type { CurrentUserData } from '@/types/auth';
 
@@ -59,7 +65,7 @@ const testUser = ({
     permissions: [],
   } as unknown) as CurrentUserData;
 
-describe('PW1-R4-C1 MainLayout responsive + mobile navigation (T1–T9)', () => {
+describe('PW1-R4-C1 MainLayout responsive + mobile navigation (T1–T11)', () => {
   beforeEach(() => {
     cleanup();
     useAuthStore.setState({
@@ -200,5 +206,79 @@ describe('PW1-R4-C1 MainLayout responsive + mobile navigation (T1–T9)', () => 
     // Breadcrumb nav participates in the shrink contract.
     const breadcrumbNav = screen.getByLabelText('Breadcrumb');
     expect(breadcrumbNav.className).toContain('min-w-0');
+  });
+
+  it('T10 (R1/F1): every always-visible landmark precedes the hidden desktop aside in DOM order', () => {
+    const { container } = renderApp();
+
+    const main = container.querySelector('main');
+    const desktopAside = document.querySelector('aside');
+    const breadcrumbNav = screen.getByLabelText('Breadcrumb');
+
+    expect(main).not.toBeNull();
+    expect(desktopAside).not.toBeNull();
+
+    // The desktop aside is still the lg-gated fixed sidebar (unchanged at lg+).
+    expect(desktopAside!.className).toContain('hidden');
+    expect(desktopAside!.className).toContain('lg:flex');
+    expect(desktopAside!.className).toContain('w-64');
+
+    // F1 contract: the frozen harness resolves
+    //   'main, [data-testid="dashboard"], nav, aside' with .first()
+    // which returns the first match in DOCUMENT order. Both always-visible
+    // landmarks (breadcrumb nav and main) must therefore come BEFORE the
+    // hidden-at-mobile desktop aside, so .first() can never land on it.
+    const asideFollowsNav = !!(breadcrumbNav.compareDocumentPosition(desktopAside!) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const asideFollowsMain = !!(main!.compareDocumentPosition(desktopAside!) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(asideFollowsNav).toBe(true);
+    expect(asideFollowsMain).toBe(true);
+
+    // And the first landmark in document order is the breadcrumb nav, which
+    // lives in the always-visible sticky header (visible at every viewport).
+    const firstLandmark = container.querySelector('nav, main, aside');
+    expect(firstLandmark).toBe(breadcrumbNav);
+  });
+
+  it('T11 (R1/F2): header logout is the first Logout control, clears the real auth store and routes to /login', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route element={<WholesalerRoute />}>
+            <Route element={<MainLayout />}>
+              <Route path="/" element={<div data-testid="page-home">Home Page</div>} />
+            </Route>
+          </Route>
+          <Route path="/login" element={<div data-testid="page-login">Login Page</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // Guarded shell rendered with a contextual session.
+    expect(screen.getByTestId('page-home')).toBeInTheDocument();
+
+    // A logout control exists that the frozen locator can discover
+    // (button text and/or aria-label "Logout") in the always-visible header.
+    const logoutButtons = screen.getAllByRole('button', { name: 'Logout' });
+    expect(logoutButtons.length).toBeGreaterThanOrEqual(1);
+    const headerLogout = logoutButtons[0];
+
+    // F2 contract: the FIRST Logout control in document order is anchored in
+    // the always-visible header — the sidebar's logout (hidden at mobile
+    // inside the desktop aside) must never be the first match.
+    expect(headerLogout.closest('header')).not.toBeNull();
+    expect(logoutButtons.length).toBe(2); // header (first) + shared SidebarBody (desktop aside)
+
+    // Native button: keyboard reachable (no tabindex=-1, not disabled).
+    expect(headerLogout).not.toHaveAttribute('tabindex', '-1');
+    expect(headerLogout).not.toBeDisabled();
+
+    // It drives the REAL auth-store logout (no separate auth path) and the
+    // REAL WholesalerRoute guard then redirects the session to /login.
+    fireEvent.click(headerLogout);
+    expect(useAuthStore.getState().accessToken).toBeNull();
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().tenantCode).toBeNull();
+    expect(screen.getByTestId('page-login')).toBeInTheDocument();
+    expect(screen.queryByTestId('page-home')).toBeNull();
   });
 });

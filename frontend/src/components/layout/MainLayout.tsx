@@ -45,7 +45,13 @@ export function MainLayout() {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <Sidebar mobileOpen={drawerOpen} onClose={closeDrawer} />
+      {/* R4-C1-R1 (F1): the in-flow content column renders BEFORE the fixed
+          Sidebar so every always-visible landmark (breadcrumb nav, main)
+          precedes the lg-gated desktop <aside> in DOM order. The frozen
+          browser harness resolves 'main, nav, aside' with .first(), which
+          must land on a visible element at mobile width. The desktop aside,
+          mobile backdrop and mobile drawer are position:fixed, so this order
+          has zero visual effect at every viewport. */}
       <div className="flex min-w-0 flex-1 flex-col lg:ml-64">
         <Header
           drawerOpen={drawerOpen}
@@ -56,6 +62,7 @@ export function MainLayout() {
           <Outlet />
         </main>
       </div>
+      <Sidebar mobileOpen={drawerOpen} onClose={closeDrawer} />
     </div>
   );
 }

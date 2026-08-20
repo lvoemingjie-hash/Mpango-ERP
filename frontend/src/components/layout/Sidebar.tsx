@@ -277,21 +277,29 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
       {/* Mobile off-canvas drawer (<lg). Mounted only while open, so the
           closed drawer's links are in neither the tab order nor the
-          accessibility tree (contract 12). */}
+          accessibility tree (contract 12).
+          R4-C1-R1 (F3): the drawer and its backdrop start BELOW the sticky
+          header row (top-16) instead of spanning inset-y-0. The previous
+          full-height geometry stacked the z-50 drawer over the z-20 header,
+          so a real pointer could never click the hamburger to close — jsdom
+          could not see this because it performs no hit-testing. Leaving the
+          header row exposed keeps the hamburger clickable while the drawer is
+          open; Escape, backdrop and route-change close plus focus restoration
+          are unchanged. */}
       {mobileOpen && (
         <>
           <div
             data-testid="mobile-backdrop"
             aria-hidden="true"
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+            className="fixed inset-x-0 bottom-0 top-16 z-40 bg-black/40 lg:hidden"
           />
           <aside
             id="mobile-navigation-drawer"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"
-            className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-white lg:hidden"
+            className="fixed bottom-0 left-0 top-16 z-50 flex w-64 flex-col border-r border-gray-200 bg-white lg:hidden"
           >
             <SidebarBody />
           </aside>

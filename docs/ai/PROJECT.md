@@ -1,9 +1,10 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-08-14
+**Last updated:** 2026-08-20
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current reviewed product-code baseline:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` (the accepted DC-12R1-H7 controlled merge; fetch the live protected tip and verify this commit is its ancestor before new controlled work)
+**Current reviewed product-code baseline:** `a29f8db02365737c64d0d8d442e8ef48a8a19d6d` (the accepted DC-12R1-MVP-L1-PW1-R4-C1-R1 controlled merge; fetch the live protected tip and verify this commit is its ancestor before new controlled work)
+**R4-C1-R1 status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `a29f8db0` has parents `9067e38f` and `f51c109`; its tree is identical to the reviewed source. Accepted evidence: Kilo source review `5cff172a`, OpenCode fresh-runtime browser evidence `0e1c7ed8` (`162/162`), Kilo evidence review `b0b1ff4f`, and merge report `046fe7de`. This closes the responsive wholesaler MainLayout and mobile navigation browser gate; it does not claim human acceptance, VPS, HTTPS, or customer delivery.
 **H7 status: MERGED_AND_CLOSED** - controlled merge `ea990826` has parents `a6ef3aac` and `a0a14e4d`, and its tree is identical to the reviewed source. Accepted evidence: Kilo `8b04a92b`, Lubuntu native setup `189852da`, Lubuntu Phase-4 zero-red `4fa13dac`, post-merge H7 bundle 325/325, and GitNexus indexed/current at `ea990826`. This proves the merged source and setup path; it does not claim local or VPS deployment.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (the accepted Contract D merge; an ancestor contained in the current tip — it is NOT the current branch tip)
 **Current database head:** `037_payment_declarations_schema`
@@ -78,8 +79,8 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product code baseline | `ea990826` is the current reviewed product-code baseline. It descends from `a6ef3aac`, `d796dcb0`, and the accepted product-code merge `adcc7f28`, so it includes I2B, printable Contracts A-D, readiness-debt closure, and H7 setup/dependency reconciliation. The live protected tip may include later docs-only commits and must descend from `ea990826` |
-| Protected-tip rule | Every task fetches `origin/product-dev-recovered` live, verifies `ea990826` is its ancestor, and starts from that fetched tip. Do not encode a docs commit as its own "current tip" because the act of committing changes the tip |
+| Product code baseline | `a29f8db0` is the current reviewed product-code baseline. It descends from `9067e38f`, `ea990826`, and `adcc7f28`, so it includes Contracts A-D, H7 setup/dependency reconciliation, PW1 authentication/rate-limit/cache/permission closures, and the R4-C1-R1 responsive MainLayout closure. The live protected tip may include later docs-only commits and must descend from `a29f8db0` |
+| Protected-tip rule | Every task fetches `origin/product-dev-recovered` live, verifies `a29f8db0` is its ancestor, and starts from that fetched tip. Do not encode a docs commit as its own "current tip" because the act of committing changes the tip |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `037_payment_declarations_schema` |
@@ -113,9 +114,9 @@ deployment state from a merged branch.
 | Payment declaration and cashier confirmation I2B | Merged | Retailer declaration remains non-authoritative; cashier confirm/reject is supplier-scoped; confirmation uses the canonical atomic payment path and allocates a receipt |
 | Printable business records | Backend and browser A-D merged | Read-only order, declaration, eligible receipt, and relationship-statement print data plus browser-print UI are available |
 | H7 setup and dependency reconciliation | Merged and independently verified | Native setup ran twice on Lubuntu; cross-host focused gates and post-merge evidence are zero-red |
-| Local deployment and browser rehearsal | Active delivery gate | Deploy the fetched protected tip after proving it descends from `ea990826`, run Playwright journeys, then perform human acceptance without claiming VPS delivery |
-| Retailer workspace closure | Planned after rehearsal | Final responsive and branded workspace UX remains; it is not part of the active deployment gate |
-| Retailer end-to-end S4 | Not closed | Real mailbox and browser journey on deployed latest SHA remains |
+| Local deployment and browser rehearsal | Automated browser gate closed | Fresh-runtime Playwright evidence passed `162/162` for source `f51c109`, merged as `a29f8db0`; human acceptance remains and no VPS delivery is claimed |
+| Retailer workspace closure | Responsive shell merged; product friction audit active next | Mobile navigation and overflow are closed; branding, invitation/pricing friction, and operator usability require real-business rehearsal before further implementation |
+| Retailer end-to-end S4 | Partially closed | Local real-JWT browser matrix is green; real mailbox and deployed HTTPS journey on the latest SHA remain |
 | Platform operator schema | Foundation merged | Migration `034` tables exist |
 | Platform operator runtime | Incomplete | Dedicated login/JWT/guard/frontend lifecycle remains |
 | DB operations | Partial | Evidence exists, but one approved access/backup/restore/monitoring package remains |
@@ -236,7 +237,42 @@ reported `3285 passed`, `48 skipped`, `15 xfailed`, zero failures, and zero
 errors. The final frontend gate reported `270 passed` and a successful
 production build.
 
+### DC-12R1-MVP-L1-PW1-R4-C1-R1 responsive MainLayout closure
+
+Merged as `a29f8db02365737c64d0d8d442e8ef48a8a19d6d` from approved source
+`f51c10943b5d1a67569d681e66a6d56e728860b4`. The merge has parents
+`9067e38f` and `f51c109`; its tree is byte-identical to the reviewed source.
+
+Delivered:
+
+- responsive wholesaler MainLayout without mobile horizontal-overflow masking;
+- mobile off-canvas navigation with pointer-click, Escape, backdrop, route
+  close, and focus restoration;
+- a mobile-reachable logout path using the existing auth-store action;
+- visible-first-landmark DOM ordering compatible with the frozen browser
+  harness;
+- desktop fixed sidebar behavior preserved at `lg+`.
+
+Accepted evidence: Kilo source review `5cff172a`, OpenCode fresh-runtime
+browser package `0e1c7ed8`, Kilo evidence review `b0b1ff4f`, and controlled
+merge report `046fe7de`. The authoritative browser run used one worker, zero
+retries, and passed `162/162` nodes after Auth `27/27`, drawer `25/25`, and
+stability `10/10` pre-gates. Three non-blocking observations remain recorded:
+desktop focus order changed, desktop exposes two equivalent Logout controls,
+and the mobile drawer declares `aria-modal` while the external hamburger stays
+interactive.
+
 ## 6. Latest Validation Snapshot
+
+The current reviewed product tree is `a29f8db0`. Its merge tree equals source
+`f51c109`. The accepted local browser evidence used fresh PostgreSQL 16 and
+Redis 7 data, real staging JWT authentication, lifecycle-provisioned W1/W2/RA/
+RB identities, Alembic head `037`, and the frozen seven-file Playwright harness.
+The result was `162 passed`, zero failures, zero skips, one worker, and zero
+retries; JSON, JUnit, the 162-row CSV, and the committed SHA-256 manifest
+reconciled with accounting gap zero. This proves the automated local browser
+journeys for the merged source. It does not prove human usability, real-mailbox
+delivery, VPS networking, HTTPS, or customer readiness.
 
 Contract D source `133ca46b` passed Kilo adversarial source/test-authenticity
 review and Lubuntu independent runtime verification. The independent gate
@@ -285,9 +321,12 @@ real browser/mailbox journey.
 
 ### P1 product journey blockers
 
-1. The complete retailer workspace is not yet closed on mobile and desktop.
+1. A non-developer has not yet completed the full wholesaler-to-retailer
+   business journey without technical assistance; invitation creation,
+   customer pricing initialization, and other first-order friction must be
+   measured before feature scope is chosen.
 2. The latest SHA has not passed the full invitation/setup/reset/login/order/
-   payment/finance journey through a real mailbox and browser.
+   payment/finance journey through a real mailbox and deployed HTTPS runtime.
 
 ### P1 operational blockers
 
@@ -425,23 +464,31 @@ emission, provider integration, and SMS/WhatsApp delivery require a separate
 post-MVP CTO authorization. Existing event-shape decisions do not authorize an
 implementation, migration, queue, dispatcher, or financial mutation path.
 
-#### DC-12R1-MVP-L1 - local deployment and acceptance rehearsal (active delivery gate)
+#### DC-12R1-MVP-L1 - automated local browser rehearsal (completed)
 
-Deploy the fetched protected tip on a clean local environment, first proving
-that it descends from `ea990826`. Verify the runtime SHA, execute Playwright
-journeys across wholesaler and retailer roles,
-and then perform a human acceptance rehearsal. This stage must not change
-financial semantics or expand MVP scope. A successful local rehearsal is not a
-VPS or customer-delivery claim.
+Source `f51c109` passed the frozen `162`-node Playwright matrix on a fresh local
+runtime and was merged as `a29f8db0`. The automated gate covers wholesaler and
+retailer authentication, catalog/order, payment declaration, isolation,
+printing, responsive behavior, and logout paths. It is not a human acceptance,
+real-mailbox, VPS, HTTPS, or customer-delivery claim.
 
-#### DC-12R1-S3-S3-D - responsive branded workspace closure (planned after rehearsal)
+#### DC-12R1-MVP-L1-J1 - real business journey friction audit (active next gate)
 
-After the MVP rehearsal, audit the existing retailer workspace and define a
-bounded implementation plan for responsive navigation, existing relationship-
-brand context, clear financial state language, empty/error states, logout
-recovery, and focused accessibility tests. It must reuse Contracts A-D and
-existing financial services rather than duplicating print views or changing
-financial semantics.
+Run a non-developer human rehearsal from wholesaler setup through SKU import,
+inventory, retailer invitation, pricing, retailer login, order, declaration,
+cashier confirmation, printing, and statement review. Record elapsed time,
+clicks, assistance requests, API/script-only steps, dead ends, and abandonment
+risk. This is an observation and prioritization gate: do not implement a
+default-price contract, notification provider, bulk inventory, or cart redesign
+until the audit identifies the smallest adoption-blocking scope.
+
+#### DC-12R1-S3-S3-D - branded workspace and residual UX closure (after J1)
+
+Responsive wholesaler navigation is merged. After J1, define a bounded plan for
+remaining relationship-brand context, invitation/pricing usability, financial
+state language, empty/error states, and accessibility observations. Reuse
+Contracts A-D and existing financial services; do not duplicate print views or
+change financial semantics without a separate contract gate.
 
 #### DC-12R1-S4 - end-to-end delivery closure
 

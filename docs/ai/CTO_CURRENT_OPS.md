@@ -1,9 +1,10 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-14
+**Last updated:** 2026-08-20
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current reviewed product-code baseline:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` (the accepted DC-12R1-H7 controlled merge; fetch the live protected tip and verify this commit is its ancestor)
+**Current reviewed product-code baseline:** `a29f8db02365737c64d0d8d442e8ef48a8a19d6d` (the accepted DC-12R1-MVP-L1-PW1-R4-C1-R1 controlled merge; fetch the live protected tip and verify this commit is its ancestor)
+**Accepted R4-C1-R1 merge:** `a29f8db02365737c64d0d8d442e8ef48a8a19d6d` - parents `9067e38f` and `f51c109`; merge tree identical to the independently reviewed source; fresh-runtime browser matrix `162/162`.
 **Accepted H7 merge:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` - parents `a6ef3aac` and `a0a14e4d`; merge tree identical to the independently reviewed source.
 **Accepted readiness-debt merge:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` - DC-12R1-MVP-R0-R1 P2/P3 readiness-debt closure and direct parent of the H7 source lineage; it is now an ancestor, not the current tip.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (accepted Contract D merge; an ancestor of the current tip, NOT the tip itself)
@@ -16,11 +17,12 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `ea990826` is the current reviewed product-code baseline. It carries accepted
-  I2B runtime, read-only backend/browser-printable Contracts A-D, R0-R1
-  readiness-debt closure, and H7 setup/dependency reconciliation. The live
+- `a29f8db0` is the current reviewed product-code baseline. It carries accepted
+  Contracts A-D, H7 setup/dependency reconciliation, PW1 auth/rate-limit/cache/
+  permission closures, and R4-C1-R1 responsive MainLayout closure. The live
   protected tip may contain later docs-only commits and must descend from it.
-- The earlier merges `a6ef3aac`, `d796dcb0`, and `adcc7f28` are ANCESTORS of the
+- The earlier merges `9067e38f`, `ea990826`, `a6ef3aac`, `d796dcb0`, and
+  `adcc7f28` are ANCESTORS of the
   current tip, not the tip itself. Do not branch from or reference them as the
   current baseline.
 - `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
@@ -72,10 +74,29 @@ in `ai-ledger/`.
 
 ## Latest Accepted Evidence
 
+R4-C1-R1 responsive MainLayout controlled merge and browser verification:
+
+`origin/product-dev-recovered@a29f8db0` is the current reviewed product-code
+baseline.
+
+- Approved source: `f51c109`; merge tree equals the reviewed source tree.
+- Kilo source review: `5cff172a`.
+- OpenCode fresh-runtime browser evidence: `0e1c7ed8`.
+- Kilo final evidence review: `b0b1ff4f`.
+- Controlled merge report: `046fe7de`.
+- Pre-gates: Auth `27/27`, mobile drawer `25/25`, stability `10/10`, and
+  Playwright list `162` nodes in seven files.
+- Authoritative browser run: `162 passed`, zero failures/skips/errors, one
+  worker, zero retries, accounting gap zero.
+- Merge-time frontend gates: R4-C1 `11/11` in both orders, focused `111/111`,
+  full frontend `339/339`, and production build exit 0.
+- This closes automated local responsive/browser verification. Human business
+  acceptance, real-mailbox delivery, VPS, HTTPS, and customer release remain
+  unclaimed.
+
 I2C-I2B Contract D controlled merge and independent verification:
 
-`origin/product-dev-recovered@d796dcb0` (current tip) includes `adcc7f28` as an
-ancestor
+`origin/product-dev-recovered` includes `adcc7f28` as an ancestor.
 
 - Approved source: `133ca46b`; merge tree equals the reviewed source tree.
 - Kilo final source/test-authenticity review: `a56078c6`.
@@ -163,7 +184,9 @@ Post-merge validation:
 
 ## What Is Not Closed
 
-- Final responsive/brand retailer workspace polish remains.
+- Human real-business-journey acceptance and adoption-friction prioritization
+  remain; responsive wholesaler navigation itself is merged and browser-green.
+- Retailer/relationship branding and residual workspace polish remain.
 - Transactional outbox/event emission and SMS/WhatsApp delivery are deferred
   outside the current MVP and remain unimplemented.
 - Real-mailbox and real-browser end-to-end proof on the latest deployed SHA
@@ -459,26 +482,30 @@ review path, not the current gate state.
 ## Active Phase
 
 **Active delivery gate:**
-`DC-12R1-MVP-L1 Local Deployment and Acceptance Rehearsal`
+`DC-12R1-MVP-L1-J1 Real Business Journey Friction Audit`
 
-Fetch and deploy the live protected tip in a clean local environment after
-proving it descends from `ea990826`. Record the runtime SHA and exercise the
-existing wholesaler and retailer journeys before any VPS work. The active gate
-is validation, not feature expansion.
+The automated local browser gate is closed at merged source `a29f8db0` with
+`162/162`. The next gate is a non-developer human rehearsal of the actual
+wholesaler-to-retailer business journey before any new UX feature scope or VPS
+work. The active gate is observation and prioritization, not implementation.
 
 Required boundary:
 
-1. Use the merged setup and dependency paths without source modification.
-2. Record service health, migration head `037`, tenant bootstrap, and exact
-   runtime SHA.
-3. Run Playwright across login, catalog/order, declaration, cashier confirmation,
-   receipt/statement printing, logout/recovery, and cross-role denial paths.
-4. Perform human acceptance only after automated journeys are green.
-5. Preserve string-safe, server-authoritative financial rendering and tenant
-   isolation; do not weaken permissions or test assertions to pass rehearsal.
-6. Treat any required source fix as a separate isolated correction and review;
-   do not patch the deployed checkout in place.
-7. A local PASS is not a VPS, HTTPS, customer-delivery, or production approval.
+1. Deploy a fetched protected tip only after proving `a29f8db0` ancestry and
+   record the exact runtime SHA.
+2. Preserve the accepted lifecycle and financial semantics; do not patch the
+   rehearsal checkout.
+3. Observe wholesaler setup, SKU import, inventory, retailer invitation,
+   pricing, retailer login, order, declaration, confirmation, printing, and
+   statement review.
+4. Record elapsed time, clicks, assistance requests, API/script-only steps,
+   dead ends, and abandonment risk.
+5. Separate environment failures, product defects, missing features, and UX
+   friction. Do not convert observations directly into implementation scope.
+6. Return a prioritized decision packet for invitation, pricing, inventory,
+   and cart improvements, including contract and migration implications.
+7. A local human rehearsal is not a VPS, HTTPS, customer-delivery, or
+   production approval.
 
 ## Ordered Delivery Plan
 
@@ -496,25 +523,31 @@ Required boundary:
    movement/payment lists.
 6. **H7 (completed):** manifest parity, fail-closed native setup, Compose
    isolation, cross-host harness portability, and independent zero-red closure.
-7. **MVP-L1 (active):** local exact-SHA deployment, Playwright journeys, and
-   human acceptance rehearsal without feature expansion.
-8. **S3-S3-D (planned after rehearsal):** audit and plan the responsive branded
-   retailer workspace closure without changing financial semantics.
-9. **S3-S2B-I2C-I3 (deferred post-MVP):** transactional outbox, event emission,
+7. **MVP-L1 automated browser rehearsal (completed):** source `f51c109` passed
+   the fresh-runtime `162/162` gate and was merged as `a29f8db0`.
+8. **MVP-L1-J1 (active):** non-developer real-business-journey friction audit;
+   observation and prioritization only, without feature expansion.
+9. **S3-S3-D (after J1):** plan residual branding, invitation/pricing UX,
+   financial-state language, and accessibility closure without changing
+   financial semantics unless separately authorized.
+10. **S3-S2B-I2C-I3 (deferred post-MVP):** transactional outbox, event emission,
    and provider delivery require separate CTO authorization.
-10. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
-11. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
+11. **S4 (pending):** run fresh-database, HTTPS, real-mailbox, real-browser end-to-end gate.
+12. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
    package.
-12. **Tenant branding and manuals:** legal profile, logo, dual branding, and
+13. **Tenant branding and manuals:** legal profile, logo, dual branding, and
    current user/operator documentation.
 
 ## Agent Assignment
 
 - **Local execution agent:** deploy the fetched protected tip without source
-  edits after proving `ea990826` ancestry, and collect reproducible service,
-  migration, tenant, and runtime-SHA evidence.
-- **Playwright agent:** run bounded wholesaler/retailer journeys against that
-  local deployment and report every failed path without weakening assertions.
+  edits after proving `a29f8db0` ancestry, and collect exact runtime-SHA and
+  human-rehearsal evidence.
+- **Journey observer:** record workflow time, clicks, assistance, API-only
+  steps, dead ends, and abandonment risk without coaching away product
+  friction.
+- **Playwright agent:** retained for regression reproduction if the human audit
+  exposes a candidate defect; the accepted automated matrix is already closed.
 - **Codex CTO:** own scope, environment/source classification, and acceptance
   decision.
 - **Independent reviewer:** review any correction candidate before it can alter
@@ -531,7 +564,7 @@ Required boundary:
 Stop and report to the CTO if:
 
 - fetched `origin/product-dev-recovered` does not descend from reviewed
-  product-code baseline `ea9908263d57737e434d7d61e06e5f0ee941aa81`, or that
+  product-code baseline `a29f8db02365737c64d0d8d442e8ef48a8a19d6d`, or that
   baseline does not descend from accepted Contract D merge
   `adcc7f281c661897ad050a8278686375b611edb5`;
 - statement data is accepted from client-calculated financial fields;

@@ -1,0 +1,16 @@
+176eb5c5a5439a6de98577ad04795b402a8276d9cafc50a4875163e5e7053871  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/test_list_162.txt
+1a53437c9284e798b676ab5e73b1c2cbfbd64e314b44e1eb341f2ea2e8e426d9  docs/ai-reports/review/2026-08-20_dc12r1_mvp_l1_pw1_r4_c1_r1_v2_opencode_browser_final.md
+1c637451d1f7fe1322d56235e7c0123d0f714c78bc065ed832870f21bd958bc4  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/verdict.json
+2c432e443e26ef8495989df737ce6e3ff04aeb1dd8e9c28c84e62b51904dd1d3  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/provision_evidence.json
+38a04893436c6352eb13806233b41ae161af1c5c743a64b8ebbbfa391811d814  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/full_browser.json
+3b17a1a8fef94f2a37a31ab2c7755973fcdf10a2c2a368f3b529a13c50017c51  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/full_browser_junit.xml
+45838587810f6bdc36b59c81e806fe0b0ca34eed119f4eca4e3bcc1b42f225f2  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/provisioning_steps_status.md
+45c6a9dde58a7538ad1cc45a19576ec257cc4acad7d57cbe8d34725207f51665  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/drawer_mobile_gate.json
+6e67edfe125b747d64343ce64584debc42f7f5689cb16610a9594b53e180e7e6  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/reconciliation.json
+8f60252c02949ff8d68ebc9f6cc1aac4c4ad21440937fbd81353531078c0cc7d  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/failure_set.json
+9c1662df08145a59072cef1eee4e02d08a22123d686eb52f78d0bf313dd3daff  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/stability_gate.json
+a2d52b2eb4bb24a974277f8f388a5306ddaf576980119014a6ed65a8ea3f8995  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/required_greens.json
+a3844e584b2052491cada6565a52058a5e23065afa79ad7afc94d0274fc12848  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/runtime_preflight.json
+acf0351d0b0048d1fb50ef01de7d9f76bbdc6ed7ae9bd4e650c2526d1edb792b  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/cleanup_closure.md
+de89bbd63db003c21dcd7d00703196c584b9266348045c220779e795265669a3  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/auth_matrix.json
+ffdef8f4d75a32152acd26133c211fdfdc07651e534a7736fb33a68b27309b79  docs/ai-reports/review/evidence/pw1-r4-c1-r1-v2/findings_full_162.csv

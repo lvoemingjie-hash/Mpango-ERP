@@ -33,6 +33,36 @@ export interface SelectTenantRequest {
   tenant_id: string;
 }
 
+// ---------------------------------------------------------------------------
+// DC-12R1-MVP-L1-J1-R1: wholesaler self-service signup
+// Mirrors backend schemas/auth_signup.py SignupRequest exactly (camelCase
+// aliases included). The 202 response is deliberately neutral and carries
+// NO tokens of any kind.
+// ---------------------------------------------------------------------------
+
+export interface SignupRequest {
+  companyName: string;
+  country: string;
+  email: string;
+  password: string;
+  phone?: string;
+  businessType?: string;
+}
+
+export interface SignupResponseData {
+  registrationId: string | null;
+  status: string;
+  emailVerificationRequired: boolean;
+  resendAvailableAt: string | null;
+}
+
+export interface SignupResponse {
+  success: boolean;
+  data: SignupResponseData;
+  message: string;
+  timestamp: string;
+}
+
 export interface TokenData {
   access_token: string;
   refresh_token: string;

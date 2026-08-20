@@ -106,8 +106,11 @@ export function LoginPage() {
         return;
       }
 
-      // Condition D: Cold Start -> no tenants
-      navigate('/onboarding/create-tenant', { replace: true });
+      // Condition D: Cold Start -> no tenants. DC-12R1-MVP-L1-J1-R1: the old
+      // dead onboarding tenant-creation route no longer exists; a zero-tenant
+      // login means this identity has no wholesaler workspace yet — send it
+      // to the public self-service signup entry instead of a 404.
+      navigate('/signup', { replace: true });
 
     } catch (err) {
       // PW1-R2 (D2 closure): fixed neutral copy only. Never surface
@@ -206,6 +209,14 @@ export function LoginPage() {
           <div className="text-center text-sm">
             <Link to="/forgot-password" className="font-medium text-primary-600 hover:text-primary-700">
               Forgot password?
+            </Link>
+          </div>
+
+          {/* DC-12R1-MVP-L1-J1-R1: first-time wholesaler entry point */}
+          <div className="border-t border-gray-100 pt-4 text-center text-sm">
+            <span className="text-gray-500">New wholesaler? </span>
+            <Link to="/signup" className="font-medium text-primary-600 hover:text-primary-700">
+              Create wholesaler account
             </Link>
           </div>
         </form>

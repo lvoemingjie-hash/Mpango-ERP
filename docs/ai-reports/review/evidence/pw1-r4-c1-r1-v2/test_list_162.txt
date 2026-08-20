@@ -1,0 +1,165 @@
+Listing tests:
+  [desktop] 鈥?auth-matrix.spec.ts:18:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /
+  [desktop] 鈥?auth-matrix.spec.ts:28:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W2 second wholesaler admin: independent tenant, login + select-tenant 200
+  [desktop] 鈥?auth-matrix.spec.ts:36:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA multi-tenant login: response carries 2 availableTenants into workspace selector
+  [desktop] 鈥?auth-matrix.spec.ts:68:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RB retailer portal login: client auth API 200, lands on /client
+  [desktop] 鈥?auth-matrix.spec.ts:73:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA retailer portal login at W1 portal: lands on /client
+  [desktop] 鈥?auth-matrix.spec.ts:78:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on wholesaler login: API 401, stays on /login, no token persisted
+  [desktop] 鈥?auth-matrix.spec.ts:96:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on retailer portal: API 401, stays on portal, neutral message
+  [desktop] 鈥?auth-matrix.spec.ts:112:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?/select-workspace direct access without navigation state redirects to /login
+  [desktop] 鈥?auth-matrix.spec.ts:118:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?logout clears mpango-auth session and returns to /login
+  [desktop] 鈥?phase1-routes.spec.ts:10:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?backend health endpoints are 200 (live/ready)
+  [desktop] 鈥?phase1-routes.spec.ts:17:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?frontend serves the SPA shell
+  [desktop] 鈥?phase1-routes.spec.ts:24:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?wholesaler routes redirect anonymous users to /login
+  [desktop] 鈥?phase1-routes.spec.ts:32:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?retailer /client routes redirect anonymous users to retailer portal or /login
+  [desktop] 鈥?phase1-routes.spec.ts:37:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?/client/login alias redirects to /retail/login preserving w
+  [desktop] 鈥?phase1-routes.spec.ts:42:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?public auth pages are reachable anonymously
+  [desktop] 鈥?phase1-routes.spec.ts:54:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?unknown route renders the 404 page (no crash)
+  [desktop] 鈥?phase1-routes.spec.ts:59:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?invalid portal code shows controlled invalid-portal state with zero login API calls
+  [desktop] 鈥?phase2-identity.spec.ts:14:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?legacy localStorage keys (access_token/user) do NOT authenticate
+  [desktop] 鈥?phase2-identity.spec.ts:28:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?forged mpango-auth with invalid JWT is rejected by the backend
+  [desktop] 鈥?phase2-identity.spec.ts:42:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a wholesaler session (hydration)
+  [desktop] 鈥?phase2-identity.spec.ts:65:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a retailer session at /client
+  [desktop] 鈥?phase2-identity.spec.ts:86:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?login form submits real credentials to the real API (request body audit)
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page / renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /orders renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /inventory renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /skus renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /retailers renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /finance renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /payments renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /declarations renders authenticated content
+  [desktop] 鈥?phase3-wholesaler.spec.ts:41:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?dashboard shows the app shell with user context
+  [desktop] 鈥?phase3-wholesaler.spec.ts:46:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler cannot open retailer /client routes (boundary redirect)
+  [desktop] 鈥?phase3-wholesaler.spec.ts:52:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?logout returns to /login and clears the session
+  [desktop] 鈥?phase4-retailer.spec.ts:44:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer portal: catalog page renders supplier products incl. the setup SKU
+  [desktop] 鈥?phase4-retailer.spec.ts:53:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer creates an order through the real API (journey precondition)
+  [desktop] 鈥?phase4-retailer.spec.ts:62:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer orders page lists own orders via the browser
+  [desktop] 鈥?phase4-retailer.spec.ts:70:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?financial idempotency: repeated declaration with the same key produces ZERO extra writes
+  [desktop] 鈥?phase4-retailer.spec.ts:118:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?UI double-click on declare submit creates exactly one declaration (browser evidence)
+  [desktop] 鈥?phase4-retailer.spec.ts:153:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer finance/payments/declarations pages render without errors
+  [desktop] 鈥?phase4-retailer.spec.ts:164:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer print page issues NO mutating requests
+  [desktop] 鈥?phase5-isolation.spec.ts:15:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-retailer: RB cannot read RA order by id (API isolation)
+  [desktop] 鈥?phase5-isolation.spec.ts:49:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB
+  [desktop] 鈥?phase5-isolation.spec.ts:60:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: RA W2-context cannot use W1-only data paths
+  [desktop] 鈥?phase5-isolation.spec.ts:75:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?malformed IDs return neutral structured errors (no internals leaked)
+  [desktop] 鈥?phase5-isolation.spec.ts:86:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?unauthenticated API access is rejected with structured 401 (no leak)
+  [desktop] 鈥?phase5-isolation.spec.ts:103:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?browser: RB portal session never exposes W2 tenant data
+  [desktop] 鈥?phase5-isolation.spec.ts:112:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?RB orders page contains no RA-created orders (page-level isolation)
+  [desktop] 鈥?phase6-responsive.spec.ts:17:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler dashboard: no horizontal overflow, no console/page errors
+  [desktop] 鈥?phase6-responsive.spec.ts:25:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler orders page: no horizontal overflow
+  [desktop] 鈥?phase6-responsive.spec.ts:32:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer catalog: no horizontal overflow, no console/page errors
+  [desktop] 鈥?phase6-responsive.spec.ts:40:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer orders page: no horizontal overflow
+  [desktop] 鈥?phase6-responsive.spec.ts:47:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?login forms have labels and keyboard-accessible inputs
+  [desktop] 鈥?phase6-responsive.spec.ts:60:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?no unexpected network failures during a login journey
+  [desktop] 鈥?phase6-responsive.spec.ts:68:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?print stub: window.print callable on print pages without errors
+  [tablet] 鈥?auth-matrix.spec.ts:18:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /
+  [tablet] 鈥?auth-matrix.spec.ts:28:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W2 second wholesaler admin: independent tenant, login + select-tenant 200
+  [tablet] 鈥?auth-matrix.spec.ts:36:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA multi-tenant login: response carries 2 availableTenants into workspace selector
+  [tablet] 鈥?auth-matrix.spec.ts:68:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RB retailer portal login: client auth API 200, lands on /client
+  [tablet] 鈥?auth-matrix.spec.ts:73:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA retailer portal login at W1 portal: lands on /client
+  [tablet] 鈥?auth-matrix.spec.ts:78:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on wholesaler login: API 401, stays on /login, no token persisted
+  [tablet] 鈥?auth-matrix.spec.ts:96:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on retailer portal: API 401, stays on portal, neutral message
+  [tablet] 鈥?auth-matrix.spec.ts:112:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?/select-workspace direct access without navigation state redirects to /login
+  [tablet] 鈥?auth-matrix.spec.ts:118:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?logout clears mpango-auth session and returns to /login
+  [tablet] 鈥?phase1-routes.spec.ts:10:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?backend health endpoints are 200 (live/ready)
+  [tablet] 鈥?phase1-routes.spec.ts:17:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?frontend serves the SPA shell
+  [tablet] 鈥?phase1-routes.spec.ts:24:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?wholesaler routes redirect anonymous users to /login
+  [tablet] 鈥?phase1-routes.spec.ts:32:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?retailer /client routes redirect anonymous users to retailer portal or /login
+  [tablet] 鈥?phase1-routes.spec.ts:37:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?/client/login alias redirects to /retail/login preserving w
+  [tablet] 鈥?phase1-routes.spec.ts:42:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?public auth pages are reachable anonymously
+  [tablet] 鈥?phase1-routes.spec.ts:54:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?unknown route renders the 404 page (no crash)
+  [tablet] 鈥?phase1-routes.spec.ts:59:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?invalid portal code shows controlled invalid-portal state with zero login API calls
+  [tablet] 鈥?phase2-identity.spec.ts:14:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?legacy localStorage keys (access_token/user) do NOT authenticate
+  [tablet] 鈥?phase2-identity.spec.ts:28:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?forged mpango-auth with invalid JWT is rejected by the backend
+  [tablet] 鈥?phase2-identity.spec.ts:42:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a wholesaler session (hydration)
+  [tablet] 鈥?phase2-identity.spec.ts:65:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a retailer session at /client
+  [tablet] 鈥?phase2-identity.spec.ts:86:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?login form submits real credentials to the real API (request body audit)
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page / renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /orders renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /inventory renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /skus renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /retailers renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /finance renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /payments renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /declarations renders authenticated content
+  [tablet] 鈥?phase3-wholesaler.spec.ts:41:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?dashboard shows the app shell with user context
+  [tablet] 鈥?phase3-wholesaler.spec.ts:46:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler cannot open retailer /client routes (boundary redirect)
+  [tablet] 鈥?phase3-wholesaler.spec.ts:52:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?logout returns to /login and clears the session
+  [tablet] 鈥?phase4-retailer.spec.ts:44:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer portal: catalog page renders supplier products incl. the setup SKU
+  [tablet] 鈥?phase4-retailer.spec.ts:53:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer creates an order through the real API (journey precondition)
+  [tablet] 鈥?phase4-retailer.spec.ts:62:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer orders page lists own orders via the browser
+  [tablet] 鈥?phase4-retailer.spec.ts:70:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?financial idempotency: repeated declaration with the same key produces ZERO extra writes
+  [tablet] 鈥?phase4-retailer.spec.ts:118:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?UI double-click on declare submit creates exactly one declaration (browser evidence)
+  [tablet] 鈥?phase4-retailer.spec.ts:153:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer finance/payments/declarations pages render without errors
+  [tablet] 鈥?phase4-retailer.spec.ts:164:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer print page issues NO mutating requests
+  [tablet] 鈥?phase5-isolation.spec.ts:15:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-retailer: RB cannot read RA order by id (API isolation)
+  [tablet] 鈥?phase5-isolation.spec.ts:49:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB
+  [tablet] 鈥?phase5-isolation.spec.ts:60:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: RA W2-context cannot use W1-only data paths
+  [tablet] 鈥?phase5-isolation.spec.ts:75:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?malformed IDs return neutral structured errors (no internals leaked)
+  [tablet] 鈥?phase5-isolation.spec.ts:86:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?unauthenticated API access is rejected with structured 401 (no leak)
+  [tablet] 鈥?phase5-isolation.spec.ts:103:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?browser: RB portal session never exposes W2 tenant data
+  [tablet] 鈥?phase5-isolation.spec.ts:112:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?RB orders page contains no RA-created orders (page-level isolation)
+  [tablet] 鈥?phase6-responsive.spec.ts:17:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler dashboard: no horizontal overflow, no console/page errors
+  [tablet] 鈥?phase6-responsive.spec.ts:25:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler orders page: no horizontal overflow
+  [tablet] 鈥?phase6-responsive.spec.ts:32:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer catalog: no horizontal overflow, no console/page errors
+  [tablet] 鈥?phase6-responsive.spec.ts:40:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer orders page: no horizontal overflow
+  [tablet] 鈥?phase6-responsive.spec.ts:47:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?login forms have labels and keyboard-accessible inputs
+  [tablet] 鈥?phase6-responsive.spec.ts:60:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?no unexpected network failures during a login journey
+  [tablet] 鈥?phase6-responsive.spec.ts:68:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?print stub: window.print callable on print pages without errors
+  [mobile] 鈥?auth-matrix.spec.ts:18:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /
+  [mobile] 鈥?auth-matrix.spec.ts:28:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?W2 second wholesaler admin: independent tenant, login + select-tenant 200
+  [mobile] 鈥?auth-matrix.spec.ts:36:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA multi-tenant login: response carries 2 availableTenants into workspace selector
+  [mobile] 鈥?auth-matrix.spec.ts:68:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RB retailer portal login: client auth API 200, lands on /client
+  [mobile] 鈥?auth-matrix.spec.ts:73:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?RA retailer portal login at W1 portal: lands on /client
+  [mobile] 鈥?auth-matrix.spec.ts:78:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on wholesaler login: API 401, stays on /login, no token persisted
+  [mobile] 鈥?auth-matrix.spec.ts:96:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?wrong password on retailer portal: API 401, stays on portal, neutral message
+  [mobile] 鈥?auth-matrix.spec.ts:112:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?/select-workspace direct access without navigation state redirects to /login
+  [mobile] 鈥?auth-matrix.spec.ts:118:7 鈥?PW1-R1 auth matrix (real JWT) 鈥?logout clears mpango-auth session and returns to /login
+  [mobile] 鈥?phase1-routes.spec.ts:10:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?backend health endpoints are 200 (live/ready)
+  [mobile] 鈥?phase1-routes.spec.ts:17:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?frontend serves the SPA shell
+  [mobile] 鈥?phase1-routes.spec.ts:24:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?wholesaler routes redirect anonymous users to /login
+  [mobile] 鈥?phase1-routes.spec.ts:32:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?retailer /client routes redirect anonymous users to retailer portal or /login
+  [mobile] 鈥?phase1-routes.spec.ts:37:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?/client/login alias redirects to /retail/login preserving w
+  [mobile] 鈥?phase1-routes.spec.ts:42:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?public auth pages are reachable anonymously
+  [mobile] 鈥?phase1-routes.spec.ts:54:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?unknown route renders the 404 page (no crash)
+  [mobile] 鈥?phase1-routes.spec.ts:59:7 鈥?PW1-R1 Phase 1: routes & navigation 鈥?invalid portal code shows controlled invalid-portal state with zero login API calls
+  [mobile] 鈥?phase2-identity.spec.ts:14:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?legacy localStorage keys (access_token/user) do NOT authenticate
+  [mobile] 鈥?phase2-identity.spec.ts:28:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?forged mpango-auth with invalid JWT is rejected by the backend
+  [mobile] 鈥?phase2-identity.spec.ts:42:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a wholesaler session (hydration)
+  [mobile] 鈥?phase2-identity.spec.ts:65:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?REAL mpango-auth format restores a retailer session at /client
+  [mobile] 鈥?phase2-identity.spec.ts:86:7 鈥?PW1-R1 Phase 2: identity & hydration 鈥?login form submits real credentials to the real API (request body audit)
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page / renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /orders renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /inventory renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /skus renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /retailers renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /finance renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /payments renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:28:9 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler page /declarations renders authenticated content
+  [mobile] 鈥?phase3-wholesaler.spec.ts:41:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?dashboard shows the app shell with user context
+  [mobile] 鈥?phase3-wholesaler.spec.ts:46:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?wholesaler cannot open retailer /client routes (boundary redirect)
+  [mobile] 鈥?phase3-wholesaler.spec.ts:52:7 鈥?PW1-R1 Phase 3: wholesaler journey 鈥?logout returns to /login and clears the session
+  [mobile] 鈥?phase4-retailer.spec.ts:44:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer portal: catalog page renders supplier products incl. the setup SKU
+  [mobile] 鈥?phase4-retailer.spec.ts:53:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer creates an order through the real API (journey precondition)
+  [mobile] 鈥?phase4-retailer.spec.ts:62:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer orders page lists own orders via the browser
+  [mobile] 鈥?phase4-retailer.spec.ts:70:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?financial idempotency: repeated declaration with the same key produces ZERO extra writes
+  [mobile] 鈥?phase4-retailer.spec.ts:118:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?UI double-click on declare submit creates exactly one declaration (browser evidence)
+  [mobile] 鈥?phase4-retailer.spec.ts:153:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer finance/payments/declarations pages render without errors
+  [mobile] 鈥?phase4-retailer.spec.ts:164:7 鈥?PW1-R1 Phase 4: retailer journey 鈥?retailer print page issues NO mutating requests
+  [mobile] 鈥?phase5-isolation.spec.ts:15:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-retailer: RB cannot read RA order by id (API isolation)
+  [mobile] 鈥?phase5-isolation.spec.ts:49:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB
+  [mobile] 鈥?phase5-isolation.spec.ts:60:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?cross-tenant: RA W2-context cannot use W1-only data paths
+  [mobile] 鈥?phase5-isolation.spec.ts:75:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?malformed IDs return neutral structured errors (no internals leaked)
+  [mobile] 鈥?phase5-isolation.spec.ts:86:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?unauthenticated API access is rejected with structured 401 (no leak)
+  [mobile] 鈥?phase5-isolation.spec.ts:103:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?browser: RB portal session never exposes W2 tenant data
+  [mobile] 鈥?phase5-isolation.spec.ts:112:7 鈥?PW1-R1 Phase 5: isolation & negative paths 鈥?RB orders page contains no RA-created orders (page-level isolation)
+  [mobile] 鈥?phase6-responsive.spec.ts:17:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler dashboard: no horizontal overflow, no console/page errors
+  [mobile] 鈥?phase6-responsive.spec.ts:25:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?wholesaler orders page: no horizontal overflow
+  [mobile] 鈥?phase6-responsive.spec.ts:32:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer catalog: no horizontal overflow, no console/page errors
+  [mobile] 鈥?phase6-responsive.spec.ts:40:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?retailer orders page: no horizontal overflow
+  [mobile] 鈥?phase6-responsive.spec.ts:47:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?login forms have labels and keyboard-accessible inputs
+  [mobile] 鈥?phase6-responsive.spec.ts:60:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?no unexpected network failures during a login journey
+  [mobile] 鈥?phase6-responsive.spec.ts:68:7 鈥?PW1-R1 Phase 6: responsive & usability 鈥?print stub: window.print callable on print pages without errors
+
+Total: 162 tests in 7 files

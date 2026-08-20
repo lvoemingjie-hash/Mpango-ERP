@@ -1,0 +1,58 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R4-C1-R1-V2 fresh runtime preflight (Phase 2)",
+  "generated_at": "2026-08-20T06:16:00Z",
+  "candidate": "f51c10943b5d1a67569d681e66a6d56e728860b4",
+  "harness": "db84b1325c51a484af55029ce3485d9995b0669a",
+  "infrastructure": {
+    "postgres": {
+      "image": "postgres:16",
+      "container": "pw1r4c1r1v2_postgres",
+      "listen": "127.0.0.1:27443",
+      "status": "healthy",
+      "project": "pw1r4c1r1v2"
+    },
+    "redis": {
+      "image": "redis:7",
+      "container": "pw1r4c1r1v2_redis",
+      "listen": "127.0.0.1:27390",
+      "status": "healthy",
+      "project": "pw1r4c1r1v2"
+    },
+    "loopback_only": true
+  },
+  "backend": {
+    "base_url": "http://127.0.0.1:8000",
+    "env": "MPANGO_ENV=staging",
+    "auth_strategy": "JwtAuthStrategy (real JWT, staging)",
+    "process": 61744,
+    "alembic_head": "037_payment_declarations_schema",
+    "health": "200 {\"status\":\"healthy\",\"service\":\"mpango-erp-backend\",\"version\":\"0.2.0\"}"
+  },
+  "frontend": {
+    "base_url": "http://127.0.0.1:5173",
+    "process": 13708,
+    "strict_port": true,
+    "health": "200 (SPA root)"
+  },
+  "harness_runtime": {
+    "base_url": "http://127.0.0.1:5173",
+    "workers": 1,
+    "retries": 0,
+    "fullyParallel": false,
+    "projects": ["desktop", "tablet", "mobile"],
+    "chromium": "C:\\Users\\Jeff0\\AppData\\Local\\ms-playwright\\chromium-1217\\chrome-win64\\chrome.exe",
+    "deps_installed": true
+  },
+  "watchdog": {
+    "script": "watchdog.ps1",
+    "no_progress_timeout_minutes": 10,
+    "action": "kill task-owned listeners on 8000/5173, write logs/watchdog_stop.txt",
+    "armed": true
+  },
+  "probes_all_200": true,
+  "notes": [
+    "Fresh PG16/Redis7 volumes created for this task; no prior data.",
+    "Backend/frontend bound to loopback only; no internet-facing ports.",
+    "Secrets generated fresh in runtime .env (SECRET_KEY, DB password)."
+  ]
+}

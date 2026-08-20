@@ -1,0 +1,40 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R4-C1-R1-V2 full browser matrix reconciliation",
+  "authoritative_run": {
+    "command": "npx playwright test (all 3 projects, workers=1, retries=0, fullyParallel=false, no grep, single run)",
+    "expected_nodes": 162,
+    "specs_in_json": 162,
+    "csv_data_rows": 162,
+    "passed": 162,
+    "failed": 0,
+    "accounting_gap": 0,
+    "all_expected": 162,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "ok": true,
+    "timestamp": "2026-08-20T06:21:35.461Z"
+  },
+  "pre_gate_evidence": {
+    "auth_matrix_json": {
+      "startTime": "2026-08-20T06:04:19.567Z",
+      "duration": 36834.456000000006,
+      "expected": 27,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "drawer_gate": {
+      "passed": 25,
+      "total": 25
+    },
+    "stability_gate": {
+      "passed": 10,
+      "total": 10
+    },
+    "test_list": {
+      "total": 162,
+      "files": 7
+    }
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "provisioned_at": "2026-08-20",
+  "candidate": "f51c10943b5d1a67569d681e66a6d56e728860b4",
+  "canonical_names": {
+    "retailer_a": "PW1R1 Retailer A",
+    "retailer_b": "PW1R1 Retailer B"
+  },
+  "identity_emails": {
+    "w1": "pw1r4.w1.r4c1r1v2@pw1r4.dev",
+    "w2": "pw1r4.w2.r4c1r1v2@pw1r4.dev",
+    "ra": "pw1r4.ra.r4c1r1v2@pw1r4.dev",
+    "rb": "pw1r4.rb.r4c1r1v2@pw1r4.dev"
+  },
+  "steps": [
+    {
+      "step": "signup_create",
+      "registration_id": "78334ea9-41e6-4159-95ea-885903511953",
+      "ok": true
+    },
+    {
+      "step": "verify_email_consume",
+      "ok": true
+    },
+    {
+      "step": "owner_setup_credential_http",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "login",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "select_tenant",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "me",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "signup_create",
+      "registration_id": "d190317c-9043-4ff2-8870-1b7816afce44",
+      "ok": true
+    },
+    {
+      "step": "verify_email_consume",
+      "ok": true
+    },
+    {
+      "step": "owner_setup_credential_http",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "login",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "select_tenant",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "me",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "retailer_register_http",
+      "status": 201,
+      "expected": 201,
+      "ok": true
+    },
+    {
+      "step": "retailer_setup_token_reissue",
+      "ok": true
+    },
+    {
+      "step": "retailer_setup_credential_http",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "login",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "select_tenant",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "me",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "retailer_register_http",
+      "status": 201,
+      "expected": 201,
+      "ok": true
+    },
+    {
+      "step": "retailer_setup_token_reissue",
+      "ok": true
+    },
+    {
+      "step": "retailer_setup_credential_http",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "login",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "select_tenant",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "me",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "step": "negative_login_wrong_password_401",
+      "status": 401,
+      "ok": true
+    },
+    {
+      "step": "client_login_ra_w1",
+      "status": 200,
+      "ok": true,
+      "permission_count": 6
+    },
+    {
+      "step": "client_login_wrong_password_401",
+      "status": 401,
+      "ok": true
+    }
+  ],
+  "permissions_check": {
+    "client_login_ra_w1_permissions": [
+      "client:catalog:read",
+      "client:finance:read",
+      "client:orders:create",
+      "client:orders:read",
+      "client:payments:declare",
+      "client:payments:read"
+    ],
+    "expected_six": [
+      "client:catalog:read",
+      "client:finance:read",
+      "client:orders:create",
+      "client:orders:read",
+      "client:payments:declare",
+      "client:payments:read"
+    ],
+    "missing": [],
+    "has_client_payments_declare": true,
+    "w1_roles": [
+      "admin",
+      "retailer_operator"
+    ],
+    "w2_roles": [
+      "admin",
+      "retailer_operator"
+    ]
+  },
+  "tenant_schema_check": {
+    "w1": {
+      "schema": "t_1d832289d9234eaab89d7b8a245c99d1",
+      "tenant_id": "1d832289-d923-4eaa-b89d-7b8a245c99d1"
+    },
+    "w2": {
+      "schema": "t_b107b683f57b4ae1b0d833453b2ece45",
+      "tenant_id": "b107b683-f57b-4ae1-b0d8-33453b2ece45"
+    }
+  }
+}

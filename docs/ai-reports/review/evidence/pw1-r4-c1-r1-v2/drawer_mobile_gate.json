@@ -1,0 +1,228 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R4-C1-R1-V2 mobile drawer pre-gate (25 points) + Kilo observations",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "identity": "W1 wholesaler (real login)",
+  "checks": [
+    {
+      "check": "real login lands on authenticated route",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/"
+    },
+    {
+      "check": "hamburger visible @390",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "hamburger aria-label correct",
+      "ok": true,
+      "detail": "Toggle navigation menu"
+    },
+    {
+      "check": "hamburger aria-expanded=false initially",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "hamburger aria-controls points to drawer",
+      "ok": true,
+      "detail": "mobile-navigation-drawer"
+    },
+    {
+      "check": "drawer absent from DOM when closed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "drawer absent from a11y tree when closed",
+      "ok": true,
+      "detail": "domCount=0"
+    },
+    {
+      "check": "dashboard no horizontal overflow (closed)",
+      "ok": true,
+      "detail": "scrollW=390 clientW=390"
+    },
+    {
+      "check": "no overflow-x-hidden masking on dashboard",
+      "ok": true,
+      "detail": "[{\"tag\":\"svg\",\"cls\":\"\",\"width\":24,\"suspicious\":false},{\"tag\":\"span\",\"cls\":\"truncate.font-medium.text-gray-900\",\"width\":73,\"suspicious\":false},{\"tag\":\"svg\",\"cls\":\"\",\"width\":16,\"suspicious\":false},{\"tag\":\"span\",\"cls\":\"max-w-[6rem].truncate.text-xs.font-semibold\",\"width\":16,\"suspicious\":false},{\"tag\":\"svg\",\"cls\":\"\",\"width\":32,\"suspicious\":false},{\"tag\":\"p\",\"cls\":\"truncate.text-sm.font-medium.text-gray-900\",\"width\":3,\"suspicious\":false},{\"tag\":\"p\",\"cls\":\"truncate.text-xs.text-gray-500\",\"width\":3,\"suspicious\":false},{\"tag\":\"svg\",\"cls\":\"\",\"width\":16,\"suspicious\":false}]"
+    },
+    {
+      "check": "drawer present in DOM after open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "drawer role=dialog aria-modal",
+      "ok": true,
+      "detail": "role=dialog aria-modal=true"
+    },
+    {
+      "check": "hamburger aria-expanded=true when open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "backdrop visible when open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "dashboard no horizontal overflow (drawer open)",
+      "ok": true,
+      "detail": "scrollW=390 clientW=390"
+    },
+    {
+      "check": "Escape closes drawer (detached)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Escape restores focus to hamburger",
+      "ok": true,
+      "detail": "Toggle navigation menu"
+    },
+    {
+      "check": "hamburger aria-expanded=false after Escape",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "backdrop closes drawer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "backdrop close restores focus to hamburger",
+      "ok": true,
+      "detail": "Toggle navigation menu"
+    },
+    {
+      "check": "hamburger toggles drawer closed (real pointer)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Sales link navigates to /orders",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/orders"
+    },
+    {
+      "check": "drawer auto-closes after navigation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "orders no horizontal overflow",
+      "ok": true,
+      "detail": "scrollW=390 clientW=390"
+    },
+    {
+      "check": "no overflow-x-hidden masking on orders",
+      "ok": true,
+      "detail": "[{\"tag\":\"svg\",\"cls\":\"\",\"width\":24,\"suspicious\":false},{\"tag\":\"span\",\"cls\":\"truncate.font-medium.text-gray-900\",\"width\":45,\"suspicious\":false},{\"tag\":\"svg\",\"cls\":\"\",\"width\":16,\"suspicious\":false},{\"tag\":\"span\",\"cls\":\"max-w-[6rem].truncate.text-xs.font-semibold\",\"width\":16,\"suspicious\":false},{\"tag\":\"svg\",\"cls\":\"\",\"width\":32,\"suspicious\":false},{\"tag\":\"p\",\"cls\":\"truncate.text-sm.font-medium.text-gray-900\",\"width\":3,\"suspicious\":false},{\"tag\":\"p\",\"cls\":\"truncate.text-xs.text-gray-500\",\"width\":3,\"suspicious\":false},{\"tag\":\"svg\",\"cls\":\"\",\"width\":16,\"suspicious\":false},{\"tag\":\"svg\",\"cls\":\"\",\"width\":40,\"suspicious\":false}]"
+    },
+    {
+      "check": "orders no horizontal overflow (drawer open)",
+      "ok": true,
+      "detail": "scrollW=390 clientW=390"
+    }
+  ],
+  "observations": {
+    "f_obs_3": {
+      "aria_modal": true,
+      "outside_hamburger_interactive": true
+    },
+    "f_obs_1_focus_order": [
+      {
+        "tag": "button",
+        "text": "Logout",
+        "label": "Logout",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "Home",
+        "label": null,
+        "href": "/"
+      },
+      {
+        "tag": "a",
+        "text": "Sales",
+        "label": null,
+        "href": "/orders"
+      },
+      {
+        "tag": "a",
+        "text": "Products",
+        "label": null,
+        "href": "/skus"
+      },
+      {
+        "tag": "a",
+        "text": "Stock",
+        "label": null,
+        "href": "/inventory"
+      },
+      {
+        "tag": "a",
+        "text": "Finance",
+        "label": null,
+        "href": "/finance"
+      },
+      {
+        "tag": "a",
+        "text": "Payments",
+        "label": null,
+        "href": "/payments"
+      },
+      {
+        "tag": "a",
+        "text": "Customers",
+        "label": null,
+        "href": "/retailers"
+      },
+      {
+        "tag": "a",
+        "text": "Pricing",
+        "label": null,
+        "href": "/pricing"
+      },
+      {
+        "tag": "button",
+        "text": "Logout",
+        "label": null,
+        "href": null
+      },
+      {
+        "tag": "body",
+        "text": "DashboardTR78334EA941E64",
+        "label": null,
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "Logout",
+        "label": "Logout",
+        "href": null
+      }
+    ],
+    "f_obs_2": {
+      "desktop_logout_count": 2,
+      "header_aria_label": "Logout",
+      "sidebar_text": "Logout",
+      "header_visible": true,
+      "sidebar_visible": true,
+      "sidebar_logout_clears_session": true,
+      "header_logout_clears_session": true
+    }
+  },
+  "passed": 25,
+  "total": 25,
+  "all_passed": true,
+  "timestamp": "2026-08-20T06:14:40.822Z"
+}

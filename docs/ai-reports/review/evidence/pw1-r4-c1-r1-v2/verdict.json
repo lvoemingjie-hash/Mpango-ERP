@@ -1,0 +1,10 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R4-C1-R1-V2",
+  "verdict_code": "PASS_FOR_CTO_DC12R1_MVP_L1_PW1_R4_C1_R1_V2_BROWSER_EVIDENCE_READY",
+  "authoritative_full_matrix": {
+    "passed": 162,
+    "total": 162
+  },
+  "evidence_ready": true,
+  "timestamp": "2026-08-20T06:21:35.467Z"
+}

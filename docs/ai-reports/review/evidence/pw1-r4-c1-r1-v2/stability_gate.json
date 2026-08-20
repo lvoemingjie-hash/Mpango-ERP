@@ -1,0 +1,71 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R4-C1-R1-V2 stability gate: phase2-identity.spec.ts:28 [desktop] x10",
+  "target": "phase2-identity.spec.ts:28",
+  "project": "desktop",
+  "runs": [
+    {
+      "run": 1,
+      "status": "passed",
+      "ms": 3324,
+      "detail": ""
+    },
+    {
+      "run": 2,
+      "status": "passed",
+      "ms": 3279,
+      "detail": ""
+    },
+    {
+      "run": 3,
+      "status": "passed",
+      "ms": 3292,
+      "detail": ""
+    },
+    {
+      "run": 4,
+      "status": "passed",
+      "ms": 3402,
+      "detail": ""
+    },
+    {
+      "run": 5,
+      "status": "passed",
+      "ms": 3125,
+      "detail": ""
+    },
+    {
+      "run": 6,
+      "status": "passed",
+      "ms": 3330,
+      "detail": ""
+    },
+    {
+      "run": 7,
+      "status": "passed",
+      "ms": 3270,
+      "detail": ""
+    },
+    {
+      "run": 8,
+      "status": "passed",
+      "ms": 3292,
+      "detail": ""
+    },
+    {
+      "run": 9,
+      "status": "passed",
+      "ms": 3249,
+      "detail": ""
+    },
+    {
+      "run": 10,
+      "status": "passed",
+      "ms": 3171,
+      "detail": ""
+    }
+  ],
+  "passed": 10,
+  "total": 10,
+  "all_passed": true,
+  "timestamp": "2026-08-20T06:15:45.581Z"
+}

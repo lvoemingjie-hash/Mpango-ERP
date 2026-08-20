@@ -1,0 +1,31 @@
+{
+  "task": "DC-12R1-MVP-L1-PW1-R4-C1-R1-V2 required green set",
+  "required": [
+    {
+      "gate": "auth matrix (frozen, unmodified)",
+      "nodes": 27,
+      "actual": 27
+    },
+    {
+      "gate": "mobile drawer 25-point gate",
+      "points": 25,
+      "actual": 25
+    },
+    {
+      "gate": "stability phase2-identity.spec.ts:28 desktop x10",
+      "runs": 10,
+      "actual": 10
+    },
+    {
+      "gate": "playwright --list exact node count",
+      "nodes": 162,
+      "actual": 162
+    },
+    {
+      "gate": "authoritative full matrix (once)",
+      "nodes": 162,
+      "actual": 162
+    }
+  ],
+  "all_green": true
+}

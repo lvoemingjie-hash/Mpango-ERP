@@ -163,8 +163,8 @@ Covered by §2.5 (202, single existing row). ✅
 - Report branch: `reports/dc12r1-mvp-l1-j1-r1-r1-v1-kilo-review-2026-08-21` (two files only):
   - `docs/ai-reports/review/2026-08-21_dc12r1_mvp_l1_j1_r1_r1_v1_kilo_review.md`
   - `docs/ai-reports/review/2026-08-21_dc12r1_mvp_l1_j1_r1_r1_v1_kilo_findings.csv`
-- **Report commit SHA:** `<FILL_AFTER_PUSH>`
-- **Local == Remote:** `<FILL_AFTER_PUSH>` (verified equal after push)
+- **Report files introduced in commit:** `c09438186d92c3818501dab0659d8c9ec04e09ad`
+- **Local == Remote:** verified equal — `origin/reports/dc12r1-mvp-l1-j1-r1-r1-v1-kilo-review-2026-08-21` == local worktree HEAD (both confirmed after push; report-introducing commit `c09438186d92c3818501dab0659d8c9ec04e09ad`)
 - GitNexus: `analyze` executed on candidate worktree; `status` shows indexed at `cbcecbf2bcb670efd67f2680075a7afea7562223`.
 
 ---

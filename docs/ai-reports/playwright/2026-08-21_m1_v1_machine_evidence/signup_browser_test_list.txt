@@ -1,0 +1,8 @@
+Listing tests:
+  [desktop] › signup-contract.spec.ts:28:7 › signup browser contract › discover → passwordless signup → verify email → setup password → login → dashboard → session survives reload
+  [desktop] › signup-contract.spec.ts:119:7 › signup browser contract › failed signup shows neutral copy only (no token/body/hash/secret leak)
+  [tablet] › signup-contract.spec.ts:28:7 › signup browser contract › discover → passwordless signup → verify email → setup password → login → dashboard → session survives reload
+  [tablet] › signup-contract.spec.ts:119:7 › signup browser contract › failed signup shows neutral copy only (no token/body/hash/secret leak)
+  [mobile] › signup-contract.spec.ts:28:7 › signup browser contract › discover → passwordless signup → verify email → setup password → login → dashboard → session survives reload
+  [mobile] › signup-contract.spec.ts:119:7 › signup browser contract › failed signup shows neutral copy only (no token/body/hash/secret leak)
+Total: 6 tests in 1 file

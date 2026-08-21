@@ -1,0 +1,30 @@
+{
+ "task": "DC-12R1-MVP-L1-J1-R1-R1-M1-V1 Playwright Machine Verification",
+ "product_sha": "c5b66d26 (full: git show on report branch HEAD parent chain)",
+ "source_review": "aa9c270b (git ref)",
+ "refs": {
+  "origin/product-dev-recovered": "c5b66d26 (start and end)",
+  "origin/main": "134ea59e (start and end)"
+ },
+ "gates": {
+  "auth_matrix": "27/27 (expected=27 unexpected=0) on final identities",
+  "inventory": "162 tests / 7 files (frozen harness db84b132 extracted verbatim; config/package byte-identical)",
+  "authoritative_full_run": "162 passed / 0 failed / 0 skipped / 0 flaky; workers=1, retries=0, no grep, no shard; single invocation",
+  "signup_browser": "6/6 (desktop/tablet/mobile x full passwordless lifecycle + neutral-failure leak fence); asserted signup HTTP payload has NO password key",
+  "viewports": "desktop+tablet+mobile all green; mobile is browser viewport emulation only (no real-device claim)"
+ },
+ "runs_accounting": {
+  "signup_browser": "suite-development iterations (red on assert-copy/mail-purpose infra) then final authoritative 6/6 recorded here; evidence json/junit from final run",
+  "full_matrix": "1 invalidated invocation (159/162, mis-provisioned display names, disclosed) + 1 authoritative invocation (162/162) recorded here",
+  "accounting_gap": 0
+ },
+ "runtime": {
+  "compose_project": "m1v1pw_2026-08-21 (task-owned docker containers; deviation: repo compose pins PG15 vs task-mandated PG16)",
+  "pg": "postgres:16, fresh empty volume, 127.0.0.1:15445",
+  "redis": "redis:7-alpine, fresh, 127.0.0.1:26402",
+  "backend": "backend/main.py production entrypoint (MpangoAPIException handlers registered), MPANGO_ENV=staging, real JWT; single task SECRET_KEY never printed/committed; infra correction from api.app:app to main:app documented in runtime_preflight.md",
+  "frontend": "vite dev 127.0.0.1:5173 proxying /api -> 127.0.0.1:8000",
+  "alembic": "single head 037_payment_declarations_schema",
+  "maildir": "staging dev_sink read via task-only loopback route added by launcher; tokens redeemed in-browser, never written to evidence"
+ }
+}

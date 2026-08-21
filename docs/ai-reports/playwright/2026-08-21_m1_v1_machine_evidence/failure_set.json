@@ -1,0 +1,19 @@
+{
+  "authoritative_full_run": {
+    "failed": 0,
+    "nodes": []
+  },
+  "signup_browser_run": {
+    "failed": 0,
+    "nodes": []
+  },
+  "invalidated_pre_run_disclosure": {
+    "description": "First full-matrix invocation used mis-provisioned (non-canonical) retailer display names and returned 159/162. The 3 red nodes were phase5-isolation assertions expecting canonical \"PW1R1 Retailer A/B\" names. Zero product defects. Identities were re-provisioned through the identical formal lifecycles with canonical names, the auth-matrix gate re-passed 27/27, and the single authoritative run then recorded 162/162. Both runs are disclosed here and in findings history.",
+    "failed_nodes": [
+      "phase5-isolation.spec.ts:56 cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB [desktop]",
+      "phase5-isolation.spec.ts:56 same [tablet]",
+      "phase5-isolation.spec.ts:56 same [mobile]"
+    ]
+  },
+  "accounting": "expected authoritative nodes 162 + signup 6 = 168; findings.csv rows 168 all PASS; gap = 0"
+}

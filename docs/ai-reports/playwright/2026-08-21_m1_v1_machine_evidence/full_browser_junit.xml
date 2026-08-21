@@ -1,0 +1,165 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="pw1r4b full matrix (single authoritative run)" tests="162" failures="0" time="262.39124000000004">
+  <testcase classname="W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands " name="[desktop] W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" time="1.747" />
+  <testcase classname="W2 second wholesaler admin: independent tenant, login + select-tenant 200" name="[desktop] W2 second wholesaler admin: independent tenant, login + select-tenant 200" time="1.608" />
+  <testcase classname="RA multi-tenant login: response carries 2 availableTenants into workspace select" name="[desktop] RA multi-tenant login: response carries 2 availableTenants into workspace selector" time="1.84" />
+  <testcase classname="RB retailer portal login: client auth API 200, lands on /client" name="[desktop] RB retailer portal login: client auth API 200, lands on /client" time="0.923" />
+  <testcase classname="RA retailer portal login at W1 portal: lands on /client" name="[desktop] RA retailer portal login at W1 portal: lands on /client" time="0.928" />
+  <testcase classname="wrong password on wholesaler login: API 401, stays on /login, no token persisted" name="[desktop] wrong password on wholesaler login: API 401, stays on /login, no token persisted" time="2.225" />
+  <testcase classname="wrong password on retailer portal: API 401, stays on portal, neutral message" name="[desktop] wrong password on retailer portal: API 401, stays on portal, neutral message" time="1.795" />
+  <testcase classname="/select-workspace direct access without navigation state redirects to /login" name="[desktop] /select-workspace direct access without navigation state redirects to /login" time="0.507" />
+  <testcase classname="logout clears mpango-auth session and returns to /login" name="[desktop] logout clears mpango-auth session and returns to /login" time="1.632" />
+  <testcase classname="W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands " name="[tablet] W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" time="2.014" />
+  <testcase classname="W2 second wholesaler admin: independent tenant, login + select-tenant 200" name="[tablet] W2 second wholesaler admin: independent tenant, login + select-tenant 200" time="1.885" />
+  <testcase classname="RA multi-tenant login: response carries 2 availableTenants into workspace select" name="[tablet] RA multi-tenant login: response carries 2 availableTenants into workspace selector" time="1.97" />
+  <testcase classname="RB retailer portal login: client auth API 200, lands on /client" name="[tablet] RB retailer portal login: client auth API 200, lands on /client" time="0.943" />
+  <testcase classname="RA retailer portal login at W1 portal: lands on /client" name="[tablet] RA retailer portal login at W1 portal: lands on /client" time="0.883" />
+  <testcase classname="wrong password on wholesaler login: API 401, stays on /login, no token persisted" name="[tablet] wrong password on wholesaler login: API 401, stays on /login, no token persisted" time="2.232" />
+  <testcase classname="wrong password on retailer portal: API 401, stays on portal, neutral message" name="[tablet] wrong password on retailer portal: API 401, stays on portal, neutral message" time="1.668" />
+  <testcase classname="/select-workspace direct access without navigation state redirects to /login" name="[tablet] /select-workspace direct access without navigation state redirects to /login" time="0.55" />
+  <testcase classname="logout clears mpango-auth session and returns to /login" name="[tablet] logout clears mpango-auth session and returns to /login" time="1.806" />
+  <testcase classname="W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands " name="[mobile] W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /" time="2.172" />
+  <testcase classname="W2 second wholesaler admin: independent tenant, login + select-tenant 200" name="[mobile] W2 second wholesaler admin: independent tenant, login + select-tenant 200" time="1.842" />
+  <testcase classname="RA multi-tenant login: response carries 2 availableTenants into workspace select" name="[mobile] RA multi-tenant login: response carries 2 availableTenants into workspace selector" time="1.997" />
+  <testcase classname="RB retailer portal login: client auth API 200, lands on /client" name="[mobile] RB retailer portal login: client auth API 200, lands on /client" time="0.901" />
+  <testcase classname="RA retailer portal login at W1 portal: lands on /client" name="[mobile] RA retailer portal login at W1 portal: lands on /client" time="0.928" />
+  <testcase classname="wrong password on wholesaler login: API 401, stays on /login, no token persisted" name="[mobile] wrong password on wholesaler login: API 401, stays on /login, no token persisted" time="2.215" />
+  <testcase classname="wrong password on retailer portal: API 401, stays on portal, neutral message" name="[mobile] wrong password on retailer portal: API 401, stays on portal, neutral message" time="1.682" />
+  <testcase classname="/select-workspace direct access without navigation state redirects to /login" name="[mobile] /select-workspace direct access without navigation state redirects to /login" time="0.49" />
+  <testcase classname="logout clears mpango-auth session and returns to /login" name="[mobile] logout clears mpango-auth session and returns to /login" time="1.536" />
+  <testcase classname="backend health endpoints are 200 (live/ready)" name="[desktop] backend health endpoints are 200 (live/ready)" time="0.054" />
+  <testcase classname="frontend serves the SPA shell" name="[desktop] frontend serves the SPA shell" time="0.013" />
+  <testcase classname="wholesaler routes redirect anonymous users to /login" name="[desktop] wholesaler routes redirect anonymous users to /login" time="1.2" />
+  <testcase classname="retailer /client routes redirect anonymous users to retailer portal or /login" name="[desktop] retailer /client routes redirect anonymous users to retailer portal or /login" time="0.482" />
+  <testcase classname="/client/login alias redirects to /retail/login preserving w" name="[desktop] /client/login alias redirects to /retail/login preserving w" time="0.404" />
+  <testcase classname="public auth pages are reachable anonymously" name="[desktop] public auth pages are reachable anonymously" time="0.75" />
+  <testcase classname="unknown route renders the 404 page (no crash)" name="[desktop] unknown route renders the 404 page (no crash)" time="0.468" />
+  <testcase classname="invalid portal code shows controlled invalid-portal state with zero login API ca" name="[desktop] invalid portal code shows controlled invalid-portal state with zero login API calls" time="1.471" />
+  <testcase classname="backend health endpoints are 200 (live/ready)" name="[tablet] backend health endpoints are 200 (live/ready)" time="0.066" />
+  <testcase classname="frontend serves the SPA shell" name="[tablet] frontend serves the SPA shell" time="0.015" />
+  <testcase classname="wholesaler routes redirect anonymous users to /login" name="[tablet] wholesaler routes redirect anonymous users to /login" time="1.256" />
+  <testcase classname="retailer /client routes redirect anonymous users to retailer portal or /login" name="[tablet] retailer /client routes redirect anonymous users to retailer portal or /login" time="0.399" />
+  <testcase classname="/client/login alias redirects to /retail/login preserving w" name="[tablet] /client/login alias redirects to /retail/login preserving w" time="0.413" />
+  <testcase classname="public auth pages are reachable anonymously" name="[tablet] public auth pages are reachable anonymously" time="0.706" />
+  <testcase classname="unknown route renders the 404 page (no crash)" name="[tablet] unknown route renders the 404 page (no crash)" time="0.459" />
+  <testcase classname="invalid portal code shows controlled invalid-portal state with zero login API ca" name="[tablet] invalid portal code shows controlled invalid-portal state with zero login API calls" time="1.505" />
+  <testcase classname="backend health endpoints are 200 (live/ready)" name="[mobile] backend health endpoints are 200 (live/ready)" time="0.074" />
+  <testcase classname="frontend serves the SPA shell" name="[mobile] frontend serves the SPA shell" time="0.013" />
+  <testcase classname="wholesaler routes redirect anonymous users to /login" name="[mobile] wholesaler routes redirect anonymous users to /login" time="1.265" />
+  <testcase classname="retailer /client routes redirect anonymous users to retailer portal or /login" name="[mobile] retailer /client routes redirect anonymous users to retailer portal or /login" time="0.431" />
+  <testcase classname="/client/login alias redirects to /retail/login preserving w" name="[mobile] /client/login alias redirects to /retail/login preserving w" time="0.461" />
+  <testcase classname="public auth pages are reachable anonymously" name="[mobile] public auth pages are reachable anonymously" time="0.838" />
+  <testcase classname="unknown route renders the 404 page (no crash)" name="[mobile] unknown route renders the 404 page (no crash)" time="0.445" />
+  <testcase classname="invalid portal code shows controlled invalid-portal state with zero login API ca" name="[mobile] invalid portal code shows controlled invalid-portal state with zero login API calls" time="1.454" />
+  <testcase classname="legacy localStorage keys (access_token/user) do NOT authenticate" name="[desktop] legacy localStorage keys (access_token/user) do NOT authenticate" time="0.693" />
+  <testcase classname="forged mpango-auth with invalid JWT is rejected by the backend" name="[desktop] forged mpango-auth with invalid JWT is rejected by the backend" time="0.918" />
+  <testcase classname="REAL mpango-auth format restores a wholesaler session (hydration)" name="[desktop] REAL mpango-auth format restores a wholesaler session (hydration)" time="1.712" />
+  <testcase classname="REAL mpango-auth format restores a retailer session at /client" name="[desktop] REAL mpango-auth format restores a retailer session at /client" time="1.023" />
+  <testcase classname="login form submits real credentials to the real API (request body audit)" name="[desktop] login form submits real credentials to the real API (request body audit)" time="1.48" />
+  <testcase classname="legacy localStorage keys (access_token/user) do NOT authenticate" name="[tablet] legacy localStorage keys (access_token/user) do NOT authenticate" time="0.785" />
+  <testcase classname="forged mpango-auth with invalid JWT is rejected by the backend" name="[tablet] forged mpango-auth with invalid JWT is rejected by the backend" time="0.905" />
+  <testcase classname="REAL mpango-auth format restores a wholesaler session (hydration)" name="[tablet] REAL mpango-auth format restores a wholesaler session (hydration)" time="1.707" />
+  <testcase classname="REAL mpango-auth format restores a retailer session at /client" name="[tablet] REAL mpango-auth format restores a retailer session at /client" time="1.029" />
+  <testcase classname="login form submits real credentials to the real API (request body audit)" name="[tablet] login form submits real credentials to the real API (request body audit)" time="1.506" />
+  <testcase classname="legacy localStorage keys (access_token/user) do NOT authenticate" name="[mobile] legacy localStorage keys (access_token/user) do NOT authenticate" time="0.664" />
+  <testcase classname="forged mpango-auth with invalid JWT is rejected by the backend" name="[mobile] forged mpango-auth with invalid JWT is rejected by the backend" time="0.706" />
+  <testcase classname="REAL mpango-auth format restores a wholesaler session (hydration)" name="[mobile] REAL mpango-auth format restores a wholesaler session (hydration)" time="1.658" />
+  <testcase classname="REAL mpango-auth format restores a retailer session at /client" name="[mobile] REAL mpango-auth format restores a retailer session at /client" time="1.033" />
+  <testcase classname="login form submits real credentials to the real API (request body audit)" name="[mobile] login form submits real credentials to the real API (request body audit)" time="1.507" />
+  <testcase classname="wholesaler page / renders authenticated content" name="[desktop] wholesaler page / renders authenticated content" time="1.838" />
+  <testcase classname="wholesaler page /orders renders authenticated content" name="[desktop] wholesaler page /orders renders authenticated content" time="1.786" />
+  <testcase classname="wholesaler page /inventory renders authenticated content" name="[desktop] wholesaler page /inventory renders authenticated content" time="1.957" />
+  <testcase classname="wholesaler page /skus renders authenticated content" name="[desktop] wholesaler page /skus renders authenticated content" time="1.905" />
+  <testcase classname="wholesaler page /retailers renders authenticated content" name="[desktop] wholesaler page /retailers renders authenticated content" time="1.758" />
+  <testcase classname="wholesaler page /finance renders authenticated content" name="[desktop] wholesaler page /finance renders authenticated content" time="1.802" />
+  <testcase classname="wholesaler page /payments renders authenticated content" name="[desktop] wholesaler page /payments renders authenticated content" time="1.768" />
+  <testcase classname="wholesaler page /declarations renders authenticated content" name="[desktop] wholesaler page /declarations renders authenticated content" time="1.825" />
+  <testcase classname="dashboard shows the app shell with user context" name="[desktop] dashboard shows the app shell with user context" time="1.949" />
+  <testcase classname="wholesaler cannot open retailer /client routes (boundary redirect)" name="[desktop] wholesaler cannot open retailer /client routes (boundary redirect)" time="1.787" />
+  <testcase classname="logout returns to /login and clears the session" name="[desktop] logout returns to /login and clears the session" time="1.512" />
+  <testcase classname="wholesaler page / renders authenticated content" name="[tablet] wholesaler page / renders authenticated content" time="1.75" />
+  <testcase classname="wholesaler page /orders renders authenticated content" name="[tablet] wholesaler page /orders renders authenticated content" time="2.127" />
+  <testcase classname="wholesaler page /inventory renders authenticated content" name="[tablet] wholesaler page /inventory renders authenticated content" time="1.764" />
+  <testcase classname="wholesaler page /skus renders authenticated content" name="[tablet] wholesaler page /skus renders authenticated content" time="1.844" />
+  <testcase classname="wholesaler page /retailers renders authenticated content" name="[tablet] wholesaler page /retailers renders authenticated content" time="1.818" />
+  <testcase classname="wholesaler page /finance renders authenticated content" name="[tablet] wholesaler page /finance renders authenticated content" time="1.843" />
+  <testcase classname="wholesaler page /payments renders authenticated content" name="[tablet] wholesaler page /payments renders authenticated content" time="1.813" />
+  <testcase classname="wholesaler page /declarations renders authenticated content" name="[tablet] wholesaler page /declarations renders authenticated content" time="1.769" />
+  <testcase classname="dashboard shows the app shell with user context" name="[tablet] dashboard shows the app shell with user context" time="1.867" />
+  <testcase classname="wholesaler cannot open retailer /client routes (boundary redirect)" name="[tablet] wholesaler cannot open retailer /client routes (boundary redirect)" time="1.811" />
+  <testcase classname="logout returns to /login and clears the session" name="[tablet] logout returns to /login and clears the session" time="1.658" />
+  <testcase classname="wholesaler page / renders authenticated content" name="[mobile] wholesaler page / renders authenticated content" time="1.869" />
+  <testcase classname="wholesaler page /orders renders authenticated content" name="[mobile] wholesaler page /orders renders authenticated content" time="1.776" />
+  <testcase classname="wholesaler page /inventory renders authenticated content" name="[mobile] wholesaler page /inventory renders authenticated content" time="1.922" />
+  <testcase classname="wholesaler page /skus renders authenticated content" name="[mobile] wholesaler page /skus renders authenticated content" time="1.752" />
+  <testcase classname="wholesaler page /retailers renders authenticated content" name="[mobile] wholesaler page /retailers renders authenticated content" time="1.774" />
+  <testcase classname="wholesaler page /finance renders authenticated content" name="[mobile] wholesaler page /finance renders authenticated content" time="1.851" />
+  <testcase classname="wholesaler page /payments renders authenticated content" name="[mobile] wholesaler page /payments renders authenticated content" time="1.861" />
+  <testcase classname="wholesaler page /declarations renders authenticated content" name="[mobile] wholesaler page /declarations renders authenticated content" time="1.806" />
+  <testcase classname="dashboard shows the app shell with user context" name="[mobile] dashboard shows the app shell with user context" time="1.789" />
+  <testcase classname="wholesaler cannot open retailer /client routes (boundary redirect)" name="[mobile] wholesaler cannot open retailer /client routes (boundary redirect)" time="1.689" />
+  <testcase classname="logout returns to /login and clears the session" name="[mobile] logout returns to /login and clears the session" time="1.509" />
+  <testcase classname="retailer portal: catalog page renders supplier products incl. the setup SKU" name="[desktop] retailer portal: catalog page renders supplier products incl. the setup SKU" time="2.906" />
+  <testcase classname="retailer creates an order through the real API (journey precondition)" name="[desktop] retailer creates an order through the real API (journey precondition)" time="0.07" />
+  <testcase classname="retailer orders page lists own orders via the browser" name="[desktop] retailer orders page lists own orders via the browser" time="1.227" />
+  <testcase classname="financial idempotency: repeated declaration with the same key produces ZERO extr" name="[desktop] financial idempotency: repeated declaration with the same key produces ZERO extra writes" time="0.424" />
+  <testcase classname="UI double-click on declare submit creates exactly one declaration (browser evide" name="[desktop] UI double-click on declare submit creates exactly one declaration (browser evidence)" time="7.074" />
+  <testcase classname="retailer finance/payments/declarations pages render without errors" name="[desktop] retailer finance/payments/declarations pages render without errors" time="1.654" />
+  <testcase classname="retailer print page issues NO mutating requests" name="[desktop] retailer print page issues NO mutating requests" time="3.24" />
+  <testcase classname="retailer portal: catalog page renders supplier products incl. the setup SKU" name="[tablet] retailer portal: catalog page renders supplier products incl. the setup SKU" time="3.138" />
+  <testcase classname="retailer creates an order through the real API (journey precondition)" name="[tablet] retailer creates an order through the real API (journey precondition)" time="0.069" />
+  <testcase classname="retailer orders page lists own orders via the browser" name="[tablet] retailer orders page lists own orders via the browser" time="1.231" />
+  <testcase classname="financial idempotency: repeated declaration with the same key produces ZERO extr" name="[tablet] financial idempotency: repeated declaration with the same key produces ZERO extra writes" time="0.423" />
+  <testcase classname="UI double-click on declare submit creates exactly one declaration (browser evide" name="[tablet] UI double-click on declare submit creates exactly one declaration (browser evidence)" time="6.921" />
+  <testcase classname="retailer finance/payments/declarations pages render without errors" name="[tablet] retailer finance/payments/declarations pages render without errors" time="1.748" />
+  <testcase classname="retailer print page issues NO mutating requests" name="[tablet] retailer print page issues NO mutating requests" time="3.279" />
+  <testcase classname="retailer portal: catalog page renders supplier products incl. the setup SKU" name="[mobile] retailer portal: catalog page renders supplier products incl. the setup SKU" time="3.115" />
+  <testcase classname="retailer creates an order through the real API (journey precondition)" name="[mobile] retailer creates an order through the real API (journey precondition)" time="0.066" />
+  <testcase classname="retailer orders page lists own orders via the browser" name="[mobile] retailer orders page lists own orders via the browser" time="1.184" />
+  <testcase classname="financial idempotency: repeated declaration with the same key produces ZERO extr" name="[mobile] financial idempotency: repeated declaration with the same key produces ZERO extra writes" time="0.408" />
+  <testcase classname="UI double-click on declare submit creates exactly one declaration (browser evide" name="[mobile] UI double-click on declare submit creates exactly one declaration (browser evidence)" time="6.957" />
+  <testcase classname="retailer finance/payments/declarations pages render without errors" name="[mobile] retailer finance/payments/declarations pages render without errors" time="1.645" />
+  <testcase classname="retailer print page issues NO mutating requests" name="[mobile] retailer print page issues NO mutating requests" time="3.209" />
+  <testcase classname="cross-retailer: RB cannot read RA order by id (API isolation)" name="[desktop] cross-retailer: RB cannot read RA order by id (API isolation)" time="3.236" />
+  <testcase classname="cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" name="[desktop] cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" time="0.906" />
+  <testcase classname="cross-tenant: RA W2-context cannot use W1-only data paths" name="[desktop] cross-tenant: RA W2-context cannot use W1-only data paths" time="1.124" />
+  <testcase classname="malformed IDs return neutral structured errors (no internals leaked)" name="[desktop] malformed IDs return neutral structured errors (no internals leaked)" time="0.882" />
+  <testcase classname="unauthenticated API access is rejected with structured 401 (no leak)" name="[desktop] unauthenticated API access is rejected with structured 401 (no leak)" time="0.015" />
+  <testcase classname="browser: RB portal session never exposes W2 tenant data" name="[desktop] browser: RB portal session never exposes W2 tenant data" time="2.421" />
+  <testcase classname="RB orders page contains no RA-created orders (page-level isolation)" name="[desktop] RB orders page contains no RA-created orders (page-level isolation)" time="5.113" />
+  <testcase classname="cross-retailer: RB cannot read RA order by id (API isolation)" name="[tablet] cross-retailer: RB cannot read RA order by id (API isolation)" time="3.118" />
+  <testcase classname="cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" name="[tablet] cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" time="0.896" />
+  <testcase classname="cross-tenant: RA W2-context cannot use W1-only data paths" name="[tablet] cross-tenant: RA W2-context cannot use W1-only data paths" time="1.246" />
+  <testcase classname="malformed IDs return neutral structured errors (no internals leaked)" name="[tablet] malformed IDs return neutral structured errors (no internals leaked)" time="0.819" />
+  <testcase classname="unauthenticated API access is rejected with structured 401 (no leak)" name="[tablet] unauthenticated API access is rejected with structured 401 (no leak)" time="0.011" />
+  <testcase classname="browser: RB portal session never exposes W2 tenant data" name="[tablet] browser: RB portal session never exposes W2 tenant data" time="2.38" />
+  <testcase classname="RB orders page contains no RA-created orders (page-level isolation)" name="[tablet] RB orders page contains no RA-created orders (page-level isolation)" time="4.976" />
+  <testcase classname="cross-retailer: RB cannot read RA order by id (API isolation)" name="[mobile] cross-retailer: RB cannot read RA order by id (API isolation)" time="3.27" />
+  <testcase classname="cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" name="[mobile] cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB" time="0.92" />
+  <testcase classname="cross-tenant: RA W2-context cannot use W1-only data paths" name="[mobile] cross-tenant: RA W2-context cannot use W1-only data paths" time="1.15" />
+  <testcase classname="malformed IDs return neutral structured errors (no internals leaked)" name="[mobile] malformed IDs return neutral structured errors (no internals leaked)" time="0.856" />
+  <testcase classname="unauthenticated API access is rejected with structured 401 (no leak)" name="[mobile] unauthenticated API access is rejected with structured 401 (no leak)" time="0.015" />
+  <testcase classname="browser: RB portal session never exposes W2 tenant data" name="[mobile] browser: RB portal session never exposes W2 tenant data" time="2.436" />
+  <testcase classname="RB orders page contains no RA-created orders (page-level isolation)" name="[mobile] RB orders page contains no RA-created orders (page-level isolation)" time="4.959" />
+  <testcase classname="wholesaler dashboard: no horizontal overflow, no console/page errors" name="[desktop] wholesaler dashboard: no horizontal overflow, no console/page errors" time="1.557" />
+  <testcase classname="wholesaler orders page: no horizontal overflow" name="[desktop] wholesaler orders page: no horizontal overflow" time="1.851" />
+  <testcase classname="retailer catalog: no horizontal overflow, no console/page errors" name="[desktop] retailer catalog: no horizontal overflow, no console/page errors" time="0.903" />
+  <testcase classname="retailer orders page: no horizontal overflow" name="[desktop] retailer orders page: no horizontal overflow" time="1.246" />
+  <testcase classname="login forms have labels and keyboard-accessible inputs" name="[desktop] login forms have labels and keyboard-accessible inputs" time="0.511" />
+  <testcase classname="no unexpected network failures during a login journey" name="[desktop] no unexpected network failures during a login journey" time="1.511" />
+  <testcase classname="print stub: window.print callable on print pages without errors" name="[desktop] print stub: window.print callable on print pages without errors" time="3.277" />
+  <testcase classname="wholesaler dashboard: no horizontal overflow, no console/page errors" name="[tablet] wholesaler dashboard: no horizontal overflow, no console/page errors" time="1.613" />
+  <testcase classname="wholesaler orders page: no horizontal overflow" name="[tablet] wholesaler orders page: no horizontal overflow" time="1.812" />
+  <testcase classname="retailer catalog: no horizontal overflow, no console/page errors" name="[tablet] retailer catalog: no horizontal overflow, no console/page errors" time="0.96" />
+  <testcase classname="retailer orders page: no horizontal overflow" name="[tablet] retailer orders page: no horizontal overflow" time="1.221" />
+  <testcase classname="login forms have labels and keyboard-accessible inputs" name="[tablet] login forms have labels and keyboard-accessible inputs" time="0.499" />
+  <testcase classname="no unexpected network failures during a login journey" name="[tablet] no unexpected network failures during a login journey" time="1.468" />
+  <testcase classname="print stub: window.print callable on print pages without errors" name="[tablet] print stub: window.print callable on print pages without errors" time="3.304" />
+  <testcase classname="wholesaler dashboard: no horizontal overflow, no console/page errors" name="[mobile] wholesaler dashboard: no horizontal overflow, no console/page errors" time="1.478" />
+  <testcase classname="wholesaler orders page: no horizontal overflow" name="[mobile] wholesaler orders page: no horizontal overflow" time="1.778" />
+  <testcase classname="retailer catalog: no horizontal overflow, no console/page errors" name="[mobile] retailer catalog: no horizontal overflow, no console/page errors" time="0.903" />
+  <testcase classname="retailer orders page: no horizontal overflow" name="[mobile] retailer orders page: no horizontal overflow" time="1.176" />
+  <testcase classname="login forms have labels and keyboard-accessible inputs" name="[mobile] login forms have labels and keyboard-accessible inputs" time="0.483" />
+  <testcase classname="no unexpected network failures during a login journey" name="[mobile] no unexpected network failures during a login journey" time="1.479" />
+  <testcase classname="print stub: window.print callable on print pages without errors" name="[mobile] print stub: window.print callable on print pages without errors" time="3.29" />
+</testsuites>

@@ -1,0 +1,169 @@
+run,file,project,node,status,duration_ms,finding
+signup_browser (Phase 3),signup-contract.spec.ts,desktop,discover → passwordless signup → verify email → setup password → login → dashboard → session survives reload,passed,5729,PASS
+signup_browser (Phase 3),signup-contract.spec.ts,desktop,failed signup shows neutral copy only (no token/body/hash/secret leak),passed,525,PASS
+signup_browser (Phase 3),signup-contract.spec.ts,tablet,discover → passwordless signup → verify email → setup password → login → dashboard → session survives reload,passed,5667,PASS
+signup_browser (Phase 3),signup-contract.spec.ts,tablet,failed signup shows neutral copy only (no token/body/hash/secret leak),passed,491,PASS
+signup_browser (Phase 3),signup-contract.spec.ts,mobile,discover → passwordless signup → verify email → setup password → login → dashboard → session survives reload,passed,5741,PASS
+signup_browser (Phase 3),signup-contract.spec.ts,mobile,failed signup shows neutral copy only (no token/body/hash/secret leak),passed,494,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,desktop,"W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",passed,1747,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,desktop,"W2 second wholesaler admin: independent tenant, login + select-tenant 200",passed,1608,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,desktop,RA multi-tenant login: response carries 2 availableTenants into workspace selector,passed,1840,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,desktop,"RB retailer portal login: client auth API 200, lands on /client",passed,923,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,desktop,RA retailer portal login at W1 portal: lands on /client,passed,928,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,desktop,"wrong password on wholesaler login: API 401, stays on /login, no token persisted",passed,2225,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,desktop,"wrong password on retailer portal: API 401, stays on portal, neutral message",passed,1795,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,desktop,/select-workspace direct access without navigation state redirects to /login,passed,507,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,desktop,logout clears mpango-auth session and returns to /login,passed,1632,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,tablet,"W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",passed,2014,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,tablet,"W2 second wholesaler admin: independent tenant, login + select-tenant 200",passed,1885,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,tablet,RA multi-tenant login: response carries 2 availableTenants into workspace selector,passed,1970,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,tablet,"RB retailer portal login: client auth API 200, lands on /client",passed,943,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,tablet,RA retailer portal login at W1 portal: lands on /client,passed,883,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,tablet,"wrong password on wholesaler login: API 401, stays on /login, no token persisted",passed,2232,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,tablet,"wrong password on retailer portal: API 401, stays on portal, neutral message",passed,1668,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,tablet,/select-workspace direct access without navigation state redirects to /login,passed,550,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,tablet,logout clears mpango-auth session and returns to /login,passed,1806,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,mobile,"W1 single-tenant wholesaler admin: login API 200, auto select-tenant 200, lands on /",passed,2172,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,mobile,"W2 second wholesaler admin: independent tenant, login + select-tenant 200",passed,1842,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,mobile,RA multi-tenant login: response carries 2 availableTenants into workspace selector,passed,1997,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,mobile,"RB retailer portal login: client auth API 200, lands on /client",passed,901,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,mobile,RA retailer portal login at W1 portal: lands on /client,passed,928,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,mobile,"wrong password on wholesaler login: API 401, stays on /login, no token persisted",passed,2215,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,mobile,"wrong password on retailer portal: API 401, stays on portal, neutral message",passed,1682,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,mobile,/select-workspace direct access without navigation state redirects to /login,passed,490,PASS
+full_browser authoritative (Phase 4),auth-matrix.spec.ts,mobile,logout clears mpango-auth session and returns to /login,passed,1536,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,desktop,backend health endpoints are 200 (live/ready),passed,54,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,desktop,frontend serves the SPA shell,passed,13,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,desktop,wholesaler routes redirect anonymous users to /login,passed,1200,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,desktop,retailer /client routes redirect anonymous users to retailer portal or /login,passed,482,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,desktop,/client/login alias redirects to /retail/login preserving w,passed,404,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,desktop,public auth pages are reachable anonymously,passed,750,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,desktop,unknown route renders the 404 page (no crash),passed,468,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,desktop,invalid portal code shows controlled invalid-portal state with zero login API calls,passed,1471,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,tablet,backend health endpoints are 200 (live/ready),passed,66,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,tablet,frontend serves the SPA shell,passed,15,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,tablet,wholesaler routes redirect anonymous users to /login,passed,1256,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,tablet,retailer /client routes redirect anonymous users to retailer portal or /login,passed,399,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,tablet,/client/login alias redirects to /retail/login preserving w,passed,413,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,tablet,public auth pages are reachable anonymously,passed,706,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,tablet,unknown route renders the 404 page (no crash),passed,459,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,tablet,invalid portal code shows controlled invalid-portal state with zero login API calls,passed,1505,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,mobile,backend health endpoints are 200 (live/ready),passed,74,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,mobile,frontend serves the SPA shell,passed,13,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,mobile,wholesaler routes redirect anonymous users to /login,passed,1265,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,mobile,retailer /client routes redirect anonymous users to retailer portal or /login,passed,431,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,mobile,/client/login alias redirects to /retail/login preserving w,passed,461,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,mobile,public auth pages are reachable anonymously,passed,838,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,mobile,unknown route renders the 404 page (no crash),passed,445,PASS
+full_browser authoritative (Phase 4),phase1-routes.spec.ts,mobile,invalid portal code shows controlled invalid-portal state with zero login API calls,passed,1454,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,desktop,legacy localStorage keys (access_token/user) do NOT authenticate,passed,693,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,desktop,forged mpango-auth with invalid JWT is rejected by the backend,passed,918,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,desktop,REAL mpango-auth format restores a wholesaler session (hydration),passed,1712,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,desktop,REAL mpango-auth format restores a retailer session at /client,passed,1023,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,desktop,login form submits real credentials to the real API (request body audit),passed,1480,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,tablet,legacy localStorage keys (access_token/user) do NOT authenticate,passed,785,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,tablet,forged mpango-auth with invalid JWT is rejected by the backend,passed,905,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,tablet,REAL mpango-auth format restores a wholesaler session (hydration),passed,1707,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,tablet,REAL mpango-auth format restores a retailer session at /client,passed,1029,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,tablet,login form submits real credentials to the real API (request body audit),passed,1506,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,mobile,legacy localStorage keys (access_token/user) do NOT authenticate,passed,664,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,mobile,forged mpango-auth with invalid JWT is rejected by the backend,passed,706,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,mobile,REAL mpango-auth format restores a wholesaler session (hydration),passed,1658,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,mobile,REAL mpango-auth format restores a retailer session at /client,passed,1033,PASS
+full_browser authoritative (Phase 4),phase2-identity.spec.ts,mobile,login form submits real credentials to the real API (request body audit),passed,1507,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,wholesaler page / renders authenticated content,passed,1838,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,wholesaler page /orders renders authenticated content,passed,1786,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,wholesaler page /inventory renders authenticated content,passed,1957,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,wholesaler page /skus renders authenticated content,passed,1905,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,wholesaler page /retailers renders authenticated content,passed,1758,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,wholesaler page /finance renders authenticated content,passed,1802,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,wholesaler page /payments renders authenticated content,passed,1768,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,wholesaler page /declarations renders authenticated content,passed,1825,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,dashboard shows the app shell with user context,passed,1949,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,wholesaler cannot open retailer /client routes (boundary redirect),passed,1787,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,desktop,logout returns to /login and clears the session,passed,1512,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,wholesaler page / renders authenticated content,passed,1750,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,wholesaler page /orders renders authenticated content,passed,2127,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,wholesaler page /inventory renders authenticated content,passed,1764,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,wholesaler page /skus renders authenticated content,passed,1844,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,wholesaler page /retailers renders authenticated content,passed,1818,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,wholesaler page /finance renders authenticated content,passed,1843,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,wholesaler page /payments renders authenticated content,passed,1813,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,wholesaler page /declarations renders authenticated content,passed,1769,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,dashboard shows the app shell with user context,passed,1867,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,wholesaler cannot open retailer /client routes (boundary redirect),passed,1811,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,tablet,logout returns to /login and clears the session,passed,1658,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,wholesaler page / renders authenticated content,passed,1869,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,wholesaler page /orders renders authenticated content,passed,1776,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,wholesaler page /inventory renders authenticated content,passed,1922,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,wholesaler page /skus renders authenticated content,passed,1752,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,wholesaler page /retailers renders authenticated content,passed,1774,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,wholesaler page /finance renders authenticated content,passed,1851,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,wholesaler page /payments renders authenticated content,passed,1861,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,wholesaler page /declarations renders authenticated content,passed,1806,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,dashboard shows the app shell with user context,passed,1789,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,wholesaler cannot open retailer /client routes (boundary redirect),passed,1689,PASS
+full_browser authoritative (Phase 4),phase3-wholesaler.spec.ts,mobile,logout returns to /login and clears the session,passed,1509,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,desktop,retailer portal: catalog page renders supplier products incl. the setup SKU,passed,2906,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,desktop,retailer creates an order through the real API (journey precondition),passed,70,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,desktop,retailer orders page lists own orders via the browser,passed,1227,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,desktop,financial idempotency: repeated declaration with the same key produces ZERO extra writes,passed,424,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,desktop,UI double-click on declare submit creates exactly one declaration (browser evidence),passed,7074,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,desktop,retailer finance/payments/declarations pages render without errors,passed,1654,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,desktop,retailer print page issues NO mutating requests,passed,3240,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,tablet,retailer portal: catalog page renders supplier products incl. the setup SKU,passed,3138,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,tablet,retailer creates an order through the real API (journey precondition),passed,69,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,tablet,retailer orders page lists own orders via the browser,passed,1231,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,tablet,financial idempotency: repeated declaration with the same key produces ZERO extra writes,passed,423,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,tablet,UI double-click on declare submit creates exactly one declaration (browser evidence),passed,6921,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,tablet,retailer finance/payments/declarations pages render without errors,passed,1748,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,tablet,retailer print page issues NO mutating requests,passed,3279,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,mobile,retailer portal: catalog page renders supplier products incl. the setup SKU,passed,3115,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,mobile,retailer creates an order through the real API (journey precondition),passed,66,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,mobile,retailer orders page lists own orders via the browser,passed,1184,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,mobile,financial idempotency: repeated declaration with the same key produces ZERO extra writes,passed,408,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,mobile,UI double-click on declare submit creates exactly one declaration (browser evidence),passed,6957,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,mobile,retailer finance/payments/declarations pages render without errors,passed,1645,PASS
+full_browser authoritative (Phase 4),phase4-retailer.spec.ts,mobile,retailer print page issues NO mutating requests,passed,3209,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,desktop,cross-retailer: RB cannot read RA order by id (API isolation),passed,3236,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,desktop,cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB,passed,906,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,desktop,cross-tenant: RA W2-context cannot use W1-only data paths,passed,1124,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,desktop,malformed IDs return neutral structured errors (no internals leaked),passed,882,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,desktop,unauthenticated API access is rejected with structured 401 (no leak),passed,15,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,desktop,browser: RB portal session never exposes W2 tenant data,passed,2421,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,desktop,RB orders page contains no RA-created orders (page-level isolation),passed,5113,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,tablet,cross-retailer: RB cannot read RA order by id (API isolation),passed,3118,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,tablet,cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB,passed,896,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,tablet,cross-tenant: RA W2-context cannot use W1-only data paths,passed,1246,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,tablet,malformed IDs return neutral structured errors (no internals leaked),passed,819,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,tablet,unauthenticated API access is rejected with structured 401 (no leak),passed,11,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,tablet,browser: RB portal session never exposes W2 tenant data,passed,2380,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,tablet,RB orders page contains no RA-created orders (page-level isolation),passed,4976,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,mobile,cross-retailer: RB cannot read RA order by id (API isolation),passed,3270,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,mobile,cross-tenant: W2 admin retailer list does NOT contain W1-only retailer RB,passed,920,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,mobile,cross-tenant: RA W2-context cannot use W1-only data paths,passed,1150,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,mobile,malformed IDs return neutral structured errors (no internals leaked),passed,856,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,mobile,unauthenticated API access is rejected with structured 401 (no leak),passed,15,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,mobile,browser: RB portal session never exposes W2 tenant data,passed,2436,PASS
+full_browser authoritative (Phase 4),phase5-isolation.spec.ts,mobile,RB orders page contains no RA-created orders (page-level isolation),passed,4959,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,desktop,"wholesaler dashboard: no horizontal overflow, no console/page errors",passed,1557,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,desktop,wholesaler orders page: no horizontal overflow,passed,1851,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,desktop,"retailer catalog: no horizontal overflow, no console/page errors",passed,903,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,desktop,retailer orders page: no horizontal overflow,passed,1246,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,desktop,login forms have labels and keyboard-accessible inputs,passed,511,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,desktop,no unexpected network failures during a login journey,passed,1511,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,desktop,print stub: window.print callable on print pages without errors,passed,3277,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,tablet,"wholesaler dashboard: no horizontal overflow, no console/page errors",passed,1613,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,tablet,wholesaler orders page: no horizontal overflow,passed,1812,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,tablet,"retailer catalog: no horizontal overflow, no console/page errors",passed,960,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,tablet,retailer orders page: no horizontal overflow,passed,1221,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,tablet,login forms have labels and keyboard-accessible inputs,passed,499,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,tablet,no unexpected network failures during a login journey,passed,1468,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,tablet,print stub: window.print callable on print pages without errors,passed,3304,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,mobile,"wholesaler dashboard: no horizontal overflow, no console/page errors",passed,1478,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,mobile,wholesaler orders page: no horizontal overflow,passed,1778,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,mobile,"retailer catalog: no horizontal overflow, no console/page errors",passed,903,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,mobile,retailer orders page: no horizontal overflow,passed,1176,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,mobile,login forms have labels and keyboard-accessible inputs,passed,483,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,mobile,no unexpected network failures during a login journey,passed,1479,PASS
+full_browser authoritative (Phase 4),phase6-responsive.spec.ts,mobile,print stub: window.print callable on print pages without errors,passed,3290,PASS

@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="signup browser contract (Phase 3)" tests="6" failures="0">
+  <testcase classname="signup-contract.spec.ts" name="[desktop] discover → passwordless signup → verify email → setup password → login → dashboard → session survives reload" time="5.729" />
+  <testcase classname="signup-contract.spec.ts" name="[desktop] failed signup shows neutral copy only (no token/body/hash/secret leak)" time="0.525" />
+  <testcase classname="signup-contract.spec.ts" name="[tablet] discover → passwordless signup → verify email → setup password → login → dashboard → session survives reload" time="5.667" />
+  <testcase classname="signup-contract.spec.ts" name="[tablet] failed signup shows neutral copy only (no token/body/hash/secret leak)" time="0.491" />
+  <testcase classname="signup-contract.spec.ts" name="[mobile] discover → passwordless signup → verify email → setup password → login → dashboard → session survives reload" time="5.741" />
+  <testcase classname="signup-contract.spec.ts" name="[mobile] failed signup shows neutral copy only (no token/body/hash/secret leak)" time="0.494" />
+</testsuites>

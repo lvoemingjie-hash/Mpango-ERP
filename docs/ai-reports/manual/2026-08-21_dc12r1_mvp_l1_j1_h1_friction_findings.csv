@@ -1,0 +1,15 @@
+finding_id,step,timestamp,class,title,detail,evidence
+F-01,1,2026-08-21T14:36+08:00,POLISH,注册表单国家字段为自由输入无下拉,用户期望国家为下拉选择框；当前为自由输入（用户填了 UG）。国家是后续货币/合规的锚点，自由输入易产生脏数据,screenshot-02 + 用户口述
+F-02,1,2026-08-21T14:36+08:00,HIGH_FRICTION,注册成功页无下一步指引,三段式注册（注册→邮件验证→第二封邮件设密码）在两个转场均无引导：注册成功页不告知查邮件，验证成功页不告知另有一封 setup-credential 邮件；用户两次误判（误去登录页、以为没有设密码环节）,screenshot-02/03 + 用户口述
+F-03,1,2026-08-21T14:36+08:00,POLISH,用户期望注册时直接设置密码,产品采用延迟设密码设计（schemas/auth_signup.py:14 注释明确）；用户期望业界主流做法。设计分歧记录，供产品决策,journey_events 2-attempt1
+F-04,2,2026-08-21T14:39+08:00,POLISH,密码可见性切换(小眼睛)为正向体验,用户主动表扬；记录为可用性正向项,journey_events 2-attempt2
+F-05,2-extra,2026-08-21T14:40-15:05+08:00,BLOCKER,忘记密码流程静默失效,三次提交 forgot-password 均返回中性成功但 password_reset_tokens 恒为 0；应用外重放同一服务代码 issued=True 可提交。证据指向应用内租户会话上下文(RLS/GUC)使 wholesalers 扫描返回空 + 中性 200 策略完全掩盖故障。真实用户将永远等不到重置邮件且无任何错误线索,journey_events 2-extra 完整证据链
+F-06,3,2026-08-21T15:1x+08:00,HIGH_FRICTION,登录后无新手指引,新店主无法从仪表盘判断系统期望的下一步动作；页面上大量功能入口但不知道业务逻辑从哪开始。用户明确期望新手指引（onboarding wizard）,用户口述 step3
+F-07,3,2026-08-21T15:1x+08:00,POLISH,界面显示原始租户编码而非公司名,侧栏/界面显示 TR5018FCCD6B874E3083B9362A33E1F3，用户更希望看到自己的公司名（注册时填了 jeff ltd）,用户口述 step3
+F-08,3,2026-08-21T15:1x+08:00,POLISH,UI 无中文本地化且 STOCK 一词机器翻译歧义,界面为英文；用户靠浏览器翻译。STOCK 被译为"车辆"（机器翻译歧义）；建议改用 Inventory。i18n 为已知能力缺口，记录用户实际体验,用户口述 step3
+F-09,3,2026-08-21T15:1x+08:00,HIGH_FRICTION,国家选择未联动货币体系,注册国家填 UG（乌干达），但财务模块货币显示 KES（肯尼亚先令）。国家→默认货币的映射缺失，直接影响财务正确性；未来需支持个别客户指定结算货币（如 USD）的例外配置,journey_events step3 + 用户口述
+F-10,3,2026-08-21T15:2x+08:00,CAPABILITY_GAP,批发商侧无员工/用户管理入口,老板用户期望添加不同角色的本地员工（RBAC 设计存在：docs/RBAC_MATRIX_v0.2.0.md、scenarios/SC-002_create_user.md），但前端批发商路由中无任何员工/用户管理页面。设计意图与 UI 交付脱节,AppRouter.tsx 全量路由核查（无 user/staff 管理路由）+ 用户口述
+F-11,4,2026-08-21T17:21-17:30+08:00,HIGH_FRICTION,SKU 批量导入体验断裂,(1) 模板含约 40 行空数据导致无法导入且报错不指向原因；(2) 条码列写"无条码"占位文本时 preview 不报错（占位被当有效数据）而填中文字后直接 400，校验行为不一致且错误信息不可理解。导入是批发商建库主路径之一,POST /api/v1/skus/import/preview 400 @09:21:37Z & 09:30:27Z + 用户口述 + screenshot-06/07
+F-12,4,2026-08-21T17:35+08:00,CAPABILITY_GAP,商品字段结构待 CTO 三层产品方案落地,当前 SKU 字段结构单薄，不足以承载批发商品（价格/包装/条码等语义缺失，与 Step 8 定价摩擦直接相关）。按 CTO 指令：字段由三层产品结构方案改进，本任务不实施、仅记录联动要求：三层结构落地后需紧随完善导入与使用体验,用户口述（转述 CTO 决策）
+F-13,5,2026-08-21T17:4x+08:00,BLOCKER,零售商邀请入口为孤儿页面——经导航不可达,InvitePage(/invite) 已实现，但无任何导航入口：侧栏(Sidebar.tsx:32-38)无该项，RetailerListPage 无邀请按钮。真实批发商无法通过受支持的 UI 发现邀请流程 → 零售商获客链路断裂。修复建议(用户提出)：生成含批发商绑定信息的邀请二维码，零售商扫码打开浏览器注册即完成绑定,AppRouter.tsx 存在 /invite 路由 + Sidebar.tsx 全文无 invite + RetailerListPage 无 invite 按钮 + 用户全程未找到入口
+F-14,5-DIAGNOSTIC,2026-08-21T18:0x+08:00,BLOCKER,邀请生成功能前端完全缺失(UI-ONLY消费端),后端邀请API完整(POST /invitations 创建/lookup/revoke，api/v1/invitations.py)，前端 InvitePage(/invite/:code) 仅为零售商消费端；RetailerListPage 空态文案承诺 invitation link 但全前端零处调用 POST /invitations——批发商无法通过任何 UI 生成邀请。CTO条款4禁止代理调API，条款6触发二次停止。与F-13合并构成完整判定：获客链路后端就绪、前端生产端未交付,frontend grep 全量仅 InvitePage.tsx:29 一处 GET invitations + RetailerListPage.tsx:67 空态文案承诺 link + api/v1/invitations.py 完整API

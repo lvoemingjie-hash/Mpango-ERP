@@ -106,11 +106,13 @@ export function LoginPage() {
         return;
       }
 
-      // Condition D: Cold Start -> no tenants. DC-12R1-MVP-L1-J1-R1: the old
-      // dead onboarding tenant-creation route no longer exists; a zero-tenant
-      // login means this identity has no wholesaler workspace yet — send it
-      // to the public self-service signup entry instead of a 404.
-      navigate('/signup', { replace: true });
+      // Condition D: no tenant matches. DC-12R1-MVP-L1-J1-R1-R1 (F-B): the
+      // real /auth/login answers 401 for zero tenant matches, so this branch
+      // is a defensive impossibility guard only. It MUST fail closed: stay
+      // on the login page, persist nothing (the identity token above never
+      // entered the auth store), never auto-navigate. First-time wholesalers
+      // enter through the "Create wholesaler account" link -> /signup.
+      setServerError('Invalid credentials');
 
     } catch (err) {
       // PW1-R2 (D2 closure): fixed neutral copy only. Never surface

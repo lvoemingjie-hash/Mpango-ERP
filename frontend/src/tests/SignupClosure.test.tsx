@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { AppRouter } from '@/router/AppRouter';
@@ -26,27 +26,77 @@ const UUID_RE =
 function renderAt(path: string, element: React.ReactElement) {
   window.history.pushState({}, '', path);
   // createBrowserRouter is built once at module import; it only reacts to
-  // popstate, so notify it that the URL changed before rendering.
-  window.dispatchEvent(new PopStateEvent('popstate'));
+  // popstate, so notify it that the URL changed before rendering. Wrapped
+  // in act(): the router updates its state synchronously on popstate.
+  act(() => {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
   return render(element);
 }
 
-function fillValidForm() {
-  const user = userEvent.setup();
-  return user;
+/** Flush pending router/async state updates inside act() so no React
+ *  "not wrapped in act" warning can escape after the assertions. */
+async function settle() {
+  await act(async () => {});
 }
 
-async function submitValidSignup() {
+async function fillAndSubmit(email = 'owner@acme.com') {
   const user = userEvent.setup();
   await user.type(screen.getByLabelText(/company name/i), 'Acme Trading Ltd');
   await user.type(screen.getByLabelText(/country/i), 'ke');
-  await user.type(screen.getByLabelText(/^email/i), 'owner@acme.com');
-  await user.type(screen.getByLabelText(/^password/i), 'StrongPass123'); // pragma: allowlist secret
+  await user.type(screen.getByLabelText(/^email/i), email);
   await user.click(screen.getByRole('button', { name: /create account/i }));
   return user;
 }
 
-describe('DC-12R1-MVP-L1-J1-R1 wholesaler signup closure', () => {
+function identityLoginResponse(tenants: unknown[] = []) {
+  return {
+    data: {
+      success: true,
+      data: {
+        access_token: 'identity-token',
+        refresh_token: 'refresh-token',
+        token_type: 'bearer',
+        user_id: 'u1',
+        roles: ['wholesaler_admin'],
+        available_tenants: tenants,
+      },
+    },
+  };
+}
+
+const ME_RESPONSE = {
+  data: {
+    success: true,
+    data: {
+      id: 'u1',
+      email: 'owner@acme.com',
+      full_name: null,
+      tenant_id: 't1',
+      tenant_schema: 's1',
+      roles: ['wholesaler_admin'],
+      permissions: [],
+    },
+  },
+};
+
+const DASHBOARD_GETS = (url: string) => {
+  if (url.includes('/dashboards/kpi/summary')) {
+    return { data: { success: true, data: { cards: [], currency: 'KES' } } };
+  }
+  if (url.includes('/dashboards/charts/sales-trend')) {
+    return { data: { success: true, data: { data: [] } } };
+  }
+  if (url.includes('/orders')) {
+    return { data: { success: true, data: { items: [] } } };
+  }
+  if (url.includes('/inventory/stocks')) {
+    return { data: { success: true, data: { items: [] } } };
+  }
+  return { data: { success: true, data: {} } };
+};
+
+describe('DC-12R1-MVP-L1-J1-R1-R1 signup contract truth', () => {
   beforeEach(() => {
     mockPost.mockReset();
     mockGet.mockReset();
@@ -67,6 +117,7 @@ describe('DC-12R1-MVP-L1-J1-R1 wholesaler signup closure', () => {
         await screen.findByText('Create your wholesaler account'),
       ).toBeDefined();
       expect(screen.queryByText(/404|not found/i)).toBeNull();
+      await settle();
     });
 
     it('renders the signup entry link on the login page and it resolves inside the real router', async () => {
@@ -84,80 +135,76 @@ describe('DC-12R1-MVP-L1-J1-R1 wholesaler signup closure', () => {
       expect(
         await screen.findByText('Create your wholesaler account'),
       ).toBeDefined();
+      await settle();
     });
 
-    it('cold-start branch never references /onboarding/create-tenant', async () => {
-      // Simulate the cold-start login outcome: accepted identity login with
-      // zero available tenants must land on /signup (not a dead onboarding
-      // route).
-      mockPost.mockResolvedValue({
-        data: {
-          success: true,
-          data: {
-            access_token: 'identity-token',
-            refresh_token: 'refresh-token',
-            token_type: 'bearer',
-            user_id: 'u1',
-            roles: ['wholesaler_admin'],
-            available_tenants: [],
-          },
-        },
-      });
-      renderAt('/login', <AppRouter />);
-      const user = userEvent.setup();
-      await user.type(screen.getByLabelText(/^email/i), 'owner@acme.com');
-      await user.type(screen.getByLabelText(/^password/i), 'StrongPass123'); // pragma: allowlist secret
-      await user.click(screen.getByRole('button', { name: /sign in/i }));
-      await waitFor(() => {
-        expect(window.location.pathname).toBe('/signup');
-      });
-      expect(window.location.pathname).not.toContain('/onboarding');
-    });
-
-    it('LoginPage source no longer contains the dead route string', () => {
+    it('LoginPage source contains neither the dead onboarding route nor an auto-redirect to /signup', () => {
       expect(loginPageSource).not.toContain('/onboarding/create-tenant');
-      expect(loginPageSource).toContain('/signup');
+      expect(loginPageSource).not.toContain("navigate('/signup'");
     });
   });
 
-  describe('API contract conformance', () => {
-    it('submits payload and Idempotency-Key matching POST /auth/signup exactly', async () => {
+  describe('F-B: zero-tenant impossibility fails closed (defensive guard only)', () => {
+    it('a defensively-impossible 200+[] identity response stays on /login, shows neutral error, persists nothing', async () => {
+      // Truth (F-B): the real /auth/login answers 401 for zero tenant
+      // matches and can never emit 200 + available_tenants=[]. This test
+      // does NOT claim that state is reachable; it proves the defensive
+      // branch fails closed IF it ever fired.
+      mockPost.mockResolvedValue(identityLoginResponse([]));
+      const storageSetItem = vi.spyOn(Storage.prototype, 'setItem');
+
+      renderAt('/login', <AppRouter />);
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText(/^email/i), 'owner@acme.com');
+      await user.type(screen.getByLabelText(/^password/i), 'WhateverPass1');
+      await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Invalid credentials')).toBeDefined();
+      });
+      // Stays on the login page; no auto-navigation anywhere.
+      expect(window.location.pathname).toBe('/login');
+      // Nothing persisted: no identity token, no pending session.
+      expect(storageSetItem).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem('mpango-auth')).toBeNull();
+      await settle();
+    });
+  });
+
+  describe('F-A: passwordless contract', () => {
+    it('submits a payload with NO password field and a UUID Idempotency-Key', async () => {
       mockPost.mockResolvedValue({
         status: 202,
-        data: {
-          success: true,
-          data: {
-            registrationId: null,
-            status: 'pending_email_verification',
-            emailVerificationRequired: true,
-            resendAvailableAt: null,
-          },
-          message: 'If this email can be used, verification instructions will be sent.',
-          timestamp: '2026-08-20T00:00:00Z',
-        },
+        data: { success: true, data: { status: 'pending_email_verification' } },
       });
 
       renderAt('/signup', <BrowserRouter><SignupPage /></BrowserRouter>);
-      await submitValidSignup();
+      await fillAndSubmit();
 
       await waitFor(() => {
         expect(mockPost).toHaveBeenCalledTimes(1);
       });
       const [path, payload, config] = mockPost.mock.calls[0];
       expect(path).toBe('/auth/signup');
-      // camelCase aliases accepted by the backend Pydantic schema; email
-      // normalized to lower case; country upper-cased; optional empties
-      // omitted rather than sent as empty strings.
       expect(payload).toEqual({
         companyName: 'Acme Trading Ltd',
         country: 'KE',
         email: 'owner@acme.com',
-        password: 'StrongPass123', // pragma: allowlist secret
       });
+      // F-A: no password key anywhere in the payload.
+      expect(Object.keys(payload)).not.toContain('password');
       expect(config.headers['Idempotency-Key']).toMatch(UUID_RE);
     });
 
-    it('reaches neutral email-verification guidance on accepted signup and persists nothing', async () => {
+    it('the signup form never renders a password input', () => {
+      renderAt('/signup', <BrowserRouter><SignupPage /></BrowserRouter>);
+      expect(
+        screen.queryByLabelText(/^password/i, { selector: 'input' }),
+      ).toBeNull();
+      expect(document.querySelector('input[type="password"]')).toBeNull();
+    });
+
+    it('accepted signup shows verify-email + set-password guidance and persists nothing', async () => {
       mockPost.mockResolvedValue({
         status: 202,
         data: { success: true, data: { status: 'pending_email_verification' } },
@@ -165,24 +212,64 @@ describe('DC-12R1-MVP-L1-J1-R1 wholesaler signup closure', () => {
       const storageSetItem = vi.spyOn(Storage.prototype, 'setItem');
 
       renderAt('/signup', <BrowserRouter><SignupPage /></BrowserRouter>);
-      await submitValidSignup();
+      await fillAndSubmit();
 
       expect(await screen.findByText('Check your email')).toBeDefined();
-      expect(
-        screen.getByText(/verification instructions/i, { exact: false }),
-      ).toBeDefined();
-      // Neutral copy: no backend message, no raw response reflection.
-      expect(document.body.textContent).not.toContain(
-        'pending_email_verification',
-      );
+      // Copy must tell the customer they will SET a password later, and
+      // must not imply a password was already set.
+      expect(screen.getByText(/set your password/i)).toBeDefined();
+      expect(document.body.textContent).not.toMatch(/your password has been/i);
       expect(storageSetItem).not.toHaveBeenCalled();
-      // No navigation away with any token material.
       expect(window.location.pathname).toBe('/signup');
       expect(window.location.hash).toBe('');
       expect(window.location.search).toBe('');
     });
+  });
 
-    it('failure keeps idempotency key stable, shows neutral copy only, and does not navigate', async () => {
+  describe('F-C: idempotency truth (observable rotation)', () => {
+    it('failure retries reuse the SAME key; accepted success rotates it observably', async () => {
+      mockPost
+        .mockRejectedValueOnce({ response: { status: 500, data: {} } })
+        .mockResolvedValue({
+          status: 202,
+          data: { success: true, data: { status: 'pending_email_verification' } },
+        });
+
+      renderAt('/signup', <BrowserRouter><SignupPage /></BrowserRouter>);
+      // 1st submit fails.
+      const user = await fillAndSubmit('first@acme.com');
+      await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(1));
+      const failedKey = mockPost.mock.calls[0][2].headers['Idempotency-Key'];
+      expect(failedKey).toMatch(UUID_RE);
+
+      // 2nd submit (retry after failure): SAME key.
+      await user.click(screen.getByRole('button', { name: /create account/i }));
+      await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(2));
+      expect(mockPost.mock.calls[1][2].headers['Idempotency-Key']).toBe(failedKey);
+      // This retry is the accepted success.
+      expect(await screen.findByText('Check your email')).toBeDefined();
+
+      // Restart via the accepted panel; the next submission must use a
+      // DIFFERENT key — the rotation is observable, not implied.
+      await user.click(
+        screen.getByRole('button', { name: /register another account/i }),
+      );
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /create account/i }));
+      });
+      await fillAndSubmit('second@acme.com');
+      await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(3));
+      const rotatedKey = mockPost.mock.calls[2][2].headers['Idempotency-Key'];
+      expect(rotatedKey).toMatch(UUID_RE);
+      expect(rotatedKey).not.toBe(failedKey);
+      expect(mockPost.mock.calls[2][1]).toEqual({
+        companyName: 'Acme Trading Ltd',
+        country: 'KE',
+        email: 'second@acme.com',
+      });
+    });
+
+    it('failure shows neutral copy only: no backend message, code, request_id, or axios text', async () => {
       mockPost.mockRejectedValue({
         response: {
           status: 409,
@@ -196,69 +283,43 @@ describe('DC-12R1-MVP-L1-J1-R1 wholesaler signup closure', () => {
       });
 
       renderAt('/signup', <BrowserRouter><SignupPage /></BrowserRouter>);
-      const user = await submitValidSignup();
-      await waitFor(() => {
-        expect(mockPost).toHaveBeenCalledTimes(1);
-      });
+      await fillAndSubmit();
+      await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(1));
 
-      // Neutral error copy; raw backend/axios data never rendered.
-      expect(await screen.findByText(/unable to create your account/i)).toBeDefined();
+      expect(
+        await screen.findByText(/unable to create your account/i),
+      ).toBeDefined();
       expect(document.body.textContent).not.toContain('LEAKED INTERNAL DETAIL');
       expect(document.body.textContent).not.toContain('IDEMPOTENCY_CONFLICT');
       expect(document.body.textContent).not.toContain('req-123');
       expect(document.body.textContent).not.toContain('Network Error RAW');
       expect(window.location.pathname).toBe('/signup');
-
-      // Retry after failure reuses the SAME key (stable on failure).
-      await user.click(screen.getByRole('button', { name: /create account/i }));
-      await waitFor(() => {
-        expect(mockPost).toHaveBeenCalledTimes(2);
-      });
-      expect(mockPost.mock.calls[1][2].headers['Idempotency-Key']).toBe(
-        mockPost.mock.calls[0][2].headers['Idempotency-Key'],
-      );
     });
 
-    it('rotates the idempotency key only after an accepted success', async () => {
-      mockPost
-        .mockRejectedValueOnce({ response: { status: 500, data: {} } })
-        .mockResolvedValue({
-          status: 202,
-          data: { success: true, data: { status: 'pending_email_verification' } },
-        });
+    it('the key never enters URL, storage, or rendered UI', async () => {
+      mockPost.mockResolvedValue({
+        status: 202,
+        data: { success: true, data: { status: 'pending_email_verification' } },
+      });
+      const storageSetItem = vi.spyOn(Storage.prototype, 'setItem');
 
       renderAt('/signup', <BrowserRouter><SignupPage /></BrowserRouter>);
-      const user = await submitValidSignup();
-      await waitFor(() => {
-        expect(mockPost).toHaveBeenCalledTimes(1);
-      });
-      const failedKey = mockPost.mock.calls[0][2].headers['Idempotency-Key'];
+      await fillAndSubmit();
+      await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(1));
+      const key = mockPost.mock.calls[0][2].headers['Idempotency-Key'];
 
-      // Failure: still on the form with the same key. A second submit is not
-      // possible from the accepted state, so prove rotation by submitting
-      // again before acceptance state settles in a fresh failure-then-success
-      // sequence: first call failed, form stays; submit again -> same key
-      // must NOT have been rotated yet.
-      expect(screen.queryByText('Check your email')).toBeNull();
-      await user.click(screen.getByRole('button', { name: /create account/i }));
-      await waitFor(() => {
-        expect(mockPost).toHaveBeenCalledTimes(2);
-      });
-      expect(mockPost.mock.calls[1][2].headers['Idempotency-Key']).toBe(
-        failedKey,
-      );
-
-      // Accepted success now; key in the ref is rotated for any future use.
       expect(await screen.findByText('Check your email')).toBeDefined();
+      expect(document.body.textContent).not.toContain(key);
+      expect(window.location.href).not.toContain(key);
+      expect(storageSetItem).not.toHaveBeenCalled();
     });
   });
 
-  describe('validation mirrors the backend schema', () => {
+  describe('validation mirrors the backend schema (passwordless)', () => {
     it.each([
       ['companyName', 'a', /at least 2 characters/i],
       ['country', 'KEN', 'Country must be a 2-letter code (e.g. KE)'],
       ['email', 'not-an-email', /valid email/i],
-      ['password', 'short', /at least 8 characters/i],
     ])(
       'rejects invalid %s before any API call',
       async (field, value, message) => {
@@ -267,13 +328,11 @@ describe('DC-12R1-MVP-L1-J1-R1 wholesaler signup closure', () => {
         await user.type(screen.getByLabelText(/company name/i), 'Acme Trading Ltd');
         await user.type(screen.getByLabelText(/country/i), 'KE');
         await user.type(screen.getByLabelText(/^email/i), 'owner@acme.com');
-        await user.type(screen.getByLabelText(/^password/i), 'StrongPass123'); // pragma: allowlist secret
 
         const labelFor: Record<string, RegExp> = {
           companyName: /company name/i,
           country: /country/i,
           email: /^email/i,
-          password: /^password/i,
         };
         const input = screen.getByLabelText(labelFor[field]);
         await user.clear(input);
@@ -293,32 +352,27 @@ describe('DC-12R1-MVP-L1-J1-R1 wholesaler signup closure', () => {
         /company name/i,
         /country/i,
         /^email/i,
-        /^password/i,
         /phone/i,
         /business type/i,
       ]) {
         const el = screen.getByLabelText(label);
-        expect(el).toBeDefined();
         expect(el.tagName).toBe('INPUT');
-        expect(el.id).toBeDefined();
         expect(document.querySelector(`label[for="${el.id}"]`)).not.toBeNull();
       }
 
-      // Keyboard-only submit: fill via keyboard events and press Enter.
       mockPost.mockResolvedValue({
         status: 202,
         data: { success: true, data: { status: 'pending_email_verification' } },
       });
-      const user = fillValidForm();
+      const user = userEvent.setup();
       await user.type(screen.getByLabelText(/company name/i), 'Acme Trading Ltd');
       await user.type(screen.getByLabelText(/country/i), 'KE');
       await user.type(screen.getByLabelText(/^email/i), 'owner@acme.com');
-      await user.type(screen.getByLabelText(/^password/i), 'StrongPass123'); // pragma: allowlist secret
       await user.keyboard('{Enter}');
       await waitFor(() => {
         expect(mockPost).toHaveBeenCalledWith(
           '/auth/signup',
-          expect.objectContaining({ email: 'owner@acme.com' }),
+          expect.not.objectContaining({ password: expect.anything() }),
           expect.objectContaining({
             headers: expect.objectContaining({ 'Idempotency-Key': expect.any(String) }),
           }),
@@ -329,63 +383,46 @@ describe('DC-12R1-MVP-L1-J1-R1 wholesaler signup closure', () => {
 
   describe('guards remain correct', () => {
     it('anonymous visitor can reach /signup but a contextual session is redirected away from it', async () => {
-      // Anonymous: renders.
       const { unmount } = renderAt('/signup', <AppRouter />);
       expect(
         await screen.findByText('Create your wholesaler account'),
       ).toBeDefined();
       unmount();
 
-      // Contextual session: PublicRoute redirects public pages to /.
       const { useAuthStore } = await import('@/stores/authStore');
-      useAuthStore.getState().login(
-        {
-          access_token: 'a',
-          refresh_token: 'r',
-          token_type: 'bearer',
-          user_id: 'u1',
-          tenant_id: 't1',
-          tenant_schema: 's1',
-          roles: ['wholesaler_admin'],
-        },
-        {
-          id: 'u1',
-          email: 'owner@acme.com',
-          full_name: null,
-          tenant_id: 't1',
-          tenant_schema: 's1',
-          roles: ['wholesaler_admin'],
-          permissions: [],
-        },
-        'ACME',
-      );
+      await act(async () => {
+        useAuthStore.getState().login(
+          {
+            access_token: 'a',
+            refresh_token: 'r',
+            token_type: 'bearer',
+            user_id: 'u1',
+            tenant_id: 't1',
+            tenant_schema: 's1',
+            roles: ['wholesaler_admin'],
+          },
+          ME_RESPONSE.data.data,
+          'ACME',
+        );
+      });
       renderAt('/signup', <AppRouter />);
       await waitFor(() => {
         expect(window.location.pathname).toBe('/');
       });
-      useAuthStore.getState().logout();
+      await settle();
+      act(() => {
+        useAuthStore.getState().logout();
+      });
     });
   });
 
-  describe(' LoginPage regression: existing single/multi-tenant flows untouched', () => {
-    it('single-tenant login still auto-selects the tenant', async () => {
+  describe('LoginPage regression: existing single/multi-tenant flows untouched (F-OBS1)', () => {
+    it('single-tenant login really mounts the dashboard with no render error', async () => {
       mockPost.mockImplementation((path: string) => {
         if (path === '/auth/login') {
-          return Promise.resolve({
-            data: {
-              success: true,
-              data: {
-                access_token: 'identity-token',
-                refresh_token: 'refresh',
-                token_type: 'bearer',
-                user_id: 'u1',
-                roles: ['wholesaler_admin'],
-                available_tenants: [
-                  { id: 't1', code: 'ACME', name: 'Acme' },
-                ],
-              },
-            },
-          });
+          return Promise.resolve(
+            identityLoginResponse([{ id: 't1', code: 'ACME', name: 'Acme' }]),
+          );
         }
         if (path === '/auth/select-tenant') {
           return Promise.resolve({
@@ -403,54 +440,43 @@ describe('DC-12R1-MVP-L1-J1-R1 wholesaler signup closure', () => {
             },
           });
         }
-        if (path === '/auth/me') {
-          return Promise.resolve({
-            data: {
-              success: true,
-              data: {
-                id: 'u1',
-                email: 'owner@acme.com',
-                full_name: null,
-                tenant_id: 't1',
-                tenant_schema: 's1',
-                roles: ['wholesaler_admin'],
-                permissions: [],
-              },
-            },
-          });
-        }
         return Promise.reject(new Error('unexpected call'));
       });
+      mockGet.mockImplementation((url: string) =>
+        Promise.resolve(DASHBOARD_GETS(url)),
+      );
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
       const { useAuthStore } = await import('@/stores/authStore');
-      mockGet.mockResolvedValue({
-        data: {
-          success: true,
-          data: {
-            id: 'u1',
-            email: 'owner@acme.com',
-            full_name: null,
-            tenant_id: 't1',
-            tenant_schema: 's1',
-            roles: ['wholesaler_admin'],
-            permissions: [],
-          },
-        },
-      });
       renderAt('/login', <AppRouter />);
       const user = userEvent.setup();
       await user.type(screen.getByLabelText(/^email/i), 'owner@acme.com');
-      await user.type(screen.getByLabelText(/^password/i), 'StrongPass123'); // pragma: allowlist secret
+      await user.type(screen.getByLabelText(/^password/i), 'owner-pass-123'); // pragma: allowlist secret
       await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+      // The dashboard page truly mounts (real content, not just pathname).
       await waitFor(() => {
         expect(window.location.pathname).toBe('/');
       });
+      expect(
+        await screen.findByText(/welcome to your dashboard/i),
+      ).toBeDefined();
       expect(mockPost).toHaveBeenCalledWith(
         '/auth/select-tenant',
         { tenant_id: 't1' },
         expect.anything(),
       );
-      useAuthStore.getState().logout();
+      // Flush every pending async update first: the "no render error"
+      // assertion must hold in the settled final state (P2-3 closure).
+      await settle();
+      await settle();
+      expect(consoleError).not.toHaveBeenCalled();
+      act(() => {
+        useAuthStore.getState().logout();
+      });
+      await settle();
     });
   });
 });

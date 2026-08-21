@@ -6,19 +6,26 @@ import { z } from 'zod';
 import { authService } from '@/services/authService';
 
 /**
- * DC-12R1-MVP-L1-J1-R1: public wholesaler self-service signup entry.
+ * DC-12R1-MVP-L1-J1-R1-R1: public wholesaler self-service signup entry.
  *
- * Reuses the existing POST /auth/signup contract verbatim:
- *   - request fields/validation mirror backend schemas/auth_signup.py;
- *   - Idempotency-Key stays stable across failed submissions and is rotated
- *     only AFTER an accepted (2xx) success;
- *   - the 202 response is neutral and carries no tokens; nothing is ever
- *     written to localStorage/sessionStorage by this page;
- *   - accepted lifecycle: signup -> verify email -> setup credential ->
- *     login -> select tenant.
+ * Contract truth (F-A/F-B/F-C closure):
+ *   - This page NEVER asks for, displays, or submits a password. The
+ *     customer's single password is created later via setup-credential
+ *     after email verification (signup -> verify email -> provision ->
+ *     setup-credential -> login -> select tenant).
+ *   - Reuses the existing POST /auth/signup contract: request fields/
+ *     validation mirror backend schemas/auth_signup.py (passwordless).
+ *   - The Idempotency-Key lives in component memory only: generated lazily
+ *     (never on every render), kept stable across failed submissions, and
+ *     rotated only AFTER an accepted (2xx) success. The "Register another
+ *     account" restart makes that rotation observable and testable.
+ *   - The 202 response is neutral and carries no tokens; nothing is ever
+ *     written to localStorage/sessionStorage by this page.
  */
 
 // Mirrors backend SignupRequest (camelCase aliases accepted by Pydantic).
+// Password intentionally absent: it is deprecated on the backend and the
+// only password the customer ever sets arrives via setup-credential.
 const signupSchema = z.object({
   companyName: z
     .string()
@@ -31,10 +38,6 @@ const signupSchema = z.object({
     .regex(/^[A-Za-z]{2}$/, 'Country must be a 2-letter code (e.g. KE)')
     .transform((v) => v.toUpperCase()),
   email: z.string().trim().email('Please enter a valid email address'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password must be at most 128 characters'),
   phone: z
     .string()
     .trim()
@@ -62,14 +65,20 @@ export function SignupPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
 
-  // Kept in component memory only. Stable across failures; rotated only
-  // after an accepted success so a retry never reuses a consumed key and
-  // a failure never burns one.
-  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
+  // Lazy key storage: the ref starts null and the key is generated on first
+  // use only, so re-renders never call the generator (F-C fix).
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const currentKey = () => {
+    if (idempotencyKeyRef.current === null) {
+      idempotencyKeyRef.current = newIdempotencyKey();
+    }
+    return idempotencyKeyRef.current;
+  };
 
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
@@ -77,7 +86,6 @@ export function SignupPage() {
       companyName: '',
       country: '',
       email: '',
-      password: '',
       phone: '',
       businessType: '',
     },
@@ -90,16 +98,15 @@ export function SignupPage() {
       companyName: formData.companyName,
       country: formData.country,
       email: formData.email.toLowerCase(),
-      password: formData.password,
       ...(formData.phone ? { phone: formData.phone } : {}),
       ...(formData.businessType ? { businessType: formData.businessType } : {}),
     };
 
     try {
-      await authService.signup(payload, idempotencyKeyRef.current);
-      // Accepted success: rotate the key for any future submission, then
-      // show neutral email-verification guidance. Never navigate away with
-      // any token — none exist in the 202 response.
+      await authService.signup(payload, currentKey());
+      // Accepted success: rotate the key now so any later submission (the
+      // "Register another account" restart) uses a fresh key, then show
+      // neutral email-verification guidance.
       idempotencyKeyRef.current = newIdempotencyKey();
       setAccepted(true);
     } catch {
@@ -108,8 +115,8 @@ export function SignupPage() {
       // the signup endpoint intentionally does not disclose whether the
       // email is already registered.
       setServerError('Unable to create your account. Please try again.');
-      // Keep the same idempotencyKeyRef: a retry with identical payload is
-      // a safe replay; rotating here would burn the key on a failure.
+      // Keep the same key: a retry with identical payload is a safe replay;
+      // rotating here would burn the key on a failure.
     }
   };
 
@@ -129,9 +136,9 @@ export function SignupPage() {
               Check your email
             </h2>
             <p className="text-sm text-gray-600">
-              If this email can be used, verification instructions have been
-              sent to it. Follow the link in the email to verify your address,
-              set up your password, and sign in.
+              If this email can be used, we have sent verification
+              instructions to it. Open the link in the email to verify your
+              address — you will then set your password and sign in.
             </p>
             <div className="text-center text-sm">
               <Link
@@ -140,6 +147,20 @@ export function SignupPage() {
               >
                 Back to sign in
               </Link>
+            </div>
+            <div className="border-t border-gray-100 pt-4 text-center text-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  // Restart with the rotated key and a cleared form.
+                  reset();
+                  setServerError(null);
+                  setAccepted(false);
+                }}
+                className="font-medium text-primary-600 hover:text-primary-700"
+              >
+                Register another account
+              </button>
             </div>
           </div>
         </div>
@@ -230,28 +251,6 @@ export function SignupPage() {
             {errors.email && (
               <p className="mt-1 text-xs text-red-600">
                 {errors.email.message}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label
-              htmlFor="password"
-              className="mb-1 block text-sm font-medium text-gray-700"
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              placeholder="At least 8 characters"
-              className="input-field"
-              {...register('password')}
-            />
-            {errors.password && (
-              <p className="mt-1 text-xs text-red-600">
-                {errors.password.message}
               </p>
             )}
           </div>

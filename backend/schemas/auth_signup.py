@@ -9,12 +9,21 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class SignupRequest(BaseModel):
-    """Public tenant signup request."""
+    """Public tenant signup request.
+
+    DC-12R1-MVP-L1-J1-R1-R1 (F-A): the customer's ONLY password is set later
+    via /auth/onboarding/setup-credential. ``password`` is therefore optional
+    and deprecated: it is accepted (and policy-validated) for legacy clients
+    only, and is NEVER stored in ``password_hash`` nor accepted as a login
+    credential. New clients MUST omit it.
+    """
 
     company_name: str = Field(..., alias="companyName", min_length=2, max_length=255)
     country: str = Field(..., min_length=2, max_length=2)
     email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
+    password: str | None = Field(
+        None, min_length=8, max_length=128, deprecated=True
+    )
     phone: str | None = Field(None, max_length=32)
     business_type: str | None = Field(None, alias="businessType", max_length=64)
 

@@ -44,7 +44,9 @@ export interface SignupRequest {
   companyName: string;
   country: string;
   email: string;
-  password: string;
+  // R1-R1 (F-A): no password here. The customer's single password is set
+  // via setup-credential after email verification; the backend field is
+  // deprecated and the signup page must never collect one.
   phone?: string;
   businessType?: string;
 }

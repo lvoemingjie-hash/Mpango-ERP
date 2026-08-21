@@ -147,7 +147,8 @@ def _signup_payload(email: str) -> dict[str, str]:
         "email": email,
         "phone": "+254700000000",
         "businessType": "wholesale",
-        "password": SIGNUP_PASSWORD,
+        # R1-R1 (F-A): signup is passwordless; the owner's single password
+        # is created later via setup-credential.
     }
 
 
@@ -340,8 +341,8 @@ async def test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_a
     registration_id = pending["id"]
     assert pending["status"] == "pending_email_verification"
     assert pending["owner_email"] == email
-    assert pending["password_hash"] is not None
-    assert pending["password_hash"] != SIGNUP_PASSWORD
+    # R1-R1 (F-A): new registrations never store a signup password.
+    assert pending["password_hash"] is None
     assert pending["tenant_schema"] is None
     assert pending["wholesaler_id"] is None
 

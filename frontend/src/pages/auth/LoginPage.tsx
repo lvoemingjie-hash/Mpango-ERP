@@ -106,8 +106,13 @@ export function LoginPage() {
         return;
       }
 
-      // Condition D: Cold Start -> no tenants
-      navigate('/onboarding/create-tenant', { replace: true });
+      // Condition D: no tenant matches. DC-12R1-MVP-L1-J1-R1-R1 (F-B): the
+      // real /auth/login answers 401 for zero tenant matches, so this branch
+      // is a defensive impossibility guard only. It MUST fail closed: stay
+      // on the login page, persist nothing (the identity token above never
+      // entered the auth store), never auto-navigate. First-time wholesalers
+      // enter through the "Create wholesaler account" link -> /signup.
+      setServerError('Invalid credentials');
 
     } catch (err) {
       // PW1-R2 (D2 closure): fixed neutral copy only. Never surface
@@ -206,6 +211,14 @@ export function LoginPage() {
           <div className="text-center text-sm">
             <Link to="/forgot-password" className="font-medium text-primary-600 hover:text-primary-700">
               Forgot password?
+            </Link>
+          </div>
+
+          {/* DC-12R1-MVP-L1-J1-R1: first-time wholesaler entry point */}
+          <div className="border-t border-gray-100 pt-4 text-center text-sm">
+            <span className="text-gray-500">New wholesaler? </span>
+            <Link to="/signup" className="font-medium text-primary-600 hover:text-primary-700">
+              Create wholesaler account
             </Link>
           </div>
         </form>

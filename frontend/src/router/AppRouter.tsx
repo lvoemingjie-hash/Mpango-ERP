@@ -4,6 +4,7 @@ import { CLIENT_PERMISSIONS } from '@/utils/permissions';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
+import { SignupPage } from '@/pages/auth/SignupPage';
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
 import { SetupCredentialPage } from '@/pages/auth/SetupCredentialPage';
@@ -72,6 +73,11 @@ const router = createBrowserRouter([
     element: <PublicRoute />,
     children: [
       { path: '/login', element: <LoginPage /> },
+      // DC-12R1-MVP-L1-J1-R1: public wholesaler self-service signup entry.
+      // Closes the dead onboarding tenant-creation cold-start gap: a
+      // first-time wholesaler now starts through this page via
+      // POST /auth/signup.
+      { path: '/signup', element: <SignupPage /> },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/reset-password', element: <ResetPasswordPage /> },
       { path: '/setup-credential', element: <SetupCredentialPage /> },

@@ -4,6 +4,8 @@ import type {
   LoginResponse,
   IdentityLoginResponse,
   SelectTenantRequest,
+  SignupRequest,
+  SignupResponse,
   CurrentUserResponse,
   RetailerLoginRequest,
   RetailerLoginResponse,
@@ -21,6 +23,15 @@ export const authService = {
     api.post<LoginResponse>('/auth/select-tenant', payload,
       token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
     ),
+
+  // DC-12R1-MVP-L1-J1-R1: wholesaler self-service signup. Reuses the existing
+  // POST /auth/signup contract verbatim (202, neutral response, no tokens).
+  // The Idempotency-Key header is supplied by the caller, which keeps the key
+  // stable across retries and rotates it only after an accepted success.
+  signup: (payload: SignupRequest, idempotencyKey: string) =>
+    api.post<SignupResponse>('/auth/signup', payload, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }),
 
   refresh: (refreshToken: string) =>
     api.post<LoginResponse>('/auth/refresh', { refresh_token: refreshToken }),

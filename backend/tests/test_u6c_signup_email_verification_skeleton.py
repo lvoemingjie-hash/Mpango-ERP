@@ -21,7 +21,12 @@ from services.email_delivery import (
     clear_dev_email_deliveries,
     get_dev_email_deliveries,
 )
-from services.onboarding_service import create_signup_registration
+from core.config import get_settings
+from services.onboarding_service import (
+    _hash_optional_value,
+    _request_fingerprint_hash_with_password,
+    create_signup_registration,
+)
 
 
 pytestmark = pytest.mark.asyncio
@@ -99,16 +104,28 @@ async def _client() -> AsyncClient:
     return AsyncClient(transport=transport, base_url="http://testserver")
 
 
-def _signup_payload(email: str, *, company_name: str | None = None) -> dict[str, str]:
+def _signup_payload(
+    email: str,
+    *,
+    company_name: str | None = None,
+    legacy_password: bool = False,
+) -> dict[str, str]:
+    """Build a signup payload.
+
+    Default (R1-R1 contract): passwordless, matching new clients.
+    ``legacy_password=True`` appends the deprecated password field the way
+    pre-R1-R1 clients still send it.
+    """
     unique = uuid.uuid4().hex[:8]
-    payload = {
+    payload: dict[str, str] = {
         "companyName": company_name or f"U6C Company {unique}",
         "country": "KE",
         "email": email,
         "phone": "+254700000000",
         "businessType": "wholesale",
     }
-    payload["password"] = VALID_PASSWORD
+    if legacy_password:
+        payload["password"] = VALID_PASSWORD
     return payload
 
 
@@ -200,10 +217,80 @@ async def test_signup_creates_pending_registration_and_one_active_verification_t
     registration = rows[0]
     assert registration["owner_email"] == email
     assert registration["status"] == "pending_email_verification"
-    assert registration["password_hash"] != VALID_PASSWORD
+    # F-A: the signup password no longer exists; nothing may be stored.
+    assert registration["password_hash"] is None
 
     tokens = await _active_verification_tokens(registration["id"])
     assert len(tokens) == 1
+
+
+async def test_passwordless_signup_is_the_new_client_contract_and_stores_no_hash():
+    """F-A: new clients omit password entirely; password_hash must be NULL."""
+    email = f"u6c_{uuid.uuid4().hex}@example.com"
+    assert "password" not in _signup_payload(email)
+
+    async with await _client() as client:
+        response = await client.post("/api/v1/auth/signup", json=_signup_payload(email))
+
+    assert response.status_code == 202, response.text
+    registration = (await _registration_rows(email))[0]
+    assert registration["password_hash"] is None
+
+
+async def test_legacy_password_is_accepted_but_never_stored():
+    """F-A compatibility: a legacy client may still send a (valid) password;
+    it is discarded, never written to password_hash, never a credential."""
+    email = f"u6c_{uuid.uuid4().hex}@example.com"
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/auth/signup", json=_signup_payload(email, legacy_password=True)
+        )
+
+    assert response.status_code == 202, response.text
+    registration = (await _registration_rows(email))[0]
+    assert registration["password_hash"] is None
+
+
+async def test_legacy_replay_with_different_password_same_key_is_not_a_conflict():
+    """F-A fingerprint truth: password is excluded from the canonical
+    fingerprint, so the same idempotency key replayed by a legacy client with
+    a different (discarded) password must replay, not 409."""
+    email = f"u6c_{uuid.uuid4().hex}@example.com"
+    first_payload = _signup_payload(email, legacy_password=True)
+    second_payload = dict(first_payload)
+    second_payload["password"] = "AnotherLegacyCred456!"  # pragma: allowlist secret
+    headers = {"Idempotency-Key": f"u6c-{uuid.uuid4().hex}"}
+
+    async with await _client() as client:
+        first = await client.post("/api/v1/auth/signup", json=first_payload, headers=headers)
+        second = await client.post("/api/v1/auth/signup", json=second_payload, headers=headers)
+
+    assert first.status_code == 202, first.text
+    assert second.status_code == 202, second.text
+    assert second.json()["data"] == first.json()["data"]
+    assert len(await _registration_rows(email)) == 1
+
+
+async def test_fingerprint_deterministic_for_passwordless_and_legacy_payloads():
+    """F-A: passwordless and legacy-password variants of the same logical
+    signup under the SAME idempotency key must replay (identical fingerprint
+    because password is excluded), not raise IDEMPOTENCY_CONFLICT."""
+    email = f"u6c_{uuid.uuid4().hex}@example.com"
+    company = "U6C Fingerprint Co"
+    passwordless = _signup_payload(email, company_name=company)
+    legacy = _signup_payload(email, company_name=company, legacy_password=True)
+    headers = {"Idempotency-Key": f"u6c-{uuid.uuid4().hex}"}
+
+    async with await _client() as client:
+        first = await client.post("/api/v1/auth/signup", json=passwordless, headers=headers)
+        second = await client.post("/api/v1/auth/signup", json=legacy, headers=headers)
+
+    assert first.status_code == 202, first.text
+    assert second.status_code == 202, second.text
+    assert second.json()["data"] == first.json()["data"]
+    rows = await _registration_rows(email)
+    assert len(rows) == 1
+    assert rows[0]["password_hash"] is None
 
 
 async def test_signup_stores_only_token_hash_and_dev_sink_captures_delivery():
@@ -355,6 +442,104 @@ async def test_invalid_email_or_password_returns_validation_error_without_db_wri
     assert response.status_code == 422
     after = await _registration_rows("u6c_invalid@example.com")
     assert before == after == []
+
+
+async def test_legacy_fingerprint_record_replays_under_new_code_without_409():
+    """R1-R1 cross-version compatibility (real DB preset).
+
+    A registration row written by the PRE-R1-R1 code stores a fingerprint
+    that includes the (now deprecated) password. A legacy client retrying
+    the same idempotency key with its original payload must still replay
+    under the new code instead of receiving a spurious 409.
+    """
+    settings = get_settings()
+    email = f"u6c_{uuid.uuid4().hex}@example.com"
+    key = f"u6c-legacy-{uuid.uuid4().hex}"
+    payload = _signup_payload(email, legacy_password=True)
+
+    # Preset the database exactly as the old code would have written it:
+    # OLD-format fingerprint (password included) + key hash, NULL password.
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        await session.execute(
+            text(
+                "INSERT INTO public.tenant_registrations "
+                "(company_name, country, business_type, phone, owner_email, "
+                " password_hash, status, idempotency_key_hash, "
+                " request_fingerprint_hash, expires_at) "
+                "VALUES (:c, :co, :b, :p, :e, NULL, 'pending_email_verification', "
+                " :ikh, :fph, now() + interval '24 hours')"
+            ),
+            {
+                "c": payload["companyName"],
+                "co": payload["country"],
+                "b": payload["businessType"],
+                "p": payload["phone"],
+                "e": email,
+                "ikh": _hash_optional_value(key, settings),
+                "fph": _legacy_fingerprint(payload, email),
+            },
+        )
+        await session.commit()
+
+    async with await _client() as client:
+        replay = await client.post(
+            "/api/v1/auth/signup", json=payload, headers={"Idempotency-Key": key}
+        )
+
+    assert replay.status_code == 202, replay.text
+    rows = await _registration_rows(email)
+    assert len(rows) == 1  # replayed the preset row; no new registration
+    assert rows[0]["password_hash"] is None
+
+
+async def test_legacy_fingerprint_record_still_409_for_different_payload():
+    """A different payload under the same key must still conflict, even in
+    the compat path: the legacy fingerprint must actually match."""
+    settings = get_settings()
+    email = f"u6c_{uuid.uuid4().hex}@example.com"
+    key = f"u6c-legacy-{uuid.uuid4().hex}"
+    preset = _signup_payload(email, legacy_password=True)
+    different = _signup_payload(email, company_name="Different Co Ltd", legacy_password=True)
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        await session.execute(
+            text(
+                "INSERT INTO public.tenant_registrations "
+                "(company_name, country, business_type, phone, owner_email, "
+                " password_hash, status, idempotency_key_hash, "
+                " request_fingerprint_hash, expires_at) "
+                "VALUES (:c, :co, :b, :p, :e, NULL, 'pending_email_verification', "
+                " :ikh, :fph, now() + interval '24 hours')"
+            ),
+            {
+                "c": preset["companyName"],
+                "co": preset["country"],
+                "b": preset["businessType"],
+                "p": preset["phone"],
+                "e": email,
+                "ikh": _hash_optional_value(key, settings),
+                "fph": _legacy_fingerprint(preset, email),
+            },
+        )
+        await session.commit()
+
+    async with await _client() as client:
+        conflict = await client.post(
+            "/api/v1/auth/signup", json=different, headers={"Idempotency-Key": key}
+        )
+
+    assert conflict.status_code == 409, conflict.text
+    assert conflict.json()["detail"]["code"] == "IDEMPOTENCY_CONFLICT"
+
+
+def _legacy_fingerprint(payload: dict, email: str) -> str:
+    """The exact pre-R1-R1 canonical fingerprint algorithm (password in)."""
+    from schemas.auth_signup import SignupRequest
+
+    request = SignupRequest(**payload)
+    return _request_fingerprint_hash_with_password(request, email, get_settings())
 
 
 async def test_signup_does_not_create_tenant_schema_users_roles_or_rbac():

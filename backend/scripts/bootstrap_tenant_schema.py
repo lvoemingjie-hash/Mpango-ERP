@@ -1321,6 +1321,19 @@ async def _reconcile_rbac_s1(db, ts: str) -> None:
         ))
         await db.flush()
         await _grant(ADMIN_ROLE, ("payments:confirm_declaration",))
+    # DC-12R1-MVP-L1-J1-H2-A-R1: seed retailers:deactivate and grant to
+    # admin idempotently (same pattern as the S2B-I1 block below) so
+    # re-running bootstrap on an EXISTING tenant delivers the dual-entry
+    # post-hoc control without a migration.
+    if "retailers:deactivate" in ADMIN_PERMISSION_CODES:
+        await db.execute(text(
+            f"INSERT INTO {perms_t} (code, description) "
+            "VALUES ('retailers:deactivate', "
+            "'Deactivate a retailer binding relationship') "
+            "ON CONFLICT (code) DO NOTHING"
+        ))
+        await db.flush()
+        await _grant(ADMIN_ROLE, ("retailers:deactivate",))
     # S2B-I1: remove stale client:payments:create from retailer_operator
     await db.execute(text(
         f"DELETE FROM {role_perms_t} "

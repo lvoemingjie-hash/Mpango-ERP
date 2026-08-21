@@ -7,6 +7,9 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { invitationService, type InvitationData } from '@/services/invitationService';
 import { copyToClipboard } from '@/utils/clipboard';
 
+/** Fixed share text — never embeds anything but the supplier-facing words. */
+const SHARE_TITLE = 'Join me on Mpango ERP';
+
 /**
  * DC-12R1-MVP-L1-J1-H2-A: wholesaler-side retailer invitation authoring page.
  *
@@ -191,6 +194,7 @@ function InvitationCreated({
 }) {
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [shared, setShared] = useState<boolean | null>(null);
 
   // Secure link contract: code ONLY in the fragment, never a path segment.
   const secureLink = `${window.location.origin}/invite#code=${encodeURIComponent(invitation.code)}`;
@@ -199,6 +203,26 @@ function InvitationCreated({
     const ok = await copyToClipboard(what === 'link' ? secureLink : invitation.code);
     setCopied(ok ? what : null);
     setCopyFailed(!ok);
+  };
+
+  // Web Share API (mobile): lets the wholesaler pick WhatsApp or any
+  // installed app directly. The invitation code rides ONLY in the shared
+  // URL's fragment (never a wa.me query string, never WhatsApp Business
+  // API). Any failure — unsupported browser, dismissed sheet, OS error —
+  // falls back to the copy actions below (neutral, no error details).
+  const share = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({ title: SHARE_TITLE, url: secureLink });
+        setShared(true);
+        return;
+      }
+    } catch {
+      // Swallowed: user dismissal or unsupported — the copy fallback below
+      // is the path; never surface share internals.
+    }
+    setShared(false);
+    setCopyFailed(false);
   };
 
   return (
@@ -240,10 +264,13 @@ function InvitationCreated({
       </dl>
 
       <div className="flex flex-wrap gap-3">
+        <button type="button" onClick={share} className="btn-primary text-sm">
+          Share invite
+        </button>
         <button
           type="button"
           onClick={() => copy('link')}
-          className="btn-primary text-sm"
+          className="btn-secondary text-sm"
         >
           {copied === 'link' ? 'Link copied' : 'Copy secure invite link'}
         </button>
@@ -254,6 +281,16 @@ function InvitationCreated({
         >
           {copied === 'code' ? 'Code copied' : 'Copy invitation code'}
         </button>
+        {shared === true && (
+          <p className="w-full text-xs text-green-700" data-testid="share-done">
+            Shared.
+          </p>
+        )}
+        {shared === false && (
+          <p className="w-full text-xs text-gray-500" data-testid="share-fallback">
+            Sharing is not available here — use the copy buttons instead.
+          </p>
+        )}
         <button type="button" onClick={onAnother} className="btn-secondary text-sm">
           Create another
         </button>

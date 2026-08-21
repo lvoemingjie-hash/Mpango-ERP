@@ -49,6 +49,8 @@ import { ReceiptPrintPage } from '@/pages/print/ReceiptPrintPage';
 import { StatementPrintPage } from '@/pages/print/StatementPrintPage';
 // DC-12R1-S1: retailer credential setup/reset pages (fragment-only token transport)
 import { RetailerSetupCredentialPage } from '@/pages/retailer/RetailerSetupCredentialPage';
+// DC-12R1-MVP-L1-J1-H2-A-R1: public dual-entry retailer self-join.
+import { RetailerJoinPage } from '@/pages/retailer/RetailerJoinPage';
 import { RetailerResetPasswordPage } from '@/pages/retailer/RetailerResetPasswordPage';
 // Platform Admin Cockpit pages (P11)
 import { PlatformOverviewPage } from '@/pages/platform/PlatformOverviewPage';
@@ -95,6 +97,13 @@ const router = createBrowserRouter([
   {
     path: '/retail/login',
     element: <ClientLoginPage />,
+  },
+  // DC-12R1-MVP-L1-J1-H2-A-R1: /retail/join is the public dual-entry
+  // self-join page (invitation link OR public supplier code). Credentials
+  // (invitation code / join intent) travel only in JSON bodies.
+  {
+    path: '/retail/join',
+    element: <RetailerJoinPage />,
   },
   // /client/login is kept as a compatibility redirect/alias preserving `w`.
   {

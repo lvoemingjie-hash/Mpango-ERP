@@ -26,27 +26,27 @@ WINDOW_SIZE = 60  # seconds (1 minute)
 class RateLimiter:
     """
     S2-5: Redis-backed rate limiter using Fixed Window algorithm.
-    
+
     Strategy:
     - Anonymous requests: Limited by IP address (100 req/min)
     - Authenticated requests: Limited by tenant_id + user_id (1000 req/min)
-    
+
     Redis Keys:
     - rate_limit:ip:{ip_address}:{window} -> count
     - rate_limit:tenant:{tenant_id}:{user_id}:{window} -> count
     """
-    
+
     def __init__(self, redis_client: Optional[Redis] = None):
         """
         Initialize rate limiter.
-        
+
         Args:
             redis_client: Optional Redis client. If None, creates new client from config.
         """
         self.settings = get_settings()
         self._redis: Optional[Redis] = redis_client
         self._redis_url = self.settings.REDIS_URL
-    
+
     async def _get_redis(self) -> Redis:
         """Get or create Redis client."""
         if self._redis is None:
@@ -56,37 +56,37 @@ class RateLimiter:
                 decode_responses=True
             )
         return self._redis
-    
+
     async def check_rate_limit(self, request: Request) -> Tuple[bool, int, int]:
         """
         Check if request is within rate limit.
-        
+
         Args:
             request: FastAPI request object
-            
+
         Returns:
             Tuple of (is_allowed, current_count, limit)
-            
+
         Raises:
             MpangoAPIException: If rate limit exceeded
         """
         # Determine rate limit key and limit
         key, limit = await self._get_rate_limit_key(request)
-        
+
         # Get current window
         current_window = int(time.time() / WINDOW_SIZE)
         redis_key = f"{key}:{current_window}"
-        
+
         try:
             redis = await self._get_redis()
-            
+
             # Increment counter
             count = await redis.incr(redis_key)
-            
+
             # Set expiry on first request in window
             if count == 1:
                 await redis.expire(redis_key, WINDOW_SIZE)
-            
+
             # Check if limit exceeded
             if count > limit:
                 logger.warning(
@@ -98,7 +98,7 @@ class RateLimiter:
                         "window": current_window
                     }
                 )
-                
+
                 # Record metric
                 from core.prometheus_metrics import http_requests_total
                 tenant = getattr(request.state, 'tenant_id', 'unknown')
@@ -108,7 +108,7 @@ class RateLimiter:
                     status_code=429,
                     tenant=tenant
                 ).inc()
-                
+
                 raise MpangoAPIException(
                     error_code=ErrorCode.RATE_LIMIT_EXCEEDED,
                     message=f"Rate limit exceeded. Maximum {limit} requests per minute.",
@@ -119,9 +119,9 @@ class RateLimiter:
                         "retry_after": WINDOW_SIZE - (int(time.time()) % WINDOW_SIZE)
                     }
                 )
-            
+
             return True, count, limit
-            
+
         except MpangoAPIException:
             # Re-raise rate limit exception
             raise
@@ -134,7 +134,7 @@ class RateLimiter:
             )
             # Fail open - allow request if rate limiter fails
             return True, 0, limit
-    
+
     async def _get_rate_limit_key(self, request: Request) -> Tuple[str, int]:
         """
         PW1-R3: determine the rate limit key from the VERIFIED server-side
@@ -161,12 +161,12 @@ class RateLimiter:
             # downgrade into an unclassified bucket ambiguity — treat as
             # anonymous (IP bucket) rather than trusting a partial context.
             tenant_id = None
-        
+
         if tenant_id and user_id:
             # Authenticated: Use tenant + user
             key = f"rate_limit:tenant:{tenant_id}:{user_id}"
             limit = DEFAULT_TENANT_LIMIT
-            
+
             logger.debug(
                 "Rate limit check (authenticated)",
                 extra={
@@ -180,7 +180,7 @@ class RateLimiter:
             client_ip = self._get_client_ip(request)
             key = f"rate_limit:ip:{client_ip}"
             limit = DEFAULT_IP_LIMIT
-            
+
             logger.debug(
                 "Rate limit check (anonymous)",
                 extra={
@@ -188,13 +188,58 @@ class RateLimiter:
                     "limit": limit
                 }
             )
-        
+
         return key, limit
-    
+
+    async def check_endpoint_rate_limit(
+        self,
+        request: Request,
+        *,
+        namespace: str,
+        limit: int,
+    ) -> Tuple[bool, int, int]:
+        """DC-12R1-MVP-L1-J1-H2-A-R1: endpoint-scoped anonymous bucket.
+
+        Separate fixed-window buckets per endpoint namespace (e.g.
+        ``lookup_code``, ``public_register``) on top of the global
+        middleware limit, so code lookup, join-intent issuance and public
+        registration are rate limited INDEPENDENTLY (dual-entry contract).
+        Keys are IP-based and never carry request payload content.
+        """
+        ip = self._get_client_ip(request)
+        current_window = int(time.time() / WINDOW_SIZE)
+        redis_key = f"rate_limit:ep:{namespace}:{ip}:{current_window}"
+        try:
+            redis = await self._get_redis()
+            count = await redis.incr(redis_key)
+            if count == 1:
+                await redis.expire(redis_key, WINDOW_SIZE)
+            if count > limit:
+                raise MpangoAPIException(
+                    error_code=ErrorCode.RATE_LIMIT_EXCEEDED,
+                    message=f"Rate limit exceeded. Maximum {limit} requests per minute.",
+                    status_code=429,
+                    details={
+                        "limit": limit,
+                        "window_size": WINDOW_SIZE,
+                        "retry_after": WINDOW_SIZE - (int(time.time()) % WINDOW_SIZE),
+                    },
+                )
+            return True, count, limit
+        except MpangoAPIException:
+            raise
+        except Exception as e:  # pragma: no cover - Redis down: fail open
+            logger.error(
+                f"Endpoint rate limiter error: {type(e).__name__}",
+                exc_info=e,
+                extra={"redis_key": redis_key},
+            )
+            return True, 0, limit
+
     def _get_client_ip(self, request: Request) -> str:
         """
         Extract client IP address from request.
-        
+
         Checks X-Forwarded-For header first (for proxies), then falls back to client.host.
         """
         # Check X-Forwarded-For header (for proxies/load balancers)
@@ -202,18 +247,18 @@ class RateLimiter:
         if forwarded_for:
             # Take first IP in chain
             return forwarded_for.split(",")[0].strip()
-        
+
         # Check X-Real-IP header
         real_ip = request.headers.get("X-Real-IP")
         if real_ip:
             return real_ip.strip()
-        
+
         # Fall back to direct client IP
         if request.client:
             return request.client.host
-        
+
         return "unknown"
-    
+
     async def close(self):
         """Close Redis connection."""
         if self._redis:

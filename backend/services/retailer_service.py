@@ -61,6 +61,50 @@ class RetailerService:
         except RetailerProvisioningError as exc:
             return None, None, None, exc.code
 
+    async def register_with_join_intent(
+        self,
+        db: AsyncSession,
+        *,
+        join_intent_wholesaler_id: uuid.UUID,
+        phone: str,
+        email: str,
+        name: str | None = None,
+        address: str | None = None,
+    ):
+        """Accept a VERIFIED join intent (dual-entry entry B).
+
+        The API layer verifies the signed intent and passes ONLY the
+        server-extracted ``join_intent_wholesaler_id`` — a client-submitted
+        wholesaler id can never reach this method. Returns a 5-tuple
+        (invitation(None), retailer, binding, error_code, wholesaler); on a
+        controlled failure the middle three are None. The caller (API) is
+        expected to commit/rollback the transaction.
+        """
+        # Local import avoids a circular dependency at module import time.
+        from services.retailer_provisioning_service import (
+            RetailerProvisioningError,
+            RetailerProvisioningService,
+        )
+
+        service = RetailerProvisioningService(db)
+        try:
+            result = await service.register_with_join_intent(
+                wholesaler_id=join_intent_wholesaler_id,
+                phone=phone,
+                email=email,
+                name=name,
+                address=address,
+            )
+            return (
+                None,
+                result.retailer,
+                result.binding,
+                None,
+                result.wholesaler,
+            )
+        except RetailerProvisioningError as exc:
+            return None, None, None, exc.code, None
+
     async def list_bindings_for_wholesaler(
         self,
         db: AsyncSession,

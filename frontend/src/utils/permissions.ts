@@ -133,3 +133,13 @@ export const INVITATION_PERMISSIONS = {
   CREATE: 'invitations:create',
   REVOKE: 'invitations:revoke',
 } as const;
+
+/**
+ * Wholesaler retailer-relationship permission codes — DC-12R1-MVP-L1-J1-H2-A-R1.
+ * Must match the backend RequirePermission(...) string byte-for-byte
+ * (api/v1/retailers.py + core/permission_registry.py). Gates the Customers
+ * page deactivate control for dual-entry relationships.
+ */
+export const RETAILER_PERMISSIONS = {
+  DEACTIVATE: 'retailers:deactivate',
+} as const;

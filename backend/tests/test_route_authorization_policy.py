@@ -170,6 +170,9 @@ PUBLIC_ALLOWLIST: Set[str] = {
     # exchanged for a single contextual JWT; no cross-tenant discovery.
     "/api/v1/client/auth/login",
     "/api/v1/invitations/lookup",
+    # DC-12R1-MVP-L1-J1-H2-A-R1: public supplier-code lookup (dual-entry
+    # entry B); CTO-approved with the dual-entry contract.
+    "/api/v1/wholesalers/lookup-code",
 }
 
 # Internal-only test/diagnostic endpoints. These MUST still be gated by
@@ -958,6 +961,7 @@ class TestPublicAllowlistIntegrity:
             # DC-12R1-S2 (CTO-approved): pre-auth supplier-scoped retailer login.
             "/api/v1/client/auth/login",
             "/api/v1/invitations/lookup",
+            "/api/v1/wholesalers/lookup-code",
         }, (
             "PUBLIC_ALLOWLIST was modified. Any addition requires CTO sign-off. "
             "Current: " + str(PUBLIC_ALLOWLIST)

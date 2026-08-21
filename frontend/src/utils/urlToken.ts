@@ -19,6 +19,12 @@ export const SENSITIVE_QUERY_PARAMS = [
   'token',
   'newPassword',
   'new_password',
+  // DC-12R1-MVP-L1-J1-H2-A: the invitation code is a bearer credential for
+  // the public /invite landing page. It may ONLY travel in the URL fragment
+  // (/invite#code=...), never in the query string.
+  'code',
+  'invitation_code',
+  'invitationCode',
 ] as const;
 
 export type ReadTokenResult =
@@ -34,7 +40,7 @@ export type ReadTokenResult =
 export function readFragmentToken(
   search: string,
   hash: string,
-  fragmentParam: 'setupToken' | 'resetToken',
+  fragmentParam: 'setupToken' | 'resetToken' | 'code',
 ): ReadTokenResult {
   const queryParams = new URLSearchParams(search);
   if (SENSITIVE_QUERY_PARAMS.some((p) => queryParams.has(p))) {

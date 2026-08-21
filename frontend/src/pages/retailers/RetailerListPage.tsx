@@ -1,15 +1,26 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { retailerService, type RetailerWithBinding } from '@/services/retailerService';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { UsersIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
+import { useAuthStore } from '@/stores/authStore';
+import { can, INVITATION_PERMISSIONS } from '@/utils/permissions';
 
 export function RetailerListPage() {
   const [retailers, setRetailers] = useState<RetailerWithBinding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // DC-12R1-MVP-L1-J1-H2-A: the "Invite a retailer" CTA is admitted only for
+  // a session holding invitations:create (centralized can(); admins bypass).
+  // Button hiding is NOT the security boundary — /retailers/invite is
+  // guarded by WholesalerPermissionRoute and POST /invitations requires the
+  // permission server-side. All three layers fail closed independently.
+  const user = useAuthStore((s) => s.user);
+  const canInvite = can(user, INVITATION_PERMISSIONS.CREATE);
 
   // Pagination state
   const [page, setPage] = useState(1);
@@ -40,9 +51,16 @@ export function RetailerListPage() {
         title="Customers"
         description="View all retailers bound to your business."
         action={
-          <button onClick={load} disabled={loading} className="btn-secondary text-sm">
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {canInvite && (
+              <Link to="/retailers/invite" className="btn-primary text-sm">
+                Invite a retailer
+              </Link>
+            )}
+            <button onClick={load} disabled={loading} className="btn-secondary text-sm">
+              Refresh
+            </button>
+          </div>
         }
       />
 
@@ -65,6 +83,13 @@ export function RetailerListPage() {
           icon={UsersIcon}
           title="No customers yet"
           description="Customers will appear here once they register using your invitation link. Share your business link to start building your customer base."
+          action={
+            canInvite ? (
+              <Link to="/retailers/invite" className="btn-primary text-sm">
+                Invite a retailer
+              </Link>
+            ) : undefined
+          }
         />
       )}
 

@@ -135,6 +135,34 @@ export function RetailerPermissionRoute({ permission }: { permission: string }) 
 }
 
 /**
+ * WholesalerPermissionRoute — DC-12R1-MVP-L1-J1-H2-A permission guard for
+ * wholesaler ERP routes.
+ *
+ * Mirrors RetailerPermissionRoute but for the wholesaler side: it admits a
+ * route only if the current contextual user holds ``permission`` (centralized
+ * ``can()``; admins bypass). This guard is always nested under
+ * ``WholesalerRoute``, so the user is already an authenticated non-retailer
+ * session. When the permission is missing it fails closed BEFORE the child
+ * page renders and before any protected API request can be issued — the user
+ * is redirected (replace) to ``/retailers`` (the Customers home). The guarded
+ * page never mounts, so its effects and submit handlers never run.
+ *
+ * This is a defense-in-depth client admission check. It does NOT replace the
+ * backend ``RequirePermission`` on POST /invitations — a session without
+ * ``invitations:create`` is rejected server-side too.
+ */
+export function WholesalerPermissionRoute({ permission }: { permission: string }) {
+  const user = useAuthStore((s) => s.user);
+
+  if (!can(user, permission)) {
+    // Fail closed before render: the guarded page never mounts.
+    return <Navigate to="/retailers" replace />;
+  }
+
+  return <Outlet />;
+}
+
+/**
  * WholesalerRoute — DC-12R1-S2 guard for wholesaler ERP routes.
  *
  * retailer_operator must NOT enter wholesaler ERP routes. The redirect target

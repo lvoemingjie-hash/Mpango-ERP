@@ -1,11 +1,14 @@
-SHA-256 manifest (recomputed from committed git blob bytes)
-commit: ca0706674f3e9b7b1d0d67e102e64e3322d20433
+SHA-256 manifest (E1 corrected; sorted; recomputed from committed git blob bytes at ca070667)
+evidence commit: ca0706674f3e9b7b1d0d67e102e64e3322d20433
+artifact count: 12 evidence artifacts + 1 manifest (this file)
+E1 correction: removed the stale full_browser_console.log entry (that file
+was never committed at ca070667; the prior manifest row held the empty-blob
+hash and is void). No other file changed.
 
 ae783d59c1c0bec6f867dd71b737ffe98dc4764fed18c4b012a22306ef1692c9  cleanup_closure.md
 5a6fa6e616c94e5c2b5098ef218505d6b033f7cf194b26c49e38ff3efa1c2201  failure_set.json
 13df0f1131c3ef44354aba8228cb37d06d9bb7ebb98327334a025cdd6e199e6d  findings.csv
 bdad3172dca833190d1a5331d2b2e582a402513fd66e3343d6ed0b6707e1264b  full_browser.json
-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  full_browser_console.log
 2bc644b5239c20d669ce1f8bf680972506cb95cbb4ca25f93b0cc5e40029a0c1  full_browser_junit.xml
 f8e3391c9d32c48f9cbbb78e5cba960cc7bb8359c832dff0180664c946112f60  full_browser_test_list.txt
 84a945d8c6e73a3d1fa25217159072fe7caaa096db2e7fd2831921c9132a08ae  provisioning_steps.md

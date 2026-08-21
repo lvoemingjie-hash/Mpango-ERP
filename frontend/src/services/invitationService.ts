@@ -38,6 +38,8 @@ export interface InvitationLookupData {
   status?: string;
   wholesaler_id?: string;
   wholesaler_name?: string | null;
+  /** R1: public portal code of the inviting wholesaler (login handoff). */
+  wholesaler_code?: string | null;
   expires_at?: string | null;
 }
 
@@ -48,11 +50,20 @@ export const invitationService = {
     return res.data;
   },
 
-  /** Public preflight: the code travels ONLY in the JSON body. */
+  /**
+   * Public preflight: the code travels ONLY in the JSON body.
+   *
+   * R1 hardening: explicitly EMPTY Authorization (a logged-in retailer's
+   * store token must never leak into this public call) and full interceptor
+   * opt-out — no global error toasts, no 401 refresh hijack. The page's
+   * fixed neutral copy is the only failure surface.
+   */
   async lookup(code: string) {
-    const res = await api.post<ApiResponse<InvitationLookupData>>('/invitations/lookup', {
-      code,
-    });
+    const res = await api.post<ApiResponse<InvitationLookupData>>(
+      '/invitations/lookup',
+      { code },
+      { headers: { Authorization: '' }, skipAuthInterceptors: true },
+    );
     return res.data;
   },
 };

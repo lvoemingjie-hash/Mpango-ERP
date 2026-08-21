@@ -59,9 +59,16 @@ export const retailerService = {
   /**
    * Public invitation acceptance (POST /retailers/register). Atomic backend
    * transaction: binding + tenant user + setup-credential email.
+   *
+   * R1 hardening: explicitly EMPTY Authorization + full interceptor opt-out
+   * (no global error toasts, no 401 refresh hijack) — the invitation code
+   * travels only in the JSON body and the page keeps its fixed neutral copy.
    */
   registerWithInvitation: (payload: RetailerRegisterPayload) =>
-    api.post<ApiResponse<RetailerRegisterResult>>('/retailers/register', payload),
+    api.post<ApiResponse<RetailerRegisterResult>>('/retailers/register', payload, {
+      headers: { Authorization: '' },
+      skipAuthInterceptors: true,
+    }),
 
   // Keep old endpoint if still needed anywhere, though the UI will now use getAll
   getBindings: () =>

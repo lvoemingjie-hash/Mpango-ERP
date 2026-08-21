@@ -12,20 +12,37 @@ const setupSchema = z.object({
 type SetupFormData = z.infer<typeof setupSchema>;
 
 /**
- * DC-12R1-S1: retailer credential setup page.
+ * DC-12R1-S1 (+H2-A-R1): retailer credential setup page.
  *
  * Token transport is fragment-only (CTO decision):
  *  - a sensitive query param => reject, render Invalid Link, no API call;
  *  - otherwise read setupToken from location.hash, scrub the URL, submit via
  *    JSON body only. The token never enters localStorage/sessionStorage.
+ *
+ * R1: the setup email link also carries the supplier's PUBLIC portal code in
+ * the fragment (#setupToken=...&w=CODE). It is captured BEFORE the scrub,
+ * kept in memory, and used after a successful setup to hand the retailer to
+ * /retail/login?w=<code>. Legacy links without w keep the previous behavior.
  */
 export function RetailerSetupCredentialPage() {
   const location = useLocation();
   const [state, setState] = useState<ReadTokenResult>({ kind: 'missing' });
   const [serverError, setServerError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  // Public portal code from the fragment (validated; not a credential).
+  const [portalCode, setPortalCode] = useState<string | null>(null);
 
   useEffect(() => {
+    // Capture the non-secret portal param BEFORE readFragmentToken scrubs
+    // the URL. Only ^[A-Z0-9]+$ is accepted (backend WHOLESALER_CODE_RE
+    // parity); anything else is dropped, never rendered into a URL.
+    const fragmentParams = new URLSearchParams(
+      location.hash.startsWith('#') ? location.hash.slice(1) : location.hash,
+    );
+    const w = fragmentParams.get('w');
+    if (w && /^[A-Z0-9]+$/.test(w)) {
+      setPortalCode(w);
+    }
     setState(readFragmentToken(location.search, location.hash, 'setupToken'));
   }, [location.search, location.hash]);
 
@@ -68,10 +85,23 @@ export function RetailerSetupCredentialPage() {
         <div className="space-y-5 rounded-xl bg-white p-6 shadow-sm">
           {isComplete ? (
             <div className="space-y-4 text-center">
-              <p className="text-sm text-gray-700">Your retailer account is ready.</p>
-              <Link to="/login" className="btn-primary inline-flex justify-center px-4 py-2">
-                Go to login
-              </Link>
+              <p className="text-sm text-gray-700">
+                {portalCode
+                  ? 'Your retailer account is ready. Sign in to your supplier portal.'
+                  : 'Your retailer account is ready.'}
+              </p>
+              {portalCode ? (
+                <Link
+                  to={`/retail/login?w=${encodeURIComponent(portalCode)}`}
+                  className="btn-primary inline-flex justify-center px-4 py-2"
+                >
+                  Go to supplier portal sign in
+                </Link>
+              ) : (
+                <Link to="/login" className="btn-primary inline-flex justify-center px-4 py-2">
+                  Go to login
+                </Link>
+              )}
             </div>
           ) : state.kind === 'missing' ? (
             <InvalidLink />

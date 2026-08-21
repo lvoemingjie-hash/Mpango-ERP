@@ -63,6 +63,7 @@ function httpError(config: InternalAxiosRequestConfig, status: number, body: unk
 function installAdapter(handlers: Record<string, Handler>) {
   const log: string[] = [];
   const bodies: Record<string, unknown[]> = {};
+  const headers: Record<string, unknown[]> = {};
   const adapter: AxiosAdapter = async (config) => {
     const url = config.url || '';
     const method = (config.method || 'get').toLowerCase();
@@ -77,6 +78,12 @@ function installAdapter(handlers: Record<string, Handler>) {
       }
     }
     (bodies[key] ??= []).push(body);
+    // Capture the Authorization header actually dispatched (post-injection).
+    const authz =
+      typeof config.headers?.get === 'function'
+        ? (config.headers.get('Authorization') as unknown)
+        : undefined;
+    (headers[key] ??= []).push(authz as unknown as string);
 
     const match = Object.keys(handlers)
       .sort((a, b) => b.length - a.length)
@@ -92,7 +99,7 @@ function installAdapter(handlers: Record<string, Handler>) {
     }));
   };
   api.defaults.adapter = adapter;
-  return { log, bodies };
+  return { log, bodies, headers };
 }
 
 const INVITATION_CODE = 'H2A-CODE-7f3k9Q2x'; // test fixture, not a real credential
@@ -106,6 +113,8 @@ const CREATED_INVITATION = {
   created_at: '2026-08-21T00:00:00.000Z',
 };
 
+const WHOLESALER_CODE = 'ALPHA42'; // public portal code (not a credential)
+
 const USABLE_LOOKUP = {
   code: INVITATION_CODE,
   usable: true,
@@ -113,6 +122,7 @@ const USABLE_LOOKUP = {
   status: 'active',
   wholesaler_id: 'ws-0001',
   wholesaler_name: 'Alpha Wholesale',
+  wholesaler_code: WHOLESALER_CODE,
   expires_at: '2026-09-21T00:00:00.000Z',
 };
 
@@ -371,7 +381,7 @@ describe('DC-12R1-MVP-L1-J1-H2-A: wholesaler invitation authoring', () => {
 
 describe('DC-12R1-MVP-L1-J1-H2-A: public /invite landing page', () => {
   it('T6+T7: fragment code is captured then scrubbed; lookup goes through POST JSON body only', async () => {
-    const { log, bodies } = installAdapter({
+    const { log, bodies, headers } = installAdapter({
       'POST /invitations/lookup': (c) => ok(c, USABLE_LOOKUP),
     });
 
@@ -381,6 +391,10 @@ describe('DC-12R1-MVP-L1-J1-H2-A: public /invite landing page', () => {
     await waitFor(() => expect(log).toContain('POST /invitations/lookup'));
     const body = bodies['POST /invitations/lookup'][0] as Record<string, unknown>;
     expect(body).toEqual({ code: INVITATION_CODE });
+    // R1: public call carries an explicitly EMPTY Authorization — even with a
+    // stale session in the store no token may be injected (see stale-token
+    // test for the session-present proof).
+    expect(headers['POST /invitations/lookup'][0]).toBe('');
     // No path-token request is ever issued.
     expect(log.filter((k) => /^GET \/invitations\//.test(k))).toEqual([]);
 
@@ -406,8 +420,81 @@ describe('DC-12R1-MVP-L1-J1-H2-A: public /invite landing page', () => {
     expect(log).toEqual([]);
   });
 
-  it('T7b: registration posts the invitation_code ONLY in the JSON body', async () => {
+  it('R1: usable invitation with an UNVERIFIABLE wholesaler_code fails closed (no register form)', async () => {
+    installAdapter({
+      'POST /invitations/lookup': (c) =>
+        ok(c, { ...USABLE_LOOKUP, wholesaler_code: 'bad code!' }),
+    });
+
+    await renderAppAt(`/invite#code=${INVITATION_CODE}`);
+
+    // Fail closed to the neutral lookup-failed state; the register form (and
+    // its POST) can never mount on an unverifiable portal code.
+    expect(await screen.findByText(/unable to verify invitation/i)).toBeVisible();
+    expect(screen.queryByRole('button', { name: /complete registration/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /go to supplier portal sign in/i })).toBeNull();
+  });
+
+  it('R1: lookup retry re-POSTs the IN-MEMORY code — no reload, no re-read of the URL', async () => {
+    let fail = true;
     const { log, bodies } = installAdapter({
+      'POST /invitations/lookup': (c) => {
+        if (fail) {
+          return Promise.reject(
+            httpError(c, 500, {
+              success: false,
+              error: { code: 'INTERNAL_FAILURE', message: 'transient' },
+            }),
+          );
+        }
+        return ok(c, USABLE_LOOKUP);
+      },
+    });
+
+    await renderAppAt(`/invite#code=${INVITATION_CODE}`);
+    await screen.findByText(/unable to verify invitation/i);
+
+    // The fragment is long gone from the URL — a reload could never recover
+    // it. Retry must re-POST from memory.
+    expect(window.location.hash).toBe('');
+
+    fail = false;
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+
+    await waitFor(() =>
+      expect(log.filter((k) => k === 'POST /invitations/lookup')).toHaveLength(2),
+    );
+    const retryBody = bodies['POST /invitations/lookup'][1] as Record<string, unknown>;
+    expect(retryBody).toEqual({ code: INVITATION_CODE });
+    // Same document, same SPA: the page settles on the register panel.
+    expect(await screen.findByText('Alpha Wholesale')).toBeVisible();
+    expect(window.location.pathname).toBe('/invite');
+  });
+
+  it('R1: no-email submission is blocked client-side — the real backend no-email path is never reached', async () => {
+    const { log } = installAdapter({
+      'POST /invitations/lookup': (c) => ok(c, USABLE_LOOKUP),
+      'POST /retailers/register': (c) =>
+        ok(c, {
+          retailer: { id: 'ret-1', phone: '+255700000001', name: null, email: 'x@example.test', address: null },
+          binding: { id: 'b-1', wholesaler_id: 'ws-0001', retailer_id: 'ret-1', status: 'active', created_at: '2026-08-21T00:00:00.000Z' },
+        }, 201),
+    });
+
+    await renderAppAt(`/invite#code=${INVITATION_CODE}`);
+    await userEvent.type(await screen.findByLabelText(/^phone/i), '+255700000001');
+    // Email intentionally left empty — the RED path.
+    await userEvent.click(screen.getByRole('button', { name: /complete registration/i }));
+
+    // Client-side validation blocks; ZERO register POSTs.
+    expect(await screen.findByText(/email is required/i)).toBeVisible();
+    expect(log).toEqual(['POST /invitations/lookup']);
+    // The register form is still mounted — nothing was submitted.
+    expect(screen.getByRole('button', { name: /complete registration/i })).toBeVisible();
+  });
+
+  it('T7b: registration posts the invitation_code ONLY in the JSON body (email required, lowercased)', async () => {
+    const { log, bodies, headers } = installAdapter({
       'POST /invitations/lookup': (c) => ok(c, USABLE_LOOKUP),
       'POST /retailers/register': (c) =>
         ok(c, {
@@ -419,6 +506,7 @@ describe('DC-12R1-MVP-L1-J1-H2-A: public /invite landing page', () => {
     await renderAppAt(`/invite#code=${INVITATION_CODE}`);
     await userEvent.type(await screen.findByLabelText(/^phone/i), '+255700000001');
     await userEvent.type(screen.getByLabelText(/business name \(optional\)/i), 'Duka La Jirani');
+    await userEvent.type(screen.getByLabelText(/^email/i), 'Duka@Example.TEST');
     await userEvent.click(screen.getByRole('button', { name: /complete registration/i }));
 
     await waitFor(() => expect(log).toContain('POST /retailers/register'));
@@ -427,49 +515,80 @@ describe('DC-12R1-MVP-L1-J1-H2-A: public /invite landing page', () => {
       invitation_code: INVITATION_CODE,
       phone: '+255700000001',
       name: 'Duka La Jirani',
+      email: 'duka@example.test',
     });
+    // R1: public register call also carries an explicitly EMPTY Authorization.
+    expect(headers['POST /retailers/register'][0]).toBe('');
     // The code never appears in any request URL.
     for (const entry of log) {
       expect(entry).not.toContain(INVITATION_CODE);
     }
   });
 
-  it('T8: the code never lands in storage, console or error output', async () => {
+  it('T8: hostile backend payload surfaces NOWHERE — DOM (real ToastContainer mounted), toast store, console, storage, URL', async () => {
     const consoleSpies = ['log', 'debug', 'info', 'warn', 'error'].map((m) =>
       vi.spyOn(console, m as keyof Console).mockImplementation(() => {}),
     );
     const storageSet = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {});
 
-    // Failure path: lookup itself fails -> neutral copy, no code anywhere.
+    // Failure path: lookup itself fails with a hostile message carrying BOTH
+    // a sentinel backend echo and the invitation code.
     installAdapter({
-      'POST /invitations/lookup': (c) => Promise.reject(httpError(c, 500, { success: false, error: { code: 'X', message: `boom ${INVITATION_CODE}` } })),
+      'POST /invitations/lookup': (c) =>
+        Promise.reject(
+          httpError(c, 500, {
+            success: false,
+            error: { code: 'X', message: `SENTINEL-MSG request_id=leak-xyz ${INVITATION_CODE}` },
+          }),
+        ),
     });
 
+    // <App /> mounts the REAL ToastContainer — the global toast surface is
+    // live. No toast-store clearing is performed before any assertion.
     await renderAppAt(`/invite#code=${INVITATION_CODE}`);
     await screen.findByText(/unable to verify invitation/i);
 
-    // Clear the pre-existing global 5xx toast surface (see T5 note), then
-    // prove this page never surfaces the code anywhere it controls.
-    await act(async () => {
-      useToastStore.setState({ toasts: [] });
-    });
+    // Fixed neutral copy only (page surface).
+    expect(
+      screen.getByText('We could not verify this invitation. Please try again later.'),
+    ).toBeVisible();
 
+    // DOM (including any toast the interceptor could have raised).
+    expect(document.body.textContent ?? '').not.toContain('leak-xyz');
+    expect(document.body.textContent ?? '').not.toContain('SENTINEL-MSG');
+    expect(document.body.textContent ?? '').not.toContain(INVITATION_CODE);
+
+    // Toast store: the interceptor opt-out means zero toasts were added.
+    expect(useToastStore.getState().toasts).toEqual([]);
+
+    // Console channels.
+    for (const spy of consoleSpies) {
+      for (const call of spy.mock.calls) {
+        expect(JSON.stringify(call)).not.toContain(INVITATION_CODE);
+        expect(JSON.stringify(call)).not.toContain('leak-xyz');
+      }
+    }
+
+    // Storage.
     const storageDump = JSON.stringify({
       ls: { ...window.localStorage },
       ss: { ...window.sessionStorage },
     });
     expect(storageDump).not.toContain(INVITATION_CODE);
-    expect(document.body.textContent ?? '').not.toContain(INVITATION_CODE);
-    for (const spy of consoleSpies) {
-      for (const call of spy.mock.calls) {
-        expect(JSON.stringify(call)).not.toContain(INVITATION_CODE);
-      }
-    }
-    expect(storageSet).not.toHaveBeenCalledWith(expect.stringContaining(INVITATION_CODE), expect.anything());
+    expect(storageSet).not.toHaveBeenCalledWith(
+      expect.stringContaining(INVITATION_CODE),
+      expect.anything(),
+    );
+
+    // URL: the code was scrubbed and never re-enters the address bar.
+    expect(window.location.href).not.toContain(INVITATION_CODE);
   });
 
-  it('T9: usable invitation completes register and hands off to the credential/login lifecycle', async () => {
-    installAdapter({
+  it('R1: stale contextual session — public calls stay anonymous, no refresh, session untouched', async () => {
+    // A fully established (stale) session for an UNRELATED tenant exists.
+    resetAuth(userWith(['client:orders:read'], ['retailer_operator']));
+
+    const { log, headers } = installAdapter({
       'POST /invitations/lookup': (c) => ok(c, USABLE_LOOKUP),
       'POST /retailers/register': (c) =>
         ok(c, {
@@ -480,18 +599,113 @@ describe('DC-12R1-MVP-L1-J1-H2-A: public /invite landing page', () => {
 
     await renderAppAt(`/invite#code=${INVITATION_CODE}`);
     await userEvent.type(await screen.findByLabelText(/^phone/i), '+255700000001');
+    await userEvent.type(screen.getByLabelText(/^email/i), 'duka@example.test');
     await userEvent.click(screen.getByRole('button', { name: /complete registration/i }));
 
-    // Registered guidance points into the real lifecycle pages.
+    await screen.findByText(/registration complete/i);
+
+    // Both public calls carried an explicitly EMPTY Authorization: the stale
+    // store token was never injected into them.
+    expect(headers['POST /invitations/lookup'][0]).toBe('');
+    expect(headers['POST /retailers/register'][0]).toBe('');
+
+    // No token refresh was attempted on behalf of the public flow.
+    expect(log.filter((k) => k.includes('/auth/refresh'))).toEqual([]);
+
+    // The unrelated session is still intact (no logout hijack).
+    const s = useAuthStore.getState();
+    expect(s.accessToken).toBe('access-token-h2a');
+    expect(s.user?.id).toBe('user-0001');
+
+    // Portal handoff uses the VERIFIED wholesaler code from lookup.
+    const portalLink = screen.getByRole('link', { name: /go to supplier portal sign in/i });
+    expect(portalLink).toHaveAttribute('href', `/retail/login?w=${WHOLESALER_CODE}`);
+  });
+
+  it('R1: expired-token semantics — a 401 lookup stays on the public page (no refresh, no logout, no toast), retry recovers', async () => {
+    resetAuth(userWith(['client:orders:read'], ['retailer_operator']));
+    let expired = true;
+    const { log } = installAdapter({
+      'POST /invitations/lookup': (c) => {
+        if (expired) {
+          // Simulates the expired-session world: any authenticated call
+          // would 401. The public lookup itself is anonymous — here the
+          // endpoint rejects once to exercise the page's 401 resilience.
+          return Promise.reject(
+            httpError(c, 401, {
+              success: false,
+              error: { code: 'TOKEN_EXPIRED', message: 'expired' },
+            }),
+          );
+        }
+        return ok(c, USABLE_LOOKUP);
+      },
+    });
+
+    await renderAppAt(`/invite#code=${INVITATION_CODE}`);
+
+    // Neutral failure copy — the page stays; no redirect to /login.
+    expect(await screen.findByText(/unable to verify invitation/i)).toBeVisible();
+    expect(window.location.pathname).toBe('/invite');
+
+    // The 401 did NOT trigger the interceptor's refresh/logout machinery.
+    expect(log.filter((k) => k.includes('/auth/refresh'))).toEqual([]);
+    const s = useAuthStore.getState();
+    expect(s.accessToken).toBe('access-token-h2a');
+    expect(s.user?.id).toBe('user-0001');
+
+    // And no toast echoed the backend message.
+    expect(useToastStore.getState().toasts).toEqual([]);
+
+    // Retry (in-memory code) recovers once the endpoint answers.
+    expired = false;
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(await screen.findByText('Alpha Wholesale')).toBeVisible();
+  });
+
+  it('T9: full real-contract lifecycle — invitation -> lookup -> register(email required) -> setup guidance -> portal login URL', async () => {
+    const { log, bodies } = installAdapter({
+      'POST /invitations/lookup': (c) => ok(c, USABLE_LOOKUP),
+      'POST /retailers/register': (c) =>
+        ok(c, {
+          retailer: { id: 'ret-1', phone: '+255700000001', name: null, email: 'duka@example.test', address: null },
+          binding: { id: 'b-1', wholesaler_id: 'ws-0001', retailer_id: 'ret-1', status: 'active', created_at: '2026-08-21T00:00:00.000Z' },
+        }, 201),
+    });
+
+    await renderAppAt(`/invite#code=${INVITATION_CODE}`);
+
+    // Step 1: lookup verified the invitation AND the portal code.
+    await screen.findByText('Alpha Wholesale');
+
+    // Step 2: register with the REQUIRED email, exact backend payload.
+    await userEvent.type(screen.getByLabelText(/^phone/i), '+255700000001');
+    await userEvent.type(screen.getByLabelText(/^email/i), 'duka@example.test');
+    await userEvent.click(screen.getByRole('button', { name: /complete registration/i }));
+
+    await waitFor(() => expect(log).toContain('POST /retailers/register'));
+    const body = bodies['POST /retailers/register'][0] as Record<string, unknown>;
+    expect(body).toMatchObject({
+      invitation_code: INVITATION_CODE,
+      phone: '+255700000001',
+      email: 'duka@example.test',
+    });
+
+    // Step 3: setup-credential guidance (the real emailed flow's next step).
     const guidance = await screen.findByText(/registration complete/i);
     expect(guidance).toBeVisible();
     expect(document.body.textContent ?? '').toMatch(/set your password/i);
-    const loginLink = screen.getByRole('link', { name: /go to retailer sign in/i });
-    expect(loginLink).toHaveAttribute('href', '/retail/login');
 
-    // The real route accepts the handoff (retailer portal login mounts).
+    // Step 4: portal handoff is the VERIFIED login URL on the real router.
+    const loginLink = screen.getByRole('link', { name: /go to supplier portal sign in/i });
+    expect(loginLink).toHaveAttribute('href', `/retail/login?w=${WHOLESALER_CODE}`);
     await userEvent.click(loginLink);
+
     await waitFor(() => expect(window.location.pathname).toBe('/retail/login'));
+    expect(window.location.search).toBe(`?w=${WHOLESALER_CODE}`);
+    // The real ClientLoginPage mounted with a VALID portal: its login form is
+    // rendered (invalid portals never show it).
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeVisible());
   });
 
   it('unusable invitation shows the neutral unavailable state (no reason echo, no register form)', async () => {

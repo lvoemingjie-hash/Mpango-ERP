@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,8 +8,8 @@ import { retailerService } from '@/services/retailerService';
 import { readFragmentToken, type ReadTokenResult } from '@/utils/urlToken';
 
 /**
- * DC-12R1-MVP-L1-J1-H2-A: public invitation landing page — the retailer
- * CONSUMPTION end of the invitation funnel.
+ * DC-12R1-MVP-L1-J1-H2-A (+R1): public invitation landing page — the
+ * retailer CONSUMPTION end of the invitation funnel.
  *
  * Canonical entry: `/invite#code=<opaque-code>` (fragment-only credential
  * transport, same CTO contract as the retailer credential pages):
@@ -19,10 +19,22 @@ import { readFragmentToken, type ReadTokenResult } from '@/utils/urlToken';
  *     immediately (replaceState) so the code never stays in the address bar,
  *     history, or referrer;
  *  3. the code is then used ONLY inside JSON bodies: POST /invitations/lookup
- *     and POST /retailers/register. No path-token or query-token request is
- *     ever issued from this page;
+ *     and POST /retailers/register (both sent with an explicitly EMPTY
+ *     Authorization header and full interceptor opt-out — a logged-in
+ *     session can never leak into, or be hijacked by, these public calls);
  *  4. the code lives only in component memory — never localStorage or
- *     sessionStorage.
+ *     sessionStorage. Lookup RETRY re-POSTs from this in-memory code; the
+ *     page never reloads.
+ *
+ * R1 lifecycle contract:
+ *  - the register form requires EMAIL (the backend credential lifecycle
+ *    needs it to deliver the setup-password email; a no-email submission is
+ *    blocked client-side and never reaches the backend);
+ *  - the lookup response must carry a verifiable `wholesaler_code`
+ *    (^[A-Z0-9]+$ — parity with the backend WHOLESALER_CODE_RE); an unusable
+ *    or unverifiable code never renders the register form;
+ *  - after registration the guidance hands off to the real supplier portal
+ *    login `/retail/login?w=<verified-wholesaler-code>`.
  *
  * The legacy `/invite/:code` page (path token) remains mounted as a
  * DEPRECATED compatibility entry; this page is the only format new UI
@@ -33,20 +45,50 @@ const LOOKUP_FAILURE_COPY = 'We could not verify this invitation. Please try aga
 const REGISTER_FAILURE_COPY =
   'We could not complete your registration. Please check your details and try again.';
 
+/** Parity with backend WHOLESALER_CODE_RE (schemas/retailer_credentials.py). */
+const WHOLESALER_CODE_RE = /^[A-Z0-9]+$/;
+
+/** Verified portal code — only ever derived from a validated lookup field. */
+function verifyWholesalerCode(code: unknown): string | null {
+  return typeof code === 'string' && WHOLESALER_CODE_RE.test(code) ? code : null;
+}
+
 type Stage =
   | { kind: 'checking' }
   | { kind: 'invalid-link' }
   | { kind: 'unusable' }
-  | { kind: 'ready'; lookup: InvitationLookupData }
-  | { kind: 'registered' }
+  | { kind: 'ready'; lookup: InvitationLookupData; portalCode: string }
+  | { kind: 'registered'; portalCode: string }
   | { kind: 'lookup-failed' };
 
 export function InvitationLandingPage() {
   const location = useLocation();
   const [stage, setStage] = useState<Stage>({ kind: 'checking' });
   // Code in short-lived memory state only (never persisted to storage).
-  const [code, setCode] = useState<string | null>(null);
+  // Kept across lookup RETRIES — a retry re-POSTs from memory, never a
+  // window reload (a reload would lose the scrubbed fragment forever).
+  const codeRef = useRef<string | null>(null);
   const [lookup, setLookup] = useState<InvitationLookupData | null>(null);
+
+  const runLookup = useCallback(async (code: string) => {
+    try {
+      // Code travels ONLY in the JSON body — never a path/query param.
+      const res = await invitationService.lookup(code);
+      setLookup(res.data);
+      const portalCode = verifyWholesalerCode(res.data.wholesaler_code);
+      if (res.data.usable && portalCode) {
+        setStage({ kind: 'ready', lookup: res.data, portalCode });
+      } else if (res.data.usable && !portalCode) {
+        // Usable invitation but an unverifiable portal code: the login
+        // handoff cannot be built safely — fail closed, neutral copy.
+        setStage({ kind: 'lookup-failed' });
+      } else {
+        setStage({ kind: 'unusable' });
+      }
+    } catch {
+      setStage({ kind: 'lookup-failed' });
+    }
+  }, []);
 
   useEffect(() => {
     // Capture the fragment ONCE on mount, then scrub the URL synchronously.
@@ -55,40 +97,27 @@ export function InvitationLandingPage() {
       location.hash,
       'code',
     );
-    if (result.kind === 'rejected') {
+    if (result.kind === 'rejected' || result.kind === 'missing') {
       setStage({ kind: 'invalid-link' });
       return;
     }
-    if (result.kind === 'missing') {
-      setStage({ kind: 'invalid-link' });
-      return;
-    }
-    setCode(result.token);
-
-    let cancelled = false;
-    (async () => {
-      try {
-        // Code travels ONLY in the JSON body — never a path/query param.
-        const res = await invitationService.lookup(result.token);
-        if (cancelled) return;
-        setLookup(res.data);
-        setStage(
-          res.data.usable
-            ? { kind: 'ready', lookup: res.data }
-            : { kind: 'unusable' },
-        );
-      } catch {
-        if (!cancelled) setStage({ kind: 'lookup-failed' });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    codeRef.current = result.token;
+    void runLookup(result.token);
     // Intentionally mount-once: the fragment is consumed on first paint; a
     // dependency on location.hash would re-read an already-scrubbed URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const onRetry = () => {
+    // R1: retry re-POSTs the in-memory code. No reload — the URL fragment
+    // is already scrubbed and can never be re-read.
+    if (codeRef.current) {
+      setStage({ kind: 'checking' });
+      void runLookup(codeRef.current);
+    } else {
+      setStage({ kind: 'invalid-link' });
+    }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
@@ -113,11 +142,7 @@ export function InvitationLandingPage() {
                 Unable to verify invitation
               </h2>
               <p className="mt-2 text-sm text-gray-500">{LOOKUP_FAILURE_COPY}</p>
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="btn-primary mt-4 inline-block text-sm"
-              >
+              <button type="button" onClick={onRetry} className="btn-primary mt-4 inline-block text-sm">
                 Try again
               </button>
             </div>
@@ -143,12 +168,16 @@ export function InvitationLandingPage() {
           {stage.kind === 'ready' && (
             <RegisterPanel
               lookup={stage.lookup}
-              code={code ?? stage.lookup.code}
-              onRegistered={() => setStage({ kind: 'registered' })}
+              code={codeRef.current ?? stage.lookup.code}
+              onRegistered={() =>
+                setStage({ kind: 'registered', portalCode: stage.portalCode })
+              }
             />
           )}
 
-          {stage.kind === 'registered' && <RegisteredGuidance />}
+          {stage.kind === 'registered' && (
+            <RegisteredGuidance portalCode={stage.portalCode} />
+          )}
         </div>
       </div>
     </div>
@@ -162,7 +191,10 @@ export function InvitationLandingPage() {
 const registerSchema = z.object({
   phone: z.string().min(1, 'Phone is required').max(32, 'Phone must be at most 32 characters'),
   name: z.string().max(255, 'Name must be at most 255 characters').optional().or(z.literal('')),
-  email: z.string().email('Enter a valid email').optional().or(z.literal('')),
+  // R1: email REQUIRED — the backend credential lifecycle delivers the
+  // setup-password email to this address; a no-email submission is blocked
+  // here and never reaches POST /retailers/register.
+  email: z.string().min(1, 'Email is required').email('Enter a valid email'),
   address: z.string().max(255, 'Address must be at most 255 characters').optional().or(z.literal('')),
 });
 
@@ -202,7 +234,7 @@ function RegisterPanel({
         invitation_code: code,
         phone: values.phone.trim(),
         name: values.name?.trim() || undefined,
-        email: values.email?.trim() || undefined,
+        email: values.email.trim().toLowerCase(),
         address: values.address?.trim() || undefined,
       });
       onRegistered();
@@ -271,7 +303,7 @@ function RegisterPanel({
 
         <div>
           <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
-            Email (optional)
+            Email <span className="text-red-600">*</span>
           </label>
           <input
             id="email"
@@ -282,7 +314,7 @@ function RegisterPanel({
             {...register('email')}
           />
           <p id="email_hint" className="mt-1 text-xs text-gray-500">
-            Needed to receive your password setup email.
+            Your password setup email is delivered here — it is required.
           </p>
           {errors.email && (
             <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>
@@ -318,7 +350,7 @@ function RegisterPanel({
 // Post-registration guidance (register → setup-credential → login lifecycle)
 // ---------------------------------------------------------------------------
 
-function RegisteredGuidance() {
+function RegisteredGuidance({ portalCode }: { portalCode: string }) {
   return (
     <div className="space-y-4 text-center">
       <h2 className="text-lg font-semibold text-gray-900">Registration complete</h2>
@@ -327,14 +359,13 @@ function RegisteredGuidance() {
         link to activate your account.
       </p>
       <p className="text-sm text-gray-600">
-        After setting your password, sign in from your supplier&apos;s portal
-        link (the address your supplier shared with you).
+        After setting your password, sign in to your supplier&apos;s portal
+        below.
       </p>
-      <Link
-        to="/retail/login"
-        className="btn-primary inline-block text-sm"
-      >
-        Go to retailer sign in
+      {/* R1: verified portal handoff — w is the validated wholesaler_code
+          from the lookup response, never a raw user-controlled value. */}
+      <Link to={`/retail/login?w=${encodeURIComponent(portalCode)}`} className="btn-primary inline-block text-sm">
+        Go to supplier portal sign in
       </Link>
     </div>
   );

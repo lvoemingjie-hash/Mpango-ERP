@@ -175,7 +175,9 @@ class RetailerProvisioningService:
             #      (returns the raw token or None). Send SMTP before commit.
             if setup_token_raw is not None:
                 await self._send_setup_email(
-                    retailer=retailer, raw_token=setup_token_raw
+                    retailer=retailer,
+                    raw_token=setup_token_raw,
+                    wholesaler_code=wholesaler.code,
                 )
             # 7. Mark invitation used with used_retailer_id (R_id exists now).
             await self._mark_invitation_used(invitation, retailer.id)
@@ -484,7 +486,11 @@ class RetailerProvisioningService:
         )
 
     async def _send_setup_email(
-        self, *, retailer: Retailer, raw_token: str
+        self,
+        *,
+        retailer: Retailer,
+        raw_token: str,
+        wholesaler_code: str | None = None,
     ) -> None:
         """SMTP before commit (CTO constraint #5). Failure rolls back the txn."""
         if retailer.email is None:
@@ -498,7 +504,11 @@ class RetailerProvisioningService:
                 settings=self.settings,
                 to_email=retailer.email,
                 token=raw_token,
-                setup_link=build_retailer_setup_link(raw_token, self.settings),
+                setup_link=build_retailer_setup_link(
+                    raw_token,
+                    self.settings,
+                    wholesaler_code=wholesaler_code,
+                ),
             )
         except EmailDeliveryNotConfiguredError as exc:
             # Controlled: roll back provisioning; invitation stays reusable.
@@ -740,12 +750,17 @@ class RetailerProvisioningService:
             raise RetailerProvisioningError(
                 CREDENTIAL_ALREADY_ESTABLISHED, http_status=409
             )
+        reissue_wholesaler = await self._load_wholesaler(wholesaler_id)
         try:
             record_retailer_setup_email(
                 settings=self.settings,
                 to_email=retailer.email,
                 token=raw_token,
-                setup_link=build_retailer_setup_link(raw_token, self.settings),
+                setup_link=build_retailer_setup_link(
+                    raw_token,
+                    self.settings,
+                    wholesaler_code=reissue_wholesaler.code,
+                ),
             )
         except EmailDeliveryNotConfiguredError as exc:
             raise RetailerProvisioningError(

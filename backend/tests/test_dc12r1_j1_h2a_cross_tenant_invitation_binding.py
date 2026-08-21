@@ -170,10 +170,13 @@ async def test_invitation_binds_only_to_its_inviting_wholesaler(async_session):
 
     wholesaler_a = uuid.uuid4()
     wholesaler_b = uuid.uuid4()
-    await _seed_wholesaler_with_rbac(async_session, wholesaler_id=wholesaler_a, code=f"H2A{uuid.uuid4().hex[:6].upper()}")
-    await _seed_wholesaler_with_rbac(async_session, wholesaler_id=wholesaler_b, code=f"H2A{uuid.uuid4().hex[:6].upper()}")
+    code_a = f"H2A{uuid.uuid4().hex[:6].upper()}"
+    code_b = f"H2A{uuid.uuid4().hex[:6].upper()}"
+    await _seed_wholesaler_with_rbac(async_session, wholesaler_id=wholesaler_a, code=code_a)
+    await _seed_wholesaler_with_rbac(async_session, wholesaler_id=wholesaler_b, code=code_b)
 
     phone = _run_phone()
+    email = f"h2a-retailer-{uuid.uuid4().hex[:6]}@example.test"
     invitation_code = f"H2A{uuid.uuid4().hex[:12].upper()}"
     with run_as_system(reason="h2a_public_invitation_seed"):
         await InvitationRepository().create(
@@ -189,7 +192,7 @@ async def test_invitation_binds_only_to_its_inviting_wholesaler(async_session):
         invitation_code=invitation_code,
         phone=phone,
         name="H2-A Retailer",
-        email=f"h2a-retailer-{uuid.uuid4().hex[:6]}@example.test",
+        email=email,
         address="H2-A Test Address",
     )
 
@@ -222,6 +225,43 @@ async def test_invitation_binds_only_to_its_inviting_wholesaler(async_session):
         {"retailer_id": retailer.id, "wholesaler_a": wholesaler_a},
     )
     assert other_bindings.scalar_one() == 0
+
+    # R1: the credential-setup email link carries the INVITING wholesaler's
+    # public portal code in the fragment (w=<code>) — never B's code, never a
+    # query param.
+    from services.email_delivery import (
+        clear_dev_email_deliveries,
+        get_dev_retailer_email_deliveries,
+    )
+
+    clear_dev_email_deliveries()
+    # Re-run the register path against a fresh invitation to capture the email
+    # delivery (the earlier acceptance already consumed this invitation).
+    email_2 = f"h2a-r1-link-{uuid.uuid4().hex[:6]}@example.test"
+    phone_2 = _run_phone()
+    invitation_code_2 = f"H2A{uuid.uuid4().hex[:12].upper()}"
+    with run_as_system(reason="h2a_public_invitation_seed"):
+        await InvitationRepository().create(
+            async_session,
+            code=invitation_code_2,
+            wholesaler_id=wholesaler_a,
+            retailer_phone=phone_2,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+    reg2 = await RetailerService().register_with_invitation(
+        async_session,
+        invitation_code=invitation_code_2,
+        phone=phone_2,
+        email=email_2,
+    )
+    assert reg2[3] is None
+    deliveries = get_dev_retailer_email_deliveries(email_2)
+    assert len(deliveries) == 1
+    setup_link = deliveries[0].link
+    assert f"w={code_a}" in setup_link
+    assert "w=" in setup_link.split("#", 1)[1]  # w lives in the FRAGMENT
+    assert code_b not in setup_link
+    assert "?w=" not in setup_link  # never a query param
 
 
 async def test_used_invitation_cannot_be_reconsumed_by_any_tenant(async_session):
@@ -302,3 +342,56 @@ async def test_public_lookup_resolves_only_the_inviting_wholesaler(async_session
     assert usable is True
     assert reason is None
     assert invitation.wholesaler_id == wholesaler_a
+
+
+async def test_lookup_http_response_carries_inviting_wholesaler_code(async_session):
+    """R1: POST /invitations/lookup (real router, real schema) returns
+    wholesaler_code for the INVITING wholesaler so the landing page can build
+    the /retail/login?w=<code> handoff. Missing invitations stay neutral."""
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from api.dependencies import get_db_session
+    from api.v1.invitations import router as invitations_router
+
+    await _prepare_public_registration_tables(async_session)
+
+    wholesaler_a = uuid.uuid4()
+    code_a = f"H2A{uuid.uuid4().hex[:6].upper()}"
+    await _seed_wholesaler_with_rbac(async_session, wholesaler_id=wholesaler_a, code=code_a)
+
+    invitation_code = f"H2A{uuid.uuid4().hex[:12].upper()}"
+    with run_as_system(reason="h2a_public_invitation_seed"):
+        await InvitationRepository().create(
+            async_session,
+            code=invitation_code,
+            wholesaler_id=wholesaler_a,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+
+    async def _override_session():
+        yield async_session
+
+    app = FastAPI()
+    app.include_router(invitations_router, prefix="/api/v1")
+    app.dependency_overrides[get_db_session] = _override_session
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        resp = await client.post("/api/v1/invitations/lookup", json={"code": invitation_code})
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["usable"] is True
+        assert data["wholesaler_id"] == str(wholesaler_a)
+        assert data["wholesaler_code"] == code_a
+
+        # Unknown code: neutral, no wholesaler identity disclosed.
+        resp_missing = await client.post(
+            "/api/v1/invitations/lookup", json={"code": "H2A-UNKNOWN-CODE"}
+        )
+        assert resp_missing.status_code == 200
+        missing = resp_missing.json()["data"]
+        assert missing["usable"] is False
+        assert missing.get("wholesaler_code") is None
+        assert missing.get("wholesaler_id") is None

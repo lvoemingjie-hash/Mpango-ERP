@@ -231,10 +231,11 @@ class RetailerProvisioningService:
 
         mark_session_as_system(self.db, reason="retailer_self_join")
         with run_as_system(reason="retailer_self_join"):
+            # Wholesaler FIRST (F2): a rejected supplier leaves nothing staged.
+            wholesaler = await self._load_wholesaler(wholesaler_id)
             retailer = await self._resolve_or_create_retailer(
                 phone=phone, name=name, email=email, address=address
             )
-            wholesaler = await self._load_wholesaler(wholesaler_id)
             tenant_schema = _tenant_schema_for(wholesaler)
 
             # Idempotent: an already-bound retailer gets the existing
@@ -335,13 +336,25 @@ class RetailerProvisioningService:
         return retailer
 
     async def _load_wholesaler(self, wholesaler_id: uuid.UUID) -> Wholesaler:
+        """H2-A-R2/F2: resolve only a CURRENT, ACTIVE, non-deleted wholesaler.
+
+        Missing, soft-deleted, suspended, provisioning and deactivated
+        suppliers are all rejected with the SAME single neutral error —
+        the lifecycle state is never disclosed, and no caller (invitation
+        registration, join-intent registration, credential reissue) can
+        bind against a non-active supplier.
+        """
         result = await self.db.execute(
             select(Wholesaler)
             .where(Wholesaler.id == wholesaler_id)
             .execution_options(ignore_tenant=True)
         )
         wholesaler = result.scalar_one_or_none()
-        if wholesaler is None:
+        if (
+            wholesaler is None
+            or wholesaler.is_deleted
+            or wholesaler.status != "active"
+        ):
             raise RetailerProvisioningError(INVITATION_NOT_FOUND, http_status=404)
         return wholesaler
 

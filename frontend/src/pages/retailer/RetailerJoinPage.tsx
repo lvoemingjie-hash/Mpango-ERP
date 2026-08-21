@@ -310,6 +310,19 @@ export function RetailerJoinPage() {
                   <p className="text-center text-xs text-gray-400">
                     Make sure this is your supplier before continuing.
                   </p>
+                  <p className="text-center text-xs text-gray-400">
+                    Already registered?{' '}
+                    {/* F4: portal link ONLY with the positively verified,
+                        normalized supplier code this lookup just resolved. */}
+                    <Link
+                      to={`/retail/login?w=${encodeURIComponent(
+                        codeForm.getValues('supplierCode').trim().toUpperCase(),
+                      )}`}
+                      className="text-primary-600 hover:text-primary-700"
+                    >
+                      Sign in to this supplier&apos;s portal
+                    </Link>
+                  </p>
                 </div>
               )}
               {stage.kind === 'register' && stage.mode === 'code' && (
@@ -332,12 +345,9 @@ export function RetailerJoinPage() {
           {stage.kind === 'registered' && <RegisteredGuidance portalCode={stage.portalCode} />}
         </div>
 
-        <p className="mt-4 text-center text-xs text-gray-400">
-          Already registered?{' '}
-          <Link to="/retail/login" className="text-primary-600 hover:text-primary-700">
-            Sign in to your supplier portal
-          </Link>
-        </p>
+        {/* H2-A-R2/F4: NO global bare /retail/login link. An already
+            registered retailer gets a portal link ONLY inside the verified
+            supplier-code preview, carrying the positively verified code. */}
       </div>
     </div>
   );

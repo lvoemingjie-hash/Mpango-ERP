@@ -120,15 +120,20 @@ async def _prepare(async_session: AsyncSession) -> None:
 
 
 async def _seed_wholesaler_with_rbac(
-    db: AsyncSession, *, wholesaler_id: uuid.UUID, code: str, contact: str | None = None
+    db: AsyncSession,
+    *,
+    wholesaler_id: uuid.UUID,
+    code: str,
+    contact: str | None = None,
+    status: str = "active",
 ) -> None:
     await db.execute(
         text(
             "INSERT INTO public.wholesalers (id, code, name, address, contact, status, is_deleted) "
-            "VALUES (:id, :code, :name, '12 Supplier Avenue' || chr(10) || 'Kampala', :contact, 'active', false) "
-            "ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code, name = EXCLUDED.name"
+            "VALUES (:id, :code, :name, '12 Supplier Avenue' || chr(10) || 'Kampala', :contact, :status, false) "
+            "ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code, name = EXCLUDED.name, status = EXCLUDED.status"
         ),
-        {"id": wholesaler_id, "code": code, "name": f"Tenant {code}", "contact": contact},
+        {"id": wholesaler_id, "code": code, "name": f"Tenant {code}", "contact": contact, "status": status},
     )
     tenant_schema = f"t_{str(wholesaler_id).replace('-', '')}"
     with run_as_system(reason="r1_tenant_rbac_seed"):
@@ -612,3 +617,200 @@ async def test_register_endpoint_is_rate_limit_wired(async_session, monkeypatch)
     # middleware (covered by the S2-5 rate-limit suites); here we prove the
     # endpoint wiring itself: limiter consulted, 429 surfaced.
     assert calls["n"] == 3
+
+
+# ---------------------------------------------------------------------------
+# H2-A-R2/F2: active-wholesaler fail-closed (Kilo F2 closure)
+# ---------------------------------------------------------------------------
+
+async def test_lookup_code_neutral_for_every_non_active_lifecycle(async_session):
+    """missing / deleted / suspended / provisioning / deactivated all return
+    the SAME neutral not-found shape — no lifecycle disclosure."""
+    await _prepare(async_session)
+    from api.v1.public_join import router as public_join_router
+
+    lifecycles = {
+        "deleted": {"status": "active", "deleted": True},
+        "suspended": {"status": "suspended", "deleted": False},
+        "provisioning": {"status": "provisioning", "deleted": False},
+        "deactivated": {"status": "deactivated", "deleted": False},
+    }
+    seeded = {}
+    for name, cfg in lifecycles.items():
+        ws = uuid.uuid4()
+        code = _code()
+        await _seed_wholesaler_with_rbac(
+            async_session, wholesaler_id=ws, code=code, status=cfg["status"]
+        )
+        if cfg["deleted"]:
+            await async_session.execute(
+                text("UPDATE public.wholesalers SET is_deleted = true WHERE id = :i"),
+                {"i": ws},
+            )
+        seeded[name] = code
+    await async_session.flush()
+
+    async with _client_for(async_session, lambda: public_join_router) as client:
+        miss = await client.post(
+            "/api/v1/wholesalers/lookup-code", json={"code": _code("MISS")}
+        )
+        responses = {}
+        for name, code in seeded.items():
+            responses[name] = await client.post(
+                "/api/v1/wholesalers/lookup-code", json={"code": code}
+            )
+
+    assert miss.status_code == 200 and miss.json()["data"]["found"] is False
+    for name, resp in responses.items():
+        assert resp.status_code == 200, name
+        data = resp.json()["data"]
+        assert data["found"] is False, name
+        assert data["name"] is None and data["region"] is None, name
+        assert data["contact_masked"] is None and data["join_intent"] is None, name
+
+
+async def test_join_intent_fails_closed_when_wholesaler_deactivates(async_session):
+    """Intent issued while ACTIVE; supplier turns inactive before
+    registration -> neutral rejection, ZERO side effects."""
+    await _prepare(async_session)
+    from services.email_delivery import (
+        clear_dev_email_deliveries,
+        get_dev_retailer_email_deliveries,
+    )
+
+    clear_dev_email_deliveries()
+    ws = uuid.uuid4()
+    code = _code()
+    await _seed_wholesaler_with_rbac(async_session, wholesaler_id=ws, code=code)
+    intent, _ = issue_join_intent(wholesaler_id=ws, wholesaler_code=code)
+
+    # Supplier deactivates between lookup and registration.
+    await async_session.execute(
+        text("UPDATE public.wholesalers SET status = 'deactivated' WHERE id = :i"),
+        {"i": ws},
+    )
+    await async_session.flush()
+
+    phone = _run_phone()
+    email = f"r2-{uuid.uuid4().hex[:6]}@example.com"
+    from api.v1.retailers import router as retailers_router
+
+    async with _client_for(async_session, lambda: retailers_router) as client:
+        resp = await client.post(
+            "/api/v1/retailers/register",
+            json={"join_intent": intent, "phone": phone, "email": email},
+        )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert detail["code"] == "INVITATION_NOT_FOUND"  # single neutral code
+    assert detail["message"] == "Registration failed"
+    assert "deactivat" not in resp.text.lower()
+
+    # ZERO persisted side effects (the API never commits on failure): roll
+    # back any staged rows, then prove nothing for THIS submission exists —
+    # no retailer, no binding, no setup token, no email delivery. Counts are
+    # phone/retailer-scoped: the shared fresh-DB run carries committed rows
+    # from earlier tests by design.
+    await async_session.rollback()
+    for sql, params in (
+        ("SELECT COUNT(*) FROM public.retailers WHERE phone = :p", {"p": phone}),
+        (
+            "SELECT COUNT(*) FROM public.wholesaler_retailer_bindings b "
+            "JOIN public.retailers r ON r.id = b.retailer_id WHERE r.phone = :p",
+            {"p": phone},
+        ),
+        (
+            "SELECT COUNT(*) FROM public.retailer_credential_setup_tokens t "
+            "JOIN public.retailers r ON r.id = t.retailer_id WHERE r.phone = :p",
+            {"p": phone},
+        ),
+    ):
+        count = await async_session.execute(text(sql), params)
+        assert count.scalar_one() == 0, sql
+    assert get_dev_retailer_email_deliveries(email) == []
+
+
+async def test_soft_deleted_wholesaler_join_intent_fails_closed(async_session):
+    await _prepare(async_session)
+    ws = uuid.uuid4()
+    code = _code()
+    await _seed_wholesaler_with_rbac(async_session, wholesaler_id=ws, code=code)
+    intent, _ = issue_join_intent(wholesaler_id=ws, wholesaler_code=code)
+
+    await async_session.execute(
+        text("UPDATE public.wholesalers SET is_deleted = true WHERE id = :i"),
+        {"i": ws},
+    )
+    await async_session.flush()
+
+    from api.v1.retailers import router as retailers_router
+
+    async with _client_for(async_session, lambda: retailers_router) as client:
+        resp = await client.post(
+            "/api/v1/retailers/register",
+            json={
+                "join_intent": intent,
+                "phone": _run_phone(),
+                "email": f"r2-{uuid.uuid4().hex[:6]}@example.com",
+            },
+        )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "INVITATION_NOT_FOUND"
+
+
+async def test_invitation_registration_inherits_active_guard(async_session):
+    """Entry A: a live invitation from a supplier that later deactivates can
+    no longer be consumed — same neutral rejection, zero side effects."""
+    await _prepare(async_session)
+    from services.email_delivery import clear_dev_email_deliveries
+
+    clear_dev_email_deliveries()
+    ws = uuid.uuid4()
+    code = _code()
+    await _seed_wholesaler_with_rbac(async_session, wholesaler_id=ws, code=code)
+    phone = _run_phone()
+    invite_code = f"R2INV{uuid.uuid4().hex[:10].upper()}"
+    with run_as_system(reason="r2_invitation_seed"):
+        await InvitationRepository().create(
+            async_session,
+            code=invite_code,
+            wholesaler_id=ws,
+            retailer_phone=phone,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+    # Supplier is suspended AFTER the invitation was issued.
+    await async_session.execute(
+        text("UPDATE public.wholesalers SET status = 'suspended' WHERE id = :i"),
+        {"i": ws},
+    )
+    await async_session.flush()
+
+    from api.v1.retailers import router as retailers_router
+
+    async with _client_for(async_session, lambda: retailers_router) as client:
+        resp = await client.post(
+            "/api/v1/retailers/register",
+            json={
+                "invitation_code": invite_code,
+                "phone": phone,
+                "email": f"r2-{uuid.uuid4().hex[:6]}@example.com",
+            },
+        )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "INVITATION_NOT_FOUND"
+    assert "suspend" not in resp.text.lower()
+    # Invitation NOT consumed (usable again if the supplier reactivates).
+    row = await async_session.execute(
+        text("SELECT status, used_at FROM public.invitations WHERE code = :c"),
+        {"c": invite_code},
+    )
+    status, used_at = row.one()
+    assert status == "active" and used_at is None
+    # Zero persisted side effects (rollback staged rows first — the
+    # invitation path stages the retailer BEFORE the wholesaler guard fires;
+    # nothing is ever committed).
+    await async_session.rollback()
+    retailers = await async_session.execute(
+        text("SELECT COUNT(*) FROM public.retailers WHERE phone = :p"), {"p": phone}
+    )
+    assert retailers.scalar_one() == 0

@@ -121,10 +121,13 @@ neither → 422）；绑定 wholesaler 只能来自服务端验证的邀请或 j
 - 完整后端 · 栈 A（PG16.14@15436 + redis7@6396，fresh `test_h2a_r1`，
   alembic 037 head，完整 env 配方含 TEST_DATABASE_URL /
   MPANGO_ALLOW_TEMP_DB_CREATE / PW1R3_TEST_REDIS_URL）：
-  **3669 passed / 1 failed / 48 skipped / 15 xfailed / 0 errors**——唯一
-  失败为 `test_dc12r1_contract_d_statement_print.py` 的既有可能性断言
-  （响应中随机 UUID 恰含子串 "1000"，与本 delta 无关；单独重跑 3/3 通过；
-  记录为 pre-existing flake，不在本任务范围修改）。
+  **3669 passed / 1 failed / 48 skipped / 15 xfailed / 0 errors**。
+  [H2-A-R2 RETRACTION] 当时将唯一失败归因为"随机 UUID 恰含 1000"——
+  该原始事件的确切 request_id 值**无留档证据，不成立为已证**。H2-A-R2
+  已独立复现并移除其脆弱机制：失败节点断言 `"1000" not in r.text` 扫描
+  整个响应体，而平铺信封回显调用方 X-Request-ID，任何含 "1000" 的
+  request_id 都会使该断言失败（业务面完全正确）。确定性复现与修复见
+  R2 附录；Contract D 生产代码零变更。
 - 完整后端 · 栈 B（PG16.14@15437 + redis7@6397，fresh `test_h2a_r1_b`，
   同一生命周期）：**3670 passed / 0 failed / 48 skipped / 15 xfailed**。
 - 两栈 skip 集一致（48=48）。
@@ -155,3 +158,98 @@ neither → 422）；绑定 wholesaler 只能来自服务端验证的邀请或 j
 - local == remote 与 protected refs 未变证明见下（push 后记录）。
 - 裁决目标：PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2A_R1_DUAL_ENTRY_MERGE_REVIEW
   （Kilo 有界累计源码审查基线：c5b66d26..HEAD）。
+
+---
+
+# H2-A-R2 — Kilo Findings Closure（2026-08-22 追记）
+
+- 分支：`zcode/dc12r1-mvp-l1-j1-h2-a-r2-kilo-closure-2026-08-22`（自
+  `78f88875`，累计基线 `c5b66d26..HEAD`）
+- Kilo 终审报告：`61ada4e`（STOP_AND_REPORT_CTO，F1–F4）
+- 授权文件（全部变更限于）：retailer_provisioning_service.py、
+  public_join.py、两个 H2-A 后端测试文件、Contract D 测试文件、
+  RetailerJoinPage.tsx、DualEntrySelfJoin.test.tsx、本台账、
+  manifest_sha256_h2a_r2.txt。
+
+## F1 — Contract D 红节点真相（P1）
+
+响应链（静态+运行双证明）：print_service 1000 行上限溢出 →
+`StatementRangeTooLarge` → statement_http 映射器（固定中性消息）→
+全局 http_exception_handler 平铺 `{code,message,request_id}` →
+request_logging 中间件回显调用方 `X-Request-ID`。
+
+- 确定性复现节点 `test_range_cap_deterministic_request_id_repro_h2a_r2_f1`：
+  注入 `X-Request-ID: h2a-r2-repro-1000-cap` 走真实请求路径 →
+  status=400、code=STATEMENT_RANGE_TOO_LARGE、无 data/半文档、固定消息
+  正确，且 `"1000" in r.text` 恰一次（即回显的 request_id）——旧断言
+  形式确定性地为 False。
+- 旧断言 RED 演示：在复现节点上临时还原旧断言形式 → 1 failed（RED），
+  还原后 GREEN。普通节点（无注入 header）旧断言形式仍 GREEN——证明
+  脆弱性仅在 request_id 含 "1000" 时触发。
+- 修复：仅替换无效的整响应子串断言为业务面作用域断言（message 精确
+  等值 + message/details 无 "1000"/"1001"）；1001 行上限与 Contract D
+  全部产品行为不变；生产代码零变更。
+- 撤回声明（本台账前文已就地标注）：原始 stack-A 事件的确切值不可得；
+  脆弱机制已被独立复现并移除。
+
+## F2 — active wholesaler fail-closed（P2）
+
+- `_load_wholesaler`：仅解析 id 匹配 + is_deleted=false + status='active'
+  三者同时成立；缺失/软删/停用/冻结/provisioning 统一单一中性错误
+  （INVITATION_NOT_FOUND/404，零生命周期披露）。邀请注册、join_intent
+  注册、凭据 reissue 全部继承。
+- `public_join.lookup-code`：同样仅 active+未删才返回预览与 intent。
+- join 路径 wholesaler 前置解析：拒绝时零暂存副作用。
+- 证据（4 个新测试，真实 PG）：五种生命周期 + missing 全同形中性；
+  active 时签发 intent→停用后注册 fail-closed；软删同理；邀请注册继承
+  守卫且邀请不被消费；全部拒绝路径 rollback 后零 retailer/binding/
+  setup-token/email 持久化副作用。
+- GitNexus impact：`_load_wholesaler` LOW（3 直接/27 间接——全部调用方
+  即守卫受益方）；`StatementRangeTooLarge` HIGH 但 F1 授权零生产变更
+  （仅测试文件），如实披露。
+
+## F3 — xfail 记账（P3）
+
+- 运行 A（fresh 全量，`-r x`）提取 15 个 XFAIL 节点 ID+理由（见运行
+  日志）：11 个标记的参数化展开，分布于 phase5_order_payment /
+  request_validation / route_coverage / u1r1_bootstrap 四个历史模块。
+- 静态对比：该 11 个标记在受保护基线 `c5b66d26` 与 HEAD **集合完全
+  一致**（added=0/removed=0）。
+- H2-A 重叠：15 节点中 h2a/dual_entry/self_join/cross_tenant/invit
+  命中数 = **0**；四个 H2-A 测试模块静态扫描 xfail/skip 标记 = **CLEAN**；
+  运行 A 中全部 H2-A 路由/授权节点为普通 GREEN（3675 passed / 0 failed
+  / 0 skipped-among-H2-A）。
+- 未修理任何无关历史 xfail（按任务禁令）。
+
+## F4 — 无裸 /retail/login（P3）
+
+- RetailerJoinPage 移除全局裸 `/retail/login` 页脚链接。
+- 已注册零售商唯一获得门户链接的位置：供应商码预览态，且仅
+  `/retail/login?w=<本次 lookup 正向验证并规范化的码>`。
+- 注册完成交接继续使用服务端返回的 portal code（T12 既有测试不变）。
+- 新测试（F4）：全阶段无任何裸 `/retail/login` 链接；失败/miss 查找零
+  门户链接；成功预览的唯一门户链接 href 精确 `?w=<code>`。
+
+## 门禁结果（R2 权威）
+
+- Contract D TestRangeCap：8/8（含修复节点+复现节点）+ 旧断言确定性
+  RED 演示。
+- H2-A 后端聚焦（8 文件 137 项）：自然 137/137、文件倒序 137/137。
+- H2-A 前端聚焦：自然 30/30、shuffle(seed 20260822) 30/30、逐条反向
+  30/30。
+- 全量前端 vitest：26 files / **385/385**；build PASS。
+- 完整后端 · 栈 A（fresh PG16@15436+redis@6396，`-r x`）：
+  **3675 passed / 0 failed / 0 errors / 48 skipped / 15 xfailed**。
+- 完整后端 · 栈 B（fresh PG16@15437+redis@6397）：见交付补记（要求
+  0 failed/0 errors 且 skip/xfail 集与栈 A 一致）。
+- py_compile；diff-check；scoped pre-commit（含 detect-secrets）；6 个
+  变更文件严格 UTF-8/无 BOM/无 mojibake。
+- gitnexus detect_changes：CLI 无该子命令（沿 H2-A 披露）；以精确
+  allowed-file 清单替代（上方授权列表 == 实际 diff 文件集）。
+
+## 交付（R2）
+
+- Verdict（仅当全部门禁含栈 B 通过）：
+  `PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_A_R2_MERGE_REVIEW`
+- committed-blob manifest：`manifest_sha256_h2a_r2.txt`（detached
+  checkout 独立验证 missing=0/mismatch=0）。

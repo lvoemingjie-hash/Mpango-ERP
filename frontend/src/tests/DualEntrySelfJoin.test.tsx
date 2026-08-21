@@ -426,6 +426,50 @@ describe('DC-12R1-MVP-L1-J1-H2-A-R1: dual-entry self-join', () => {
     expect(link).not.toContain('?');
   });
 
+  it('F4: no rendered link is EVER bare /retail/login; failed/miss lookups render no portal link', async () => {
+    const bareLinks = () =>
+      Array.from(document.querySelectorAll('a[href="/retail/login"]'));
+    const portalLinks = () =>
+      Array.from(document.querySelectorAll('a[href^="/retail/login"]'));
+
+    installAdapter({
+      'POST /wholesalers/lookup-code': (c) => ok(c, PREVIEW_FOUND),
+    });
+
+    // Entry state (both tabs): no portal link at all.
+    await renderAppAt('/retail/join');
+    expect(bareLinks()).toEqual([]);
+    expect(portalLinks()).toEqual([]);
+    await userEvent.click(screen.getByRole('tab', { name: /supplier code/i }));
+    expect(bareLinks()).toEqual([]);
+
+    // Failed lookup -> no portal link (neutral miss).
+    const missAdapter = installAdapter({
+      'POST /wholesalers/lookup-code': (c) => ok(c, { found: false }),
+    });
+    expect(missAdapter).toBeDefined();
+    await userEvent.type(screen.getByLabelText(/supplier code/i), 'WRONG99');
+    await userEvent.click(screen.getByRole('button', { name: /find my supplier/i }));
+    expect(await screen.findByRole('status')).toHaveTextContent(/could not find/i);
+    expect(bareLinks()).toEqual([]);
+    expect(portalLinks()).toEqual([]);
+
+    // Successful lookup -> the ONLY portal link carries the verified code.
+    const okAdapter = installAdapter({
+      'POST /wholesalers/lookup-code': (c) => ok(c, PREVIEW_FOUND),
+    });
+    expect(okAdapter).toBeDefined();
+    const input = screen.getByLabelText(/supplier code/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, SUPPLIER_CODE);
+    await userEvent.click(screen.getByRole('button', { name: /find my supplier/i }));
+    await screen.findByTestId('supplier-preview');
+    expect(bareLinks()).toEqual([]);
+    const links = portalLinks();
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute('href')).toBe(`/retail/login?w=${SUPPLIER_CODE}`);
+  });
+
   it('Customers page shows join source and deactivates (permission-gated)', async () => {
     resetAuth(userWith(['retailers:read', 'retailers:deactivate', 'invitations:create']));
     let status = 'active';

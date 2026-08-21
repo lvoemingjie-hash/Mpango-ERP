@@ -34,9 +34,12 @@ async def lookup_wholesaler_by_code(
     """Public supplier-code lookup (dual-entry entry B, Phase 0 P0-2/P0-3).
 
     Returns a SAFE preview (name, region summary, masked contact) plus a
-    short-lived signed join intent bound to the resolved wholesaler. The
-    code is a public supplier locator, NOT a credential. Unknown codes get
-    a uniform neutral response (no identity disclosure); endpoint-scoped
+    short-lived signed join intent bound to the resolved wholesaler — and
+    ONLY for a currently-ACTIVE, non-deleted supplier (F2). The
+    code is a public supplier locator, NOT a credential. Unknown, deleted,
+    suspended, provisioning and deactivated suppliers all get the same
+    uniform neutral response (no identity or lifecycle disclosure);
+    endpoint-scoped
     rate limiting (on top of the global bucket) is the anti-enumeration
     control.
     """
@@ -58,8 +61,10 @@ async def lookup_wholesaler_by_code(
         result = await db.execute(select(Wholesaler).where(Wholesaler.code == normalized))
         wholesaler = result.scalar_one_or_none()
 
-    if wholesaler is None or wholesaler.is_deleted:
-        # Uniform neutral miss: same shape, same status, no reason echo.
+    if wholesaler is None or wholesaler.is_deleted or wholesaler.status != "active":
+        # Uniform neutral miss (H2-A-R2/F2): missing, deleted, suspended,
+        # provisioning and deactivated suppliers are indistinguishable —
+        # same shape, same status, no lifecycle disclosure, no reason echo.
         return DataResponse(
             success=True,
             data=WholesalerJoinPreviewData(found=False),

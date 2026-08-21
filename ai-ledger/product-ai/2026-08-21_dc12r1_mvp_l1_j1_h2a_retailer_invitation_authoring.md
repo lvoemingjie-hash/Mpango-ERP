@@ -183,10 +183,9 @@ GitNexus：
 
 ## 7. 交付证明
 
-- 文件清单与 SHA-256：见 `manifest_sha256.txt` 同批附件（本 ledger 同
-  commit）。
+- 文件清单与 SHA-256：见 `manifest_sha256_h2a.txt`（本 ledger 同 commit 附带）。
 - local == remote：commit 后 `git rev-parse HEAD` ==
-  `git rev-parse origin/<branch>` 证明（见 commit 后置记录）。
+  `git rev-parse origin/<branch>` 证明：commit `988c73b7` push 后 local == remote；`origin/product-dev-recovered` == `c5b66d26` 未变；worktree 干净；GitNexus 提交后重索引 up-to-date（indexed commit == current commit == `988c73b`）。
 - protected refs 未变：`origin/product-dev-recovered` 仍 == `c5b66d26`。
 
 ## 8. 后续顺序

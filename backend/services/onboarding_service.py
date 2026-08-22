@@ -456,17 +456,30 @@ def build_password_reset_link(token: str, settings: Settings | None = None) -> s
     return path
 
 
-def build_retailer_setup_link(token: str, settings: Settings | None = None) -> str:
+def build_retailer_setup_link(
+    token: str,
+    settings: Settings | None = None,
+    wholesaler_code: str | None = None,
+) -> str:
     """Build the retailer credential-setup link for email delivery only.
 
     DC-12R1-S1: absolute URL via PUBLIC_FRONTEND_URL. The token is in the URL
     fragment so it never reaches the server in a query string, proxy log, or
     Referer header. The consuming frontend page scrubs the fragment and POSTs
     the token in a JSON body. No query component is ever produced.
+
+    DC-12R1-MVP-L1-J1-H2-A-R1: when ``wholesaler_code`` is provided it is
+    appended to the FRAGMENT as ``w=<code>`` (never a query param). The code
+    is the public supplier portal identifier — it lets the setup page hand
+    the retailer off to /retail/login?w=<code> after completing setup. It is
+    not a credential; the setupToken remains the only secret in the link.
     """
     settings = settings or get_settings()
     encoded = quote(token, safe='')
-    path = f"/retailer/setup-credential#setupToken={encoded}"
+    fragment = f"setupToken={encoded}"
+    if wholesaler_code:
+        fragment += f"&w={quote(wholesaler_code, safe='')}"
+    path = f"/retailer/setup-credential#{fragment}"
     base = getattr(settings, "PUBLIC_FRONTEND_URL", None)
     if base:
         return f"{base}{path}"

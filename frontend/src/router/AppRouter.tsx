@@ -1,6 +1,6 @@
 import { createBrowserRouter, RouterProvider, Navigate, useSearchParams } from 'react-router-dom';
-import { ProtectedRoute, PublicRoute, PlatformRoute, RetailerRoute, RetailerPermissionRoute, WholesalerRoute } from '@/router/guards';
-import { CLIENT_PERMISSIONS } from '@/utils/permissions';
+import { ProtectedRoute, PublicRoute, PlatformRoute, RetailerRoute, RetailerPermissionRoute, WholesalerRoute, WholesalerPermissionRoute } from '@/router/guards';
+import { CLIENT_PERMISSIONS, INVITATION_PERMISSIONS } from '@/utils/permissions';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -20,8 +20,12 @@ import { DataIntakePage } from '@/pages/skus/DataIntakePage';
 import { MobileScanPreview } from '@/pages/skus/MobileScanPreview';
 import { TenantListPage } from '@/pages/tenants/TenantListPage';
 import { RetailerListPage } from '@/pages/retailers/RetailerListPage';
+// DC-12R1-MVP-L1-J1-H2-A: wholesaler-side invitation authoring page
+import { InviteCreatePage } from '@/pages/retailers/InviteCreatePage';
 import { RetailerPricingPage } from '@/pages/pricing/RetailerPricingPage';
 import { InvitePage } from '@/pages/invite/InvitePage';
+// DC-12R1-MVP-L1-J1-H2-A: public invitation landing page (fragment-only code)
+import { InvitationLandingPage } from '@/pages/invite/InvitationLandingPage';
 import { FinancePage } from '@/pages/finance/FinancePage';
 import { PaymentListPage } from '@/pages/finance/PaymentListPage';
 import DeclarationQueuePage from '@/pages/finance/DeclarationQueuePage';
@@ -45,6 +49,8 @@ import { ReceiptPrintPage } from '@/pages/print/ReceiptPrintPage';
 import { StatementPrintPage } from '@/pages/print/StatementPrintPage';
 // DC-12R1-S1: retailer credential setup/reset pages (fragment-only token transport)
 import { RetailerSetupCredentialPage } from '@/pages/retailer/RetailerSetupCredentialPage';
+// DC-12R1-MVP-L1-J1-H2-A-R1: public dual-entry retailer self-join.
+import { RetailerJoinPage } from '@/pages/retailer/RetailerJoinPage';
 import { RetailerResetPasswordPage } from '@/pages/retailer/RetailerResetPasswordPage';
 // Platform Admin Cockpit pages (P11)
 import { PlatformOverviewPage } from '@/pages/platform/PlatformOverviewPage';
@@ -92,6 +98,13 @@ const router = createBrowserRouter([
     path: '/retail/login',
     element: <ClientLoginPage />,
   },
+  // DC-12R1-MVP-L1-J1-H2-A-R1: /retail/join is the public dual-entry
+  // self-join page (invitation link OR public supplier code). Credentials
+  // (invitation code / join intent) travel only in JSON bodies.
+  {
+    path: '/retail/join',
+    element: <RetailerJoinPage />,
+  },
   // /client/login is kept as a compatibility redirect/alias preserving `w`.
   {
     path: '/client/login',
@@ -103,6 +116,17 @@ const router = createBrowserRouter([
     element: <WorkspaceSelectorPage />,
   },
   // Invite page -- public, no auth required
+  // DC-12R1-MVP-L1-J1-H2-A: /invite is the CANONICAL retailer entry. The
+  // invitation code travels in the URL fragment only (/invite#code=...), is
+  // captured and scrubbed on mount, and is then used exclusively in JSON
+  // bodies (POST /invitations/lookup, POST /retailers/register).
+  {
+    path: '/invite',
+    element: <InvitationLandingPage />,
+  },
+  // DEPRECATED compatibility entry (path token): retained only so links
+  // issued by older builds keep working. New product UI must NEVER generate
+  // this format — use /invite#code=<opaque-code> instead.
   {
     path: '/invite/:code',
     element: <InvitePage />,
@@ -127,6 +151,16 @@ const router = createBrowserRouter([
               { path: '/skus/intake', element: <DataIntakePage /> },
               { path: '/skus/scan', element: <MobileScanPreview /> },
               { path: '/retailers', element: <RetailerListPage /> },
+              // DC-12R1-MVP-L1-J1-H2-A: wholesaler invitation authoring.
+              // Fail closed without invitations:create — the page never
+              // mounts, so its POST /invitations submit cannot fire; the
+              // backend enforces RequirePermission independently.
+              {
+                element: <WholesalerPermissionRoute permission={INVITATION_PERMISSIONS.CREATE} />,
+                children: [
+                  { path: '/retailers/invite', element: <InviteCreatePage /> },
+                ],
+              },
               { path: '/pricing', element: <RetailerPricingPage /> },
               { path: '/tenants', element: <TenantListPage /> },
               { path: '/finance', element: <FinancePage /> },

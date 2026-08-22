@@ -32,4 +32,9 @@ class InvitationLookupData(CamelModel):
     status: Optional[str] = Field(None, description="Invitation status")
     wholesaler_id: Optional[str] = Field(None, description="Inviting wholesaler id")
     wholesaler_name: Optional[str] = Field(None, description="Inviting wholesaler name")
+    # DC-12R1-MVP-L1-J1-H2-A-R1: the public portal code of the inviting
+    # wholesaler. Lets the landing page hand the retailer off to
+    # /retail/login?w=<code> after register/credential-setup. This is a
+    # public identifier (shown on portal links), not a credential.
+    wholesaler_code: Optional[str] = Field(None, description="Inviting wholesaler portal code")
     expires_at: Optional[datetime] = Field(None, description="Expiration timestamp")

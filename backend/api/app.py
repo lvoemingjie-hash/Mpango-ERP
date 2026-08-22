@@ -102,6 +102,7 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
         auth, users, roles, orders, health, invitations,
         retailers, skus, inventory, metrics, payments, prometheus,
         wholesalers,
+        public_join,  # DC-12R1-MVP-L1-J1-H2-A-R1: public dual-entry join
         profiling_test,  # S3-A Part 4
         jobs_test,  # S4-A
         sku_imports,  # U3-B2: SKU import preview/validate
@@ -136,6 +137,9 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(intake.router, prefix="/api/v1/intake", tags=["intake"])
     app.include_router(inventory.router, prefix="/api/v1/inventory", tags=["inventory"])
     app.include_router(wholesalers.router, prefix="/api/v1/wholesalers", tags=["wholesalers"])
+    # R1 dual-entry: public supplier-code lookup served from its own router
+    # (u6h2 no-edit contract on api/v1/wholesalers.py) at the canonical path.
+    app.include_router(public_join.router, prefix="/api/v1", tags=["public-join"])
     app.include_router(invitations.router, prefix="/api/v1", tags=["invitations"])
     app.include_router(retailers.router, prefix="/api/v1", tags=["retailers"])
     app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])

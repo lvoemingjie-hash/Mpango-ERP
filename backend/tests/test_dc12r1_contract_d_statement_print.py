@@ -1905,8 +1905,86 @@ class TestRangeCap:
             assert r.status_code == HTTPStatus.BAD_REQUEST
             assert r.json()["code"] == "STATEMENT_RANGE_TOO_LARGE"
             assert "data" not in r.json()
-            assert "1001" not in r.text
-            assert "1000" not in r.text
+            # H2-A-R2/F1: the old whole-response substring assertions
+            # ('"1000" not in r.text') were brittle: the flat envelope echoes
+            # the caller's X-Request-ID (request_logging middleware), so any
+            # request_id containing "1000" made them fail spuriously while
+            # every business surface stayed correct. Assert on the
+            # business-facing surfaces ONLY (message + details); the echoed
+            # request_id is not business data.
+            assert r.json()["message"] == (
+                "Statement range is too large. Choose a shorter date range."
+            )
+            assert "1000" not in r.json()["message"]
+            assert "1001" not in r.json()["message"]
+            details = r.json().get("details") or {}
+            assert "1000" not in str(details)
+            assert "1001" not in str(details)
+        finally:
+            from database.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as cleanup_db:
+                result = await cleanup_db.execute(
+                    text(f'DELETE FROM "{tenant["schema"]}".payment_declarations WHERE id = ANY(:ids)'),
+                    {"ids": decl_ids},
+                )
+                assert result.rowcount == 1001, "expected exactly 1001 owned declarations deleted"
+                await cleanup_db.commit()
+
+    async def test_range_cap_deterministic_request_id_repro_h2a_r2_f1(
+        self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
+    ):
+        """H2-A-R2/F1 deterministic reproduction of the retired brittle node.
+
+        Response chain (proven here through the real request path):
+        print_service STATEMENT_LINE_CAP overflow -> StatementRangeTooLarge
+        -> statement_http mapper (FIXED neutral message) -> global
+        http_exception_handler flat envelope {code, message, request_id}
+        -> request_logging middleware echoes the caller's X-Request-ID.
+
+        Supplying X-Request-ID containing "1000" makes the RETIRED
+        whole-response assertion ('assert "1000" not in r.text') deterministically
+        False — purely via the echoed request_id — while every business
+        surface stays correct. The original stack-A event's exact request_id
+        value is NOT available from the preserved evidence; only the brittle
+        MECHANISM is reproduced here (see ledger retraction).
+        """
+        db, reg = s2_clean_db
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        oid = uuid.UUID(info["oid"])
+        decl_ids = await _bulk_pending_declarations(
+            db, info["schema"], tenant["ws_id"], tenant["ret_id"], oid, n=1001
+        )
+        try:
+            frm, to = await _stmt_period_yesterday_today()
+            r = await i2b_client.get(
+                "/api/v1/client/statements/print",
+                params={"from": frm, "to": to, "include_pending": "true"},
+                headers={
+                    **_headers(info["token_ret"]),
+                    "X-Request-ID": "h2a-r2-repro-1000-cap",
+                },
+            )
+            # Controlled 400, exact code, zero partial document.
+            assert r.status_code == HTTPStatus.BAD_REQUEST
+            body = r.json()
+            assert body["code"] == "STATEMENT_RANGE_TOO_LARGE"
+            assert "data" not in body
+            # Fixed neutral business message (no cap numbers leak).
+            assert body["message"] == (
+                "Statement range is too large. Choose a shorter date range."
+            )
+            assert "1000" not in body["message"]
+            assert "1001" not in body["message"]
+            details = body.get("details") or {}
+            assert "1000" not in str(details)
+            assert "1001" not in str(details)
+            # The retired whole-response assertion is deterministically False:
+            # the ONLY "1000" in the response is the echoed request_id.
+            assert "1000" in r.text
+            assert body["request_id"] == "h2a-r2-repro-1000-cap"
+            assert r.text.count("1000") == 1
         finally:
             from database.session import AsyncSessionLocal
 

@@ -8,6 +8,25 @@ import type { LoginResponse } from '@/types/auth';
 import type { ApiErrorResponse } from '@/types/api';
 
 /**
+ * DC-12R1-MVP-L1-J1-H2-A-R1: opt-out channel for deliberately PUBLIC,
+ * credential-bearing requests (invitation lookup / retailer register).
+ *
+ * A caller that sets `skipAuthInterceptors: true` and sends an explicitly
+ * EMPTY Authorization header gets:
+ *   - no store-token injection (empty header wins per the interceptor below);
+ *   - NO error toasts (the global interceptor never echoes the backend
+ *     message for these requests);
+ *   - NO 401 token-refresh/logout hijack (an anonymous public call must not
+ *     tear down or refresh the caller's unrelated session).
+ * The page-level fixed neutral error copy remains the only failure surface.
+ */
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    skipAuthInterceptors?: boolean;
+  }
+}
+
+/**
  * Singleton Axios instance for all API calls.
  * Mirrors frontend_contract.md §3.1 — unified API client.
  *
@@ -92,6 +111,14 @@ api.interceptors.response.use(
     const detail = error.response?.data;
     const errorCode = detail && 'error' in detail ? detail.error.code : '';
     const errorMsg = detail && 'error' in detail ? detail.error.message : error.message;
+
+    // DC-12R1-MVP-L1-J1-H2-A-R1: public credential-bearing requests opted
+    // out via skipAuthInterceptors never reach the global toast echo nor the
+    // 401 refresh/logout machinery — their only failure surface is the
+    // page's fixed neutral copy.
+    if (originalRequest?.skipAuthInterceptors) {
+      return Promise.reject(error);
+    }
 
     // -----------------------------------------------------------------------
     // Guardrail-aware error toasts (Track E3)

@@ -72,3 +72,29 @@ class WholesalerListResponse(BaseModel):
     )
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# DC-12R1-MVP-L1-J1-H2-A-R1: public supplier-code lookup (dual-entry entry B)
+# ---------------------------------------------------------------------------
+
+class WholesalerCodeLookupRequest(BaseModel):
+    """Public lookup by supplier portal code. Code regex mirrors the DB."""
+
+    code: str = Field(..., min_length=1, max_length=32)
+
+    model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True)
+
+
+class WholesalerJoinPreviewData(BaseModel):
+    """SAFE preview only: identity display fields plus a short-lived signed
+    join intent. No internal ids, no raw contact data, no plan metadata."""
+
+    found: bool = Field(..., description="Whether the code resolved to a supplier")
+    name: Optional[str] = Field(None, description="Supplier display name")
+    region: Optional[str] = Field(None, description="Supplier region/address summary")
+    contact_masked: Optional[str] = Field(None, description="Masked contact")
+    join_intent: Optional[str] = Field(None, description="Signed short-lived join intent")
+    expires_at: Optional[datetime] = Field(None, description="Join intent expiry")
+
+    model_config = ConfigDict(populate_by_name=True)

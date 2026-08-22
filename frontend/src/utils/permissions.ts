@@ -120,3 +120,26 @@ export const CLIENT_PERMISSIONS = {
 
 /** All six retailer (client) permission codes as an array. */
 export const ALL_CLIENT_PERMISSIONS: readonly string[] = Object.values(CLIENT_PERMISSIONS);
+
+/**
+ * Wholesaler invitation permission codes — DC-12R1-MVP-L1-J1-H2-A.
+ *
+ * Must match the backend RequirePermission(...) strings byte-for-byte
+ * (api/v1/invitations.py + core/permission_registry.py). The authoring UI
+ * (Customers "Invite Retailer" CTA and /retailers/invite) is admitted only
+ * with invitations:create; revoke stays a backend/permission concern.
+ */
+export const INVITATION_PERMISSIONS = {
+  CREATE: 'invitations:create',
+  REVOKE: 'invitations:revoke',
+} as const;
+
+/**
+ * Wholesaler retailer-relationship permission codes — DC-12R1-MVP-L1-J1-H2-A-R1.
+ * Must match the backend RequirePermission(...) string byte-for-byte
+ * (api/v1/retailers.py + core/permission_registry.py). Gates the Customers
+ * page deactivate control for dual-entry relationships.
+ */
+export const RETAILER_PERMISSIONS = {
+  DEACTIVATE: 'retailers:deactivate',
+} as const;

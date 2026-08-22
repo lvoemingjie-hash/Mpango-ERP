@@ -57,6 +57,8 @@ EXPECTED_PUBLIC_ALLOWLIST = {
     "/api/v1/client/auth/reset-password",
     "/api/v1/client/auth/login",
     "/api/v1/invitations/lookup",
+    # DC-12R1-MVP-L1-J1-H2-A-R1: public supplier-code lookup (CTO-approved).
+    "/api/v1/wholesalers/lookup-code",
 }
 SENSITIVE_RESPONSE_TERMS = (
     "tenant",

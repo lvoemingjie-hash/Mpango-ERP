@@ -1,15 +1,45 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { retailerService, type RetailerWithBinding } from '@/services/retailerService';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { UsersIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
+import { useAuthStore } from '@/stores/authStore';
+import { can, INVITATION_PERMISSIONS, RETAILER_PERMISSIONS } from '@/utils/permissions';
 
 export function RetailerListPage() {
   const [retailers, setRetailers] = useState<RetailerWithBinding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // DC-12R1-MVP-L1-J1-H2-A: the "Invite a retailer" CTA is admitted only for
+  // a session holding invitations:create (centralized can(); admins bypass).
+  // Button hiding is NOT the security boundary — /retailers/invite is
+  // guarded by WholesalerPermissionRoute and POST /invitations requires the
+  // permission server-side. All three layers fail closed independently.
+  const user = useAuthStore((s) => s.user);
+  const canInvite = can(user, INVITATION_PERMISSIONS.CREATE);
+  // R1 dual-entry: post-hoc relationship control is separately gated.
+  const canDeactivate = can(user, RETAILER_PERMISSIONS.DEACTIVATE);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const [deactivateError, setDeactivateError] = useState<string | null>(null);
+
+  const deactivate = async (retailerId: string) => {
+    if (deactivatingId) return; // one in-flight deactivation at a time
+    setDeactivatingId(retailerId);
+    setDeactivateError(null);
+    try {
+      await retailerService.deactivate(retailerId);
+      await load();
+    } catch {
+      // Fixed neutral copy — no backend echo.
+      setDeactivateError('We could not deactivate that customer. Please try again.');
+    } finally {
+      setDeactivatingId(null);
+    }
+  };
 
   // Pagination state
   const [page, setPage] = useState(1);
@@ -40,9 +70,16 @@ export function RetailerListPage() {
         title="Customers"
         description="View all retailers bound to your business."
         action={
-          <button onClick={load} disabled={loading} className="btn-secondary text-sm">
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {canInvite && (
+              <Link to="/retailers/invite" className="btn-primary text-sm">
+                Invite a retailer
+              </Link>
+            )}
+            <button onClick={load} disabled={loading} className="btn-secondary text-sm">
+              Refresh
+            </button>
+          </div>
         }
       />
 
@@ -65,6 +102,13 @@ export function RetailerListPage() {
           icon={UsersIcon}
           title="No customers yet"
           description="Customers will appear here once they register using your invitation link. Share your business link to start building your customer base."
+          action={
+            canInvite ? (
+              <Link to="/retailers/invite" className="btn-primary text-sm">
+                Invite a retailer
+              </Link>
+            ) : undefined
+          }
         />
       )}
 
@@ -92,10 +136,13 @@ export function RetailerListPage() {
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     Status
                   </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Joined via
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {retailers.map(({ retailer, binding_status, bound_at }) => (
+                {retailers.map(({ retailer, binding_status, bound_at, join_source }) => (
                   <tr key={retailer.id} className="hover:bg-gray-50">
                     <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
                       {retailer.name || '—'}
@@ -119,11 +166,32 @@ export function RetailerListPage() {
                         {binding_status.charAt(0).toUpperCase() + binding_status.slice(1)}
                       </span>
                     </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                      <span title={join_source === 'invite' ? 'Joined via invitation link' : 'Joined via supplier code'}>
+                        {join_source === 'invite' ? 'Invite link' : 'Supplier code'}
+                      </span>
+                      {canDeactivate && binding_status === 'active' && (
+                        <button
+                          type="button"
+                          onClick={() => deactivate(retailer.id)}
+                          disabled={deactivatingId === retailer.id}
+                          className="ml-2 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          {deactivatingId === retailer.id ? 'Deactivating…' : 'Deactivate'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {deactivateError && (
+            <p role="alert" className="text-sm text-red-700">
+              {deactivateError}
+            </p>
+          )}
 
           <Pagination
             page={page}

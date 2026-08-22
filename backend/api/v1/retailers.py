@@ -34,6 +34,7 @@ from services.retailer_provisioning_service import (
     RetailerProvisioningError,
     RetailerProvisioningService,
 )
+from repositories.binding_repository import BindingRepository
 from services.retailer_service import RetailerService
 
 
@@ -65,29 +66,86 @@ def _binding_to_data(binding) -> BindingData:
     response_model=DataResponse[RetailerRegisterResponseData],
     status_code=status.HTTP_201_CREATED,
 )
-async def register_retailer_with_invitation(
-    request: RetailerRegisterRequest,
+async def register_retailer_dual_entry(
+    request: Request,
+    payload: RetailerRegisterRequest,
     db: AsyncSession = Depends(get_db_session),
 ):
-    service = RetailerService()
-    invitation, retailer, binding, error_code = await service.register_with_invitation(
-        db,
-        invitation_code=request.invitation_code,
-        phone=request.phone,
-        name=request.name,
-        email=request.email,
-        address=request.address,
+    """Dual-entry retailer registration (DC-12R1-MVP-L1-J1-H2-A-R1).
+
+    Entry A: invitation_code (wholesaler-shared one-time invite).
+    Entry B: join_intent (server-signed, short-lived, bound to exactly one
+    wholesaler by a public supplier-code lookup). Exactly one of the two is
+    accepted — the schema rejects both/neither. The bound wholesaler is
+    resolved exclusively server-side; a client-submitted wholesaler_id is
+    never read. Endpoint-scoped rate limit applies on top of the global
+    middleware bucket.
+    """
+    from core.rate_limiter import get_rate_limiter
+
+    await get_rate_limiter().check_endpoint_rate_limit(
+        request, namespace="public_register", limit=10
     )
 
-    if error_code:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": error_code, "message": "Invitation registration failed"},
+    service = RetailerService()
+    wholesaler = None
+    if payload.join_intent is not None:
+        from core.join_intent import JoinIntentError, verify_join_intent
+
+        try:
+            intent = verify_join_intent(payload.join_intent)
+        except JoinIntentError:
+            # Neutral: no disclosure of which check failed.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "JOIN_INTENT_INVALID", "message": "Registration failed"},
+            )
+        _inv, retailer, binding, error_code, wholesaler = (
+            await service.register_with_join_intent(
+                db,
+                join_intent_wholesaler_id=intent.wholesaler_id,
+                phone=payload.phone,
+                email=payload.email,
+                name=payload.name,
+                address=payload.address,
+            )
         )
+    else:
+        invitation, retailer, binding, error_code = await service.register_with_invitation(
+            db,
+            invitation_code=payload.invitation_code,
+            phone=payload.phone,
+            name=payload.name,
+            email=payload.email,
+            address=payload.address,
+        )
+
+    if error_code:
+        status_code = (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+            if error_code == "EMAIL_REQUIRED"
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail={"code": error_code, "message": "Registration failed"},
+        )
+
+    # Server-verified portal code for the login handoff: prefer the
+    # provisioning-resolved wholesaler; fall back to loading it by the
+    # binding's wholesaler id (still server-side truth, never client input).
+    if wholesaler is None:
+        from services.invitation_service import InvitationService
+
+        wholesaler = await InvitationService().get_wholesaler(
+            db, wholesaler_id=binding.wholesaler_id
+        )
+    wholesaler_code = wholesaler.code if wholesaler is not None else ""
 
     data = RetailerRegisterResponseData(
         retailer=_retailer_to_data(retailer),
         binding=_binding_to_data(binding),
+        wholesaler_code=wholesaler_code,
     )
 
     return DataResponse(success=True, data=data, timestamp=datetime.utcnow())
@@ -279,12 +337,32 @@ async def list_retailers(
         db, wholesaler_id=wholesaler_id, page=page, size=size
     )
 
+    # R1 dual-entry: derive each relationship's join source from the
+    # used-invitation linkage (server-side truth; no client input). A used
+    # invitation from THIS wholesaler for THIS retailer => 'invite', else
+    # the relationship started through the supplier-code entry => 'code'.
+    retailer_ids = [retailer.id for retailer, _binding in results]
+    invited_ids: set = set()
+    if retailer_ids:
+        from sqlalchemy import text as _text
+
+        rows = await db.execute(
+            _text(
+                "SELECT used_retailer_id FROM public.invitations "
+                "WHERE wholesaler_id = :ws AND used_retailer_id = ANY(:rids) "
+                "AND used_at IS NOT NULL AND is_deleted = false"
+            ),
+            {"ws": wholesaler_id, "rids": [str(r) for r in retailer_ids]},
+        )
+        invited_ids = {row[0] for row in rows.fetchall()}
+
     pages = ceil(total / size) if total > 0 else 0
     items = [
         RetailerWithBinding(
             retailer=_retailer_to_data(retailer),
             binding_status=binding.status,
             bound_at=binding.created_at,
+            join_source="invite" if retailer.id in invited_ids else "code",
         )
         for retailer, binding in results
     ]
@@ -294,6 +372,57 @@ async def list_retailers(
         pagination=Pagination(page=page, size=size, total=total, pages=pages).model_dump(),
     )
     return DataResponse(success=True, data=data, timestamp=datetime.utcnow())
+
+
+@router.post(
+    "/retailers/{retailer_id}/deactivate",
+    response_model=DataResponse[BindingData],
+    status_code=status.HTTP_200_OK,
+)
+async def deactivate_retailer_binding(
+    retailer_id: str,
+    token: TokenPayload = Depends(RequirePermission("retailers:deactivate")),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Deactivate a retailer relationship (dual-entry post-hoc control).
+
+    Tenant-scoped: only the wholesaler who owns the binding may deactivate
+    it; cross-tenant ids get a neutral 404. Idempotent for an already
+    inactive binding. The retailer can no longer operate against this
+    supplier while inactive.
+    """
+    try:
+        retailer_uuid = uuid.UUID(retailer_id)
+        wholesaler_id = uuid.UUID(token.tenant_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "RETAILER_NOT_FOUND", "message": "Retailer not found"},
+        )
+
+    from db.tenant_filter import run_as_system
+
+    binding = await BindingRepository().get_binding(
+        db, wholesaler_id=wholesaler_id, retailer_id=retailer_uuid
+    )
+    if binding is None or binding.is_deleted:
+        # Neutral 404 — no cross-tenant existence disclosure.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "RETAILER_NOT_FOUND", "message": "Retailer not found"},
+        )
+    with run_as_system(reason="retailer_binding_deactivate"):
+        if binding.status != "inactive":
+            binding.status = "inactive"
+            await db.flush()
+        await db.commit()
+        await db.refresh(binding)
+
+    return DataResponse(
+        success=True,
+        data=_binding_to_data(binding),
+        timestamp=datetime.utcnow(),
+    )
 
 
 @router.get(

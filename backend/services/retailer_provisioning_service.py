@@ -34,6 +34,7 @@ from core.config import Settings, get_settings
 from core.security import hash_password
 from db.sql_safety import validate_identifier
 from db.tenant_filter import mark_session_as_system, run_as_system
+from repositories.binding_repository import BindingRepository
 from models.binding import WholesalerRetailerBinding
 from models.invitation import Invitation
 from models.retailer import Retailer
@@ -75,6 +76,9 @@ RETAILER_CREDENTIAL_CONFLICT = "RETAILER_CREDENTIAL_CONFLICT"
 SETUP_EMAIL_DELIVERY_FAILED = "SETUP_EMAIL_DELIVERY_FAILED"
 CREDENTIAL_ALREADY_ESTABLISHED = "CREDENTIAL_ALREADY_ESTABLISHED"
 SETUP_TOKEN_INVALID = "SETUP_TOKEN_INVALID"
+# DC-12R1-MVP-L1-J1-H2-A-R1: the credential lifecycle requires email (setup
+# password delivery); a no-email registration is rejected before any write.
+EMAIL_REQUIRED = "EMAIL_REQUIRED"
 RESET_TOKEN_INVALID = "RESET_TOKEN_INVALID"
 RETAILER_CREDENTIAL_NEUTRAL = "RETAILER_CREDENTIAL_NEUTRAL"  # response-only
 
@@ -94,12 +98,18 @@ class RetailerCredentialTokenInvalidError(Exception):
 
 @dataclass(frozen=True)
 class ProvisioningResult:
-    """Outcome of an invitation acceptance (internal; API maps to a response)."""
+    """Outcome of an invitation acceptance (internal; API maps to a response).
 
-    invitation: Invitation
+    R1 dual-entry: ``invitation`` is None for the code/self-join path, and
+    ``wholesaler`` carries the server-resolved supplier context (used to
+    derive the verified portal code for the login handoff).
+    """
+
     retailer: Retailer
     binding: WholesalerRetailerBinding
     setup_token_issued: bool
+    invitation: Optional[Invitation] = None
+    wholesaler: Optional[Wholesaler] = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +162,10 @@ class RetailerProvisioningService:
         Any failure rolls back everything, including the invitation state.
         Raises RetailerProvisioningError on controlled failures.
         """
+        # R1 dual-entry: email is mandatory (setup-password delivery). The
+        # API schema enforces this; the service guard closes direct callers.
+        if email is None:
+            raise RetailerProvisioningError(EMAIL_REQUIRED, http_status=422)
         mark_session_as_system(self.db, reason="retailer_invitation_accept")
         with run_as_system(reason="retailer_invitation_accept"):
             # 1. SELECT invitation FOR UPDATE by code.
@@ -168,14 +182,16 @@ class RetailerProvisioningService:
             binding, setup_token_raw = await self._provision_relationship(
                 wholesaler=wholesaler,
                 tenant_schema=tenant_schema,
-                invitation=invitation,
                 retailer=retailer,
+                invitation=invitation,
             )
             # 5-6. Create setup token already done inside _provision_relationship
             #      (returns the raw token or None). Send SMTP before commit.
             if setup_token_raw is not None:
                 await self._send_setup_email(
-                    retailer=retailer, raw_token=setup_token_raw
+                    retailer=retailer,
+                    raw_token=setup_token_raw,
+                    wholesaler_code=wholesaler.code,
                 )
             # 7. Mark invitation used with used_retailer_id (R_id exists now).
             await self._mark_invitation_used(invitation, retailer.id)
@@ -185,6 +201,73 @@ class RetailerProvisioningService:
             retailer=retailer,
             binding=binding,
             setup_token_issued=setup_token_raw is not None,
+            wholesaler=wholesaler,
+        )
+
+    async def register_with_join_intent(
+        self,
+        *,
+        wholesaler_id: uuid.UUID,
+        phone: str,
+        email: Optional[str],
+        name: Optional[str] = None,
+        address: Optional[str] = None,
+    ) -> ProvisioningResult:
+        """Self-join via verified join intent (dual-entry contract, entry B).
+
+        The wholesaler is resolved EXCLUSIVELY from the server-verified
+        join_intent (see core/join_intent.py) — a client-submitted
+        wholesaler_id can never reach this method. Order mirrors the
+        invitation path minus invitation locking/consumption: retailer ->
+        (idempotent binding check) -> binding+user+mapping+role -> setup
+        token -> SMTP before commit. Any failure rolls back everything.
+
+        Idempotency: an existing (wholesaler, retailer) binding is returned
+        as success — resubmissions never create a second relationship; the
+        DB unique constraint is the race-safe backstop.
+        """
+        if email is None:
+            raise RetailerProvisioningError(EMAIL_REQUIRED, http_status=422)
+
+        mark_session_as_system(self.db, reason="retailer_self_join")
+        with run_as_system(reason="retailer_self_join"):
+            # Wholesaler FIRST (F2): a rejected supplier leaves nothing staged.
+            wholesaler = await self._load_wholesaler(wholesaler_id)
+            retailer = await self._resolve_or_create_retailer(
+                phone=phone, name=name, email=email, address=address
+            )
+            tenant_schema = _tenant_schema_for(wholesaler)
+
+            # Idempotent: an already-bound retailer gets the existing
+            # relationship back (no second binding, no second user/token).
+            existing_binding = await BindingRepository().get_binding(
+                self.db, wholesaler_id=wholesaler_id, retailer_id=retailer.id
+            )
+            if existing_binding is not None:
+                return ProvisioningResult(
+                    retailer=retailer,
+                    binding=existing_binding,
+                    setup_token_issued=False,
+                    wholesaler=wholesaler,
+                )
+
+            binding, setup_token_raw = await self._provision_relationship(
+                wholesaler=wholesaler,
+                tenant_schema=tenant_schema,
+                retailer=retailer,
+            )
+            if setup_token_raw is not None:
+                await self._send_setup_email(
+                    retailer=retailer,
+                    raw_token=setup_token_raw,
+                    wholesaler_code=wholesaler.code,
+                )
+            await self.db.flush()
+        return ProvisioningResult(
+            retailer=retailer,
+            binding=binding,
+            setup_token_issued=setup_token_raw is not None,
+            wholesaler=wholesaler,
         )
 
     async def _lock_invitation(self, code: str) -> Invitation:
@@ -253,13 +336,25 @@ class RetailerProvisioningService:
         return retailer
 
     async def _load_wholesaler(self, wholesaler_id: uuid.UUID) -> Wholesaler:
+        """H2-A-R2/F2: resolve only a CURRENT, ACTIVE, non-deleted wholesaler.
+
+        Missing, soft-deleted, suspended, provisioning and deactivated
+        suppliers are all rejected with the SAME single neutral error —
+        the lifecycle state is never disclosed, and no caller (invitation
+        registration, join-intent registration, credential reissue) can
+        bind against a non-active supplier.
+        """
         result = await self.db.execute(
             select(Wholesaler)
             .where(Wholesaler.id == wholesaler_id)
             .execution_options(ignore_tenant=True)
         )
         wholesaler = result.scalar_one_or_none()
-        if wholesaler is None:
+        if (
+            wholesaler is None
+            or wholesaler.is_deleted
+            or wholesaler.status != "active"
+        ):
             raise RetailerProvisioningError(INVITATION_NOT_FOUND, http_status=404)
         return wholesaler
 
@@ -268,8 +363,8 @@ class RetailerProvisioningService:
         *,
         wholesaler: Wholesaler,
         tenant_schema: str,
-        invitation: Invitation,
         retailer: Retailer,
+        invitation: Optional[Invitation] = None,
     ) -> tuple[WholesalerRetailerBinding, Optional[str]]:
         """Steps 4-6: binding + tenant user + mapping + role + optional setup token."""
         # Binding (respect (wholesaler_id, retailer_id) uniqueness).
@@ -484,7 +579,11 @@ class RetailerProvisioningService:
         )
 
     async def _send_setup_email(
-        self, *, retailer: Retailer, raw_token: str
+        self,
+        *,
+        retailer: Retailer,
+        raw_token: str,
+        wholesaler_code: str | None = None,
     ) -> None:
         """SMTP before commit (CTO constraint #5). Failure rolls back the txn."""
         if retailer.email is None:
@@ -498,7 +597,11 @@ class RetailerProvisioningService:
                 settings=self.settings,
                 to_email=retailer.email,
                 token=raw_token,
-                setup_link=build_retailer_setup_link(raw_token, self.settings),
+                setup_link=build_retailer_setup_link(
+                    raw_token,
+                    self.settings,
+                    wholesaler_code=wholesaler_code,
+                ),
             )
         except EmailDeliveryNotConfiguredError as exc:
             # Controlled: roll back provisioning; invitation stays reusable.
@@ -740,12 +843,17 @@ class RetailerProvisioningService:
             raise RetailerProvisioningError(
                 CREDENTIAL_ALREADY_ESTABLISHED, http_status=409
             )
+        reissue_wholesaler = await self._load_wholesaler(wholesaler_id)
         try:
             record_retailer_setup_email(
                 settings=self.settings,
                 to_email=retailer.email,
                 token=raw_token,
-                setup_link=build_retailer_setup_link(raw_token, self.settings),
+                setup_link=build_retailer_setup_link(
+                    raw_token,
+                    self.settings,
+                    wholesaler_code=reissue_wholesaler.code,
+                ),
             )
         except EmailDeliveryNotConfiguredError as exc:
             raise RetailerProvisioningError(

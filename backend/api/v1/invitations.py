@@ -95,6 +95,7 @@ async def lookup_invitation(
         status=invitation.status,
         wholesaler_id=str(invitation.wholesaler_id),
         wholesaler_name=getattr(wholesaler, "name", None) if wholesaler else None,
+        wholesaler_code=getattr(wholesaler, "code", None) if wholesaler else None,
         expires_at=invitation.expires_at,
     )
     return DataResponse(success=True, data=data, timestamp=datetime.utcnow())
@@ -131,6 +132,7 @@ async def get_invitation_by_code(
         status=invitation.status,
         wholesaler_id=str(invitation.wholesaler_id),
         wholesaler_name=getattr(wholesaler, "name", None) if wholesaler else None,
+        wholesaler_code=getattr(wholesaler, "code", None) if wholesaler else None,
         expires_at=invitation.expires_at,
     )
 

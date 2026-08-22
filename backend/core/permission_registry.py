@@ -49,6 +49,11 @@ ADMIN_PERMISSIONS: Final[tuple[PermissionSpec, ...]] = (
     ("payments:create", "Create payments"),
     ("payments:confirm_declaration", "Confirm or reject a retailer payment declaration"),
     ("retailers:read", "Read retailers"),
+    # DC-12R1-MVP-L1-J1-H2-A-R1: wholesaler-side post-hoc control for the
+    # dual-entry join (deactivate a retailer relationship). Enforced by
+    # POST /retailers/{id}/deactivate; granted to admin idempotently at
+    # tenant bootstrap (see scripts/bootstrap_tenant_schema.py).
+    ("retailers:deactivate", "Deactivate a retailer binding relationship"),
     *ADMIN_MANAGEMENT_PERMISSIONS,
     ("invitations:create", "Create invitations"),
     ("pricing:read", "Read pricing"),

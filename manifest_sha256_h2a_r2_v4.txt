@@ -1,5 +1,6 @@
 # DC-12R1-MVP-L1-J1-H2-A-R2-V4 evidence manifest (committed blob SHA-256)
 # V4 report delta only; manifest excludes itself.
+f86728f85d722f5898a8e698195f6468524c79770e363b724a9f0f4790efc556  docs/ai-reports/review/evidence/j1-h2a-r2-v4/E1_EVIDENCE_TRUTH_CORRECTION.md
 158ddb9541ae072530e74bcf8af3645a2a501c6cbdbe5f86c81b591cadcd314d  docs/ai-reports/review/evidence/j1-h2a-r2-v4/authoritative_junit.xml
 97f6105c111ae569bab5defbd0da6e4c5043c98f8ea500cac9c54dc9cb3233b5  docs/ai-reports/review/evidence/j1-h2a-r2-v4/authoritative_playwright.json
 d7b3a8a6e54f6de9464a49ea59de41b899fc6d705ec8cc8f94662286e33b9b67  docs/ai-reports/review/evidence/j1-h2a-r2-v4/cleanup_closure.md
@@ -12,4 +13,4 @@ d7b3a8a6e54f6de9464a49ea59de41b899fc6d705ec8cc8f94662286e33b9b67  docs/ai-report
 41cf73dfa3d81badba0390885dfc9cc80058af2d398db360ef8ed2afd118b877  docs/ai-reports/review/evidence/j1-h2a-r2-v4/security_boundary.md
 aac40ad5a88a4c40fb1687b3eae2cd9fb0e62ba03e916e88d1ddd51a6306cd2d  docs/ai-reports/review/evidence/j1-h2a-r2-v4/v4-frozen-ui.spec.ts
 a7372801587c15984340f10f8310b9de9715d34bb292f550bf8266e5f020a586  docs/ai-reports/review/evidence/j1-h2a-r2-v4/v4-frozen.config.ts
-80c20da5ede6fbaa52a388a6af404c5875ddfada00fd2f3e2a749077f0423631  docs/ai-reports/review/j1-h2a-r2-v4-frozen-ui-browser-final.md
+f4db3a2be52cd5c923a2da24a97e1865b467143b2e8e47a540a7d560f20e32b1  docs/ai-reports/review/j1-h2a-r2-v4-frozen-ui-browser-final.md

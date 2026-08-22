@@ -14,8 +14,11 @@
 
 ## 冻结协议执行（P2）
 
-1. 规格重写：**全部口令/凭据来自环境变量**；提交的 spec 含**零真实且零占位
-   口令字面量**（J00 节点对缺失 env 凭据 fail-closed：任何必需变量为空即红）。
+1. 规格重写：**全部口令/凭据来自环境变量**；提交的 spec 含**零真实或可登
+   录凭据字面量——所有用于成功认证的凭据均由环境注入**（J00 节点对缺失
+   env 凭据 fail-closed：任何必需变量为空即红）。[E1 修正 3] J18 输入的
+   `viewport-probe-input` 为 390px 溢出测量的非认证 UI 探针：从未提交，
+   亦非任何账户的有效运行时凭据。
 2. spec 与 config 于运行前提交（freeze commit `e2be8825`）：
    - spec git blob `9c2e2bf105eea611eac79c6a9d10974258aa181c`
    - config git blob `74dd70171ce1b103af9556fee6f1799a4c3838e5`
@@ -43,7 +46,10 @@ Registration complete。请求观测：
 - 每个公共请求 **Authorization presence=false**（仅布尔，值永不采集）；
 - 本旅程恰好 **1 个 register POST**；
 - 注册完成且只读后置核对（W1 列表）该电话**恰好 1 条绑定**；
-- 全程无任何 API helper 参与旅程。
+- 全程无任何 API helper 参与旅程。[E1 修正 2] J14/J15 的后置条件在只读
+  GET 前经 `POST /auth/login` + `POST /auth/select-tenant` 取得 W1 上下文
+  授权（仅为此目的；不执行任何旅程动作）——冻结 spec 第 17–18 行
+  "only READ-ONLY GET" 注释字面过宽，以此处更正为准，已执行规格不改。
 
 ## 覆盖保留确认（P3）
 
@@ -65,6 +71,9 @@ spec/config 不受影响（其 blob 前后哈希 MATCH 独立证明）。
 - git diff --check 干净；全部证据严格 UTF-8、无 BOM、无 mojibake。
 - Manifest 仅覆盖 V4 报告 delta 的非 manifest 提交文件（POSIX 相对路径、稳定
   排序、committed blob 字节 SHA-256、排除自身）；detached 验证
-  **missing=0 / extra=0 / mismatch=0**。delta 文件数与 manifest 条目数分别报告于交付。
+  **missing=0 / extra=0 / mismatch=0**。[E1 修正 1] 记账：`bf574cf9..8617b113`
+  总 delta 14 文件 = 13 非 manifest（manifest 覆盖）+ manifest 自身；E1 后
+  累计 **总 delta 15 文件、manifest 14 条**、manifest 排除自身，detached
+  验证复验 0/0/0。
 - 证据目录不含：中止运行、.env、凭据、maildir、身份、SECRET_KEY、token、
   Authorization 值、trace、.secrets.baseline。

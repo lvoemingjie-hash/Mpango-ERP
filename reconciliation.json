@@ -1,0 +1,17 @@
+{
+  "task_id": "DC-12R1-MVP-L1-J1-H2-A-R2-V2-OPENCODE-DUAL-ENTRY-BROWSER-FINAL",
+  "candidate_sha": "bf574cf9b061f7897eb68cbe92a82ce1201e49f0",
+  "protected_baseline": "c5b66d26b83a0cc6170282de1e2fe281e448b2a8",
+  "kilo_review": "573a288d346fb78b26ccd0636028148c0f39ecad",
+  "candidate_parent": "78f88875",
+  "collected": 21,
+  "passed": 21,
+  "failed": 0,
+  "skipped": 0,
+  "errors": 0,
+  "accounting_gap": 0,
+  "timestamp": "2026-08-22T02:56:12.926750+00:00",
+  "workers": 1,
+  "retries": 0,
+  "verdict": "PASS_DC12R1_MVP_L1_J1_H2_A_R2_V2_OPENCODE_DUAL_ENTRY_BROWSER_FINAL"
+}

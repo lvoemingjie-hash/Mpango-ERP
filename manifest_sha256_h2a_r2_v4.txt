@@ -2,6 +2,7 @@
 # V4 report delta only; manifest excludes itself.
 158ddb9541ae072530e74bcf8af3645a2a501c6cbdbe5f86c81b591cadcd314d  docs/ai-reports/review/evidence/j1-h2a-r2-v4/authoritative_junit.xml
 97f6105c111ae569bab5defbd0da6e4c5043c98f8ea500cac9c54dc9cb3233b5  docs/ai-reports/review/evidence/j1-h2a-r2-v4/authoritative_playwright.json
+d7b3a8a6e54f6de9464a49ea59de41b899fc6d705ec8cc8f94662286e33b9b67  docs/ai-reports/review/evidence/j1-h2a-r2-v4/cleanup_closure.md
 64aa257e970c0ec17f82e9cffd0eecfecc07d0b65de08642f16a4952170c21dc  docs/ai-reports/review/evidence/j1-h2a-r2-v4/hash_proof.md
 382a2ad6f457ff2e39fa0140b616554342347f1502c1c233d575d227c1165f62  docs/ai-reports/review/evidence/j1-h2a-r2-v4/node_list.md
 57cc9fa59bfec99f614e713833657c8724654c6fde87ace5bc1acfdceca93a6c  docs/ai-reports/review/evidence/j1-h2a-r2-v4/node_report.csv

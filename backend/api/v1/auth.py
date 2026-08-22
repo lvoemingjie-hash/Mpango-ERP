@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.dependencies import get_db_session, get_current_user_context
+from prometheus_client import Counter
+from core.structured_logging import get_logger
 from core.cache import cache
 from core.security import (
     create_contextual_token,
@@ -90,6 +92,17 @@ from services.password_reset_service import (
 )
 
 router = APIRouter()
+
+logger = get_logger(__name__)
+
+# H2-B-R0: internal forgot-password failures (never user-facing). Defined
+# here (allowlisted file) rather than in the metrics module so this delta
+# stays within the task's authorized file set.
+_password_reset_internal_failures_total = Counter(
+    "mpango_password_reset_internal_failures_total",
+    "Internal password-reset failures by fixed event class",
+    ["event_class"],
+)
 PUBLIC_SIGNUP_STATUS = "pending_email_verification"
 NEUTRAL_OWNER_CREDENTIAL_SETUP_MESSAGE = "Credential setup result is not disclosed through this endpoint."
 
@@ -713,6 +726,7 @@ async def setup_credential(
 async def forgot_password(
     request: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db_session),
+    http_request: Request = None,
 ):
     """Request a password reset link.
 
@@ -721,15 +735,48 @@ async def forgot_password(
     email, a single canonical reset token is issued and the reset email is
     sent. Production fails closed: if email delivery is unavailable, no token
     is committed and the endpoint still responds neutrally.
+
+    H2-B-R0 observability contract: internal failures (delivery-unavailable
+    or unexpected) are recorded through the structured log with a FIXED event
+    class and the request_id, and counted through the internal-failures
+    metric — while the public envelope stays neutral and never discloses
+    whether the email exists. The log payload contains only the exception
+    type, event class, phase and request_id: never the email, token,
+    password, hash, schema or credentials.
     """
+    request_id = getattr(http_request.state, "request_id", None) if http_request else None
     service = PasswordResetService(db)
     try:
         await service.request_reset(request.email)
     except EmailDeliveryNotConfiguredError:
         # Fail-closed: do not commit a token without a delivered email.
+        logger.error(
+            "password_reset.internal_failure",
+            extra={
+                "event_class": "EMAIL_DELIVERY_NOT_CONFIGURED",
+                "phase": "reset_request",
+                "request_id": request_id,
+            },
+        )
+        _password_reset_internal_failures_total.labels(
+            event_class="EMAIL_DELIVERY_NOT_CONFIGURED"
+        ).inc()
         await db.rollback()
-    except Exception:
+    except Exception as exc:
         # Any unexpected error must not leak account existence; respond neutral.
+        # Observable internally: fixed event class + request_id + exception
+        # TYPE only (message/traceback are withheld — they can embed the
+        # tenant schema name in SQL errors).
+        logger.error(
+            "password_reset.internal_failure",
+            extra={
+                "event_class": "UNEXPECTED",
+                "phase": "reset_request",
+                "request_id": request_id,
+                "exception_type": type(exc).__name__,
+            },
+        )
+        _password_reset_internal_failures_total.labels(event_class="UNEXPECTED").inc()
         await db.rollback()
     return ForgotPasswordResponse(
         data=ForgotPasswordResponseData(),

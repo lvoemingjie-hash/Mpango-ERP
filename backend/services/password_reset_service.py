@@ -22,8 +22,12 @@ Security invariants (must not be weakened):
   neutral; no email/schema/SQL/token/credential ever reaches a log.
 - Production fails closed: if email delivery is not configured, NO token is
   created and the failure surfaces so the caller can roll back.
-- ``consume_reset`` marks ``used_at`` only AFTER the password update succeeds,
-  validates expiry/used/revoked/is_deleted, and the API rejects query-string
+- ``consume_reset`` marks ``used_at`` only AFTER every discovered active copy
+  updated exactly one row; the fan-out is all-or-nothing (H2-B-R2): any scan
+  failure fails closed before the first update, and any apply failure rolls
+  back the whole outer transaction via the sanitized
+  ``PasswordResetApplyFailedError`` — no best-effort partial resets;
+  the API rejects query-string
   tokens.
 - The raw email is never stored on the token row (only ``user_email_hash``);
   consume resolves the affected tenant copies by matching SHA-256(email) of
@@ -81,6 +85,27 @@ class PasswordResetScanIncompleteError(Exception):
         super().__init__(
             "password reset tenant scan incomplete: "
             f"{failed_schema_count} of {scanned_schema_count} tenant scans failed"
+        )
+
+
+class PasswordResetApplyFailedError(Exception):
+    """The all-or-nothing password fan-out failed for at least one copy.
+
+    H2-B-R2: partial application is forbidden — tenant copies of the same
+    email must never end up with divergent password hashes, so ANY
+    validation/update failure during the fan-out aborts the whole consume
+    (the caller rolls back the outer transaction, so no copy retains the
+    new password, and the token is never marked used). Sanitized by
+    construction: integer counters only, never schema names, SQL text,
+    emails, tokens, or credentials; the triggering exception is not chained.
+    """
+
+    def __init__(self, *, updated_count: int, remaining_copy_count: int) -> None:
+        self.updated_count = updated_count
+        self.remaining_copy_count = remaining_copy_count
+        super().__init__(
+            "password reset all-or-nothing apply aborted: "
+            f"{updated_count} copy update(s) staged, {remaining_copy_count} remaining"
         )
 
 
@@ -266,9 +291,19 @@ class PasswordResetService:
     async def consume_reset(self, token: str, new_password: str) -> PasswordResetConsumeResult:
         """Consume a reset token and set the new password on ALL active copies.
 
-        Marks ``used_at`` only after the password update succeeds. Raises
-        ``PasswordResetTokenInvalidError`` for any invalid/expired/used/revoked
-        token (the API maps this to a neutral error).
+        H2-B-R2 atomicity contract:
+        - fails closed BEFORE any password update when any tenant scan failed
+          (``PasswordResetScanIncompleteError``), even if reachable copies
+          were found;
+        - the fan-out is all-or-nothing: every discovered active copy must
+          update exactly one row (affected-row count verified); any failure
+          raises the sanitized ``PasswordResetApplyFailedError`` and the API
+          rolls back the outer transaction so NO copy keeps the new password;
+        - ``used_at`` is set only after every copy succeeded, so a failed
+          consume leaves the token actionable for a retry after repair.
+
+        Raises ``PasswordResetTokenInvalidError`` for any invalid/expired/
+        used/revoked token (the API maps this to a neutral error).
         """
         validate_password_policy(new_password)
 
@@ -278,50 +313,67 @@ class PasswordResetService:
         # Resolve the affected copies by matching SHA-256(email) so the raw
         # email is never needed at consume time and is never stored on the token.
         scan = await _enumerate_active_tenant_users(self.db)
+
+        # H2-B-R2: fail closed BEFORE any password update whenever ANY tenant
+        # scan failed — regardless of whether reachable copies were found. On
+        # an incomplete scan the full copy set is unknowable, and a partial
+        # fan-out would leave tenant copies with divergent password hashes,
+        # the exact invariant the canonical multi-tenant rule protects.
+        if scan.failed_schema_count:
+            raise PasswordResetScanIncompleteError(
+                failed_schema_count=scan.failed_schema_count,
+                scanned_schema_count=scan.scanned_schema_count,
+            )
+
         copies: list[tuple[str, UUID]] = []
         for row_email, schema, uid in scan.rows:
             if hashlib.sha256(row_email.encode("utf-8")).hexdigest() == target_hash:
                 copies.append((schema, uid))
 
         if not copies:
-            if scan.failed_schema_count:
-                # H2-B-R1: the token may be valid but its tenant copies are in
-                # unscannable schemas. Report the sanitized scan failure (the
-                # caller rolls back, so the token stays actionable for a
-                # retry) instead of a definitive "token invalid".
-                raise PasswordResetScanIncompleteError(
-                    failed_schema_count=scan.failed_schema_count,
-                    scanned_schema_count=scan.scanned_schema_count,
-                )
             # Email no longer has any active tenant user since the token issued.
             raise PasswordResetTokenInvalidError(INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN)
 
         password_hash = hash_password(new_password)
+        # All-or-nothing fan-out (H2-B-R2): every discovered active copy must
+        # update exactly one row. Any validation/update failure raises the
+        # sanitized typed error; the API layer then rolls back the OUTER
+        # transaction (undoing every prior copy update) and the token is
+        # never marked used. There is deliberately NO best-effort path and
+        # NO per-copy SAVEPOINT isolation here — failure must abort the
+        # whole consume, not be skipped past.
         updated = 0
         for schema, uid in copies:
             try:
                 validate_identifier(schema)
             except Exception:
-                continue
+                raise PasswordResetApplyFailedError(
+                    updated_count=updated,
+                    remaining_copy_count=len(copies) - updated,
+                ) from None
             try:
-                async with self.db.begin_nested():
-                    await self.db.execute(
-                        text(
-                            f'UPDATE "{schema}".users '
-                            "SET password_hash = :password_hash, is_active = true, "
-                            "is_deleted = false, deleted_at = NULL, updated_at = now() "
-                            "WHERE id = :user_id AND is_active = true"
-                        ),
-                        {"password_hash": password_hash, "user_id": uid},
-                    )
-                    updated += 1
+                result = await self.db.execute(
+                    text(
+                        f'UPDATE "{schema}".users '
+                        "SET password_hash = :password_hash, is_active = true, "
+                        "is_deleted = false, deleted_at = NULL, updated_at = now() "
+                        "WHERE id = :user_id AND is_active = true"
+                    ),
+                    {"password_hash": password_hash, "user_id": uid},
+                )
             except Exception:
-                # Isolate per-tenant failures via SAVEPOINT rollback so one bad
-                # schema cannot abort the whole reset. The token is still marked
-                # used; the canonical rule is best-effort across reachable copies.
-                continue
+                raise PasswordResetApplyFailedError(
+                    updated_count=updated,
+                    remaining_copy_count=len(copies) - updated,
+                ) from None
+            if result.rowcount != 1:
+                raise PasswordResetApplyFailedError(
+                    updated_count=updated,
+                    remaining_copy_count=len(copies) - updated,
+                )
+            updated += 1
 
-        # Mark used only after the update succeeded.
+        # Mark used only after EVERY copy updated exactly one row.
         now = datetime.now(timezone.utc)
         await self.db.execute(
             update(PasswordResetToken)

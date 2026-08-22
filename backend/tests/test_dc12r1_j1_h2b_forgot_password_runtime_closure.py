@@ -1,11 +1,11 @@
-"""H2-B-R1: forgot-password scan-level causal closure (F-05 revision).
+"""H2-B-R1/R2: forgot-password scan-level closure + consume-stage atomicity.
 
-R0 (93382cb2) closed endpoint-level observability only: the endpoint's bare
-``except Exception`` gained structured logs/metrics, but the per-tenant scan
-inside ``_enumerate_active_tenant_users`` remained silent — a schema/query
-failure rolled back its SAVEPOINT, was swallowed, and the caller received a
-definitive ``issued=False`` ("account does not exist") answer with zero
-internal events. R0's PASS verdict is superseded by this revision.
+R0 (93382cb2) closed endpoint-level observability only; R1 (fc2db4fe)
+closed the request-stage silent scan path; R2 (this revision) closes the
+consume stage: fail-closed on ANY incomplete tenant scan (even when
+reachable copies exist) and an all-or-nothing password fan-out so tenant
+copies can never diverge. R1's verdict is superseded by R2; R1's full-stack
+gates were non-regression evidence, not a zero-red PASS (see R2 ledger).
 
 R1 contract proven here against REAL PostgreSQL through the real ASGI app:
 
@@ -33,6 +33,19 @@ R1 contract proven here against REAL PostgreSQL through the real ASGI app:
   T10 consume-path incomplete scan: valid token whose tenant copies are
       all unreachable -> neutral 401 + one internal event, token NOT
       consumed; after repair the SAME token resets successfully.
+
+R2 (consume-stage atomicity closure) adds:
+
+  T11 partial scan at consume: same email in two tenant schemas, one
+      committed users table renamed (row evidence preserved), the other
+      copy reachable -> reset fails closed with the neutral 401, BOTH
+      hashes remain the old password, token used_at stays NULL, and after
+      restoring the table the SAME token resets both copies exactly once.
+  T12 partial apply: both copies scan successfully but a real PostgreSQL
+      BEFORE UPDATE trigger forces the second copy's UPDATE to fail ->
+      reset fails closed, the FIRST copy's staged update is rolled back,
+      both retain the old password, token remains unused; removing the
+      trigger lets the SAME token reset both copies.
 
 All internal-event assertions check sanitization: payloads must never
 contain the email, tenant schema names, SQL text, tokens, or credentials.
@@ -71,6 +84,7 @@ EVENT_CLASSES = (
     "UNEXPECTED",
     "PASSWORD_RESET_SCAN_INCOMPLETE",
     "PASSWORD_RESET_SCAN_PARTIAL",
+    "PASSWORD_RESET_APPLY_FAILED",
 )
 
 
@@ -788,14 +802,216 @@ async def test_t10_consume_scan_incomplete_token_stays_actionable(monkeypatch):
         assert repaired.status_code == 200
         assert await _token_used_at(raw_token) is not None
 
-        row = (
-            await db2.execute(
+        assert verify_password(new_pw, await _copy_password_hash(schema, email))
+
+
+async def _copy_password_hash(schema: str, email: str, table: str = "users") -> str | None:
+    async with AsyncSessionLocal() as db:
+        return (
+            await db.execute(
                 text(
-                    f'SELECT password_hash FROM "{schema}".users '
+                    f'SELECT password_hash FROM "{schema}"."{table}" '
                     "WHERE lower(email) = lower(:e) AND is_active = true"
                 ),
                 {"e": email},
             )
-        ).first()
-        assert row is not None
-        assert verify_password(new_pw, row.password_hash)
+        ).scalar_one()
+
+
+async def _issue_reset_token(email: str) -> str:
+    async with AsyncSessionLocal() as db:
+        async with _client(db) as client:
+            r = await client.post(FORGOT_URL, json={"email": email})
+        assert r.status_code == 200
+    reset_mail = get_dev_reset_email_deliveries(email)[0]
+    return parse_qs(reset_mail.reset_link.split("#", 1)[1])["resetToken"][0]
+
+
+async def _seed_two_tenant_copies(email: str, old_pw: str) -> tuple[str, str]:
+    """Same email as an active user in two tenant schemas (created_at
+    ordered: the first schema is scanned and updated before the second)."""
+    from core.security import hash_password
+
+    async with AsyncSessionLocal() as db:
+        _, s1 = await _seed_wholesaler_with_user(
+            db, code=f"R2A{uuid.uuid4().hex[:6].upper()}", email=email,
+            password_hash=hash_password(old_pw), schema_has_users=True,
+        )
+        _, s2 = await _seed_wholesaler_with_user(
+            db, code=f"R2B{uuid.uuid4().hex[:6].upper()}", email=email,
+            password_hash=hash_password(old_pw), schema_has_users=True,
+        )
+        await db.commit()
+    return s1, s2
+
+
+async def test_t11_consume_partial_scan_fails_closed_both_old_token_intact(monkeypatch):
+    """R2 test A — partial scan at consume: one of two committed users tables
+    renamed (evidence preserved) while the other copy is reachable. Reset
+    must fail closed: neutral 401, BOTH hashes still the old password (the
+    reachable copy is NOT partially updated), token used_at NULL; after
+    restoring the table the SAME token resets both copies exactly once."""
+    from core.security import verify_password
+
+    old_pw = "OldR2Pw_01!"  # pragma: allowlist secret
+    new_pw = "NewR2Pw_02!"  # pragma: allowlist secret
+    email = f"t11-{uuid.uuid4().hex[:6]}@example.com"
+    s1, s2 = await _seed_two_tenant_copies(email, old_pw)
+
+    raw_token = await _issue_reset_token(email)
+
+    await _rename_users_table(s2, "users_evidence_t11")
+    assert await _users_table_row_count(s2, "users_evidence_t11", email) == 1
+
+    calls = _capture_auth_logs(monkeypatch)
+    metrics_before = _metric_snapshot()
+
+    async with AsyncSessionLocal() as db:
+        async with _client(db) as client:
+            broken = await client.post(
+                RESET_URL, json={"reset_token": raw_token, "new_password": new_pw}
+            )
+
+    # Fails closed with the exact neutral 401 envelope.
+    assert broken.status_code == 401
+    assert broken.json()["detail"]["code"] == "INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN"
+
+    # Exactly one sanitized SCAN_INCOMPLETE event for the consume scan.
+    assert len(calls["error"]) == 1
+    extra = calls["error"][0]["kwargs"].get("extra", {})
+    assert extra.get("event_class") == "PASSWORD_RESET_SCAN_INCOMPLETE"
+    assert extra.get("phase") == "reset_consume_scan"
+    assert extra.get("failed_schema_count", 0) >= 1
+    payload = str(calls["error"][0])
+    assert email not in payload
+    assert s1 not in payload and s2 not in payload
+    after = _metric_snapshot()
+    assert after["PASSWORD_RESET_SCAN_INCOMPLETE"] == (
+        metrics_before["PASSWORD_RESET_SCAN_INCOMPLETE"] + 1
+    )
+    for cls in EVENT_CLASSES:
+        if cls != "PASSWORD_RESET_SCAN_INCOMPLETE":
+            assert after[cls] == metrics_before[cls]
+
+    # BOTH copies keep the old password (no partial fan-out, outer rollback).
+    # The renamed copy's evidence row is read from the renamed table.
+    assert verify_password(old_pw, await _copy_password_hash(s1, email))
+    assert not verify_password(new_pw, await _copy_password_hash(s1, email))
+    assert verify_password(
+        old_pw, await _copy_password_hash(s2, email, table="users_evidence_t11")
+    )
+
+    # Token NOT consumed: used_at NULL, stays actionable after repair.
+    assert await _token_used_at(raw_token) is None
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            text(f'ALTER TABLE "{s2}"."users_evidence_t11" RENAME TO "users"')
+        )
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        async with _client(db) as client:
+            repaired = await client.post(
+                RESET_URL, json={"reset_token": raw_token, "new_password": new_pw}
+            )
+            replay = await client.post(
+                RESET_URL, json={"reset_token": raw_token, "new_password": new_pw}
+            )
+    assert repaired.status_code == 200
+    # Exactly once: both copies carry the new password, token used, replay 401.
+    for schema in (s1, s2):
+        assert verify_password(new_pw, await _copy_password_hash(schema, email))
+        assert not verify_password(old_pw, await _copy_password_hash(schema, email))
+    assert await _token_used_at(raw_token) is not None
+    assert replay.status_code == 401
+
+
+async def test_t12_partial_apply_rolls_back_first_copy_token_intact(monkeypatch):
+    """R2 test B — partial apply: both copies scan successfully, but a real
+    PostgreSQL BEFORE UPDATE trigger forces the SECOND copy's UPDATE to
+    fail. Reset fails closed; the FIRST copy's staged update is rolled back
+    (both retain the old password); the token stays unused; removing the
+    trigger lets the SAME token reset both copies."""
+    from core.security import verify_password
+
+    old_pw = "OldR2Pw_03!"  # pragma: allowlist secret
+    new_pw = "NewR2Pw_04!"  # pragma: allowlist secret
+    email = f"t12-{uuid.uuid4().hex[:6]}@example.com"
+    s1, s2 = await _seed_two_tenant_copies(email, old_pw)
+
+    raw_token = await _issue_reset_token(email)
+
+    # Real failure injection: SELECTs (the scan) still succeed, only the
+    # UPDATE on the second copy raises.
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            text(
+                f'CREATE FUNCTION "{s2}".h2b_r2_block_update() RETURNS trigger AS $$ '
+                "BEGIN RAISE EXCEPTION 'forced apply failure'; END "
+                "$$ LANGUAGE plpgsql"
+            )
+        )
+        await db.execute(
+            text(
+                f'CREATE TRIGGER h2b_r2_block BEFORE UPDATE ON "{s2}".users '
+                f'FOR EACH ROW EXECUTE FUNCTION "{s2}".h2b_r2_block_update()'
+            )
+        )
+        await db.commit()
+
+    calls = _capture_auth_logs(monkeypatch)
+    metrics_before = _metric_snapshot()
+
+    async with AsyncSessionLocal() as db:
+        async with _client(db) as client:
+            broken = await client.post(
+                RESET_URL, json={"reset_token": raw_token, "new_password": new_pw}
+            )
+
+    # Fails closed with the exact neutral 401 envelope (no partial success).
+    assert broken.status_code == 401
+    assert broken.json()["detail"]["code"] == "INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN"
+
+    # Exactly one sanitized APPLY_FAILED event for the consume fan-out.
+    assert len(calls["error"]) == 1
+    extra = calls["error"][0]["kwargs"].get("extra", {})
+    assert extra.get("event_class") == "PASSWORD_RESET_APPLY_FAILED"
+    assert extra.get("phase") == "reset_consume_apply"
+    assert extra.get("updated_count") == 1  # first copy staged, then aborted
+    assert extra.get("remaining_copy_count") == 1
+    payload = str(calls["error"][0])
+    assert email not in payload
+    assert s1 not in payload and s2 not in payload
+    after = _metric_snapshot()
+    assert after["PASSWORD_RESET_APPLY_FAILED"] == (
+        metrics_before["PASSWORD_RESET_APPLY_FAILED"] + 1
+    )
+    for cls in EVENT_CLASSES:
+        if cls != "PASSWORD_RESET_APPLY_FAILED":
+            assert after[cls] == metrics_before[cls]
+
+    # Outer rollback: the FIRST copy's staged update is undone — BOTH copies
+    # still verify the old password and reject the new one.
+    for schema in (s1, s2):
+        assert verify_password(old_pw, await _copy_password_hash(schema, email))
+        assert not verify_password(new_pw, await _copy_password_hash(schema, email))
+
+    # Token NOT consumed.
+    assert await _token_used_at(raw_token) is None
+
+    # Remove the failure condition; the SAME token resets both copies.
+    async with AsyncSessionLocal() as db:
+        await db.execute(text(f'DROP TRIGGER h2b_r2_block ON "{s2}".users'))
+        await db.execute(text(f'DROP FUNCTION "{s2}".h2b_r2_block_update()'))
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        async with _client(db) as client:
+            repaired = await client.post(
+                RESET_URL, json={"reset_token": raw_token, "new_password": new_pw}
+            )
+    assert repaired.status_code == 200
+    for schema in (s1, s2):
+        assert verify_password(new_pw, await _copy_password_hash(schema, email))
+    assert await _token_used_at(raw_token) is not None

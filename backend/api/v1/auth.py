@@ -87,6 +87,7 @@ from services.owner_credential_service import (
 from services.password_reset_service import (
     INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN,
     NEUTRAL_PASSWORD_RESET_MESSAGE,
+    PasswordResetApplyFailedError,
     PasswordResetScanIncompleteError,
     PasswordResetService,
     PasswordResetTokenInvalidError,
@@ -848,9 +849,12 @@ async def reset_password(
     """Consume a reset token and set a new password.
 
     Token must arrive in the body only; query-string token/password params are
-    rejected. On success the new password is applied to every active tenant
-    user copy for the email (canonical multi-tenant rule) and the token is
-    marked used. Invalid/expired/used/revoked tokens return a neutral error.
+    rejected. H2-B-R2 atomicity: the new password is applied to every active
+    tenant user copy for the email ALL-OR-NOTHING — any incomplete scan or
+    any copy-update failure fails closed (outer rollback: no copy keeps the
+    new password, token stays actionable) and answers with the same neutral
+    401 envelope. Only a fully successful fan-out marks the token used.
+    Invalid/expired/used/revoked tokens return the same neutral error.
     """
     # Reject query-string token/password (anti-leakage, mirrors setup-credential).
     if http_request is not None and any(
@@ -878,6 +882,39 @@ async def reset_password(
     try:
         await service.consume_reset(request.reset_token, request.new_password)
         await db.commit()
+    except PasswordResetApplyFailedError as exc:
+        # H2-B-R2: the all-or-nothing fan-out failed after at least one copy
+        # was staged. The rollback below undoes EVERY staged copy update, so
+        # no tenant retains the new password and the canonical same-hash
+        # invariant survives; the token is NOT marked used and stays
+        # actionable. One sanitized internal event (counters only); the
+        # public envelope is the same neutral 401 used for every
+        # non-actionable token.
+        logger.error(
+            "password_reset.internal_failure",
+            extra={
+                "event_class": "PASSWORD_RESET_APPLY_FAILED",
+                "phase": "reset_consume_apply",
+                "request_id": (
+                    getattr(http_request.state, "request_id", None)
+                    if http_request
+                    else None
+                ),
+                "updated_count": exc.updated_count,
+                "remaining_copy_count": exc.remaining_copy_count,
+            },
+        )
+        _password_reset_internal_failures_total.labels(
+            event_class="PASSWORD_RESET_APPLY_FAILED"
+        ).inc()
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN,
+                "message": NEUTRAL_PASSWORD_RESET_MESSAGE,
+            },
+        )
     except PasswordResetScanIncompleteError as exc:
         # H2-B-R1: the token itself may be valid but every tenant copy sits in
         # an unscannable schema. Do NOT convert that into a definitive public

@@ -87,6 +87,7 @@ from services.owner_credential_service import (
 from services.password_reset_service import (
     INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN,
     NEUTRAL_PASSWORD_RESET_MESSAGE,
+    PasswordResetScanIncompleteError,
     PasswordResetService,
     PasswordResetTokenInvalidError,
 )
@@ -743,11 +744,40 @@ async def forgot_password(
     whether the email exists. The log payload contains only the exception
     type, event class, phase and request_id: never the email, token,
     password, hash, schema or credentials.
+
+    H2-B-R1 scan contract: an incomplete tenant scan (per-schema SAVEPOINT
+    failure with no active user found in any reachable tenant) raises the
+    sanitized ``PasswordResetScanIncompleteError`` and is recorded as exactly
+    one ``PASSWORD_RESET_SCAN_INCOMPLETE`` event; a scan that fails for
+    unrelated tenants while the target account is found still issues exactly
+    one token+email and records ``PASSWORD_RESET_SCAN_PARTIAL`` telemetry.
+    Neither changes the public neutral 200 envelope.
     """
     request_id = getattr(http_request.state, "request_id", None) if http_request else None
     service = PasswordResetService(db)
     try:
-        await service.request_reset(request.email)
+        result = await service.request_reset(request.email)
+    except PasswordResetScanIncompleteError as exc:
+        # H2-B-R1: the tenant scan failed for at least one schema AND no
+        # active user was found in any reachable tenant, so absence is NOT
+        # proven. Internally this must stay distinguishable from a genuine
+        # "no account" answer; publicly the envelope stays the same neutral
+        # 200 (no existence disclosure). Payload is counters only — never
+        # email/schema/SQL/token/credentials.
+        logger.error(
+            "password_reset.internal_failure",
+            extra={
+                "event_class": "PASSWORD_RESET_SCAN_INCOMPLETE",
+                "phase": "reset_request_scan",
+                "request_id": request_id,
+                "failed_schema_count": exc.failed_schema_count,
+                "scanned_schema_count": exc.scanned_schema_count,
+            },
+        )
+        _password_reset_internal_failures_total.labels(
+            event_class="PASSWORD_RESET_SCAN_INCOMPLETE"
+        ).inc()
+        await db.rollback()
     except EmailDeliveryNotConfiguredError:
         # Fail-closed: do not commit a token without a delivered email.
         logger.error(
@@ -778,6 +808,23 @@ async def forgot_password(
         )
         _password_reset_internal_failures_total.labels(event_class="UNEXPECTED").inc()
         await db.rollback()
+    else:
+        if result.scan_failed_schema_count > 0:
+            # H2-B-R1 partial-scan telemetry: the target account WAS found in
+            # a reachable tenant and exactly one token+email were issued, but
+            # unrelated tenant scans failed. Counters only — sanitized.
+            logger.warning(
+                "password_reset.partial_scan",
+                extra={
+                    "event_class": "PASSWORD_RESET_SCAN_PARTIAL",
+                    "phase": "reset_request_scan",
+                    "request_id": request_id,
+                    "failed_schema_count": result.scan_failed_schema_count,
+                },
+            )
+            _password_reset_internal_failures_total.labels(
+                event_class="PASSWORD_RESET_SCAN_PARTIAL"
+            ).inc()
     return ForgotPasswordResponse(
         data=ForgotPasswordResponseData(),
         message=NEUTRAL_PASSWORD_RESET_MESSAGE,
@@ -831,6 +878,38 @@ async def reset_password(
     try:
         await service.consume_reset(request.reset_token, request.new_password)
         await db.commit()
+    except PasswordResetScanIncompleteError as exc:
+        # H2-B-R1: the token itself may be valid but every tenant copy sits in
+        # an unscannable schema. Do NOT convert that into a definitive public
+        # "invalid token" answer without an internal trail: record the
+        # sanitized scan failure, roll back (the token stays actionable for a
+        # retry once the schema is repaired), and answer with the same
+        # neutral 401 envelope used for every non-actionable token.
+        logger.error(
+            "password_reset.internal_failure",
+            extra={
+                "event_class": "PASSWORD_RESET_SCAN_INCOMPLETE",
+                "phase": "reset_consume_scan",
+                "request_id": (
+                    getattr(http_request.state, "request_id", None)
+                    if http_request
+                    else None
+                ),
+                "failed_schema_count": exc.failed_schema_count,
+                "scanned_schema_count": exc.scanned_schema_count,
+            },
+        )
+        _password_reset_internal_failures_total.labels(
+            event_class="PASSWORD_RESET_SCAN_INCOMPLETE"
+        ).inc()
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN,
+                "message": NEUTRAL_PASSWORD_RESET_MESSAGE,
+            },
+        )
     except PasswordResetTokenInvalidError:
         await db.rollback()
         raise HTTPException(

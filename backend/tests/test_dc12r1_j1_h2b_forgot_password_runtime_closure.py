@@ -1,43 +1,49 @@
-"""H2-B-R0: forgot-password runtime causal closure (F-05).
+"""H2-B-R1: forgot-password scan-level causal closure (F-05 revision).
 
-Causal findings proven in Phase 1 (see ledger):
-  - RLS/GUC hypothesis DISPROVEN: no ROW LEVEL SECURITY policy exists in the
-    migrations; the reset scan runs under an explicit system scope
-    (mark_session_as_system + run_as_system + ignore_tenant) and token
-    issuance succeeds against a fresh stack through the real HTTP endpoint.
-  - The real defect is OBSERVABILITY: POST /auth/forgot-password swallowed
-    every internal failure with a bare ``except Exception: rollback`` and
-    emitted no structured log/metric — exactly matching H1's "no error
-    trail" observation. The H1-era trigger (an in-app exception during the
-    scan/issuance path) is no longer reproducible with healthy data on this
-    baseline (tokens issue; broken schemas are isolated by SAVEPOINT), so
-    the fix is bounded to making internal failures observable while keeping
-    the external envelope perfectly neutral.
+R0 (93382cb2) closed endpoint-level observability only: the endpoint's bare
+``except Exception`` gained structured logs/metrics, but the per-tenant scan
+inside ``_enumerate_active_tenant_users`` remained silent — a schema/query
+failure rolled back its SAVEPOINT, was swallowed, and the caller received a
+definitive ``issued=False`` ("account does not exist") answer with zero
+internal events. R0's PASS verdict is superseded by this revision.
 
-This suite runs through the REAL FastAPI app + ASGI + PostgreSQL:
+R1 contract proven here against REAL PostgreSQL through the real ASGI app:
 
-  T1  old-code RED: internal failure -> neutral 200, zero tokens, and (new)
-      a structured log with the fixed event class + request_id.
-  T2  existing active account: neutral 200 + exactly one token + one email.
-  T3  nonexistent / inactive account: same neutral envelope, zero token,
-      zero email, no existence disclosure.
-  T4  broken schema (no users table) before a healthy tenant: token still
-      issued for the healthy tenant (no poisoning).
+  T1  old-code RED reproduction (endpoint level): unexpected internal error
+      -> neutral 200 + structured log with fixed event class + request_id.
+  T2  healthy OFFICIAL-LIFECYCLE account (signup -> verify-email ->
+      setup-credential through the real endpoints): neutral 200 + exactly
+      one token + one reset email.
+  T3  all scans successful + no account: same neutral 200 with ZERO side
+      effects and NO internal failure event (no log, no metric delta).
+  T4  unrelated tenant scan fails + target account found: exactly one
+      token + one email + sanitized PARTIAL-scan telemetry (counters only).
   T5  delivery failure: neutral response, zero persisted live token
       (rollback proven).
   T6  unexpected internal failure: neutral public response + internal
-      structured log (event_class=UNEXPECTED, exception TYPE only, request_id)
-      + internal-failures metric incremented.
-  T7  single-use reset + cross-tenant password consistency.
+      structured log + internal-failures metric incremented.
+  T7  reset replay: exact 401 for the used token, token REMAINS used, and
+      the replay password is NOT applied to any tenant copy.
   T8  query-string token rejection (boundary regression).
+  T9  TARGET tenant scan fails (committed users table renamed — the user
+      row evidence is preserved, not deleted): neutral 200, zero token,
+      zero email, and EXACTLY ONE deterministic internal incomplete-scan
+      event + metric; evidence intact; renaming the table back restores
+      issuance (non-destructive causal proof).
+  T10 consume-path incomplete scan: valid token whose tenant copies are
+      all unreachable -> neutral 401 + one internal event, token NOT
+      consumed; after repair the SAME token resets successfully.
+
+All internal-event assertions check sanitization: payloads must never
+contain the email, tenant schema names, SQL text, tokens, or credentials.
 """
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from urllib.parse import parse_qs
 
 import pytest
-from fastapi import Request
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
@@ -47,8 +53,10 @@ from database.session import AsyncSessionLocal
 from services.email_delivery import (
     EmailDeliveryNotConfiguredError,
     clear_dev_email_deliveries,
+    get_dev_email_deliveries,
     get_dev_reset_email_deliveries,
 )
+from services.onboarding_service import hash_token
 
 pytestmark = pytest.mark.asyncio
 
@@ -56,11 +64,20 @@ FORGOT_URL = "/api/v1/auth/forgot-password"
 RESET_URL = "/api/v1/auth/reset-password"
 
 TEST_PW = "H2bRuntimePw_01!"  # pragma: allowlist secret
+LIFECYCLE_PW = "H2bLifecyclePw_1!"  # pragma: allowlist secret
+
+EVENT_CLASSES = (
+    "EMAIL_DELIVERY_NOT_CONFIGURED",
+    "UNEXPECTED",
+    "PASSWORD_RESET_SCAN_INCOMPLETE",
+    "PASSWORD_RESET_SCAN_PARTIAL",
+)
 
 
 @pytest.fixture(autouse=True)
 async def _h2b_setup():
     await _prepare_tables()
+    await _reset_wholesaler_state()
     clear_dev_email_deliveries()
     async with AsyncSessionLocal() as db:
         await db.execute(text("TRUNCATE public.password_reset_tokens"))
@@ -69,6 +86,27 @@ async def _h2b_setup():
         yield
     finally:
         app.dependency_overrides.pop(get_db_session, None)
+
+
+async def _reset_wholesaler_state() -> None:
+    """Deterministic scan isolation: this task's DB is single-suite, so remove
+    every wholesaler + derived tenant schema (including leftover renamed
+    evidence tables from earlier runs) before each test. Without this, a
+    tenant left broken by a previous test makes every later request emit
+    partial/incomplete-scan events and breaks zero-event assertions."""
+    async with AsyncSessionLocal() as db:
+        ids = (
+            await db.execute(text("SELECT id FROM public.wholesalers"))
+        ).scalars().all()
+        for wid in ids:
+            schema = f"t_{str(wid).replace('-', '')}"
+            await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        if ids:
+            await db.execute(
+                text("DELETE FROM public.tenant_registrations")
+            )
+        await db.execute(text("DELETE FROM public.wholesalers"))
+        await db.commit()
 
 
 async def _prepare_tables() -> None:
@@ -136,6 +174,30 @@ async def _seed_wholesaler_with_user(
     return str(ws_id), schema
 
 
+async def _rename_users_table(schema: str, new_name: str) -> None:
+    """Make the committed users table INACCESSIBLE to the scan without
+    deleting any user evidence: the committed rows stay in the renamed
+    table, only the ``users`` name disappears."""
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            text(f'ALTER TABLE "{schema}".users RENAME TO "{new_name}"')
+        )
+        await db.commit()
+
+
+async def _users_table_row_count(schema: str, table: str, email: str) -> int:
+    async with AsyncSessionLocal() as db:
+        return (
+            await db.execute(
+                text(
+                    f'SELECT COUNT(*) FROM "{schema}"."{table}" '
+                    "WHERE lower(email) = lower(:e)"
+                ),
+                {"e": email},
+            )
+        ).scalar_one()
+
+
 def _client(db) -> AsyncClient:
     async def _override():
         try:
@@ -149,12 +211,112 @@ def _client(db) -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver")
 
 
+def _real_client() -> AsyncClient:
+    """Per-request session override (mirrors the production dependency)."""
+
+    async def _override():
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SET search_path TO public"))
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app.dependency_overrides[get_db_session] = _override
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver")
+
+
 async def _token_count() -> int:
     async with AsyncSessionLocal() as db:
         r = await db.execute(
             text("SELECT COUNT(*) FROM public.password_reset_tokens WHERE is_deleted = false")
         )
         return r.scalar_one()
+
+
+def _capture_auth_logs(monkeypatch) -> dict[str, list[dict]]:
+    """Capture the endpoint module's logger output, framework-independent."""
+    import api.v1.auth as auth_module
+
+    calls: dict[str, list[dict]] = {"error": [], "warning": []}
+
+    def _capture(level: str):
+        def _fn(msg, *args, **kwargs):
+            calls[level].append({"msg": msg, "kwargs": kwargs})
+
+        return _fn
+
+    monkeypatch.setattr(auth_module.logger, "error", _capture("error"))
+    monkeypatch.setattr(auth_module.logger, "warning", _capture("warning"))
+    return calls
+
+
+def _metric_snapshot() -> dict[str, int]:
+    from api.v1.auth import _password_reset_internal_failures_total
+
+    return {
+        cls: _password_reset_internal_failures_total.labels(event_class=cls)._value.get()
+        for cls in EVENT_CLASSES
+    }
+
+
+async def _official_lifecycle_active_user() -> tuple[str, str]:
+    """Provision a real active owner through the official lifecycle:
+    signup -> verify-email -> setup-credential (all real HTTP endpoints)."""
+    email = f"h2b_{uuid.uuid4().hex}@example.com"
+    async with _real_client() as client:
+        r = await client.post(
+            "/api/v1/auth/signup",
+            json={
+                "companyName": f"H2B Company {uuid.uuid4().hex[:8]}",
+                "country": "KE",
+                "email": email,
+                "phone": "+254700000000",
+                "businessType": "wholesale",
+                "password": LIFECYCLE_PW,
+            },
+        )
+        assert r.status_code == 202, r.text
+    verify_token = [
+        d for d in get_dev_email_deliveries(email) if d.purpose == "email_verification"
+    ][0].token
+    async with _real_client() as client:
+        v = await client.post("/api/v1/auth/verify-email", json={"token": verify_token})
+        assert v.status_code == 200, v.text
+    setup_token = [
+        d for d in get_dev_email_deliveries(email) if d.purpose == "owner_setup"
+    ][0].token
+    async with _real_client() as client:
+        s = await client.post(
+            "/api/v1/auth/onboarding/setup-credential",
+            json={"setupToken": setup_token, "password": LIFECYCLE_PW},
+        )
+        assert s.status_code == 200, s.text
+
+    async with AsyncSessionLocal() as db:
+        schema = (
+            await db.execute(
+                text(
+                    "SELECT tenant_schema FROM public.tenant_registrations "
+                    "WHERE owner_email = :e"
+                ),
+                {"e": email},
+            )
+        ).scalar_one()
+        active_users = (
+            await db.execute(
+                text(
+                    f'SELECT COUNT(*) FROM "{schema}".users '
+                    "WHERE is_active = true AND is_deleted = false "
+                    "AND lower(email) = lower(:e)"
+                ),
+                {"e": email},
+            )
+        ).scalar_one()
+    assert active_users == 1
+    return email, schema
 
 
 async def test_t1_internal_failure_neutral_200_zero_tokens_plus_observable_log(monkeypatch):
@@ -175,16 +337,7 @@ async def test_t1_internal_failure_neutral_200_zero_tokens_plus_observable_log(m
         )
         await db.commit()
 
-        # Framework-independent capture (immune to cross-suite logging-state
-        # changes): the endpoint module's logger.error is intercepted directly.
-        import api.v1.auth as auth_module
-
-        log_calls: list[dict] = []
-
-        def _capture_error(msg, *args, **kwargs):
-            log_calls.append({"msg": msg, "kwargs": kwargs})
-
-        monkeypatch.setattr(auth_module.logger, "error", _capture_error)
+        calls = _capture_auth_logs(monkeypatch)
         async with _client(db) as client:
             r = await client.post(
                 FORGOT_URL, json={"email": email},
@@ -197,8 +350,8 @@ async def test_t1_internal_failure_neutral_200_zero_tokens_plus_observable_log(m
         assert await _token_count() == 0  # fresh per-test table: nothing persisted
 
         # Internal observability: fixed event class + request_id + type only.
-        assert len(log_calls) == 1
-        call = log_calls[0]
+        assert len(calls["error"]) == 1
+        call = calls["error"][0]
         assert call["msg"] == "password_reset.internal_failure"
         extra = call["kwargs"].get("extra", {})
         assert extra.get("event_class") == "UNEXPECTED"
@@ -210,31 +363,32 @@ async def test_t1_internal_failure_neutral_200_zero_tokens_plus_observable_log(m
         assert "password_hash" not in payload
 
 
-async def test_t2_existing_active_account_token_and_email():
+async def test_t2_official_lifecycle_account_token_and_email():
+    """Healthy account provisioned through the OFFICIAL lifecycle: forgot
+    password issues exactly one token and one reset email (GREEN path)."""
+    email, _schema = await _official_lifecycle_active_user()
+    before = await _token_count()
+
+    async with _real_client() as client:
+        r = await client.post(FORGOT_URL, json={"email": email})
+
+    assert r.status_code == 200
+    assert "disclosed" in r.text
+    assert await _token_count() == before + 1
+    emails = get_dev_reset_email_deliveries(email)
+    assert len(emails) == 1
+    assert "resetToken=" in emails[0].reset_link
+
+
+async def test_t3_nonexistent_and_inactive_neutral_zero_side_effects_and_zero_events(
+    monkeypatch,
+):
+    """All scans successful + no account: neutral 200, no token, no email,
+    and NO internal failure event (neither log nor metric)."""
     from core.security import hash_password
 
-    async with AsyncSessionLocal() as db:
-        email = f"t2-{uuid.uuid4().hex[:6]}@example.com"
-        await _seed_wholesaler_with_user(
-            db, code=f"T2{uuid.uuid4().hex[:6].upper()}", email=email,
-            password_hash=hash_password(TEST_PW), schema_has_users=True,
-        )
-        await db.commit()
-        before = await _token_count()
-
-        async with _client(db) as client:
-            r = await client.post(FORGOT_URL, json={"email": email})
-
-        assert r.status_code == 200
-        assert "disclosed" in r.text
-        assert await _token_count() == before + 1
-        emails = get_dev_reset_email_deliveries(email)
-        assert len(emails) == 1
-        assert "resetToken=" in emails[0].reset_link
-
-
-async def test_t3_nonexistent_and_inactive_neutral_zero_side_effects():
-    from core.security import hash_password
+    calls = _capture_auth_logs(monkeypatch)
+    metrics_before = _metric_snapshot()
 
     async with AsyncSessionLocal() as db:
         inactive_email = f"t3i-{uuid.uuid4().hex[:6]}@example.com"
@@ -262,18 +416,31 @@ async def test_t3_nonexistent_and_inactive_neutral_zero_side_effects():
         assert await _token_count() == before
         assert get_dev_reset_email_deliveries() == []
 
+        # A clean "no account" answer is NOT an internal failure: no event.
+        assert calls["error"] == []
+        assert calls["warning"] == []
+        assert _metric_snapshot() == metrics_before
 
-async def test_t4_broken_schema_before_healthy_tenant_no_poisoning():
-    """One missing-schema tenant must not hide a valid active user later."""
+
+async def test_t4_unrelated_scan_failure_target_found_partial_telemetry(monkeypatch):
+    """An UNRELATED tenant's committed users table fails to scan while the
+    target account is found later in the scan: exactly one token + one
+    email + sanitized PARTIAL-scan telemetry (no poisoning)."""
     from core.security import hash_password
 
     async with AsyncSessionLocal() as db:
-        # Broken tenant first (created earlier => scanned first by created_at).
-        await _seed_wholesaler_with_user(
+        # Broken unrelated tenant first (created earlier => scanned first).
+        broken_email = f"broken-{uuid.uuid4().hex[:6]}@example.com"
+        _, broken_schema = await _seed_wholesaler_with_user(
             db, code=f"BRK{uuid.uuid4().hex[:6].upper()}",
-            email=f"broken-{uuid.uuid4().hex[:6]}@example.com",
-            password_hash="x", schema_has_users=False,
+            email=broken_email, password_hash="x", schema_has_users=True,
         )
+        await db.commit()
+        # Make its COMMITTED users table inaccessible WITHOUT deleting the
+        # user evidence (the row survives inside the renamed table).
+        await _rename_users_table(broken_schema, "users_evidence_t4")
+        assert await _users_table_row_count(broken_schema, "users_evidence_t4", broken_email) == 1
+
         healthy_email = f"t4-{uuid.uuid4().hex[:6]}@example.com"
         await _seed_wholesaler_with_user(
             db, code=f"HTH{uuid.uuid4().hex[:6].upper()}", email=healthy_email,
@@ -282,12 +449,37 @@ async def test_t4_broken_schema_before_healthy_tenant_no_poisoning():
         await db.commit()
         before = await _token_count()
 
+    calls = _capture_auth_logs(monkeypatch)
+    metrics_before = _metric_snapshot()
+
+    async with AsyncSessionLocal() as db:
         async with _client(db) as client:
             r = await client.post(FORGOT_URL, json={"email": healthy_email})
 
-        assert r.status_code == 200
-        assert await _token_count() == before + 1
-        assert len(get_dev_reset_email_deliveries(healthy_email)) == 1
+    # Target account still gets exactly one token + one email.
+    assert r.status_code == 200
+    assert "disclosed" in r.text
+    assert await _token_count() == before + 1
+    assert len(get_dev_reset_email_deliveries(healthy_email)) == 1
+
+    # Sanitized partial-scan telemetry: exactly one warning, counters only.
+    assert len(calls["warning"]) == 1
+    call = calls["warning"][0]
+    assert call["msg"] == "password_reset.partial_scan"
+    extra = call["kwargs"].get("extra", {})
+    assert extra.get("event_class") == "PASSWORD_RESET_SCAN_PARTIAL"
+    assert extra.get("failed_schema_count", 0) >= 1
+    payload = str(call)
+    assert healthy_email not in payload
+    assert broken_schema not in payload
+    assert broken_email not in payload
+    assert calls["error"] == []
+
+    after = _metric_snapshot()
+    assert after["PASSWORD_RESET_SCAN_PARTIAL"] == metrics_before["PASSWORD_RESET_SCAN_PARTIAL"] + 1
+    for cls in EVENT_CLASSES:
+        if cls != "PASSWORD_RESET_SCAN_PARTIAL":
+            assert after[cls] == metrics_before[cls]
 
 
 async def test_t5_delivery_failure_rollback(monkeypatch):
@@ -346,20 +538,36 @@ async def test_t6_unexpected_failure_metric_and_neutral_external(monkeypatch):
         assert after == before + 1
 
 
-async def test_t7_single_use_reset_and_cross_tenant_consistency():
-    """Token resets the password once; replay is rejected; all active tenant
-    copies of the same email end with the same new hash."""
+async def _token_used_at(raw_token: str) -> datetime | None:
+    async with AsyncSessionLocal() as db:
+        return (
+            await db.execute(
+                text(
+                    "SELECT used_at FROM public.password_reset_tokens "
+                    "WHERE token_hash = :th AND purpose = 'password_reset'"
+                ),
+                {"th": hash_token(raw_token)},
+            )
+        ).scalar_one()
+
+
+async def test_t7_replay_exact_401_token_remains_used_password_not_applied():
+    """Reset replay contract: used token -> EXACTLY 401; the token REMAINS
+    used; the replay password is NOT applied to any tenant copy."""
     from core.security import hash_password, verify_password
+
+    first_pw = "NewPw_02!!"  # pragma: allowlist secret
+    replay_pw = "NewPw_03!!"  # pragma: allowlist secret
 
     async with AsyncSessionLocal() as db:
         email = f"t7-{uuid.uuid4().hex[:6]}@example.com"
         ws1, s1 = await _seed_wholesaler_with_user(
             db, code=f"T7A{uuid.uuid4().hex[:6].upper()}", email=email,
-            password_hash=hash_password("OldPw_01!")  # pragma: allowlist secret, schema_has_users=True,
+            password_hash=hash_password("OldPw_01!"), schema_has_users=True,  # pragma: allowlist secret
         )
         ws2, s2 = await _seed_wholesaler_with_user(
             db, code=f"T7B{uuid.uuid4().hex[:6].upper()}", email=email,
-            password_hash=hash_password("OldPw_01!")  # pragma: allowlist secret, schema_has_users=True,
+            password_hash=hash_password("OldPw_01!"), schema_has_users=True,  # pragma: allowlist secret
         )
         await db.commit()
 
@@ -367,35 +575,53 @@ async def test_t7_single_use_reset_and_cross_tenant_consistency():
             r = await client.post(FORGOT_URL, json={"email": email})
             assert r.status_code == 200
             reset_mail = get_dev_reset_email_deliveries(email)[0]
-            from urllib.parse import parse_qs
-
             frag = reset_mail.reset_link.split("#", 1)[1]
             raw_token = parse_qs(frag)["resetToken"][0]
 
             ok = await client.post(
-                RESET_URL, json={"reset_token": raw_token, "new_password": "NewPw_02!!"}  # pragma: allowlist secret
+                RESET_URL, json={"reset_token": raw_token, "new_password": first_pw}
             )
             assert ok.status_code == 200
 
-            replay = await client.post(
-                RESET_URL, json={"reset_token": raw_token, "new_password": "NewPw_03!!"}  # pragma: allowlist secret
-            )
-            # Replay rejected (neutral), token single-use.
-            assert replay.status_code in (200, 400, 401)
+            used_at_first = await _token_used_at(raw_token)
+            assert used_at_first is not None  # token is used
 
-            # Cross-tenant consistency: both copies now verify with the NEW pw.
-            for schema in (s1, s2):
-                row = (
-                    await db.execute(
-                        text(
-                            f'SELECT password_hash FROM "{schema}".users '
-                            "WHERE lower(email) = lower(:e) AND is_active = true"
-                        ),
-                        {"e": email},
-                    )
-                ).first()
-                assert row is not None
-                assert verify_password("NewPw_02!!", row.password_hash)
+            replay = await client.post(
+                RESET_URL, json={"reset_token": raw_token, "new_password": replay_pw}
+            )
+            # Replay is rejected with the EXACT neutral 401 (not 200/400).
+            assert replay.status_code == 401
+            assert (
+                replay.json()["detail"]["code"] == "INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN"
+            )
+            assert "disclosed" in replay.text
+
+            # Token remains used (used_at set and unchanged by the replay).
+            used_at_after_replay = await _token_used_at(raw_token)
+            assert used_at_after_replay == used_at_first
+
+            # A second replay is still rejected (single-use persists).
+            replay2 = await client.post(
+                RESET_URL, json={"reset_token": raw_token, "new_password": replay_pw}
+            )
+            assert replay2.status_code == 401
+            assert await _token_used_at(raw_token) == used_at_first
+
+        # The replay password was NOT applied to ANY tenant copy: every copy
+        # still verifies the FIRST new password and rejects the replay one.
+        for schema in (s1, s2):
+            row = (
+                await db.execute(
+                    text(
+                        f'SELECT password_hash FROM "{schema}".users '
+                        "WHERE lower(email) = lower(:e) AND is_active = true"
+                    ),
+                    {"e": email},
+                )
+            ).first()
+            assert row is not None
+            assert verify_password(first_pw, row.password_hash)
+            assert not verify_password(replay_pw, row.password_hash)
 
 
 async def test_t8_query_string_token_rejected():
@@ -412,7 +638,164 @@ async def test_t8_query_string_token_rejected():
         async with _client(db) as client:
             r = await client.post(
                 RESET_URL + "?reset_token=leak&new_password=x",
-                json={"reset_token": "whatever", "new_password": "NewPw_04!!"}  # pragma: allowlist secret,
+                json={"reset_token": "whatever", "new_password": "NewPw_04!!"},  # pragma: allowlist secret
             )
         assert r.status_code == 401
         assert "INVALID_OR_EXPIRED" in r.text or "invalid" in r.text.lower()
+
+
+async def test_t9_target_scan_failure_one_internal_event_evidence_preserved(monkeypatch):
+    """TARGET tenant scan fails: neutral 200, zero token, zero email, and
+    exactly ONE deterministic internal incomplete-scan event + metric.
+
+    The committed users table is RENAMED (inaccessible to the scan) while
+    the user evidence survives untouched in the renamed table — the scan
+    failure, not user absence, is what suppresses issuance. Restoring the
+    name restores issuance: proof that nothing was deleted."""
+    from core.security import hash_password
+
+    async with AsyncSessionLocal() as db:
+        email = f"t9-{uuid.uuid4().hex[:6]}@example.com"
+        _, schema = await _seed_wholesaler_with_user(
+            db, code=f"T9{uuid.uuid4().hex[:6].upper()}", email=email,
+            password_hash=hash_password(TEST_PW), schema_has_users=True,
+        )
+        await db.commit()
+        await _rename_users_table(schema, "users_evidence_t9")
+        assert await _users_table_row_count(schema, "users_evidence_t9", email) == 1
+        before = await _token_count()
+
+    calls = _capture_auth_logs(monkeypatch)
+    metrics_before = _metric_snapshot()
+
+    async with AsyncSessionLocal() as db:
+        async with _client(db) as client:
+            r = await client.post(
+                FORGOT_URL, json={"email": email},
+                headers={"X-Request-ID": "h2b-t9-req-2001"},
+            )
+
+    # Public envelope stays perfectly neutral; nothing is issued.
+    assert r.status_code == 200
+    assert "disclosed" in r.text
+    assert r.json()["data"] == {}
+    assert await _token_count() == before  # zero token
+    assert get_dev_reset_email_deliveries(email) == []  # zero email
+
+    # Exactly ONE internal event, deterministic class, sanitized payload.
+    assert len(calls["error"]) == 1
+    call = calls["error"][0]
+    assert call["msg"] == "password_reset.internal_failure"
+    extra = call["kwargs"].get("extra", {})
+    assert extra.get("event_class") == "PASSWORD_RESET_SCAN_INCOMPLETE"
+    assert extra.get("phase") == "reset_request_scan"
+    assert extra.get("request_id") == "h2b-t9-req-2001"
+    assert extra.get("failed_schema_count", 0) >= 1
+    payload = str(call)
+    assert email not in payload
+    assert schema not in payload
+    assert "SELECT" not in payload
+    assert calls["warning"] == []
+
+    after = _metric_snapshot()
+    assert (
+        after["PASSWORD_RESET_SCAN_INCOMPLETE"]
+        == metrics_before["PASSWORD_RESET_SCAN_INCOMPLETE"] + 1
+    )
+    for cls in EVENT_CLASSES:
+        if cls != "PASSWORD_RESET_SCAN_INCOMPLETE":
+            assert after[cls] == metrics_before[cls]
+
+    # User evidence still intact (renamed table still holds the active row).
+    assert await _users_table_row_count(schema, "users_evidence_t9", email) == 1
+
+    # Repair restores issuance with zero data loss: rename back -> token.
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            text(f'ALTER TABLE "{schema}"."users_evidence_t9" RENAME TO "users"')
+        )
+        await db.commit()
+        async with _client(db) as client:
+            repaired = await client.post(FORGOT_URL, json={"email": email})
+    assert repaired.status_code == 200
+    assert await _token_count() == before + 1
+    assert len(get_dev_reset_email_deliveries(email)) == 1
+
+
+async def test_t10_consume_scan_incomplete_token_stays_actionable(monkeypatch):
+    """Consume-path scan failure: neutral 401 + exactly one internal event,
+    the token is NOT consumed; after repair the SAME token succeeds."""
+    from core.security import hash_password, verify_password
+
+    new_pw = "NewPw_05!!"  # pragma: allowlist secret
+
+    async with AsyncSessionLocal() as db:
+        email = f"t10-{uuid.uuid4().hex[:6]}@example.com"
+        _, schema = await _seed_wholesaler_with_user(
+            db, code=f"TA{uuid.uuid4().hex[:6].upper()}", email=email,
+            password_hash=hash_password(TEST_PW), schema_has_users=True,
+        )
+        await db.commit()
+
+        async with _client(db) as client:
+            r = await client.post(FORGOT_URL, json={"email": email})
+            assert r.status_code == 200
+            reset_mail = get_dev_reset_email_deliveries(email)[0]
+            raw_token = parse_qs(reset_mail.reset_link.split("#", 1)[1])["resetToken"][0]
+
+        await _rename_users_table(schema, "users_evidence_t10")
+        assert await _users_table_row_count(schema, "users_evidence_t10", email) == 1
+
+        calls = _capture_auth_logs(monkeypatch)
+        metrics_before = _metric_snapshot()
+
+        async with _client(db) as client:
+            broken = await client.post(
+                RESET_URL, json={"reset_token": raw_token, "new_password": new_pw}
+            )
+
+        # Public: the same neutral 401 envelope as any non-actionable token.
+        assert broken.status_code == 401
+        assert broken.json()["detail"]["code"] == "INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN"
+
+        # Internal: exactly one sanitized incomplete-scan event.
+        assert len(calls["error"]) == 1
+        extra = calls["error"][0]["kwargs"].get("extra", {})
+        assert extra.get("event_class") == "PASSWORD_RESET_SCAN_INCOMPLETE"
+        assert extra.get("phase") == "reset_consume_scan"
+        assert extra.get("failed_schema_count", 0) >= 1
+        payload = str(calls["error"][0])
+        assert email not in payload
+        assert schema not in payload
+        assert _metric_snapshot()["PASSWORD_RESET_SCAN_INCOMPLETE"] == (
+            metrics_before["PASSWORD_RESET_SCAN_INCOMPLETE"] + 1
+        )
+
+        # Token NOT consumed: still actionable after repair.
+        assert await _token_used_at(raw_token) is None
+
+        async with AsyncSessionLocal() as repair_db:
+            await repair_db.execute(
+                text(f'ALTER TABLE "{schema}"."users_evidence_t10" RENAME TO "users"')
+            )
+            await repair_db.commit()
+
+        async with AsyncSessionLocal() as db2:
+            async with _client(db2) as client:
+                repaired = await client.post(
+                    RESET_URL, json={"reset_token": raw_token, "new_password": new_pw}
+                )
+        assert repaired.status_code == 200
+        assert await _token_used_at(raw_token) is not None
+
+        row = (
+            await db2.execute(
+                text(
+                    f'SELECT password_hash FROM "{schema}".users '
+                    "WHERE lower(email) = lower(:e) AND is_active = true"
+                ),
+                {"e": email},
+            )
+        ).first()
+        assert row is not None
+        assert verify_password(new_pw, row.password_hash)

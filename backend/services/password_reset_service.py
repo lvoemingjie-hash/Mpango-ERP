@@ -14,6 +14,12 @@ Security invariants (must not be weakened):
 - Tokens are stored hash-only (HMAC-SHA256 via ``hash_token``); raw tokens exist
   only in memory / the email channel and are never logged.
 - ``request_reset`` never reveals whether an email exists (always-neutral result).
+- H2-B-R1: a per-tenant scan failure is never silently converted into a
+  definitive "account does not exist" (or "token invalid") outcome. Scan
+  health travels through sanitized, counter-only types
+  (``TenantUserScanResult`` / ``PasswordResetScanIncompleteError``) so the
+  API can emit exactly one internal event while the public envelope stays
+  neutral; no email/schema/SQL/token/credential ever reaches a log.
 - Production fails closed: if email delivery is not configured, NO token is
   created and the failure surfaces so the caller can roll back.
 - ``consume_reset`` marks ``used_at`` only AFTER the password update succeeds,
@@ -57,16 +63,54 @@ class PasswordResetTokenInvalidError(Exception):
     """Raised for invalid, expired, used, revoked, or non-actionable reset tokens."""
 
 
+class PasswordResetScanIncompleteError(Exception):
+    """The cross-tenant user scan could not complete AND no active user for the
+    requested email was found in any reachable tenant.
+
+    H2-B-R1: without this, a per-tenant schema/query failure was silently
+    converted into a definitive ``issued=False`` ("account does not exist")
+    answer with zero observability. The error is sanitized by construction:
+    it carries only integer counters and never embeds the email, tenant
+    schema names, SQL text, tokens, or credentials (raw driver errors can
+    leak the schema name, so the triggering exception is not chained).
+    """
+
+    def __init__(self, *, failed_schema_count: int, scanned_schema_count: int) -> None:
+        self.failed_schema_count = failed_schema_count
+        self.scanned_schema_count = scanned_schema_count
+        super().__init__(
+            "password reset tenant scan incomplete: "
+            f"{failed_schema_count} of {scanned_schema_count} tenant scans failed"
+        )
+
+
+@dataclass(frozen=True)
+class TenantUserScanResult:
+    """Rows reachable from active tenant schemas plus sanitized scan health.
+
+    ``failed_schema_count`` counts per-tenant scans whose SAVEPOINT rolled
+    back. It deliberately contains no schema names / SQL / emails so it is
+    safe to log and to expose through metrics.
+    """
+
+    rows: list[tuple[str, str, UUID]]
+    scanned_schema_count: int
+    failed_schema_count: int
+
+
 @dataclass(frozen=True)
 class PasswordResetRequestResult:
     """Neutral result for POST /auth/forgot-password.
 
     ``issued`` is for internal callers/tests only; the API always returns the
-    same neutral response regardless of this value.
+    same neutral response regardless of this value. ``scan_failed_schema_count``
+    is likewise internal-only telemetry (0 = the scan completed for every
+    non-deleted wholesaler schema); it never changes the public response.
     """
 
     issued: bool
     email: str
+    scan_failed_schema_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -92,12 +136,19 @@ def _email_hash(email: str) -> str:
 
 async def _enumerate_active_tenant_users(
     db: AsyncSession,
-) -> list[tuple[str, str, UUID]]:
-    """Return (normalized_email, tenant_schema, user_id) for active tenant users.
+) -> TenantUserScanResult:
+    """Scan active tenant schemas for (normalized_email, schema, user_id) rows.
 
     Scans non-deleted wholesalers ordered by created_at (same order as the login
-    scan) and, for each, reads active, non-deleted user rows. Schemas lacking a
-    ``users`` table are skipped defensively (mirrors login behavior).
+    scan) and, for each, reads active, non-deleted user rows. Each tenant query
+    runs inside its own SAVEPOINT: a schema lacking a ``users`` table (or any
+    per-tenant query failure) rolls back only that savepoint and MUST NOT abort
+    the outer transaction, which would block every healthy tenant that follows.
+
+    H2-B-R1: the failure is no longer silent. Failed savepoints are counted in
+    the returned result so callers can distinguish "scanned everything, the
+    account does not exist" from "could not scan every tenant, absence is NOT
+    proven". The count is aggregate-only — never which schema or why.
     """
     mark_session_as_system(db, reason="password_reset_user_scan")
     with run_as_system(reason="password_reset_user_scan"):
@@ -110,6 +161,7 @@ async def _enumerate_active_tenant_users(
         wholesalers = list(result.scalars().all())
 
     rows: list[tuple[str, str, UUID]] = []
+    failed_schema_count = 0
     for ws in wholesalers:
         schema = ws.get_tenant_schema()
         try:
@@ -123,11 +175,17 @@ async def _enumerate_active_tenant_users(
                 for email, uid in res.all():
                     rows.append((str(email), schema, uid))
         except Exception:
-            # Roll back only this tenant's SAVEPOINT. Without it, a missing or
-            # damaged schema aborts the outer transaction and blocks every
-            # healthy tenant that follows in the scan.
+            # Roll back only this tenant's SAVEPOINT (isolation retained) and
+            # record the failure in the aggregate count. The caller decides
+            # how to surface it; this function never converts the failure
+            # into "the account does not exist".
+            failed_schema_count += 1
             continue
-    return rows
+    return TenantUserScanResult(
+        rows=rows,
+        scanned_schema_count=len(wholesalers),
+        failed_schema_count=failed_schema_count,
+    )
 
 
 class PasswordResetService:
@@ -148,10 +206,22 @@ class PasswordResetService:
         normalized = _normalize_email(email)
         eh = _email_hash(normalized)
         # Confirm at least one active tenant user exists for this email.
-        active_users = await _enumerate_active_tenant_users(self.db)
-        has_user = any(row_email == normalized for (row_email, _s, _u) in active_users)
+        scan = await _enumerate_active_tenant_users(self.db)
+        has_user = any(row_email == normalized for (row_email, _s, _u) in scan.rows)
         if not has_user:
-            return PasswordResetRequestResult(issued=False, email=normalized)
+            if scan.failed_schema_count:
+                # H2-B-R1: absence is NOT proven when tenant scans failed.
+                # Surface a sanitized typed error instead of silently
+                # converting the scan failure into "account does not exist";
+                # the API layer emits exactly one internal event and still
+                # answers with the neutral envelope.
+                raise PasswordResetScanIncompleteError(
+                    failed_schema_count=scan.failed_schema_count,
+                    scanned_schema_count=scan.scanned_schema_count,
+                )
+            return PasswordResetRequestResult(
+                issued=False, email=normalized, scan_failed_schema_count=0
+            )
 
         now = datetime.now(timezone.utc)
         # Revoke any previously-active reset token for this email so the new one
@@ -187,7 +257,11 @@ class PasswordResetService:
             token=raw_token,
             reset_link=build_password_reset_link(raw_token, self.settings),
         )
-        return PasswordResetRequestResult(issued=True, email=normalized)
+        return PasswordResetRequestResult(
+            issued=True,
+            email=normalized,
+            scan_failed_schema_count=scan.failed_schema_count,
+        )
 
     async def consume_reset(self, token: str, new_password: str) -> PasswordResetConsumeResult:
         """Consume a reset token and set the new password on ALL active copies.
@@ -203,12 +277,22 @@ class PasswordResetService:
 
         # Resolve the affected copies by matching SHA-256(email) so the raw
         # email is never needed at consume time and is never stored on the token.
+        scan = await _enumerate_active_tenant_users(self.db)
         copies: list[tuple[str, UUID]] = []
-        for row_email, schema, uid in await _enumerate_active_tenant_users(self.db):
+        for row_email, schema, uid in scan.rows:
             if hashlib.sha256(row_email.encode("utf-8")).hexdigest() == target_hash:
                 copies.append((schema, uid))
 
         if not copies:
+            if scan.failed_schema_count:
+                # H2-B-R1: the token may be valid but its tenant copies are in
+                # unscannable schemas. Report the sanitized scan failure (the
+                # caller rolls back, so the token stays actionable for a
+                # retry) instead of a definitive "token invalid".
+                raise PasswordResetScanIncompleteError(
+                    failed_schema_count=scan.failed_schema_count,
+                    scanned_schema_count=scan.scanned_schema_count,
+                )
             # Email no longer has any active tenant user since the token issued.
             raise PasswordResetTokenInvalidError(INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN)
 

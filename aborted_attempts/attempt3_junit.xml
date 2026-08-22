@@ -1,0 +1,102 @@
+<testsuites id="" name="" tests="18" failures="1" skipped="10" errors="0" time="19.541936999999997">
+<testsuite name="v3-browser-lifecycle.spec.ts" timestamp="2026-08-22T04:47:51.121Z" hostname="" tests="18" failures="1" skipped="10" time="17.675" errors="0">
+<testcase name="J01 browser login as W1" classname="v3-browser-lifecycle.spec.ts" time="1.137">
+</testcase>
+<testcase name="J02 sidebar navigation to invitation authoring" classname="v3-browser-lifecycle.spec.ts" time="0.179">
+</testcase>
+<testcase name="J03 create invitation via real form" classname="v3-browser-lifecycle.spec.ts" time="0.419">
+</testcase>
+<testcase name="J04 copy/share UI yields canonical fragment link" classname="v3-browser-lifecycle.spec.ts" time="0.231">
+</testcase>
+<testcase name="J05 shared invitation URL opens in new context" classname="v3-browser-lifecycle.spec.ts" time="0.494">
+</testcase>
+<testcase name="J06 supplier identity in rendered UI" classname="v3-browser-lifecycle.spec.ts" time="0.017">
+</testcase>
+<testcase name="J07 registration form email-required and no password input" classname="v3-browser-lifecycle.spec.ts" time="0.091">
+</testcase>
+<testcase name="J08 submit + mail-sink setup token through real setup page" classname="v3-browser-lifecycle.spec.ts" time="15.107">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\v3-browser-lifecycle-J08-s-c7e7f-ken-through-real-setup-page\error-context.md]]
+
+[[ATTACHMENT|test-results\v3-browser-lifecycle-J08-s-c7e7f-ken-through-real-setup-page\trace.zip]]
+]]>
+</system-out>
+<failure message="expect(locator).toBeVisible() failed" type="expect.toBeVisible">
+<![CDATA[  v3-browser-lifecycle.spec.ts:195:5 › J08 submit + mail-sink setup token through real setup page ──
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText(/registration complete/i)
+    Expected: visible
+    Timeout: 15000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 15000ms
+      - waiting for getByText(/registration complete/i)
+
+
+      197 |   await page.getByLabel(/^email/i).fill(S.retailer1!.email);
+      198 |   await page.getByRole('button', { name: /complete registration/i }).click();
+    > 199 |   await expect(page.getByText(/registration complete/i)).toBeVisible();
+          |                                                          ^
+      200 |
+      201 |   // Token obtained OUTSIDE the browser from the task-owned mail sink.
+      202 |   const link = waitRetailerSetupMail(S.retailer1!.email);
+        at C:\Users\Jeff0\MPANGO ERP\_h2a_v3_runtime\pw\v3-browser-lifecycle.spec.ts:199:58
+
+    Error Context: test-results\v3-browser-lifecycle-J08-s-c7e7f-ken-through-real-setup-page\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\v3-browser-lifecycle-J08-s-c7e7f-ken-through-real-setup-page\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\v3-browser-lifecycle-J08-s-c7e7f-ken-through-real-setup-page\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+</testcase>
+<testcase name="J09 portal link then ClientLoginPage login" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J10 /retail/join supplier code tab" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J11 code-entry lifecycle: preview -&gt; confirm -&gt; register -&gt; portal login" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J12 unknown and malformed code: neutral, zero register POSTs" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J13 preview link exact w; no bare /retail/login anywhere" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J14 stale session: public calls carry no Authorization header" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J15 double submit: exactly one POST and one binding" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J16 W1 retailer denied on W2 portal (exact status + UI)" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J17 deactivate via UI; retailer login fails afterwards" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J18 390px viewport discovery/preview/navigation (viewport simulation)" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+</testsuites>

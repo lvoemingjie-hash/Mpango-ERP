@@ -1,0 +1,81 @@
+<testsuites id="" name="" tests="18" failures="0" skipped="3" errors="1" time="30.588033">
+<testsuite name="v3-browser-lifecycle.spec.ts" timestamp="2026-08-22T04:49:41.284Z" hostname="" tests="18" failures="0" skipped="3" time="28.107" errors="1">
+<testcase name="J01 browser login as W1" classname="v3-browser-lifecycle.spec.ts" time="1.169">
+</testcase>
+<testcase name="J02 sidebar navigation to invitation authoring" classname="v3-browser-lifecycle.spec.ts" time="0.2">
+</testcase>
+<testcase name="J03 create invitation via real form" classname="v3-browser-lifecycle.spec.ts" time="0.438">
+</testcase>
+<testcase name="J04 copy/share UI yields canonical fragment link" classname="v3-browser-lifecycle.spec.ts" time="0.141">
+</testcase>
+<testcase name="J05 shared invitation URL opens in new context" classname="v3-browser-lifecycle.spec.ts" time="0.538">
+</testcase>
+<testcase name="J06 supplier identity in rendered UI" classname="v3-browser-lifecycle.spec.ts" time="0.028">
+</testcase>
+<testcase name="J07 registration form email-required and no password input" classname="v3-browser-lifecycle.spec.ts" time="0.121">
+</testcase>
+<testcase name="J08 submit + mail-sink setup token through real setup page" classname="v3-browser-lifecycle.spec.ts" time="1.691">
+</testcase>
+<testcase name="J09 portal link then ClientLoginPage login" classname="v3-browser-lifecycle.spec.ts" time="0.488">
+</testcase>
+<testcase name="J10 /retail/join supplier code tab" classname="v3-browser-lifecycle.spec.ts" time="0.693">
+</testcase>
+<testcase name="J11 code-entry lifecycle: preview -&gt; confirm -&gt; register -&gt; portal login" classname="v3-browser-lifecycle.spec.ts" time="2.98">
+</testcase>
+<testcase name="J12 unknown and malformed code: neutral, zero register POSTs" classname="v3-browser-lifecycle.spec.ts" time="0.751">
+</testcase>
+<testcase name="J13 preview link exact w; no bare /retail/login anywhere" classname="v3-browser-lifecycle.spec.ts" time="0.664">
+</testcase>
+<testcase name="J14 stale session: public calls carry no Authorization header" classname="v3-browser-lifecycle.spec.ts" time="2.165">
+</testcase>
+<testcase name="J15 double submit: exactly one POST and one binding" classname="v3-browser-lifecycle.spec.ts" time="16.04">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\v3-browser-lifecycle-J15-d-facfa-ly-one-POST-and-one-binding\error-context.md]]
+
+[[ATTACHMENT|test-results\v3-browser-lifecycle-J15-d-facfa-ly-one-POST-and-one-binding\trace.zip]]
+]]>
+</system-out>
+<error message="locator.click: Timeout 15000ms exceeded." type="TimeoutError">
+<![CDATA[  v3-browser-lifecycle.spec.ts:359:5 › J15 double submit: exactly one POST and one binding ─────────
+
+    TimeoutError: locator.click: Timeout 15000ms exceeded.
+    Call log:
+      - waiting for getByRole('button', { name: /complete registration/i })
+
+
+      374 |   // Real UI double submit: two rapid clicks on the real button.
+      375 |   await submit.click();
+    > 376 |   await submit.click();
+          |                ^
+      377 |   await expect(page.getByText(/registration complete/i)).toBeVisible({ timeout: 30_000 });
+      378 |   await page.waitForTimeout(1000);
+      379 |   const posts = seen.filter((s) => s.url.includes('/retailers/register') && s.method === 'POST');
+        at C:\Users\Jeff0\MPANGO ERP\_h2a_v3_runtime\pw\v3-browser-lifecycle.spec.ts:376:16
+
+    Error Context: test-results\v3-browser-lifecycle-J15-d-facfa-ly-one-POST-and-one-binding\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\v3-browser-lifecycle-J15-d-facfa-ly-one-POST-and-one-binding\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\v3-browser-lifecycle-J15-d-facfa-ly-one-POST-and-one-binding\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="J16 W1 retailer denied on W2 portal (exact status + UI)" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J17 deactivate via UI; retailer login fails afterwards" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J18 390px viewport discovery/preview/navigation (viewport simulation)" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+</testsuites>

@@ -1,0 +1,19 @@
+node,file,line,column,outcome,duration_ms,started
+J01 browser login as W1,v3-browser-lifecycle.spec.ts,96,5,expected,1273,2026-08-22T04:50:35.748Z
+J02 sidebar navigation to invitation authoring,v3-browser-lifecycle.spec.ts,111,5,expected,186,2026-08-22T04:50:37.182Z
+J03 create invitation via real form,v3-browser-lifecycle.spec.ts,124,5,expected,446,2026-08-22T04:50:37.395Z
+J04 copy/share UI yields canonical fragment link,v3-browser-lifecycle.spec.ts,135,5,expected,139,2026-08-22T04:50:37.862Z
+J05 shared invitation URL opens in new context,v3-browser-lifecycle.spec.ts,155,5,expected,536,2026-08-22T04:50:38.017Z
+J06 supplier identity in rendered UI,v3-browser-lifecycle.spec.ts,168,5,expected,14,2026-08-22T04:50:38.569Z
+J07 registration form email-required and no password input,v3-browser-lifecycle.spec.ts,178,5,expected,114,2026-08-22T04:50:38.600Z
+J08 submit + mail-sink setup token through real setup page,v3-browser-lifecycle.spec.ts,198,5,expected,1709,2026-08-22T04:50:38.736Z
+J09 portal link then ClientLoginPage login,v3-browser-lifecycle.spec.ts,217,5,expected,454,2026-08-22T04:50:40.461Z
+J10 /retail/join supplier code tab,v3-browser-lifecycle.spec.ts,233,5,expected,670,2026-08-22T04:50:40.935Z
+J11 code-entry lifecycle: preview -> confirm -> register -> portal login,v3-browser-lifecycle.spec.ts,249,5,expected,3033,2026-08-22T04:50:41.624Z
+"J12 unknown and malformed code: neutral, zero register POSTs",v3-browser-lifecycle.spec.ts,291,5,expected,829,2026-08-22T04:50:44.674Z
+J13 preview link exact w; no bare /retail/login anywhere,v3-browser-lifecycle.spec.ts,313,5,expected,713,2026-08-22T04:50:45.523Z
+J14 stale session: public calls carry no Authorization header,v3-browser-lifecycle.spec.ts,331,5,expected,2100,2026-08-22T04:50:46.256Z
+J15 double submit: exactly one POST and one binding,v3-browser-lifecycle.spec.ts,359,5,expected,3008,2026-08-22T04:50:48.370Z
+J16 W1 retailer denied on W2 portal (exact status + UI),v3-browser-lifecycle.spec.ts,410,5,expected,1410,2026-08-22T04:50:51.396Z
+J17 deactivate via UI; retailer login fails afterwards,v3-browser-lifecycle.spec.ts,431,5,expected,1367,2026-08-22T04:50:52.826Z
+J18 390px viewport discovery/preview/navigation (viewport simulation),v3-browser-lifecycle.spec.ts,457,5,expected,2320,2026-08-22T04:50:54.219Z

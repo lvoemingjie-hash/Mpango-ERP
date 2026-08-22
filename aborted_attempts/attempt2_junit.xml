@@ -1,0 +1,94 @@
+<testsuites id="" name="" tests="18" failures="0" skipped="11" errors="1" time="5.00041">
+<testsuite name="v3-browser-lifecycle.spec.ts" timestamp="2026-08-22T04:47:19.581Z" hostname="" tests="18" failures="0" skipped="11" time="2.657" errors="1">
+<testcase name="J01 browser login as W1" classname="v3-browser-lifecycle.spec.ts" time="1.414">
+</testcase>
+<testcase name="J02 sidebar navigation to invitation authoring" classname="v3-browser-lifecycle.spec.ts" time="0.151">
+</testcase>
+<testcase name="J03 create invitation via real form" classname="v3-browser-lifecycle.spec.ts" time="0.459">
+</testcase>
+<testcase name="J04 copy/share UI yields canonical fragment link" classname="v3-browser-lifecycle.spec.ts" time="0.107">
+</testcase>
+<testcase name="J05 shared invitation URL opens in new context" classname="v3-browser-lifecycle.spec.ts" time="0.504">
+</testcase>
+<testcase name="J06 supplier identity in rendered UI" classname="v3-browser-lifecycle.spec.ts" time="0.018">
+</testcase>
+<testcase name="J07 registration form email-required and no password input" classname="v3-browser-lifecycle.spec.ts" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results\v3-browser-lifecycle-J07-r-7b863-uired-and-no-password-input\error-context.md]]
+
+[[ATTACHMENT|test-results\v3-browser-lifecycle-J07-r-7b863-uired-and-no-password-input\trace.zip]]
+]]>
+</system-out>
+<error message="Cannot read properties of undefined (reading &apos;slice&apos;)" type="TypeError">
+<![CDATA[  v3-browser-lifecycle.spec.ts:175:5 › J07 registration form email-required and no password input ──
+
+    TypeError: Cannot read properties of undefined (reading 'slice')
+
+      175 | test('J07 registration form email-required and no password input', async () => {
+      176 |   const page = S.retailerPage!;
+    > 177 |   const phone = `+25572${randomUUID().hex.slice(0, 8)}`;
+          |                                          ^
+      178 |   S.retailer1 = {
+      179 |     email: `r1-${randomUUID().hex.slice(0, 8)}@example.com`,
+      180 |     password: REDACTED_PW_LITERAL,
+        at C:\Users\Jeff0\MPANGO ERP\_h2a_v3_runtime\pw\v3-browser-lifecycle.spec.ts:177:42
+
+    Error Context: test-results\v3-browser-lifecycle-J07-r-7b863-uired-and-no-password-input\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\v3-browser-lifecycle-J07-r-7b863-uired-and-no-password-input\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\v3-browser-lifecycle-J07-r-7b863-uired-and-no-password-input\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</error>
+</testcase>
+<testcase name="J08 submit + mail-sink setup token through real setup page" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J09 portal link then ClientLoginPage login" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J10 /retail/join supplier code tab" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J11 code-entry lifecycle: preview -&gt; confirm -&gt; register -&gt; portal login" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J12 unknown and malformed code: neutral, zero register POSTs" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J13 preview link exact w; no bare /retail/login anywhere" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J14 stale session: public calls carry no Authorization header" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J15 double submit: exactly one POST and one binding" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J16 W1 retailer denied on W2 portal (exact status + UI)" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J17 deactivate via UI; retailer login fails afterwards" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="J18 390px viewport discovery/preview/navigation (viewport simulation)" classname="v3-browser-lifecycle.spec.ts">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+</testsuites>

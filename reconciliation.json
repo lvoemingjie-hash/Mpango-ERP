@@ -1,0 +1,16 @@
+{
+  "collected_nodes": 18,
+  "run_nodes": 18,
+  "passed": 18,
+  "failed": 0,
+  "skipped": 0,
+  "flaky": 0,
+  "interrupted": 0,
+  "retries_configured": 0,
+  "workers_configured": 1,
+  "failure_set": [],
+  "node_set_identical_to_collected_list": true,
+  "source_tree_hash_before": "83eb1b09c6eea7145b3d5069323ee2ffb54cc63d",
+  "source_tree_hash_after": "83eb1b09c6eea7145b3d5069323ee2ffb54cc63d",
+  "candidate": "bf574cf9b061f7897eb68cbe92a82ce1201e49f0"
+}

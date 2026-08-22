@@ -1,0 +1,732 @@
+{
+  "config": {
+    "configFile": "C:\\Users\\Jeff0\\MPANGO ERP\\_h2a_v3_runtime\\pw\\playwright.config.ts",
+    "rootDir": "C:/Users/Jeff0/MPANGO ERP/_h2a_v3_runtime/pw",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/Jeff0/MPANGO ERP/_h2a_v3_runtime/pw/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "C:/Users/Jeff0/MPANGO ERP/_h2a_v3_runtime/pw",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 120000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "authoritative_playwright.json"
+        }
+      ],
+      [
+        "junit",
+        {
+          "outputFile": "authoritative_junit.xml"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.59.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "v3-browser-lifecycle.spec.ts",
+      "file": "v3-browser-lifecycle.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "J01 browser login as W1",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1414,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:20.551Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-3dd93b7e91d9b2714368",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 96,
+          "column": 5
+        },
+        {
+          "title": "J02 sidebar navigation to invitation authoring",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 151,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:22.931Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-0363f30e5c542a96ceab",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 111,
+          "column": 5
+        },
+        {
+          "title": "J03 create invitation via real form",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 459,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:23.103Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-a182cbc813fb2c6138f9",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 124,
+          "column": 5
+        },
+        {
+          "title": "J04 copy/share UI yields canonical fragment link",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 107,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:23.579Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-8445162877d5348ea860",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 132,
+          "column": 5
+        },
+        {
+          "title": "J05 shared invitation URL opens in new context",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 504,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:23.702Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-66040be40f84579159bb",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 152,
+          "column": 5
+        },
+        {
+          "title": "J06 supplier identity in rendered UI",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 18,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.221Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-25e25de4d86eaa578f6f",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 165,
+          "column": 5
+        },
+        {
+          "title": "J07 registration form email-required and no password input",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 4,
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'slice')",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'slice')\n    at C:\\Users\\Jeff0\\MPANGO ERP\\_h2a_v3_runtime\\pw\\v3-browser-lifecycle.spec.ts:177:42",
+                    "location": {
+                      "file": "C:\\Users\\Jeff0\\MPANGO ERP\\_h2a_v3_runtime\\pw\\v3-browser-lifecycle.spec.ts",
+                      "column": 42,
+                      "line": 177
+                    },
+                    "snippet": "\u001b[0m \u001b[90m 175 |\u001b[39m test(\u001b[32m'J07 registration form email-required and no password input'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m () \u001b[33m=>\u001b[39m {\n \u001b[90m 176 |\u001b[39m   \u001b[36mconst\u001b[39m page \u001b[33m=\u001b[39m \u001b[33mS\u001b[39m\u001b[33m.\u001b[39mretailerPage\u001b[33m!\u001b[39m\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 177 |\u001b[39m   \u001b[36mconst\u001b[39m phone \u001b[33m=\u001b[39m \u001b[32m`+25572${randomUUID().hex.slice(0, 8)}`\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                          \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 178 |\u001b[39m   \u001b[33mS\u001b[39m\u001b[33m.\u001b[39mretailer1 \u001b[33m=\u001b[39m {\n \u001b[90m 179 |\u001b[39m     email\u001b[33m:\u001b[39m \u001b[32m`r1-${randomUUID().hex.slice(0, 8)}@example.com`\u001b[39m\u001b[33m,\u001b[39m\n \u001b[90m 180 |\u001b[39m     password\u001b[33m:\u001b[39m \u001b[32mREDACTED_PW_LITERAL\u001b[39m\u001b[33m,\u001b[39m\u001b[0m"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "C:\\Users\\Jeff0\\MPANGO ERP\\_h2a_v3_runtime\\pw\\v3-browser-lifecycle.spec.ts",
+                        "column": 42,
+                        "line": 177
+                      },
+                      "message": "TypeError: Cannot read properties of undefined (reading 'slice')\n\n  175 | test('J07 registration form email-required and no password input', async () => {\n  176 |   const page = S.retailerPage!;\n> 177 |   const phone = `+25572${randomUUID().hex.slice(0, 8)}`;\n      |                                          ^\n  178 |   S.retailer1 = {\n  179 |     email: `r1-${randomUUID().hex.slice(0, 8)}@example.com`,\n  180 |     password: REDACTED_PW_LITERAL,\n    at C:\\Users\\Jeff0\\MPANGO ERP\\_h2a_v3_runtime\\pw\\v3-browser-lifecycle.spec.ts:177:42"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.260Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "C:\\Users\\Jeff0\\MPANGO ERP\\_h2a_v3_runtime\\pw\\test-results\\v3-browser-lifecycle-J07-r-7b863-uired-and-no-password-input\\error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "C:\\Users\\Jeff0\\MPANGO ERP\\_h2a_v3_runtime\\pw\\test-results\\v3-browser-lifecycle-J07-r-7b863-uired-and-no-password-input\\trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "C:\\Users\\Jeff0\\MPANGO ERP\\_h2a_v3_runtime\\pw\\v3-browser-lifecycle.spec.ts",
+                    "column": 42,
+                    "line": 177
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-3d350747fb6a941e9b94",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 175,
+          "column": 5
+        },
+        {
+          "title": "J08 submit + mail-sink setup token through real setup page",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.508Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-188beb60c643abde4c23",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 195,
+          "column": 5
+        },
+        {
+          "title": "J09 portal link then ClientLoginPage login",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.509Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-ada1e0381a612d06ea88",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 214,
+          "column": 5
+        },
+        {
+          "title": "J10 /retail/join supplier code tab",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.509Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-d81c8ed2d97f797547f5",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 230,
+          "column": 5
+        },
+        {
+          "title": "J11 code-entry lifecycle: preview -> confirm -> register -> portal login",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.509Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-a02c4d04c80635c5405b",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 246,
+          "column": 5
+        },
+        {
+          "title": "J12 unknown and malformed code: neutral, zero register POSTs",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.509Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-a83f8ddf95cd8a9cb857",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 288,
+          "column": 5
+        },
+        {
+          "title": "J13 preview link exact w; no bare /retail/login anywhere",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.509Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-eefb6b780c869c373665",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 310,
+          "column": 5
+        },
+        {
+          "title": "J14 stale session: public calls carry no Authorization header",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.509Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-88be741825d50b7f2961",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 328,
+          "column": 5
+        },
+        {
+          "title": "J15 double submit: exactly one POST and one binding",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.509Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-42e7b6bbdb3aece62751",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 356,
+          "column": 5
+        },
+        {
+          "title": "J16 W1 retailer denied on W2 portal (exact status + UI)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.510Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-55827a4e530f5d541552",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 406,
+          "column": 5
+        },
+        {
+          "title": "J17 deactivate via UI; retailer login fails afterwards",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.510Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-928bff239b9b5f873107",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 427,
+          "column": 5
+        },
+        {
+          "title": "J18 390px viewport discovery/preview/navigation (viewport simulation)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-22T04:47:24.510Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1ad5866b1d336969515-13c222c22c18003752bc",
+          "file": "v3-browser-lifecycle.spec.ts",
+          "line": 453,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-22T04:47:19.548Z",
+    "duration": 5000.41,
+    "expected": 6,
+    "skipped": 11,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

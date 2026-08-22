@@ -1,0 +1,20 @@
+node,file,line,column,outcome,duration_ms,started
+"J00 harness credential gate (env-only, fail closed)",v4-frozen-ui.spec.ts,104,5,expected,12,2026-08-22T05:26:32.311Z
+J01 browser login as W1,v4-frozen-ui.spec.ts,126,5,expected,1188,2026-08-22T05:26:32.345Z
+J02 sidebar navigation to invitation authoring,v4-frozen-ui.spec.ts,139,5,expected,133,2026-08-22T05:26:33.663Z
+J03 create invitation via real form,v4-frozen-ui.spec.ts,150,5,expected,361,2026-08-22T05:26:33.815Z
+J04 copy/share UI yields canonical fragment link,v4-frozen-ui.spec.ts,156,5,expected,189,2026-08-22T05:26:34.192Z
+J05 shared invitation URL opens in new context,v4-frozen-ui.spec.ts,171,5,expected,438,2026-08-22T05:26:34.390Z
+J06 supplier identity in rendered UI,v4-frozen-ui.spec.ts,182,5,expected,10,2026-08-22T05:26:34.840Z
+J07 registration form email-required and no password input,v4-frozen-ui.spec.ts,189,5,expected,77,2026-08-22T05:26:34.866Z
+J08 submit + mail-sink setup token through real setup page,v4-frozen-ui.spec.ts,201,5,expected,1564,2026-08-22T05:26:34.957Z
+J09 portal link then ClientLoginPage login,v4-frozen-ui.spec.ts,217,5,expected,427,2026-08-22T05:26:36.530Z
+J10 /retail/join supplier code tab,v4-frozen-ui.spec.ts,231,5,expected,553,2026-08-22T05:26:36.972Z
+J11 code-entry lifecycle: preview -> confirm -> register -> portal login,v4-frozen-ui.spec.ts,245,5,expected,2512,2026-08-22T05:26:37.540Z
+"J12 unknown and malformed code: neutral, zero register POSTs",v4-frozen-ui.spec.ts,281,5,expected,602,2026-08-22T05:26:40.062Z
+J13 preview link exact w; no bare /retail/login anywhere,v4-frozen-ui.spec.ts,299,5,expected,530,2026-08-22T05:26:40.676Z
+"J14 stale contextual session: full code-path registration, zero Authorization",v4-frozen-ui.spec.ts,319,5,expected,1348,2026-08-22T05:26:41.219Z
+J15 double submit: exactly one POST and one binding,v4-frozen-ui.spec.ts,372,5,expected,2712,2026-08-22T05:26:42.577Z
+J16 W1 retailer denied on W2 portal (exact status + UI),v4-frozen-ui.spec.ts,412,5,expected,1334,2026-08-22T05:26:45.301Z
+J17 deactivate via UI; retailer login fails afterwards,v4-frozen-ui.spec.ts,430,5,expected,1262,2026-08-22T05:26:46.645Z
+J18 390px viewport discovery/preview/navigation (viewport simulation),v4-frozen-ui.spec.ts,453,5,expected,1936,2026-08-22T05:26:47.920Z

@@ -1,0 +1,18 @@
+{
+  "collected_nodes": 19,
+  "run_nodes": 19,
+  "passed": 19,
+  "failed": 0,
+  "skipped": 0,
+  "flaky": 0,
+  "interrupted": 0,
+  "retries_configured": 0,
+  "workers_configured": 1,
+  "failure_set": [],
+  "frozen_spec_blob": "9c2e2bf105ee (12-hex short git blob id)",
+  "frozen_config_blob": "74dd70171ce1 (12-hex short git blob id)",
+  "hash_pre_run": "MATCH/MATCH",
+  "hash_post_run": "MATCH/MATCH",
+  "source_tree_hash_before_during_after": "83eb1b09c6ee (12-hex short git tree id, verified constant)",
+  "candidate": "bf574cf9b061 (12-hex short git commit id)"
+}

@@ -1,0 +1,42 @@
+<testsuites id="" name="" tests="19" failures="0" skipped="0" errors="0" time="18.834127">
+<testsuite name="v4-frozen-ui.spec.ts" timestamp="2026-08-22T05:26:31.227Z" hostname="" tests="19" failures="0" skipped="0" time="17.188" errors="0">
+<testcase name="J00 harness credential gate (env-only, fail closed)" classname="v4-frozen-ui.spec.ts" time="0.012">
+</testcase>
+<testcase name="J01 browser login as W1" classname="v4-frozen-ui.spec.ts" time="1.188">
+</testcase>
+<testcase name="J02 sidebar navigation to invitation authoring" classname="v4-frozen-ui.spec.ts" time="0.133">
+</testcase>
+<testcase name="J03 create invitation via real form" classname="v4-frozen-ui.spec.ts" time="0.361">
+</testcase>
+<testcase name="J04 copy/share UI yields canonical fragment link" classname="v4-frozen-ui.spec.ts" time="0.189">
+</testcase>
+<testcase name="J05 shared invitation URL opens in new context" classname="v4-frozen-ui.spec.ts" time="0.438">
+</testcase>
+<testcase name="J06 supplier identity in rendered UI" classname="v4-frozen-ui.spec.ts" time="0.01">
+</testcase>
+<testcase name="J07 registration form email-required and no password input" classname="v4-frozen-ui.spec.ts" time="0.077">
+</testcase>
+<testcase name="J08 submit + mail-sink setup token through real setup page" classname="v4-frozen-ui.spec.ts" time="1.564">
+</testcase>
+<testcase name="J09 portal link then ClientLoginPage login" classname="v4-frozen-ui.spec.ts" time="0.427">
+</testcase>
+<testcase name="J10 /retail/join supplier code tab" classname="v4-frozen-ui.spec.ts" time="0.553">
+</testcase>
+<testcase name="J11 code-entry lifecycle: preview -&gt; confirm -&gt; register -&gt; portal login" classname="v4-frozen-ui.spec.ts" time="2.512">
+</testcase>
+<testcase name="J12 unknown and malformed code: neutral, zero register POSTs" classname="v4-frozen-ui.spec.ts" time="0.602">
+</testcase>
+<testcase name="J13 preview link exact w; no bare /retail/login anywhere" classname="v4-frozen-ui.spec.ts" time="0.53">
+</testcase>
+<testcase name="J14 stale contextual session: full code-path registration, zero Authorization" classname="v4-frozen-ui.spec.ts" time="1.348">
+</testcase>
+<testcase name="J15 double submit: exactly one POST and one binding" classname="v4-frozen-ui.spec.ts" time="2.712">
+</testcase>
+<testcase name="J16 W1 retailer denied on W2 portal (exact status + UI)" classname="v4-frozen-ui.spec.ts" time="1.334">
+</testcase>
+<testcase name="J17 deactivate via UI; retailer login fails afterwards" classname="v4-frozen-ui.spec.ts" time="1.262">
+</testcase>
+<testcase name="J18 390px viewport discovery/preview/navigation (viewport simulation)" classname="v4-frozen-ui.spec.ts" time="1.936">
+</testcase>
+</testsuite>
+</testsuites>

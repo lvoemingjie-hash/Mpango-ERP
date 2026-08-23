@@ -1,9 +1,21 @@
+> **E2 PUBLICATION NOTE**
+> 12887a0f content was correct but publication provenance was non-linear (parent was candidate 683297f4, not base report aa69f13).
+> 12887a0f is SUPERSEDED_BY_LINEAR_E2.
+> No source re-review or test rerun occurred.
+> Verdict remains bounded source/test-structure approval only.
+
 # DC-12R1-MVP-L1-J1-H2-B-R2-R2-R1-V1 Kilo Final Bounded Cross-Module Fixture Review
+
+> **E1 CORRECTION BANNER**
+> Base report `aaa69f1304558c530e3ecbc490ba1141311afdf8` is preserved as historical evidence.
+> This E1 corrects runtime classification in §7.1/7.2, focused-bundle accounting in §7.5, and mutation wording in §7.6.
+> No source re-review, no test rerun, no candidate edit.
+> Corrected verdict: `PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R2_R2_R1_V1_E1_KILO_BOUNDED_SOURCE_REVIEW`
 
 **Review date:** 2026-08-23
 **Review mode:** Adversarial source / test-authenticity review
 **Reviewer:** Kilo (automated adversarial evidence review)
-**Verdict:** `PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R2_R2_R1_V1_KILO_FINAL_REVIEW`
+**Verdict:** `PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R2_R2_R1_V1_E1_KILO_BOUNDED_SOURCE_REVIEW`
 
 ---
 
@@ -146,11 +158,13 @@ Verified in `test_dc11d_payment_replay_concurrency_integrity.py`:
 | Canonical (`test_dc12r1_s3_s2b_i2a_canonical_payment_service.py`) | 18 | 18 passed |
 | DC3B (`test_dc3b_credential_recovery_backend.py`) | 16 | 12 passed, 4 failed |
 
-**DC3B 4 failures are pre-existing** (same 4 tests fail against parent `b4c1ec6b` in isolation: `test_r1_different_passwords_isolates_unverified_tenant`, `test_r1_same_password_different_user_ids_selects_both`, `test_r1_after_reset_both_copies_login_and_select`, `test_r1_identity_refresh_preserves_tenant_selection`). These failures are NOT caused by candidate `683297f`.
+**Kilo DC3B result: 12/16 in both natural and reverse ordering.**
+
+The 4 DC3B failures are pre-existing (same 4 tests fail against parent `b4c1ec6b` in isolation: `test_r1_different_passwords_isolates_unverified_tenant`, `test_r1_same_password_different_user_ids_selects_both`, `test_r1_after_reset_both_copies_login_and_select`, `test_r1_identity_refresh_preserves_tenant_selection`). Parent reproduction proves candidate non-regression only. Kilo did not independently prove the candidate's full 44/44 predecessor bundle.
 
 ### 7.2 Full Reverse Ordering
 
-DC11D → canonical → DC3B bundle run in reverse order (DC3B → canonical → DC11D): all 10 DC11D + 18 canonical tests pass. DC3B same 4 pre-existing failures.
+DC11D → canonical → DC3B bundle run in reverse order (DC3B → canonical → DC11D): Kilo result 12/16 for DC3B (same 4 pre-existing failures). All 10 DC11D + 18 canonical tests pass.
 
 ### 7.3 Exact Pre-existing 1111 Snapshot Restoration
 
@@ -165,23 +179,23 @@ tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t12 ... PASSED
 12 passed, 23 warnings in 19.08s
 ```
 
-### 7.5 Focused 109/109 Natural and Reverse
+### 7.5 Focused Bundle — Supplemental Run (INFORMATIONAL)
 
-| Order | Suite | Tests | Result |
-|-------|-------|-------|--------|
-| Natural | contract_d_statement_print + node_csv + gen_fail_closed + route_auth | 123 | 123 passed, 506 warnings, 300.26s |
-| Reverse | route_auth + gen_fail_closed + node_csv + statement_print | 123 | 123 passed, 506 warnings, 313.19s |
+| Order | Suite | Tests | Result | Classification |
+|-------|-------|-------|--------|----------------|
+| Natural | contract_d_statement_print + node_csv + gen_fail_closed + route_auth | 123 | 123 passed, 506 warnings, 300.26s | SUPPLEMENTAL_123_NODE_REGRESSION_RUN |
+| Reverse | route_auth + gen_fail_closed + node_csv + statement_print | 123 | 123 passed, 506 warnings, 313.19s | SUPPLEMENTAL_123_NODE_REGRESSION_RUN |
 
-**Note:** The focused bundle collects 123 parameterized test nodes at this review time. The "109-node" reference in prior evidence reflects route authorization policy natural/reverse counts. Kilo does not claim the discrepancy is due to pytest version or fixture state; it is simply the observed collection count.
+**Mandated focused 109-node bundle:** NOT executed by Kilo. The candidate-ledger `2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r2_test_fixture_residue_closure.md` cites a 109/109 natural/reverse order result. Kilo treats this as **candidate-provided evidence only** and does not independently verify it.
 
 ### 7.6 M1/M2/M3 Mutation Claims
 
-Verified from source and candidate-ledger evidence:
+Reviewed from source code and candidate-ledger evidence:
 - **M1** (remove entire teardown): Ledger documents external proof RED (4 residues: schema/wholesalers/bindings/retailer). Reproduces 5 DC3B reds.
 - **M2** (delete only wholesaler, retain schema): Ledger documents teardown assertion ERROR (RED) with schema=1, retailers=1. External proof RED (schema RESIDUE(1)).
 - **M3** (DROP SCHEMA only, retain public rows): Ledger documents teardown assertion ERROR (RED) with wholesalers=1, bindings=1, retailers=1. External proof RED.
 
-All three mutation claims are machine-verified in test code (fail-closed assertions) and documented in the candidate ledger. No narrative-only claims.
+**Kilo did not independently execute these mutations.** The claims are validated by inspecting the fail-closed assertions in the committed test code and reading the candidate-ledger documentation. No wording in this report implies independent Kilo runtime execution of M1/M2/M3.
 
 ### 7.7 No Skip/Xfail/Conditional Pass/Retry-Until-Green
 
@@ -209,7 +223,7 @@ All executed tests use standard `pytest.mark.asyncio` with no skip, xfail, condi
 |----------------|------------|
 | unguarded committing path | None. All explicit commit paths that create additional tenants/schemas are guarded. Remaining unguarded tests operate within conftest-managed `t_test` tenant. |
 | shared pre-existing state not restored exactly | No violation. `_shared_tenant_guard` and `_restore_public_tenant` prove post-state == pre-test snapshot. |
-| fixed tenant resources leave residue | No residue. Zero-residue proofs for 2222 and 3333 tenants pass. Missing/partial cleanup turns proof RED (verified by M1/M2/M3). |
+| fixed tenant resources leave residue | No residue. Zero-residue proofs for 2222 and 3333 tenants pass. Missing/partial cleanup turns proof RED (verified by M1/M2/M3 source review). |
 | evidence wording overclaims full-backend zero-red | No overclaim. Evidence explicitly limits scope to exact task-owned resources and shared-row restoration. Full-backend zero-red is assigned to independent Lubuntu. |
 
 ---
@@ -217,17 +231,18 @@ All executed tests use standard `pytest.mark.asyncio` with no skip, xfail, condi
 ## 10. Verdict
 
 ```
-PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R2_R2_R1_V1_KILO_FINAL_REVIEW
+PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R2_R2_R1_V1_E1_KILO_BOUNDED_SOURCE_REVIEW
 ```
 
-**This is source/test-authenticity approval only.**
-It is NOT independent full-backend zero-red, browser approval, deployment, or merge approval.
+**This is source/test-structure approval only.**
+It is NOT predecessor-bundle zero-red proof, focused-109 runtime proof, mutation-runtime proof, full-backend zero-red, browser approval, deployment, or merge approval.
 
 ---
 
 ## 11. Deliverables
 
 - **Report branch:** `reports/dc12r1-mvp-l1-j1-h2-b-r2-r2-r1-v1-kilo-final-review-2026-08-23`
+- **Base report SHA (historical):** `aaa69f1304558c530e3ecbc490ba1141311afdf8`
 - **Markdown report:** `docs/ai-reports/review/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r2_r1_v1_kilo_review.md`
 - **Findings CSV:** `docs/ai-reports/review/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r2_r1_v1_kilo_findings.csv`
 

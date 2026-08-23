@@ -68,15 +68,25 @@ class PasswordResetTokenInvalidError(Exception):
 
 
 class PasswordResetScanIncompleteError(Exception):
-    """The cross-tenant user scan could not complete AND no active user for the
-    requested email was found in any reachable tenant.
+    """The cross-tenant user scan could not complete for at least one tenant.
 
-    H2-B-R1: without this, a per-tenant schema/query failure was silently
-    converted into a definitive ``issued=False`` ("account does not exist")
-    answer with zero observability. The error is sanitized by construction:
-    it carries only integer counters and never embeds the email, tenant
-    schema names, SQL text, tokens, or credentials (raw driver errors can
-    leak the schema name, so the triggering exception is not chained).
+    Stage-dependent semantics (the type is shared; both stages map it to a
+    neutral public envelope plus exactly one sanitized internal event):
+
+    - Request stage (``request_reset``, H2-B-R1): raised when at least one
+      tenant scan failed AND no active user for the requested email was
+      found in any reachable tenant — absence is NOT proven, so the failure
+      must never be silently converted into a definitive ``issued=False``
+      ("account does not exist") answer.
+    - Consume stage (``consume_reset``, H2-B-R2): raised whenever ANY tenant
+      scan failed, BEFORE any password update and regardless of whether
+      reachable copies were found — on an incomplete scan the full copy set
+      is unknowable and a partial password fan-out is forbidden.
+
+    Sanitized by construction: it carries only integer counters and never
+    embeds the email, tenant schema names, SQL text, tokens, or credentials
+    (raw driver errors can leak the schema name, so the triggering
+    exception is not chained).
     """
 
     def __init__(self, *, failed_schema_count: int, scanned_schema_count: int) -> None:
@@ -162,10 +172,14 @@ def _email_hash(email: str) -> str:
 async def _enumerate_active_tenant_users(
     db: AsyncSession,
 ) -> TenantUserScanResult:
-    """Scan active tenant schemas for (normalized_email, schema, user_id) rows.
+    """Scan tenant schemas for (normalized_email, schema, user_id) rows.
 
-    Scans non-deleted wholesalers ordered by created_at (same order as the login
-    scan) and, for each, reads active, non-deleted user rows. Each tenant query
+    Eligibility (exact): every ``public.wholesalers`` row with
+    ``is_deleted = false`` — ``Wholesaler.status`` is deliberately NOT
+    filtered in this slice — is visited in ``created_at`` order (the same
+    deterministic order the login scan uses); within each derived tenant
+    schema, only user rows with ``is_active = true AND is_deleted = false``
+    are returned. Each tenant query
     runs inside its own SAVEPOINT: a schema lacking a ``users`` table (or any
     per-tenant query failure) rolls back only that savepoint and MUST NOT abort
     the outer transaction, which would block every healthy tenant that follows.

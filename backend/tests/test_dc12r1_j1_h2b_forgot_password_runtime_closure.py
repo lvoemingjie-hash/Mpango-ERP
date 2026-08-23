@@ -45,7 +45,11 @@ R2 (consume-stage atomicity closure) adds:
       BEFORE UPDATE trigger forces the second copy's UPDATE to fail ->
       reset fails closed, the FIRST copy's staged update is rolled back,
       both retain the old password, token remains unused; removing the
-      trigger lets the SAME token reset both copies.
+      trigger lets the SAME token reset both copies. R2-R1: the two
+      wholesaler IDs are retained with explicit distinct committed
+      created_at values (s1 < s2) and the REAL enumerator is invoked
+      before the trigger to prove the target-copy order is exactly
+      [s1, s2] — the fan-out order is deterministic, not incidental.
 
 All internal-event assertions check sanitization: payloads must never
 contain the email, tenant schema names, SQL text, tokens, or credentials.
@@ -53,7 +57,7 @@ contain the email, tenant schema names, SQL text, tokens, or credentials.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import parse_qs
 
 import pytest
@@ -153,7 +157,13 @@ async def _prepare_tables() -> None:
 
 
 async def _seed_wholesaler_with_user(
-    db, *, code: str, email: str, password_hash: str, schema_has_users: bool = True
+    db,
+    *,
+    code: str,
+    email: str,
+    password_hash: str,
+    schema_has_users: bool = True,
+    created_at: datetime | None = None,
 ) -> tuple[str, str]:
     ws_id = uuid.uuid4()
     schema = f"t_{str(ws_id).replace('-', '')}"
@@ -164,6 +174,14 @@ async def _seed_wholesaler_with_user(
         ),
         {"id": ws_id, "code": code, "name": f"Tenant {code}"},
     )
+    if created_at is not None:
+        # Explicit committed created_at makes the scan order deterministic
+        # (the column DEFAULT now() gives same-transaction inserts
+        # identical timestamps, leaving created_at ties undefined).
+        await db.execute(
+            text("UPDATE public.wholesalers SET created_at = :ca WHERE id = :id"),
+            {"ca": created_at, "id": ws_id},
+        )
     await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
     if schema_has_users:
         await db.execute(
@@ -827,22 +845,32 @@ async def _issue_reset_token(email: str) -> str:
     return parse_qs(reset_mail.reset_link.split("#", 1)[1])["resetToken"][0]
 
 
-async def _seed_two_tenant_copies(email: str, old_pw: str) -> tuple[str, str]:
-    """Same email as an active user in two tenant schemas (created_at
-    ordered: the first schema is scanned and updated before the second)."""
+async def _seed_two_tenant_copies(email: str, old_pw: str) -> tuple[str, str, str, str]:
+    """Same email as an active user in two tenant schemas.
+
+    The two wholesaler IDs are retained and their committed ``created_at``
+    values are explicit and distinct (s1 strictly earlier than s2), so the
+    enumerator's ``created_at`` scan order — and therefore the fan-out
+    order — is deterministic. Returns (ws1_id, s1, ws2_id, s2).
+    """
+    from datetime import timedelta
+
     from core.security import hash_password
 
+    base = datetime.now(timezone.utc)
     async with AsyncSessionLocal() as db:
-        _, s1 = await _seed_wholesaler_with_user(
+        ws1, s1 = await _seed_wholesaler_with_user(
             db, code=f"R2A{uuid.uuid4().hex[:6].upper()}", email=email,
             password_hash=hash_password(old_pw), schema_has_users=True,
+            created_at=base - timedelta(hours=2),
         )
-        _, s2 = await _seed_wholesaler_with_user(
+        ws2, s2 = await _seed_wholesaler_with_user(
             db, code=f"R2B{uuid.uuid4().hex[:6].upper()}", email=email,
             password_hash=hash_password(old_pw), schema_has_users=True,
+            created_at=base - timedelta(hours=1),
         )
         await db.commit()
-    return s1, s2
+    return ws1, s1, ws2, s2
 
 
 async def test_t11_consume_partial_scan_fails_closed_both_old_token_intact(monkeypatch):
@@ -856,7 +884,7 @@ async def test_t11_consume_partial_scan_fails_closed_both_old_token_intact(monke
     old_pw = "OldR2Pw_01!"  # pragma: allowlist secret
     new_pw = "NewR2Pw_02!"  # pragma: allowlist secret
     email = f"t11-{uuid.uuid4().hex[:6]}@example.com"
-    s1, s2 = await _seed_two_tenant_copies(email, old_pw)
+    ws1, s1, ws2, s2 = await _seed_two_tenant_copies(email, old_pw)
 
     raw_token = await _issue_reset_token(email)
 
@@ -938,7 +966,26 @@ async def test_t12_partial_apply_rolls_back_first_copy_token_intact(monkeypatch)
     old_pw = "OldR2Pw_03!"  # pragma: allowlist secret
     new_pw = "NewR2Pw_04!"  # pragma: allowlist secret
     email = f"t12-{uuid.uuid4().hex[:6]}@example.com"
-    s1, s2 = await _seed_two_tenant_copies(email, old_pw)
+    ws1, s1, ws2, s2 = await _seed_two_tenant_copies(email, old_pw)
+
+    # The retained wholesaler IDs derive exactly the scanned schemas.
+    assert s1 == f"t_{ws1.replace('-', '')}"
+    assert s2 == f"t_{ws2.replace('-', '')}"
+
+    # Deterministic-order proof BEFORE any failure injection: the REAL
+    # enumerator must complete cleanly and visit the target copies in
+    # exactly [s1, s2] order (explicit distinct committed created_at).
+    from services.password_reset_service import _enumerate_active_tenant_users
+
+    async with AsyncSessionLocal() as db:
+        pre_scan = await _enumerate_active_tenant_users(db)
+    assert pre_scan.failed_schema_count == 0
+    target_order = [
+        row_schema
+        for row_email, row_schema, _uid in pre_scan.rows
+        if row_email == email
+    ]
+    assert target_order == [s1, s2]
 
     raw_token = await _issue_reset_token(email)
 

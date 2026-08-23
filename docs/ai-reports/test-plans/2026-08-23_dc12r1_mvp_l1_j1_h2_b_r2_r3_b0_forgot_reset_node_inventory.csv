@@ -15,8 +15,8 @@ R3,QS-REJECT,w,1280x800,持有合法令牌 t,/reset-password?resetToken=t,以 qu
 R4,NO-TOKEN,w,1280x800,直接访问,/reset-password(无任何令牌),打开并尝试提交,提交时显示 invalid/expired 错误文案,无(前端拦截),缺令牌失败关闭,ResetPasswordPage.tsx:61-66,BROWSER,yes,no,
 R5,BAD-TOKEN,w,1280x800,持伪造令牌 xyz,/reset-password#resetToken=xyz,填新密码提交,显示与 R4 相同的中性错误文案,POST /auth/reset-password 401 中性envelope,伪造令牌失败关闭且文案不泄露类型,ResetPasswordPage.tsx:71-73; password_reset_service.py:401-417; auth.py:877-889,BROWSER,yes,yes,
 R6,EXPIRED,meta,1280x800,令牌已过期(见注),/reset-password#resetToken=<expired>,填新密码提交,与 R5 相同中性文案,POST 401 中性,过期令牌失败关闭,_is_actionable: password_reset_service.py:424-427; TTL: :61(1小时),PRE_GATE_ONLY,yes,no,1小时TTL内无法经浏览器自然过期;过期判定为后端前置门禁证据 UI等价文案由R5覆盖
-R7-POLICY,w,1280x800,持有合法令牌,/reset-password,填 7 字符密码提交,前端 zod 即时错误 >=8 字符,无请求,弱密码被 UI 拦截,ResetPasswordPage.tsx:8-10; 后端策略 onboarding_service.py:105-115,BROWSER,yes,yes,UI最小策略与后端一致
-R7-POLICY-M,w,390x844,同上,同上,同上,390px 下校验文案可用,无,同上,同上,BROWSER,yes,no,手机可用性
+R7-POLICY,RESET,w,1280x800,持有合法令牌,/reset-password,填 7 字符密码提交,前端 zod 即时错误 >=8 字符,无请求,弱密码被 UI 拦截,ResetPasswordPage.tsx:8-10; 后端策略 onboarding_service.py:105-115,BROWSER,yes,yes,UI最小策略与后端一致;[R1]B0此行缺phase列已补正
+R7-POLICY-M,RESET,w,390x844,同上,同上,同上,390px 下校验文案可用,无,同上,同上,BROWSER,yes,no,手机可用性;[R1]B0此行缺phase列已补正
 R8,SUCCESS,w,1280x800,持合法令牌(F6),/reset-password#resetToken=...,填合规新密码 P2 提交,成功面板 Your password has been reset successfully+Go to login,POST 200,成功后面板引导登录,ResetPasswordPage.tsx:110-116; password_reset_service.py:305-400(consume),BROWSER,yes,yes,权威成功节点
 R8-M,SUCCESS,w,390x844,同上,同上,同上,390px 成功面板可用,同上,同上,同上,BROWSER,yes,no,手机可用性
 R9,OLD-REJECT,w,1280x800,R8 成功后,/login,用旧密码 P1 登录,登录失败 错误提示,POST /auth/login 401,旧密码失效,password_reset_service.py:351-398(全副本更新),BROWSER,yes,yes,
@@ -25,6 +25,6 @@ R10-M,NEW-ACCEPT,w,390x844,同上,同上,同上,390px 登录可用,同上,同上
 R11,REPLAY,w,1280x800,R8 成功后,同一 /reset-password#resetToken=...,用同令牌再提交另一密码 P3,与 R5 相同中性错误文案,POST 401 中性,重放被拒 P2 仍有效(R10 复验),password_reset_service.py:383-390(成功后标记used)+415-417(used拒绝),BROWSER,yes,yes,一次性令牌核心节点
 R12,STORAGE,w,1280x800,R1-R8 任意时刻,浏览器上下文,枚举 localStorage/sessionStorage/console/网络日志,不含 resetToken/密码/Authorization,无,五面证据卫生(URL/存储/控制台/网络/证据),ResetPasswordPage.tsx:14-49; request_logging.py:46-53+60-82(仅route/method/status),BROWSER,yes,yes,跨切面卫生节点
 R13,EVIDENCE,meta,1280x800,权威运行结束后,产物文件,扫描 machine JSON/JUnit/CSV/日志/截图,无令牌/密码/哈希/Authorization 值,无,证据零泄漏(含截图无令牌可见),协议文档5.9证据规则; auth.py:737-746(日志脱敏契约),POSTCOND,yes,yes,交付前最后门
-M1,MULTI-COPY,w,1280x800,同一邮箱经官方注册供给两个租户 A1/A2 且各自完成凭据设置,/forgot-password→邮件→/reset-password,对 A1 邮箱走完整重置,两工作区均能用 P2 登录且 P1 均失效,200/401 组合,多副本同哈希不变式经浏览器可验证面,password_reset_service.py:1-24(规范规则)+351-398(fan-out); WorkspaceSelectorPage,BROWSER,yes,yes,跨租户重复身份经受支持生命周期创建
-M2,ATOMICITY,meta,n/a,M1 前置,无浏览器动作,不适用,不适用,部分副本更新/扫描不完整时全量回滚+令牌保持可用 属后端不变式,password_reset_service.py:305-400(H2-B-R2 注释)+auth.py:893-920(APPLY_FAILED回滚),PRE_GATE_ONLY,yes,yes,浏览器不可验证 依赖故障注入
-RT0,BLOCKER,r,1280x800,零售商已登出,/client/login 或 /retailer/*,查找零售商忘记密码入口,不存在 /retailer/forgot-password 路由 且 ClientLoginPage 无忘记密码链接,无,后端端点存在但 UI 发现层缺失,frontend/src/services/authService.ts:66(方法存在但零调用); AppRouter.tsx(无retailer/forgot路由); backend/api/v1/client/auth.py:355-391(端点存在),PROTOCOL_BLOCKER,no,yes,零售商侧旅程冻结于发现层
+M1,MULTI-COPY,meta,n/a,[R1]无浏览器供给路径(同邮箱二注册被 _live_registration_for_email+ux 索引阻止),无浏览器动作,不适用,不适用,不适用,多副本成功 fan-out 的同哈希不变式由后端前置门禁证明;浏览器不得以SQL/API桥接伪造副本,onboarding_service.py:331-333+511-524(活跃注册唯一); models/tenant_onboarding.py:35-39+75-80(ux部分唯一索引); password_reset_service.py:351-398(fan-out); auth.py:116(中性202),PRE_GATE_ONLY,yes,yes,[R1]原BROWSER分类撤回;多副本不可经受支持生命周期制造 原浏览器前提不成立
+M2,ATOMICITY,meta,n/a,M1 前置(同为后端前置门禁),无,无浏览器动作,不适用,不适用,部分副本更新/扫描不完整时全量回滚+令牌保持可用 属后端不变式,password_reset_service.py:305-400(H2-B-R2 注释)+auth.py:893-920(APPLY_FAILED回滚),PRE_GATE_ONLY,yes,yes,浏览器不可验证 依赖故障注入;[R1]B0此行缺expected_http列已补正
+RT0,BLOCKER,r,1280x800,零售商已登出,/client/login 或 /retailer/*,查找零售商忘记密码入口,不存在 /retailer/forgot-password 路由 且 ClientLoginPage 无忘记密码链接,无,后端端点存在但 UI 发现层缺失,frontend/src/services/authService.ts:66(方法存在但零调用); AppRouter.tsx(无retailer/forgot路由); backend/api/v1/client/auth.py:355-391(端点存在),PROTOCOL_BLOCKER,no,yes,零售商侧旅程冻结于发现层;[R1]P1产品阻断 移交H2-C 禁止API绕过

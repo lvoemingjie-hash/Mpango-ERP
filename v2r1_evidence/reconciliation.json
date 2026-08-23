@@ -1,0 +1,28 @@
+{
+  "task_id": "DC-12R1-MVP-L1-J1-H2-B-R2-R1-V2-R1",
+  "verdict": "STOP",
+  "correction_of": "7627e967886cbc0f1e28936f9aea80397c1d0e61",
+  "candidate_sha": "34ccec116204b6a61b2e37c874b0c65953acfb43",
+  "protected_baseline": "6e9470a1daa5d6eece29724316fdd8aef6b737c1",
+  "kilo_e2_review": "3e796996382872f10d5bd5312cdbbfe311d9cc7c",
+  "v2_correction": {
+    "v2_phase2_invalid": true,
+    "v2_candidate_defect_withdrawn": true,
+    "v2_focused_109_valid": true,
+    "v2_full_suite_non_authoritative": true,
+    "v2r1_uses_fresh_stacks": true
+  },
+  "stack_a": {
+    "passed": 3682,
+    "failed": 5,
+    "errors": 0,
+    "skipped": 48,
+    "xfailed": 15,
+    "duration_seconds": 1243.89
+  },
+  "stack_b": "BLOCKED",
+  "failure_event_class": "PASSWORD_RESET_SCAN_INCOMPLETE",
+  "failed_schema_count": 2,
+  "wholesalers_total": 11,
+  "candidate_defects": []
+}

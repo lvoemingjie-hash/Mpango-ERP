@@ -72,6 +72,21 @@ if BACKEND_DIR not in sys.path:
 
 EXACT_ROUTE = "/api/v1/client/orders?page=1&size=100"
 
+# ---------------------------------------------------------------------------
+# R2-R3 (DC-12R1-MVP-L1-J1-H2-B): exact public-row ownership registry.
+# _seed_tenant_readiness commits synthetic public wholesaler/retailer/binding
+# rows with random UUIDs; the module's own cleanup drops only the t_r4a_*
+# schemas, so those public rows survive the module and break the DC3B
+# password-reset scan (derived schema never exists for them). The registry
+# records every exact identity this module creates; the module-scoped
+# fail-closed guard below deletes exactly those rows (FK-safe order, fresh
+# engines, protected against retailers bound by unrelated bindings) and
+# independently proves zero residue. No LIKE, prefixes, or wildcards.
+# ---------------------------------------------------------------------------
+
+_OWNED_SCHEMAS: list[str] = []
+_OWNED_PUBLIC: list[dict] = []
+
 
 def _async_db_url() -> str:
     url = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL", "")
@@ -213,6 +228,9 @@ async def _seed_tenant_readiness(schema: str, user_id: str) -> None:
             {"o": order_id, "w": wholesaler_id, "r": retailer_id, "notes": f"ORDER-{schema[-6:]}"},
         )
         await s.commit()
+        _OWNED_PUBLIC.append(
+            {"wholesaler_id": str(wholesaler_id), "retailer_id": str(retailer_id)}
+        )
         return str(wholesaler_id)
 
 
@@ -255,12 +273,14 @@ async def _setup_two_tenants(
     try:
         await bootstrap(a, _async_db_url())
         owned.append(a)
+        _OWNED_SCHEMAS.append(a)
 
         if fail_at == "second_bootstrap":
             raise original_error or _ForcedFailure("injected: second_bootstrap")
 
         await bootstrap(b, _async_db_url())
         owned.append(b)
+        _OWNED_SCHEMAS.append(b)
 
         user_a, user_b = str(uuid.uuid4()), str(uuid.uuid4())
         seed = _seed_tenant_readiness
@@ -333,6 +353,102 @@ async def two_tenants():
 async def ddl_engine(two_tenants):
     """Dedicated DDL connection (provisioning-shaped, outside the pool)."""
     yield two_tenants["ddl_engine"]
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def _pw1r4_public_residue_guard():
+    """R2-R3 fail-closed finally cleanup for this module's exact residue.
+
+    Runs at module end even when individual tests fail; teardown errors are
+    collected and raised (they never mask an original test failure — that
+    exception has already reached pytest). Cleanup uses fresh engines in
+    FK-safe order (binding -> retailer -> wholesaler -> exact schema); a
+    task-created retailer is deleted only when no unrelated binding owns it.
+    An independent fresh-engine proof requires zero residue for every
+    recorded identity (public rows AND pg_namespace), else the module errors.
+    """
+    yield
+    teardown_errors: list[BaseException] = []
+    schema_names = list(_OWNED_SCHEMAS) + [
+        "t_" + entry["wholesaler_id"].replace("-", "") for entry in _OWNED_PUBLIC
+    ]
+    try:
+        cleanup_engine = create_async_engine(_async_db_url(), pool_size=1)
+        try:
+            async with cleanup_engine.connect() as c:
+                for entry in _OWNED_PUBLIC:
+                    w, r = entry["wholesaler_id"], entry["retailer_id"]
+                    await c.execute(
+                        text(
+                            "DELETE FROM public.wholesaler_retailer_bindings "
+                            "WHERE wholesaler_id = :w AND retailer_id = :r"
+                        ),
+                        {"w": w, "r": r},
+                    )
+                    others = (
+                        await c.execute(
+                            text(
+                                "SELECT count(*) FROM public.wholesaler_retailer_bindings "
+                                "WHERE retailer_id = :r AND wholesaler_id <> :w"
+                            ),
+                            {"r": r, "w": w},
+                        )
+                    ).scalar()
+                    if others == 0:
+                        await c.execute(
+                            text("DELETE FROM public.retailers WHERE id = :r"), {"r": r}
+                        )
+                    await c.execute(
+                        text("DELETE FROM public.wholesalers WHERE id = :w"), {"w": w}
+                    )
+                for sch in schema_names:
+                    await c.execute(text(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE'))
+                await c.commit()
+        finally:
+            await cleanup_engine.dispose()
+    except BaseException as te:  # noqa: BLE001 — collected, never masking
+        teardown_errors.append(te)
+    try:
+        proof_engine = create_async_engine(_async_db_url(), pool_size=1)
+        try:
+            async with proof_engine.connect() as c:
+                residue: dict[str, int] = {}
+                for entry in _OWNED_PUBLIC:
+                    w = entry["wholesaler_id"]
+                    residue[f"wholesalers[{w}]"] = (
+                        await c.execute(
+                            text("SELECT count(*) FROM public.wholesalers WHERE id = :w"),
+                            {"w": w},
+                        )
+                    ).scalar()
+                    residue[f"bindings[{w}]"] = (
+                        await c.execute(
+                            text(
+                                "SELECT count(*) FROM public.wholesaler_retailer_bindings "
+                                "WHERE wholesaler_id = :w"
+                            ),
+                            {"w": w},
+                        )
+                    ).scalar()
+                for sch in schema_names:
+                    residue[f"pg_namespace[{sch}]"] = (
+                        await c.execute(
+                            text(
+                                "SELECT count(*) FROM pg_catalog.pg_namespace "
+                                "WHERE nspname = :n"
+                            ),
+                            {"n": sch},
+                        )
+                    ).scalar()
+        finally:
+            await proof_engine.dispose()
+        assert all(count == 0 for count in residue.values()), (
+            f"PW1R4 residue teardown left database residue: {residue}"
+        )
+    except BaseException as te:  # noqa: BLE001 — collected, never masking
+        teardown_errors.append(te)
+    if teardown_errors:
+        raise BaseExceptionGroup("pw1r4 residue guard teardown failed", teardown_errors)
 
 
 def build_app() -> FastAPI:

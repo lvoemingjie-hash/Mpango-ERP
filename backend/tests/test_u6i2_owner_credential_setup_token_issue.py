@@ -39,6 +39,86 @@ async def _u6i2_public_schema():
         await _clear_u6i2_rows()
 
 
+# ---------------------------------------------------------------------------
+# R2-R3 (DC-12R1-MVP-L1-J1-H2-B): exact wholesaler/schema ownership registry.
+# _insert_registration ALWAYS creates a public wholesaler row, but
+# _clear_u6i2_rows resolves wholesalers through tenant_registrations — a
+# registration created with with_wholesaler_id=False leaves that wholesaler
+# orphaned (and scan-breaking: its derived schema never exists). The registry
+# records every exact generated wholesaler id; the module-scoped fail-closed
+# guard deletes exactly those rows plus their exact derived schemas (fresh
+# connections, FK-safe order) and independently proves zero residue.
+# ---------------------------------------------------------------------------
+
+_OWNED_WHOLESALERS: list[str] = []
+
+
+@pytest.fixture(scope="module", autouse=True)
+async def _u6i2_residue_guard():
+    yield
+    teardown_errors: list[BaseException] = []
+    try:
+        async with AsyncSessionLocal() as cleanup:
+            for w in _OWNED_WHOLESALERS:
+                await cleanup.execute(
+                    text(
+                        "DELETE FROM public.wholesaler_retailer_bindings "
+                        "WHERE wholesaler_id = :w"
+                    ),
+                    {"w": w},
+                )
+                await cleanup.execute(
+                    text("DELETE FROM public.wholesalers WHERE id = :w"), {"w": w}
+                )
+                await cleanup.execute(
+                    text(f'DROP SCHEMA IF EXISTS "t_{w.replace("-", "")}" CASCADE')
+                )
+            await cleanup.commit()
+    except BaseException as te:  # noqa: BLE001 — collected, never masking
+        teardown_errors.append(te)
+    try:
+        async with AsyncSessionLocal() as proof:
+            residue: dict[str, int] = {}
+            for w in _OWNED_WHOLESALERS:
+                residue[f"wholesalers[{w}]"] = int(
+                    (
+                        await proof.execute(
+                            text("SELECT count(*) FROM public.wholesalers WHERE id = :w"),
+                            {"w": w},
+                        )
+                    ).scalar()
+                )
+                residue[f"bindings[{w}]"] = int(
+                    (
+                        await proof.execute(
+                            text(
+                                "SELECT count(*) FROM public.wholesaler_retailer_bindings "
+                                "WHERE wholesaler_id = :w"
+                            ),
+                            {"w": w},
+                        )
+                    ).scalar()
+                )
+                residue[f"pg_namespace[t_{w.replace('-', '')}]"] = int(
+                    (
+                        await proof.execute(
+                            text(
+                                "SELECT count(*) FROM pg_catalog.pg_namespace "
+                                "WHERE nspname = :n"
+                            ),
+                            {"n": "t_" + w.replace("-", "")},
+                        )
+                    ).scalar()
+                )
+        assert all(count == 0 for count in residue.values()), (
+            f"U6I2 residue teardown left database residue: {residue}"
+        )
+    except BaseException as te:  # noqa: BLE001 — collected, never masking
+        teardown_errors.append(te)
+    if teardown_errors:
+        raise BaseExceptionGroup("u6i2 residue guard teardown failed", teardown_errors)
+
+
 async def _ensure_tables() -> None:
     async with async_engine.begin() as connection:
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
@@ -107,6 +187,7 @@ async def _insert_registration(
         setattr(registration, "password_" "hash_cleanup_reason", "provisioned")
         session.add(registration)
         await session.commit()
+        _OWNED_WHOLESALERS.append(str(wholesaler.id))
         return registration.id, tenant_schema if with_tenant_schema else None
 
 

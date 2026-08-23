@@ -64,6 +64,41 @@ and does not authorize a schema, role, API, or product expansion.
   proven operating model, and evaluate retailer-to-consumer adaptation only
   through a separately approved B2C contract.
 
+### B2C Adaptation: Four Hard Deltas (2026-08-23 assessment)
+
+Recorded so the recurring "retailer-to-consumer is just reuse, right?" question
+has a stable answer: the relationship-kernel PATTERN and the engineering
+disciplines (tenant isolation, credential hygiene, fail-closed atomicity,
+idempotency, audit) are reusable assets; a consumer channel is NOT a
+modify-in-place extension. Any B2C contract must resolve four hard deltas:
+
+1. Tenant-granularity inversion (the gating architecture decision). Today the
+   tenant is the wholesaler and retailers are users inside wholesaler schemas
+   plus public binding rows. A consumer channel operated BY a retailer would
+   make the retailer a channel operator: either per-retailer tenant schemas
+   (schema count grows from tens to thousands+ and the O(tenants) cross-tenant
+   scans — login and password-reset enumeration — stop scaling) or
+   consumer data scoped inside wholesaler schemas by retailer (couples the
+   consumer relationship to the wholesaler). Decide this BEFORE any B2C code.
+2. Identity anchor. The B2B credential chain is email-anchored (verification,
+   setup-credential, password reset). Consumers are phone-OTP anchored; the
+   SMS gateway decision (already pending with the E3/E7-b iteration item)
+   is therefore a prerequisite for the B2C identity adapter, not a separate
+   later concern.
+3. Accounting views. A retailer-to-consumer sale must remain its own ledger
+   chain; it must never fold into the wholesaler-side receivables ledger
+   ("one transaction, two accounting views" rule above applies again).
+4. Consumer rule domain. Public discovery, consumer payment gateways,
+   returns, promotions, consent/privacy, and consumer-protection rules have
+   no B2B equivalent today and are part of the B2C contract, not of the
+   reusable kernel.
+
+Recommendation: keep this as strategic memory only (no schema, role, API, or
+product expansion authorized); when pilot usage justifies a B2C design gate,
+open it with the tenant-granularity decision, and sequence the SMS/OTP
+prerequisite together with the E3 notification-channel and E7-b abuse-control
+decisions rather than three separate gates.
+
 ### Current MVP Non-Expansion Guardrail
 
 - Finish the accepted wholesaler-to-retailer loop, printable records, workspace

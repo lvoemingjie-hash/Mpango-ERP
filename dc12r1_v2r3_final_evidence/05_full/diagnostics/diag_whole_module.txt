@@ -1,0 +1,133 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /root/dc12r1_v2r3_task/venv/bin/python
+hypothesis profile 'default'
+rootdir: /root/dc12r1_v2r3_final_wt/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: hypothesis-6.165.10, anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 29 items
+
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_missing_payments_table_fails PASSED [  3%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_unbounded_transaction_id_rejected PASSED [  6%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_permission_collision_fails_upgrade PASSED [ 10%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_receipt_sequences_extra_column_rejected PASSED [ 13%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_check_or_true_weakening_rejected PASSED [ 17%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_fk_cascade_rejected PASSED [ 20%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_wrong_index_keys_rejected PASSED [ 24%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_amount_ge_zero_weakening_rejected PASSED [ 27%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_status_missing_default_rejected PASSED [ 31%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_next_seq_wrong_default_rejected PASSED [ 34%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_check_wrong_column_identity_rejected PASSED [ 37%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_status_not_equal_chain_rejected PASSED [ 41%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_status_or_1_equals_1_weakening_rejected PASSED [ 44%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_amount_or_1_equals_1_weakening_rejected PASSED [ 48%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_status_default_trailing_space_rejected PASSED [ 51%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_receipt_index_wrong_key_rejected PASSED [ 55%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_receipt_index_weakened_predicate_rejected FAILED [ 58%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_regular_index_extra_predicate_rejected PASSED [ 62%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_regular_index_wrong_uniqueness_rejected PASSED [ 65%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_canonical_upgrade_reaches_037_and_second_run_noops PASSED [ 68%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_check_extra_and_condition_rejected PASSED [ 72%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_amount_range_constraint_rejected PASSED [ 75%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_index_expression_key_rejected PASSED [ 79%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_composite_fk_rejected PASSED [ 82%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_composite_pk_rejected PASSED [ 86%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_prefix_compatible_wrong_type_rejected PASSED [ 89%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_computed_status_default_rejected PASSED [ 93%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_next_seq_computed_default_rejected PASSED [ 96%]
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestTwoRegisteredTenantsUpgrade::test_cross_tenant_failure_neither_mutates PASSED [100%]
+
+=================================== FAILURES ===================================
+_ TestRealAlembicUpgradeFailClosed.test_receipt_index_weakened_predicate_rejected _
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py:906: in test_receipt_index_weakened_predicate_rejected
+    with temporary_database_url(source, "r4r2rp") as db_url:
+/usr/lib/python3.12/contextlib.py:144: in __exit__
+    next(self.gen)
+tests/async_test_utils.py:147: in temporary_database_url
+    cursor.execute(
+E   psycopg2.errors.InsufficientPrivilege: permission denied to terminate process
+E   DETAIL:  Only roles with the SUPERUSER attribute may terminate processes of roles with the SUPERUSER attribute.
+----------------------------- Captured stdout call -----------------------------
+
+✅ Ledger hardening applied to 0 tenant schema(s)
+🔒 Ledger is now write-only at database level
+
+✅ Reporting role created with 30s timeout
+✅ Reporting user created (member of reporting_role)
+✅ Granted SELECT on 0 tenant schema(s) + public
+🔒 Reporting path is read-only with 30s query timeout
+
+✅ Read Models created in 0 tenant schema(s)
+   Views: rpt_sales_daily, rpt_receivables_summary, rpt_cash_flow_daily
+   S6-P Compliance: ✅ Prefix, Currency, Time, Precision, Shallow Join
+
+✅ Materialized 0 tenant schema(s)
+   Unique index: idx_mv_sales_daily_u1 (transaction_date, reporting_currency_code)
+   REFRESH CONCURRENTLY: enabled
+DC-2M2 preflight OK: 0 registered tenant schema(s)
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0.payments: ensured ix_payments_order_id
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0.payments: ensured uq_payments_transaction_id
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0.retailer_prices: contract validated, indexes ensured
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0: granted schema USAGE to reporting_role
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0: created mv_sales_daily
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0: ensured idx_mv_sales_daily_u1
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0: ensured reporting_role table privileges
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0.import_runs: ensured indexes
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0: ensured U4 intake apply audit contract
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0: ensured DC-12R1-S1 retailer_operator RBAC + email index
+[reconcile] t_6f125045f4b044598c7f77bcb15175c0: ensured DC-12R1-S3-S2B-I1 payment_declarations + receipt_sequences + receipt_number
+[bootstrap] Tenant schema 't_6f125045f4b044598c7f77bcb15175c0' ready (19 tables, reconciled).
+----------------------------- Captured stderr call -----------------------------
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 001_initial_schema, Initial schema - public.wholesalers and tenant tables
+INFO  [alembic.runtime.migration] Running upgrade 001_initial_schema -> 002_phase_b2_invitation_binding, Phase B2 - invitations, retailers, and wholesaler-retailer bindings (public schema)
+INFO  [alembic.runtime.migration] Running upgrade 002_phase_b2_invitation_binding -> 003_phase_b3_orders_minimal_closed_loop, Phase B3 - Orders minimal closed loop (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 003_phase_b3_orders_minimal_closed_loop -> 004_phase_b4_sku_inventory_mvp, Phase B4 - Inventory MVP (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 004_phase_b4_sku_inventory_mvp -> 005_phase_b5_payments_minimal_loop, Phase B5 - Payments minimal loop (tenant + public)
+INFO  [alembic.runtime.migration] Running upgrade 005_phase_b5_payments_minimal_loop -> 006_phase_b6_payments_idempotency_key, Phase B6 - Payments idempotency key (tenant)
+INFO  [alembic.runtime.migration] Running upgrade 006_phase_b6_payments_idempotency_key -> 007_s3_b_index_hygiene, S3-B: Index Hygiene - Add missing indexes for performance
+INFO  [alembic.runtime.migration] Running upgrade 007_s3_b_index_hygiene -> 008_s4_b_job_persistence, S4-B: Job Persistence - Add sys_jobs table for job tracking
+INFO  [alembic.runtime.migration] Running upgrade 008_s4_b_job_persistence -> 009_s5_b_financial_ledger, S5-B Financial Ledger (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 009_s5_b_financial_ledger -> 010_s5_5_ledger_hardening, S5.5-1: Ledger Hardening - Database-Level Immutability
+INFO  [alembic.runtime.migration] Running upgrade 010_s5_5_ledger_hardening -> 011_s6_p_reporting_role, S6-P2: Reporting Role & Database Isolation
+INFO  [alembic.runtime.migration] Running upgrade 011_s6_p_reporting_role -> 012_s6_1_read_models, S6-1: Financial Read Models (SQL Views)
+INFO  [alembic.runtime.migration] Running upgrade 012_s6_1_read_models -> 013_s6_2_materialize_sales, S6-2: Materialize Sales Daily View
+INFO  [alembic.runtime.migration] Running upgrade 013_s6_2_materialize_sales -> 014_s7_3_audit_trail, S7-3: BI Access Audit Trail
+INFO  [alembic.runtime.migration] Running upgrade 014_s7_3_audit_trail -> 015_s7_4_sys_reports, S7-4-T3: Tenant-Scoped Reports — sys_reports table
+INFO  [alembic.runtime.migration] Running upgrade 015_s7_4_sys_reports -> 016_add_returned_status, 016: Add 'returned' value to order_status enum
+INFO  [alembic.runtime.migration] Running upgrade 016_add_returned_status -> 017_retailer_prices, 017: Add retailer_prices table for MVP retailer-specific pricing
+INFO  [alembic.runtime.migration] Running upgrade 017_retailer_prices -> 018_platform_p0_lifecycle, 018: Platform P0 - Tenant lifecycle fields and platform_tenants table
+INFO  [alembic.runtime.migration] Running upgrade 018_platform_p0_lifecycle -> 019_platform_audit_logs, 019: Platform P0 - Audit log table (append-only)
+INFO  [alembic.runtime.migration] Running upgrade 019_platform_audit_logs -> 020_sys_jobs_audit_columns, 020: Add audit columns to public.sys_jobs + server_default on id
+INFO  [alembic.runtime.migration] Running upgrade 020_sys_jobs_audit_columns -> 021_tenant_payments_retailer_id_transaction_id, 021: Add retailer_id and transaction_id to tenant payments
+INFO  [alembic.runtime.migration] Running upgrade 021_tenant_payments_retailer_id_transaction_id -> 022_import_runs, 022: Create import_runs table for agent-operable import contract
+INFO  [alembic.runtime.migration] Running upgrade 022_import_runs -> 023_inventory_reservations, 023: Inventory reservation ownership contract
+INFO  [alembic.runtime.migration] Running upgrade 023_inventory_reservations -> 024_intake_skeleton, 024: Data intake backend schema skeleton
+INFO  [alembic.runtime.migration] Running upgrade 024_intake_skeleton -> 025_intake_apply_audit, 025: Intake apply audit contract
+INFO  [alembic.runtime.migration] Running upgrade 025_intake_apply_audit -> 026_tenant_onboarding_auth_contract, 026: Tenant onboarding and email auth schema contract
+INFO  [alembic.runtime.migration] Running upgrade 026_tenant_onboarding_auth_contract -> 027_onboarding_status_tokens, 027: Onboarding status token schema contract
+INFO  [alembic.runtime.migration] Running upgrade 027_onboarding_status_tokens -> 028_owner_credential_setup_tokens, 028: Owner credential setup token schema foundation
+INFO  [alembic.runtime.migration] Running upgrade 028_owner_credential_setup_tokens -> 029_durable_approval_store, 029: P21-C1 - Durable Approval Store (additive, public-schema-only)
+INFO  [alembic.runtime.migration] Running upgrade 029_durable_approval_store -> 030_platform_backup_status_source, 030: P17-D-C - Backup / Status Source (additive, public-schema-only)
+INFO  [alembic.runtime.migration] Running upgrade 030_platform_backup_status_source -> 031_legacy_tenant_reconciliation, DC-2M2: Reconcile legacy registered tenant schemas.
+INFO  [alembic.runtime.migration] Running upgrade 031_legacy_tenant_reconciliation -> 032_payment_method_integrity, DC-10F: constrain tenant payment methods.
+INFO  [alembic.runtime.migration] Running upgrade 032_payment_method_integrity -> 033_order_status_enum_reconciliation, DC-10L: reconcile tenant order status enums.
+INFO  [alembic.runtime.migration] Running upgrade 033_order_status_enum_reconciliation -> 034_platform_operators, DC-11P1: platform operator identity schema foundation.
+INFO  [alembic.runtime.migration] Running upgrade 034_platform_operators -> 035_receivable_collection_integrity, DC-11T4H receivable collection integrity.
+INFO  [alembic.runtime.migration] Running upgrade 035_receivable_collection_integrity -> 036_retailer_mvp_identity, DC-12R1-S1 retailer MVP identity, credential and invitation foundation.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 036_retailer_mvp_identity -> 037_payment_declarations_schema, DC-12R1-S3-S2B-I1: payment_declarations, receipt_sequences, receipt_number, transaction_id widening, permission rename.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 036_retailer_mvp_identity -> 037_payment_declarations_schema, DC-12R1-S3-S2B-I1: payment_declarations, receipt_sequences, receipt_number, transaction_id widening, permission rename.
+=============================== warnings summary ===============================
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py: 112 warnings
+  /root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/config.py:612: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_receipt_index_weakened_predicate_rejected
+============ 1 failed, 28 passed, 112 warnings in 101.90s (0:01:41) ============

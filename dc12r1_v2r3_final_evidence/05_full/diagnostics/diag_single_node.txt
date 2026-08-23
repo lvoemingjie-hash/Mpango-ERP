@@ -1,0 +1,21 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /root/dc12r1_v2r3_task/venv/bin/python
+hypothesis profile 'default'
+rootdir: /root/dc12r1_v2r3_final_wt/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: hypothesis-6.165.10, anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 1 item
+
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_unbounded_transaction_id_rejected PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_unbounded_transaction_id_rejected
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_unbounded_transaction_id_rejected
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_unbounded_transaction_id_rejected
+tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestRealAlembicUpgradeFailClosed::test_unbounded_transaction_id_rejected
+  /root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/config.py:612: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 1 passed, 4 warnings in 3.79s =========================

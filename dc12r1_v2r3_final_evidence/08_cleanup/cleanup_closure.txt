@@ -1,0 +1,46 @@
+# Cleanup closure - 2026-08-24T01:41:04+08:00
+## task-owned resources BEFORE cleanup
+dc12r1v2r3_full_a_pg16 Up 35 minutes
+dc12r1v2r3_full_a_redis7 Up 35 minutes
+dc12r1v2r3_full_b_redis7 Up About an hour
+dc12r1v2r3_full_b_pg16 Up About an hour
+dc12r1v2r3_full_a_pgdata
+dc12r1v2r3_full_a_redisdata
+dc12r1v2r3_full_b_pgdata
+dc12r1v2r3_full_b_redisdata
+dc12r1v2r3_full_a_net
+dc12r1v2r3_full_b_net
+## host-owner containers snapshot (must be unchanged after)
+34
+## removing task-owned containers/volumes/networks
+dc12r1v2r3_full_a_pg16
+dc12r1v2r3_full_a_redis7
+dc12r1v2r3_full_a_pgdata
+dc12r1v2r3_full_a_redisdata
+dc12r1v2r3_full_a_net
+dc12r1v2r3_full_b_pg16
+dc12r1v2r3_full_b_redis7
+dc12r1v2r3_full_b_pgdata
+dc12r1v2r3_full_b_redisdata
+dc12r1v2r3_full_b_net
+## task-owned resources AFTER cleanup (must be empty)
+## host-owner containers AFTER (diff vs before must be empty)
+host_owner_containers_unchanged=YES
+## task ports released (connect_ex must fail on 15561/15562/16561/16562)
+port 15561 released
+port 15562 released
+port 16561 released
+port 16562 released
+## WSL verification worktree removal
+wsl_worktree_removed=YES
+ls: cannot access '/root/dc12r1_v2r3_final_wt': No such file or directory
+wsl_worktree_path_absent=YES
+## frozen refs stability (protected + source + report-candidate refs)
+origin/product-dev-recovered=6e9470a1daa5d6eece29724316fdd8aef6b737c1
+origin/zcode/dc12r1-mvp-l1-j1-h2-b-r2-r3-full-suite-test-hygiene-closure-2026-08-23=218be690a6d5ad3551c31fa28087964440c888c9
+origin/reports/dc12r1-mvp-l1-j1-h2-b-r2-r3-v1-kilo-final-review-2026-08-23=b7e67e242fe3e7bdd663e8c5aead2f599c25baa8
+origin/reports/dc12r1-mvp-l1-j1-h2-b-r2-r2-r1-v2-opencode-wsl-dual-fresh-stack-zero-red-final-2026-08-23=b4a6e167da6bc203b8b844c1ed05b8e7469ef5cc
+candidate_local=218be690a6d5ad3551c31fa28087964440c888c9
+## task runtime files to be removed after publication copy
+venv, env (credentials), scripts, logs, raw evidence remain only under publication/
+CLEANUP_CLOSURE_RECORDED

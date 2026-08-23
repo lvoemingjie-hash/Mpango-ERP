@@ -1,0 +1,7 @@
+# Scoped pre-commit (Windows host; WSL github-blocked for hook env) - 2026-08-24T01:40:09+08:00
+trim trailing whitespace.................................................Passed
+fix end of files.........................................................Passed
+check yaml...........................................(no files to check)Skipped
+check for added large files..............................................Passed
+Detect secrets...........................................................Passed
+precommit_exit=0

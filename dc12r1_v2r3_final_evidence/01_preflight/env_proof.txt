@@ -1,0 +1,44 @@
+# Pre-pytest environment proof - 2026-08-24T00:43:34+08:00
+## listeners on task ports and 26379 (ss -ltn)
+LISTEN 0      4096        127.0.0.1:16562      0.0.0.0:*          
+LISTEN 0      4096        127.0.0.1:16561      0.0.0.0:*          
+LISTEN 0      4096        127.0.0.1:15562      0.0.0.0:*          
+LISTEN 0      4096        127.0.0.1:15561      0.0.0.0:*          
+## Redis PING proofs (through task venv redis client, loopback endpoints)
+stack_a redis://127.0.0.1:16561/0 PING=True
+stack_a redis://127.0.0.1:16561/15 PING=True
+stack_a redis db15 initial dbsize=0
+stack_b redis://127.0.0.1:16562/0 PING=True
+stack_b redis://127.0.0.1:16562/15 PING=True
+stack_b redis db15 initial dbsize=0
+## 26379 unreachable proof (pw1r3 default fallback target)
+127.0.0.1:26379 connect_ex != 0 (unreachable) OK
+## effective variable names and redacted endpoints (stack A / stack B)
+stack_a:
+  TEST_DATABASE_URL=postgresql://h2btester:<redacted>@127.0.0.1:15561/test_h2b_r2r3_full_a
+  DATABASE_URL=<same-as-TEST>
+  REPORTING_DATABASE_URL=postgresql+asyncpg://reporting_user:<redacted>@127.0.0.1:15561/test_h2b_r2r3_full_a
+  REPORTING_USER_PASSWORD=<set,redacted,length-24>
+  REDIS_URL=redis://127.0.0.1:16561/0
+  PW1R3_TEST_REDIS_URL=redis://127.0.0.1:16561/15
+  MPANGO_ENV=test
+  MPANGO_ALLOW_TEMP_DB_CREATE=1
+  MPANGO_TEMP_DB_ALLOWED_HOSTS=127.0.0.1
+  MPANGO_TEMP_DB_ALLOWED_PORTS=15561
+  TEST_TENANT_SCHEMA=t_test (default)
+  TEST_TENANT_ID=11111111-1111-1111-1111-111111111111 (default)
+stack_b:
+  TEST_DATABASE_URL=postgresql://h2btester:<redacted>@127.0.0.1:15562/test_h2b_r2r3_full_b
+  DATABASE_URL=<same-as-TEST>
+  REPORTING_DATABASE_URL=postgresql+asyncpg://reporting_user:<redacted>@127.0.0.1:15562/test_h2b_r2r3_full_b
+  REPORTING_USER_PASSWORD=<set,redacted,length-24>
+  REDIS_URL=redis://127.0.0.1:16562/0
+  PW1R3_TEST_REDIS_URL=redis://127.0.0.1:16562/15
+  MPANGO_ENV=test
+  MPANGO_ALLOW_TEMP_DB_CREATE=1
+  MPANGO_TEMP_DB_ALLOWED_HOSTS=127.0.0.1
+  MPANGO_TEMP_DB_ALLOWED_PORTS=15562
+  TEST_TENANT_SCHEMA=t_test (default)
+  TEST_TENANT_ID=11111111-1111-1111-1111-111111111111 (default)
+## grep 26379 in effective exported test env: none (urls above use task ports only)
+ENV_PROOF_OK

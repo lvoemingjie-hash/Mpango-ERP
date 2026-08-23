@@ -1,0 +1,19 @@
+# residue proof stack=a label=pre_full - 2026-08-24T01:05:50+08:00
+## A scan-breaking ACTIVE wholesalers (status=active,is_deleted=false,no users table in derived schema)
+scan_breaking_active=0
+## A2 all not-deleted wholesalers lacking users table (broader diagnostic)
+scan_breaking_notdeleted=0
+## B exact 2222/3333 identities
+identity 2222 wholesalers=0 bindings=0 schema_present=0
+identity 3333 wholesalers=0 bindings=0 schema_present=0
+## C shared 1111 public state (exact JSON)
+1111_wholesaler_json=[]
+1111_bindings_json=[]
+1111_retailers_json=[]
+## D PW1R4/U6I2/S5D4B task-created public rows and derived schemas
+pw1r4_wholesalers=0 pw1r4_bindings=0
+u6i2_wholesalers=0 u6i2_bindings=0
+s5d4b_wholesalers=0
+t_r4a_schemas_information_schema=0 t_r4a_schemas_pg_namespace=0
+## full active wholesaler census (attribution context)
+RESIDUE_PROOF_DONE stack=a label=pre_full

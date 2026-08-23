@@ -1,0 +1,136 @@
+# Quality gates (WSL) - 2026-08-24T01:32:50+08:00
+## py_compile on the four changed test modules
+py_compile OK backend/tests/test_s4_jobs_local.py
+py_compile OK backend/tests/test_s5d4b_settled_cash_payment.py
+py_compile OK backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+py_compile OK backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## git diff --check parent..candidate
+diff_check OK (no output)
+## strict UTF-8 / no BOM on the five changed files
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_full_suite_test_hygiene.md
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s4_jobs_local.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s5d4b_settled_cash_payment.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## scoped detect-secrets scan over the five changed files (raw)
+detect_secrets_findings=PARSE_FAIL
+DS_FINDINGS_NONZERO
+# Quality gates (WSL) - 2026-08-24T01:33:48+08:00
+## py_compile on the four changed test modules
+py_compile OK backend/tests/test_s4_jobs_local.py
+py_compile OK backend/tests/test_s5d4b_settled_cash_payment.py
+py_compile OK backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+py_compile OK backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## git diff --check parent..candidate
+diff_check OK (no output)
+## strict UTF-8 / no BOM on the five changed files
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_full_suite_test_hygiene.md
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s4_jobs_local.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s5d4b_settled_cash_payment.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## scoped detect-secrets scan over the five changed files (raw)
+detect_secrets_findings=0
+## .secrets.baseline byte-identity parent..candidate
+baseline_blob_parent=683297f4471675657f2d85c8eccc42858c886754:backend/.secrets.baseline
+047b50f1c9c77182dd3eff38ced5b1207ea777f6 baseline_blob_candidate=218be690a6d5ad3551c31fa28087964440c888c9:backend/.secrets.baseline
+047b50f1c9c77182dd3eff38ced5b1207ea777f6
+BASELINE_CHANGED
+# Quality gates (WSL) - 2026-08-24T01:34:34+08:00
+## py_compile on the four changed test modules
+py_compile OK backend/tests/test_s4_jobs_local.py
+py_compile OK backend/tests/test_s5d4b_settled_cash_payment.py
+py_compile OK backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+py_compile OK backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## git diff --check parent..candidate
+diff_check OK (no output)
+## strict UTF-8 / no BOM on the five changed files
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_full_suite_test_hygiene.md
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s4_jobs_local.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s5d4b_settled_cash_payment.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## scoped detect-secrets scan over the five changed files (raw)
+detect_secrets_findings=0
+## .secrets.baseline byte-identity parent..candidate
+baseline_blob_parent=683297f4471675657f2d85c8eccc42858c886754:backend/.secrets.baseline
+none baseline_blob_candidate=218be690a6d5ad3551c31fa28087964440c888c9:backend/.secrets.baseline
+none
+BASELINE_CHANGED
+# Quality gates (WSL) - 2026-08-24T01:35:23+08:00
+## py_compile on the four changed test modules
+py_compile OK backend/tests/test_s4_jobs_local.py
+py_compile OK backend/tests/test_s5d4b_settled_cash_payment.py
+py_compile OK backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+py_compile OK backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## git diff --check parent..candidate
+diff_check OK (no output)
+## strict UTF-8 / no BOM on the five changed files
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_full_suite_test_hygiene.md
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s4_jobs_local.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s5d4b_settled_cash_payment.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## scoped detect-secrets scan over the five changed files (raw)
+detect_secrets_findings=0
+## .secrets.baseline byte-identity parent..candidate
+baseline_blob_parent=047b50f1c9c77182dd3eff38ced5b1207ea777f6
+baseline_blob_candidate=047b50f1c9c77182dd3eff38ced5b1207ea777f6
+baseline_byte_identical=YES
+## frozen refs + clean tree
+HEAD=218be690a6d5ad3551c31fa28087964440c888c9
+porcelain_lines=1
+porcelain_content:
+ D backend/tests/api/__pycache__/test_wholesaler.cpython-314-pytest-9.0.1.pyc
+QUALITY_STATIC_OK
+# Quality gates (WSL) - 2026-08-24T01:35:48+08:00
+## py_compile on the four changed test modules
+py_compile OK backend/tests/test_s4_jobs_local.py
+py_compile OK backend/tests/test_s5d4b_settled_cash_payment.py
+py_compile OK backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+py_compile OK backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## git diff --check parent..candidate
+diff_check OK (no output)
+## strict UTF-8 / no BOM on the five changed files
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_full_suite_test_hygiene.md
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s4_jobs_local.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s5d4b_settled_cash_payment.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## scoped detect-secrets scan over the five changed files (raw)
+detect_secrets_findings=0
+## .secrets.baseline byte-identity parent..candidate
+baseline_blob_parent=047b50f1c9c77182dd3eff38ced5b1207ea777f6
+baseline_blob_candidate=047b50f1c9c77182dd3eff38ced5b1207ea777f6
+baseline_byte_identical=YES
+## frozen refs + clean tree
+HEAD=218be690a6d5ad3551c31fa28087964440c888c9
+porcelain_lines=1
+porcelain_content:
+ D backend/tests/api/__pycache__/test_wholesaler.cpython-314-pytest-9.0.1.pyc
+QUALITY_STATIC_OK
+# Quality gates (WSL) - 2026-08-24T01:36:14+08:00
+## py_compile on the four changed test modules
+py_compile OK backend/tests/test_s4_jobs_local.py
+py_compile OK backend/tests/test_s5d4b_settled_cash_payment.py
+py_compile OK backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+py_compile OK backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## git diff --check parent..candidate
+diff_check OK (no output)
+## strict UTF-8 / no BOM on the five changed files
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_full_suite_test_hygiene.md
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s4_jobs_local.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_s5d4b_settled_cash_payment.py
+utf8_strict_no_bom OK /root/dc12r1_v2r3_final_wt/backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## scoped detect-secrets scan over the five changed files (raw)
+detect_secrets_findings=0
+## .secrets.baseline byte-identity parent..candidate
+baseline_blob_parent=047b50f1c9c77182dd3eff38ced5b1207ea777f6
+baseline_blob_candidate=047b50f1c9c77182dd3eff38ced5b1207ea777f6
+baseline_byte_identical=YES
+## frozen refs + clean tree
+HEAD=218be690a6d5ad3551c31fa28087964440c888c9
+porcelain_lines=0
+porcelain_content:
+QUALITY_STATIC_OK

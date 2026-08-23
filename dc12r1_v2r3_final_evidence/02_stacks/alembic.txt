@@ -1,0 +1,196 @@
+===== stack a alembic =====
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 001_initial_schema, Initial schema - public.wholesalers and tenant tables
+INFO  [alembic.runtime.migration] Running upgrade 001_initial_schema -> 002_phase_b2_invitation_binding, Phase B2 - invitations, retailers, and wholesaler-retailer bindings (public schema)
+INFO  [alembic.runtime.migration] Running upgrade 002_phase_b2_invitation_binding -> 003_phase_b3_orders_minimal_closed_loop, Phase B3 - Orders minimal closed loop (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 003_phase_b3_orders_minimal_closed_loop -> 004_phase_b4_sku_inventory_mvp, Phase B4 - Inventory MVP (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 004_phase_b4_sku_inventory_mvp -> 005_phase_b5_payments_minimal_loop, Phase B5 - Payments minimal loop (tenant + public)
+INFO  [alembic.runtime.migration] Running upgrade 005_phase_b5_payments_minimal_loop -> 006_phase_b6_payments_idempotency_key, Phase B6 - Payments idempotency key (tenant)
+INFO  [alembic.runtime.migration] Running upgrade 006_phase_b6_payments_idempotency_key -> 007_s3_b_index_hygiene, S3-B: Index Hygiene - Add missing indexes for performance
+INFO  [alembic.runtime.migration] Running upgrade 007_s3_b_index_hygiene -> 008_s4_b_job_persistence, S4-B: Job Persistence - Add sys_jobs table for job tracking
+INFO  [alembic.runtime.migration] Running upgrade 008_s4_b_job_persistence -> 009_s5_b_financial_ledger, S5-B Financial Ledger (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 009_s5_b_financial_ledger -> 010_s5_5_ledger_hardening, S5.5-1: Ledger Hardening - Database-Level Immutability
+INFO  [alembic.runtime.migration] Running upgrade 010_s5_5_ledger_hardening -> 011_s6_p_reporting_role, S6-P2: Reporting Role & Database Isolation
+
+✅ Ledger hardening applied to 0 tenant schema(s)
+🔒 Ledger is now write-only at database level
+Traceback (most recent call last):
+  File "/root/dc12r1_v2r3_task/venv/bin/alembic", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/config.py", line 1047, in main
+    CommandLine(prog=prog).main(argv=argv)
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/config.py", line 1037, in main
+    self.run_cmd(cfg, options)
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/config.py", line 971, in run_cmd
+    fn(
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/command.py", line 483, in upgrade
+    script.run_env()
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/script/base.py", line 545, in run_env
+    util.load_python_file(self.dir, "env.py")
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/util/pyfiles.py", line 116, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/util/pyfiles.py", line 136, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/root/dc12r1_v2r3_final_wt/backend/alembic/env.py", line 217, in <module>
+    run_migrations_online()
+  File "/root/dc12r1_v2r3_final_wt/backend/alembic/env.py", line 211, in run_migrations_online
+    asyncio.run(run_async_migrations())
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/root/dc12r1_v2r3_final_wt/backend/alembic/env.py", line 204, in run_async_migrations
+    await connection.run_sync(do_run_migrations)
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py", line 888, in run_sync
+    return await greenlet_spawn(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 203, in greenlet_spawn
+    result = context.switch(value)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dc12r1_v2r3_final_wt/backend/alembic/env.py", line 188, in do_run_migrations
+    context.run_migrations()
+  File "<string>", line 8, in run_migrations
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/runtime/environment.py", line 969, in run_migrations
+    self.get_context().run_migrations(**kw)
+  File "/root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/alembic/runtime/migration.py", line 626, in run_migrations
+    step.migration_fn(**kw)
+  File "/root/dc12r1_v2r3_final_wt/backend/alembic/versions/011_s6_p_reporting_role.py", line 44, in upgrade
+    raise RuntimeError(
+RuntimeError: REPORTING_USER_PASSWORD environment variable must be set before running this migration
+===== stack a alembic =====
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 001_initial_schema, Initial schema - public.wholesalers and tenant tables
+INFO  [alembic.runtime.migration] Running upgrade 001_initial_schema -> 002_phase_b2_invitation_binding, Phase B2 - invitations, retailers, and wholesaler-retailer bindings (public schema)
+INFO  [alembic.runtime.migration] Running upgrade 002_phase_b2_invitation_binding -> 003_phase_b3_orders_minimal_closed_loop, Phase B3 - Orders minimal closed loop (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 003_phase_b3_orders_minimal_closed_loop -> 004_phase_b4_sku_inventory_mvp, Phase B4 - Inventory MVP (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 004_phase_b4_sku_inventory_mvp -> 005_phase_b5_payments_minimal_loop, Phase B5 - Payments minimal loop (tenant + public)
+INFO  [alembic.runtime.migration] Running upgrade 005_phase_b5_payments_minimal_loop -> 006_phase_b6_payments_idempotency_key, Phase B6 - Payments idempotency key (tenant)
+INFO  [alembic.runtime.migration] Running upgrade 006_phase_b6_payments_idempotency_key -> 007_s3_b_index_hygiene, S3-B: Index Hygiene - Add missing indexes for performance
+INFO  [alembic.runtime.migration] Running upgrade 007_s3_b_index_hygiene -> 008_s4_b_job_persistence, S4-B: Job Persistence - Add sys_jobs table for job tracking
+INFO  [alembic.runtime.migration] Running upgrade 008_s4_b_job_persistence -> 009_s5_b_financial_ledger, S5-B Financial Ledger (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 009_s5_b_financial_ledger -> 010_s5_5_ledger_hardening, S5.5-1: Ledger Hardening - Database-Level Immutability
+INFO  [alembic.runtime.migration] Running upgrade 010_s5_5_ledger_hardening -> 011_s6_p_reporting_role, S6-P2: Reporting Role & Database Isolation
+INFO  [alembic.runtime.migration] Running upgrade 011_s6_p_reporting_role -> 012_s6_1_read_models, S6-1: Financial Read Models (SQL Views)
+INFO  [alembic.runtime.migration] Running upgrade 012_s6_1_read_models -> 013_s6_2_materialize_sales, S6-2: Materialize Sales Daily View
+INFO  [alembic.runtime.migration] Running upgrade 013_s6_2_materialize_sales -> 014_s7_3_audit_trail, S7-3: BI Access Audit Trail
+INFO  [alembic.runtime.migration] Running upgrade 014_s7_3_audit_trail -> 015_s7_4_sys_reports, S7-4-T3: Tenant-Scoped Reports — sys_reports table
+INFO  [alembic.runtime.migration] Running upgrade 015_s7_4_sys_reports -> 016_add_returned_status, 016: Add 'returned' value to order_status enum
+INFO  [alembic.runtime.migration] Running upgrade 016_add_returned_status -> 017_retailer_prices, 017: Add retailer_prices table for MVP retailer-specific pricing
+INFO  [alembic.runtime.migration] Running upgrade 017_retailer_prices -> 018_platform_p0_lifecycle, 018: Platform P0 - Tenant lifecycle fields and platform_tenants table
+INFO  [alembic.runtime.migration] Running upgrade 018_platform_p0_lifecycle -> 019_platform_audit_logs, 019: Platform P0 - Audit log table (append-only)
+INFO  [alembic.runtime.migration] Running upgrade 019_platform_audit_logs -> 020_sys_jobs_audit_columns, 020: Add audit columns to public.sys_jobs + server_default on id
+INFO  [alembic.runtime.migration] Running upgrade 020_sys_jobs_audit_columns -> 021_tenant_payments_retailer_id_transaction_id, 021: Add retailer_id and transaction_id to tenant payments
+INFO  [alembic.runtime.migration] Running upgrade 021_tenant_payments_retailer_id_transaction_id -> 022_import_runs, 022: Create import_runs table for agent-operable import contract
+INFO  [alembic.runtime.migration] Running upgrade 022_import_runs -> 023_inventory_reservations, 023: Inventory reservation ownership contract
+INFO  [alembic.runtime.migration] Running upgrade 023_inventory_reservations -> 024_intake_skeleton, 024: Data intake backend schema skeleton
+INFO  [alembic.runtime.migration] Running upgrade 024_intake_skeleton -> 025_intake_apply_audit, 025: Intake apply audit contract
+INFO  [alembic.runtime.migration] Running upgrade 025_intake_apply_audit -> 026_tenant_onboarding_auth_contract, 026: Tenant onboarding and email auth schema contract
+INFO  [alembic.runtime.migration] Running upgrade 026_tenant_onboarding_auth_contract -> 027_onboarding_status_tokens, 027: Onboarding status token schema contract
+INFO  [alembic.runtime.migration] Running upgrade 027_onboarding_status_tokens -> 028_owner_credential_setup_tokens, 028: Owner credential setup token schema foundation
+INFO  [alembic.runtime.migration] Running upgrade 028_owner_credential_setup_tokens -> 029_durable_approval_store, 029: P21-C1 - Durable Approval Store (additive, public-schema-only)
+INFO  [alembic.runtime.migration] Running upgrade 029_durable_approval_store -> 030_platform_backup_status_source, 030: P17-D-C - Backup / Status Source (additive, public-schema-only)
+INFO  [alembic.runtime.migration] Running upgrade 030_platform_backup_status_source -> 031_legacy_tenant_reconciliation, DC-2M2: Reconcile legacy registered tenant schemas.
+INFO  [alembic.runtime.migration] Running upgrade 031_legacy_tenant_reconciliation -> 032_payment_method_integrity, DC-10F: constrain tenant payment methods.
+INFO  [alembic.runtime.migration] Running upgrade 032_payment_method_integrity -> 033_order_status_enum_reconciliation, DC-10L: reconcile tenant order status enums.
+INFO  [alembic.runtime.migration] Running upgrade 033_order_status_enum_reconciliation -> 034_platform_operators, DC-11P1: platform operator identity schema foundation.
+INFO  [alembic.runtime.migration] Running upgrade 034_platform_operators -> 035_receivable_collection_integrity, DC-11T4H receivable collection integrity.
+INFO  [alembic.runtime.migration] Running upgrade 035_receivable_collection_integrity -> 036_retailer_mvp_identity, DC-12R1-S1 retailer MVP identity, credential and invitation foundation.
+INFO  [alembic.runtime.migration] Running upgrade 036_retailer_mvp_identity -> 037_payment_declarations_schema, DC-12R1-S3-S2B-I1: payment_declarations, receipt_sequences, receipt_number, transaction_id widening, permission rename.
+
+✅ Ledger hardening applied to 0 tenant schema(s)
+🔒 Ledger is now write-only at database level
+
+✅ Reporting role created with 30s timeout
+✅ Reporting user created (member of reporting_role)
+✅ Granted SELECT on 0 tenant schema(s) + public
+🔒 Reporting path is read-only with 30s query timeout
+
+✅ Read Models created in 0 tenant schema(s)
+   Views: rpt_sales_daily, rpt_receivables_summary, rpt_cash_flow_daily
+   S6-P Compliance: ✅ Prefix, Currency, Time, Precision, Shallow Join
+
+✅ Materialized 0 tenant schema(s)
+   Unique index: idx_mv_sales_daily_u1 (transaction_date, reporting_currency_code)
+   REFRESH CONCURRENTLY: enabled
+DC-2M2 preflight OK: 0 registered tenant schema(s)
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+037_payment_declarations_schema (head)
+037_payment_declarations_schema (head)
+ 037_payment_declarations_schema
+
+===== stack b alembic =====
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 001_initial_schema, Initial schema - public.wholesalers and tenant tables
+INFO  [alembic.runtime.migration] Running upgrade 001_initial_schema -> 002_phase_b2_invitation_binding, Phase B2 - invitations, retailers, and wholesaler-retailer bindings (public schema)
+INFO  [alembic.runtime.migration] Running upgrade 002_phase_b2_invitation_binding -> 003_phase_b3_orders_minimal_closed_loop, Phase B3 - Orders minimal closed loop (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 003_phase_b3_orders_minimal_closed_loop -> 004_phase_b4_sku_inventory_mvp, Phase B4 - Inventory MVP (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 004_phase_b4_sku_inventory_mvp -> 005_phase_b5_payments_minimal_loop, Phase B5 - Payments minimal loop (tenant + public)
+INFO  [alembic.runtime.migration] Running upgrade 005_phase_b5_payments_minimal_loop -> 006_phase_b6_payments_idempotency_key, Phase B6 - Payments idempotency key (tenant)
+INFO  [alembic.runtime.migration] Running upgrade 006_phase_b6_payments_idempotency_key -> 007_s3_b_index_hygiene, S3-B: Index Hygiene - Add missing indexes for performance
+INFO  [alembic.runtime.migration] Running upgrade 007_s3_b_index_hygiene -> 008_s4_b_job_persistence, S4-B: Job Persistence - Add sys_jobs table for job tracking
+INFO  [alembic.runtime.migration] Running upgrade 008_s4_b_job_persistence -> 009_s5_b_financial_ledger, S5-B Financial Ledger (tenant schema)
+INFO  [alembic.runtime.migration] Running upgrade 009_s5_b_financial_ledger -> 010_s5_5_ledger_hardening, S5.5-1: Ledger Hardening - Database-Level Immutability
+INFO  [alembic.runtime.migration] Running upgrade 010_s5_5_ledger_hardening -> 011_s6_p_reporting_role, S6-P2: Reporting Role & Database Isolation
+INFO  [alembic.runtime.migration] Running upgrade 011_s6_p_reporting_role -> 012_s6_1_read_models, S6-1: Financial Read Models (SQL Views)
+INFO  [alembic.runtime.migration] Running upgrade 012_s6_1_read_models -> 013_s6_2_materialize_sales, S6-2: Materialize Sales Daily View
+INFO  [alembic.runtime.migration] Running upgrade 013_s6_2_materialize_sales -> 014_s7_3_audit_trail, S7-3: BI Access Audit Trail
+INFO  [alembic.runtime.migration] Running upgrade 014_s7_3_audit_trail -> 015_s7_4_sys_reports, S7-4-T3: Tenant-Scoped Reports — sys_reports table
+INFO  [alembic.runtime.migration] Running upgrade 015_s7_4_sys_reports -> 016_add_returned_status, 016: Add 'returned' value to order_status enum
+INFO  [alembic.runtime.migration] Running upgrade 016_add_returned_status -> 017_retailer_prices, 017: Add retailer_prices table for MVP retailer-specific pricing
+INFO  [alembic.runtime.migration] Running upgrade 017_retailer_prices -> 018_platform_p0_lifecycle, 018: Platform P0 - Tenant lifecycle fields and platform_tenants table
+INFO  [alembic.runtime.migration] Running upgrade 018_platform_p0_lifecycle -> 019_platform_audit_logs, 019: Platform P0 - Audit log table (append-only)
+INFO  [alembic.runtime.migration] Running upgrade 019_platform_audit_logs -> 020_sys_jobs_audit_columns, 020: Add audit columns to public.sys_jobs + server_default on id
+INFO  [alembic.runtime.migration] Running upgrade 020_sys_jobs_audit_columns -> 021_tenant_payments_retailer_id_transaction_id, 021: Add retailer_id and transaction_id to tenant payments
+INFO  [alembic.runtime.migration] Running upgrade 021_tenant_payments_retailer_id_transaction_id -> 022_import_runs, 022: Create import_runs table for agent-operable import contract
+INFO  [alembic.runtime.migration] Running upgrade 022_import_runs -> 023_inventory_reservations, 023: Inventory reservation ownership contract
+INFO  [alembic.runtime.migration] Running upgrade 023_inventory_reservations -> 024_intake_skeleton, 024: Data intake backend schema skeleton
+INFO  [alembic.runtime.migration] Running upgrade 024_intake_skeleton -> 025_intake_apply_audit, 025: Intake apply audit contract
+INFO  [alembic.runtime.migration] Running upgrade 025_intake_apply_audit -> 026_tenant_onboarding_auth_contract, 026: Tenant onboarding and email auth schema contract
+INFO  [alembic.runtime.migration] Running upgrade 026_tenant_onboarding_auth_contract -> 027_onboarding_status_tokens, 027: Onboarding status token schema contract
+INFO  [alembic.runtime.migration] Running upgrade 027_onboarding_status_tokens -> 028_owner_credential_setup_tokens, 028: Owner credential setup token schema foundation
+INFO  [alembic.runtime.migration] Running upgrade 028_owner_credential_setup_tokens -> 029_durable_approval_store, 029: P21-C1 - Durable Approval Store (additive, public-schema-only)
+INFO  [alembic.runtime.migration] Running upgrade 029_durable_approval_store -> 030_platform_backup_status_source, 030: P17-D-C - Backup / Status Source (additive, public-schema-only)
+INFO  [alembic.runtime.migration] Running upgrade 030_platform_backup_status_source -> 031_legacy_tenant_reconciliation, DC-2M2: Reconcile legacy registered tenant schemas.
+INFO  [alembic.runtime.migration] Running upgrade 031_legacy_tenant_reconciliation -> 032_payment_method_integrity, DC-10F: constrain tenant payment methods.
+INFO  [alembic.runtime.migration] Running upgrade 032_payment_method_integrity -> 033_order_status_enum_reconciliation, DC-10L: reconcile tenant order status enums.
+INFO  [alembic.runtime.migration] Running upgrade 033_order_status_enum_reconciliation -> 034_platform_operators, DC-11P1: platform operator identity schema foundation.
+INFO  [alembic.runtime.migration] Running upgrade 034_platform_operators -> 035_receivable_collection_integrity, DC-11T4H receivable collection integrity.
+INFO  [alembic.runtime.migration] Running upgrade 035_receivable_collection_integrity -> 036_retailer_mvp_identity, DC-12R1-S1 retailer MVP identity, credential and invitation foundation.
+INFO  [alembic.runtime.migration] Running upgrade 036_retailer_mvp_identity -> 037_payment_declarations_schema, DC-12R1-S3-S2B-I1: payment_declarations, receipt_sequences, receipt_number, transaction_id widening, permission rename.
+
+✅ Ledger hardening applied to 0 tenant schema(s)
+🔒 Ledger is now write-only at database level
+
+✅ Reporting role created with 30s timeout
+✅ Reporting user created (member of reporting_role)
+✅ Granted SELECT on 0 tenant schema(s) + public
+🔒 Reporting path is read-only with 30s query timeout
+
+✅ Read Models created in 0 tenant schema(s)
+   Views: rpt_sales_daily, rpt_receivables_summary, rpt_cash_flow_daily
+   S6-P Compliance: ✅ Prefix, Currency, Time, Precision, Shallow Join
+
+✅ Materialized 0 tenant schema(s)
+   Unique index: idx_mv_sales_daily_u1 (transaction_date, reporting_currency_code)
+   REFRESH CONCURRENTLY: enabled
+DC-2M2 preflight OK: 0 registered tenant schema(s)
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+037_payment_declarations_schema (head)
+037_payment_declarations_schema (head)
+ 037_payment_declarations_schema
+

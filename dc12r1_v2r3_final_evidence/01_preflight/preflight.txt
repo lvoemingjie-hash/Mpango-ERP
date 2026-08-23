@@ -1,0 +1,36 @@
+# Preflight (Phase 1) - 2026-08-24T01:08:27+08:00 - verified in WSL against local repo + origin refs
+fetch: git fetch --all --prune EXIT=0 (run on Windows host before worktree creation)
+candidate=218be690a6d5ad3551c31fa28087964440c888c9
+candidate_subject=DC-12R1-MVP-L1-J1-H2-B-R2-R3: full-suite deterministic test-hygiene closure
+candidate_parent_actual=683297f4471675657f2d85c8eccc42858c886754
+candidate_parent_expected=683297f4471675657f2d85c8eccc42858c886754
+parent_match=YES
+baseline_ancestor_of_candidate=YES
+merge_base_kilo_candidate=218be690a6d5ad3551c31fa28087964440c888c9 (equals candidate => candidate is ancestor of kilo)
+kilo_parent_actual=218be690a6d5ad3551c31fa28087964440c888c9 (equals candidate expected)
+remote_refs:
+  origin/product-dev-recovered=6e9470a1daa5d6eece29724316fdd8aef6b737c1
+  origin/zcode/dc12r1-mvp-l1-j1-h2-b-r2-r3-full-suite-test-hygiene-closure-2026-08-23=218be690a6d5ad3551c31fa28087964440c888c9
+  origin/reports/dc12r1-mvp-l1-j1-h2-b-r2-r3-v1-kilo-final-review-2026-08-23=b7e67e242fe3e7bdd663e8c5aead2f599c25baa8
+  origin/reports/dc12r1-mvp-l1-j1-h2-b-r2-r2-r1-v2-opencode-wsl-dual-fresh-stack-zero-red-final-2026-08-23=b4a6e167da6bc203b8b844c1ed05b8e7469ef5cc
+  target_report_branch=reports/dc12r1-mvp-l1-j1-h2-b-r2-r3-v2-opencode-wsl-dual-zero-red-final-2026-08-23 (did not exist pre-task)
+
+## candidate delta vs parent (must be exactly 4 test modules + 1 ledger)
+A	ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_full_suite_test_hygiene.md
+M	backend/tests/test_pw1r4_cross_tenant_statement_cache.py
+M	backend/tests/test_s4_jobs_local.py
+M	backend/tests/test_s5d4b_settled_cash_payment.py
+M	backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+delta_file_count=5
+
+## product/runtime byte-identity vs parent
+product_dirs_byte_identical=YES
+local_queue_blob_parent=646608ae80c98b8c06bcc958991f19ea77ab0291
+local_queue_blob_candidate=646608ae80c98b8c06bcc958991f19ea77ab0291
+password_reset_service_blob_parent=3a71abece2bc6aa2117e1a7144826bd5057d0fb7
+password_reset_service_blob_candidate=3a71abece2bc6aa2117e1a7144826bd5057d0fb7
+
+## WSL verification worktree
+path=/root/dc12r1_v2r3_final_wt
+head=218be690a6d5ad3551c31fa28087964440c888c9
+status_porcelain_lines=0

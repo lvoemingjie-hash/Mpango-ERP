@@ -1,0 +1,132 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /root/dc12r1_v2r3_task/venv/bin/python
+hypothesis profile 'default'
+rootdir: /root/dc12r1_v2r3_final_wt/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: hypothesis-6.165.10, anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 44 items
+
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_sequential_same_financial_result_replay_creates_one_financial_result PASSED [  2%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_concurrent_same_financial_result_replay_creates_one_financial_result PASSED [  4%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_payment_notes_are_rejected_without_side_effects PASSED [  6%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_concurrent_different_keys_cannot_overpay PASSED [  9%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_empty_body_and_empty_object_create_no_side_effects PASSED [ 11%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_conflicting_idempotency_key_returns_409 PASSED [ 13%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_duplicate_transfer_reference_returns_sanitized_409 PASSED [ 15%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_back PASSED [ 18%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_rollback_after_state_failure_leaves_tables_unchanged PASSED [ 20%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_cross_tenant_same_idempotency_key_is_isolated PASSED [ 22%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_route_uses_canonical_payment_service_with_behavior_preserving_defaults PASSED [ 25%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_does_not_commit_or_rollback_calls PASSED [ 27%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_cash_partial_and_final_matches_route_outcomes PASSED [ 29%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_transfer_pending_then_completed_matches_route_outcomes PASSED [ 31%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_credit_collection_reduces_outstanding_balance_like_route PASSED [ 34%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_duplicate_transaction_id_exact_error PASSED [ 36%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_idempotent_replay_creates_one_financial_result PASSED [ 38%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_overpayment_rejection_exact_error PASSED [ 40%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_force_completed_cannot_create_pending_payment PASSED [ 43%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_cross_tenant_same_key_isolated PASSED [ 45%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_failures_after_mutation_stages_rollback_all_effects PASSED [ 47%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_negative_cash_amount_rejected_with_zero_mutation PASSED [ 50%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_zero_amount_rejected PASSED [ 52%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_nan_and_infinity_rejected_without_500[nan] PASSED [ 54%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_nan_and_infinity_rejected_without_500[pos_inf] PASSED [ 56%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_nan_and_infinity_rejected_without_500[neg_inf] PASSED [ 59%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_skip_prechecks_cannot_bypass_amount_guard PASSED [ 61%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_failed_attempt_leaves_transaction_retryable PASSED [ 63%]
+tests/test_dc3b_credential_recovery_backend.py::test_forgot_password_neutral_for_existing_and_nonexistent_email PASSED [ 65%]
+tests/test_dc3b_credential_recovery_backend.py::test_broken_tenant_schema_does_not_block_healthy_password_reset PASSED [ 68%]
+tests/test_dc3b_credential_recovery_backend.py::test_production_fail_closed_creates_no_token PASSED [ 70%]
+tests/test_dc3b_credential_recovery_backend.py::test_reset_token_stored_hash_only_raw_never_persisted PASSED [ 72%]
+tests/test_dc3b_credential_recovery_backend.py::test_reset_with_valid_token_updates_password PASSED [ 75%]
+tests/test_dc3b_credential_recovery_backend.py::test_invalid_states_fail_neutrally PASSED [ 77%]
+tests/test_dc3b_credential_recovery_backend.py::test_query_string_token_rejected PASSED [ 79%]
+tests/test_dc3b_credential_recovery_backend.py::test_reset_updates_both_tenant_copies PASSED [ 81%]
+tests/test_dc3b_credential_recovery_backend.py::test_login_succeeds_after_reset_with_multiple_copies PASSED [ 84%]
+tests/test_dc3b_credential_recovery_backend.py::test_setup_credential_propagates_to_other_tenant_copies PASSED [ 86%]
+tests/test_dc3b_credential_recovery_backend.py::test_no_internal_ids_tokens_hashes_in_public_responses PASSED [ 88%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_different_passwords_isolates_unverified_tenant PASSED [ 90%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_same_password_different_user_ids_selects_both PASSED [ 93%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select PASSED [ 95%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection PASSED [ 97%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_no_internal_mapping_in_public_responses PASSED [100%]
+
+=============================== warnings summary ===============================
+../../dc12r1_v2r3_task/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /root/dc12r1_v2r3_task/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /root/dc12r1_v2r3_final_wt/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/test_dc11d_payment_replay_concurrency_integrity.py: 9 warnings
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py: 22 warnings
+  /root/dc12r1_v2r3_final_wt/backend/repositories/payment_repository.py:288: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_dc11d_payment_replay_concurrency_integrity.py: 7 warnings
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py: 7 warnings
+  /root/dc12r1_v2r3_final_wt/backend/api/v1/orders.py:891: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_sequential_same_financial_result_replay_creates_one_financial_result
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_concurrent_same_financial_result_replay_creates_one_financial_result
+  /root/dc12r1_v2r3_final_wt/backend/api/v1/orders.py:216: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py: 14 warnings
+  /root/dc12r1_v2r3_final_wt/backend/api/v1/auth.py:832: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py::test_reset_with_valid_token_updates_password
+tests/test_dc3b_credential_recovery_backend.py::test_invalid_states_fail_neutrally
+tests/test_dc3b_credential_recovery_backend.py::test_reset_updates_both_tenant_copies
+tests/test_dc3b_credential_recovery_backend.py::test_login_succeeds_after_reset_with_multiple_copies
+tests/test_dc3b_credential_recovery_backend.py::test_no_internal_ids_tokens_hashes_in_public_responses
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select
+  /root/dc12r1_v2r3_final_wt/backend/api/v1/auth.py:974: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py: 20 warnings
+  /root/dc12r1_v2r3_final_wt/backend/core/security.py:108: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_dc3b_credential_recovery_backend.py::test_login_succeeds_after_reset_with_multiple_copies
+tests/test_dc3b_credential_recovery_backend.py::test_login_succeeds_after_reset_with_multiple_copies
+tests/test_dc3b_credential_recovery_backend.py::test_r1_different_passwords_isolates_unverified_tenant
+tests/test_dc3b_credential_recovery_backend.py::test_r1_different_passwords_isolates_unverified_tenant
+tests/test_dc3b_credential_recovery_backend.py::test_r1_same_password_different_user_ids_selects_both
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection
+tests/test_dc3b_credential_recovery_backend.py::test_r1_no_internal_mapping_in_public_responses
+  /root/dc12r1_v2r3_final_wt/backend/api/v1/auth.py:325: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py::test_setup_credential_propagates_to_other_tenant_copies
+  /root/dc12r1_v2r3_final_wt/backend/api/v1/auth.py:716: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py: 14 warnings
+  /root/dc12r1_v2r3_final_wt/backend/core/security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_dc3b_credential_recovery_backend.py::test_r1_different_passwords_isolates_unverified_tenant
+tests/test_dc3b_credential_recovery_backend.py::test_r1_same_password_different_user_ids_selects_both
+tests/test_dc3b_credential_recovery_backend.py::test_r1_same_password_different_user_ids_selects_both
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection
+  /root/dc12r1_v2r3_final_wt/backend/api/v1/auth.py:441: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection
+tests/test_dc3b_credential_recovery_backend.py::test_r1_no_internal_mapping_in_public_responses
+  /root/dc12r1_v2r3_final_wt/backend/api/v1/auth.py:504: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /root/dc12r1_v2r3_task/evidence/03_pregates/stack_a/pred_bundle_junit.xml -
+====================== 44 passed, 121 warnings in 41.89s =======================

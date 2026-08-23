@@ -1,0 +1,60 @@
+tests/test_alembic_migrations.py::TestAlembicMigrationIsolation::test_migration_creates_tenant_schema SKIPPED [  2%]
+tests/test_alembic_migrations.py::TestAlembicMigrationIsolation::test_tenant_migration_does_not_affect_public_schema SKIPPED [  2%]
+tests/test_alembic_migrations.py::TestAlembicMigrationIsolation::test_public_migration_does_not_create_tenant_tables SKIPPED [  2%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_has_retailer_id SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_retailer_id_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_has_transaction_id SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_transaction_id_nullable SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_has_order_id_index SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_has_transaction_id_partial_unique SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_retailer_id SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_retailer_id_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_sku_id SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_sku_id_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_price SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_price_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_created_at_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_updated_at_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_is_deleted_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_unique_constraint SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_check_constraint SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_retailer_id_index SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_sku_id_index SKIPPED [ 34%]
+tests/test_platform_p21_durable_approval_schema.py::test_tables_exist_in_public SKIPPEDDATABASE_URL at an ephemeral DB) [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_audit_events-expected0] SKIPPEDDATABASE_URL at an ephemeral DB) [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_decisions-expected1] SKIPPEDDATABASE_URL
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_idempotency_keys-expected2] SKIPPED [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_requests-expected3] SKIPPEDDATABASE_URL
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_retention_jobs-expected4] SKIPPEDDATABASE_URL at an ephemeral DB) [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_key_types SKIPPEDDATABASE_URL at an ephemeral DB) [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_no_execution_and_redaction_defaults SKIPPEDDATABASE_URL at an ephemeral DB) [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_audit_events-expected0] SKIPPEDDATABASE_URL
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_decisions-expected1] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_idempotency_keys-expected2] SKIPPEDDATABASE_URL at an ephemeral DB) [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_requests-expected3] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_retention_jobs-expected4] SKIPPEDDATABASE_URL
+tests/test_platform_p21_durable_approval_schema.py::test_unique_indexes_present SKIPPEDDATABASE_URL at an ephemeral DB) [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_decision_foreign_keys SKIPPEDDATABASE_URL at an ephemeral DB) [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_action_class-expected0] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_actor_role-expected1] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_audit_result-expected2] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_decision-expected3] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_event_type-expected4] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_execution_gate-expected5] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_identity_context-expected6] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_job_status-expected7] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_job_type-expected8] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_retention_class-expected9] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_scope_key-expected10] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_source_status-expected11] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_state-expected12] SKIPPEDDATABASE_URL at an ephemeral
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_storage_class-expected13] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_validation_status-expected14] SKIPPEDDATABASE_URL at an
+tests/test_platform_p21_durable_approval_schema.py::test_enum_types_live_in_public SKIPPEDDATABASE_URL at an ephemeral DB) [ 59%]
+tests/test_route_coverage.py::TestOpenAPIRouteCoverage::test_all_openapi_paths_have_routes SKIPPED [ 71%]
+tests/test_route_coverage.py::TestOpenAPISpecLoading::test_openapi_spec_file_exists SKIPPED [ 71%]
+tests/test_route_coverage.py::TestOpenAPISpecLoading::test_openapi_spec_is_valid_yaml SKIPPED [ 71%]
+tests/test_s3_profiling.py::TestSQLProfilingMiddleware::test_profiling_headers_on_health_endpoint SKIPPED true)) [ 72%]
+tests/test_s3_profiling.py::TestSQLProfilingMiddleware::test_profiling_skips_metrics_endpoint SKIPPED true)) [ 72%]
+tests/test_s5c_runtime_sku_import_http_integration.py::test_sku_import_preview_validate_apply_happy_path SKIPPEDTIME_TEST_EMAIL,
+tests/test_s5c_runtime_sku_import_http_integration.py::test_sku_import_preview_returns_401_without_token SKIPPEDTIME_TEST_EMAIL,

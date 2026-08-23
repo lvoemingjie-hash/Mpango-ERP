@@ -1,0 +1,32 @@
+{
+  "task_id": "DC-12R1-MVP-L1-J1-H2-B-R2-R1-V2-WSL-UBUNTU-DUAL-STACK-ZERO-RED",
+  "verdict": "STOP_AND_REPORT_CTO",
+  "candidate_sha": "34ccec116204b6a61b2e37c874b0c65953acfb43",
+  "protected_baseline": "6e9470a1daa5d6eece29724316fdd8aef6b737c1",
+  "kilo_e2_review": "3e796996382872f10d5bd5312cdbbfe311d9cc7c",
+  "candidate_parent": "87e5cbf52a169be17a20ca865631c7f667f5b59f",
+  "cumulative_delta_files": 7,
+  "phase1_proof_gate": "PASS",
+  "phase2_environment": "PASS",
+  "phase3_focused_bundle_natural": "109 passed, 0 failed",
+  "phase3_focused_bundle_reverse": "109 passed, 0 failed",
+  "phase4_full_stack_a": {
+    "passed": 3613,
+    "failed": 41,
+    "errors": 21,
+    "skipped": 60,
+    "xfailed": 15,
+    "duration_seconds": 1067.86,
+    "result": "FAIL"
+  },
+  "phase5_stack_b": "BLOCKED",
+  "phase6_quality": "BLOCKED",
+  "failure_categories": {
+    "temp_db_name_missing": 36,
+    "temp_db_name_errors": 21,
+    "password_reset_failures": 5
+  },
+  "candidate_code_defects": [
+    "test_dc3b_credential_recovery_backend.py: password reset returns 401 instead of 200"
+  ]
+}

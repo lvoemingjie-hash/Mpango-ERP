@@ -1,0 +1,5 @@
+id,severity,status,phase,title,evidence,disposition
+F-000,NONE,CLOSED,All phases,No blocking findings,"Bounded source/test-infrastructure review passed proof gate, causality, fixture ownership, runtime, Redis classification, and quality gates.","PASS verdict issued for source/test-infrastructure scope only."
+I-001,INFO,CLOSED,Phase 2,Job metrics wording boundary,"Candidate code gates both jobs on an Event and Kilo M1 mutation made removal of queue.join RED 3/3; Kilo does not claim both handlers were runtime-observed parked.","No blocking issue; report wording constrained to causality actually proven."
+I-002,INFO,CLOSED,Phase 5,Dual full-suite evidence classification,"Candidate ledger reports two full-suite zero-red stacks, but Kilo did not rerun full suites.","Classified as candidate evidence only, not Kilo runtime proof."
+I-003,INFO,CLOSED,Phase 6,Redis environment classification,"PW1R3_TEST_REDIS_URL is the module knob; default 127.0.0.1:26379 was unreachable on Kilo host; no source/product file changed to clear rate-limit behavior.","Classified as runtime test configuration, not a product fix."

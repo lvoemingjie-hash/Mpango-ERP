@@ -1,0 +1,50 @@
+finding_id,category,check,status,detail,source_ref
+F01,Proof Gate,CANDIDATE ref,OK,683297f4471675657f2d85c8eccc42858c886754,git rev-parse
+F02,Proof Gate,Expected parent,OK,b4c1ec6b85b6701e0ae11f33ddbb7ed5f197afda,git log -1
+F03,Proof Gate,Protected baseline,OK,6e9470a1daa5d6eece29724316fdd8aef6b737c1,git rev-parse
+F04,Proof Gate,Product candidate ancestor,OK,34ccec116204b6a61b2e37c874b0c65953acfb43 is ancestor,git merge-base
+F05,Proof Gate,Accepted causality evidence,OK,8f63d1fbf5d40c6a30ce4ed606088da99f1e25db,git rev-parse
+F06,Delta,R2-R2-R1 file count,OK,exactly 3 files,git diff --name-only
+F07,Delta,Scope exclusion,OK,no product/migration/model/dependency/config/frontend changes,git diff --name-only
+F08,GitNexus,Index status,OK,15468 nodes / 46449 edges / 808 clusters / 300 flows,npx gitnexus analyze
+F09,GitNexus,_seed_confirmed_order identical,OK,64 lines identical between parent and candidate,Python string comparison
+F10,GitNexus,Product flow impact,OK,zero; all changes are test infrastructure only,GitNexus impact analysis
+F11,Shared 1111,Snapshot before test body,OK,_shared_tenant_guard snapshots before yield,DC11D lines 469-493
+F12,Shared 1111,SELECT * captures complete rows,OK,wholesalers + bindings + retailers captured,DC11D lines 373-393
+F13,Shared 1111,Post-state restores exact rows,OK,_restore_public_tenant re-inserts exact snapshot rows,DC11D lines 411-450
+F14,Shared 1111,Task-added retailers protected,OK,protected set computed from OTHER wholesaler bindings,DC11D lines 419-441
+F15,Shared 1111,Pre-existing rows restored,OK,pre-existing rows recreated; task additions removed,DC11D lines 445-450
+F16,Shared 1111,Proof uses fresh connection,OK,AsyncSessionLocal for snapshot/cleanup/proof,DC11D lines 479-493
+F17,Fixed Tenant,2222 exact identity,OK,_CROSS_TENANT_ID and _CROSS_TENANT_SCHEMA exact UUID/name,DC11D lines 469-470
+F18,Fixed Tenant,3333 exact identity,OK,_SECOND_TENANT_ID and _SECOND_TENANT_SCHEMA exact UUID/name,canonical lines 539-543
+F19,Fixed Tenant,FK-safe cleanup order,OK,binding -> retailer -> wholesaler -> schema,DC11D + canonical
+F20,Fixed Tenant,Missing cleanup turns proof RED,OK,zero-residue proof asserts all counts == 0,canonical lines 579-610
+F21,Coverage,DC11D 5 explicit committers guarded,OK,5 tests use _shared_tenant_guard,DC11D test inspection
+F22,Coverage,DC11D cross-tenant uses 2222 guard,OK,test_cross_tenant_same_idempotency_key_is_isolated,DC11D
+F23,Coverage,Canonical cross-tenant uses 3333 guard + shared restore,OK,test_service_cross_tenant_same_key_isolated,canonical lines 530-610
+F24,Coverage,Canonical later committer uses _shared_tenant_guard,OK,test_service_failures_after_mutation_stages_rollback_all_effects,canonical diff
+F25,Coverage,No remaining unguarded commit path,OK,all remaining unguarded tests use conftest-managed t_test,test inspection
+F26,pgcrypto,Ordering correction,OK,CREATE EXTENSION BEFORE body in separate session,DC11D lines 508-512
+F27,pgcrypto,Helper already required extension,OK,_ensure_public_tables also creates pgcrypto,DC11D line 38
+F28,pgcrypto,Test infrastructure only,OK,no product code creates extensions,source inspection
+F29,Test Auth,DC11D 10/10 passed,OK,10 passed in 9.08s,pytest output
+F30,Test Auth,Canonical 18/18 passed,OK,18 passed in 11.69s,pytest output
+F31,Test Auth,DC3B predecessor bundle,HOST_RUNTIME_LIMITATION / REQUIRED_PREDECESSOR_ZERO_RED_NOT_PROVEN,Kilo result 12/16 in both orderings; parent reproduction proves candidate non-regression only; Kilo did not independently prove candidate 44/44 bundle,pytest output
+F32,Test Auth,DC3B pre-existing failures confirmed,OK,same 4 tests fail on parent b4c1ec6b,pytest output
+F33,Test Auth,H2-B 12/12 passed,OK,12 passed in 19.08s against real PG16 + Redis,pytest output
+F34,Test Auth,Supplemental 123-node regression run natural,SUPPLEMENTAL_123_NODE_REGRESSION_RUN,123 passed in 300.26s; NOT the mandated focused 109-node bundle; candidate-provided 109/109 remains candidate evidence only,pytest output
+F35,Test Auth,Supplemental 123-node regression run reverse,SUPPLEMENTAL_123_NODE_REGRESSION_RUN,123 passed in 313.19s; NOT the mandated focused 109-node bundle; candidate-provided 109/109 remains candidate evidence only,pytest output
+F36,Test Auth,Mandated focused 109-node bundle,NOT_EXECUTED_BY_KILO / HOST_LIMITATION,Kilo did not independently execute the mandated focused 109-node bundle. Candidate-ledger 109/109 result is candidate-provided evidence only, not Kilo runtime proof,E1 correction
+F37,Test Auth,M1/M2/M3 source review,OK,M1/M2/M3 reviewed from source and candidate ledger; Kilo did not independently execute mutations,source + ledger inspection
+F38,Test Auth,No skip/xfail/conditional pass,OK,all executed tests use standard asyncio marks,test inspection
+F39,Quality,py_compile,OK,2/2 files compile without error,python -m py_compile
+F40,Quality,git diff --check,OK,Clean on R2-R2-R1 delta,git diff --check
+F41,Quality,detect-secrets,OK,0 findings on scoped changed files,detect-secrets scan
+F42,Quality,BOM check,OK,No BOM on any of 2 changed test files,byte inspection
+F43,Quality,UTF-8 validation,OK,All 2 files decode as valid UTF-8,encoding check
+F44,Quality,GitNexus analyze,OK,15468 nodes / 46449 edges / 808 clusters / 300 flows,npx gitnexus analyze
+F45,Worktree,Candidate worktree clean,OK,detached worktree at 683297f is clean,git status
+F46,STOP,Unguarded commit path,OK,No unguarded explicit commit path remains,review
+F47,STOP,Shared state not restored,OK,Exact snapshot restoration proven,review
+F48,STOP,Fixed tenant residue,OK,Zero residue proven; missing cleanup turns RED,review
+F49,STOP,Full-backend zero-red overclaim,OK,Not claimed; scope limited to task-owned resources,review

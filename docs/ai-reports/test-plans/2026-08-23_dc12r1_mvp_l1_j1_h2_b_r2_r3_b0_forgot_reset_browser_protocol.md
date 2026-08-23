@@ -1,14 +1,27 @@
 # DC-12R1-MVP-L1-J1-H2-B-R2-R3-B0 — Forgot/Reset 浏览器旅程协议冻结
 
-> ## ⚠️ R1 供给真值修正横幅（2026-08-24，修正基线 B0=`8b0671c`）
+> ## ⚠️ R2 官方租户用户供给真值收窄横幅（2026-08-24，父提交 R1=`48473ed`）
+>
+> R1 历史全部保留（含 owner signup 唯一性结论与【R1】标注）。R2（分支 `zcode/dc12r1-mvp-l1-j1-h2-b-r2-r3-b0-r2-official-user-provisioning-truth-2026-08-24`）在其上收窄/恢复以下内容，修正处以【R2】标注：
+>
+> 1. **结论收窄（不撤回 R1）**：owner signup 不能产生双活跃注册（保留）；**但正式租户本地 `POST /api/v1/users` 可跨两个租户创建同邮箱用户**（`email_exists` 仅查本租户 schema；源码锚点见 §2.5-2）。
+> 2. **M1 恢复为 `BROWSER_WITH_OFFICIAL_API_PRECONDITION`**：W1/W2 owner 不同邮箱正式 signup → 各自经正式 API 创建同一 admin 邮箱（必要时 `PUT /users/{id}/roles`）→ 前置门验证登录精确见 W1/W2 → forgot/邮件链接/重置/旧密码拒绝/新密码双租户接受**全部浏览器 UI 执行**。
+> 3. 禁止清单不变：SQL/直接 ORM/手写哈希/debug 端点；API 代替 forgot/reset 旅程动作。
+> 4. M2 与 R6 维持 `BACKEND_PRE_GATE_ONLY`。
+> 5. 统计恢复：**24 browser**（23 个纯 BROWSER/BROWSER+POSTCOND 单副本节点 + M1）+ **5 non-browser**（F6/R6/M2/R13/RT0）= 29。
+> 6. signup 中性响应锚点补充 `auth.py:146-154`。
+>
+> ---
+>
+> ## ⚠️ R1 供给真值修正横幅（2026-08-24，修正基线 B0=`8b0671c`）【历史保留】
 >
 > 本文件保留为 B0 历史证据；R1（分支 `zcode/dc12r1-mvp-l1-j1-h2-b-r2-r3-b0-r1-provisioning-truth-2026-08-23`）就地修正以下内容，修正处以【R1】标注：
 >
 > 1. **撤回**"官方 signup 允许同一 owner email 创建两个活跃批发商注册"的主张（原 §2.5-2、§4）。冻结源源码证明相反（修正后锚点见 §2.5-2）。
-> 2. 多副本密码重置路径全部重分类为 `BACKEND_PRE_GATE_ONLY`：成功 fan-out（M1）在当前受支持生命周期内无法制造副本；部分扫描/应用回滚（M2）维持前置门禁；浏览器旅程**不得以 SQL/API 桥接伪造副本**。
-> 3. 节点统计重算：浏览器权威 **23** + 前置/后置/阻断 **6** = 29（行数不变，M1 移类）。
+> 2. ~~多副本密码重置路径全部重分类为 `BACKEND_PRE_GATE_ONLY`~~【R2 已按官方用户 API 真值恢复 M1 为浏览器可验证，见 R2 横幅第 2 条】。
+> 3. ~~节点统计重算：浏览器权威 23 + 前置/后置/阻断 6 = 29~~【R2 恢复 24/5/29，见 R2 横幅第 5 条】。
 > 4. PB-1 保持原文，明确为 **P1 产品阻断，移交后续 H2-C**。
-> 5. 未来浏览器范围澄清：批发商受支持 UI 旅程可在运行时验收后执行；零售商旅程冻结至 H2-C；多副本原子性由后端前置门禁证明，而非浏览器供给虚构。
+> 5. 未来浏览器范围澄清：批发商受支持 UI 旅程可在运行时验收后执行；零售商旅程冻结至 H2-C。
 
 - 分支：`zcode/dc12r1-mvp-l1-j1-h2-b-r2-r3-b0-forgot-reset-browser-protocol-2026-08-23`（B0 原分支）
 - 冻结源：`218be690a6d5ad3551c31fa28087964440c888c9`（== 远端源分支 `origin/zcode/dc12r1-mvp-l1-j1-h2-b-r2-r3-full-suite-test-hygiene-closure-2026-08-23` HEAD，已核验）
@@ -82,13 +95,12 @@
 ### 2.5 显式判定（任务书要求）
 
 1. **旅程适用对象**：批发商 owner/operator —— **完整受支持 UI 旅程**（发现→表单→邮件→重置→复验全链路存在）。零售商 operator —— **发现层缺失**（见 PB-1），重置页 `/retailer/reset-password` 与后端端点存在但无入口到达。故权威旅程作用于批发商侧；零售商侧冻结为协议阻断。
-2. **跨租户重复身份能否经受支持生命周期产生**：【R1 修正·撤回原主张】**批发商 owner 同邮箱不能创建第二个活跃注册**。冻结源源码真值：
-   - `_live_registration_for_email` 防止第二个活跃注册：已存在活跃注册时 signup 直接返回 `SignupResult(registration_id=None, status="pending_email_verification")`，**不创建新注册**（`backend/services/onboarding_service.py:331-333`；函数定义 `:511-524`）；
-   - 数据库层唯一性兜底：部分唯一索引 `ux_tenant_registrations_owner_email_live`（owner_email 唯一，WHERE status IN LIVE_REGISTRATION_STATUSES）（`backend/models/tenant_onboarding.py:35-39,75-80`；迁移 `backend/alembic/versions/026_tenant_onboarding_auth_contract.py:193-200`）；
-   - 重复归一化邮箱的 signup 返回**中性 202**（`backend/api/v1/auth.py:116` 固定 202；onboarding_service 上述分支），不产生第二个活跃注册；
-   - 既往浏览器观察中的"零售商双绑定"现象**不能证明**批发商 owner 双注册——那是零售商侧生命周期，与 owner signup 唯一性无关。
-3. **浏览器可验证的原子性面**：【R1 修正】**无**。成功 fan-out（M1）所需的多副本在当前受支持生命周期内无法制造（见 2），故 M1 亦为 `BACKEND_PRE_GATE_ONLY`；浏览器旅程不得以 SQL/API 桥接伪造副本。
-4. **必须保留为后端前置门禁的面**：成功 fan-out（M1）与部分失败回滚（M2：SCAN_INCOMPLETE / APPLY_FAILED 的 all-or-nothing）均需副本存在/故障注入，浏览器不可达 → `BACKEND_PRE_GATE_ONLY`。过期令牌（R6，1h TTL 无法在权威运行窗口内自然产生）同为前置门禁证据 + UI 文案等价由 R5 覆盖。
+2. **跨租户重复身份能否经受支持生命周期产生**：【R2 收窄 R1 结论·保留 owner signup 唯一性】
+   - **owner signup 不能产生双活跃注册**（R1 结论保留）：`_live_registration_for_email` 防止第二个活跃注册（已存在活跃注册时返回 `SignupResult(registration_id=None, status="pending_email_verification")`，`backend/services/onboarding_service.py:331-333`，定义 `:511-524`）；部分唯一索引 `ux_tenant_registrations_owner_email_live` 数据库兜底（`backend/models/tenant_onboarding.py:35-39,75-80`；迁移 `backend/alembic/versions/026_tenant_onboarding_auth_contract.py:193-200`）；重复归一化邮箱返回**中性 202** 且不建第二个活跃注册（端点固定 202 `backend/api/v1/auth.py:116`；中性响应体 `auth.py:146-154`：`registration_id=None` + `NEUTRAL_SIGNUP_MESSAGE`）；零售商双绑定观察不能证明 owner 双注册。
+   - **但正式租户本地用户 API 可以跨租户创建同邮箱用户**【R2 新增真值】：`POST /api/v1/users`（挂载 `backend/api/app.py:130`；端点 `backend/api/v1/users.py:95-136`）运行于**租户作用域会话**（`get_tenant_db_session`），其唯一性检查 `email_exists` 仅查询**本租户 schema** 的 users 表（`backend/crud/user.py:392-411`，无跨租户查询）→ 同一规范化邮箱可经各自租户的 owner 分别创建；权限要求 `users:create`（`users.py:98`），owner 首管理员持 `ADMIN_ROLE="admin"` 且 `ADMIN_PERMISSIONS` 含 `users:create`/`roles:assign`（`backend/core/permission_registry.py:14,19,29`；owner 凭据路径 `backend/services/owner_credential_service.py:14`）；正式角色分配 `PUT /api/v1/users/{id}/roles`（`users.py:269`）。
+   - 该身份登录时跨租户可见性有源码支撑：login 聚合**已验证**副本构建 `available_tenants`（`auth.py:286-292`）→ 前置门可断言该身份精确看到 W1/W2。
+3. **浏览器可验证的原子性面**：【R2 恢复】**成功 fan-out（M1）可浏览器验证**——多副本由**官方 API 前置**制造（见 §4 R2 供给路径），前置门验证登录可见 W1/W2 后，忘记密码、邮件链接获取、重置、旧密码拒绝、新密码双租户接受**全部由浏览器渲染 UI 执行**（M1 = `BROWSER_WITH_OFFICIAL_API_PRECONDITION`）。
+4. **必须保留为后端前置门禁的面**：部分失败回滚（M2：SCAN_INCOMPLETE / APPLY_FAILED 的 all-or-nothing，需故障注入）与自然过期（R6，1h TTL）维持 `BACKEND_PRE_GATE_ONLY`；R6 的 UI 文案等价由 R5 覆盖。
 
 ## 3. 协议阻断项（UI 缺失，不得以 API 旅程绕过）
 
@@ -103,7 +115,14 @@
 
 **允许**：官方 signup → 邮箱验证（任务 maildir 读链接，浏览器外）→ setup-credential → login；maildir 私有读取；只读 DB/API 后置校验（与旅程动作显式分离，仅作 postcondition 断言）。
 
-**【R1 修正】禁止（增补）**：以任何方式伪造多副本——批发商 owner 同邮箱双活跃注册被源码阻止（§2.5-2 锚点），浏览器旅程**不得以 SQL/API 桥接制造副本**；多副本路径（M1/M2）一律 `BACKEND_PRE_GATE_ONLY`。其余原禁止项不变：直调 SQL 造身份/修复；手写哈希；沿用旧凭据/旧库；debug 端点；把 token/密码写进证据；用 API 助手执行浏览器旅程动作（例：不得用 `api.post('/auth/forgot-password')` 代替在渲染表单中输入提交）。
+**【R2 修正】M1 多副本官方供给路径（唯一授权方式）**：
+1. W1/W2 owner 以**不同邮箱**各自完成官方 signup → 验证 → setup-credential → login（两个独立租户）；
+2. 各自登录所属租户后，经**正式** `POST /api/v1/users` 在本租户创建**同一规范化 admin 邮箱**用户（前置供给动作，非旅程动作）；
+3. 必要时经正式 `PUT /api/v1/users/{id}/roles` 分配正式角色；
+4. 前置门验证：该 admin 邮箱 login 后**精确看到 W1/W2** 两个可用工作区（`auth.py:286-292`）；
+5. 此后的 forgot-password、maildir 链接获取（任务私有）、reset 页、旧密码拒绝、新密码双租户接受**全部必须由浏览器渲染 UI 执行**——API 仅限上述 2/3 的官方用户供给前置，不得代替任何 forgot/reset 旅程动作。
+
+**【R2 禁止（沿 R1 精神收窄）】**：SQL/直连 ORM/手写哈希/debug 端点制造或修复身份；以 API 代替 forgot/reset 旅程动作（例：不得用 `api.post('/auth/forgot-password')` 代替在渲染表单中输入提交）；owner 同邮箱双 signup（被源码阻止，属无效尝试）；沿用旧凭据/旧库；把 token/密码写进证据。
 
 **身份矩阵（R1 修正后）**：A1 = persona-1@任务域（唯一 owner 注册——同邮箱二注册返回中性 202 且不建新注册）；~~A2 = 同邮箱第二租户~~（撤回：不可经官方生命周期制造）；U = 从未注册邮箱；X = 不合格邮箱（如仅存在已删除用户的邮箱——若官方生命周期无法制造，降级为 `BACKEND_PRE_GATE_ONLY` 后置断言，不做桥接）。密码：P0 供给期初值，P1 重置前值，P2 重置后值，P3 重放尝试值——全部仅存在于运行时内存与任务私有密文，不入任何证据。
 
@@ -121,7 +140,7 @@
    - token 出现于 query/日志/存储/证据任何一处；
    - 旧密码仍可登录（R9 失败）；
    - 重放被接受（R11 失败）；
-   - 部分副本更新（【R1】M1/M2 均为后端前置门禁，浏览器运行不再涉及；前置门禁侧的部分副本/扫描证据仍属 STOP 级缺陷上报）;
+   - 部分副本更新（【R2】M1 浏览器运行中任一工作区新旧密码状态与另一侧不一致即 STOP；M2 前置门禁侧的部分副本/扫描证据同属 STOP 级缺陷上报）;
    - 出现意外的 skip/retry/conditional pass；
    - 运行时/源码 SHA 漂移。
 8. **清理与证明**：停任务进程；仅删任务自有容器/卷/网络/maildir/worktree；核验端口释放；候选与保护 refs 未变证明。
@@ -148,33 +167,33 @@ frontend/e2e/forgot-reset/
 4. **query 拒绝**（R3）：`page.goto('/reset-password?resetToken=x')` 断言 Invalid Link 面板可见且 URL 已被清洗为 pathname。锚点 `ResetPasswordPage.tsx:35-39,76-97`。
 5. **存储卫生**（R12）：旅程结束后在页面上下文执行枚举脚本，断言两 storage 的 key/value 均不匹配 `/resetToken|password|Authorization/i`；console 消息与网络日志同样过滤断言。**断言失败信息只输出命中字段的 key 名，绝不输出值**。
 6. **重放与一次性**（R11）：同令牌二次提交断言 401 + 中性文案，随后以 P2 再次登录成功（复验 P3 未生效）。
-7. **多副本**（M1）：【R1 撤回浏览器设计】~~两套 browserContext 双侧 R9/R10~~——多副本不可经当前受支持生命周期制造（§2.5-2），M1 移交后端前置门禁（fixture 表驱动：副本集由后端测试供给，浏览器侧不实现、不伪造）。
+7. **多副本**（M1）：【R2 恢复浏览器设计】前置：官方 API 供给同邮箱双租户 admin（§4 R2 路径步骤 1-4，含登录精确见 W1/W2 的前置门断言）；浏览器侧：该 admin 在 W1 工作区经渲染 UI 走 forgot → maildir 取链（任务私有）→ reset 成功 → 断言**两个**工作区（双 `browserContext`，storageState 独立）新密码 P2 均可登录、旧密码 P1 均被拒。
 8. **maildir helper**：仅 `fs.readFile` 任务运行时目录 → 正则提取链接 → 返回字符串；**禁止** `console.log`/截图/trace 含链接；trace 设 `screenshots:'off'` 或对地址栏区域做截断处理（设计取舍：优先关闭 trace 截图，仅保留 DOM 快照无 URL）。
 9. **视图口**：三个 `test.describe` 内以 `page.setViewportSize` 逐节点切换（CSV viewport 列为唯一事实源）。
 10. **证据输出**：machine JSON（每节点 result/elapsed/断言摘要）、JUnit XML、节点 CSV 执行回填、对账表（29 节点全部 accounted，gap=0）。
 
 ### 6.3 明确不做
 
-不实现/不运行上述代码；不创建 `frontend/e2e/`；不修改 playwright 配置；不新增依赖。下一步动作等待 CTO 同时接受：① OpenCode WSL literal zero-red 结果（待其配额恢复）；② 本冻结协议。
+不实现/不运行上述代码；不创建 `frontend/e2e/`；不修改 playwright 配置；不新增依赖。下一步动作等待 CTO 同时接受：① OpenCode WSL literal zero-red 结果；② 本协议（经 B0→R1→R2 修正链的当前版本）。
 
-## 7. 节点清单与统计（R1 重算）
+## 7. 节点清单与统计（R2 恢复重算）
 
-- **总节点数：29**（行集不变；`2026-08-23_..._node_inventory.csv`，由修正后各行类别重算）
-- 【R1】浏览器权威节点 **23**；非浏览器前置/后置/阻断节点 **6**（F6 maildir 前置、R6 过期=前置门禁、**M1 成功 fan-out=前置门禁（移类）**、M2 原子性=前置门禁、R13 证据后置、RT0 协议阻断行）
-- **browser / backend-pre-gate 分割（R1 后）**：浏览器仅覆盖单副本批发商 owner 全链路 + 中性/传输/卫生面；多副本成功 fan-out（M1）与失败原子性（M2）均为 `BACKEND_PRE_GATE_ONLY`；自然过期（R6）为前置门禁证据。
+- **总节点数：29**（行集不变；`2026-08-23_..._node_inventory.csv`）
+- 【R2】浏览器节点 **24** = 23 个纯 `BROWSER`/`BROWSER+POSTCOND` 单副本节点 + **M1**（`BROWSER_WITH_OFFICIAL_API_PRECONDITION`）；非浏览器节点 **5**（F6 maildir 前置、R6 过期=前置门禁、M2 原子性=前置门禁、R13 证据后置、RT0 协议阻断行）
+- **browser / backend-pre-gate 分割（R2 后）**：浏览器覆盖单副本全链路 + 中性/传输/卫生面 + 多副本**成功** fan-out（M1，官方 API 前置供给）；失败原子性（M2）与自然过期（R6）维持 `BACKEND_PRE_GATE_ONLY`。
 
-## 8. 已知阻断/假设/风险（R1 修正后）
+## 8. 已知阻断/假设/风险（R2 修正后）
 
 - **PB-1**（§3）：零售商发现层缺失 → 零售商旅程冻结，**P1 产品阻断移交 H2-C**。
-- **【R1 撤回原假设】**~~signup 允许同邮箱双租户~~：源码证明相反（§2.5-2 四条锚点）；多副本能力是否存在受支持生命周期入口，留待 H2-C 或后端变更时重新评估，届时重新冻结供给契约。
+- **多副本供给假设（R2 确立）**：owner signup 唯一性保留（R1）；多副本唯一官方路径 = 各租户 owner 经正式 `POST /api/v1/users` 创建同邮箱用户（§2.5-2/§4 锚点）。若未来源变更（如 `email_exists` 改为跨租户），M1 前置失效 → STOP 并报告，不做桥接。
 - **风险**：F5 的"不合格邮箱"若无法经官方生命周期制造（如无法产生仅含已删除用户的邮箱），按 §4 降级为后置断言；maildir 链接的 trace/截图泄漏风险已以 6.2-8 设计对冲。
-- **资格声明**：本任务（B0 及 R1）零运行时、零源码修改、零测试修改；GitNexus 未索引（约束性跳过）；OpenCode 并行任务资产零接触。
+- **资格声明**：本任务（B0/R1/R2）零运行时、零源码修改、零测试修改；GitNexus 未索引（约束性跳过）；OpenCode 并行任务资产零接触。
 
-## 8a. 未来浏览器范围（R1 澄清）
+## 8a. 未来浏览器范围（R2 澄清）
 
-- **批发商受支持 UI 旅程**：在运行时验收（§5 前置门禁）通过后可执行——即 CSV 23 个浏览器权威节点。
+- **批发商受支持 UI 旅程**：在运行时验收（§5 前置门禁）通过后可执行——即 CSV 24 个浏览器节点（含 M1）。
 - **零售商旅程**：冻结直至 H2-C 交付 PB-1 修复；届时需增补/重新冻结协议。
-- **多副本原子性**：由后端前置门禁证明（后端测试/门禁证据），**不得**以浏览器供给虚构或 SQL/API 桥接制造副本。
+- **多副本原子性**：成功 fan-out 由浏览器经官方 API 前置供给后验证（M1）；失败路径原子性（M2）由后端前置门禁证明——**任何路径都不得**以 SQL/直接 ORM/手写哈希/debug 端点伪造副本或修复数据。
 
 ## 9. 交付元数据
 

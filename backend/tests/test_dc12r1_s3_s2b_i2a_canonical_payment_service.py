@@ -485,17 +485,165 @@ async def test_service_force_completed_cannot_create_pending_payment(async_sessi
     assert Decimal(str(snapshot["completed_total"])) == Decimal("40.00")
 
 
+# ---------------------------------------------------------------------------
+# DC-12R1-MVP-L1-J1-H2-B-R2-R2: fail-closed teardown for the cross-tenant
+# node's committed database residue.
+#
+# Causality (V2-R2 audit 8f63d1fb + fresh-stack reproduction, see ledger):
+# this node commits public.wholesalers rows whose derived tenant schemas are
+# unscannable by the password-reset user enumeration (schema without a users
+# table, or derived schema that does not exist at all). On a fresh stack the
+# node commits TWO such rows: the hardcoded tenant 33333333-... (schema
+# t_33333333333333333333333333333333 has no users table) and the shared
+# t_test tenant wholesaler (its derived schema is never created). Either row
+# alone makes the DC3B credential-recovery scan fail closed
+# (PASSWORD_RESET_SCAN_INCOMPLETE → neutral 401) in 5 of its 16 nodes.
+#
+# The teardown below therefore owns, by exact UUID identity only (no
+# prefixes, no LIKE, no wildcard schema scans, no global resets, no DROP
+# DATABASE), everything this node commits outside the conftest-owned t_test
+# schema:
+# - the fixed second tenant UUID and its derived schema;
+# - the second retailer ID captured from this node's _seed_confirmed_order
+#   call (captured, never discarded) and its exact wholesaler-retailer
+#   binding;
+# - the exact first-tenant public rows this node commits (shared t_test
+#   tenant UUID, captured first retailer ID, exact pair binding).
+# ---------------------------------------------------------------------------
+
+_SECOND_TENANT_SCHEMA = "t_33333333333333333333333333333333"
+_SECOND_TENANT_ID = uuid.UUID("33333333-3333-3333-3333-333333333333")
+
+
+async def _exact_count(session, sql: str, params: dict) -> int:
+    result = await session.execute(text(sql), params)
+    return int(result.scalar_one())
+
+
+@pytest.fixture
+async def _cross_tenant_residue_guard(async_session):
+    """Fail-closed residue teardown for test_service_cross_tenant_same_key_isolated.
+
+    Runs even when the test body fails (fixture finalization) and cannot mask
+    an original body failure: the body's exception has already reached pytest
+    before teardown starts. Cleanup uses fresh sessions/connections outside
+    the test transaction; the test session is rolled back first (idempotent —
+    the async_session fixture repeats it) so its locks cannot block cleanup.
+    """
+    owned = {"first_tenant_id": None, "first_retailer_id": None, "second_retailer_id": None}
+    yield owned
+
+    await async_session.rollback()
+    first_tenant = owned["first_tenant_id"]
+    first_retailer = owned["first_retailer_id"]
+    second_retailer = owned["second_retailer_id"]
+
+    async with AsyncSessionLocal() as cleanup:
+        # FK-safe order: bindings -> retailers -> wholesalers -> schema.
+        if second_retailer is not None:
+            await cleanup.execute(
+                text(
+                    "DELETE FROM public.wholesaler_retailer_bindings "
+                    "WHERE wholesaler_id = :wholesaler AND retailer_id = :retailer"
+                ),
+                {"wholesaler": str(_SECOND_TENANT_ID), "retailer": str(second_retailer)},
+            )
+            await cleanup.execute(
+                text("DELETE FROM public.retailers WHERE id = :retailer"),
+                {"retailer": str(second_retailer)},
+            )
+        if first_tenant is not None and first_retailer is not None:
+            await cleanup.execute(
+                text(
+                    "DELETE FROM public.wholesaler_retailer_bindings "
+                    "WHERE wholesaler_id = :wholesaler AND retailer_id = :retailer"
+                ),
+                {"wholesaler": str(first_tenant), "retailer": str(first_retailer)},
+            )
+            await cleanup.execute(
+                text("DELETE FROM public.retailers WHERE id = :retailer"),
+                {"retailer": str(first_retailer)},
+            )
+        await cleanup.execute(
+            text("DELETE FROM public.wholesalers WHERE id = :wholesaler"),
+            {"wholesaler": str(_SECOND_TENANT_ID)},
+        )
+        if first_tenant is not None:
+            await cleanup.execute(
+                text("DELETE FROM public.wholesalers WHERE id = :wholesaler"),
+                {"wholesaler": str(first_tenant)},
+            )
+        await cleanup.execute(
+            text(f'DROP SCHEMA IF EXISTS "{_SECOND_TENANT_SCHEMA}" CASCADE')
+        )
+        await cleanup.commit()
+
+    # Independent zero-residue proof on another fresh connection; any nonzero
+    # count fails the test (fail-closed), it never silently passes.
+    async with AsyncSessionLocal() as proof:
+        counts = {
+            "pg_namespace.schema": await _exact_count(
+                proof,
+                "SELECT COUNT(*) FROM pg_namespace WHERE nspname = :schema",
+                {"schema": _SECOND_TENANT_SCHEMA},
+            ),
+            "public.wholesalers[second_tenant]": await _exact_count(
+                proof,
+                "SELECT COUNT(*) FROM public.wholesalers WHERE id = :wholesaler",
+                {"wholesaler": str(_SECOND_TENANT_ID)},
+            ),
+            "public.wholesaler_retailer_bindings[second_tenant]": await _exact_count(
+                proof,
+                "SELECT COUNT(*) FROM public.wholesaler_retailer_bindings "
+                "WHERE wholesaler_id = :wholesaler",
+                {"wholesaler": str(_SECOND_TENANT_ID)},
+            ),
+            "public.retailers[second_retailer]": (
+                await _exact_count(
+                    proof,
+                    "SELECT COUNT(*) FROM public.retailers WHERE id = :retailer",
+                    {"retailer": str(second_retailer)},
+                )
+                if second_retailer is not None
+                else 0
+            ),
+        }
+        if first_tenant is not None:
+            counts["public.wholesalers[first_tenant]"] = await _exact_count(
+                proof,
+                "SELECT COUNT(*) FROM public.wholesalers WHERE id = :wholesaler",
+                {"wholesaler": str(first_tenant)},
+            )
+        if first_tenant is not None and first_retailer is not None:
+            counts["public.wholesaler_retailer_bindings[first_pair]"] = await _exact_count(
+                proof,
+                "SELECT COUNT(*) FROM public.wholesaler_retailer_bindings "
+                "WHERE wholesaler_id = :wholesaler AND retailer_id = :retailer",
+                {"wholesaler": str(first_tenant), "retailer": str(first_retailer)},
+            )
+            counts["public.retailers[first_retailer]"] = await _exact_count(
+                proof,
+                "SELECT COUNT(*) FROM public.retailers WHERE id = :retailer",
+                {"retailer": str(first_retailer)},
+            )
+    assert all(count == 0 for count in counts.values()), (
+        f"cross-tenant residue teardown left database residue: {counts}"
+    )
+
+
 @pytest.mark.asyncio
-async def test_service_cross_tenant_same_key_isolated(async_session):
+async def test_service_cross_tenant_same_key_isolated(async_session, _cross_tenant_residue_guard):
     first_schema = _tenant_schema(async_session)
     first_tenant_id = _tenant_id(async_session)
-    second_schema = "t_33333333333333333333333333333333"
-    second_tenant_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    second_schema = _SECOND_TENANT_SCHEMA
+    second_tenant_id = _SECOND_TENANT_ID
     shared_key = "i2a-shared-key"
 
     first_order_id, first_retailer_id, first_token = await _seed_confirmed_order(
         async_session, tenant_id=first_tenant_id, total=Decimal("100.00")
     )
+    _cross_tenant_residue_guard["first_tenant_id"] = first_tenant_id
+    _cross_tenant_residue_guard["first_retailer_id"] = first_retailer_id
     first_service = CanonicalPaymentService()
     await first_service.confirm_payment(
         db=async_session,
@@ -519,9 +667,10 @@ async def test_service_cross_tenant_same_key_isolated(async_session):
         )
     )
     await _set_search_path(async_session, second_schema)
-    second_order_id, _second_retailer_id, _second_token = await _seed_confirmed_order(
+    second_order_id, second_retailer_id, _second_token = await _seed_confirmed_order(
         async_session, tenant_id=second_tenant_id, total=Decimal("100.00")
     )
+    _cross_tenant_residue_guard["second_retailer_id"] = second_retailer_id
     await async_session.commit()
 
     await async_engine.dispose()

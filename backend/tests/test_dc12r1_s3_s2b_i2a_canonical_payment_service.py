@@ -23,9 +23,12 @@ from tests.test_dc11d_payment_replay_concurrency_integrity import (
     _Token,
     _bootstrap_minimal_tenant_schema,
     _pay_in_new_session,
+    _restore_public_tenant,
     _seed_confirmed_order,
     _set_search_path,
+    _shared_tenant_guard,
     _snapshot,
+    _snapshot_public_tenant,
     _tenant_id,
     _tenant_schema,
 )
@@ -503,12 +506,15 @@ async def test_service_force_completed_cannot_create_pending_payment(async_sessi
 # prefixes, no LIKE, no wildcard schema scans, no global resets, no DROP
 # DATABASE), everything this node commits outside the conftest-owned t_test
 # schema:
-# - the fixed second tenant UUID and its derived schema;
+# - the fixed second tenant UUID and its derived schema: task-created, so
+#   their exact rows/schema are removed and a zero-residue proof must hold;
 # - the second retailer ID captured from this node's _seed_confirmed_order
 #   call (captured, never discarded) and its exact wholesaler-retailer
 #   binding;
-# - the exact first-tenant public rows this node commits (shared t_test
-#   tenant UUID, captured first retailer ID, exact pair binding).
+# - the shared t_test tenant rows this node commits: they may PRE-EXIST, so
+#   R2-R2-R1 restores them to the pre-test snapshot (DC11D shared ownership
+#   helpers) instead of deleting — a row is never deleted merely because
+#   this test touched it, and post-state must equal pre-state.
 # ---------------------------------------------------------------------------
 
 _SECOND_TENANT_SCHEMA = "t_33333333333333333333333333333333"
@@ -530,16 +536,22 @@ async def _cross_tenant_residue_guard(async_session):
     the test transaction; the test session is rolled back first (idempotent —
     the async_session fixture repeats it) so its locks cannot block cleanup.
     """
-    owned = {"first_tenant_id": None, "first_retailer_id": None, "second_retailer_id": None}
+    first_tenant_id = str(_tenant_id(async_session))
+    async with AsyncSessionLocal() as snapshot_session:
+        snap = await _snapshot_public_tenant(
+            snapshot_session, wholesaler_id=first_tenant_id
+        )
+    owned = {"second_retailer_id": None}
     yield owned
 
     await async_session.rollback()
-    first_tenant = owned["first_tenant_id"]
-    first_retailer = owned["first_retailer_id"]
     second_retailer = owned["second_retailer_id"]
 
     async with AsyncSessionLocal() as cleanup:
-        # FK-safe order: bindings -> retailers -> wholesalers -> schema.
+        # FK-safe order for the fixed second tenant: binding -> retailer ->
+        # wholesaler -> schema, then exact snapshot restore for the shared
+        # first tenant (its pre-existing rows are recreated, task-created
+        # additions are removed).
         if second_retailer is not None:
             await cleanup.execute(
                 text(
@@ -552,33 +564,19 @@ async def _cross_tenant_residue_guard(async_session):
                 text("DELETE FROM public.retailers WHERE id = :retailer"),
                 {"retailer": str(second_retailer)},
             )
-        if first_tenant is not None and first_retailer is not None:
-            await cleanup.execute(
-                text(
-                    "DELETE FROM public.wholesaler_retailer_bindings "
-                    "WHERE wholesaler_id = :wholesaler AND retailer_id = :retailer"
-                ),
-                {"wholesaler": str(first_tenant), "retailer": str(first_retailer)},
-            )
-            await cleanup.execute(
-                text("DELETE FROM public.retailers WHERE id = :retailer"),
-                {"retailer": str(first_retailer)},
-            )
         await cleanup.execute(
             text("DELETE FROM public.wholesalers WHERE id = :wholesaler"),
             {"wholesaler": str(_SECOND_TENANT_ID)},
         )
-        if first_tenant is not None:
-            await cleanup.execute(
-                text("DELETE FROM public.wholesalers WHERE id = :wholesaler"),
-                {"wholesaler": str(first_tenant)},
-            )
         await cleanup.execute(
             text(f'DROP SCHEMA IF EXISTS "{_SECOND_TENANT_SCHEMA}" CASCADE')
         )
+        await _restore_public_tenant(
+            cleanup, wholesaler_id=first_tenant_id, snap=snap
+        )
         await cleanup.commit()
 
-    # Independent zero-residue proof on another fresh connection; any nonzero
+    # Independent zero-residue proof for the fixed second tenant; any nonzero
     # count fails the test (fail-closed), it never silently passes.
     async with AsyncSessionLocal() as proof:
         counts = {
@@ -608,26 +606,18 @@ async def _cross_tenant_residue_guard(async_session):
                 else 0
             ),
         }
-        if first_tenant is not None:
-            counts["public.wholesalers[first_tenant]"] = await _exact_count(
-                proof,
-                "SELECT COUNT(*) FROM public.wholesalers WHERE id = :wholesaler",
-                {"wholesaler": str(first_tenant)},
-            )
-        if first_tenant is not None and first_retailer is not None:
-            counts["public.wholesaler_retailer_bindings[first_pair]"] = await _exact_count(
-                proof,
-                "SELECT COUNT(*) FROM public.wholesaler_retailer_bindings "
-                "WHERE wholesaler_id = :wholesaler AND retailer_id = :retailer",
-                {"wholesaler": str(first_tenant), "retailer": str(first_retailer)},
-            )
-            counts["public.retailers[first_retailer]"] = await _exact_count(
-                proof,
-                "SELECT COUNT(*) FROM public.retailers WHERE id = :retailer",
-                {"retailer": str(first_retailer)},
-            )
     assert all(count == 0 for count in counts.values()), (
         f"cross-tenant residue teardown left database residue: {counts}"
+    )
+    # Independent ownership proof for the shared first tenant: post-state
+    # must equal the pre-test snapshot exactly.
+    async with AsyncSessionLocal() as ownership_proof:
+        post = await _snapshot_public_tenant(
+            ownership_proof, wholesaler_id=first_tenant_id
+        )
+    assert post == snap, (
+        "shared-tenant ownership violation: post-test public rows differ from "
+        f"pre-test snapshot for wholesaler {first_tenant_id}"
     )
 
 
@@ -642,8 +632,6 @@ async def test_service_cross_tenant_same_key_isolated(async_session, _cross_tena
     first_order_id, first_retailer_id, first_token = await _seed_confirmed_order(
         async_session, tenant_id=first_tenant_id, total=Decimal("100.00")
     )
-    _cross_tenant_residue_guard["first_tenant_id"] = first_tenant_id
-    _cross_tenant_residue_guard["first_retailer_id"] = first_retailer_id
     first_service = CanonicalPaymentService()
     await first_service.confirm_payment(
         db=async_session,
@@ -696,7 +684,9 @@ async def test_service_cross_tenant_same_key_isolated(async_session, _cross_tena
 
 
 @pytest.mark.asyncio
-async def test_service_failures_after_mutation_stages_rollback_all_effects(async_session, monkeypatch):
+async def test_service_failures_after_mutation_stages_rollback_all_effects(
+    async_session, monkeypatch, _shared_tenant_guard
+):
     tenant_id = _tenant_id(async_session)
     order_create, retailer_create, token_create = await _seed_confirmed_order(
         async_session, tenant_id=tenant_id, total=Decimal("100.00")

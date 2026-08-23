@@ -137,3 +137,109 @@ H2B 12/12、聚焦 109/109 自然+倒序——**全部 GREEN**。
 
 Zcode 冻结检查点（本分支，推送后 STOP）→ Kilo 有界两文件源/测试审 →
 OpenCode WSL 双全新栈全量 zero-red → 浏览器忘记/重置旅程 → CTO 受控合并。
+
+---
+
+# DC-12R1-MVP-L1-J1-H2-B-R2-R2-R1 — 跨模块夹具所有权闭合（增补，FROZEN CHECKPOINT）
+
+- 日期：2026-08-23（+08:00）；执行者：Zcode
+- 分支：`zcode/dc12r1-mvp-l1-j1-h2-b-r2-r2-r1-cross-module-fixture-ownership-2026-08-23`
+  （自 R2-R2 提交 `b4c1ec6b85b6701e0ae11f33ddbb7ed5f197afda` 创建）
+- 范围：**恰 3 文件**（DC11D 测试 / canonical 测试 / 本台账增补）；
+  无产品/迁移/模型/依赖/lockfile/配置/前端/部署变更。
+
+## R1.0 编辑前 GitNexus 影响与告警
+
+- 两个跨租户测试（DC11D `test_cross_tenant_same_idempotency_key_is_isolated`、
+  canonical `test_service_cross_tenant_same_key_isolated`）与全部被改测试
+  （DC11D 5 个提交型节点、canonical 后提交节点）：upstream **全部
+  direct=0 / processes=0 / risk=LOW**（target_uid 消歧后逐项查询）。
+- ⚠️ 告警：`_seed_confirmed_order` upstream **CRITICAL（30 直接调用者）**、
+  `_bootstrap_minimal_tenant_schema` LOW（3 直接）。处置：**两者零修改**
+  （字节不变）——CRITICAL 风险即"不可改"的证明；新增逻辑全部为新增
+  helper/fixture，不触碰任何被共享的 seeding helper。
+
+## R1.1 强制 RED 基线（真全序：DC11D → canonical → DC3B，全新库）
+
+- DC11D 10/10 GREEN → canonical 18/18 GREEN → DC3B **5 failed / 11 passed**
+  （与 V2-R2 相同的 5 节点）。
+- **failed-schema aggregate = 2**（SQL 实测）：固定 2222...
+  （t_2222 schema 无 users 表）+ 共享 1111...（派生 schema 不存在；
+  由 DC11D 5 个显式 commit 节点 + canonical 后提交节点写入）。
+- 固定测试资源钉住：`22222222-...`/`t_2222...`、`33333333-...`/`t_3333...`、
+  共享租户 UUID（运行时解析，默认 1111...）及其 bindings/retailers。
+
+## R1.2 更正契约实现
+
+- **DC11D（授权文件 1）**：新增 `_snapshot_public_tenant` /
+  `_restore_public_tenant`（全行快照/精确恢复，含 id/timestamps/deleted_at
+  等全部列；绑定到其他 wholesaler 的 retailer 受保护不删）、
+  `_shared_tenant_guard`（提交型 5 节点：测试前快照共享租户 public 行，
+  测试后恢复 + 独立连接证明 post == pre，不等即 fail-closed）、
+  `_cross_tenant_residue_guard`（2222 固定身份：binding→retailer→wholesaler→
+  DROP SCHEMA，独立零残留证明）。
+- **canonical（授权文件 2）**：node 10 改为"固定 3333 精确清除 + 共享租户
+  快照/恢复"（取代 R2-R2 的删除式 first-tenant 处理——共享行**永不因被
+  测试触碰而删除**）；后提交节点（failures_after_mutation，提交 1111...+
+  4 retailer+4 binding）挂接 `_shared_tenant_guard`。
+- 禁止项遵守：无 LIKE/前缀/通配删除、无全局重置、无软删清理、无 DROP
+  DATABASE、无产品变更；清理在 body 失败后仍运行、用全新连接、不掩盖
+  原失败。
+
+## R1.3 预存缺陷：倒序 pgcrypto 死锁（base b4c1ec6b 复现）
+
+- 现象：2222 节点作为进程内**首个**测试时，setup 会话的
+  `CREATE EXTENSION IF NOT EXISTS pgcrypto` 等待测试事务持有的 extname
+  元组锁 → 10s command_timeout → asyncpg TimeoutError。
+- 根因（pg_stat_activity/pg_locks 实证）：全新 alembic 库**未安装**
+  pgcrypto；`_ensure_public_tables` 在未提交的测试事务内创建扩展，
+  第二连接的同语句必然等待该事务。自然序下更早的提交型节点（test 2）
+  已持久安装扩展，仅顺序掩盖了该缺陷。
+- 修复：`_cross_tenant_residue_guard` setup 在全新连接上**先持久安装**
+  扩展（body 中两条语句均变为 no-op）。不改任何共享 helper。
+  DC11D 测试语义零变化（该扩展本就会被自然序运行持久安装）。
+
+## R1.4 必需证明（全部 GREEN；每个实验门前重置库）
+
+| # | 证明 | 结果 |
+|---|---|---|
+| 1 | DC11D → canonical → DC3B 真全序 | **44/44 zero red**；末态 failed-schema aggregate=0 |
+| 2 | 逆模块+逆节点全序（DC11D 逆 → canonical 逆 → DC3B 逆，44 节点倒序列表） | **44/44 zero red** |
+| 3 | DC11D 后：2222 schema/public delta | **全零**（schema/wholesalers/bindings/retailers） |
+| 4 | canonical 后：3333 schema/public delta | **全零** |
+| 5 | 共享 1111 wholesalers/bindings/retailers == 模块前快照 | 严格版：预置 suspended/777.77/固定 binding id 的 1111 状态，两模块后 JSON **逐字节一致**（任务新建行全清，预置行含被测试覆写的值均精确还原） |
+| 6 | H2-B 12/12；聚焦 109 自然/倒序 | **12/12；109/109 + 109/109** |
+
+（证明 1/2/5/6 在突变还原后复跑再次全 GREEN。）
+
+## R1.5 突变门（全部按裁决 RED；还原后必需证明全 GREEN 重证）
+
+| 突变 | 结果 |
+|---|---|
+| 移除 DC11D 清理（两 fixture teardown 置空） | 前序束 DC11D+canonical 仍 28/28 GREEN（不掩盖）；DC3B **5 red**；aggregate=**2**（复现基线） |
+| 移除 canonical 后提交节点清理（去挂 `_shared_tenant_guard`） | 28/28 GREEN；DC3B **5 red**；aggregate=**1**（仅 1111） |
+| 共享 1111 改为删除而非恢复（restore 不回插快照行） | 预置 1111 状态下运行 DC11D → 首个 guard 节点 teardown 即 **ERROR：shared-tenant ownership violation**（所有权证明 RED） |
+
+## R1.6 质量门禁
+
+- py_compile（2 测试文件）、`git diff --check`、严格 UTF-8/无 BOM：OK。
+- scoped pre-commit（含 detect-secrets）：全 Passed；`.secrets.baseline`
+  字节不变；两文件 detect-secrets 原始扫描 **0 发现**。
+- GitNexus：提交前 `detect_changes`（MCP，repo=Mpango-ERP，working）→
+  changed_files=2 / affected_processes=[] / risk **low**；提交后
+  re-analyze + status 钉住新 HEAD。
+- 范围钉住：提交恰 3 文件；候选产品文件与 b4c1ec6b 字节一致。
+
+## R1.7 环境披露
+
+- 任务自有栈：`h2b_r2r2r1_pg16`@15441 + `h2b_r2r2r1_redis7`@6401
+  （h2btester/test_h2b_r2r2，fresh + alembic 037；每实验门间重置）。
+  venv 复用 `backend/.venv-h2b-r2r2`（配方同 R2-R2）。
+- 辅助脚本（重置/倒序/影响查询）为任务自有未跟踪文件，收尾删除，不入库。
+- 本 Windows 宿主仍不执行全量后端栈；不声明 full-backend zero-red、
+  浏览器 PASS 或合并批准。
+
+## R1.8 后续（不变）
+
+冻结推送后 STOP → Kilo 有界审（3 文件）→ OpenCode WSL 双全新栈全量
+zero-red → 浏览器忘记/重置旅程 → CTO 受控合并。

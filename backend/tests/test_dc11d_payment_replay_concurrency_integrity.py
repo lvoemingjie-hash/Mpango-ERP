@@ -336,6 +336,236 @@ def _assert_single_full_settlement(snapshot) -> None:
     assert Decimal(str(snapshot["outstanding_balance"])) == Decimal("0.00")
 
 
+# ---------------------------------------------------------------------------
+# DC-12R1-MVP-L1-J1-H2-B-R2-R2-R1: cross-module fixture ownership closure.
+#
+# Suite-order RED baseline (fresh DB): DC11D module -> canonical-payment module
+# -> DC3B module leaves TWO scannable wholesalers whose derived schemas fail
+# the password-reset user scan (failed-schema aggregate = 2): the fixed
+# cross-tenant 22222222-... (schema without a users table) and the shared
+# t_test tenant 11111111-... (derived schema never exists), the latter
+# committed by five explicitly-committing DC11D nodes and by canonical's
+# later committing test.
+#
+# Ownership rules implemented below (exact identities only — no LIKE, no
+# prefixes, no wildcard deletion, no global reset, no soft-delete-only
+# cleanup, no DROP DATABASE, no product changes):
+# - the fixed cross-tenant UUID/schema (2222...) is task-created: its exact
+#   rows and schema are removed and a zero-residue proof must hold;
+# - the shared t_test tenant (1111..., resolved at runtime) may PRE-EXIST:
+#   its public rows are snapshotted before the test and restored EXACTLY
+#   after it — a row is never deleted merely because the test touched it.
+#   An independent proof on a fresh connection must show post-state equals
+#   pre-test state or the test fails (fail-closed).
+# ---------------------------------------------------------------------------
+
+_CROSS_TENANT_SCHEMA = "t_22222222222222222222222222222222"
+_CROSS_TENANT_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")
+
+
+async def _fetch_rows(session, sql: str, params: dict) -> list[dict]:
+    result = await session.execute(text(sql), params)
+    return [dict(mapping) for mapping in result.mappings().all()]
+
+
+async def _snapshot_public_tenant(session, *, wholesaler_id: str) -> dict:
+    """Capture the exact public rows owned-by/scope-of one wholesaler UUID."""
+    wholesalers = await _fetch_rows(
+        session,
+        "SELECT * FROM public.wholesalers WHERE id = :w",
+        {"w": wholesaler_id},
+    )
+    bindings = await _fetch_rows(
+        session,
+        "SELECT * FROM public.wholesaler_retailer_bindings "
+        "WHERE wholesaler_id = :w ORDER BY id",
+        {"w": wholesaler_id},
+    )
+    retailers: list[dict] = []
+    retailer_ids = sorted({str(binding["retailer_id"]) for binding in bindings})
+    if retailer_ids:
+        placeholders = ", ".join(f":r{i}" for i in range(len(retailer_ids)))
+        params = {f"r{i}": value for i, value in enumerate(retailer_ids)}
+        retailers = await _fetch_rows(
+            session,
+            f"SELECT * FROM public.retailers WHERE id IN ({placeholders}) ORDER BY id",
+            params,
+        )
+    return {
+        "wholesaler": wholesalers[0] if wholesalers else None,
+        "bindings": bindings,
+        "retailers": retailers,
+    }
+
+
+def _insert_sql(table: str, row: dict) -> str:
+    columns = ", ".join(row.keys())
+    values = ", ".join(f":v_{column}" for column in row)
+    return f"INSERT INTO {table} ({columns}) VALUES ({values})"
+
+
+def _flatten(row: dict) -> dict:
+    return {f"v_{column}": value for column, value in row.items()}
+
+
+async def _restore_public_tenant(session, *, wholesaler_id: str, snap: dict) -> None:
+    """Restore the exact pre-test public rows for one wholesaler UUID."""
+    current = await _snapshot_public_tenant(session, wholesaler_id=wholesaler_id)
+    current_retailer_ids = {str(binding["retailer_id"]) for binding in current["bindings"]}
+    snapshot_retailer_ids = {str(row["id"]) for row in snap["retailers"]}
+    # Retailers that keep bindings to OTHER wholesalers are not owned by this
+    # scope even if this test touched them — they must not be deleted.
+    candidate_ids = sorted(current_retailer_ids | snapshot_retailer_ids)
+    protected: set[str] = set()
+    if candidate_ids:
+        placeholders = ", ".join(f":p{i}" for i in range(len(candidate_ids)))
+        params = {"w": wholesaler_id}
+        params.update({f"p{i}": value for i, value in enumerate(candidate_ids)})
+        protected = {
+            str(row["retailer_id"])
+            for row in await _fetch_rows(
+                session,
+                "SELECT retailer_id FROM public.wholesaler_retailer_bindings "
+                f"WHERE retailer_id IN ({placeholders}) AND wholesaler_id <> :w",
+                params,
+            )
+        }
+    await session.execute(
+        text("DELETE FROM public.wholesaler_retailer_bindings WHERE wholesaler_id = :w"),
+        {"w": wholesaler_id},
+    )
+    for retailer_id in sorted(current_retailer_ids - snapshot_retailer_ids):
+        if retailer_id not in protected:
+            await session.execute(
+                text("DELETE FROM public.retailers WHERE id = :r"), {"r": retailer_id}
+            )
+    await session.execute(
+        text("DELETE FROM public.wholesalers WHERE id = :w"), {"w": wholesaler_id}
+    )
+    if snap["wholesaler"] is not None:
+        await session.execute(
+            text(_insert_sql("public.wholesalers", snap["wholesaler"])),
+            _flatten(snap["wholesaler"]),
+        )
+    for retailer in snap["retailers"]:
+        assignments = ", ".join(
+            f"{column} = EXCLUDED.{column}" for column in retailer if column != "id"
+        )
+        await session.execute(
+            text(
+                f"{_insert_sql('public.retailers', retailer)} "
+                f"ON CONFLICT (id) DO UPDATE SET {assignments}"
+            ),
+            _flatten(retailer),
+        )
+    for binding in snap["bindings"]:
+        await session.execute(
+            text(_insert_sql("public.wholesaler_retailer_bindings", binding)),
+            _flatten(binding),
+        )
+
+
+@pytest.fixture
+async def _shared_tenant_guard(async_session):
+    """Snapshot/restore the shared t_test tenant's exact public rows.
+
+    Runs even when the test body fails and cannot mask an original failure
+    (the body exception reaches pytest before teardown). The test session is
+    rolled back first (idempotent; the async_session fixture repeats it) so
+    its locks cannot block cleanup; restore + proof use fresh connections
+    outside the test transaction.
+    """
+    wholesaler_id = str(_tenant_id(async_session))
+    async with AsyncSessionLocal() as snapshot_session:
+        snap = await _snapshot_public_tenant(
+            snapshot_session, wholesaler_id=wholesaler_id
+        )
+    yield
+    await async_session.rollback()
+    async with AsyncSessionLocal() as cleanup:
+        await _restore_public_tenant(cleanup, wholesaler_id=wholesaler_id, snap=snap)
+        await cleanup.commit()
+    async with AsyncSessionLocal() as proof:
+        post = await _snapshot_public_tenant(proof, wholesaler_id=wholesaler_id)
+    assert post == snap, (
+        "shared-tenant ownership violation: post-test public rows differ from "
+        f"pre-test snapshot for wholesaler {wholesaler_id}"
+    )
+
+
+@pytest.fixture
+async def _cross_tenant_residue_guard(async_session):
+    """Fail-closed teardown for the fixed 2222... cross-tenant residue."""
+    # Pre-existing reverse-order hazard (reproduced at base b4c1ec6b): when
+    # this node runs FIRST in a fresh process/database, pgcrypto does not
+    # exist yet; _ensure_public_tables (via _seed_confirmed_order) creates it
+    # INSIDE the still-open test transaction, and the second (setup) session's
+    # identical CREATE EXTENSION blocks on the extname tuple until the 10s
+    # command timeout (asyncpg TimeoutError). Installing the extension
+    # durably BEFORE the body makes both in-test statements no-ops. In
+    # natural suite order an earlier committing node already installs it —
+    # only ordering hides this.
+    async with AsyncSessionLocal() as prerequisite_session:
+        await prerequisite_session.execute(
+            text("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+        )
+        await prerequisite_session.commit()
+    owned = {"second_retailer_id": None}
+    yield owned
+    await async_session.rollback()
+    second_retailer = owned["second_retailer_id"]
+    async with AsyncSessionLocal() as cleanup:
+        # FK-safe order: binding -> retailer -> wholesaler -> schema.
+        if second_retailer is not None:
+            await cleanup.execute(
+                text(
+                    "DELETE FROM public.wholesaler_retailer_bindings "
+                    "WHERE wholesaler_id = :wholesaler AND retailer_id = :retailer"
+                ),
+                {"wholesaler": str(_CROSS_TENANT_ID), "retailer": str(second_retailer)},
+            )
+            await cleanup.execute(
+                text("DELETE FROM public.retailers WHERE id = :retailer"),
+                {"retailer": str(second_retailer)},
+            )
+        await cleanup.execute(
+            text("DELETE FROM public.wholesalers WHERE id = :wholesaler"),
+            {"wholesaler": str(_CROSS_TENANT_ID)},
+        )
+        await cleanup.execute(
+            text(f'DROP SCHEMA IF EXISTS "{_CROSS_TENANT_SCHEMA}" CASCADE')
+        )
+        await cleanup.commit()
+    async with AsyncSessionLocal() as proof:
+        checks = {
+            "pg_namespace.schema": (
+                "SELECT COUNT(*) FROM pg_namespace WHERE nspname = :schema",
+                {"schema": _CROSS_TENANT_SCHEMA},
+            ),
+            "public.wholesalers": (
+                "SELECT COUNT(*) FROM public.wholesalers WHERE id = :wholesaler",
+                {"wholesaler": str(_CROSS_TENANT_ID)},
+            ),
+            "public.wholesaler_retailer_bindings": (
+                "SELECT COUNT(*) FROM public.wholesaler_retailer_bindings "
+                "WHERE wholesaler_id = :wholesaler",
+                {"wholesaler": str(_CROSS_TENANT_ID)},
+            ),
+        }
+        if second_retailer is not None:
+            checks["public.retailers"] = (
+                "SELECT COUNT(*) FROM public.retailers WHERE id = :retailer",
+                {"retailer": str(second_retailer)},
+            )
+        counts = {}
+        for name, (sql, params) in checks.items():
+            result = await proof.execute(text(sql), params)
+            counts[name] = int(result.scalar_one())
+    assert all(count == 0 for count in counts.values()), (
+        f"cross-tenant residue teardown left database residue: {counts}"
+    )
+
+
 @pytest.mark.asyncio
 async def test_sequential_same_financial_result_replay_creates_one_financial_result(async_session):
     schema = _tenant_schema(async_session)
@@ -370,7 +600,7 @@ async def test_sequential_same_financial_result_replay_creates_one_financial_res
 
 
 @pytest.mark.asyncio
-async def test_concurrent_same_financial_result_replay_creates_one_financial_result(async_session):
+async def test_concurrent_same_financial_result_replay_creates_one_financial_result(async_session, _shared_tenant_guard):
     schema = _tenant_schema(async_session)
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, _token = await _seed_confirmed_order(
@@ -440,7 +670,7 @@ async def test_payment_notes_are_rejected_without_side_effects(async_session):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_different_keys_cannot_overpay(async_session):
+async def test_concurrent_different_keys_cannot_overpay(async_session, _shared_tenant_guard):
     schema = _tenant_schema(async_session)
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, _token = await _seed_confirmed_order(
@@ -481,7 +711,7 @@ async def test_concurrent_different_keys_cannot_overpay(async_session):
 
 
 @pytest.mark.asyncio
-async def test_empty_body_and_empty_object_create_no_side_effects(async_session):
+async def test_empty_body_and_empty_object_create_no_side_effects(async_session, _shared_tenant_guard):
     schema = _tenant_schema(async_session)
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, token = await _seed_confirmed_order(
@@ -574,7 +804,7 @@ async def test_duplicate_transfer_reference_returns_sanitized_409(async_session)
 
 
 @pytest.mark.asyncio
-async def test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_back(async_session):
+async def test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_back(async_session, _shared_tenant_guard):
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, token = await _seed_confirmed_order(
         async_session, tenant_id=tenant_id, total=Decimal("100.00")
@@ -617,7 +847,7 @@ async def test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_b
 
 
 @pytest.mark.asyncio
-async def test_rollback_after_state_failure_leaves_tables_unchanged(async_session):
+async def test_rollback_after_state_failure_leaves_tables_unchanged(async_session, _shared_tenant_guard):
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, token = await _seed_confirmed_order(
         async_session, tenant_id=tenant_id, total=Decimal("100.00")
@@ -655,7 +885,7 @@ async def test_rollback_after_state_failure_leaves_tables_unchanged(async_sessio
 
 
 @pytest.mark.asyncio
-async def test_cross_tenant_same_idempotency_key_is_isolated(async_session):
+async def test_cross_tenant_same_idempotency_key_is_isolated(async_session, _cross_tenant_residue_guard):
     first_schema = _tenant_schema(async_session)
     first_tenant_id = _tenant_id(async_session)
     second_schema = "t_22222222222222222222222222222222"
@@ -682,6 +912,7 @@ async def test_cross_tenant_same_idempotency_key_is_isolated(async_session):
         second_order_id, second_retailer_id, second_token = await _seed_confirmed_order(
             setup_session, tenant_id=second_tenant_id, total=Decimal("100.00")
         )
+        _cross_tenant_residue_guard["second_retailer_id"] = second_retailer_id
         await setup_session.commit()
 
     await pay_order(

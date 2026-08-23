@@ -1,0 +1,76 @@
+# Cleanup Closure - 2026-08-23T19:36:35+08:00
+
+## 1. drop task databases (explicit, before container removal)
+DROP DATABASE
+DROP DATABASE
+ERROR:  role "h2btester" cannot be dropped because some objects depend on it
+DETAIL:  privileges for membership of role reporting_user in role reporting_role
+DROP DATABASE
+DROP DATABASE
+NOTICE:  database "test_h2b_ref_b" does not exist, skipping
+ERROR:  role "h2btester" cannot be dropped because some objects depend on it
+DETAIL:  privileges for membership of role reporting_user in role reporting_role
+
+## 2. remove task-owned containers / volumes / networks
+dc12r1v2full_a_pg16
+dc12r1v2full_a_redis7
+dc12r1v2full_b_pg16
+dc12r1v2full_b_redis7
+dc12r1v2full_a_pgdata
+dc12r1v2full_a_redisdata
+dc12r1v2full_b_pgdata
+dc12r1v2full_b_redisdata
+dc12r1v2full_a_net
+dc12r1v2full_b_net
+remaining dc12r1v2full docker resources: containers=0 volumes=0 networks=0
+
+## 3. remove WSL verification worktree
+worktree_removed=YES
+
+## 4. remove task runtime files / credentials / venvs
+runtime_files_removed
+
+## 5. task ports released
+port 15541: FREE
+port 15542: FREE
+port 16541: FREE
+port 16542: FREE
+
+## 6. host-owner resources unchanged (container list after)
+contractd_pg16 | Exited (255) 10 days ago
+contractd_pg16_run2 | Exited (255) 10 days ago
+contractd_redis7 | Exited (255) 10 days ago
+contractd_redis7_run2 | Exited (255) 10 days ago
+dc10a_pg_547b0b29 | Exited (255) 4 weeks ago
+dc10a_redis_547b0b29 | Exited (255) 4 weeks ago
+dc10e_pg_547b0b29 | Exited (255) 4 weeks ago
+dc10e_redis_547b0b29 | Exited (255) 4 weeks ago
+dc12r1_j1h1_runtime-backend-1 | Exited (0) 2 days ago
+dc12r1_mvp_l1_r0_743684555-postgres-1 | Up 3 days (healthy)
+dc12r1_mvp_l1_r0_743684555-redis-1 | Up 3 days (healthy)
+kilo_r2_pg16 | Up 35 hours
+mpango_backend | Exited (137) 6 weeks ago
+mpango_dc11t4c_r1_pg1 | Exited (255) 3 weeks ago
+mpango_dc11t4c_r1_pg2 | Exited (255) 3 weeks ago
+mpango_dc11t4c_r1_redis1 | Exited (255) 3 weeks ago
+mpango_dc11t4c_r1_redis2 | Exited (255) 3 weeks ago
+mpango_dc2a_r1_pg | Exited (255) 4 weeks ago
+mpango_frontend | Up 3 days (healthy)
+mpango_gateway | Restarting (1) 51 seconds ago
+mpango_h2_pg16 | Exited (255) 2 weeks ago
+mpango_h2_redis7 | Exited (255) 2 weeks ago
+mpango_p25ec_pg | Exited (255) 4 weeks ago
+mpango_postgres | Up 3 days (healthy)
+mpango_prod_backend | Up 3 days (healthy)
+mpango_prod_frontend | Up 3 days (healthy)
+mpango_prod_gateway | Up 3 days (healthy)
+mpango_prod_postgres | Up 3 days (healthy)
+mpango_prod_redis | Up 3 days (healthy)
+mpango_redis | Up 3 days (healthy)
+p21dd-dbg-ac0bead9 | Exited (255) 4 weeks ago
+p21dd-dbg-bb02a303 | Exited (255) 4 weeks ago
+pw1r4c0_postgres | Exited (0) 6 days ago
+pw1r4c0_redis | Exited (0) 6 days ago
+
+## host-owner diff vs before
+ALL_HOST_OWNER_CONTAINERS_PRESENT_AND_UNMODIFIED

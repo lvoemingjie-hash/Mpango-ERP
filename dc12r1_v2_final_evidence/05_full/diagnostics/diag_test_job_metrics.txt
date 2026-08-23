@@ -1,0 +1,11 @@
+# DIAGNOSTIC ONLY - failure classification for test_s4_jobs_local.py::test_job_metrics
+# NOT a zero-red claim; the mandated full-suite gate result (1 failed on Stack A) stands.
+date=2026-08-23T19:26:51+08:00 nproc=16
+
+## isolation: whole file test_s4_jobs_local.py (single run, Stack A)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 11 passed, 191 warnings in 8.38s =======================
+
+## single node repeated 20x (flake-rate measurement)
+test_job_metrics: pass=20 fail=0 of 20

@@ -1,0 +1,35 @@
+# Phase 6 - Fixture Residue Proof (final, classified) - 2026-08-23T19:34:02+08:00
+
+## Method
+- Fresh connections via docker exec psql (independent of pytest).
+- Fresh alembic reference DB (test_h2b_ref_<stack>, created per proof, dropped after) represents the exact pre-run snapshot state.
+- Stack A DB state = after predecessor + focused + H2B + reset + FULL SUITE (single mandated run).
+- Stack B DB state = after predecessor + focused + H2B (full suite NOT run on B: STOP protocol after Stack A 1-red).
+
+## GATE 1+2+3: exact 2222 / 3333 identities (both stacks)
+stack_a: 2222 wholesalers=0 bindings=0 schema_absent=yes | 3333 wholesalers=0 bindings=0 schema_absent=yes  => ZERO RESIDUE PASS
+stack_b: 2222 wholesalers=0 bindings=0 schema_absent=yes | 3333 wholesalers=0 bindings=0 schema_absent=yes  => ZERO RESIDUE PASS
+
+## GATE 4: exact 1111 shared public state vs pre-run snapshot
+stack_b (candidate-scoped phases: predecessor DC11D->canonical->DC3B + focused 109 + H2B):
+  1111 wholesalers=0 bindings=0 retailers=0 == fresh reference (empty) => BYTE-EQUIVALENT PASS (no task-created residue)
+stack_a (post FULL SUITE):
+  1111 wholesalers=1 bindings=1 retailers=1 delta vs fresh reference:
+  row = {id:11111111-..., code:S5D4Bc0d7e6b3, name:'S5D4B R1 Test Wholesaler', status:active, is_deleted:false}
+  created_at 2026-08-23T11:20:42Z (inside full-suite window 19:04-19:24 +08)
+  ATTRIBUTION: backend/tests/test_s5d4b_settled_cash_payment.py line 571 INSERT + line 638 explicit commit(); no DELETE in file;
+  file last modified 7cca8b57 2026-07-14; byte-identical baseline..candidate (out of candidate scope) => PRE-EXISTING out-of-scope residue, NOT task residue
+
+## GATE 5: no scan-breaking active wholesaler referencing missing/incomplete users schema
+stack_b: violators=0 => PASS
+stack_a: violators=6, every row attributed to pre-existing out-of-scope tests:
+  11111111-... code=S5D4Bc0d7e6b3  <= test_s5d4b_settled_cash_payment.py (out of scope, see above)
+  4 rows code=R4A*                <= test_pw1r4_cross_tenant_statement_cache.py (last 5e91e973 2026-08-16, out of scope; inserts wholesaler without users table)
+  1 row  code=U6I261C01335        <= test_u6i2_owner_credential_setup_token_issue.py (last 61fbe91d 2026-07-17, out of scope)
+  => these are the suite's PRE-EXISTING end-state behavior (same class documented in accepted causal report 8f63d1fb for V2-R1 full run), NOT candidate/task residue
+
+## Candidate-owned verdict
+- The candidate's fixture-ownership closure (DC11D _shared_tenant_guard/_cross_tenant_residue_guard 2222; canonical 3333 + shared-tenant snapshot/restore)
+  is proven residue-free on BOTH stacks: exact identities 2222/3333 zero everywhere; shared 1111 zero after candidate-scoped phases (stack_b);
+  DC3B passed 16/16 inside predecessor bundles and inside the full suite on stack_a.
+- Residue that DOES exist after the full suite is exclusively from pre-existing out-of-scope tests, byte-identical to baseline behavior.

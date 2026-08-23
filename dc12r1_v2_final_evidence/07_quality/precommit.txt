@@ -1,0 +1,19 @@
+# Scoped pre-commit (Windows side; WSL side blocked from github.com:443) -
+repo: /c/Users/Jeff0/MPANGO ERP/worktrees/dc12r1_v2_final_reports
+HEAD: 683297f4471675657f2d85c8eccc42858c886754
+
+== pre-commit run --files (5 cumulative changed python files) ==
+trim trailing whitespace.................................................Passed
+fix end of files.........................................................Passed
+check yaml...........................................(no files to check)Skipped
+check for added large files..............................................Passed
+Detect secrets...........................................................Passed
+PRECOMMIT_EXIT=0
+
+== detect-secrets raw scan (changed files) ==
+raw_scan_findings= 0
+
+secrets_baseline_sha256_before=8cb87451287a9595ed0e9166dcdd0cc9f5fadae805deaff183fbac2f77480d52
+secrets_baseline_sha256_after=8cb87451287a9595ed0e9166dcdd0cc9f5fadae805deaff183fbac2f77480d52
+baseline_unchanged=YES
+worktree_status_porcelain=0

@@ -1,0 +1,30 @@
+# Quality gates - 2026-08-23T19:10:28+08:00
+
+## py_compile (cumulative changed python files)
+  OK backend/api/v1/auth.py
+  OK backend/services/password_reset_service.py
+  OK backend/tests/test_dc11d_payment_replay_concurrency_integrity.py
+  OK backend/tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py
+  OK backend/tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py
+
+## git diff --check
+  parent..candidate:
+    CLEAN
+  baseline..candidate:
+    CLEAN
+
+## strict UTF-8 / no BOM / mojibake check
+  backend/api/v1/auth.py bom=ok utf8=valid mojibake=clean
+  backend/services/password_reset_service.py bom=ok utf8=valid mojibake=clean
+  backend/tests/test_dc11d_payment_replay_concurrency_integrity.py bom=ok utf8=valid mojibake=clean
+  backend/tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py bom=ok utf8=valid mojibake=clean
+  backend/tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py bom=ok utf8=valid mojibake=clean
+  ai-ledger/product-ai/2026-08-22_dc12r1_mvp_l1_j1_h2b_forgot_password_runtime_closure.md bom=ok utf8=valid mojibake=clean
+  ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r2_test_fixture_residue_closure.md bom=ok utf8=valid mojibake=clean
+  ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2b_r1_password_reset_scan_closure.md bom=ok utf8=valid mojibake=clean
+  ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2b_r2_consume_atomicity_closure.md bom=ok utf8=valid mojibake=clean
+  ai-ledger/product-ai/2026-08-23_dc12r1_mvp_l1_j1_h2b_r2_r1_deterministic_atomicity_evidence.md bom=ok utf8=valid mojibake=clean
+
+## frozen ref + clean tree re-verification
+  HEAD=683297f4471675657f2d85c8eccc42858c886754
+  status_porcelain=0

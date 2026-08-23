@@ -1,0 +1,78 @@
+wsl: ÀhKm0R localhost ãNtM‘nÿFO*g\•ÏP0R WSL0NAT !j_N„v WSL N/ec localhost ãNt0
+===== STACK a (test_h2b_full_a) =====
+-- task-fixed schemas present:
+ns_t_test
+-- users tables per tenant schema:
+users_in_t_20d2b91b9eae44eca7c2ee2c74913213
+users_in_t_24309bd83d7949ae928bc3541aaaf738
+users_in_t_24913cf9d3434843b653c20656745c8b
+users_in_t_2b4bcb1f7c6e455ea85dc817235d2f76
+users_in_t_2bcfccd74630466cb4a272478b8dc78c
+users_in_t_36abf35c6d804acb9b56a2a712897e6b
+users_in_t_422b95793756400fb60773006df44d85
+users_in_t_43d47d7ce8084a1eb794d7bf23940285
+users_in_t_46bc388413024d4a915228dbc6cf641d
+users_in_t_5e9355fb3eda438d99e97a8244303e96
+users_in_t_6690e484f633467f8fb47ed1426795a5
+users_in_t_70dbfa985d6e49d8a686d9e8dc0beb44
+users_in_t_7569175d6ce84df1889eaa24c1a158ca
+users_in_t_7ae3410915ed46d7bffe16eba809a57a
+users_in_t_83cc043611c1423980324ec985cbf1d7
+users_in_t_8e6a1821dbdd4eff8764b4fcee3f1155
+users_in_t_9be42b16ba7e4f0fb5cc9e222abcbb80
+users_in_t_9c2bbe4da9064da7bee52b93a977fbb7
+users_in_t_a96355be85e8420bb7e94c28ee1f9eb6
+users_in_t_b1df10191bc64630a32390efb618158b
+users_in_t_b656568b97114689a9e9d6bb34a424df
+users_in_t_b68c31b4c72f4c7e991b59988a383744
+users_in_t_c20ad72aa8af42f49e224d4dc70b7643
+users_in_t_c684c4dc371144a8bb690e00b75448df
+users_in_t_d56978feacf749c29b047348aebf5c38
+users_in_t_d7bc5ef586db486a9bbe4af54780bff0
+users_in_t_d7cba224d871433190f4df266045efad
+users_in_t_dca670eb9be34c359a750f0ea2cf5f05
+users_in_t_f7ec48287f8d4b5ca788e362f69fcb23
+users_in_t_u1r1_test
+-- scan-breaking violators:
+VIOLATOR 0aefa863-9394-4f7c-b568-0f572f9b9483 code=R4AE83CB4B2AD
+VIOLATOR 11111111-1111-1111-1111-111111111111 code=S5D4Bc0d7e6b3
+VIOLATOR 35e769be-c26e-4608-8b9b-aa3e696ffda2 code=R4AE83CB46933
+VIOLATOR 4b2c7e4f-eb61-453f-85d1-950a32651fd9 code=U6I261C01335
+VIOLATOR 5cc26f2c-7a22-4455-a5c7-fbf8f92b2402 code=R4A44085315A0
+VIOLATOR fc09d580-db3a-49b0-a326-04e3c8b4540d code=R4A4408533469
+-- exact identity counts:
+2222_wholesalers=0
+2222_bindings=0
+3333_wholesalers=0
+3333_bindings=0
+1111_wholesalers=1
+1111_bindings=1
+-- all active wholesalers:
+d7bc5ef5-86db-486a-9bbe-4af54780bff0 R1T3DBB45
+70dbfa98-5d6e-49d8-a686-d9e8dc0beb44 R2AEE69F5
+24309bd8-3d79-49ae-928b-c3541aaaf738 R2B107E6F
+5cc26f2c-7a22-4455-a5c7-fbf8f92b2402 R4A44085315A0
+fc09d580-db3a-49b0-a326-04e3c8b4540d R4A4408533469
+35e769be-c26e-4608-8b9b-aa3e696ffda2 R4AE83CB46933
+0aefa863-9394-4f7c-b568-0f572f9b9483 R4AE83CB4B2AD
+c20ad72a-a8af-42f4-9e22-4d4dc70b7643 S1T2B9CDF
+11111111-1111-1111-1111-111111111111 S5D4Bc0d7e6b3
+4b2c7e4f-eb61-453f-85d1-950a32651fd9 U6I261C01335
+
+===== STACK b (test_h2b_full_b) =====
+-- task-fixed schemas present:
+ns_t_test
+-- users tables per tenant schema:
+users_in_t_719d85a5a1ee430b814a3d2990d76ddb
+users_in_t_f5972fa55dec4f23a380fce4c43796d5
+-- scan-breaking violators:
+-- exact identity counts:
+2222_wholesalers=0
+2222_bindings=0
+3333_wholesalers=0
+3333_bindings=0
+1111_wholesalers=0
+1111_bindings=0
+-- all active wholesalers:
+719d85a5-a1ee-430b-814a-3d2990d76ddb R2A2BFFB3
+f5972fa5-5dec-4f23-a380-fce4c43796d5 R2B1B6140

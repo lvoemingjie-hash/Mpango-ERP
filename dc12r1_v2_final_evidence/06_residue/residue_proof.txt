@@ -1,0 +1,5 @@
+===== STACK A residue proof =====
+NOTICE:  database "test_h2b_ref_a" does not exist, skipping
+reference test_h2b_ref_a alembic_version=037_payment_declarations_schema
+1111_w1111_ref=[|] post=[{"id":"11111111-1111-1111-1111-111111111111","code":"S5D4Bc0d7e6b3","name":"S5D4B R1 Test Wholesaler","address":null,"contact":null,"plan_type":null,"created_at":"2026-08-23T11:20:42.142893+00:00","updated_at":"2026-08-23T11:20:42.142893+00:00","is_deleted":false,"deleted_at":null,"status":"active","provisioned_at":null,"suspended_at":null,"suspension_reason":null}|]
+RESIDUE_FAIL 1111 w1111

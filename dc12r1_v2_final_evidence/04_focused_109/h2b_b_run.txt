@@ -1,0 +1,66 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /root/dc12r1_v2_final_venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /root/dc12r1_v2_final_wt/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: hypothesis-6.165.10, anyio-4.12.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 12 items
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t1_internal_failure_neutral_200_zero_tokens_plus_observable_log PASSED [  8%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email PASSED [ 16%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t3_nonexistent_and_inactive_neutral_zero_side_effects_and_zero_events PASSED [ 25%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t4_unrelated_scan_failure_target_found_partial_telemetry PASSED [ 33%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t5_delivery_failure_rollback PASSED [ 41%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t6_unexpected_failure_metric_and_neutral_external PASSED [ 50%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t7_replay_exact_401_token_remains_used_password_not_applied PASSED [ 58%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t8_query_string_token_rejected PASSED [ 66%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t9_target_scan_failure_one_internal_event_evidence_preserved PASSED [ 75%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t10_consume_scan_incomplete_token_stays_actionable PASSED [ 83%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t11_consume_partial_scan_fails_closed_both_old_token_intact PASSED [ 91%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t12_partial_apply_rolls_back_first_copy_token_intact PASSED [100%]
+
+=============================== warnings summary ===============================
+../../dc12r1_v2_final_venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /root/dc12r1_v2_final_venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /root/dc12r1_v2_final_wt/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py: 13 warnings
+  /root/dc12r1_v2_final_wt/backend/api/v1/auth.py:832: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /root/dc12r1_v2_final_wt/backend/services/onboarding_service.py:299: DeprecationWarning: deprecated
+    if request.password is not None:
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /root/dc12r1_v2_final_wt/backend/services/onboarding_service.py:300: DeprecationWarning: deprecated
+    validate_signup_password(request.password)
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /root/dc12r1_v2_final_wt/backend/api/v1/auth.py:154: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /root/dc12r1_v2_final_wt/backend/api/v1/auth.py:197: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /root/dc12r1_v2_final_wt/backend/api/v1/auth.py:716: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t7_replay_exact_401_token_remains_used_password_not_applied
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t10_consume_scan_incomplete_token_stays_actionable
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t11_consume_partial_scan_fails_closed_both_old_token_intact
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t12_partial_apply_rolls_back_first_copy_token_intact
+  /root/dc12r1_v2_final_wt/backend/api/v1/auth.py:974: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /root/dc12r1_v2_final_evidence/04_focused_109/h2b_b_junit.xml -
+======================= 12 passed, 24 warnings in 16.93s =======================

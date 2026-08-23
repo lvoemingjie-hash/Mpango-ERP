@@ -1,0 +1,8 @@
+# Stack creation - 2026-08-23T18:46:56+08:00
+stack_a: pg dc12r1v2full_a_pg16 postgres:16-alpine 127.0.0.1:15541 / redis dc12r1v2full_a_redis7 redis:7-alpine 127.0.0.1:16541 / net dc12r1v2full_a_net / vols dc12r1v2full_a_{pgdata,redisdata} / db test_h2b_full_a owner h2btester
+stack_b: pg dc12r1v2full_b_pg16 postgres:16-alpine 127.0.0.1:15542 / redis dc12r1v2full_b_redis7 redis:7-alpine 127.0.0.1:16542 / net dc12r1v2full_b_net / vols dc12r1v2full_b_{pgdata,redisdata} / db test_h2b_full_b owner h2btester
+role: h2btester LOGIN CREATEDB CREATEROLE (dedicated non-production; credentials in /root/dc12r1_v2_final_env, never committed)
+dc12r1v2full_b_redis7 | redis:7-alpine | 127.0.0.1:16542->6379/tcp
+dc12r1v2full_b_pg16 | postgres:16-alpine | 127.0.0.1:15542->5432/tcp
+dc12r1v2full_a_redis7 | redis:7-alpine | 127.0.0.1:16541->6379/tcp
+dc12r1v2full_a_pg16 | postgres:16-alpine | 127.0.0.1:15541->5432/tcp

@@ -1,0 +1,17 @@
+{
+  "task_id": "DC-12R1-MVP-L1-J1-H2-B-R2-R1-V2-R2",
+  "classification": "TEST_FIXTURE_RESIDUE_DEFECT",
+  "candidate_sha": "34ccec116204b6a61b2e37c874b0c65953acfb43",
+  "protected_baseline": "6e9470a1daa5d6eece29724316fdd8aef6b737c1",
+  "kilo_e2_review": "3e796996382872f10d5bd5312cdbbfe311d9cc7c",
+  "contaminating_node": "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_cross_tenant_same_key_isolated",
+  "contaminating_module": "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py",
+  "contamination_mechanism": "wholesaler with hardcoded UUID 33333333-3333-3333-3333-333333333333 persists after test; derived schema t_3333... has no users table; password reset scan fails on this schema",
+  "dc3b_alone_result": "16/16 PASSED",
+  "dc3b_after_contaminator": "5 failed, 11 passed",
+  "event_class": "PASSWORD_RESET_SCAN_INCOMPLETE",
+  "failed_schema_count": 1,
+  "candidate_defects": [],
+  "cleanup_owner": "test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_cross_tenant_same_key_isolated",
+  "cleanup_proposal": "Delete or soft-delete the hardcoded wholesaler row (id=33333333-3333-3333-3333-333333333333) in test teardown"
+}

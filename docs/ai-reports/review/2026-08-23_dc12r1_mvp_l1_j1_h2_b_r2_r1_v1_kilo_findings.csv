@@ -1,0 +1,40 @@
+finding_id,category,check,status,detail,source_ref
+F01,Proof Gate,BASELINE ref,OK,6e9470a1daa5d6eece29724316fdd8aef6b737c1,git rev-parse
+F02,Proof Gate,CANDIDATE ref,OK,34ccec116204b6a61b2e37c874b0c65953acfb43,git rev-parse
+F03,Proof Gate,Expected parent,OK,87e5cbf52a169be17a20ca865631c7f667f5b59f,git rev-parse
+F04,Proof Gate,Candidate parent,OK,87e5cbf5,git log -1
+F05,Proof Gate,Baseline ancestor,OK,git merge-base --is-ancestor exit 0,git merge-base
+F06,Proof Gate,Source branch tip == candidate,OK,origin/zcode/... = 34ccec11,git rev-parse
+F07,Proof Gate,origin/product-dev-recovered,OK,6e9470a1,git rev-parse
+F08,Delta,R2-R1 file count,OK,exactly 3 files,git diff --name-only
+F09,Delta,Cumulative file count,OK,exactly 7 files,git diff --name-only
+F10,Delta,Scope exclusion,OK,no migration/model/lockfile/frontend/deployment changes,git diff --name-only
+F11,Source Review,Neutral forgot-password response,OK,Always returns NEUTRAL_PASSWORD_RESET_MESSAGE,auth.py lines 721-833
+F12,Source Review,Scan failure not silent absence,OK,PasswordResetScanIncompleteError raised when failed_schema_count>0 and no user found,password_reset_service.py lines 248-263
+F13,Source Review,Consume rejects incomplete scan before UPDATE,OK,scan.failed_schema_count check at line 336 before UPDATE loop at line 360,password_reset_service.py
+F14,Source Review,Fan-out no best-effort path,OK,No except:continue or per-copy SAVEPOINT; any failure raises PasswordResetApplyFailedError,password_reset_service.py lines 359-388
+F15,Source Review,Every copy updates exactly one row,OK,rowcount != 1 raises PasswordResetApplyFailedError,password_reset_service.py lines 383-387
+F16,Source Review,Apply failure → typed error + rollback + neutral 401,OK,auth.py lines 886-917,password_reset_service.py
+F17,Source Review,used_at only after all copies succeed,OK,used_at update at lines 390-398 after loop completes,password_reset_service.py
+F18,Source Review,Logs/metrics sanitization,OK,Fixed event classes + request_id + exception_type + integer counters only,auth.py lines 100-106
+F19,Source Review,Eligibility exact,OK,Wholesaler.is_deleted==False (status NOT filtered); user is_active=true AND is_deleted=false,password_reset_service.py lines 196-211
+F20,Test Authenticity,12 genuine test nodes,OK,T1-T12 present; zero skip/xfail/conditional pass,test file inspection
+F21,Test Authenticity,T11 table rename + repair,OK,Renames users table; proves both old hashes; token unused; repairs; same-token retry 200,test file lines 876-955
+F22,Test Authenticity,T12 trigger + rollback + retry,OK,Distinct created_at; real enumerator [s1,s2]; real BEFORE UPDATE trigger; updated_count=1; outer rollback; old hashes; unused token; same-token retry,test file lines 958-1064
+F23,Test Authenticity,AST identical R2→R2-R1,OK,AST dump length 22086 == 22086 after docstring removal,Python ast module
+F24,Test Authenticity,C1/C2/C3 validated,OK,Machine-verified mutation evidence in T11/T12; no narrative-only claims,source + test inspection
+F25,Test Authenticity,Scoped determinism,OK,ORDER BY created_at determinism is test-scoped (distinct committed timestamps); NOT generalized to production tie-order,CTO observation preserved
+F26,Runtime,H2-B 12-node run,OK,12 passed in 19.55s against real PG16 + Redis,pytest output
+F27,Runtime,Focused 109-node bundle,OK,123 passed (76 statement_print + 5 node_csv + 7 gen_fail_closed + 35 route_auth),pytest output
+F28,Quality,py_compile,OK,3/3 files compile without error,python -m py_compile
+F29,Quality,git diff --check,OK,Clean on both R2-R1 and cumulative deltas,git diff --check
+F30,Quality,detect-secrets,OK,0 findings on scoped changed files,detect-secrets scan
+F31,Quality,BOM check,OK,No BOM on any of 3 changed backend files,byte inspection
+F32,Quality,UTF-8 validation,OK,All 3 files decode as valid UTF-8,encoding check
+F33,Quality,GitNexus analyze,OK,15459 nodes / 46420 edges / 811 clusters / 300 flows,npx gitnexus analyze
+F34,Worktree,Candidate worktree clean,OK,detached worktree at 34ccec11 is clean,git status
+F35,STOP,Scope/ref mismatch,OK,No mismatch observed,review
+F36,STOP,Product atomicity defect,OK,No defect observed,review
+F37,STOP,Secret leakage,OK,No leakage observed,review
+F38,STOP,False-green / nondeterministic evidence,OK,No false-green; determinism scoped to test,review
+F39,STOP,Unsupported zero-red / merge-ready claim,OK,Not claimed,review

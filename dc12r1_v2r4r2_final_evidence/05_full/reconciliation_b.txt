@@ -1,0 +1,4 @@
+junit_attr: tests=3764 failures=0 errors=0 skipped=63
+derived   : passed=3701 xfailed=15 skip_nodes=48
+accounting: derived_total=3764 gap=0
+skip/xfail node files written

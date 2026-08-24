@@ -1,0 +1,39 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ivy/MPANGO/dc12r1_v2r4r2_task/venv/bin/python
+hypothesis profile 'default'
+rootdir: /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: asyncio-1.4.0, anyio-4.12.1, hypothesis-6.165.10
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 27 items
+
+tests/test_dc11t2_async_test_utils.py::test_run_coroutine_reuses_current_loop PASSED [  3%]
+tests/test_dc11t2_async_test_utils.py::test_run_coroutine_replaces_closed_loop PASSED [  7%]
+tests/test_dc11t2_async_test_utils.py::test_alembic_upgrade_restores_current_loop PASSED [ 11%]
+tests/test_dc11t2_async_test_utils.py::test_alembic_downgrade_restores_current_loop PASSED [ 14%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_guard_accepts_explicit_loopback_test_source PASSED [ 18%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_guard_rejects_missing_positive_authorization[MPANGO_ENV-production-test environment] PASSED [ 22%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_guard_rejects_missing_positive_authorization[MPANGO_ALLOW_TEMP_DB_CREATE-0-explicit opt-in] PASSED [ 25%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_guard_rejects_missing_positive_authorization[MPANGO_TEMP_DB_ALLOWED_PORTS-55449-port is not explicitly allowed] PASSED [ 29%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_guard_rejects_source_not_matching_test_database_url PASSED [ 33%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_guard_rejects_nonlocal_host PASSED [ 37%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_guard_rejects_unmarked_database_name PASSED [ 40%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_guard_rejects_production_user PASSED [ 44%]
+tests/test_dc11t2_async_test_utils.py::test_temporary_database_context_refuses_without_positive_guard PASSED [ 48%]
+tests/test_dc11t2_async_test_utils.py::test_temporary_database_context_rejects_untrusted_prefix PASSED [ 51%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_creates_and_drops_exact_database PASSED [ 55%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_terminates_own_role_session_and_drops PASSED [ 59%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_waits_out_transient_foreign_session PASSED [ 62%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_persistent_foreign_session_fails_closed_sanitized PASSED [ 66%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_original_exception_preserved_by_identity PASSED [ 70%]
+tests/test_dc11t2_async_test_utils.py::test_temp_db_body_and_cleanup_failure_raise_exception_group PASSED [ 74%]
+tests/test_dc11t2_async_test_utils.py::test_teardown_fails_closed_when_database_remains_after_drop PASSED [ 77%]
+tests/test_dc11t2_async_test_utils.py::test_teardown_times_out_on_persistent_foreign_sessions PASSED [ 81%]
+tests/test_dc11t2_async_test_utils.py::test_teardown_retries_drop_object_in_use_then_succeeds PASSED [ 85%]
+tests/test_dc11t2_async_test_utils.py::test_teardown_persistent_object_in_use_fails_closed_at_deadline PASSED [ 88%]
+tests/test_dc11t2_async_test_utils.py::test_teardown_non_object_in_use_drop_error_propagates_immediately PASSED [ 92%]
+tests/test_dc11t2_async_test_utils.py::test_role_drop_persistent_failure_raises_not_silent PASSED [ 96%]
+tests/test_dc11t2_async_test_utils.py::test_role_drop_zero_residue_proof_fails_closed PASSED [100%]
+
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_a/dc11t2_natural_junit.xml -
+============================= 27 passed in 15.16s ==============================

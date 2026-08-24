@@ -1,0 +1,149 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: asyncio-1.4.0, anyio-4.12.1, hypothesis-6.165.10
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 109 items
+
+<Dir backend>
+  <Package tests>
+    <Module test_dc12r1_j1_h2b_forgot_password_runtime_closure.py>
+      <Coroutine test_t1_internal_failure_neutral_200_zero_tokens_plus_observable_log>
+      <Coroutine test_t2_official_lifecycle_account_token_and_email>
+      <Coroutine test_t3_nonexistent_and_inactive_neutral_zero_side_effects_and_zero_events>
+      <Coroutine test_t4_unrelated_scan_failure_target_found_partial_telemetry>
+      <Coroutine test_t5_delivery_failure_rollback>
+      <Coroutine test_t6_unexpected_failure_metric_and_neutral_external>
+      <Coroutine test_t7_replay_exact_401_token_remains_used_password_not_applied>
+      <Coroutine test_t8_query_string_token_rejected>
+      <Coroutine test_t9_target_scan_failure_one_internal_event_evidence_preserved>
+      <Coroutine test_t10_consume_scan_incomplete_token_stays_actionable>
+      <Coroutine test_t11_consume_partial_scan_fails_closed_both_old_token_intact>
+      <Coroutine test_t12_partial_apply_rolls_back_first_copy_token_intact>
+    <Module test_dc3b_credential_recovery_backend.py>
+      <Coroutine test_forgot_password_neutral_for_existing_and_nonexistent_email>
+      <Coroutine test_broken_tenant_schema_does_not_block_healthy_password_reset>
+      <Coroutine test_production_fail_closed_creates_no_token>
+      <Coroutine test_reset_token_stored_hash_only_raw_never_persisted>
+      <Coroutine test_reset_with_valid_token_updates_password>
+      <Coroutine test_invalid_states_fail_neutrally>
+      <Coroutine test_query_string_token_rejected>
+      <Coroutine test_reset_updates_both_tenant_copies>
+      <Coroutine test_login_succeeds_after_reset_with_multiple_copies>
+      <Coroutine test_setup_credential_propagates_to_other_tenant_copies>
+      <Coroutine test_no_internal_ids_tokens_hashes_in_public_responses>
+      <Coroutine test_r1_different_passwords_isolates_unverified_tenant>
+      <Coroutine test_r1_same_password_different_user_ids_selects_both>
+      <Coroutine test_r1_after_reset_both_copies_login_and_select>
+      <Coroutine test_r1_identity_refresh_preserves_tenant_selection>
+      <Coroutine test_r1_no_internal_mapping_in_public_responses>
+    <Module test_route_authorization_policy.py>
+      <Class TestHarnessIntegrity>
+        <Function test_harness_scans_all_api_v1_routes>
+        <Function test_no_route_is_unclassified>
+        <Function test_harness_detects_auth_dependencies_correctly>
+        <Function test_known_good_routes_are_classified_correctly>
+        <Function test_classification_table_printable>
+      <Class TestRoutePolicyContract>
+        <Function test_all_api_v1_routes_are_classified>
+        <Function test_no_unclassified_business_routes>
+      <Class TestPlatformRoutePolicy>
+        <Function test_platform_routes_exist>
+        <Function test_all_platform_routes_require_platform_permission>
+        <Function test_platform_routes_have_auth_dependency>
+      <Class TestPlatformAdminBoundary>
+        <Coroutine test_identity_only_super_admin_allowed>
+        <Coroutine test_contextual_tenant_admin_rejected>
+        <Coroutine test_contextual_super_admin_rejected>
+        <Coroutine test_partial_context_tenant_id_set_schema_none_rejected>
+        <Coroutine test_partial_context_tenant_id_none_schema_set_rejected>
+        <Coroutine test_regular_user_rejected>
+        <Coroutine test_unauthenticated_rejected>
+        <Coroutine test_platform_routes_use_platform_guard>
+        <Function test_platform_routes_reject_non_platform_admin_http>
+      <Class TestExportRoutePolicy>
+        <Function test_export_create_has_permission>
+        <Function test_export_status_has_explicit_permission>
+        <Function test_export_download_has_explicit_permission>
+        <Function test_no_export_route_is_plain_authenticated>
+        <Function test_streaming_exports_have_permission>
+      <Class TestOrderPaymentRoutePolicy>
+        <Function test_order_pay_route_requires_payments_create>
+      <Class TestInternalRoutePolicy>
+        <Function test_internal_routes_exist>
+        <Function test_all_internal_routes_require_system_admin>
+      <Class TestPublicAllowlistIntegrity>
+        <Function test_public_allowlist_is_minimal>
+        <Function test_no_platform_route_in_allowlist>
+        <Function test_allowlisted_routes_are_classified_public>
+      <Class TestFindingsInventory>
+        <Function test_print_full_classification_table>
+      <Class TestSmokeAuthGate>
+        <Coroutine test_require_permission_system_admin_rejects_no_auth>
+        <Coroutine test_require_permission_exports_create_rejects_no_auth>
+        <Function test_get_current_user_context_rejects_no_auth>
+        <Function test_export_routes_reject_unauthenticated_http>
+    <Module test_u6c_signup_email_verification_skeleton.py>
+      <Coroutine test_signup_creates_pending_registration_and_one_active_verification_token>
+      <Coroutine test_passwordless_signup_is_the_new_client_contract_and_stores_no_hash>
+      <Coroutine test_legacy_password_is_accepted_but_never_stored>
+      <Coroutine test_legacy_replay_with_different_password_same_key_is_not_a_conflict>
+      <Coroutine test_fingerprint_deterministic_for_passwordless_and_legacy_payloads>
+      <Coroutine test_signup_stores_only_token_hash_and_dev_sink_captures_delivery>
+      <Coroutine test_duplicate_same_normalized_email_returns_neutral_success_without_duplicate_live_registration>
+      <Coroutine test_same_idempotency_key_and_fingerprint_is_safe>
+      <Coroutine test_idempotent_retry_does_not_expose_changed_internal_status>
+      <Coroutine test_production_signup_fails_closed_without_email_provider_and_writes_no_rows>
+      <Coroutine test_signup_endpoint_returns_503_when_email_delivery_is_unavailable>
+      <Coroutine test_invalid_email_or_password_returns_validation_error_without_db_writes>
+      <Coroutine test_legacy_fingerprint_record_replays_under_new_code_without_409>
+      <Coroutine test_legacy_fingerprint_record_still_409_for_different_payload>
+      <Coroutine test_signup_does_not_create_tenant_schema_users_roles_or_rbac>
+      <Coroutine test_signup_response_has_no_raw_token_and_no_query_string_status_contract>
+    <Module test_u6f_onboarding_auth_chain_closeout.py>
+      <Coroutine test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisions_without_admin>
+      <Coroutine test_duplicate_email_neutrality_creates_no_second_live_registration_or_status_token>
+      <Coroutine test_idempotency_retry_and_conflict_do_not_create_duplicate_rows>
+      <Coroutine test_token_transport_and_invalid_missing_expired_reused_fail_neutrally>
+      <Coroutine test_closeout_provisions_tenant_but_defers_admin_rbac_until_setup_credential>
+      <Coroutine test_route_policy_keeps_current_onboarding_and_recovery_routes_public>
+      <Coroutine test_migration_schema_sanity_uses_current_single_head>
+    <Module test_u6h2_tenant_provisioning_wholesaler_schema.py>
+      <Coroutine test_provisioning_registration_creates_one_wholesaler_and_bootstrapped_schema>
+      <Coroutine test_active_existing_registration_returns_idempotent_result>
+      <Coroutine test_duplicate_retry_creates_no_duplicate_wholesaler_or_schema_corruption>
+      <Coroutine test_non_provisioning_statuses_are_blocked_without_mutation[pending_email_verification]>
+      <Coroutine test_non_provisioning_statuses_are_blocked_without_mutation[email_verified]>
+      <Coroutine test_non_provisioning_statuses_are_blocked_without_mutation[cancelled]>
+      <Coroutine test_non_provisioning_statuses_are_blocked_without_mutation[expired]>
+      <Coroutine test_non_provisioning_statuses_are_blocked_without_mutation[failed]>
+      <Coroutine test_bootstrap_failure_does_not_mark_active_or_completed>
+      <Coroutine test_bootstrap_failure_message_does_not_persist_dsn_or_fake_password>
+      <Coroutine test_bootstrap_seeds_current_retailer_rbac_without_admin_grant_all>
+      <Coroutine test_public_auth_routes_delegate_tenant_provisioning_to_onboarding_service>
+      <Coroutine test_active_existing_with_missing_schema_is_not_treated_as_idempotent>
+      <Coroutine test_forbidden_wholesaler_api_crud_repository_and_bootstrap_files_are_untouched>
+    <Module test_u6h3_tenant_provisioning_reconcile_cleanup.py>
+      <Coroutine test_first_attempt_partial_schema_failure_persists_retry_anchor_and_reconciles>
+      <Coroutine test_partial_schema_after_failure_reconciles_to_active_without_duplicate_wholesaler>
+      <Coroutine test_complete_schema_for_provisioning_registration_completes_without_bootstrap_rerun>
+      <Coroutine test_partial_schema_bootstrap_rerun_failure_stays_not_active_and_sanitized>
+      <Coroutine test_active_existing_remains_idempotent_after_reconcile>
+      <Coroutine test_reconcile_seeds_current_retailer_rbac_without_admin_grant_all>
+      <Coroutine test_public_auth_routes_delegate_tenant_provisioning_to_onboarding_service>
+      <Coroutine test_forbidden_wholesaler_api_crud_repository_and_bootstrap_files_are_untouched>
+    <Module test_u6i6_onboarding_e2e_closeout.py>
+      <Coroutine test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_admin_rbac>
+
+=============================== warnings summary ===============================
+../../dc12r1_v2r4r2_task/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/ivy/MPANGO/dc12r1_v2r4r2_task/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+========================= 109 tests collected in 5.93s =========================

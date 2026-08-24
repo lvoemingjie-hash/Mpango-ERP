@@ -1,0 +1,5 @@
+AUTHORITATIVE FULL RUN stack=b start 2026-08-24T15:51:06+08:00
+FULL_RUN_EXIT=0 end 2026-08-24T16:19:32+08:00
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/05_full/full_b_junit.xml -
+=== 3701 passed, 48 skipped, 15 xfailed, 3409 warnings in 1702.28s (0:28:22) ===

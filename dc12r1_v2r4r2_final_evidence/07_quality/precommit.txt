@@ -1,0 +1,6 @@
+trim trailing whitespace.................................................Passed
+fix end of files.........................................................Passed
+check yaml...........................................(no files to check)Skipped
+check for added large files..............................................Passed
+Detect secrets...........................................................Passed
+precommit_exit=0

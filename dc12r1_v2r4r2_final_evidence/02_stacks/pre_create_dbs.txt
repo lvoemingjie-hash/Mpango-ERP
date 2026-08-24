@@ -1,0 +1,20 @@
+===== stack a pre-create DB proof =====
+0
+0
+===== stack b pre-create DB proof =====
+0
+0
+CREATE ROLE
+CREATE DATABASE
+-- stack a role/db attributes:
+h2btester|f|t|t
+test_h2b_r2r4r2_full_a|h2btester
+-- stack a autovacuum:
+on
+CREATE ROLE
+CREATE DATABASE
+-- stack b role/db attributes:
+h2btester|f|t|t
+test_h2b_r2r4r2_full_b|h2btester
+-- stack b autovacuum:
+on

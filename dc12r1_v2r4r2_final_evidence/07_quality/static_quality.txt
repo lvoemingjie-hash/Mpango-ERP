@@ -1,0 +1,30 @@
+# Quality gates (native Lubuntu) - 2026-08-24T16:21:22+08:00
+## py_compile on the three changed python modules
+py_compile OK backend/tests/async_test_utils.py
+py_compile OK backend/tests/test_dc11t2_async_test_utils.py
+py_compile OK backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## git diff --check aggregate_base..candidate
+diff_check OK (no output)
+## strict UTF-8 / no BOM on the five changed files
+utf8_strict_no_bom OK /home/ivy/MPANGO/dc12r1-v2-final-worktree/ai-ledger/product-ai/2026-08-24_dc12r1_mvp_l1_j1_h2_b_r2_r4_temp_db_teardown_privilege_race.md
+utf8_strict_no_bom OK /home/ivy/MPANGO/dc12r1-v2-final-worktree/ai-ledger/product-ai/2026-08-24_dc12r1_mvp_l1_j1_h2_b_r2_r4_r2_u6i2_token_row_determinism.md
+utf8_strict_no_bom OK /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/tests/async_test_utils.py
+utf8_strict_no_bom OK /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/tests/test_dc11t2_async_test_utils.py
+utf8_strict_no_bom OK /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/tests/test_u6i2_owner_credential_setup_token_issue.py
+## raw detect-secrets scan over the five changed files
+## .secrets.baseline byte-identity parent..candidate
+baseline_blob_parent=218be690a6d5ad3551c31fa28087964440c888c9:backend/.secrets.baseline
+baseline_blob_candidate=8c462170804322d3f73803d8991c00879582e232:backend/.secrets.baseline
+## .secrets.baseline byte-identity parent..candidate (repo root path)
+baseline_blob_parent=047b50f1c9c77182dd3eff38ced5b1207ea777f6
+baseline_blob_candidate=047b50f1c9c77182dd3eff38ced5b1207ea777f6
+## candidate worktree tracked-byte identity after ALL runs
+HEAD=8c462170804322d3f73803d8991c00879582e232
+porcelain_lines=0
+tracked_files=2124
+index_manifest_sha256=c82ab75a716e4880e7de8992446902c9253c34876f6b2bbb8cb245f317eaeb43
+3
+## frozen refs re-verification post-execution
+origin_source_tip=8c462170804322d3f73803d8991c00879582e232
+kilo_report_tip=4d42ffcae09d3a362f778c1e0661a72e1147dcba
+protected_baseline=6e9470a1daa5d6eece29724316fdd8aef6b737c1

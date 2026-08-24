@@ -1,0 +1,234 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ivy/MPANGO/dc12r1_v2r4r2_task/venv/bin/python
+hypothesis profile 'default'
+rootdir: /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: asyncio-1.4.0, anyio-4.12.1, hypothesis-6.165.10
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 109 items
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t10_consume_scan_incomplete_token_stays_actionable PASSED [  0%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t11_consume_partial_scan_fails_closed_both_old_token_intact PASSED [  1%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t12_partial_apply_rolls_back_first_copy_token_intact PASSED [  2%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t1_internal_failure_neutral_200_zero_tokens_plus_observable_log PASSED [  3%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email PASSED [  4%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t3_nonexistent_and_inactive_neutral_zero_side_effects_and_zero_events PASSED [  5%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t4_unrelated_scan_failure_target_found_partial_telemetry PASSED [  6%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t5_delivery_failure_rollback PASSED [  7%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t6_unexpected_failure_metric_and_neutral_external PASSED [  8%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t7_replay_exact_401_token_remains_used_password_not_applied PASSED [  9%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t8_query_string_token_rejected PASSED [ 10%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t9_target_scan_failure_one_internal_event_evidence_preserved PASSED [ 11%]
+tests/test_dc3b_credential_recovery_backend.py::test_broken_tenant_schema_does_not_block_healthy_password_reset PASSED [ 11%]
+tests/test_dc3b_credential_recovery_backend.py::test_forgot_password_neutral_for_existing_and_nonexistent_email PASSED [ 12%]
+tests/test_dc3b_credential_recovery_backend.py::test_invalid_states_fail_neutrally PASSED [ 13%]
+tests/test_dc3b_credential_recovery_backend.py::test_login_succeeds_after_reset_with_multiple_copies PASSED [ 14%]
+tests/test_dc3b_credential_recovery_backend.py::test_no_internal_ids_tokens_hashes_in_public_responses PASSED [ 15%]
+tests/test_dc3b_credential_recovery_backend.py::test_production_fail_closed_creates_no_token PASSED [ 16%]
+tests/test_dc3b_credential_recovery_backend.py::test_query_string_token_rejected PASSED [ 17%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select PASSED [ 18%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_different_passwords_isolates_unverified_tenant PASSED [ 19%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection PASSED [ 20%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_no_internal_mapping_in_public_responses PASSED [ 21%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_same_password_different_user_ids_selects_both PASSED [ 22%]
+tests/test_dc3b_credential_recovery_backend.py::test_reset_token_stored_hash_only_raw_never_persisted PASSED [ 22%]
+tests/test_dc3b_credential_recovery_backend.py::test_reset_updates_both_tenant_copies PASSED [ 23%]
+tests/test_dc3b_credential_recovery_backend.py::test_reset_with_valid_token_updates_password PASSED [ 24%]
+tests/test_dc3b_credential_recovery_backend.py::test_setup_credential_propagates_to_other_tenant_copies PASSED [ 25%]
+tests/test_route_authorization_policy.py::TestExportRoutePolicy::test_export_create_has_permission PASSED [ 26%]
+tests/test_route_authorization_policy.py::TestExportRoutePolicy::test_export_download_has_explicit_permission PASSED [ 27%]
+tests/test_route_authorization_policy.py::TestExportRoutePolicy::test_export_status_has_explicit_permission PASSED [ 28%]
+tests/test_route_authorization_policy.py::TestExportRoutePolicy::test_no_export_route_is_plain_authenticated PASSED [ 29%]
+tests/test_route_authorization_policy.py::TestExportRoutePolicy::test_streaming_exports_have_permission PASSED [ 30%]
+tests/test_route_authorization_policy.py::TestFindingsInventory::test_print_full_classification_table PASSED [ 31%]
+tests/test_route_authorization_policy.py::TestHarnessIntegrity::test_classification_table_printable PASSED [ 32%]
+tests/test_route_authorization_policy.py::TestHarnessIntegrity::test_harness_detects_auth_dependencies_correctly PASSED [ 33%]
+tests/test_route_authorization_policy.py::TestHarnessIntegrity::test_harness_scans_all_api_v1_routes PASSED [ 33%]
+tests/test_route_authorization_policy.py::TestHarnessIntegrity::test_known_good_routes_are_classified_correctly PASSED [ 34%]
+tests/test_route_authorization_policy.py::TestHarnessIntegrity::test_no_route_is_unclassified PASSED [ 35%]
+tests/test_route_authorization_policy.py::TestInternalRoutePolicy::test_all_internal_routes_require_system_admin PASSED [ 36%]
+tests/test_route_authorization_policy.py::TestInternalRoutePolicy::test_internal_routes_exist PASSED [ 37%]
+tests/test_route_authorization_policy.py::TestOrderPaymentRoutePolicy::test_order_pay_route_requires_payments_create PASSED [ 38%]
+tests/test_route_authorization_policy.py::TestPlatformAdminBoundary::test_contextual_super_admin_rejected PASSED [ 39%]
+tests/test_route_authorization_policy.py::TestPlatformAdminBoundary::test_contextual_tenant_admin_rejected PASSED [ 40%]
+tests/test_route_authorization_policy.py::TestPlatformAdminBoundary::test_identity_only_super_admin_allowed PASSED [ 41%]
+tests/test_route_authorization_policy.py::TestPlatformAdminBoundary::test_partial_context_tenant_id_none_schema_set_rejected PASSED [ 42%]
+tests/test_route_authorization_policy.py::TestPlatformAdminBoundary::test_partial_context_tenant_id_set_schema_none_rejected PASSED [ 43%]
+tests/test_route_authorization_policy.py::TestPlatformAdminBoundary::test_platform_routes_reject_non_platform_admin_http PASSED [ 44%]
+tests/test_route_authorization_policy.py::TestPlatformAdminBoundary::test_platform_routes_use_platform_guard PASSED [ 44%]
+tests/test_route_authorization_policy.py::TestPlatformAdminBoundary::test_regular_user_rejected PASSED [ 45%]
+tests/test_route_authorization_policy.py::TestPlatformAdminBoundary::test_unauthenticated_rejected PASSED [ 46%]
+tests/test_route_authorization_policy.py::TestPlatformRoutePolicy::test_all_platform_routes_require_platform_permission PASSED [ 47%]
+tests/test_route_authorization_policy.py::TestPlatformRoutePolicy::test_platform_routes_exist PASSED [ 48%]
+tests/test_route_authorization_policy.py::TestPlatformRoutePolicy::test_platform_routes_have_auth_dependency PASSED [ 49%]
+tests/test_route_authorization_policy.py::TestPublicAllowlistIntegrity::test_allowlisted_routes_are_classified_public PASSED [ 50%]
+tests/test_route_authorization_policy.py::TestPublicAllowlistIntegrity::test_no_platform_route_in_allowlist PASSED [ 51%]
+tests/test_route_authorization_policy.py::TestPublicAllowlistIntegrity::test_public_allowlist_is_minimal PASSED [ 52%]
+tests/test_route_authorization_policy.py::TestRoutePolicyContract::test_all_api_v1_routes_are_classified PASSED [ 53%]
+tests/test_route_authorization_policy.py::TestRoutePolicyContract::test_no_unclassified_business_routes PASSED [ 54%]
+tests/test_route_authorization_policy.py::TestSmokeAuthGate::test_export_routes_reject_unauthenticated_http PASSED [ 55%]
+tests/test_route_authorization_policy.py::TestSmokeAuthGate::test_get_current_user_context_rejects_no_auth PASSED [ 55%]
+tests/test_route_authorization_policy.py::TestSmokeAuthGate::test_require_permission_exports_create_rejects_no_auth PASSED [ 56%]
+tests/test_route_authorization_policy.py::TestSmokeAuthGate::test_require_permission_system_admin_rejects_no_auth PASSED [ 57%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_duplicate_same_normalized_email_returns_neutral_success_without_duplicate_live_registration PASSED [ 58%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_fingerprint_deterministic_for_passwordless_and_legacy_payloads PASSED [ 59%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_idempotent_retry_does_not_expose_changed_internal_status PASSED [ 60%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_invalid_email_or_password_returns_validation_error_without_db_writes PASSED [ 61%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_fingerprint_record_replays_under_new_code_without_409 PASSED [ 62%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_fingerprint_record_still_409_for_different_payload PASSED [ 63%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_password_is_accepted_but_never_stored PASSED [ 64%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_replay_with_different_password_same_key_is_not_a_conflict PASSED [ 65%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_passwordless_signup_is_the_new_client_contract_and_stores_no_hash PASSED [ 66%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_production_signup_fails_closed_without_email_provider_and_writes_no_rows PASSED [ 66%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_same_idempotency_key_and_fingerprint_is_safe PASSED [ 67%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_signup_creates_pending_registration_and_one_active_verification_token PASSED [ 68%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_signup_does_not_create_tenant_schema_users_roles_or_rbac PASSED [ 69%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_signup_endpoint_returns_503_when_email_delivery_is_unavailable PASSED [ 70%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_signup_response_has_no_raw_token_and_no_query_string_status_contract PASSED [ 71%]
+tests/test_u6c_signup_email_verification_skeleton.py::test_signup_stores_only_token_hash_and_dev_sink_captures_delivery PASSED [ 72%]
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_closeout_provisions_tenant_but_defers_admin_rbac_until_setup_credential PASSED [ 73%]
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_duplicate_email_neutrality_creates_no_second_live_registration_or_status_token PASSED [ 74%]
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisions_without_admin PASSED [ 75%]
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_idempotency_retry_and_conflict_do_not_create_duplicate_rows PASSED [ 76%]
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_migration_schema_sanity_uses_current_single_head PASSED [ 77%]
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_route_policy_keeps_current_onboarding_and_recovery_routes_public PASSED [ 77%]
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_token_transport_and_invalid_missing_expired_reused_fail_neutrally PASSED [ 78%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_active_existing_registration_returns_idempotent_result PASSED [ 79%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_active_existing_with_missing_schema_is_not_treated_as_idempotent PASSED [ 80%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_bootstrap_failure_does_not_mark_active_or_completed PASSED [ 81%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_bootstrap_failure_message_does_not_persist_dsn_or_fake_password PASSED [ 82%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_bootstrap_seeds_current_retailer_rbac_without_admin_grant_all PASSED [ 83%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_duplicate_retry_creates_no_duplicate_wholesaler_or_schema_corruption PASSED [ 84%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_forbidden_wholesaler_api_crud_repository_and_bootstrap_files_are_untouched PASSED [ 85%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_non_provisioning_statuses_are_blocked_without_mutation[cancelled] PASSED [ 86%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_non_provisioning_statuses_are_blocked_without_mutation[email_verified] PASSED [ 87%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_non_provisioning_statuses_are_blocked_without_mutation[expired] PASSED [ 88%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_non_provisioning_statuses_are_blocked_without_mutation[failed] PASSED [ 88%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_non_provisioning_statuses_are_blocked_without_mutation[pending_email_verification] PASSED [ 89%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_provisioning_registration_creates_one_wholesaler_and_bootstrapped_schema PASSED [ 90%]
+tests/test_u6h2_tenant_provisioning_wholesaler_schema.py::test_public_auth_routes_delegate_tenant_provisioning_to_onboarding_service PASSED [ 91%]
+tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_active_existing_remains_idempotent_after_reconcile PASSED [ 92%]
+tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_complete_schema_for_provisioning_registration_completes_without_bootstrap_rerun PASSED [ 93%]
+tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_first_attempt_partial_schema_failure_persists_retry_anchor_and_reconciles PASSED [ 94%]
+tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_forbidden_wholesaler_api_crud_repository_and_bootstrap_files_are_untouched PASSED [ 95%]
+tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_partial_schema_after_failure_reconciles_to_active_without_duplicate_wholesaler PASSED [ 96%]
+tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_partial_schema_bootstrap_rerun_failure_stays_not_active_and_sanitized PASSED [ 97%]
+tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_public_auth_routes_delegate_tenant_provisioning_to_onboarding_service PASSED [ 98%]
+tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_reconcile_seeds_current_retailer_rbac_without_admin_grant_all PASSED [ 99%]
+tests/test_u6i6_onboarding_e2e_closeout.py::test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_admin_rbac PASSED [100%]
+
+=============================== warnings summary ===============================
+../../dc12r1_v2r4r2_task/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/ivy/MPANGO/dc12r1_v2r4r2_task/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py: 13 warnings
+tests/test_dc3b_credential_recovery_backend.py: 14 warnings
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/api/v1/auth.py:832: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py: 4 warnings
+tests/test_dc3b_credential_recovery_backend.py: 6 warnings
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/api/v1/auth.py:974: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py: 1 warning
+tests/test_u6c_signup_email_verification_skeleton.py: 18 warnings
+tests/test_u6f_onboarding_auth_chain_closeout.py: 10 warnings
+tests/test_u6i6_onboarding_e2e_closeout.py: 1 warning
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/services/onboarding_service.py:299: DeprecationWarning: deprecated
+    if request.password is not None:
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py: 1 warning
+tests/test_u6c_signup_email_verification_skeleton.py: 6 warnings
+tests/test_u6f_onboarding_auth_chain_closeout.py: 10 warnings
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/services/onboarding_service.py:300: DeprecationWarning: deprecated
+    validate_signup_password(request.password)
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py: 1 warning
+tests/test_u6c_signup_email_verification_skeleton.py: 17 warnings
+tests/test_u6f_onboarding_auth_chain_closeout.py: 9 warnings
+tests/test_u6i6_onboarding_e2e_closeout.py: 1 warning
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/api/v1/auth.py:154: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_closeout_provisions_tenant_but_defers_admin_rbac_until_setup_credential
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisions_without_admin
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_token_transport_and_invalid_missing_expired_reused_fail_neutrally
+tests/test_u6i6_onboarding_e2e_closeout.py::test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_admin_rbac
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/api/v1/auth.py:197: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+tests/test_dc3b_credential_recovery_backend.py::test_setup_credential_propagates_to_other_tenant_copies
+tests/test_u6i6_onboarding_e2e_closeout.py::test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_admin_rbac
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/api/v1/auth.py:716: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py: 20 warnings
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/core/security.py:108: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_dc3b_credential_recovery_backend.py::test_login_succeeds_after_reset_with_multiple_copies
+tests/test_dc3b_credential_recovery_backend.py::test_login_succeeds_after_reset_with_multiple_copies
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select
+tests/test_dc3b_credential_recovery_backend.py::test_r1_different_passwords_isolates_unverified_tenant
+tests/test_dc3b_credential_recovery_backend.py::test_r1_different_passwords_isolates_unverified_tenant
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection
+tests/test_dc3b_credential_recovery_backend.py::test_r1_no_internal_mapping_in_public_responses
+tests/test_dc3b_credential_recovery_backend.py::test_r1_same_password_different_user_ids_selects_both
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/api/v1/auth.py:325: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py: 14 warnings
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/core/security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select
+tests/test_dc3b_credential_recovery_backend.py::test_r1_different_passwords_isolates_unverified_tenant
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection
+tests/test_dc3b_credential_recovery_backend.py::test_r1_same_password_different_user_ids_selects_both
+tests/test_dc3b_credential_recovery_backend.py::test_r1_same_password_different_user_ids_selects_both
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/api/v1/auth.py:441: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc3b_credential_recovery_backend.py::test_r1_identity_refresh_preserves_tenant_selection
+tests/test_dc3b_credential_recovery_backend.py::test_r1_no_internal_mapping_in_public_responses
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/api/v1/auth.py:504: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_fingerprint_record_replays_under_new_code_without_409
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_fingerprint_record_replays_under_new_code_without_409
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_fingerprint_record_still_409_for_different_payload
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_fingerprint_record_still_409_for_different_payload
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_idempotency_retry_and_conflict_do_not_create_duplicate_rows
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/services/onboarding_service.py:584: DeprecationWarning: deprecated
+    "password": request.password,
+
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_fingerprint_record_replays_under_new_code_without_409
+tests/test_u6c_signup_email_verification_skeleton.py::test_legacy_fingerprint_record_still_409_for_different_payload
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_idempotency_retry_and_conflict_do_not_create_duplicate_rows
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/services/onboarding_service.py:316: DeprecationWarning: deprecated
+    request.password is not None
+
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_closeout_provisions_tenant_but_defers_admin_rbac_until_setup_credential
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisions_without_admin
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_end_to_end_signup_verify_status_happy_path_is_neutral_and_provisions_without_admin
+tests/test_u6i6_onboarding_e2e_closeout.py::test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_admin_rbac
+  /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend/api/v1/auth.py:229: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u6f_onboarding_auth_chain_closeout.py::test_migration_schema_sanity_uses_current_single_head
+  /home/ivy/MPANGO/dc12r1_v2r4r2_task/venv/lib/python3.12/site-packages/alembic/config.py:612: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_a/focused_natural_junit.xml -
+================= 109 passed, 186 warnings in 90.46s (0:01:30) =================

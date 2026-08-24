@@ -1,0 +1,37 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ivy/MPANGO/dc12r1_v2r4r2_task/venv/bin/python
+hypothesis profile 'default'
+rootdir: /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: asyncio-1.4.0, anyio-4.12.1, hypothesis-6.165.10
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 15 items
+
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_setup_credential_endpoint_rejects_query_string_tokens PASSED [  6%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_issue_service_creates_no_admin_rbac_or_business_data PASSED [ 13%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_active_registration_missing_provisioning_assignment_is_blocked[True-True-False] PASSED [ 20%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_active_registration_missing_provisioning_assignment_is_blocked[True-False-True] PASSED [ 26%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_active_registration_missing_provisioning_assignment_is_blocked[False-True-True] PASSED [ 33%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_blocked_statuses_create_no_setup_token_rows[cancelled] PASSED [ 40%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_blocked_statuses_create_no_setup_token_rows[failed] PASSED [ 46%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_blocked_statuses_create_no_setup_token_rows[provisioning] PASSED [ 53%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_blocked_statuses_create_no_setup_token_rows[email_verified] PASSED [ 60%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_used_or_revoked_prior_token_allows_new_setup_token_issue[None-revoked_at1] PASSED [ 66%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_used_or_revoked_prior_token_allows_new_setup_token_issue[used_at0-None] PASSED [ 73%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_expired_prior_token_allows_new_setup_token_issue PASSED [ 80%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_duplicate_issue_returns_existing_without_creating_second_active_token PASSED [ 86%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_active_provisioned_registration_issues_hash_only_setup_token PASSED [ 93%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_prior_and_new_identity_matching_is_order_independent PASSED [100%]
+
+=============================== warnings summary ===============================
+../../dc12r1_v2r4r2_task/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/ivy/MPANGO/dc12r1_v2r4r2_task/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_prior_and_new_identity_matching_is_order_independent
+  tests/test_u6i2_owner_credential_setup_token_issue.py:234: PytestWarning: The test <Function test_prior_and_new_identity_matching_is_order_independent> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_prior_and_new_identity_matching_is_order_independent():
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/u6i2_reversed_junit.xml -
+======================== 15 passed, 2 warnings in 2.19s ========================

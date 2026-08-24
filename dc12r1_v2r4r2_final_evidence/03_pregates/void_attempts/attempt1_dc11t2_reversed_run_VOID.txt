@@ -1,0 +1,13 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ivy/MPANGO/dc12r1_v2r4r2_task/venv/bin/python
+hypothesis profile 'default'
+rootdir: /home/ivy/MPANGO/dc12r1-v2-final-worktree/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: asyncio-1.4.0, anyio-4.12.1, hypothesis-6.165.10
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... ERROR: file or directory not found: is
+
+collected 0 items
+
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_a/dc11t2_reversed_junit.xml -
+============================ no tests ran in 0.19s =============================

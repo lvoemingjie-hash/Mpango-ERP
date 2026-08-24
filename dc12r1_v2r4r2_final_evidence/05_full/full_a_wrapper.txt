@@ -1,0 +1,5 @@
+AUTHORITATIVE FULL RUN stack=a start 2026-08-24T15:13:16+08:00
+FULL_RUN_EXIT=0 end 2026-08-24T15:49:23+08:00
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/05_full/full_a_junit.xml -
+=== 3701 passed, 48 skipped, 15 xfailed, 3400 warnings in 2162.42s (0:36:02) ===

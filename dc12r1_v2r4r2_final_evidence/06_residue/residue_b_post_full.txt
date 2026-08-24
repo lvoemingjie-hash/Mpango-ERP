@@ -1,0 +1,34 @@
+# residue proof stack=b label=post_full - 2026-08-24T16:20:36+08:00
+## 0 extra databases beyond postgres/template0/template1/test_h2b_r2r4r2_full_b
+0
+## 0 dc11t2fr_ temp roles (module prefix)
+0
+## A scan-breaking ACTIVE wholesalers (status=active,is_deleted=false,no users table in derived schema)
+0
+## A2 all not-deleted wholesalers lacking users table (broader diagnostic)
+0
+## B exact 2222/3333 identities
+0
+0
+0
+0
+0
+0
+## C shared 1111 public state (exact JSON)
+[]
+[]
+[]
+## D PW1R4/U6I2/S5D4B task-created public rows and derived schemas
+0
+0
+0
+0
+0
+0
+0
+## full active wholesaler census (attribution context)
+WHOLESALER b48e472b-8a1d-4f52-ba56-d64bfb81de97 S1TAF5908 active
+WHOLESALER 58d12652-3a79-4cba-b1d3-05c3ec9c0fc3 R2A7DCBE4 active
+WHOLESALER 558d527a-fdc2-4715-9eed-6e8ab6be7195 R2BA7C51F active
+WHOLESALER f3a52d1b-6126-4c0d-a94a-cb4daaa79c0b R1TED4379 active
+RESIDUE_PROOF_DONE stack=b label=post_full

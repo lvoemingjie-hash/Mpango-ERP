@@ -1,0 +1,19 @@
+===== rebuild stack b (pre_full) 2026-08-24T15:08:25+08:00 =====
+/var/run/postgresql:5432 - accepting connections
+-- fresh-volume DB census (must be 3 system DBs only):
+postgres
+template0
+template1
+-- h2btester role:
+0
+CREATE ROLE
+CREATE DATABASE
+-- role/db attributes:
+h2btester|f|t|t
+-- autovacuum:
+on
+stack_b redis /0 PING=True dbsize=0
+stack_b redis /15 PING=True dbsize=0
+INFO  [alembic.runtime.migration] Running upgrade 036_retailer_mvp_identity -> 037_payment_declarations_schema, DC-12R1-S3-S2B-I1: payment_declarations, receipt_sequences, receipt_number, transaction_id widening, permission rename.
+037_payment_declarations_schema (head)
+REBUILD_OK stack=b label=pre_full 2026-08-24T15:08:39+08:00

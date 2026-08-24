@@ -1,0 +1,54 @@
+########## STACK b PRE-GATES 2026-08-24T14:51:53+08:00 ##########
+
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/dc11t2_natural_junit.xml -
+============================= 27 passed in 15.06s ==============================
+
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/dc11t2_reversed_junit.xml -
+============================= 27 passed in 15.16s ==============================
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/u6i2_natural_junit.xml -
+======================== 15 passed, 2 warnings in 2.32s ========================
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/u6i2_reversed_junit.xml -
+======================== 15 passed, 2 warnings in 2.19s ========================
+rednode run 1: PASS passed
+rednode run 2: PASS passed
+rednode run 3: PASS passed
+rednode run 4: PASS passed
+rednode run 5: PASS passed
+rednode run 6: PASS passed
+rednode run 7: PASS passed
+rednode run 8: PASS passed
+rednode run 9: PASS passed
+rednode run 10: PASS passed
+rednode run 11: PASS passed
+rednode run 12: PASS passed
+rednode run 13: PASS passed
+rednode run 14: PASS passed
+rednode run 15: PASS passed
+rednode run 16: PASS passed
+rednode run 17: PASS passed
+rednode run 18: PASS passed
+rednode run 19: PASS passed
+rednode run 20: PASS passed
+rednode_total_pass=20/20
+four_bundle_collected=47
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/four_natural_junit.xml -
+====================== 47 passed, 200 warnings in 35.94s =======================
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/four_reversed_junit.xml -
+====================== 47 passed, 200 warnings in 36.01s =======================
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/pred_bundle_junit.xml -
+====================== 44 passed, 121 warnings in 55.70s =======================
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/focused_natural_junit.xml -
+================ 109 passed, 186 warnings in 104.66s (0:01:44) =================
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/focused_reversed_junit.xml -
+================= 109 passed, 186 warnings in 93.60s (0:01:33) =================
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/MPANGO/dc12r1_v2r4r2_final_evidence/03_pregates/stack_b/h2b_independent_junit.xml -
+======================= 12 passed, 24 warnings in 21.58s =======================
+########## STACK b PRE-GATES ALL PASS 2026-08-24T15:01:49+08:00 ##########

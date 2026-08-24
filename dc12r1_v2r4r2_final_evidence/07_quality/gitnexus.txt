@@ -1,0 +1,12 @@
+## GitNexus analyze at candidate worktree (gitnexus 1.6.9, native Lubuntu)
+  GitNexus Analyzer
+
+  Already up to date
+
+## GitNexus status
+仓库: /home/ivy/MPANGO/dc12r1-v2-final-worktree
+分支: （分离 HEAD）
+索引时间: 2026/8/24 16:39:41
+索引提交: 8c46217
+当前提交: 8c46217
+状态: ✅ 已是最新

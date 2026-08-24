@@ -1,0 +1,107 @@
+<testsuites id="" name="" tests="24" failures="1" skipped="17" errors="0" time="3.928801">
+<testsuite name="forgot-reset.spec.ts" timestamp="2026-08-24T15:45:44.362Z" hostname="" tests="24" failures="1" skipped="17" time="2.66" errors="0">
+<testcase name="j1h2b-forgot-reset journey › F1-D" classname="forgot-reset.spec.ts" time="0.518">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-T" classname="forgot-reset.spec.ts" time="0.439">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-M" classname="forgot-reset.spec.ts" time="0.391">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-D" classname="forgot-reset.spec.ts" time="0.448">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-T" classname="forgot-reset.spec.ts" time="0.363">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-M" classname="forgot-reset.spec.ts" time="0.349">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F3" classname="forgot-reset.spec.ts" time="0.152">
+<failure message="forgot-reset.spec.ts:149:3 F3" type="FAILURE">
+<![CDATA[  forgot-reset.spec.ts:149:3 › j1h2b-forgot-reset journey › F3 ─────────────────────────────────────
+
+    Error: provisioning: POST /api/v1/auth/signup answered 422 (code=UNKNOWN); expected 202
+
+       at ..\src\api-client.ts:57
+
+      55 |   if (!expectedStatuses.includes(response.status)) {
+      56 |     const code = typeof json?.detail?.code === 'string' ? json.detail.code : 'UNKNOWN';
+    > 57 |     throw new Error(
+         |           ^
+      58 |       `provisioning: ${label} answered ${response.status} (code=${code}); expected ${expectedStatuses.join('|')}`,
+      59 |     );
+      60 |   }
+        at apiFetch (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\api-client.ts:57:11)
+        at signupWholesaler (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\api-client.ts:79:3)
+        at provisionOwner (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\api-client.ts:265:3)
+        at ensureA1Provisioned (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\api-client.ts:280:18)
+        at C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\tests\forgot-reset.spec.ts:151:5
+]]>
+</failure>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F4" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F5" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R1" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R2" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R3" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R4" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R5" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY-M" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8-M" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R9" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10-M" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R11" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R12" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › M1" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+</testsuites>

@@ -1,0 +1,53 @@
+{
+  "run": {
+    "total_run_duration_ms": 3928801,
+    "browser_expected": 24,
+    "browser_pass": 6,
+    "browser_total": 24,
+    "failed": 18,
+    "skipped": 17,
+    "flaky": 0,
+    "interrupted": 0,
+    "start_time": "2026-08-24T15:45:44.306Z"
+  },
+  "non_browser": [
+    {
+      "node_id": "F6",
+      "execution_class": "PRECONDITION",
+      "status": "PENDING_AUTHORITATIVE_RUN",
+      "accounting": "Maildir link acquisition executed by the harness helper (src/maildir.ts) between F3 and R1: filesystem read into memory only. Never a Playwright node, never reported as a browser PASS; accounted by the downstream browser nodes that consume the in-memory link."
+    },
+    {
+      "node_id": "R6",
+      "execution_class": "PRE_GATE_ONLY",
+      "status": "BACKEND_PRE_GATE_ONLY",
+      "accounting": "Natural token expiry cannot be produced through the browser inside the 1h TTL. UI copy equivalence is covered by R5; the expiry verdict belongs to the backend pre-gate evidence, never to a browser node."
+    },
+    {
+      "node_id": "R13",
+      "execution_class": "POSTCOND",
+      "status": "PENDING_AUTHORITATIVE_RUN",
+      "accounting": "Artifact zero-leak scan executed AFTER the single authoritative run by tools/scan-artifacts.mjs over the produced evidence (machine JSON, JUnit, node CSV backfill, logs). Findings name file + field only. Never a browser node."
+    },
+    {
+      "node_id": "M2",
+      "execution_class": "PRE_GATE_ONLY",
+      "status": "BACKEND_PRE_GATE_ONLY",
+      "accounting": "Partial-copy rollback / scan-incomplete all-or-nothing invariants require fault injection and are backend pre-gate evidence. The browser run verifies only the success fan-out (M1)."
+    },
+    {
+      "node_id": "RT0",
+      "execution_class": "PROTOCOL_BLOCKER",
+      "status": "BLOCKED_BY_H2_C",
+      "accounting": "Retailer forgot-password discovery layer is missing (no /retailer/forgot-password route, zero retailerForgotPassword call sites, no link on ClientLoginPage). PB-1 is deferred to H2-C. No API bypass of the missing retailer UI is permitted; the node stays blocked and is never reported as a browser PASS."
+    }
+  ],
+  "accounting_gap": 0,
+  "non_browser_run_outcomes": {
+    "F6": "NOT_REACHED — F3 fail-stopped before any forgot submission; zero mail events; maildir contained 0 files at run end (no link acquisition happened; not a PASS, not a FAIL of the F6 surface itself).",
+    "R6": "BACKEND_PRE_GATE_ONLY — references accepted backend pre-gate evidence 5570093e; not exercised by browser (per frozen design).",
+    "M2": "BACKEND_PRE_GATE_ONLY — references accepted backend pre-gate evidence 5570093e; not exercised by browser (per frozen design).",
+    "R13": "EXECUTED — PASS. tools/scan-artifacts.mjs --artifacts-dir artifacts --secrets-from-env over 3 artifact files; zero leak findings (see r13-scan.txt).",
+    "RT0": "BLOCKED_BY_H2_C — unchanged; PB-1 recheck in preflight confirmed the retailer discovery layer is still missing; no API bypass attempted."
+  }
+}

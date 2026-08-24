@@ -1,0 +1,28 @@
+
+Running 24 tests using 1 worker
+
+  x  1 forgot-reset.spec.ts:99:3 › j1h2b-forgot-reset journey › F1-D (0ms)
+[31mTesting stopped early after 1 maximum allowed failures.[39m
+
+
+  1) forgot-reset.spec.ts:99:3 › j1h2b-forgot-reset journey › F1-D ─────────────────────────────────
+
+    Error: fail-closed: missing environment variables: J1H2B_MAILDIR_ROOT, J1H2B_MAILDIR_ROOT, J1H2B_A1_COMPANY_NAME, J1H2B_MAILDIR_ROOT, J1H2B_MAILDIR_ROOT, J1H2B_MAILDIR_ROOT, J1H2B_W1_COMPANY_NAME, J1H2B_W2_COMPANY_NAME, J1H2B_M_FULL_NAME (values are never echoed)
+
+       at ..\src\env.ts:119
+
+      117 |   }
+      118 |   if (missing.length > 0) {
+    > 119 |     throw new Error(
+          |           ^
+      120 |       `fail-closed: missing environment variables: ${missing.join(', ')} (values are never echoed)`,
+      121 |     );
+      122 |   }
+        at requireAll (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\env.ts:119:11)
+        at loadJourneyEnv (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\env.ts:175:13)
+        at C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\tests\forgot-reset.spec.ts:92:11
+
+  1 failed
+    forgot-reset.spec.ts:99:3 › j1h2b-forgot-reset journey › F1-D ──────────────────────────────────
+  23 did not run
+  1 error was not a part of any test, see above for details

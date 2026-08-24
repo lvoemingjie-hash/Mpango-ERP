@@ -1,0 +1,77 @@
+{
+  "failure_count": 18,
+  "failures": [
+    {
+      "node_id": "F3",
+      "status": "failed"
+    },
+    {
+      "node_id": "F4",
+      "status": "skipped"
+    },
+    {
+      "node_id": "F5",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R1",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R2",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R3",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R4",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R5",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R7-POLICY",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R7-POLICY-M",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R8",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R8-M",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R9",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R10",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R10-M",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R11",
+      "status": "skipped"
+    },
+    {
+      "node_id": "R12",
+      "status": "skipped"
+    },
+    {
+      "node_id": "M1",
+      "status": "skipped"
+    }
+  ]
+}

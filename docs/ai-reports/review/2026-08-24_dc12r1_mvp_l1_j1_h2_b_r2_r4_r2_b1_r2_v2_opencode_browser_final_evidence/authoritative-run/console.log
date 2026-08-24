@@ -1,0 +1,37 @@
+
+Running 24 tests using 1 worker
+
+  ok 1 forgot-reset.spec.ts:99:3 › j1h2b-forgot-reset journey › F1-D (518ms)
+  ok 2 forgot-reset.spec.ts:107:3 › j1h2b-forgot-reset journey › F1-T (439ms)
+  ok 3 forgot-reset.spec.ts:115:3 › j1h2b-forgot-reset journey › F1-M (391ms)
+  ok 4 forgot-reset.spec.ts:123:3 › j1h2b-forgot-reset journey › F2-D (448ms)
+  ok 5 forgot-reset.spec.ts:130:3 › j1h2b-forgot-reset journey › F2-T (363ms)
+  ok 6 forgot-reset.spec.ts:137:3 › j1h2b-forgot-reset journey › F2-M (349ms)
+  x  7 forgot-reset.spec.ts:149:3 › j1h2b-forgot-reset journey › F3 (152ms)
+[31mTesting stopped early after 1 maximum allowed failures.[39m
+
+
+  1) forgot-reset.spec.ts:149:3 › j1h2b-forgot-reset journey › F3 ──────────────────────────────────
+
+    Error: provisioning: POST /api/v1/auth/signup answered 422 (code=UNKNOWN); expected 202
+
+       at ..\src\api-client.ts:57
+
+      55 |   if (!expectedStatuses.includes(response.status)) {
+      56 |     const code = typeof json?.detail?.code === 'string' ? json.detail.code : 'UNKNOWN';
+    > 57 |     throw new Error(
+         |           ^
+      58 |       `provisioning: ${label} answered ${response.status} (code=${code}); expected ${expectedStatuses.join('|')}`,
+      59 |     );
+      60 |   }
+        at apiFetch (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\api-client.ts:57:11)
+        at signupWholesaler (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\api-client.ts:79:3)
+        at provisionOwner (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\api-client.ts:265:3)
+        at ensureA1Provisioned (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\src\api-client.ts:280:18)
+        at C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v2_browser_final_2026-08-24\j1h2b-forgot-reset\tests\forgot-reset.spec.ts:151:5
+
+  1 failed
+    forgot-reset.spec.ts:149:3 › j1h2b-forgot-reset journey › F3 ───────────────────────────────────
+  17 did not run
+  6 passed (3.9s)
+  1 error was not a part of any test, see above for details

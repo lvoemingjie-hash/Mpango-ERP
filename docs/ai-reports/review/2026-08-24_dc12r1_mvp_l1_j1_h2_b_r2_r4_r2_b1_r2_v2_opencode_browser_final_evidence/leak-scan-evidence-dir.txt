@@ -1,0 +1,9 @@
+evidence dir leak scan (final, post-cleanup): 21 files scanned
+findings: 0
+note: credential env files were deleted in cleanup; values were held in memory for this scan only
+correction/clarification: the VALUE-MATCHED scan ran BEFORE cleanup (same
+evidence content minus frozen-refs-end.txt and this file, both of which hold
+only public SHAs/counts) with all 8 run passwords + SECRET_KEY +
+REPORTING_USER_PASSWORD loaded — 0 findings. The credential env files were
+deleted at cleanup, so this post-cleanup pass re-verifies the final artifact
+set structurally (Bearer/resetToken/email patterns): 0 findings.

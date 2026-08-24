@@ -482,10 +482,22 @@ test.describe('j1h2b-forgot-reset journey', () => {
     });
     await openResetLink(page, hit.link, env.baseUrl);
     await expectResetFormRendered(page);
-    // Bounded settle condition (no fixed sleep): the page is rendered and
-    // the network is quiet, so the console/network observers have observed
-    // the full load before the sweep.
-    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+    // B1-R2: wait for REAL application settle conditions, then scan
+    // immediately. The former generic network-quiet wait is removed — under
+    // the Vite dev host it is a host-mode-dependent risk (the HMR socket
+    // may keep the network from ever going quiet), and network silence is
+    // not a business condition anyway. Application settle means:
+    //   (a) pathname is exactly /reset-password
+    //   (b) the fragment scrub has run (location.hash === '')
+    //   (c) the reset form's #newPassword is visible AND interactable
+    await page.waitForFunction(
+      () =>
+        window.location.pathname === '/reset-password' &&
+        window.location.hash === '',
+      null,
+      { timeout: 15_000 },
+    );
+    await expect(page.locator('#newPassword')).toBeEditable();
 
     // Secret values for substring matching — in memory only, never printed.
     const secrets = [

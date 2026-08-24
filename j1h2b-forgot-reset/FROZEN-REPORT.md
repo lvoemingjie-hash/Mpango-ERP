@@ -1,6 +1,47 @@
 # FROZEN REPORT — DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1
 
-> ## B1-R1 附录 — Global Serial And Fail-Stop Harness Closure（2026-08-24）
+> ## B1-R2 附录 — Application Settle And Cross-Host EOL Closure（2026-08-24）
+>
+> Parent: `e65e9a7f61c78906c2c5874d6589d4bada23942c`（B1-R1）。
+> Branch: `zcode/dc12r1-mvp-l1-j1-h2-b-r2-r4-r2-b1-r2-app-settle-eol-portability-2026-08-24`。
+> 授权范围（仅 5 个文件）：`tests/forgot-reset.spec.ts`、`tools/validate-static.mjs`、
+> `.gitattributes`（新增）、`README.md`、`FROZEN-REPORT.md`。
+>
+> 审查处置：
+> - **Kilo PASS（B1-R1 有界审查）标记为
+>   `SUPERSEDED_BY_B1_R2_SETTLE_AND_EOL_PORTABILITY_CLOSURE`**。依据其自身发现：
+>   R12 的通用网络静默等待仅在"无持续 WebSocket/HMR 的运行时"可靠，而冻结协议
+>   目标正是 Vite dev 宿主；且网络静默本身不是业务完成条件。
+> - **Lubuntu STOP 保留为发现来源**。HMR WebSocket 是否必然使网络无法静默
+>   **未经实测**，仅记录为 host-mode-dependent risk——该不确定性本身即足以
+>   取消通用网络静默等待作为 settle 条件的资格。
+>
+> 修复内容：
+> 1. R12 删除 `waitForLoadState('networkidle')`，改为真实应用条件：
+>    pathname 精确 `/reset-password` + `location.hash === ''`（waitForFunction，
+>    15s 有界）+ `#newPassword` 可见且可交互（toBeEditable）；条件满足后立即扫描。
+> 2. 新增 harness-local `.gitattributes`：`* text=auto eol=lf`——本目录所有
+>    文本文件在任意主机（含 Windows core.autocrlf=true）checkout 均为 LF，
+>    消除 Kilo CRLF HOST_LIMITATION 暴露的可移植性缺口。
+> 3. `validate-static.mjs`（现为 6 步）主动验证：networkidle 全面禁令（含注释
+>    文本）、R12 三条件（pathname/hash/#newPassword 可交互）、`.gitattributes`
+>    存在且含 LF 规则且无任何 eol=crlf 规则、既有 no-CR/BOM/固定等待禁令。
+>
+> 变异真实性门（全部先 RED 后恢复 GREEN）：
+> 1. 恢复 networkidle → RED（forbidden marker networkidle）。
+> 2. 删除 URL/hash 条件 → RED（R12 must wait for ... pathname/hash）。
+> 3. 删除表单可见/可交互条件 → RED（R12 must wait for ... #newPassword）。
+> 4. 删除 .gitattributes → RED（must exist）。
+> 5. eol=lf 改 eol=crlf → RED（must not contain any eol=crlf rule）。
+>
+> 文件统计（如实）：B1 新增 26；B1-R1 删除 6 分片 + 新增 1 合并 spec = 21；
+> B1-R2 新增 .gitattributes = **22**。24/5/29 对账、单文件 serial、
+> maxFailures:1、secret 边界、全部旅程断言、CSV blob（29a2bdd3）、依赖版本
+> 均不变；产品目录相对 8c462170 仍零变化。
+>
+> 裁决：`STOP_AND_REPORT_CTO_AWAITING_FINAL_DUAL_HOST_HARNESS_REVIEW_AND_BROWSER_EXECUTION`
+
+> ## B1-R1 附录 — Global Serial And Fail-Stop Harness Closure（2026-08-24）【历史保留】
 >
 > Parent: `d123e96da08f10a1976ce2a75d7392039eec0a44`（B1 候选）。
 > Branch: `zcode/dc12r1-mvp-l1-j1-h2-b-r2-r4-r2-b1-r1-global-serial-fail-stop-2026-08-24`。

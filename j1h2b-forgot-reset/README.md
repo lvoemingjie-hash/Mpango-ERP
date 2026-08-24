@@ -1,9 +1,23 @@
 # j1h2b-forgot-reset — Frozen Forgot/Reset Playwright Harness
 
-DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1. Parent: `8c462170804322d3f73803d8991c00879582e232`.
+DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1 (B1-R2: application-settle + EOL
+portability closure). Harness lineage: B1 `d123e96d` → B1-R1 `e65e9a7f` →
+B1-R2 (this freeze). Parent chain root: `8c462170804322d3f73803d8991c00879582e232`.
 Protocol source of truth: commit `132cf7edaac5d6c57ebcdc2465334f4aa465aab2`
 (`docs/ai-reports/test-plans/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_b0_forgot_reset_browser_protocol.md`
 and the node inventory CSV, copied byte-identically into `inventory/`).
+
+**Review status (B1-R2):** the Kilo bounded review PASS over B1-R1 is
+recorded as `SUPERSEDED_BY_B1_R2_SETTLE_AND_EOL_PORTABILITY_CLOSURE` — its
+own findings showed the R12 generic network-quiet wait
+(`waitForLoadState('networkidle')`) is only reliable on runtimes without a
+persistent WebSocket/HMR connection, while the frozen protocol targets the
+Vite dev host; and its CRLF `HOST_LIMITATION` exposed a missing
+harness-local EOL contract. The Lubuntu STOP is retained as the DISCOVERY
+SOURCE for both issues. Whether the HMR WebSocket necessarily keeps the
+network from going quiet is NOT claimed as measured — it is recorded as a
+host-mode-dependent risk, which alone disqualifies a generic network-quiet
+wait as a settle condition.
 
 **This harness is FROZEN.** It implements and freezes the test harness only.
 It must not start any product runtime (backend/frontend/PG/Redis), must not
@@ -17,6 +31,7 @@ later authorization.
 
 ```
 j1h2b-forgot-reset/
+  .gitattributes                               harness-local EOL contract: '* text=auto eol=lf' (LF on every host; static-gate verified)
   inventory/2026-08-23_..._node_inventory.csv   byte-identical protocol copy (blob 29a2bdd30b8ffd9142404dd530486d7fa6fd1f15)
   inventory/node-registry.json                  29-node reconciliation model (24 browser + 5 non-browser)
   playwright.config.ts                          fullyParallel:false, workers:1, retries:0, maxFailures:1, trace/screenshot/video off
@@ -29,9 +44,12 @@ j1h2b-forgot-reset/
   src/leak-scan.ts                              R12 surfaces (findings = surface:field, values withheld)
   src/ui-journey.ts                             rendered-UI journey steps pinned to product anchors
   tests/forgot-reset.spec.ts                    THE single spec: 24 browser nodes, CSV row order, one serial describe
-  tools/validate-static.mjs                     static gate (CSV parse, ordered --list equality, serial/fail-stop/single-spec/no-sleep contracts, marker scan, UTF-8)
+  tools/validate-static.mjs                     static gate (CSV parse, ordered --list equality, serial/fail-stop/single-spec/app-settle/EOL/no-sleep contracts, marker scan, UTF-8)
   tools/scan-artifacts.mjs                      R13 NON-BROWSER post-run evidence scan
 ```
+
+Tree file count: 22 tracked harness files at B1-R2 (21 at B1-R1 = B1's 26
+added − 6 sharded specs deleted + 1 merged spec; B1-R2 adds `.gitattributes`).
 
 ## Node accounting (24 / 5 / 29)
 
@@ -65,8 +83,9 @@ fixed-delay API is banned by the static gate):
 3. R1 reads the F3 mail via the maildir helper (F6 surface), then R1–R5.
 4. R7* policy stops, R8 consumes the token (link kept for R11), R8-M runs
    its own fresh UI cycle at 390x844 resetting to the SAME P2.
-5. R9/R10/R10-M logins, R11 replay + P2 recheck, R12 surface sweep (after a
-   bounded networkidle settle, not a sleep).
+5. R9/R10/R10-M logins, R11 replay + P2 recheck, R12 surface sweep (after
+   the B1-R2 application-settle conditions: exact pathname + empty hash +
+   interactable #newPassword — never a generic network-quiet wait).
 6. M1 provisions W1/W2 owners + shared identity M via the official API
    (same normalized email, SAME initial password both sides, formal admin
    role both sides, gate: M login exposes EXACTLY {W1,W2}); the journey
@@ -124,9 +143,14 @@ reported as real-device (phone/tablet) results.
 ```
 pnpm install --frozen-lockfile
 npx playwright test --list            # exactly 24 titles, in inventory order
-node tools/validate-static.mjs        # 5-step static gate (incl. serial/fail-stop/single-spec/no-sleep contracts)
+node tools/validate-static.mjs        # 6-step static gate (serial/fail-stop/single-spec/app-settle/EOL/no-sleep contracts)
 npx tsc --noEmit                      # TypeScript parse
 ```
+
+Cross-host EOL note: with the harness-local `.gitattributes`
+(`* text=auto eol=lf`) a fresh checkout keeps LF on every host, including
+Windows with system `core.autocrlf=true` (verified by a fresh-checkout run
+at freeze; see FROZEN-REPORT).
 
 The authoritative single run (later, separately authorized) additionally
 produces `artifacts/results.json`, `artifacts/results-junit.xml`, and is

@@ -1,0 +1,9 @@
+# Harness-local EOL portability contract (B1-R2).
+#
+# Every text file under j1h2b-forgot-reset/ MUST check out with LF endings
+# on EVERY host, overriding any core.autocrlf setting. Without this rule a
+# Windows checkout with core.autocrlf=true rewrites the working tree to
+# CRLF, and the harness's strict no-CR byte gate (tools/validate-static.mjs)
+# fails for host reasons rather than content reasons (the Kilo CRLF
+# HOST_LIMITATION). The static gate verifies this file and its LF rule.
+* text=auto eol=lf

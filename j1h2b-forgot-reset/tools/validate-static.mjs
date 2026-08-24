@@ -12,13 +12,18 @@
  *   3. `playwright test --list` yields exactly 24 titles IN THE CSV BROWSER
  *      ROW ORDER (ordered equality, not just set equality; duplicates and
  *      unregistered nodes fail).
- *   4. Journey-structure contracts (mutation-tested by the B1-R1 freeze):
+ *   4. Journey-structure contracts (mutation-tested at each freeze):
  *      exactly ONE spec file named forgot-reset.spec.ts; it declares
  *      test.describe.configure({ mode: 'serial' }); the frozen config holds
  *      maxFailures:1 (fail-stop); no waitForTimeout anywhere in tests/ or
- *      src/ (bounded-condition-wait discipline); plus the original
- *      forbidden-marker scan and frozen config invariants.
- *   5. UTF-8 (strict decode) + no BOM + no CR for every committed harness file.
+ *      src/ (bounded-condition-wait discipline); the R12 test must wait on
+ *      the real application settle conditions (exact pathname + empty hash
+ *      + visible-and-interactable #newPassword); the generic network-quiet
+ *      wait (networkidle) is banned; plus the original forbidden-marker
+ *      scan and frozen config invariants.
+ *   5. EOL portability contract (B1-R2): .gitattributes exists with the
+ *      '* text=auto eol=lf' rule and no eol=crlf rule anywhere.
+ *   6. UTF-8 (strict decode) + no BOM + no CR for every committed harness file.
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -162,6 +167,10 @@ const FORBIDDEN_MARKERS = [
   [/\bxdescribe\(/, 'xdescribe('],
   // B1-R1: fixed sleeps are banned — waits must be bounded conditions.
   [/\bwaitForTimeout\b/, 'waitForTimeout'],
+  // B1-R2: the generic network-quiet wait is banned — R12 must settle on
+  // real application conditions instead (host-mode-dependent risk under
+  // the Vite dev host's HMR socket).
+  [/\bnetworkidle\b/, 'networkidle'],
 ];
 
 function listSourceFiles(dir) {
@@ -243,9 +252,50 @@ const specText = specFiles.length === 1 ? readFileSync(specFiles[0], 'utf8') : '
 if (!/test\.describe\.configure\(\{\s*mode:\s*'serial'\s*\}\)/.test(stripComments(specText))) {
   fail('forgot-reset.spec.ts must declare test.describe.configure({ mode: \'serial\' })');
 }
-console.log('[4] journey contracts (single serial spec, maxFailures:1, no waitForTimeout) + marker scan + config invariants — OK');
 
-// --- 5. UTF-8 / no BOM / no CR -----------------------------------------------
+// B1-R2: the R12 test must settle on REAL application conditions before the
+// leak sweep — (a) exact pathname, (b) empty hash, (c) visible-and-
+// interactable #newPassword. Removing any of these must fail here.
+function testRegion(text, testId) {
+  const start = text.indexOf(`test('${testId}'`);
+  if (start === -1) return null;
+  const next = text.indexOf("test('", start + 1);
+  return text.slice(start, next === -1 ? undefined : next);
+}
+const r12Region = testRegion(specText, 'R12');
+if (r12Region === null) {
+  fail('forgot-reset.spec.ts must contain the R12 test');
+} else {
+  if (!/window\.location\.pathname === '\/reset-password'/.test(r12Region)) {
+    fail("R12 must wait for the application-settle pathname condition (pathname === '/reset-password')");
+  }
+  if (!/window\.location\.hash === ''/.test(r12Region)) {
+    fail("R12 must wait for the empty-hash condition (location.hash === '')");
+  }
+  if (!/locator\('#newPassword'\)/.test(r12Region) || !/toBeEditable\(\)/.test(r12Region)) {
+    fail('R12 must wait for the reset form #newPassword to be visible and interactable');
+  }
+}
+console.log('[4] journey contracts (single serial spec, maxFailures:1, no waitForTimeout, R12 app-settle conditions, no networkidle) + marker scan + config invariants — OK');
+
+// --- 5. EOL portability contract (B1-R2) -------------------------------------
+
+const gitattributesPath = join(ROOT, '.gitattributes');
+let gitattributesText = '';
+try {
+  gitattributesText = readFileSync(gitattributesPath, 'utf8');
+} catch {
+  fail('j1h2b-forgot-reset/.gitattributes must exist (EOL portability contract)');
+}
+if (!/^\s*\*\s+text=auto eol=lf\s*$/m.test(gitattributesText)) {
+  fail(".gitattributes must contain the rule '* text=auto eol=lf'");
+}
+if (/eol\s*=\s*crlf/i.test(gitattributesText)) {
+  fail('.gitattributes must not contain any eol=crlf rule');
+}
+console.log("[5] EOL portability: .gitattributes present with '* text=auto eol=lf' and no crlf rule — OK");
+
+// --- 6. UTF-8 / no BOM / no CR -----------------------------------------------
 
 function listAllFiles(dir) {
   const out = [];
@@ -278,7 +328,7 @@ for (const file of allFiles) {
     fail(`file is not strict UTF-8: ${relative(ROOT, file)}`);
   }
 }
-console.log(`[5] UTF-8 / no-BOM / no-CR over ${allFiles.length} harness files — OK`);
+console.log(`[6] UTF-8 / no-BOM / no-CR over ${allFiles.length} harness files — OK`);
 
 // --- verdict ------------------------------------------------------------------
 
@@ -287,4 +337,4 @@ if (failures.length > 0) {
   for (const message of failures) console.error(` - ${message}`);
   process.exit(1);
 }
-console.log('\nSTATIC GATE PASSED (5/5 steps).');
+console.log('\nSTATIC GATE PASSED (6/6 steps).');

@@ -60,7 +60,11 @@ blanket teardown 整体失败（机制类已由探针证明）。
 5. 非可终止会话 → 有界单调等待（`time.monotonic`，5.0s 上限，0.05s 轮询）；
 6. 仅重试"会话集清空→可 DROP"这一清理状态迁移直至固定 deadline；
    与测试绿红无关，非 retry-until-green；
+   **（R1 勘误 2026-08-24：本条与第 7 条合读曾暗示 DROP 已在重试范围——这是
+   过早声明。R2-R4 实现里 DROP 只在会话集清空后执行一次，遇 ObjectInUse
+   即向上传播、数据库泄漏。R1 已修正：见文末"R1 增补"第 A 节。）**
 7. 会话集空后 `DROP DATABASE IF EXISTS <精确 Identifier>`（无通配/前缀）；
+   **（R1 勘误：`IF EXISTS` 已被 R1 移除——精确 DROP 不掩盖数据库意外缺失。）**
 8. 持久非可终止会话 → fail-closed，确定性 sanitized 错误
    `TemporaryDatabaseTeardownError`（静态文案，无 URL/主机/用户/凭据）；
 9. InsufficientPrivilege / ObjectInUse / DROP 失败 / 超时零吞没（真实传播）；
@@ -148,3 +152,96 @@ Redis PING（DB0/DB15 dbsize=0）；127.0.0.1:26379 不可达。
 CTO merge review → （批准后）R2-R3/R2-R4 合并序列 → 浏览器忘记/重置旅程
 （B0 冻结协议）→ 部署裁决。本任务不启动 Kilo/Playwright/合并/部署/
 定价/条码/H2-B UI/B0 浏览器协议。
+
+## 9. R1 增补 — DROP 竞态与临时角色凭据闭合（2026-08-24）
+
+分支：`zcode/dc12r1-mvp-l1-j1-h2-b-r2-r4-r1-drop-race-role-credential-closure-2026-08-24`
+（自 `7f925e3f…`）。范围仍恰 3 文件（helper + dc11t2 测试 + 本台账）。
+
+### A. 勘误（对上文第 3 节第 6/7 条）
+
+R2-R4 的实现**并未**重试 DROP：DROP 只在会话集清空后执行一次，遇
+ObjectInUse 即向上传播并泄漏数据库；`IF EXISTS` 还会掩盖数据库意外缺失。
+上文相关表述为过早声明，以本节为准。
+
+### B. R1 实现真值
+
+1. 同一 monotonic deadline 内循环：枚举精确库会话 → 终止本角色会话 →
+   尝试 DROP；
+2. DROP 遇 ObjectInUse → rollback 后重新枚举，继续有界状态迁移；
+3. **仅 ObjectInUse 可重试**；其他 DROP/权限错误（如 InvalidCatalogName）
+   立即 fail closed 传播；
+4. deadline 到期抛 sanitized `TemporaryDatabaseTeardownError`；
+5. 精确 `DROP DATABASE`（移除 `IF EXISTS`），意外缺失不被掩盖；
+6. 外部角色名与口令每次测试运行随机生成（`dc11t2fr_<hex10>` +
+   `secrets.token_hex`），无固定可提交登录口令；
+7. 角色 SQL 全部 `psycopg2.sql.Identifier` + 参数绑定（口令不拼接）；
+8. fixture teardown 先 `NOLOGIN` 再 DROP，重试耗尽**必须失败**；
+9. fresh connection 独立证明 pg_roles 中任务角色为零（精确名 + 模块级
+   前缀零残留双证明）；
+10. 错误输出不含角色名/口令/URL/主机/用户名（测试断言随机角色名与口令
+    均不出现）。
+
+### C. RED/GREEN 与突变（全部达成）
+
+| 项 | 结果 |
+|---|---|
+| 旧码 RED（父 helper + 新重试测试：第一次 ObjectInUse 第二次成功） | **RED**（1 failed）→ 恢复新码 **GREEN** |
+| 持续 ObjectInUse 至 deadline | 确定性 fail closed（scripted） |
+| MA 删除 ObjectInUse 重试 | RED → 字节还原 → GREEN |
+| MB 删除角色零残留证明 | RED → 字节还原 → GREEN |
+| MC 角色清理持续失败被吞掉 | RED → 字节还原 → GREEN |
+| 恢复后 helper 模块自然/反向 | 27/27 + 27/27 |
+
+### D. 门禁（两栈 A=15561/16561，B=15562/16562；autovacuum=on；非超级用户 h2btester）
+
+| 门 | A | B |
+|---|---|---|
+| dc11t2 自然/反向 | 27/27 + 27/27 | 27/27 + 27/27 |
+| real-alembic 自然/反向 | 29/29 + 29/29 | 29/29 + 29/29 |
+| 原失败节点 20/20（4 CPU 负载） | 20/20 | 20/20 |
+| R2-R3 束自然/反向 | 46/46 + 46/46 | 46/46 + 46/46 |
+| 前驱束 44 | 44/44 + 44/44 | 44/44 + 44/44 |
+| 聚焦束 109 | 109/109 + 109/109 | 109/109 + 109/109 |
+| H2-B | 12/12 | 12/12 |
+
+### E. 权威全量 — STOP_AND_REPORT
+
+Stack A 重置后单次运行：
+
+```
+1 failed, 3699 passed, 48 skipped, 15 xfailed, 0 errors, 0 xpassed
+collected 3763（= 3758 + 5 个 R1 新测试）；gap 0
+```
+
+按裁决 Stack B 全量**未运行**。失败精确归因：
+
+```
+FAILED tests/test_u6i2_owner_credential_setup_token_issue.py
+       ::test_expired_prior_token_allows_new_setup_token_issue
+assert rows[0].token_hash == hash_token(prior_raw_token)  # 实为新 token 哈希
+CLASSIFICATION: PRE_EXISTING_NONDETERMINISTIC_CREATED_AT_TIE_WITHOUT_TIEBREAKER_OUT_OF_SCOPE
+```
+
+1. **范围外**：u6i2 模块与 `models/base.py`、`models/tenant_onboarding.py`
+   与父提交 `7f925e3f` 字节一致（u6i2 最后触碰于 `218be690` 2026-08-23，
+   R2-R3）；不在 R1 3 文件 delta 内。R1 helper 改动不触达主库路径。
+2. **机制**：`created_at` 为 `server_default=now()`（事务开始时刻）；
+   `_token_rows` 以 `ORDER BY created_at` 且**无次级排序键**。两次插入在
+   全量负载下时钟并列（或回拨）时顺序未定义 → rows[0] 可为新 token。
+   证据：len(rows)==2 已通过（两 token 均在、哈希各自正确），仅次序翻转。
+3. **非确定（诊断复现，DIAGNOSTIC ONLY 不计权威）**：同栈全量后立即
+   隔离复跑——单节点 1/1、整模块 14/14、另 5 次重复 5/5 全绿。
+4. 同节点在本任务两栈 4 次 46/46 束运行与 R2-R4 两次全量（3695/0 双栈）
+   中均绿。
+5. 非夹具残留、非环境误配、非 R1 回归。
+
+### F. R1 裁决
+
+```
+STOP_AND_REPORT_CTO_WITH_EXACT_CAUSAL_CLASSIFICATION
+```
+
+R1 全部 11 项修复、RED/GREEN、突变与两栈门禁已达成并冻结于隔离分支；
+唯一阻塞为上述范围外非确定性排序缺陷（预存于 R2-R3 引入的 u6i2 断言
+次序假设，或需 tiebreaker/确定性排序的独立后续修复）。等待 CTO 裁决。

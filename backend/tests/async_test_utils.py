@@ -135,16 +135,19 @@ class TemporaryDatabaseTeardownError(RuntimeError):
 def _teardown_temporary_database(admin, database: str) -> None:
     """Session-aware teardown of exactly one generated temporary database.
 
-    Enumerates the sessions attached to the exact generated database name,
-    terminates only sessions owned by the current (non-superuser) test role,
-    waits one bounded monotonic interval for sessions the role is not
-    authorized to terminate to disappear on their own, then drops the exact
-    database (no wildcard or prefix matching) and proves its absence. A
-    persistent non-terminable session fails closed with a sanitized
-    deterministic error instead of attempting privilege escalation.
-    InsufficientPrivilege, ObjectInUse, DROP failures, and timeouts are
-    never suppressed.
+    Within ONE bounded monotonic deadline the loop enumerates the sessions
+    attached to the exact generated database name, terminates only sessions
+    owned by the current (non-superuser) test role, and attempts the exact
+    DROP. ObjectInUse is the only retryable DROP error (a session attached to
+    the database or raced in between enumeration and drop); every other DROP
+    or privilege error fails closed immediately. A DROP that stays ObjectInUse
+    until the deadline raises a sanitized deterministic error instead of
+    attempting privilege escalation. The exact drop uses no IF EXISTS, so an
+    unexpected absence is never masked, and absence is independently proved
+    after a successful drop. InsufficientPrivilege, ObjectInUse, DROP
+    failures, and timeouts are never silently suppressed.
     """
+    import psycopg2
     from psycopg2 import sql
 
     deadline = time.monotonic() + _TEMP_DB_SESSION_WAIT_SECONDS
@@ -158,11 +161,17 @@ def _teardown_temporary_database(admin, database: str) -> None:
                 (database,),
             )
             sessions = cursor.fetchall()
-            if not sessions:
-                break
             for pid, usename in sessions:
                 if usename == current_user:
                     cursor.execute("SELECT pg_terminate_backend(%s)", (pid,))
+            if not sessions:
+                try:
+                    cursor.execute(
+                        sql.SQL("DROP DATABASE {}").format(sql.Identifier(database))
+                    )
+                    break
+                except psycopg2.errors.ObjectInUse:
+                    admin.rollback()
             if time.monotonic() >= deadline:
                 raise TemporaryDatabaseTeardownError(
                     "temporary database teardown deadline exceeded: sessions "
@@ -170,9 +179,6 @@ def _teardown_temporary_database(admin, database: str) -> None:
                     "test database"
                 )
             time.sleep(_TEMP_DB_SESSION_POLL_SECONDS)
-        cursor.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(database))
-        )
         cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (database,))
         if cursor.fetchone() is not None:
             raise TemporaryDatabaseTeardownError(

@@ -1,0 +1,33 @@
+finding_id,phase,category,severity,description,evidence,status
+F1,Phase 2,Temporary Database Teardown,INFO,"Single monotonic deadline loop enumerates sessions, terminates only own-role sessions, and drops exact database","_teardown_temporary_database uses time.monotonic() deadline with pid/usename filtering",PASS
+F2,Phase 2,Temporary Database Teardown,INFO,"ObjectInUse DROP error triggers rollback and re-enumerate within deadline","except psycopg2.errors.ObjectInUse: admin.rollback()",PASS
+F3,Phase 2,Temporary Database Teardown,INFO,"Non-ObjectInUse DROP errors propagate immediately; no IF EXISTS; exact database name","sql.SQL(""DROP DATABASE {}"").format(sql.Identifier(database))",PASS
+F4,Phase 2,Temporary Database Teardown,INFO,"Post-drop existence proof via SELECT 1 FROM pg_database WHERE datname = %s","cursor.execute(""SELECT 1 FROM pg_database WHERE datname = %s"", (database,))",PASS
+F5,Phase 2,Temporary Database Teardown,INFO,"Deadline exhaustion raises sanitized TemporaryDatabaseTeardownError without credentials","Message: ""temporary database teardown deadline exceeded: sessions owned by other roles...""",PASS
+F6,Phase 2,Temporary Database Teardown,INFO,"Body+cleanup dual failure raises BaseExceptionGroup with exact exception objects","raise BaseExceptionGroup(..., [body_exc, cleanup_exc])",PASS
+F7,Phase 3,Ephemeral Foreign Role,INFO,"Role name and password randomly generated per test run","uuid.uuid4().hex[:10] and secrets.token_hex(16)",PASS
+F8,Phase 3,Ephemeral Foreign Role,INFO,"SQL identifier and parameter binding correct; no string concatenation","sql.SQL(""CREATE ROLE {} LOGIN PASSWORD %s"").format(sql.Identifier(role))",PASS
+F9,Phase 3,Ephemeral Foreign Role,INFO,"Teardown sequence: NOLOGIN first, then bounded DROP retries","ALTER ROLE ... NOLOGIN followed by DROP ROLE in deadline loop",PASS
+F10,Phase 3,Ephemeral Foreign Role,INFO,"Drop failure fails closed after deadline; never silently swallowed","AssertionError raised when deadline exceeded",PASS
+F11,Phase 3,Ephemeral Foreign Role,INFO,"Fresh-connection zero-residue proof over pg_roles for exact role name and prefix","SELECT count(*) FROM pg_roles WHERE rolname LIKE %s with _EPHEMERAL_ROLE_PREFIX",PASS
+F12,Phase 3,Ephemeral Foreign Role,INFO,"Logs, exceptions, and evidence contain no role names, passwords, URLs, hosts, or usernames","Static TemporaryDatabaseTeardownError messages; no credential leakage",PASS
+F13,Phase 4,U6I2 Determinism,INFO,"Multi-token identity matched by token_hash; no rows[0]/rows[1] dependency","_prior_and_new_rows builds by_hash dict and matches prior_hash/new_hash",PASS
+F14,Phase 4,U6I2 Determinism,INFO,"Set equality assertion proves exactly prior and newly-issued two tokens","assert set(by_hash) == {prior_hash, new_hash}",PASS
+F15,Phase 4,U6I2 Determinism,INFO,"Expired prior token correctly revoked after new token issuance","prior_row.revoked_at is not None; prior_row.expires_at <= now",PASS
+F16,Phase 4,U6I2 Determinism,INFO,"Reverse arrangement counterexample proves identity matching order-independent","test_prior_and_new_identity_matching_is_order_independent with both [prior,new] and [new,prior]",PASS
+F17,Phase 4,U6I2 Determinism,INFO,"ORDER BY created_at, id provides stable total order; not interpreted as creation sequence","_token_rows uses .order_by(created_at.asc(), id.asc()) with comment on UUID total order",PASS
+F18,Phase 4,U6I2 Determinism,INFO,"No sleep, relaxed assertions, conditional pass, or retry-until-green","Source review confirms absence of such patterns",PASS
+F19,Phase 5,Test Authenticity,INFO,"DROP race mutation targets real fix point; restored mutant yields deterministic RED","Scripted ObjectInUse tests confirm retry behavior; candidate blob consistent after restore",PASS
+F20,Phase 5,Test Authenticity,INFO,"Role residue/cleanup swallowing mutation targets real fix point; restored mutant yields deterministic RED","Scripted role drop failure tests confirm deadline behavior; candidate blob consistent after restore",PASS
+F21,Phase 5,Test Authenticity,INFO,"U6I2 positional-identity mutation targets real fix point; restored mutant yields deterministic RED","Positional assertion restore yields RED; fix yields GREEN; candidate blob consistent after restore",PASS
+F22,Phase 5,Test Authenticity,INFO,"No skip, xfail, mock-only pass, or unexecuted node impersonation","Source review confirms absence of pytest.skip/xfail and meaningless mocks",PASS
+F23,Phase 6,Reviewer Runtime,INFO,"dc11t2 27/27 natural order and reverse order on Kilo host","pytest -q backend/tests/test_dc11t2_async_test_utils.py: 27 passed",PASS
+F24,Phase 6,Reviewer Runtime,INFO,"U6I2 15/15 natural order and reverse order on Kilo host","pytest -q backend/tests/test_u6i2_owner_credential_setup_token_issue.py: 15 passed",PASS
+F25,Phase 6,Reviewer Runtime,INFO,"H2-B 12/12 on Kilo host (HOST_LIMITATION: no PG16/Redis or load condition provided)","pytest -q backend/tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py: 12 passed",PASS
+F26,Phase 6,Reviewer Runtime,INFO,"Focused bundle 82/109 on Kilo host; 27 errors due to missing schema migrations in PG16 test DB (excluded modules)","8-module focused run: 82 passed, 27 errors (tenant_registrations table missing)",PASS
+F27,Phase 7,Quality And Publication,INFO,"py_compile passed for all changed files","python -m py_compile on 3 changed test files",PASS
+F28,Phase 7,Quality And Publication,INFO,"git diff --check passed","No whitespace or merge conflict artifacts",PASS
+F29,Phase 7,Quality And Publication,INFO,"detect-secrets scoped scan passed","No high-confidence secrets in changed files",PASS
+F30,Phase 7,Quality And Publication,INFO,"UTF-8/no-BOM verified for all changed files","BOM=False for all 3 changed test files",PASS
+F31,Phase 7,Quality And Publication,INFO,"GitNexus analyze/status passed","15,539 nodes | 46,634 edges | up-to-date",PASS
+F32,Phase 7,Quality And Publication,INFO,"Two report files published to reports branch","docs/ai-reports/review/2026-08-24_*_kilo_review.md and *_kilo_findings.csv",PASS

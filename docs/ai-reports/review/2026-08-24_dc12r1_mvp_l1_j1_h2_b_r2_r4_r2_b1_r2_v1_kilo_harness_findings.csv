@@ -1,0 +1,61 @@
+finding_id,phase,category,severity,description,evidence,status
+F1,Phase 1,Proof Gate,INFO,"Candidate == remote branch tip","cb352079 == origin/zcode/dc12r1-mvp-l1-j1-h2-b-r2-r4-r2-b1-r2-app-settle-eol-portability-2026-08-24",PASS
+F2,Phase 1,Proof Gate,INFO,"candidate^ == e65e9a7f (B1-R1 candidate)","git rev-parse cb352079^ = e65e9a7f",PASS
+F3,Phase 1,Proof Gate,INFO,"B1-R2 delta exactly 5 authorized files in j1h2b-forgot-reset/",".gitattributes, forgot-reset.spec.ts, validate-static.mjs, README.md, FROZEN-REPORT.md",PASS
+F4,Phase 1,Proof Gate,INFO,"Product paths byte-identical to 8c462170","git diff --name-only 8c462170..cb352079 shows only j1h2b-forgot-reset/ and ai-ledger/ files",PASS
+F5,Phase 1,Proof Gate,INFO,"Harness contains exactly 22 files","git ls-tree -r --name-only cb352079 | Where-Object { $_ -like 'j1h2b-forgot-reset/*' } | Measure-Object = 22",PASS
+F6,Phase 2,Inventory,INFO,"Protocol CSV blob byte-identical to protocol commit 132cf7ed","git hash-object = 29a2bdd30b8ffd9142404dd530486d7fa6fd1f15",PASS
+F7,Phase 2,Inventory,INFO,"CSV strict parse: 30 lines (header + 29 rows), 15 columns per row",Header split yields exactly 15 expected column names,PASS
+F8,Phase 2,Inventory,INFO,"24 browser nodes + 5 non-browser nodes",browser: F1-D/T/M F2-D/T/M F3 F4 F5 R1 R2 R3 R4 R5 R7-POLICY R7-POLICY-M R8 R8-M R9 R10 R10-M R11 R12 M1; non-browser: F6 R6 M2 R13 RT0,PASS
+F9,Phase 2,Inventory,INFO,"playwright --list yields exactly 24 tests in 1 file, ordered-equal with CSV browser rows","pnpm exec playwright test --list: 24 tests in 1 file",PASS
+F10,Phase 2,Fail-Stop,INFO,"Single spec file: tests/forgot-reset.spec.ts",tests/ directory contains exactly one .spec.ts file,PASS
+F11,Phase 2,Fail-Stop,INFO,"Single outer serial describe wrapping all 24 nodes",test.describe.configure({ mode: 'serial' }) with 24 test() nodes,PASS
+F12,Phase 2,Fail-Stop,INFO,"fullyParallel:false, workers:1, retries:0, maxFailures:1",playwright.config.ts explicit declarations,PASS
+F13,Phase 2,Fail-Stop,INFO,"F6/R6/M2/R13/RT0 absent from spec",Non-browser nodes not present in tests/forgot-reset.spec.ts,PASS
+F14,Phase 2,Fail-Stop,INFO,"RT0 status BLOCKED_BY_H2_C, no API bypass",node-registry.json RT0.status = BLOCKED_BY_H2_C; no retailer forgot-reset API call in source,PASS
+F15,Phase 3,State Timing,INFO,"Token/state only in single serial spec same-worker memory",src/token-store.ts module-level state; workers=1 + mode:serial,PASS
+F16,Phase 3,State Timing,INFO,"No filename-sorting or cross-spec module cache",Only one spec file; state via explicit function calls a1State()/m1State(),PASS
+F17,Phase 3,State Timing,INFO,"First failure stops run, no cascade red nodes",maxFailures:1 + single serial spec,PASS
+F18,Phase 3,State Timing,INFO,"R2 waits for real URL/hash scrub condition",page.waitForFunction(() => window.location.hash === '' && pathname === '/reset-password', 15s),PASS
+F19,Phase 3,State Timing,INFO,"R12 waits for pathname + hash + #newPassword editable, then immediate leak scan",waitForFunction(pathname + hash) + expect(locator('#newPassword')).toBeEditable() + immediate scanUrl/scanStorage/scanConsoleText/scanNetworkRequest,PASS
+F20,Phase 3,State Timing,INFO,"R12 excludes networkidle, waitForTimeout, fixed sleep",validate-static.mjs forbidden-marker scan + source review confirms absence,PASS
+F21,Phase 4,Journey Authenticity,INFO,"F1/F2 use real login page entry and form",page.goto('/login') → expectForgotEntryVisible → clickForgotEntry → expectForgotFormStructure,PASS
+F22,Phase 4,Journey Authenticity,INFO,"F3/F4/F5 UI submit with neutral comparison (status/hash/length)",submitForgot → expectNeutralForgotCopyVisible → captureForgotFingerprint → sameFingerprint,PASS
+F23,Phase 4,Journey Authenticity,INFO,"R1/R2 fragment-only and URL scrub real execution",openResetLink → expectResetFormRendered → waitForFunction hash scrub,PASS
+F24,Phase 4,Journey Authenticity,INFO,"R3 query token reject + zero reset API calls",page.goto('/reset-password?resetToken=...') → expectInvalidLinkPanelVisible; urlsMatching(resetCalls).length === 0,PASS
+F25,Phase 4,Journey Authenticity,INFO,"R4/R5 missing and forged token fail closed",R4: missing token submit → expectResetServerErrorVisible, zero API; R5: forged token → waitForResponse 401,PASS
+F26,Phase 4,Journey Authenticity,INFO,"R7 two viewports weak password UI intercept + zero API",fill 7-char password → expect policy error visible; urlsMatching(resetCalls).length === 0,PASS
+F27,Phase 4,Journey Authenticity,INFO,"R8/R8-M complete UI reset, no reused fake success",Each cycle: openResetLink + submitReset + waitForResponse 200 + expectResetSuccessVisible,PASS
+F28,Phase 4,Journey Authenticity,INFO,"R9/R10/R11 real login verify old reject, new accept, replay reject + P2 valid",R9: P1 login → 401; R10: P2 login → /; R11: replay link → 401, then P2 login succeeds,PASS
+F29,Phase 4,Journey Authenticity,INFO,"R12 scans URL/storage/console/network metadata, no secrets in failure output",scanUrl + scanStorage + scanConsoleText + scanNetworkRequest + scanSecretSubstrings; assertSan findings.length === 0,PASS
+F30,Phase 4,Journey Authenticity,INFO,"M1 two independent browser contexts verify dual-tenant P1/P2",browser.newContext() contextA/contextB; proveOldPasswordRejectedNewAccepted each side,PASS
+F31,Phase 5,Provisioning Boundary,INFO,"M1 precondition uses official API only",signup → verify-email → setup-credential → login → select-tenant → PUT /users/{id}/roles,PASS
+F32,Phase 5,Provisioning Boundary,INFO,"W1/W2 different emails, M same normalized email, same P1 both sides",env.ts distinctness checks + api-client.ts provisioning chain,PASS
+F33,Phase 5,Provisioning Boundary,INFO,"Both sides formal admin role, login exposes exactly W1/W2",PUT roles with ADMIN_ROLE + ADMIN_PERMISSIONS; expectWorkspaceSelectorWithBoth,PASS
+F34,Phase 5,Provisioning Boundary,INFO,"Forgot/reset actions via rendered UI only, no API bypass",submitForgot / openResetLink / submitReset / loginViaUi helpers; no direct fetch in forgot/reset path,PASS
+F35,Phase 5,Provisioning Boundary,INFO,"No SQL/ORM/hand-written hash/debug endpoint/database patching",Source review confirms absence of such patterns in api-client.ts and spec,PASS
+F36,Phase 6,Secret Evidence,INFO,"Credentials from J1H2B_* env vars, missing fail closed naming variable only",loadJourneyEnv → requireAll; error messages never echo values,PASS
+F37,Phase 6,Secret Evidence,INFO,"Maildir token in-memory only, never disk/log/artifact",src/maildir.ts + src/token-store.ts comments; trace/screenshot/video off,PASS
+F38,Phase 6,Secret Evidence,INFO,"JSON/JUnit/list/errors omit token/password/Authorization/fragment/response body",assertSan field-only messages; leak-scan.ts reports surface+field only,PASS
+F39,Phase 6,Secret Evidence,INFO,"Artifact scanner covers R13 expected outputs",tools/scan-artifacts.mjs scans machine JSON, JUnit, CSV, logs, screenshots,PASS
+F40,Phase 7,Mutation Gates,INFO,"M1: Restore networkidle → RED",Validator: forbidden marker networkidle found in tests\forgot-reset.spec.ts,PASS
+F41,Phase 7,Mutation Gates,INFO,"M2: Delete pathname/hash condition → RED",Validator: R12 must wait for the application-settle pathname/hash conditions,PASS
+F42,Phase 7,Mutation Gates,INFO,"M3: Delete #newPassword editable condition → RED",Validator: R12 must wait for the reset form #newPassword to be visible and interactable,PASS
+F43,Phase 7,Mutation Gates,INFO,"M4: Delete .gitattributes → RED",Validator: j1h2b-forgot-reset/.gitattributes must exist (EOL portability contract),PASS
+F44,Phase 7,Mutation Gates,INFO,"M5: eol=lf -> eol=crlf → RED",Validator: .gitattributes must not contain any eol=crlf rule,PASS
+F45,Phase 7,Mutation Gates,INFO,"Restore candidate bytes match original SHA",git status clean; HEAD = cb352079,PASS
+F46,Phase 7,Mutation Gates,INFO,"All static gates re-GREEN after restore",validate-static.mjs 6/6 steps PASSED,PASS
+F47,Phase 8,Dual-Host Runtime,INFO,"Kilo Windows: pnpm install PASSED",Exact pins: @playwright/test 1.49.1 / @types/node 22.10.5 / typescript 5.7.3,PASS
+F48,Phase 8,Dual-Host Runtime,INFO,"Kilo Windows: playwright --list PASSED",24 tests in 1 file, ordered-equal with inventory browser rows,PASS
+F49,Phase 8,Dual-Host Runtime,INFO,"Kilo Windows: validate-static.mjs PASSED",6/6 steps PASSED with .gitattributes LF enforcement,PASS
+F50,Phase 8,Dual-Host Runtime,INFO,"Kilo Windows: tsc --noEmit PASSED",Zero diagnostics,PASS
+F51,Phase 8,Dual-Host Runtime,INFO,"Lubuntu Linux: pnpm install PASSED",Exact pins verified on native Linux,PASS
+F52,Phase 8,Dual-Host Runtime,INFO,"Lubuntu Linux: playwright --list PASSED",24 tests in 1 file, ordered-equal with inventory browser rows,PASS
+F53,Phase 8,Dual-Host Runtime,INFO,"Lubuntu Linux: validate-static.mjs PASSED",6/6 steps PASSED on native Linux,PASS
+F54,Phase 8,Dual-Host Runtime,INFO,"Lubuntu Linux: tsc --noEmit PASSED",Zero diagnostics,PASS
+F55,Phase 8,Dual-Host Runtime,INFO,"EOL portability closed: LF on both Windows and Linux",.gitattributes '* text=auto eol=lf' enforces LF checkout regardless of core.autocrlf,PASS
+F56,Phase 8,Dual-Host Runtime,INFO,"UTF-8/no-BOM/no-CR on 22 harness files (Kilo Windows)",All 22 files strict UTF-8, no BOM, no CR bytes,PASS
+F57,Phase 8,Dual-Host Runtime,INFO,"UTF-8/no-BOM/no-CR on 22 harness files (Lubuntu Linux)",All 22 files strict UTF-8, no BOM, no CR bytes,PASS
+F58,Phase 8,Dual-Host Runtime,INFO,"git diff --check PASSED (Kilo)",No whitespace or merge conflict artifacts,PASS
+F59,Phase 8,Dual-Host Runtime,INFO,"detect-secrets PASSED (Kilo)",Harness scan clean,PASS
+F60,Phase 8,Dual-Host Runtime,INFO,"GitNexus analyze/status PASSED (Kilo)",28732 nodes | 59981 edges | up-to-date,PASS

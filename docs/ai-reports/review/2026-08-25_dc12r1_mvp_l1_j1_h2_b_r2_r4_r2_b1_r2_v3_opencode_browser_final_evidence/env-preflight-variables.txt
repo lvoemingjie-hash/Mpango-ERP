@@ -1,0 +1,25 @@
+J1H2B_BASE_URL non_empty=true
+J1H2B_API_BASE_URL non_empty=true
+J1H2B_MAILDIR_ROOT non_empty=true
+J1H2B_SIGNUP_COUNTRY non_empty=true
+J1H2B_A1_EMAIL non_empty=true
+J1H2B_A1_INITIAL_PASSWORD non_empty=true
+J1H2B_A1_NEW_PASSWORD non_empty=true
+J1H2B_A1_REPLAY_PASSWORD non_empty=true
+J1H2B_A1_COMPANY_NAME non_empty=true
+J1H2B_UNKNOWN_EMAIL non_empty=true
+J1H2B_INELIGIBLE_EMAIL non_empty=true
+J1H2B_INELIGIBLE_TEMP_PASSWORD non_empty=true
+J1H2B_W1_OWNER_EMAIL non_empty=true
+J1H2B_W1_OWNER_PASSWORD non_empty=true
+J1H2B_W1_COMPANY_NAME non_empty=true
+J1H2B_W2_OWNER_EMAIL non_empty=true
+J1H2B_W2_OWNER_PASSWORD non_empty=true
+J1H2B_W2_COMPANY_NAME non_empty=true
+J1H2B_M_EMAIL non_empty=true
+J1H2B_M_FULL_NAME non_empty=true
+J1H2B_M_INITIAL_PASSWORD non_empty=true
+J1H2B_M_NEW_PASSWORD non_empty=true
+false
+TOTAL=22 MISSING=0
+MAILDIR_ROOT_READABLE=true

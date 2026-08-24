@@ -1,0 +1,10 @@
+two semantically identical neutral envelopes (same construction as auth.py:826-829):
+  byte_identical: False
+  differing field(s): ['timestamp']
+  all other fields equal: True
+conclusion: the public forgot-password envelope is NOT byte-stable across requests
+because of the per-request 'timestamp' field (schemas/auth_signup.py:174 default
+datetime.utcnow; endpoint auth.py constructs it per call). F3-vs-F4 sha256(body)
+equality is therefore unsatisfiable against the current product surface regardless
+of account existence. The frozen protocol CSV F4 row requires 同状态码/响应体
+(status/body/visible-copy triple indistinguishability).

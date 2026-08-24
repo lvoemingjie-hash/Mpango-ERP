@@ -1,0 +1,35 @@
+
+Running 24 tests using 1 worker
+
+  ok 1 forgot-reset.spec.ts:99:3 › j1h2b-forgot-reset journey › F1-D (1.0s)
+  ok 2 forgot-reset.spec.ts:107:3 › j1h2b-forgot-reset journey › F1-T (372ms)
+  ok 3 forgot-reset.spec.ts:115:3 › j1h2b-forgot-reset journey › F1-M (376ms)
+  ok 4 forgot-reset.spec.ts:123:3 › j1h2b-forgot-reset journey › F2-D (365ms)
+  ok 5 forgot-reset.spec.ts:130:3 › j1h2b-forgot-reset journey › F2-T (396ms)
+  ok 6 forgot-reset.spec.ts:137:3 › j1h2b-forgot-reset journey › F2-M (388ms)
+  ok 7 forgot-reset.spec.ts:149:3 › j1h2b-forgot-reset journey › F3 (6.4s)
+  x  8 forgot-reset.spec.ts:166:3 › j1h2b-forgot-reset journey › F4 (541ms)
+[31mTesting stopped early after 1 maximum allowed failures.[39m
+
+
+  1) forgot-reset.spec.ts:166:3 › j1h2b-forgot-reset journey › F4 ──────────────────────────────────
+
+    Error: F4: response differs from F3 (first differing field: bodySha256)
+
+       at ..\src\assertions.ts:15
+
+      13 | ): asserts condition {
+      14 |   if (!condition) {
+    > 15 |     throw new Error(sanitizedMessage);
+         |           ^
+      16 |   }
+      17 | }
+      18 |
+        at assertSan (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v3_browser_final_2026-08-25\j1h2b-forgot-reset\src\assertions.ts:15:11)
+        at C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v3_browser_final_2026-08-25\j1h2b-forgot-reset\tests\forgot-reset.spec.ts:177:5
+
+  1 failed
+    forgot-reset.spec.ts:166:3 › j1h2b-forgot-reset journey › F4 ───────────────────────────────────
+  16 did not run
+  7 passed (11.3s)
+  1 error was not a part of any test, see above for details

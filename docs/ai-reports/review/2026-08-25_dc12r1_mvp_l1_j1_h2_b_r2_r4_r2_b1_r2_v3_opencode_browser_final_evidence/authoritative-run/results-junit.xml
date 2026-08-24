@@ -1,0 +1,102 @@
+<testsuites id="" name="" tests="24" failures="1" skipped="16" errors="0" time="11.293061000000002">
+<testsuite name="forgot-reset.spec.ts" timestamp="2026-08-24T16:24:02.397Z" hostname="" tests="24" failures="1" skipped="16" time="9.926" errors="0">
+<testcase name="j1h2b-forgot-reset journey › F1-D" classname="forgot-reset.spec.ts" time="1.043">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-T" classname="forgot-reset.spec.ts" time="0.372">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-M" classname="forgot-reset.spec.ts" time="0.376">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-D" classname="forgot-reset.spec.ts" time="0.365">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-T" classname="forgot-reset.spec.ts" time="0.396">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-M" classname="forgot-reset.spec.ts" time="0.388">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F3" classname="forgot-reset.spec.ts" time="6.445">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F4" classname="forgot-reset.spec.ts" time="0.541">
+<failure message="forgot-reset.spec.ts:166:3 F4" type="FAILURE">
+<![CDATA[  forgot-reset.spec.ts:166:3 › j1h2b-forgot-reset journey › F4 ─────────────────────────────────────
+
+    Error: F4: response differs from F3 (first differing field: bodySha256)
+
+       at ..\src\assertions.ts:15
+
+      13 | ): asserts condition {
+      14 |   if (!condition) {
+    > 15 |     throw new Error(sanitizedMessage);
+         |           ^
+      16 |   }
+      17 | }
+      18 |
+        at assertSan (C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v3_browser_final_2026-08-25\j1h2b-forgot-reset\src\assertions.ts:15:11)
+        at C:\Users\Jeff0\MPANGO ERP\worktrees\_dc12r1_j1h2b_v3_browser_final_2026-08-25\j1h2b-forgot-reset\tests\forgot-reset.spec.ts:177:5
+]]>
+</failure>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F5" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R1" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R2" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R3" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R4" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R5" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY-M" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8-M" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R9" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10-M" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R11" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R12" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › M1" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+</testsuites>

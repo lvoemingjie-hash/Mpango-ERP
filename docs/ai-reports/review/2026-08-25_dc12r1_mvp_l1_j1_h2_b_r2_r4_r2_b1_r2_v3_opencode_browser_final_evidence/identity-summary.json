@@ -1,0 +1,8 @@
+{
+  "validated_email_count": 6,
+  "all_valid": true,
+  "special_use_domain_count": 0,
+  "email_identity_count": 6,
+  "validator": "backend schemas.auth_signup.SignupRequest + pydantic EmailStr (installed pydantic 2.12.5, offline)",
+  "domain_class": "non-special-use real-TLD subdomain"
+}

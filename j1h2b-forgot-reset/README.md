@@ -19,17 +19,17 @@ later authorization.
 j1h2b-forgot-reset/
   inventory/2026-08-23_..._node_inventory.csv   byte-identical protocol copy (blob 29a2bdd30b8ffd9142404dd530486d7fa6fd1f15)
   inventory/node-registry.json                  29-node reconciliation model (24 browser + 5 non-browser)
-  playwright.config.ts                          fullyParallel:false, workers:1, retries:0, trace/screenshot/video off
+  playwright.config.ts                          fullyParallel:false, workers:1, retries:0, maxFailures:1, trace/screenshot/video off
   src/env.ts                                    fail-closed env contract (names-only errors)
   src/assertions.ts                             sanitized assertion discipline
-  src/token-store.ts                            in-memory journey state (token never persisted)
+  src/token-store.ts                            in-memory journey state (token never persisted; single serial spec scope)
   src/maildir.ts                                F6 surface: task-private maildir reader (memory only)
   src/api-client.ts                             OFFICIAL-API provisioning ONLY (never journey actions)
   src/neutrality.ts                             F3/F4 fingerprints: status + SHA-256 + length, raw body discarded
   src/leak-scan.ts                              R12 surfaces (findings = surface:field, values withheld)
   src/ui-journey.ts                             rendered-UI journey steps pinned to product anchors
-  tests/01..06*.spec.ts                         24 browser nodes, CSV order, titles == node IDs
-  tools/validate-static.mjs                     static gate (CSV parse, set equality, marker scan, UTF-8)
+  tests/forgot-reset.spec.ts                    THE single spec: 24 browser nodes, CSV row order, one serial describe
+  tools/validate-static.mjs                     static gate (CSV parse, ordered --list equality, serial/fail-stop/single-spec/no-sleep contracts, marker scan, UTF-8)
   tools/scan-artifacts.mjs                      R13 NON-BROWSER post-run evidence scan
 ```
 
@@ -45,24 +45,33 @@ j1h2b-forgot-reset/
   - `R13` POSTCOND — `tools/scan-artifacts.mjs` after the authoritative run.
   - `RT0` PROTOCOL_BLOCKER — status `BLOCKED_BY_H2_C` (retailer discovery layer missing, PB-1). **No API bypass of the missing retailer UI is permitted.**
 
-## Journey chain and ordering
+## Journey chain and ordering (B1-R1: single serial spec, fail-stop)
 
-Files execute 01→06 serially (workers=1, single worker process, module state
-shared in memory):
+All 24 browser nodes live in ONE spec file — `tests/forgot-reset.spec.ts` —
+inside a single outer describe configured `serial`. Registration order MUST
+equal the CSV browser row order (actively enforced by
+`tools/validate-static.mjs` via ordered `--list` comparison). `workers=1`
+keeps the journey in one worker process; in-process state passes only
+between these serial tests via `src/token-store.ts`. `maxFailures: 1`
+aborts the whole run on the first failing node — any failure is a STOP, no
+cascade, no rerun-to-green. There is NO filename-order dependency and NO
+fixed sleep anywhere (waits are bounded conditions; the Playwright
+fixed-delay API is banned by the static gate):
 
-1. `01` discovery/form structure (no journey state).
-2. `02` beforeAll provisions A1 (official lifecycle) and X (official
-   create+soft-delete). F3 submits forgot for A1 — this mail event is the
-   journey token source; its fingerprint is the F4/F5 anchor.
-3. `03` reads the F3 mail via the maildir helper (F6 surface), then R1–R5.
-4. `04` R7* policy stops, R8 consumes the token (link kept for R11), R8-M
-   runs its own fresh UI cycle at 390x844 resetting to the SAME P2.
-5. `05` R9/R10/R10-M logins, R11 replay + P2 recheck, R12 surface sweep.
-6. `06` M1: beforeAll provisions W1/W2 owners + shared identity M via the
-   official API (same normalized email, SAME initial password both sides,
-   formal admin role both sides, gate: M login exposes EXACTLY {W1,W2});
-   the journey itself (forgot → maildir → reset → dual-context R9/R10) is
-   rendered UI only.
+1. F1*/F2* discovery and form structure (no journey state).
+2. F3 provisions A1 (official lifecycle) and X (official create +
+   soft-delete) at point of need, submits forgot for A1 — this mail event is
+   the journey token source; its fingerprint is the F4/F5 anchor.
+3. R1 reads the F3 mail via the maildir helper (F6 surface), then R1–R5.
+4. R7* policy stops, R8 consumes the token (link kept for R11), R8-M runs
+   its own fresh UI cycle at 390x844 resetting to the SAME P2.
+5. R9/R10/R10-M logins, R11 replay + P2 recheck, R12 surface sweep (after a
+   bounded networkidle settle, not a sleep).
+6. M1 provisions W1/W2 owners + shared identity M via the official API
+   (same normalized email, SAME initial password both sides, formal admin
+   role both sides, gate: M login exposes EXACTLY {W1,W2}); the journey
+   itself (forgot → maildir → reset → dual-context R9/R10) is rendered UI
+   only.
 
 ## Environment contract (fail closed; names-only errors)
 
@@ -114,8 +123,8 @@ reported as real-device (phone/tablet) results.
 
 ```
 pnpm install --frozen-lockfile
-npx playwright test --list            # exactly 24 titles
-node tools/validate-static.mjs        # 5-step static gate
+npx playwright test --list            # exactly 24 titles, in inventory order
+node tools/validate-static.mjs        # 5-step static gate (incl. serial/fail-stop/single-spec/no-sleep contracts)
 npx tsc --noEmit                      # TypeScript parse
 ```
 

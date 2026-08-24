@@ -1,5 +1,33 @@
 # FROZEN REPORT — DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1
 
+> ## B1-R1 附录 — Global Serial And Fail-Stop Harness Closure（2026-08-24）
+>
+> Parent: `d123e96da08f10a1976ce2a75d7392039eec0a44`（B1 候选）。
+> Branch: `zcode/dc12r1-mvp-l1-j1-h2-b-r2-r4-r2-b1-r1-global-serial-fail-stop-2026-08-24`。
+>
+> 审查发现修复：
+> - P1 全局旅程顺序：6 个分片 spec 合并为唯一 `tests/forgot-reset.spec.ts`，
+>   单一外层 `test.describe.configure({ mode: 'serial' })`，节点注册顺序 ==
+>   CSV browser 行序（`--list` 有序比较强制）；删除全部文件名排序依赖。
+> - P1 首败立即 STOP：`playwright.config.ts` 增加 `maxFailures: 1`（与
+>   serial 共同实现"任一失败 ⇒ 全程 STOP"）。
+> - P2 固定等待：R2 的 500ms 改为 `waitForFunction`（hash==='' 且
+>   pathname==='/reset-password'，15s 有界）+ 精确 URL 断言；R12 的 500ms
+>   改为 `waitForLoadState('networkidle', 15s)` 有界沉降后立即扫描。
+>
+> 变异真实性门（全部先 RED 后恢复 GREEN，validate-static.mjs 主动拦截）：
+> 1. 删除 `maxFailures:1` → RED（missing frozen invariant maxFailures: 1）。
+> 2. 删除 serial mode → RED（must declare configure serial）。
+> 3. 引入第二个 spec → RED（25 tests / 位置 25 漂移 / spec 数）。
+> 4. 交换 F3/F4 标题 → RED（position 7: expected F3, found F4）。
+> 5. 重新加入固定延时 API → RED（forbidden marker）。
+> 校验器同时剥离注释后再验 config/serial 合同（注释化绕过同样 RED）。
+>
+> 旅程断言、API 边界、24/5/29 inventory、秘密边界、CSV blob、依赖版本
+> 全部不变；产品目录相对 8c462170 仍零变化。
+>
+> 裁决保持：`STOP_AND_REPORT_CTO_AWAITING_KILO_HARNESS_REVIEW_AND_BROWSER_EXECUTION`
+
 - Task: frozen forgot/reset Playwright harness implementation (harness only).
 - Parent: `8c462170804322d3f73803d8991c00879582e232`
   (DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2: U6I2 token row identity determinism closure)

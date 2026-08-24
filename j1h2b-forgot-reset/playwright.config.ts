@@ -1,9 +1,11 @@
 /**
  * DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1 — frozen harness configuration.
  *
- * Frozen contract (task directive #5):
- *   fullyParallel=false, workers=1, retries=0 — one deterministic serial pass,
- *   no skip/fixme/only, no conditional pass, no rerun-to-green.
+ * Frozen contract (task directive #5 + B1-R1):
+ *   fullyParallel=false, workers=1, retries=0, maxFailures=1 — the single
+ *   serial spec (tests/forgot-reset.spec.ts) runs the 24 nodes in inventory
+ *   order and the whole run aborts on the first failure: deterministic,
+ *   fail-stop, no skip/fixme/only, no conditional pass, no rerun-to-green.
  *
  * Evidence hygiene (task directive #9): trace, screenshot and video are OFF so
  * no maildir token, password or URL fragment can ever reach an artifact file.
@@ -21,6 +23,10 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  // Fail-stop (B1-R1): abort the entire run on the FIRST failing node —
+  // combined with the single serial spec this is the protocol's "any
+  // failure ⇒ STOP" contract; no cascade of downstream red nodes.
+  maxFailures: 1,
   timeout: 120_000,
   expect: {
     timeout: 15_000,

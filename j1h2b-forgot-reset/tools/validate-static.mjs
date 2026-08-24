@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Static gate for the frozen j1h2b harness (task directive: 静态门禁).
+ * Static gate for the frozen j1h2b harness (task directive: 静态门禁;
+ * B1-R1 adds actively-enforced serial/fail-stop contracts).
  *
  * Pure static validation — reads committed data and source only, never reads
  * credential env values, never starts any product runtime. Steps:
@@ -8,11 +9,15 @@
  *      24 browser + 5 non-browser nodes.
  *   2. Registry cross-check: node-registry.json matches the CSV sets;
  *      RT0 stays BLOCKED_BY_H2_C.
- *   3. `playwright test --list` yields exactly the 24 browser IDs (set
- *      equality, no duplicates, no unregistered nodes).
- *   4. Forbidden markers: no test.only/test.skip/test.fixme (and friends)
- *      anywhere in tests/ or src/; frozen config invariants literal-checked
- *      (fullyParallel:false, workers:1, retries:0, trace/screenshot/video off).
+ *   3. `playwright test --list` yields exactly 24 titles IN THE CSV BROWSER
+ *      ROW ORDER (ordered equality, not just set equality; duplicates and
+ *      unregistered nodes fail).
+ *   4. Journey-structure contracts (mutation-tested by the B1-R1 freeze):
+ *      exactly ONE spec file named forgot-reset.spec.ts; it declares
+ *      test.describe.configure({ mode: 'serial' }); the frozen config holds
+ *      maxFailures:1 (fail-stop); no waitForTimeout anywhere in tests/ or
+ *      src/ (bounded-condition-wait discipline); plus the original
+ *      forbidden-marker scan and frozen config invariants.
  *   5. UTF-8 (strict decode) + no BOM + no CR for every committed harness file.
  */
 
@@ -102,7 +107,7 @@ const rt0 = registry.nodes.find((n) => n.nodeId === 'RT0');
 if (!rt0 || rt0.status !== 'BLOCKED_BY_H2_C') fail('RT0 must carry status BLOCKED_BY_H2_C');
 console.log('[2] registry cross-check against CSV sets — OK');
 
-// --- 3. playwright --list set equality --------------------------------------
+// --- 3. playwright --list ordered equality ------------------------------------
 
 const listRun = spawnSync('npx', ['playwright', 'test', '--list'], {
   cwd: ROOT,
@@ -114,8 +119,9 @@ if (listRun.status !== 0) {
 } else {
   const titles = [];
   for (const line of (listRun.stdout ?? '').split('\n')) {
-    const marker = line.indexOf('›');
+    const marker = line.lastIndexOf('›');
     if (marker === -1) continue;
+    // After the LAST '›' so describe-chain prefixes never pollute the title.
     const title = line.slice(marker + 1).trim();
     if (title) titles.push(title);
   }
@@ -127,13 +133,18 @@ if (listRun.status !== 0) {
   if (titles.length !== 24) {
     fail(`playwright --list must yield exactly 24 tests, found ${titles.length}`);
   }
-  for (const id of seen) {
-    if (!csvBrowserSet.has(id)) fail(`listed test ${id} is not a registered browser node`);
+  // Ordered equality with the CSV browser row order (B1-R1 contract):
+  // swapping ANY two node titles must fail here.
+  for (let i = 0; i < Math.max(titles.length, browserIds.length); i += 1) {
+    if (titles[i] !== browserIds[i]) {
+      fail(
+        `listed order diverges from inventory browser row order at position ${i + 1}: ` +
+          `expected ${browserIds[i] ?? '<missing>'}, found ${titles[i] ?? '<missing>'}`,
+      );
+      break;
+    }
   }
-  for (const id of csvBrowserSet) {
-    if (!seen.has(id)) fail(`browser node ${id} has no listed test`);
-  }
-  console.log(`[3] playwright --list: exactly 24 titles, set-equal with the browser inventory — OK`);
+  console.log(`[3] playwright --list: exactly 24 titles, ordered-equal with the inventory browser rows — OK`);
 }
 
 // --- 4. Forbidden markers + config invariants --------------------------------
@@ -149,6 +160,8 @@ const FORBIDDEN_MARKERS = [
   [/\bfixme\(/, 'fixme('],
   [/\bxit\(/, 'xit('],
   [/\bxdescribe\(/, 'xdescribe('],
+  // B1-R1: fixed sleeps are banned — waits must be bounded conditions.
+  [/\bwaitForTimeout\b/, 'waitForTimeout'],
 ];
 
 function listSourceFiles(dir) {
@@ -186,18 +199,51 @@ for (const file of sourceFiles) {
 }
 
 const configText = readFileSync(join(ROOT, 'playwright.config.ts'), 'utf8');
+
+/**
+ * Strip JS comments so textual invariants cannot be defeated by commenting
+ * the contract line out (mutation-tested at freeze). `//` is only stripped
+ * when preceded by whitespace/line-start so http(s):// literals survive.
+ */
+function stripComments(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/[^\n]*/g, '$1');
+}
+
+const configCode = stripComments(configText);
 const CONFIG_INVARIANTS = [
   [/fullyParallel:\s*false/, 'fullyParallel: false'],
   [/workers:\s*1\b/, 'workers: 1'],
   [/retries:\s*0\b/, 'retries: 0'],
+  // B1-R1 fail-stop contract.
+  [/maxFailures:\s*1\b/, 'maxFailures: 1'],
   [/trace:\s*'off'/, "trace: 'off'"],
   [/screenshot:\s*'off'/, "screenshot: 'off'"],
   [/video:\s*'off'/, "video: 'off'"],
 ];
 for (const [pattern, label] of CONFIG_INVARIANTS) {
-  if (!pattern.test(configText)) fail(`playwright.config.ts is missing frozen invariant ${label}`);
+  if (!pattern.test(configCode)) fail(`playwright.config.ts is missing frozen invariant ${label}`);
 }
-console.log('[4] forbidden-marker scan + frozen config invariants — OK');
+
+// B1-R1 journey-structure contracts:
+//  (a) exactly ONE spec file, named forgot-reset.spec.ts — reintroducing a
+//      second spec (filename-order dependency) fails here;
+//  (b) the spec declares the single outer serial mode — removing it fails.
+const specFiles = listSourceFiles(join(ROOT, 'tests')).filter((file) => file.endsWith('.spec.ts'));
+const specNames = specFiles.map((file) => relative(join(ROOT, 'tests'), file.replace(/\\/g, '/')));
+if (specNames.length !== 1 || specNames[0] !== 'forgot-reset.spec.ts') {
+  fail(
+    `tests/ must contain exactly one spec file named forgot-reset.spec.ts (found: ${
+      specNames.length === 0 ? '<none>' : specNames.join(', ')
+    })`,
+  );
+}
+const specText = specFiles.length === 1 ? readFileSync(specFiles[0], 'utf8') : '';
+if (!/test\.describe\.configure\(\{\s*mode:\s*'serial'\s*\}\)/.test(stripComments(specText))) {
+  fail('forgot-reset.spec.ts must declare test.describe.configure({ mode: \'serial\' })');
+}
+console.log('[4] journey contracts (single serial spec, maxFailures:1, no waitForTimeout) + marker scan + config invariants — OK');
 
 // --- 5. UTF-8 / no BOM / no CR -----------------------------------------------
 

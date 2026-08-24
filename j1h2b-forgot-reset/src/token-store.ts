@@ -1,13 +1,15 @@
 /**
- * In-memory journey state (task directive #9).
+ * In-memory journey state (task directive #9; B1-R1 single-serial-spec scope).
  *
- * workers=1 keeps every spec file in the same worker process, so this module
- * state carries the journey token chain across files. Everything here lives
- * in process memory ONLY: it is never written to disk, never logged, never
- * included in a report, and failure messages must never interpolate these
- * values. The store holds the maildir-derived reset link/token for the
- * A1 single-copy journey, the M1 shared-identity journey, neutrality
- * fingerprints, and in-memory provisioning handles.
+ * The whole journey lives in ONE spec file (tests/forgot-reset.spec.ts) with
+ * `test.describe.configure({ mode: 'serial' })` and workers=1, so the 24
+ * nodes run in inventory order inside a single worker process and this
+ * module state carries the journey token chain between them — never across
+ * files. Everything here lives in process memory ONLY: it is never written
+ * to disk, never logged, never included in a report, and failure messages
+ * must never interpolate these values. The store holds the maildir-derived
+ * reset link/token for the A1 single-copy journey, the M1 shared-identity
+ * journey, neutrality fingerprints, and in-memory provisioning handles.
  */
 
 import type { ResponseFingerprint } from './neutrality.js';

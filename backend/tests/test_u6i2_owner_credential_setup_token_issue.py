@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import func, select, text
@@ -197,9 +198,50 @@ async def _token_rows(registration_id: uuid.UUID) -> list[OwnerCredentialSetupTo
             select(OwnerCredentialSetupToken)
             .where(OwnerCredentialSetupToken.registration_id == registration_id)
             .order_by(OwnerCredentialSetupToken.created_at.asc())
+            .order_by(OwnerCredentialSetupToken.id.asc())
             .execution_options(ignore_tenant=True)
         )
         return list(result.scalars())
+
+
+def _prior_and_new_rows(
+    rows: list, prior_raw_token: str, new_raw_token: str
+):
+    """Identity-match the prior and newly-issued token rows by token_hash.
+
+    R2-R4-R2 (DC-12R1-MVP-L1-J1-H2-B): creation time must never be inferred
+    from row position or UUID order — server-side created_at (transaction
+    start time) can tie. The token set must be EXACTLY the prior token and
+    the newly-issued token (set equality, not a count). Returns
+    (prior_row, new_row) regardless of the arrangement of ``rows``.
+    """
+    by_hash: dict = {}
+    for row in rows:
+        assert row.token_hash not in by_hash, "duplicate token_hash in rows"
+        by_hash[row.token_hash] = row
+    prior_hash = hash_token(prior_raw_token)
+    new_hash = hash_token(new_raw_token)
+    assert set(by_hash) == {prior_hash, new_hash}, (
+        "token set must be exactly the prior token and the newly-issued token"
+    )
+    prior_row = by_hash[prior_hash]
+    new_row = by_hash[new_hash]
+    assert prior_row.token_hash != prior_raw_token
+    assert new_row.token_hash != new_raw_token
+    return prior_row, new_row
+
+
+def test_prior_and_new_identity_matching_is_order_independent():
+    """Counterexample gate: identity matching stays GREEN for a reversed
+    arrangement (the old positional assertions deterministically RED here)."""
+    prior_raw = f"u6i2-prior-{uuid.uuid4().hex}"
+    new_raw = f"u6i2-new-{uuid.uuid4().hex}"
+    prior_stub = SimpleNamespace(token_hash=hash_token(prior_raw))
+    new_stub = SimpleNamespace(token_hash=hash_token(new_raw))
+    for arrangement in ([prior_stub, new_stub], [new_stub, prior_stub]):
+        prior_row, new_row = _prior_and_new_rows(arrangement, prior_raw, new_raw)
+        assert prior_row is prior_stub
+        assert new_row is new_stub
 
 
 async def _token_count(registration_id: uuid.UUID) -> int:
@@ -263,12 +305,12 @@ async def test_active_provisioned_registration_issues_hash_only_setup_token():
     assert result.raw_token is not None
     assert result.expires_at is not None
     rows = await _token_rows(registration_id)
-    assert len(rows) == 1
-    assert rows[0].token_hash == hash_token(result.raw_token)
-    assert rows[0].token_hash != result.raw_token
-    assert rows[0].used_at is None
-    assert rows[0].revoked_at is None
-    assert rows[0].purpose == "owner_credential_setup"
+    (row,) = rows
+    assert row.token_hash == hash_token(result.raw_token)
+    assert row.token_hash != result.raw_token
+    assert row.used_at is None
+    assert row.revoked_at is None
+    assert row.purpose == "owner_credential_setup"
     assert FORBIDDEN_TOKEN_COLUMNS.isdisjoint(OwnerCredentialSetupToken.__table__.columns.keys())
 
 
@@ -308,10 +350,14 @@ async def test_expired_prior_token_allows_new_setup_token_issue():
     assert result.raw_token is not None
     assert result.raw_token != prior_raw_token
     rows = await _token_rows(registration_id)
-    assert len(rows) == 2
-    assert rows[0].token_hash == hash_token(prior_raw_token)
-    assert rows[0].token_hash != prior_raw_token
-    assert rows[1].token_hash == hash_token(result.raw_token)
+    prior_row, new_row = _prior_and_new_rows(rows, prior_raw_token, result.raw_token)
+    assert prior_row.used_at is None
+    # product contract: issuing a new token closes (revokes) the expired prior
+    assert prior_row.revoked_at is not None
+    assert prior_row.expires_at <= datetime.now(timezone.utc)
+    assert new_row.used_at is None
+    assert new_row.revoked_at is None
+    assert new_row.expires_at > datetime.now(timezone.utc)
     assert await _unexpired_active_token_count(registration_id) == 1
 
 
@@ -343,9 +389,16 @@ async def test_used_or_revoked_prior_token_allows_new_setup_token_issue(
     assert result.raw_token is not None
     assert result.raw_token != prior_raw_token
     rows = await _token_rows(registration_id)
-    assert len(rows) == 2
-    assert rows[0].token_hash == hash_token(prior_raw_token)
-    assert rows[1].token_hash == hash_token(result.raw_token)
+    prior_row, new_row = _prior_and_new_rows(rows, prior_raw_token, result.raw_token)
+    if used_at is not None:
+        assert prior_row.used_at is not None
+        assert prior_row.revoked_at is None
+    else:
+        assert prior_row.used_at is None
+        assert prior_row.revoked_at is not None
+    assert new_row.used_at is None
+    assert new_row.revoked_at is None
+    assert new_row.expires_at > datetime.now(timezone.utc)
     assert await _unexpired_active_token_count(registration_id) == 1
 
 

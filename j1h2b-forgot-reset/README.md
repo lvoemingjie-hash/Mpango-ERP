@@ -1,0 +1,134 @@
+# j1h2b-forgot-reset — Frozen Forgot/Reset Playwright Harness
+
+DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1. Parent: `8c462170804322d3f73803d8991c00879582e232`.
+Protocol source of truth: commit `132cf7edaac5d6c57ebcdc2465334f4aa465aab2`
+(`docs/ai-reports/test-plans/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_b0_forgot_reset_browser_protocol.md`
+and the node inventory CSV, copied byte-identically into `inventory/`).
+
+**This harness is FROZEN.** It implements and freezes the test harness only.
+It must not start any product runtime (backend/frontend/PG/Redis), must not
+execute the authoritative browser journey, must not modify product source,
+must not merge or deploy. `--list` and pure static helper checks are the only
+permitted executions at freeze time. Next step after freeze: Kilo harness
+source/authenticity review; the authoritative browser run is a separate,
+later authorization.
+
+## Layout
+
+```
+j1h2b-forgot-reset/
+  inventory/2026-08-23_..._node_inventory.csv   byte-identical protocol copy (blob 29a2bdd30b8ffd9142404dd530486d7fa6fd1f15)
+  inventory/node-registry.json                  29-node reconciliation model (24 browser + 5 non-browser)
+  playwright.config.ts                          fullyParallel:false, workers:1, retries:0, trace/screenshot/video off
+  src/env.ts                                    fail-closed env contract (names-only errors)
+  src/assertions.ts                             sanitized assertion discipline
+  src/token-store.ts                            in-memory journey state (token never persisted)
+  src/maildir.ts                                F6 surface: task-private maildir reader (memory only)
+  src/api-client.ts                             OFFICIAL-API provisioning ONLY (never journey actions)
+  src/neutrality.ts                             F3/F4 fingerprints: status + SHA-256 + length, raw body discarded
+  src/leak-scan.ts                              R12 surfaces (findings = surface:field, values withheld)
+  src/ui-journey.ts                             rendered-UI journey steps pinned to product anchors
+  tests/01..06*.spec.ts                         24 browser nodes, CSV order, titles == node IDs
+  tools/validate-static.mjs                     static gate (CSV parse, set equality, marker scan, UTF-8)
+  tools/scan-artifacts.mjs                      R13 NON-BROWSER post-run evidence scan
+```
+
+## Node accounting (24 / 5 / 29)
+
+- **24 browser-authoritative nodes** (spec titles, exact set):
+  F1-D, F1-T, F1-M, F2-D, F2-T, F2-M, F3, F4, F5, R1, R2, R3, R4, R5,
+  R7-POLICY, R7-POLICY-M, R8, R8-M, R9, R10, R10-M, R11, R12, M1.
+- **5 non-browser nodes — never Playwright tests, never browser PASS**:
+  - `F6` PRECONDITION — maildir link acquisition via `src/maildir.ts`, in memory.
+  - `R6` PRE_GATE_ONLY — natural expiry is backend pre-gate evidence; UI copy equivalence covered by R5.
+  - `M2` PRE_GATE_ONLY — partial-copy rollback needs fault injection; browser run covers only the success fan-out (M1).
+  - `R13` POSTCOND — `tools/scan-artifacts.mjs` after the authoritative run.
+  - `RT0` PROTOCOL_BLOCKER — status `BLOCKED_BY_H2_C` (retailer discovery layer missing, PB-1). **No API bypass of the missing retailer UI is permitted.**
+
+## Journey chain and ordering
+
+Files execute 01→06 serially (workers=1, single worker process, module state
+shared in memory):
+
+1. `01` discovery/form structure (no journey state).
+2. `02` beforeAll provisions A1 (official lifecycle) and X (official
+   create+soft-delete). F3 submits forgot for A1 — this mail event is the
+   journey token source; its fingerprint is the F4/F5 anchor.
+3. `03` reads the F3 mail via the maildir helper (F6 surface), then R1–R5.
+4. `04` R7* policy stops, R8 consumes the token (link kept for R11), R8-M
+   runs its own fresh UI cycle at 390x844 resetting to the SAME P2.
+5. `05` R9/R10/R10-M logins, R11 replay + P2 recheck, R12 surface sweep.
+6. `06` M1: beforeAll provisions W1/W2 owners + shared identity M via the
+   official API (same normalized email, SAME initial password both sides,
+   formal admin role both sides, gate: M login exposes EXACTLY {W1,W2});
+   the journey itself (forgot → maildir → reset → dual-context R9/R10) is
+   rendered UI only.
+
+## Environment contract (fail closed; names-only errors)
+
+| Variable | Used by |
+|---|---|
+| `J1H2B_BASE_URL` | frontend origin (all UI navigation; maildir links must share this origin) |
+| `J1H2B_API_BASE_URL` | backend origin — OFFICIAL-API provisioning only |
+| `J1H2B_MAILDIR_ROOT` | task-private maildir root (F6/R8-M/R12/M1 reads) |
+| `J1H2B_SIGNUP_COUNTRY` | 2-letter country for official signups |
+| `J1H2B_A1_EMAIL` / `_INITIAL_PASSWORD` / `_NEW_PASSWORD` / `_REPLAY_PASSWORD` / `_COMPANY_NAME` | single-copy journey (F3, R7–R12) |
+| `J1H2B_UNKNOWN_EMAIL` | F4 never-registered identity (must differ from all provisioned emails) |
+| `J1H2B_INELIGIBLE_EMAIL` / `_TEMP_PASSWORD` | F5 fixture (official create + soft-delete; temp password never authenticates) |
+| `J1H2B_W1_OWNER_EMAIL` / `_PASSWORD` / `_COMPANY_NAME`, same for W2 | M1 provisioning |
+| `J1H2B_M_EMAIL` / `_FULL_NAME` / `_INITIAL_PASSWORD` / `_NEW_PASSWORD` | M1 shared identity |
+
+No credential is ever hardcoded, logged, echoed, screenshotted or written to
+an artifact. Passwords must be ≥8 chars and satisfy distinctness rules
+(initial ≠ new, new ≠ replay). Missing variables fail the run before any
+journey action.
+
+## Maildir contract for the authoritative run
+
+The run launcher dumps the backend non-production email sink under
+`J1H2B_MAILDIR_ROOT`. Each email is a UTF-8 text file (flat or classic
+maildir new/cur layout) whose content contains the recipient address and the
+fragment-only link (`/reset-password#resetToken=…`, `/verify-email#token=…`,
+`/setup-credential#setupToken=…`). The operator must set the backend
+`PUBLIC_FRONTEND_URL` to the same origin as `J1H2B_BASE_URL`.
+
+## Sanitization discipline
+
+- `expect()` is used ONLY for pure-DOM checks against fixed product strings.
+  Anything that could carry a secret (URL, response body, storage value,
+  password) is asserted with `assertSan(condition, "field-level message")`
+  so failure output can never contain a value.
+- F3/F4/F5 keep `(status, sha256(body), bodyLength)` only — the raw response
+  body is never retained (task directive #10).
+- R12/R13 findings are `surface:field` pairs only (task directive #14).
+- trace/screenshot/video are `off`; R13 additionally bans image/video/trace
+  artifacts outright.
+
+## Viewport truth (task directive #16)
+
+The three CSV viewports (1280x800, 768x1024, 390x844) are DESKTOP-simulated
+viewport sizes. They are usability-structure proxies only and are never
+reported as real-device (phone/tablet) results.
+
+## Frozen gates (freeze-time)
+
+```
+pnpm install --frozen-lockfile
+npx playwright test --list            # exactly 24 titles
+node tools/validate-static.mjs        # 5-step static gate
+npx tsc --noEmit                      # TypeScript parse
+```
+
+The authoritative single run (later, separately authorized) additionally
+produces `artifacts/results.json`, `artifacts/results-junit.xml`, and is
+followed by `node tools/scan-artifacts.mjs --artifacts-dir artifacts
+--secrets-from-env` (R13) plus the 29-node reconciliation accounting
+(gap must be 0). Rerun-to-green is prohibited; any failure is a STOP.
+
+## Prohibitions honored in this harness
+
+No SQL, no direct ORM, no hand-written hashes, no debug endpoints, no
+database patching, no hardcoded evidence, no API substitution of
+forgot/reset journey actions (API appears ONLY in provisioning preconditions
+and the explicitly authorized read-only maildir postcondition of F5), no
+skip/fixme/only/conditional pass anywhere.

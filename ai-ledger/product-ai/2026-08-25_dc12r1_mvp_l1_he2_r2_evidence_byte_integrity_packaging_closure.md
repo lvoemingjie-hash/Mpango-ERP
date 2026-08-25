@@ -31,7 +31,7 @@ the PR baseline to a frozen SHA, and correct the R1 ledger's factual errors.
 | HE2_PARENT | `94b0c30034d04d1bad87f926a4b09e3dbbe3c6db` | HE2 machine-enforced governance tooling |
 | R1 impl | `b74e16879f92972d3c28ad163e38c2aa045f69f2` | R1 bypass closure (validator 2.0.0) |
 | R1 report | `5a380586caab4f662d7e1dfbc7899cf5bd3bc300` | R1 delivery ledger |
-| R2 | *(this commit)* | R2 evidence byte integrity + scanner scope |
+| R2 | `739d066f884f7d96211b8cefe9ec44a6fa8d31d0` | R2 evidence byte integrity + scanner scope |
 
 The R1 ledger incorrectly stated "HE2_PARENT → R2" as a two-step chain;
 the actual chain is HE2_PARENT → R1 impl → R1 report → R2.
@@ -154,8 +154,8 @@ deployment code was changed in HE2, R1, or R2.
 
 ## External enforcement status
 
-- **Branch pushed:** ✓ *(SHA filled after push)*
-- **Remote SHA verified:** ✓ local == remote
+- **Branch pushed:** ✓ `739d066f884f7d96211b8cefe9ec44a6fa8d31d0`
+- **Remote SHA verified:** ✓ local == remote (`739d066f`)
 - **Branch protection on product-dev-recovered:** NOT VERIFIED (GitHub API 404)
 - **Required check name:** `HE2-R1 structural gate` (defined in workflow, not confirmed as GitHub required check)
 

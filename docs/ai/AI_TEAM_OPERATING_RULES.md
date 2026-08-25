@@ -16,6 +16,8 @@ Before starting any task, every AI agent must:
    - `docs/ai/README.md`
    - `docs/ai/PROJECT.md`
    - `docs/ai/PROJECT_MEMORY.md`
+   - `docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md` when the task adds,
+     changes, reviews, or executes tests or acceptance evidence
 4. Read the track-specific handoff skill if one exists.
 5. State the intended scope and files before editing.
 
@@ -80,6 +82,16 @@ Agents must separate:
 Do not hide an environmental blocker inside a success claim.
 Do not describe endpoint-function tests as full route-level tests.
 Do not describe a visibility push as final approval.
+
+For product acceptance and release evidence, agents must follow
+`docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md`. Code coverage and a green
+suite are not sufficient by themselves. The report must identify scenario,
+state-pair, failure-class, cross-cutting interaction, oracle, mutation, and
+journey-reachability coverage as applicable.
+
+Every P0/P1 product defect must produce a retained deterministic regression
+node or an explicit CTO-owned coverage-debt item. Exploratory findings do not
+become PASS evidence until converted into a frozen, reproducible node.
 
 ## Escalation
 

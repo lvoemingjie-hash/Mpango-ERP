@@ -1,0 +1,62 @@
+phase,check_id,description,result,severity,evidence
+Phase 1: Proof Gate,PG-01,git fetch --all --prune 完成,PASS,INFO,远程分支 codex/dc12r1-mvp-l1-he2-r3-r2-mutation-eol-portability-closure-2026-08-25 存在
+Phase 1: Proof Gate,PG-02,candidate == remote tip,PASS,INFO,246eb190fc07866f098a380e61ebdc5bd9428a04 == origin/codex/...
+Phase 1: Proof Gate,PG-03,candidate^ == BASE (68a68027),PASS,INFO,git rev-parse HEAD~1 = 68a68027e6b2d57ab35a77142b187c6301762de5
+Phase 1: Proof Gate,PG-04,R3-R2 delta 恰好 4 文件,PASS,INFO,git diff --name-status 68a68027..HEAD = 4 文件
+Phase 1: Proof Gate,PG-05,累计 delta 统计 4 files / +245 / -7,PASS,INFO,git diff --stat 68a68027..HEAD = 4 files changed, 245 insertions(+), 7 deletions(-)
+Phase 1: Proof Gate,PG-06,product/runtime/schema/workflow/.secrets.baseline 无漂移,PASS,INFO,git diff --name-only 68a68027..HEAD 无此类路径
+Phase 2: Cumulative Source Review,CSR-01,_detect_native_eol 纯 LF 返回 \n,PASS,INFO,line 601: cr == 0 and lf > 0 -> return "\n"
+Phase 2: Cumulative Source Review,CSR-02,_detect_native_eol 纯 CRLF 返回 \r\n,PASS,INFO,line 603-604: cr == crlf and lf == crlf and cr > 0 -> return "\r\n"
+Phase 2: Cumulative Source Review,CSR-03,_detect_native_eol mixed EOL 返回 None,PASS,INFO,line 605: return None
+Phase 2: Cumulative Source Review,CSR-04,_to_native_eol 转换 patch 为 native EOL,PASS,INFO,line 610-612: text.replace(\n, \r\n) when native_eol == \r\n
+Phase 2: Cumulative Source Review,CSR-05,_apply_validator_patch mixed EOL fail closed,PASS,INFO,line 624-626: native_eol is None -> return None, MIXED_EOL
+Phase 2: Cumulative Source Review,CSR-06,_apply_validator_patch 0/重复锚点 fail closed,PASS,INFO,line 629-630: text.count(old) != 1 -> return None, PATCH-ANCHOR-NOT-UNIQUE
+Phase 2: Cumulative Source Review,CSR-07,fail-closed 不得计作 RED,PASS,INFO,line 637-642: fail_category is not None -> append failure and return (not RED)
+Phase 2: Cumulative Source Review,CSR-08,finally 无条件恢复原始 bytes,PASS,INFO,line 660-661: VALIDATOR.write_bytes(original)
+Phase 2: Cumulative Source Review,CSR-09,恢复后完整 bytes + SHA-256 双相等,PASS,INFO,line 662-668: restored == original AND sha256(restored) == sha256(original)
+Phase 2: Cumulative Source Review,CSR-10,候选 validator blob 未全局归一化,PASS,INFO,仅 patch strings 在应用时转换；validator 文件本身保持 native EOL
+Phase 3: Scanner Adversarial Review,SAR-01,git ls-files --cached --others --exclude-standard,PASS,INFO,_scanner_candidate_files line 1064-1086
+Phase 3: Scanner Adversarial Review,SAR-02,os.walk fallback 核验,PASS,INFO,line 1090-1096: 固定目录排除 FS_COMPARE_IGNORE
+Phase 3: Scanner Adversarial Review,SAR-03,无扩展名白名单,PASS,INFO,无 endswith 过滤
+Phase 3: Scanner Adversarial Review,SAR-04,排除仅 via gitignore + 固定 FS 集合,PASS,INFO,FS_COMPARE_IGNORE frozenset
+Phase 3: Scanner Adversarial Review,SAR-05,Exact base_sha/evidence_sha/evidence_commit 40/64 hex 检测,PASS,INFO,_SCANNER_HEX_RE_BYTES regex
+Phase 3: Scanner Adversarial Review,SAR-06,五个允许文件外必须 RED,PASS,INFO,_SCANNER_ALLOWED_FILES frozenset
+Phase 3: Scanner Adversarial Review,SAR-07,detect-secrets scan clean,PASS,INFO,detect-secrets scan ... --baseline .secrets.baseline exit 0
+Phase 3: Scanner Adversarial Review,SAR-08,bytes 匹配无 decode,PASS,INFO,文件以 rb 模式读取
+Phase 4: Test Authenticity,TA-01,独立运行 96/96 unittest (LF checkout),PASS,INFO,python -m unittest ...: 96 tests OK in 28.319s
+Phase 4: Test Authenticity,TA-02,独立运行 96/96 unittest (CRLF checkout),PASS,INFO,python -m unittest ... with PYTHONPATH: 96 tests OK in 28.319s
+Phase 4: Test Authenticity,TA-03,37 RED + 5 GREEN (LF checkout),PASS,INFO,37 RED as intended + 5 GREEN as intended + tree integrity OK
+Phase 4: Test Authenticity,TA-04,37 RED + 5 GREEN (CRLF checkout),PASS,INFO,37 RED as intended + 5 GREEN as intended + tree integrity OK
+Phase 4: Test Authenticity,TA-05,N20/N21 真实 RED→恢复 GREEN (LF),PASS,INFO,N20/N21: RED as intended -> restored: blob identical, probes RED again
+Phase 4: Test Authenticity,TA-06,N20/N21 真实 RED→恢复 GREEN (CRLF),PASS,INFO,N20/N21: RED as intended -> restored: blob identical, probes RED again
+Phase 4: Test Authenticity,TA-07,零 PATCH ANCHOR ERROR (LF),PASS,INFO,0 PATCH ANCHOR ERROR in LF checkout
+Phase 4: Test Authenticity,TA-08,零 PATCH ANCHOR ERROR (CRLF),PASS,INFO,0 PATCH ANCHOR ERROR in CRLF checkout
+Phase 4: Test Authenticity,TA-09,恢复后完整 bytes + SHA-256 双相等,PASS,INFO,line 662-668: restored == original AND sha256 digests equal
+Phase 4: Test Authenticity,TA-10,不得把候选方运行结果冒充为 Kilo 独立结果,PASS,INFO,Kilo 在独立 detached worktree 中运行所有测试
+Phase 5: Gate Matrix,GM-01,structural 94b0c300..HEAD exit 0,PASS,INFO,python validator.py --mode structural --base-sha 94b0c300... exit 0
+Phase 5: Gate Matrix,GM-02,structural 68a68027..HEAD exit 0,PASS,INFO,python validator.py --mode structural --base-sha 68a68027... exit 0
+Phase 5: Gate Matrix,GM-03,release exit 3,PASS,INFO,python validator.py --mode release exit 3 (RELEASE_GATE=BLOCKED)
+Phase 5: Gate Matrix,GM-04,diff-check clean,PASS,INFO,git diff --check exit 0
+Phase 5: Gate Matrix,GM-05,pre-commit/detect-secrets clean,PASS,INFO,detect-secrets scan exit 0
+Phase 5: Gate Matrix,GM-06,strict UTF-8/no-BOM/LF,PASS,INFO,目标文件 UTF-8=True, BOM=False, CRLF=True (CRLF checkout)
+Phase 5: Gate Matrix,GM-07,GitNexus analyze,PASS,INFO,npx gitnexus analyze .: 15703 nodes / 47393 edges / 816 clusters / 300 flows
+Phase 5: Gate Matrix,GM-08,同名 SKU 图噪声披露,INFO,INFO,GitNexus 图中有同名 SKU 节点（816 clusters），为正常知识图谱结构，非缺陷
+Phase 5: Gate Matrix,GM-09,release exit 3 语义说明,INFO,INFO,open P0/P1 release-blocking debt: DEBT-AUTH-CRITICAL-TUPLES, DEBT-COMMERCE-CRITICAL-TUPLES
+Phase 6: Evidence Truth,ET-01,真实链 68a68027 -> 246eb19,PASS,INFO,git log --oneline 68a68027..246eb19 显示线性链
+Phase 6: Evidence Truth,ET-02,旧 tip/parent 声明已标记 SUPERSEDED_METADATA_ONLY,PASS,INFO,2026-08-25_dc12r1_mvp_l1_he2_r3_delta_chain_scanner_bypass_closure.md 顶部有 SUPERSEDED 横幅
+Phase 6: Evidence Truth,ET-03,不要求 committed report 声称自身 SHA,PASS,INFO,R3-R2 台账未包含 FINAL_REPORT_TIP = 246eb19
+Phase 6: Evidence Truth,ET-04,branch protection 404/rulesets 状态,INFO,INFO,REMOTE_ENFORCEMENT_NOT_VERIFIED (无 GITHUB_TOKEN)
+Phase 7: Dual-Checkout Gate,DCG-01,LF-only checkout 目标文件 CR=0,PASS,INFO,harness_governance_validator.py: CR=0, run_red_mutations.py: CR=0
+Phase 7: Dual-Checkout Gate,DCG-02,CRLF checkout 目标文件 CR>0,PASS,INFO,harness_governance_validator.py: CR=1874, run_red_mutations.py: CR=918
+Phase 7: Dual-Checkout Gate,DCG-03,LF checkout unittest 96/96,PASS,INFO,96 tests OK in LF-only worktree
+Phase 7: Dual-Checkout Gate,DCG-04,CRLF checkout unittest 96/96,PASS,INFO,96 tests OK in CRLF worktree (core.autocrlf=true)
+Phase 7: Dual-Checkout Gate,DCG-05,LF checkout 37 RED + 5 GREEN,PASS,INFO,37 RED + 5 GREEN + tree integrity OK
+Phase 7: Dual-Checkout Gate,DCG-06,CRLF checkout 37 RED + 5 GREEN,PASS,INFO,37 RED + 5 GREEN + tree integrity OK
+Phase 7: Dual-Checkout Gate,DCG-07,LF checkout 零 PATCH ANCHOR ERROR,PASS,INFO,0 PATCH ANCHOR ERROR
+Phase 7: Dual-Checkout Gate,DCG-08,CRLF checkout 零 PATCH ANCHOR ERROR,PASS,INFO,0 PATCH ANCHOR ERROR
+Phase 7: Dual-Checkout Gate,DCG-09,CRLF checkout git status clean,PASS,INFO,git status --short 无输出
+Phase 8: Deliverables,DEL-01,新 reports 分支创建,PENDING,INFO,reports/dc12r1-mvp-l1-he2-r3-r2-v1-kilo-bounded-eol-portability-closure-review-2026-08-25
+Phase 8: Deliverables,DEL-02,恰好 review.md + findings.csv 两文件,PENDING,INFO,review.md 已写入，findings.csv 本文件
+Phase 8: Deliverables,DEL-03,报告 local SHA == remote SHA,PENDING,INFO,推送后验证
+Phase 8: Deliverables,DEL-04,不修改候选/受保护 refs/产品代码,PASS,INFO,只读审查，候选 SHA 未变
+Phase 8: Deliverables,DEL-05,STOP；不合并、不启动 H2-B-R3-R1,PASS,INFO,冻结状态，只读审查

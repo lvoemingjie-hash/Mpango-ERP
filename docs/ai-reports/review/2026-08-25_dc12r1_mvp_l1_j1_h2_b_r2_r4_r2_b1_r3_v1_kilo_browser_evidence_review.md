@@ -1,8 +1,45 @@
-# DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1-R3-V1 — Independent Browser Evidence Review
+# DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1-R3-V1 — PRE_EXECUTION_BROWSER_HARNESS_SOURCE_REVIEW
 
-- 日期：2026-08-25（+08:00）；审查者：Kilo（独立于 Harness 真实性审查的第二次审查通道）
-- 模式：仅审查浏览器证据链（Inventory → Spec → 实现 → 静态门禁 → 可执行合同）
-- 目标：确认 24 个浏览器节点的证据完整性、顺序一致性、实现真实性和对抗性覆盖
+- 日期：2026-08-25（+08:00）；审查者：Kilo
+- 模式：PRE_EXECUTION 浏览器 Harness 源码证据审查（冻结 Playwright harness、语义中立性规范）
+- 目标：对 24 个浏览器节点的 Inventory → Spec → 实现 → 静态门禁 → 可执行合同进行源码级真实性审查
+
+## 重要声明
+
+- **未启动产品运行时**（无后端、无前端、无 PG/Redis、无邮件 sink）。
+- **未执行 24 节点浏览器旅程**（无 Playwright 运行、无 `npx playwright test`、无 JSON/JUnit/节点结果产生）。
+- **未产生运行时产物**（无 machine JSON、无 JUnit、无截图、无 trace）。
+- **不构成浏览器 PASS 或合并批准**。本报告仅证明 Harness 源码证据链在冻结状态下自洽、真实、对抗性覆盖充分；浏览器旅程的实际运行时 PASS 需在独立运行时审查中完成。
+
+## 提交证明
+
+- 本地 HEAD: `6425c29e`
+- 远程分支: `origin/reports/dc12r1-mvp-l1-j1-h2-b-r2-r4-r2-b1-r3-v1-kilo-final-harness-review-2026-08-25`
+- 证明: `git rev-parse HEAD` == `git ls-remote origin <branch>` (已推送确认)
+
+### 相关提交
+
+```
+6425c29e reports: DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1-R3-V1 independent browser evidence review
+2f686291 reports: DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1-R3-V1 Kilo final harness authenticity review
+8c7e8477 DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1-R3: semantic neutrality canonicalization closure
+```
+
+### 受保护 refs（未修改）
+
+- 候选: `8c7e84779cc1810baab32859d3dc353e1028384a`
+- Lubuntu: `67981ccf`（按任务要求引用）
+- V2 STOP: `3fb185be25b51ae4554c58e8c06c795673c058dd`
+- V3 STOP: `888fd2072afd77d54881e834c592a4b0f587b271`
+- Protected baseline: `6e9470a1daa5d6eece29724316fdd8aef6b737c1`
+
+## 撤回旧裁决
+
+```
+WITHDRAWN: PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R2_R4_R2_B1_R3_V1_INDEPENDENT_BROWSER_EVIDENCE_REVIEW
+```
+
+理由：旧标记暗示已完成浏览器执行审查，但实际仅完成源码级证据审查，未启动运行时。
 
 ## 审查范围
 
@@ -189,17 +226,24 @@
 ## 结论
 
 ```
-PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R2_R4_R2_B1_R3_V1_INDEPENDENT_BROWSER_EVIDENCE_REVIEW
+WITHDRAWN: PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R2_R4_R2_B1_R3_V1_INDEPENDENT_BROWSER_EVIDENCE_REVIEW
+
+PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R2_R4_R2_B1_R3_V1_KILO_PRE_EXECUTION_BROWSER_HARNESS_SOURCE_REVIEW
 ```
 
-浏览器证据链完整、真实、对抗性覆盖充分：
+Harness 源码证据链在冻结状态下自洽、真实、对抗性覆盖充分：
 
 1. **Inventory 完整性**：29 行数据、24 浏览器 + 5 非浏览器、节点名称和顺序冻结
-2. **Spec 真实性**：24 个测试按 CSV 顺序执行，无任何 skip/fixme/only，无固定 sleeps
+2. **Spec 真实性**：24 个测试按 CSV 顺序声明，无任何 skip/fixme/only，无固定 sleeps
 3. **捕获真实性**：原始 body 仅在拦截器局部作用域存在，规范化解码器是真实模块
-4. **中立性覆盖**：F3/F4/F5 均执行完整中立性断言，G1-G6 可执行检查通过
+4. **中立性覆盖**：F3/F4/F5 均声明完整中立性断言，G1-G6 可执行检查通过
 5. **失败停止**：序列模式 + workers=1 + maxFailures=1 确保首个失败即中止
-6. **泄漏防护**：R12 五面扫描 + 错误输出仅含固定 category/field 名称
-7. **多副本证据**：M1 通过浏览器 UI 执行完整旅程，双上下文后置条件验证
+6. **泄漏防护**：R12 五面扫描声明 + 错误输出仅含固定 category/field 名称
+7. **多副本证据**：M1 通过浏览器 UI 声明完整旅程，双上下文后置条件验证
 
-未执行浏览器旅程（产品运行时未启动），本次审查为**源码级证据审查**。如需运行时验证，需启动产品后端 + 前端 + 邮件 sink。
+### 执行边界声明
+
+- **未启动产品运行时**（无后端、无前端、无数据库、无邮件 sink）。
+- **未执行 24 节点浏览器旅程**（无 Playwright 运行、无 `npx playwright test`、无 runtime JSON/JUnit/节点结果）。
+- **未产生运行时产物**（无 machine JSON、无 JUnit、无截图、无 trace、无网络日志）。
+- **不构成浏览器 PASS 或合并批准**。本报告仅证明 Harness 源码在冻结状态下自洽、真实、对抗性覆盖充分；浏览器旅程的实际运行时 PASS 需在独立运行时审查中完成。

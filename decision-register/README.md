@@ -51,6 +51,7 @@ YYYY-MM-DD_<short-description>.md
 | ID | Title | Status | Authority | Impact |
 |----|-------|--------|-----------|--------|
 | [DR-2026-08-25-001](2026-08-25_harness-engineering-governance.md) | Systematic Harness Coverage and Exploratory Testing Governance | Approved | CTO + L1 Product Delivery Governance | Product, Tests, Harnesses, Review, Release Evidence |
+| [DR-2026-08-25-002](2026-08-25_harness-governance-tooling-he2.md) | Machine-Validated Coverage Inventory, Debt, and Interaction Governance | Approved | CTO directive DC-12R1-MVP-L1-HE2 | CI, Product, Tests, Harnesses, Review |
 
 ## Decision Categories
 
@@ -77,6 +78,7 @@ YYYY-MM-DD_<short-description>.md
 
 ### Governance (治理决策)
 - DR-2026-08-25-001: Systematic Harness Coverage and Exploratory Testing Governance
+- DR-2026-08-25-002: Machine-Validated Coverage Inventory, Debt, and Interaction Governance
 
 ## Review Process
 1. **提出决策**: 任何AI角色发现需要决策的事项时，创建决策文档草稿（Status: Proposed）

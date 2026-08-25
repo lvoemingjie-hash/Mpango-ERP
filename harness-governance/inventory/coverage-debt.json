@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0.0",
+  "notes": "Every BLOCKED or NOT_COVERED required cell is owned, reasoned, and milestone-bound. Open debt never counts as PASS anywhere in the HE2 summaries.",
+  "debts": [
+    {
+      "debt_id": "DEBT-AUTH-CRITICAL-TUPLES",
+      "capability": "authentication, session, and credential-recovery critical tuples",
+      "risk": "P0",
+      "status": "NOT_COVERED",
+      "reason": "HE2 authorizes governance tooling only; the authoritative runs for the auth/interceptor/token critical tuples are HE3 risk-first backfill work and have not been executed.",
+      "blocker_class": "harness",
+      "owner": "cto",
+      "closure_condition": "HE3 backfill executes and retains each listed node with a green deterministic run plus a RED-verified mutation in the permanent suite.",
+      "target_milestone": "HE3",
+      "release_blocked": true,
+      "node_ids": ["AUTH-INT-001", "AUTH-INT-002", "TOKEN-RST-001", "TOKEN-INV-001", "JOURNEY-PWR-001"],
+      "date_opened": "2026-08-25"
+    },
+    {
+      "debt_id": "DEBT-COMMERCE-CRITICAL-TUPLES",
+      "capability": "tenant isolation, rate limiting, idempotency, transaction rollback, neutral oracles",
+      "risk": "P0",
+      "status": "NOT_COVERED",
+      "reason": "Same HE2/HE3 boundary as DEBT-AUTH-CRITICAL-TUPLES: the commerce-integrity critical tuples are inventoried but their authoritative executions are not yet run.",
+      "blocker_class": "harness",
+      "owner": "cto",
+      "closure_condition": "HE3 backfill executes and retains each listed node with a green deterministic run plus a RED-verified mutation in the permanent suite.",
+      "target_milestone": "HE3",
+      "release_blocked": true,
+      "node_ids": ["TENANT-ISO-001", "RATE-429-001", "IDEM-PAY-001", "IDEM-MW-001", "TXN-ROLLBACK-001", "NEUTRAL-ORACLE-001"],
+      "date_opened": "2026-08-25"
+    },
+    {
+      "debt_id": "DEBT-MOBILE-REAL-DEVICE",
+      "capability": "real-device mobile journeys",
+      "risk": "P1",
+      "status": "BLOCKED",
+      "reason": "Real-device journeys require a deployed VPS host and an authorized real-device charter; neither exists yet. Viewport-simulation coverage (MOBILE-NAV-001) is tracked separately and is not blocked.",
+      "blocker_class": "environment",
+      "owner": "cto",
+      "closure_condition": "VPS deployment available and the standard section 18 post-VPS real-device charter executed with retained evidence.",
+      "target_milestone": "post-VPS-M1",
+      "release_blocked": false,
+      "node_ids": ["MOBILE-DEV-001"],
+      "date_opened": "2026-08-25",
+      "notes": "Pre-VPS releases are not gated on this debt; the first post-VPS release is."
+    }
+  ]
+}

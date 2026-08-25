@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "notes": "Data-driven governance configuration. governed_prefixes: path prefixes whose change requires a same-change inventory update (or an active waiver). inventory_sync_paths: changing anything under these prefixes satisfies the sync rule. required_interaction_categories: categories that must exist in critical-interactions.json. Editing this file is a governance decision and must be reviewed like a protocol delta.",
+  "governed_prefixes": [
+    "backend/",
+    "frontend/src/",
+    "scenarios/",
+    "harness-governance/validator/",
+    "harness-governance/schemas/"
+  ],
+  "inventory_sync_paths": [
+    "harness-governance/inventory/"
+  ],
+  "required_interaction_categories": [
+    "auth-interceptor",
+    "tenant",
+    "rate-limit",
+    "idempotency",
+    "token-replay",
+    "transaction-rollback",
+    "mobile-navigation"
+  ]
+}

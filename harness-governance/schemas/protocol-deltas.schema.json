@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "mpango/harness-governance/protocol-deltas.schema.json",
+  "title": "Mpango ERP inventory protocol deltas",
+  "description": "Reviewed, owned changes to frozen inventory identity: removals, renames, reorders, and reclassifications. Without a matching delta, deleting or reordering a node ID is a silent-drift violation (standard section 9).",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["delta_id", "kind", "node_ids", "reason", "owner", "review_ref", "date"],
+    "properties": {
+      "delta_id": { "type": "string", "pattern": "^PD-[A-Z0-9]+(-[A-Z0-9]+)*$", "minLength": 4 },
+      "kind": { "enum": ["removal", "rename", "reorder", "reclassify"] },
+      "node_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+      "previous_id": { "type": "string", "minLength": 1 },
+      "reason": { "type": "string", "minLength": 1 },
+      "owner": { "type": "string", "minLength": 1 },
+      "review_ref": { "type": "string", "minLength": 1 },
+      "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+      "notes": { "type": "string" }
+    }
+  }
+}

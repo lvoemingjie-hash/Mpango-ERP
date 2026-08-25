@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "mpango/harness-governance/critical-interactions.schema.json",
+  "title": "Mpango ERP critical cross-cutting interaction registry",
+  "description": "Mechanisms whose behavior spans many features, per docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md section 15. New public or protected routes must map to applicable entries and inherit their mandatory interaction tuples.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "interactions"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "notes": { "type": "string" },
+    "interactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "interaction_id",
+          "category",
+          "mechanism",
+          "risk",
+          "source_anchors",
+          "mandatory_tuples",
+          "owner"
+        ],
+        "properties": {
+          "interaction_id": { "type": "string", "pattern": "^CI-[A-Z0-9]+(-[A-Z0-9]+)*$", "minLength": 4 },
+          "category": {
+            "enum": [
+              "auth-interceptor",
+              "auth-session",
+              "route-guard",
+              "tenant",
+              "rate-limit",
+              "idempotency",
+              "token-replay",
+              "background-jobs",
+              "transaction-rollback",
+              "file-import-export",
+              "mobile-navigation"
+            ]
+          },
+          "mechanism": { "type": "string", "minLength": 1 },
+          "risk": { "enum": ["P0", "P1", "P2", "P3"] },
+          "source_anchors": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "mandatory_tuples": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "owner": { "type": "string", "minLength": 1 },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

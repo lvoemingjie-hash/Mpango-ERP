@@ -1,0 +1,79 @@
+name: Harness Governance Gate (HE2)
+
+# DC-12R1-MVP-L1-HE2: machine-enforced harness inventory governance.
+# Mandatory for every pull request and push targeting product-dev-recovered.
+# Runs three gates:
+#   1. validator unit tests (stdlib unittest, no dependencies);
+#   2. the deterministic RED mutation gate proving validator sensitivity;
+#   3. the governance validator itself against the branch point,
+#      emitting the coverage summary and debt summary.
+# BLOCKED and NOT_COVERED never count as PASS in any summary.
+
+on:
+  push:
+    branches: [product-dev-recovered]
+  pull_request:
+    branches: [product-dev-recovered]
+
+permissions:
+  contents: read
+
+jobs:
+  harness-governance-gate:
+    name: HE2 inventory governance gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validator unit tests
+        run: python -m unittest discover -s harness-governance/tests -p "test_*.py" -v
+
+      - name: Deterministic RED mutation gate
+        run: python harness-governance/tests/run_red_mutations.py
+
+      - name: Resolve baseline ref
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin product-dev-recovered --force
+            BASELINE="origin/product-dev-recovered"
+          else
+            BASELINE="${{ github.event.before }}"
+            if [ -z "$BASELINE" ] || [ "$BASELINE" = "0000000000000000000000000000000000000000" ]; then
+              BASELINE="HEAD^"
+            fi
+          fi
+          echo "BASELINE=$BASELINE" >> "$GITHUB_ENV"
+          echo "baseline ref: $BASELINE"
+
+      - name: Validate harness governance (RED blocks merge)
+        run: |
+          python harness-governance/validator/harness_governance_validator.py \
+            --root . \
+            --baseline-ref "$BASELINE" \
+            --report-json harness_governance_report.json \
+            --markdown-summary harness_governance_summary.md
+
+      - name: Publish coverage and debt summary
+        if: always()
+        run: |
+          if [ -f harness_governance_summary.md ]; then
+            cat harness_governance_summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload governance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-governance-report
+          path: harness_governance_report.json
+          if-no-files-found: ignore

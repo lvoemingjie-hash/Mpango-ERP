@@ -79,7 +79,9 @@ describe('DC-12R1-S1 retailer credential pages', () => {
       expect(mockPost).toHaveBeenCalledWith('/client/auth/reset-password', {
         reset_token: 'reset-token-456',
         new_password: 'StrongPass123', // pragma: allowlist secret
-      });
+      },
+      // H2-B-R3: public recovery call opts out of auth interceptors.
+      expect.objectContaining({ headers: { Authorization: '' }, skipAuthInterceptors: true }));
     });
     expect(mockPost.mock.calls[0][0]).not.toContain('?');
     expect(storageSetItem).not.toHaveBeenCalled();

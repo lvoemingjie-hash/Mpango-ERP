@@ -1,0 +1,54 @@
+finding_id,phase,category,severity,description,evidence,status
+F1,Phase 1,Proof Gate,INFO,"Candidate == remote branch tip","8c7e8477 == origin/zcode/dc12r1-mvp-l1-j1-h2-b-r2-r4-r2-b1-r3-semantic-neutrality-canonicalization-2026-08-25",PASS
+F2,Phase 1,Proof Gate,INFO,"candidate^ == cb352079 (B1-R2 candidate)","git rev-parse 8c7e8477^ = cb352079",PASS
+F3,Phase 1,Proof Gate,INFO,"B1-R3 delta exactly 9 authorized files in j1h2b-forgot-reset/","git diff --name-status cb352079..8c7e8477 = 9 files",PASS
+F4,Phase 1,Proof Gate,INFO,"Product paths byte-identical to 8c462170","git diff --name-only 8c462170..8c7e8477 shows only j1h2b-forgot-reset/ files",PASS
+F5,Phase 1,Proof Gate,INFO,"Harness contains exactly 25 files","git ls-tree -r --name-only 8c7e8477 | Where-Object { $_ -like 'j1h2b-forgot-reset/*' } | Measure-Object = 25",PASS
+F6,Phase 1,Proof Gate,INFO,"V2/V3 historical evidence branches unmodified","Branches exist but not checked out with modifications",PASS
+F7,Phase 2,Protocol Authenticity,INFO,"Raw-body byte equality explicitly marked SUPERSEDED","R4-NEUTRALITY-PROTOCOL-CORRECTION.md + neutrality-core.ts comments",PASS
+F8,Phase 2,Protocol Authenticity,INFO,"Only top-level timestamp VALUE is exempt","TIMESTAMP_SENTINEL replaces timestamp value; key presence/type/format still validated",PASS
+F9,Phase 2,Protocol Authenticity,INFO,"Top-level key set exactly {success, data, message, timestamp}","NEUTRAL_ENVELOPE_KEYS = ['success', 'data', 'message', 'timestamp']; present.length !== expected.length throws",PASS
+F10,Phase 2,Protocol Authenticity,INFO,"success === true","envelope.success !== true throws success_value",PASS
+F11,Phase 2,Protocol Authenticity,INFO,"data exactly empty object","typeof data !== 'object' || data === null || Array.isArray(data) || Object.keys(data).length !== 0 throws data_nonempty",PASS
+F12,Phase 2,Protocol Authenticity,INFO,"message type correct, enters canonical payload, pinned to existing neutral constant","typeof envelope.message === 'string'; message in canonical JSON; NEUTRAL_MESSAGE_CONSTANT = 'Password reset result is not disclosed through this endpoint.'",PASS
+F13,Phase 2,Protocol Authenticity,INFO,"timestamp must exist, be string, and Date.parse parseable","timestamp_missing / timestamp_not_string / timestamp_unparseable checks",PASS
+F14,Phase 2,Protocol Authenticity,INFO,"Extra fields (accountExists/eligible/userId/tenant/request_id) fail closed","present.length !== expected.length throws top_level_key_set; G3 probe validates all 5 probes",PASS
+F15,Phase 2,Protocol Authenticity,INFO,"No generic key deletion, filter, regex blacklist, or recursive ignore","Source review confirms no delete/.filter/regex blacklist/recursive ignore in neutrality-core.ts",PASS
+F16,Phase 2,Protocol Authenticity,INFO,"Canonical serialization uses fixed field order and timestamp sentinel","JSON.stringify({ success, data: {}, message, timestamp: TIMESTAMP_SENTINEL })",PASS
+F17,Phase 2,Protocol Authenticity,INFO,"F3/F4/F5 status, canonical SHA, canonical length, visible text all identical","sameCanonicalFingerprint compares status + canonicalSha256 + canonicalLengthBytes; pinnedMessageMatches compares message",PASS
+F18,Phase 2,Protocol Authenticity,INFO,"Does not claim to close statistical timing side channel","No such claim in source or reports",PASS
+F19,Phase 3,Implementation Authenticity,INFO,"check-neutrality.mjs transpiles and executes real neutrality-core.ts","ts.transpileModule on src/neutrality-core.ts + dynamic import",PASS
+F20,Phase 3,Implementation Authenticity,INFO,"captureForgotFingerprint reads raw body only in local scope","const body = await response.text() in route handler local scope; canonicalizeNeutralEnvelope receives bodyText",PASS
+F21,Phase 3,Implementation Authenticity,INFO,"State retains only canonical fingerprint","CanonicalFingerprint interface: status, message, canonicalSha256, canonicalLengthBytes only",PASS
+F22,Phase 3,Implementation Authenticity,INFO,"Error output contains only fixed category/field names","NeutralEnvelopeError message = `neutral envelope contract violation: ${category}`; category is fixed union type",PASS
+F23,Phase 3,Implementation Authenticity,INFO,"F3/F4/F5 all execute pinnedMessageMatches","All three nodes call pinnedMessageMatches(fingerprint)",PASS
+F24,Phase 3,Implementation Authenticity,INFO,"F4 and F5 both execute sameCanonicalFingerprint against F3","F4: sameFingerprint(f3, f4); F5: sameFingerprint(f3, f5)",PASS
+F25,Phase 3,Implementation Authenticity,INFO,"F5 original no-mail/no-token negative postcondition not weakened","F5 still executes negativeWindowHasLink and asserts !mailAppeared",PASS
+F26,Phase 3,Implementation Authenticity,INFO,"24 browser + 5 non-browser = 29, node names and order unchanged","inventory CSV 29 rows; --list ordered-equal",PASS
+F27,Phase 3,Implementation Authenticity,INFO,"serial, workers=1, retries=0, maxFailures=1 unchanged","playwright.config.ts explicit declarations; validate-static.mjs checks",PASS
+F28,Phase 3,Implementation Authenticity,INFO,"R12 application-settle, RT0 BLOCKED_BY_H2_C, LF contract unchanged","R12: waitForFunction + toBeEditable; RT0: BLOCKED_BY_H2_C; .gitattributes: eol=lf",PASS
+F29,Phase 4,Dual-Host Runtime,INFO,"Kilo Windows: pnpm install PASSED","Exact pins: @playwright/test 1.49.1 / @types/node 22.10.5 / typescript 5.7.3",PASS
+F30,Phase 4,Dual-Host Runtime,INFO,"Kilo Windows: playwright --list PASSED","24 tests in 1 file, ordered-equal with inventory browser rows",PASS
+F31,Phase 4,Dual-Host Runtime,INFO,"Kilo Windows: check-neutrality.mjs PASSED","G1-G6 all PASSED",PASS
+F32,Phase 4,Dual-Host Runtime,INFO,"Kilo Windows: validate-static.mjs PASSED","7/7 steps PASSED including B1-R3 neutrality contracts",PASS
+F33,Phase 4,Dual-Host Runtime,INFO,"Kilo Windows: tsc --noEmit PASSED","Zero diagnostics",PASS
+F34,Phase 4,Dual-Host Runtime,INFO,"Lubuntu Linux: pnpm install PASSED","Exact pins verified on native Linux",PASS
+F35,Phase 4,Dual-Host Runtime,INFO,"Lubuntu Linux: playwright --list PASSED","24 tests in 1 file, ordered-equal with inventory browser rows",PASS
+F36,Phase 4,Dual-Host Runtime,INFO,"Lubuntu Linux: check-neutrality.mjs PASSED","G1-G6 all PASSED",PASS
+F37,Phase 4,Dual-Host Runtime,INFO,"Lubuntu Linux: validate-static.mjs PASSED","7/7 steps PASSED",PASS
+F38,Phase 4,Dual-Host Runtime,INFO,"Lubuntu Linux: tsc --noEmit PASSED","Zero diagnostics",PASS
+F39,Phase 4,Dual-Host Runtime,INFO,"EOL portability closed: LF on both Windows and Linux",".gitattributes '* text=auto eol=lf' enforces LF checkout regardless of core.autocrlf",PASS
+F40,Phase 4,Dual-Host Runtime,INFO,"UTF-8/no-BOM/no-CR on 25 harness files (Kilo Windows)","All 25 files strict UTF-8, no BOM, no CR bytes",PASS
+F41,Phase 4,Dual-Host Runtime,INFO,"UTF-8/no-BOM/no-CR on 25 harness files (Lubuntu Linux)","All 25 files strict UTF-8, no BOM, no CR bytes",PASS
+F42,Phase 5,Mutation Gates,INFO,"M1: Restore raw-body SHA comparison → RED","G1: envelopes differing only in timestamp value must be canonically equal",PASS
+F43,Phase 5,Mutation Gates,INFO,"M2: Delete message from canonical payload → RED","G2: a differing message must break canonical equality",PASS
+F44,Phase 5,Mutation Gates,INFO,"M3: Allow arbitrary volatile keys → RED","G3: added top-level key probe must be rejected (accountExists/eligible/userId/tenant/request_id)",PASS
+F45,Phase 5,Mutation Gates,INFO,"M4: Skip timestamp validation → RED","G4: non-string/unparseable/empty timestamp must be rejected",PASS
+F46,Phase 5,Mutation Gates,INFO,"M5: Delete F5 canonical equality → RED","F5 must assert canonical response equality against F3",PASS
+F47,Phase 5,Mutation Gates,INFO,"M6: Write raw body/timestamp to error output → RED","G6: failure/error output must never contain envelope content (leak marker found)",PASS
+F48,Phase 5,Mutation Gates,INFO,"Restore candidate bytes match original SHA","git status clean; HEAD = 8c7e8477",PASS
+F49,Phase 5,Mutation Gates,INFO,"All static gates re-GREEN after restore","validate-static.mjs 7/7 PASSED; check-neutrality.mjs G1-G6 PASSED",PASS
+F50,Phase 6,Secret Evidence,INFO,"Credentials from J1H2B_* env vars, missing fail closed naming variable only","loadJourneyEnv → requireAll; error messages never echo values",PASS
+F51,Phase 6,Secret Evidence,INFO,"Maildir token in-memory only, never disk/log/artifact","src/maildir.ts + src/token-store.ts comments; trace/screenshot/video off",PASS
+F52,Phase 6,Secret Evidence,INFO,"JSON/JUnit/list/errors omit token/password/Authorization/fragment/response body","assertSan field-only messages; leak-scan.ts reports surface+field only",PASS
+F53,Phase 6,Secret Evidence,INFO,"Artifact scanner covers R13 expected outputs","tools/scan-artifacts.mjs scans machine JSON, JUnit, CSV, logs, screenshots",PASS

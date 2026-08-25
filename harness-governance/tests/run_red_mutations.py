@@ -473,6 +473,44 @@ def mut_invalid_schema_ref():
     return head, base
 
 
+def mut_binary_blob_text_digest():
+    """R2: binary blob with invalid UTF-8 + null bytes; digest computed via
+    text decode/re-encode (the old buggy path) must mismatch the raw blob."""
+    head, base, sha = make_git_workspace()
+    # Write a binary blob that breaks UTF-8 decode
+    binary = b"\x00\xff\xfe\x80\x01binary\x00\x00\xff"
+    blob_path = os.path.join(head, "evidence", "BLOB-001.bin")
+    with open(blob_path, "wb") as fh:
+        fh.write(binary)
+    subprocess.run(["git", "-C", head, "add", "evidence/BLOB-001.bin"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", head, "commit", "-m", "binary blob"], check=True, capture_output=True)
+    sha = subprocess.run(
+        ["git", "-C", head, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    # Compute digest the WRONG way (text decode/re-encode)
+    text_digest = hashlib.sha256(
+        binary.decode("utf-8", errors="replace").encode("utf-8", "surrogatepass")
+    ).hexdigest()
+    doc, node = _node(head, "AUTH-INT-001")
+    node["status"] = "PASS"
+    node["evidence_sha"] = text_digest
+    node["evidence_commit"] = sha
+    node["evidence_paths"] = ["evidence/BLOB-001.bin"]
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def mut_secrets_baseline_modified():
+    """R2: .secrets.baseline is now a protected path; modifying it without a
+    governance delta must be SYNC-PROTECTED-PATH."""
+    head, base = make_workspace()
+    # Modify .secrets.baseline (append a comment-like line)
+    baseline_path = os.path.join(head, ".secrets.baseline")
+    with open(baseline_path, "a", encoding="utf-8") as fh:
+        fh.write('  "# probe modification": []\n')
+    return head, base
+
+
 # GREEN controls -------------------------------------------------------------
 
 
@@ -566,6 +604,8 @@ RED_MUTATIONS = [
     ("N11-unauthorized-status-transition", mut_unauthorized_status_transition, ["STATUS-UNAUTHORIZED"], ()),
     ("N12-unknown-schema-keyword", mut_unknown_schema_keyword, ["SCHEMA-UNKNOWN-KEYWORD"], ()),
     ("N13-invalid-schema-ref", mut_invalid_schema_ref, ["SCHEMA-BAD-REF"], ()),
+    ("N15-binary-blob-text-digest", mut_binary_blob_text_digest, ["EVIDENCE-BLOB-MISMATCH"], ()),
+    ("N16-secrets-baseline-modified", mut_secrets_baseline_modified, ["SYNC-PROTECTED-PATH"], ()),
 ]
 
 # N14 is a mode-behavior proof rather than a tree tamper: structural GREEN

@@ -11,8 +11,10 @@ Standard library only.
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -701,6 +703,86 @@ class EvidenceVerificationTests(WorkspaceTestCase):
         node = self.pass_node()
         del node["evidence_paths"]
         self.assertEqual(self._verify(node, self.FakeGit())[0], "EVIDENCE-PATH-MISSING")
+
+
+class RawBlobIntegrityTests(WorkspaceTestCase):
+    """R2: 64-hex evidence must hash raw blob bytes, not text-decoded strings.
+    These tests use real temporary git repos with binary blobs."""
+
+    def _make_git_repo_with_blob(self, blob_bytes):
+        """Create a workspace with a committed binary blob; return (head, base, sha, relpath)."""
+        head, base = self.workspace(), self.pristine_baseline()
+        evidence_dir = os.path.join(head, "evidence")
+        os.makedirs(evidence_dir, exist_ok=True)
+        blob_path = os.path.join(evidence_dir, "BLOB-001.bin")
+        with open(blob_path, "wb") as fh:
+            fh.write(blob_bytes)
+        for root in (head,):
+            subprocess.run(["git", "-C", root, "init", "-b", "main"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", root, "config", "user.email", "test@test"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", root, "config", "user.name", "test"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", root, "add", "-A"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", root, "commit", "-m", "blob"], check=True, capture_output=True)
+        sha = subprocess.run(
+            ["git", "-C", head, "rev-parse", "HEAD"],
+            check=True, capture_output=True, text=True
+        ).stdout.strip()
+        return head, base, sha, "evidence/BLOB-001.bin"
+
+    def test_binary_blob_raw_digest_green(self):
+        """Binary blob with invalid UTF-8 and null bytes: raw SHA-256 must match."""
+        binary = b"\x00\xff\xfe\x80\x01binary\x00\x00\xff" + "中文".encode("utf-8") + b"\x00"
+        head, base, sha, relpath = self._make_git_repo_with_blob(binary)
+        raw_digest = hashlib.sha256(binary).hexdigest()
+        doc, nodes = self.nodes()
+        node = next(n for n in nodes if n["id"] == "AUTH-INT-001")
+        node["status"] = "PASS"
+        node["evidence_sha"] = raw_digest
+        node["evidence_commit"] = sha
+        node["evidence_paths"] = [relpath]
+        self.save("inventory/inventory.json", doc)
+        report = self.validate(baseline_dir=base)
+        evidence_violations = [v for v in report["violations"] if "EVIDENCE" in v["code"]]
+        self.assertEqual(evidence_violations, [], evidence_violations)
+
+    def test_binary_blob_text_digest_red(self):
+        """Same binary blob, but digest computed via text decode/re-encode: must mismatch."""
+        binary = b"\x00\xff\xfe\x80\x01binary\x00\x00\xff"
+        head, base, sha, relpath = self._make_git_repo_with_blob(binary)
+        # Simulate the old buggy path: decode as utf-8 with replace, then re-encode
+        text_digest = hashlib.sha256(binary.decode("utf-8", errors="replace").encode("utf-8", "surrogatepass")).hexdigest()
+        doc, nodes = self.nodes()
+        node = next(n for n in nodes if n["id"] == "AUTH-INT-001")
+        node["status"] = "PASS"
+        node["evidence_sha"] = text_digest
+        node["evidence_commit"] = sha
+        node["evidence_paths"] = [relpath]
+        self.save("inventory/inventory.json", doc)
+        report = self.validate(baseline_dir=base)
+        self.assertIn("EVIDENCE-BLOB-MISMATCH", self.codes(report))
+
+    def test_git_raw_returns_bytes(self):
+        """_git_raw must return bytes, not str."""
+        result = v._git_raw(self.tmp, "rev-parse", "HEAD")
+        self.assertIsInstance(result.stdout, bytes)
+
+
+class ScannerStrictnessTests(unittest.TestCase):
+    """R2: the anchored detect-secrets exclusion must be safe — pure hex lines
+    are excluded, but the same line with an appended secret is NOT excluded."""
+
+    ANCHORED_RE = re.compile(r'"\s*:\s*"[0-9a-f]{40,64}"\s*$')
+
+    def test_pure_hex_line_excluded(self):
+        hex40 = "aabbccdd" * 5
+        self.assertIsNotNone(self.ANCHORED_RE.search(f'  "base_sha": "{hex40}"'))
+        self.assertIsNotNone(self.ANCHORED_RE.search(f'  "evidence_sha": "{hex40}"'))
+
+    def test_hex_plus_password_not_excluded(self):
+        hex40 = "aabbccdd" * 5
+        self.assertIsNone(self.ANCHORED_RE.search(f'  "base_sha": "{hex40}", "password": "secret"'))  # pragma: allowlist secret
+        self.assertIsNone(self.ANCHORED_RE.search(f'  "base_sha": "{hex40}"  # token=abc123'))
+        self.assertIsNone(self.ANCHORED_RE.search(f'  "base_sha": "{hex40}Authorization: Bearer xxx'))
 
 
 class ConfigProtectionTests(WorkspaceTestCase):

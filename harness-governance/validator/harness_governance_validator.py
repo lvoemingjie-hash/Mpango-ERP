@@ -86,6 +86,7 @@ WILDCARD_RE = re.compile(r"[\*\?\[]")
 # changes to them.
 PROTECTED_PATHS = (
     ".github/workflows/harness-governance-gate.yml",
+    ".secrets.baseline",
     f"{GOV_DIR}/governed-paths.json",
     f"{GOV_DIR}/validator/",
     f"{GOV_DIR}/schemas/",
@@ -417,6 +418,17 @@ def _git(root: str, *args: str):
         text=True,
         encoding="utf-8",
         errors="replace",
+    )
+
+
+def _git_raw(root: str, *args: str):
+    """Raw-byte git helper for binary blob retrieval. No text decode,
+    no re-encode, no errors=replace — the caller hashes stdout bytes
+    directly, so any mangling would silently corrupt the digest."""
+
+    return subprocess.run(
+        ["git", "-C", root, *args],
+        capture_output=True,
     )
 
 
@@ -1477,9 +1489,9 @@ def _verify_one_pass_node(ctx: GovernanceContext, root: str, pointer: str, node:
                 f"{commit[:12]}",
             )
     if isinstance(evidence, str) and len(evidence) == 64:
-        blob = _git(root, "show", f"{commit}:{evidence_paths[0]}")
+        blob = _git_raw(root, "show", f"{commit}:{evidence_paths[0]}")
         if blob.returncode == 0:
-            digest = hashlib.sha256(blob.stdout.encode("utf-8", "surrogatepass")).hexdigest()
+            digest = hashlib.sha256(blob.stdout).hexdigest()
             if digest != evidence:
                 ctx.emit(
                     "EVIDENCE-BLOB-MISMATCH",

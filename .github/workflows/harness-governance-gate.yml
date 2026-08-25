@@ -63,8 +63,12 @@ jobs:
         run: |
           set -eu
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin product-dev-recovered --force
-            BASELINE="origin/product-dev-recovered"
+            # Frozen base SHA at PR creation — not a moving branch tip.
+            BASELINE="${{ github.event.pull_request.base.sha }}"
+            git cat-file -e "$BASELINE" || {
+              echo "ERROR: PR base SHA $BASELINE not found after fetch-depth:0"
+              exit 1
+            }
           else
             BASELINE="${{ github.event.before }}"
             if [ -z "$BASELINE" ] || [ "$BASELINE" = "0000000000000000000000000000000000000000" ]; then

@@ -1,11 +1,27 @@
 # j1h2b-forgot-reset — Frozen Forgot/Reset Playwright Harness
 
-DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1 (B1-R2: application-settle + EOL
-portability closure). Harness lineage: B1 `d123e96d` → B1-R1 `e65e9a7f` →
-B1-R2 (this freeze). Parent chain root: `8c462170804322d3f73803d8991c00879582e232`.
+DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1-R3 (B1-R3: semantic neutrality
+canonicalization closure). Harness lineage: B1 `d123e96d` → B1-R1 `e65e9a7f`
+→ B1-R2 `cb352079` → B1-R3 (this freeze). Parent chain root:
+`8c462170804322d3f73803d8991c00879582e232`.
 Protocol source of truth: commit `132cf7edaac5d6c57ebcdc2465334f4aa465aab2`
 (`docs/ai-reports/test-plans/2026-08-23_dc12r1_mvp_l1_j1_h2_b_r2_r3_b0_forgot_reset_browser_protocol.md`
-and the node inventory CSV, copied byte-identically into `inventory/`).
+and the node inventory CSV, amended in place by B1-R3 for the F3/F4/F5
+neutrality columns — see `R4-NEUTRALITY-PROTOCOL-CORRECTION.md`).
+
+**B1-R3 correction (2026-08-25, CTO-ruled):** the original raw-body byte
+equality for F3/F4/F5 is **SUPERSEDED** by semantic canonical equality: the
+public neutral envelope carries a platform-generic per-request top-level
+`timestamp` (not derived from account existence), so byte equality across
+distinct requests was over-constrained (V3 STOP evidence `888fd207`). The
+superseding contract ignores ONLY the timestamp VALUE via an explicit
+sentinel substitution — presence, type, format, the exact top-level key set
+`{success,data,message,timestamp}`, the pinned neutral message constant and
+the visible copy all remain enforced, and any NEW top-level key
+(accountExists/eligible/userId/tenant/request_id probes) must stay RED.
+Product timestamp must NOT be deleted, fixed or modified; product paths are
+byte-identical to `8c462170`. Full ruling + evidence chain:
+`R4-NEUTRALITY-PROTOCOL-CORRECTION.md`.
 
 **Review status (B1-R2):** the Kilo bounded review PASS over B1-R1 is
 recorded as `SUPERSEDED_BY_B1_R2_SETTLE_AND_EOL_PORTABILITY_CLOSURE` — its
@@ -32,7 +48,7 @@ later authorization.
 ```
 j1h2b-forgot-reset/
   .gitattributes                               harness-local EOL contract: '* text=auto eol=lf' (LF on every host; static-gate verified)
-  inventory/2026-08-23_..._node_inventory.csv   byte-identical protocol copy (blob 29a2bdd30b8ffd9142404dd530486d7fa6fd1f15)
+  inventory/2026-08-23_..._node_inventory.csv   protocol copy (B1-R3 amended F3/F4/F5 neutrality columns; node ids/classes/order unchanged)
   inventory/node-registry.json                  29-node reconciliation model (24 browser + 5 non-browser)
   playwright.config.ts                          fullyParallel:false, workers:1, retries:0, maxFailures:1, trace/screenshot/video off
   src/env.ts                                    fail-closed env contract (names-only errors)
@@ -40,16 +56,21 @@ j1h2b-forgot-reset/
   src/token-store.ts                            in-memory journey state (token never persisted; single serial spec scope)
   src/maildir.ts                                F6 surface: task-private maildir reader (memory only)
   src/api-client.ts                             OFFICIAL-API provisioning ONLY (never journey actions)
-  src/neutrality.ts                             F3/F4 fingerprints: status + SHA-256 + length, raw body discarded
+  src/neutrality-core.ts                        B1-R3 REAL canonicalizer: exact key set, pinned constant, timestamp sentinel, stable sha (dependency-free)
+  src/neutrality.ts                             B1-R3 capture: raw body parsed in handler-local scope only, canonical fingerprint stored
   src/leak-scan.ts                              R12 surfaces (findings = surface:field, values withheld)
   src/ui-journey.ts                             rendered-UI journey steps pinned to product anchors
   tests/forgot-reset.spec.ts                    THE single spec: 24 browser nodes, CSV row order, one serial describe
-  tools/validate-static.mjs                     static gate (CSV parse, ordered --list equality, serial/fail-stop/single-spec/app-settle/EOL/no-sleep contracts, marker scan, UTF-8)
+  tools/validate-static.mjs                     static gate 7/7 (CSV parse, ordered --list equality, serial/fail-stop/single-spec/app-settle/EOL/no-sleep + B1-R3 neutrality spec/core contracts, marker scan, UTF-8, executable neutrality check)
+  tools/check-neutrality.mjs                    B1-R3 executable neutrality contract check (G1–G6, mutation gates M1–M4/M6)
   tools/scan-artifacts.mjs                      R13 NON-BROWSER post-run evidence scan
+  R4-NEUTRALITY-PROTOCOL-CORRECTION.md          B1-R3 protocol correction: raw-byte equality superseded by semantic canonical equality
 ```
 
-Tree file count: 22 tracked harness files at B1-R2 (21 at B1-R1 = B1's 26
-added − 6 sharded specs deleted + 1 merged spec; B1-R2 adds `.gitattributes`).
+Tree file count: 25 tracked harness files at B1-R3 (22 at B1-R2; B1-R3 adds
+`src/neutrality-core.ts`, `tools/check-neutrality.mjs`,
+`R4-NEUTRALITY-PROTOCOL-CORRECTION.md` — no file removed, no dependency
+added, `package.json`/`pnpm-lock.yaml` untouched).
 
 ## Node accounting (24 / 5 / 29)
 
@@ -126,8 +147,10 @@ fragment-only link (`/reset-password#resetToken=…`, `/verify-email#token=…`,
   Anything that could carry a secret (URL, response body, storage value,
   password) is asserted with `assertSan(condition, "field-level message")`
   so failure output can never contain a value.
-- F3/F4/F5 keep `(status, sha256(body), bodyLength)` only — the raw response
-  body is never retained (task directive #10).
+- F3/F4/F5 keep `(status, message-constant-field, sha256(canonical), canonicalLength)`
+  only — the canonicalization replaces the top-level timestamp VALUE with a
+  fixed sentinel inside handler-local scope; the raw response body and the
+  timestamp value are never retained (task directive #10; B1-R3).
 - R12/R13 findings are `surface:field` pairs only (task directive #14).
 - trace/screenshot/video are `off`; R13 additionally bans image/video/trace
   artifacts outright.

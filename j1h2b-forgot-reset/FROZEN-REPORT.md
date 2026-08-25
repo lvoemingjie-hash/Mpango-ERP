@@ -1,6 +1,48 @@
-# FROZEN REPORT — DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1
+# FROZEN REPORT — DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1-R3
 
-> ## B1-R2 附录 — Application Settle And Cross-Host EOL Closure（2026-08-24）
+> ## B1-R3 附录 — Semantic Neutrality Canonicalization Closure（2026-08-25）
+>
+> Parent: `cb35207969fc1b0c8d8488ac65d75e47fedc3f23`（B1-R2）。
+> Branch: `zcode/dc12r1-mvp-l1-j1-h2-b-r2-r4-r2-b1-r3-semantic-neutrality-canonicalization-2026-08-25`。
+> 授权范围：仅 `j1h2b-forgot-reset/**`；产品路径相对 `8c462170` 字节不变；
+> 不删除/固定/修改产品 timestamp；不加依赖；不改 package.json/lockfile。
+>
+> CTO 裁决输入：V3 STOP `888fd2072afd77d54881e834c592a4b0f587b271`（F4
+> bodySha256 差异真实、仅源于平台通用逐请求顶层 timestamp、非枚举信号、
+> 旧 raw-byte equality 属过度约束）。V2 STOP `3fb185be` 原样保留。
+>
+> 变更（22 → 25 文件，详见 R4-NEUTRALITY-PROTOCOL-CORRECTION.md）：
+> 1. 新增 `src/neutrality-core.ts`：真实 canonicalizer（依赖仅 node:crypto）——
+>    精确顶层 key 集 `{success,data,message,timestamp}`、success===true、
+>    data==={}、message 类型校验 + 钉住产品中性常量谓词
+>    `pinnedMessageMatches`、timestamp 存在/字符串/可解析校验、顶层
+>    timestamp 值→固定 sentinel 替换、稳定序列化 SHA-256+长度；错误仅
+>    固定类别。禁通用 key 删除器/正则黑名单/递归忽略（validator 静态禁
+>    `delete`/`filter(` 于 core）。
+> 2. `src/neutrality.ts`：capture 在路由 handler 局部作用域解析原始 body
+>    并即刻释放，仅存 canonical fingerprint。
+> 3. `tests/forgot-reset.spec.ts`：F4 文案改 canonical；**F5 新增与 F3 的
+>    canonical 相等断言**；F3/F4/F5 各新增 pinnedMessageMatches 断言。
+> 4. 新增 `tools/check-neutrality.mjs`：可执行中性合同检查 G1–G6（用已装
+>    typescript 转译真实 core 后执行夹具矩阵）。
+> 5. `tools/validate-static.mjs`：第 4 步扩展 F3/F4/F5 spec 合同（F5
+>    canonical 相等与 pinned 谓词存在性）与 core 合同面；新增第 7 步执行
+>    可执行中性检查（7/7）。
+> 6. inventory CSV：仅 F3/F4/F5 的 expected_http/security_assertion/notes
+>    列更新为 canonical 合同；节点 id/class/数量/顺序不变（24+5=29）。
+>
+> 变异真值门 M1–M6：全部先 RED 后恢复 GREEN（M1 raw-sha 恢复、M2 删
+> canonical payload 的 message、M3 任意 volatile key 放行、M4 跳过
+> timestamp 校验、M5 删 F5 canonical 相等、M6 错误泄漏原始 body/timestamp
+> 值），每项恢复后候选文件 blob 无漂移。
+>
+> 不变：24+5=29、节点名与顺序、单一 serial spec、workers=1、retries=0、
+> maxFailures=1、trace/screenshot/video off、R12 application-settle 三条件、
+> `.gitattributes` LF 合同、依赖与锁文件。
+>
+> 裁决：`STOP_AND_REPORT_CTO_AWAITING_KILO_AND_LUBUNTU_B1_R3_HARNESS_REVIEW`
+
+> ## B1-R2 附录 — Application Settle And Cross-Host EOL Closure（2026-08-24）【历史保留】
 >
 > Parent: `e65e9a7f61c78906c2c5874d6589d4bada23942c`（B1-R1）。
 > Branch: `zcode/dc12r1-mvp-l1-j1-h2-b-r2-r4-r2-b1-r2-app-settle-eol-portability-2026-08-24`。

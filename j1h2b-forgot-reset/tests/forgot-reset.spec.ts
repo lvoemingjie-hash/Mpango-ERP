@@ -45,6 +45,7 @@ import {
   captureForgotFingerprint,
   sameFingerprint,
   firstFingerprintDifference,
+  pinnedMessageMatches,
 } from '../src/neutrality.js';
 import {
   setViewportFromCsv,
@@ -160,6 +161,10 @@ test.describe('j1h2b-forgot-reset journey', () => {
     const fingerprint = a1State().fingerprints.F3;
     assertSan(fingerprint !== undefined, 'F3: forgot-password response was not captured (field: response fingerprint)');
     assertSan(fingerprint.status === 200, 'F3: forgot-password must answer HTTP 200 (field: status)');
+    assertSan(
+      pinnedMessageMatches(fingerprint),
+      'F3: envelope message differs from the pinned neutral constant (field: message)',
+    );
     a1State().neutralVisibleText = visibleText;
   });
 
@@ -175,8 +180,12 @@ test.describe('j1h2b-forgot-reset journey', () => {
     assertSan(f4 !== undefined, 'F4: forgot-password response was not captured (field: response fingerprint)');
     assertSan(f4.status === 200, 'F4: forgot-password must answer HTTP 200 (field: status)');
     assertSan(
+      pinnedMessageMatches(f4),
+      'F4: envelope message differs from the pinned neutral constant (field: message)',
+    );
+    assertSan(
       sameFingerprint(f3, f4),
-      `F4: response differs from F3 (first differing field: ${firstFingerprintDifference(f3, f4)})`,
+      `F4: canonical response differs from F3 (first differing field: ${firstFingerprintDifference(f3, f4)})`,
     );
     assertSan(
       visibleText === a1State().neutralVisibleText,
@@ -196,6 +205,19 @@ test.describe('j1h2b-forgot-reset journey', () => {
     assertSan(f3 !== undefined, 'F5: F3 anchor fingerprint missing (serial order violated)');
     assertSan(f5 !== undefined, 'F5: forgot-password response was not captured (field: response fingerprint)');
     assertSan(f5.status === 200, 'F5: forgot-password must answer HTTP 200 neutral (field: status)');
+    assertSan(
+      pinnedMessageMatches(f5),
+      'F5: envelope message differs from the pinned neutral constant (field: message)',
+    );
+    // B1-R3: F5 must ALSO satisfy canonical response equality against the F3
+    // anchor — same status, same sentinel-stable canonical serialization.
+    // Only the top-level timestamp VALUE is exempt; timestamp presence/type/
+    // format and the exact {success,data,message,timestamp} key set are
+    // enforced at capture time by the canonicalizer itself.
+    assertSan(
+      sameFingerprint(f3, f5),
+      `F5: canonical response differs from F3 (first differing field: ${firstFingerprintDifference(f3, f5)})`,
+    );
     assertSan(
       visibleText === a1State().neutralVisibleText,
       'F5: visible neutral copy differs from F3 (field: visibleText)',

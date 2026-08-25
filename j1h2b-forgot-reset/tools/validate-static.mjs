@@ -276,7 +276,55 @@ if (r12Region === null) {
     fail('R12 must wait for the reset form #newPassword to be visible and interactable');
   }
 }
-console.log('[4] journey contracts (single serial spec, maxFailures:1, no waitForTimeout, R12 app-settle conditions, no networkidle) + marker scan + config invariants — OK');
+
+// B1-R3: semantic neutrality spec contracts — F3/F4/F5 must all capture
+// through the canonicalizer, F4 AND F5 must assert canonical equality
+// against the F3 anchor (deleting the F5 assertion must fail here).
+for (const nodeId of ['F3', 'F4', 'F5']) {
+  const region = testRegion(specText, nodeId);
+  if (region === null) {
+    fail(`forgot-reset.spec.ts must contain the ${nodeId} test`);
+    continue;
+  }
+  if (!/captureForgotFingerprint\(\s*page\s*,\s*'F[345]'\s*\)/.test(region)) {
+    fail(`${nodeId} must capture its forgot-password response through the canonicalizer (captureForgotFingerprint)`);
+  }
+  if (!/pinnedMessageMatches\(/.test(region)) {
+    fail(`${nodeId} must assert the pinned neutral-constant predicate (pinnedMessageMatches)`);
+  }
+}
+const f4Region = testRegion(specText, 'F4');
+if (f4Region !== null && !/sameFingerprint\(\s*f3\s*,\s*f4\s*\)/.test(f4Region)) {
+  fail('F4 must assert canonical response equality against F3 (sameFingerprint(f3, f4))');
+}
+const f5Region = testRegion(specText, 'F5');
+if (f5Region !== null && !/sameFingerprint\(\s*f3\s*,\s*f5\s*\)/.test(f5Region)) {
+  fail('F5 must assert canonical response equality against F3 (sameFingerprint(f3, f5)) — B1-R3 contract');
+}
+
+// B1-R3: the real canonicalizer module must exist and pin the contract
+// surface; generic ignore mechanisms (key deletion / key filtering) are
+// banned inside it — only the explicit timestamp sentinel substitution is
+// permitted (see tools/check-neutrality.mjs for the executable contract).
+const corePath = join(ROOT, 'src', 'neutrality-core.ts');
+try {
+  const coreText = readFileSync(corePath, 'utf8');
+  const coreCode = stripComments(coreText);
+  for (const marker of ['NEUTRAL_ENVELOPE_KEYS', 'NEUTRAL_MESSAGE_CONSTANT', 'TIMESTAMP_SENTINEL', 'canonicalizeNeutralEnvelope']) {
+    if (!coreCode.includes(marker)) {
+      fail(`src/neutrality-core.ts must define/pin ${marker}`);
+    }
+  }
+  if (/\bdelete\s/.test(coreCode)) {
+    fail('src/neutrality-core.ts must not delete keys (generic ignore banned; only the explicit timestamp sentinel substitution is allowed)');
+  }
+  if (/\.filter\s*\(/.test(coreCode)) {
+    fail('src/neutrality-core.ts must not filter key sets (generic ignore banned; the exact-key-set membership check is explicit)');
+  }
+} catch {
+  fail('src/neutrality-core.ts must exist (B1-R3 canonicalizer module)');
+}
+console.log('[4] journey contracts (single serial spec, maxFailures:1, no waitForTimeout, R12 app-settle conditions, no networkidle) + B1-R3 neutrality spec/core contracts + marker scan + config invariants — OK');
 
 // --- 5. EOL portability contract (B1-R2) -------------------------------------
 
@@ -330,6 +378,21 @@ for (const file of allFiles) {
 }
 console.log(`[6] UTF-8 / no-BOM / no-CR over ${allFiles.length} harness files — OK`);
 
+// --- 7. Executable neutrality contract check (B1-R3) --------------------------
+
+const neutralityCheck = spawnSync('node', ['tools/check-neutrality.mjs'], {
+  cwd: ROOT,
+  encoding: 'utf8',
+});
+if (neutralityCheck.error || neutralityCheck.status !== 0) {
+  fail('executable neutrality contract check (tools/check-neutrality.mjs) must pass');
+  if (neutralityCheck.stdout) process.stdout.write(neutralityCheck.stdout);
+  if (neutralityCheck.stderr) process.stderr.write(neutralityCheck.stderr);
+} else {
+  process.stdout.write(`  ${neutralityCheck.stdout.trim()}\n`);
+}
+console.log('[7] executable neutrality contract check over the real canonicalizer — OK');
+
 // --- verdict ------------------------------------------------------------------
 
 if (failures.length > 0) {
@@ -337,4 +400,4 @@ if (failures.length > 0) {
   for (const message of failures) console.error(` - ${message}`);
   process.exit(1);
 }
-console.log('\nSTATIC GATE PASSED (6/6 steps).');
+console.log('\nSTATIC GATE PASSED (7/7 steps).');

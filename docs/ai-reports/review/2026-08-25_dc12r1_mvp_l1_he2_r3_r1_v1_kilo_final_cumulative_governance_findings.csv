@@ -1,0 +1,68 @@
+phase,check_id,description,result,severity,evidence
+Phase 1: Proof Gate,PG-01,git fetch --all --prune 完成,PASS,INFO,远程分支 codex/dc12r1-mvp-l1-he2-r3-r1-scanner-all-file-scope-evidence-truth-closure-2026-08-25 存在
+Phase 1: Proof Gate,PG-02,candidate == remote tip,PASS,INFO,68a68027e6b2d57ab35a77142b187c6301762de5 == origin/codex/...
+Phase 1: Proof Gate,PG-03,candidate^ == d7ea8027,PASS,INFO,git rev-parse HEAD~1 = d7ea8027bf7d4ba5ec0a8d2f92965e5061680f34
+Phase 1: Proof Gate,PG-04,94b0c300 是祖先,PASS,INFO,git merge-base --is-ancestor 94b0c300 HEAD = true
+Phase 1: Proof Gate,PG-05,R3-R1 delta 恰好 6 文件,PASS,INFO,git diff --name-status d7ea8027..HEAD = 6 文件
+Phase 1: Proof Gate,PG-06,累计 delta 恰好 19 文件,PASS,INFO,git diff --name-status 94b0c300..HEAD = 19 文件
+Phase 1: Proof Gate,PG-07,product-dev-recovered/main 与产品路径未变,PASS,INFO,git diff --name-only 94b0c300..HEAD 无产品路径
+Phase 2: Cumulative Source Review,CSR-01,治理核心不可由配置或 waiver 关闭,PASS,INFO,PROTECTED_PATHS 硬编码在 harness_governance_validator.py:87-94
+Phase 2: Cumulative Source Review,CSR-02,Config 无法移除保护路径,PASS,INFO,_check_config_semantics 验证 governed-paths.json 不能移除 PROTECTED_PATHS
+Phase 2: Cumulative Source Review,CSR-03,Waiver 不能覆盖保护路径,PASS,INFO,_check_waivers line 978-987: WVR-PATH-PROTECTED
+Phase 2: Cumulative Source Review,CSR-04,最小 governed prefixes 不可移除,PASS,INFO,MINIMUM_GOVERNED_PREFIXES = (backend/, frontend/src/, scenarios/) 硬编码
+Phase 2: Cumulative Source Review,CSR-05,Semantic inventory sync 不可由 notes/无关 JSON 绕过,PASS,INFO,NON_SEMANTIC_FIELDS = frozenset({notes})
+Phase 2: Cumulative Source Review,CSR-06,Sync 要求实际记录变更,PASS,INFO,_check_semantic_sync line 1417-1421: changed_keys 通过 semantic_view 比较
+Phase 2: Cumulative Source Review,CSR-07,Waiver 路径必须非空且无通配符,PASS,INFO,_check_waivers line 957-977
+Phase 2: Cumulative Source Review,CSR-08,Waiver 过期自动失效,PASS,INFO,is_expired check: expires < today -> WVR-EXPIRED
+Phase 2: Cumulative Source Review,CSR-09,owner/reason/risk/approval/dates 必填,PASS,INFO,schema validation + _check_waivers
+Phase 2: Cumulative Source Review,CSR-10,PASS evidence 必须绑定可达 commit,PASS,INFO,_verify_one_pass_node line 1579-1596: git cat-file + branch --contains + tag --contains
+Phase 2: Cumulative Source Review,CSR-11,64-hex evidence_sha 必须绑定 commit,PASS,INFO,line 1566-1577: evidence_commit 必填
+Phase 2: Cumulative Source Review,CSR-12,64-hex blob SHA-256 验证,PASS,INFO,_git_raw 返回 bytes + hashlib.sha256(blob.stdout).hexdigest() 比对
+Phase 2: Cumulative Source Review,CSR-13,Protocol delta base-bound,PASS,INFO,DeltaAuthorizer.__init__ line 596: base_sha mismatch -> RED
+Phase 2: Cumulative Source Review,CSR-14,Protocol delta kind-bound,PASS,INFO,authorizer.authorize(kind, ids=...) 精确匹配
+Phase 2: Cumulative Source Review,CSR-15,历史 delta 不可 replay,PASS,INFO,_check_drift line 1259: a historical delta cannot be reused
+Phase 2: Cumulative Source Review,CSR-16,未授权状态转换,PASS,INFO,_check_status_transitions: reclassify delta required
+Phase 2: Cumulative Source Review,CSR-17,Schema unknown keyword RED,PASS,INFO,check_schema_document line 316-322: SCHEMA-UNKNOWN-KEYWORD
+Phase 2: Cumulative Source Review,CSR-18,Schema bad ref RED,PASS,INFO,_resolve_ref + SCHEMA-BAD-REF
+Phase 2: Cumulative Source Review,CSR-19,Anchor 行号越界 RED,PASS,INFO,_check_anchor_targets line 990-1039
+Phase 2: Cumulative Source Review,CSR-20,Structural 与 release gate 语义分离,PASS,INFO,render_markdown line 1730: Structural GREEN is not a release statement
+Phase 3: Scanner Adversarial Review,SAR-01,git ls-files --cached --others --exclude-standard,PASS,INFO,_scanner_candidate_files line 1064-1086
+Phase 3: Scanner Adversarial Review,SAR-02,os.walk fallback 核验,PASS,INFO,line 1090-1096: 固定目录排除 FS_COMPARE_IGNORE
+Phase 3: Scanner Adversarial Review,SAR-03,无扩展名白名单,PASS,INFO,无 endswith 过滤
+Phase 3: Scanner Adversarial Review,SAR-04,排除仅 via gitignore + 固定 FS 集合,PASS,INFO,FS_COMPARE_IGNORE frozenset
+Phase 3: Scanner Adversarial Review,SAR-05,Exact base_sha/evidence_sha/evidence_commit 40/64 hex 检测,PASS,INFO,_SCANNER_HEX_RE_BYTES regex
+Phase 3: Scanner Adversarial Review,SAR-06,五个允许文件外必须 RED,PASS,INFO,_SCANNER_ALLOWED_FILES frozenset
+Phase 3: Scanner Adversarial Review,SAR-07,任意 key 不被排除,PASS,INFO,test_arbitrary_key_not_excluded PASS
+Phase 3: Scanner Adversarial Review,SAR-08,前后附加 secret 不被排除,PASS,INFO,test_prefix_and_suffix_attached_values_stay_green PASS
+Phase 3: Scanner Adversarial Review,SAR-09,错误长度不被排除,PASS,INFO,test_wrong_length_hex_not_excluded PASS
+Phase 3: Scanner Adversarial Review,SAR-10,Bytes regex 匹配，无 decode,PASS,INFO,_SCANNER_HEX_RE_BYTES 使用 rb'...' 原始字节
+Phase 3: Scanner Adversarial Review,SAR-11,字符串 regex 与 bytes regex 语义一致,PASS,INFO,_SCANNER_HEX_RE (str) 和 _SCANNER_HEX_RE_BYTES (bytes) 模式相同
+Phase 3: Scanner Adversarial Review,SAR-12,detect-secrets scan clean,PASS,INFO,detect-secrets scan ... --baseline .secrets.baseline exit 0
+Phase 3: Scanner Adversarial Review,SAR-13,.secrets.baseline 0 secrets,PASS,INFO,results 数组长度为 0
+Phase 3: Scanner Adversarial Review,SAR-14,git ls-files 路径核验,PASS,INFO,_scanner_candidate_files 先尝试 git ls-files
+Phase 3: Scanner Adversarial Review,SAR-15,os.walk fallback 核验,PASS,INFO,当非 git work tree 时使用 os.walk
+Phase 3: Scanner Adversarial Review,SAR-16,Bytes 匹配核验,PASS,INFO,content.splitlines() + _SCANNER_HEX_RE_BYTES.match(line)
+Phase 3: Scanner Adversarial Review,SAR-17,无 errors=replace decode,PASS,INFO,文件以 rb 模式读取
+Phase 4: Test Authenticity,TA-01,独立运行 89/89 unittest,PASS,INFO,python -m unittest harness-governance.tests.test_harness_governance_validator -v: 89 tests OK
+Phase 4: Test Authenticity,TA-02,独立运行 37 RED mutation + 5 GREEN control,PARTIAL,WARNING,35 RED as intended + 2 PATCH ANCHOR ERROR (N20/N21) + 5 GREEN as intended
+Phase 4: Test Authenticity,TA-03,N20/N21 真正修改候选 validator,HIGH,FAIL,CRLF patch anchor mismatch: patch strings 使用 \n 但文件 checkout 为 \r\n
+Phase 4: Test Authenticity,TA-04,恢复后 blob 字节一致,PARTIAL,WARNING,N20/N21 未应用 patch，恢复后字节一致性未被验证；其他 35 mutations + 5 controls 的 tree integrity OK
+Phase 4: Test Authenticity,TA-05,不得把候选方运行结果冒充为 Kilo 独立结果,PASS,INFO,Kilo 在独立 detached worktree 中运行所有测试
+Phase 5: Gate Matrix,GM-01,structural 94b0c300..HEAD exit 0,PASS,INFO,python validator.py --mode structural --base-sha 94b0c300... exit 0
+Phase 5: Gate Matrix,GM-02,structural 5a380586..HEAD exit 0,PASS,INFO,python validator.py --mode structural --base-sha 5a380586... exit 0
+Phase 5: Gate Matrix,GM-03,structural d7ea8027..HEAD exit 0,PASS,INFO,python validator.py --mode structural --base-sha d7ea8027... exit 0
+Phase 5: Gate Matrix,GM-04,release exit 3,PASS,INFO,python validator.py --mode release exit 3 (RELEASE_GATE=BLOCKED)
+Phase 5: Gate Matrix,GM-05,diff-check clean,PASS,INFO,git diff --check exit 0
+Phase 5: Gate Matrix,GM-06,pre-commit/detect-secrets clean,PASS,INFO,detect-secrets scan exit 0, 0 secrets
+Phase 5: Gate Matrix,GM-07,strict UTF-8/no-BOM/LF,PASS,INFO,blobs LF-only; working tree CRLF 为 Windows core.autocrlf 预期行为
+Phase 5: Gate Matrix,GM-08,GitNexus analyze,PASS,INFO,npx gitnexus analyze .: 15690 nodes / 47360 edges / 816 clusters / 300 flows
+Phase 5: Gate Matrix,GM-09,同名 SKU 图噪声披露,INFO,INFO,GitNexus 图中有同名 SKU 节点（816 clusters），为正常知识图谱结构，非缺陷
+Phase 6: Evidence Truth,ET-01,真实链 077774e7 -> 8eb61d21 -> d7ea8027 -> 68a68027,PASS,INFO,git log --oneline 077774e..68a68027 显示线性链
+Phase 6: Evidence Truth,ET-02,旧 tip/parent 声明已标记 SUPERSEDED_METADATA_ONLY,PASS,INFO,2026-08-25_dc12r1_mvp_l1_he2_r3_delta_chain_scanner_bypass_closure.md 顶部有 SUPERSEDED 横幅
+Phase 6: Evidence Truth,ET-03,不要求 committed report 声称自身 SHA,PASS,INFO,R3-R1 台账未包含 FINAL_REPORT_TIP = 68a68027
+Phase 6: Evidence Truth,ET-04,branch protection 404/rulesets 状态,INFO,INFO,REMOTE_ENFORCEMENT_NOT_VERIFIED (无 GITHUB_TOKEN，API 返回 401)
+Phase 7: Deliverables,DEL-01,新 reports 分支创建,PASS,INFO,reports/dc12r1-mvp-l1-he2-r3-r1-v1-kilo-final-cumulative-governance-review-2026-08-25
+Phase 7: Deliverables,DEL-02,恰好 review.md + findings.csv 两文件,PENDING,INFO,review.md 已写入，findings.csv 本文件
+Phase 7: Deliverables,DEL-03,报告 local SHA == remote SHA,PENDING,INFO,推送后验证
+Phase 7: Deliverables,DEL-04,不修改候选/受保护 refs/产品代码,PASS,INFO,只读审查，候选 SHA 未变
+Phase 7: Deliverables,DEL-05,STOP；不合并、不启动 H2-B-R3-R1,PASS,INFO,冻结状态，只读审查

@@ -587,16 +587,61 @@ _N21_PATCH = (
 )
 
 
-def _run_validator_mutation(name, patch, failures):
-    original = VALIDATOR.read_bytes()
-    old, new = patch
+# R3-R2: EOL-portable patch application. The patches above stay CANONICAL LF
+# strings; at application time they are converted to the validator file's
+# NATIVE checkout EOL so the gate works identically on LF and CRLF hosts.
+# The candidate is never globally normalized — only the patch strings adapt.
+
+
+def _detect_native_eol(data):
+    """'\\n' for pure LF, '\\r\\n' for pure CRLF, None for mixed EOL."""
+    lf = data.count(b"\n")
+    cr = data.count(b"\r")
+    crlf = data.count(b"\r\n")
+    if cr == 0 and lf > 0:
+        return "\n"
+    if cr == crlf and lf == crlf and cr > 0:
+        return "\r\n"
+    return None
+
+
+def _to_native_eol(text, native_eol):
+    """Convert a canonical-LF patch string to the file's native EOL."""
+    if native_eol == "\n":
+        return text
+    return text.replace("\n", "\r\n")
+
+
+def _apply_validator_patch(original, patch):
+    """Return (mutated_bytes, None) on success or (None, fail_category).
+
+    Fail categories are fixed strings, never content:
+      MIXED_EOL          — the validator blob mixes EOL styles; fail closed
+                           WITHOUT modifying the file.
+      PATCH-ANCHOR-NOT-UNIQUE — the anchor occurs 0 or >1 times; fail closed
+                           WITHOUT modifying the file.
+    """
+    native_eol = _detect_native_eol(original)
+    if native_eol is None:
+        return None, "MIXED_EOL"
+    old, new = (_to_native_eol(part, native_eol) for part in patch)
     text = original.decode("utf-8")
     if text.count(old) != 1:
-        failures.append(f"{name}: patch anchor not unique in validator")
-        print(f"  {name:<40} PATCH ANCHOR ERROR")
+        return None, "PATCH-ANCHOR-NOT-UNIQUE"
+    return text.replace(old, new).encode("utf-8"), None
+
+
+def _run_validator_mutation(name, patch, failures):
+    original = VALIDATOR.read_bytes()
+    mutated, fail_category = _apply_validator_patch(original, patch)
+    if fail_category is not None:
+        # Fail closed: the file was NOT modified and this is NOT a RED —
+        # it is a gate-infrastructure failure that must be reported loudly.
+        failures.append(f"{name}: {fail_category}")
+        print(f"  {name:<40} FAIL CLOSED ({fail_category})")
         return
     try:
-        VALIDATOR.write_bytes(text.replace(old, new).encode("utf-8"))
+        VALIDATOR.write_bytes(mutated)
         head, base = mut_scanner_py_ts_probes()
         try:
             code, report = run_validator(head, base)
@@ -614,8 +659,12 @@ def _run_validator_mutation(name, patch, failures):
             shutil.rmtree(base, ignore_errors=True)
     finally:
         VALIDATOR.write_bytes(original)
+    # R3-R2: full SHA-256 AND full bytes equality after restore.
     restored = VALIDATOR.read_bytes()
-    if hashlib.sha256(restored).digest() != hashlib.sha256(original).digest():
+    if (
+        hashlib.sha256(restored).digest() != hashlib.sha256(original).digest()
+        or restored != original
+    ):
         failures.append(f"{name}: validator blob NOT byte-identical after restore")
         print(f"  {name:<40} BLOB DRIFT after restore")
         return

@@ -948,6 +948,103 @@ class ScannerScopeTests(WorkspaceTestCase):
         self.assertTrue(report["green"], report["violations"])
 
 
+class MutationEolPortabilityTests(unittest.TestCase):
+    """R3-R2: the validator-mutation patch machinery must be EOL-portable.
+    These tests call the REAL helpers from run_red_mutations (no mocks):
+    LF and CRLF validator fixtures must both patch uniquely, produce the
+    same semantic change, and restore byte-exactly; mixed EOL and bad
+    anchors must fail closed WITHOUT modifying anything."""
+
+    def setUp(self):
+        import run_red_mutations as rm
+
+        self.rm = rm
+        self.original_validator = rm.VALIDATOR.read_bytes()
+        # Fixtures are DERIVED from the real validator bytes so they are
+        # pure regardless of the host checkout style (this repo may be
+        # checked out LF or CRLF; the tests must pass identically on both).
+        self.lf_validator = self.original_validator.replace(b"\r\n", b"\n")
+        self.crlf_validator = self.lf_validator.replace(b"\n", b"\r\n")
+
+    def tearDown(self):
+        # Belt and suspenders: the pure helpers under test never write, but
+        # if a regression ever made them touch the file, restore it here.
+        self.rm.VALIDATOR.write_bytes(self.original_validator)
+
+    def test_lf_validator_fixture_patches_hit_uniquely(self):
+        for patch in (self.rm._N20_PATCH, self.rm._N21_PATCH):
+            mutated, fail = self.rm._apply_validator_patch(self.lf_validator, patch)
+            self.assertIsNone(fail)
+            self.assertIsNotNone(mutated)
+            self.assertNotEqual(mutated, self.lf_validator)
+            self.assertEqual(mutated.count(b"\r"), 0)
+
+    def test_crlf_validator_fixture_patches_hit_uniquely(self):
+        for patch in (self.rm._N20_PATCH, self.rm._N21_PATCH):
+            mutated, fail = self.rm._apply_validator_patch(self.crlf_validator, patch)
+            self.assertIsNone(fail)
+            self.assertIsNotNone(mutated)
+            self.assertNotEqual(mutated, self.crlf_validator)
+            # The mutated file keeps the CRLF checkout style: every CR is
+            # still part of a CRLF pair.
+            self.assertEqual(mutated.count(b"\r"), mutated.count(b"\r\n"))
+
+    def test_lf_and_crlf_mutations_are_semantically_equal(self):
+        for patch in (self.rm._N20_PATCH, self.rm._N21_PATCH):
+            mutated_lf, fail_lf = self.rm._apply_validator_patch(self.lf_validator, patch)
+            mutated_crlf, fail_crlf = self.rm._apply_validator_patch(self.crlf_validator, patch)
+            self.assertIsNone(fail_lf)
+            self.assertIsNone(fail_crlf)
+            normalized = mutated_crlf.replace(b"\r\n", b"\n")
+            self.assertEqual(normalized, mutated_lf)
+
+    def test_write_and_restore_cycle_is_byte_exact(self):
+        for fixture in (self.lf_validator, self.crlf_validator):
+            mutated, fail = self.rm._apply_validator_patch(fixture, self.rm._N20_PATCH)
+            self.assertIsNone(fail)
+            tmp = tempfile.NamedTemporaryFile(delete=False)
+            try:
+                tmp.write(mutated)
+                tmp.close()
+                with open(tmp.name, "rb") as fh:
+                    self.assertEqual(fh.read(), mutated)
+                # The runner's restore pattern: unconditionally write the
+                # original bytes back, then compare FULL bytes AND sha256.
+                with open(tmp.name, "wb") as fh:
+                    fh.write(fixture)
+                with open(tmp.name, "rb") as fh:
+                    restored = fh.read()
+                self.assertEqual(restored, fixture)
+                self.assertEqual(
+                    hashlib.sha256(restored).hexdigest(),
+                    hashlib.sha256(fixture).hexdigest(),
+                )
+            finally:
+                os.remove(tmp.name)
+
+    def test_mixed_eol_fails_closed_without_modifying_the_file(self):
+        mixed = b"line-a\nline-b\r\nline-c\n" + self.rm._N21_PATCH[0].encode("utf-8")
+        mutated, fail = self.rm._apply_validator_patch(mixed, self.rm._N21_PATCH)
+        self.assertIsNone(mutated)
+        self.assertEqual(fail, "MIXED_EOL")
+        # Fail closed means the real file was never touched by the helper.
+        self.assertEqual(self.rm.VALIDATOR.read_bytes(), self.original_validator)
+
+    def test_zero_anchor_fails_closed(self):
+        no_anchor = b"def unrelated():\n    return None\n"
+        mutated, fail = self.rm._apply_validator_patch(no_anchor, self.rm._N20_PATCH)
+        self.assertIsNone(mutated)
+        self.assertEqual(fail, "PATCH-ANCHOR-NOT-UNIQUE")
+
+    def test_duplicate_anchor_fails_closed(self):
+        anchor = self.rm._N21_PATCH[0].encode("utf-8")
+        duplicated = anchor + b"    pass\n" + anchor
+        mutated, fail = self.rm._apply_validator_patch(duplicated, self.rm._N21_PATCH)
+        self.assertIsNone(mutated)
+        self.assertEqual(fail, "PATCH-ANCHOR-NOT-UNIQUE")
+        self.assertEqual(self.rm.VALIDATOR.read_bytes(), self.original_validator)
+
+
 class ConfigProtectionTests(WorkspaceTestCase):
     def test_empty_governed_prefixes_is_red(self):
         self.workspace()

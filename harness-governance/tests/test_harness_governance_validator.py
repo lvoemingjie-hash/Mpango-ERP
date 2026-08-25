@@ -768,21 +768,85 @@ class RawBlobIntegrityTests(WorkspaceTestCase):
 
 
 class ScannerStrictnessTests(unittest.TestCase):
-    """R2: the anchored detect-secrets exclusion must be safe — pure hex lines
-    are excluded, but the same line with an appended secret is NOT excluded."""
+    """R2/R3: the anchored detect-secrets exclusion must be safe — only
+    exact key+hex lines in allowed governance files are excluded; any
+    deviation (extra content, wrong key, non-allowed path) stays RED."""
 
-    ANCHORED_RE = re.compile(r'"\s*:\s*"[0-9a-f]{40,64}"\s*$')
+    # R3 strict anchored regex: ^...$, key whitelist, 40 or 40+24 hex, optional trailing comma
+    STRICT_RE = re.compile(
+        r'^\s*"(base_sha|evidence_sha|evidence_commit)"\s*:\s*"[0-9a-f]{40}([0-9a-f]{24})?"\s*,?\s*$'
+    )
 
-    def test_pure_hex_line_excluded(self):
+    def test_exact_key_hex_matches(self):
         hex40 = "aabbccdd" * 5
-        self.assertIsNotNone(self.ANCHORED_RE.search(f'  "base_sha": "{hex40}"'))
-        self.assertIsNotNone(self.ANCHORED_RE.search(f'  "evidence_sha": "{hex40}"'))
+        hex64 = hex40 + "1122334455667788" + "aabbccdd"  # 40 + 24 = 64
+        for key in ("base_sha", "evidence_sha", "evidence_commit"):
+            self.assertIsNotNone(self.STRICT_RE.search(f'  "{key}": "{hex40}"'), key)
+            self.assertIsNotNone(self.STRICT_RE.search(f'  "{key}": "{hex64}"'), key)
+        # With optional trailing comma
+        self.assertIsNotNone(self.STRICT_RE.search(f'  "base_sha": "{hex40}",'))
 
-    def test_hex_plus_password_not_excluded(self):
+    def test_sensitive_field_before_sha_not_excluded(self):
         hex40 = "aabbccdd" * 5
-        self.assertIsNone(self.ANCHORED_RE.search(f'  "base_sha": "{hex40}", "password": "secret"'))  # pragma: allowlist secret
-        self.assertIsNone(self.ANCHORED_RE.search(f'  "base_sha": "{hex40}"  # token=abc123'))
-        self.assertIsNone(self.ANCHORED_RE.search(f'  "base_sha": "{hex40}Authorization: Bearer xxx'))
+        self.assertIsNone(self.STRICT_RE.search(f'  "password": "x", "base_sha": "{hex40}"'))
+
+    def test_sensitive_field_after_sha_not_excluded(self):
+        hex40 = "aabbccdd" * 5
+        self.assertIsNone(self.STRICT_RE.search(f'  "base_sha": "{hex40}", "password": "secret"'))  # pragma: allowlist secret
+        self.assertIsNone(self.STRICT_RE.search(f'  "base_sha": "{hex40}", "token": "abc"'))
+
+    def test_arbitrary_key_not_excluded(self):
+        hex40 = "aabbccdd" * 5
+        self.assertIsNone(self.STRICT_RE.search(f'  "commit_hash": "{hex40}"'))
+        self.assertIsNone(self.STRICT_RE.search(f'  "checksum": "{hex40}"'))
+
+    def test_comment_after_sha_not_excluded(self):
+        hex40 = "aabbccdd" * 5
+        self.assertIsNone(self.STRICT_RE.search(f'  "base_sha": "{hex40}"  # token=abc123'))
+
+    def test_wrong_length_hex_not_excluded(self):
+        self.assertIsNone(self.STRICT_RE.search('  "base_sha": "aabbccdd"'))  # 8 hex
+        self.assertIsNone(self.STRICT_RE.search('  "base_sha": "' + 'a' * 39 + '"'))
+        self.assertIsNone(self.STRICT_RE.search('  "base_sha": "' + 'a' * 65 + '"'))
+
+
+class DeltaChainTests(WorkspaceTestCase):
+    """R3: governance delta chain must authorize each hop and the cumulative
+    review from HE2_PARENT through R1, R2, and R3."""
+
+    def test_cumulative_delta_covers_he2_parent_to_head(self):
+        """94b0c300..HEAD structural PASS: cumulative delta covers all."""
+        baseline = self.pristine_baseline()
+        self.workspace()
+        report = self.validate(baseline_dir=baseline, base_sha="94b0c30034d04d1bad87f926a4b09e3dbbe3c6db")
+        self.assertTrue(report["green"], report["violations"])
+
+    def test_r2_hop_delta_covers_r1_tip_to_head(self):
+        """5a380586..HEAD PASS: R2-hop delta covers R2's protected changes."""
+        baseline = self.pristine_baseline()
+        self.workspace()
+        report = self.validate(baseline_dir=baseline, base_sha="5a380586caab4f662d7e1dfbc7899cf5bd3bc300")
+        self.assertTrue(report["green"], report["violations"])
+
+
+class ScannerScopeTests(WorkspaceTestCase):
+    """R3: governance hex keys in non-allowed paths must be RED."""
+
+    def test_backend_json_with_hex_key_is_red(self):
+        self.workspace()
+        probe = os.path.join(self.tmp, "backend", "api", "_probe.json")
+        os.makedirs(os.path.dirname(probe), exist_ok=True)
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write('{\n  "base_sha": "' + "aabbccdd" * 5 + '"\n}\n')
+        report = self.validate()
+        self.assertIn("SCANNER-SCOPE-VIOLATION", self.codes(report))
+
+    def test_allowed_governance_file_with_hex_key_is_green(self):
+        """The same hex line in protocol-deltas.json is legitimate."""
+        self.workspace()
+        report = self.validate()
+        scanner_violations = [v for v in report["violations"] if v["code"] == "SCANNER-SCOPE-VIOLATION"]
+        self.assertEqual(scanner_violations, [])
 
 
 class ConfigProtectionTests(WorkspaceTestCase):

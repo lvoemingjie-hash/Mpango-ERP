@@ -511,6 +511,49 @@ def mut_secrets_baseline_modified():
     return head, base
 
 
+def mut_delete_r2_hop_delta():
+    """R3: removing the R2-hop delta + changing a protected path → no eligible
+    governance delta covers the 5a380586 hop → SYNC-PROTECTED-PATH."""
+    head, base = make_workspace()
+    deltas = _load(head, "harness-governance/inventory/protocol-deltas.json")
+    _save(
+        head,
+        "harness-governance/inventory/protocol-deltas.json",
+        [d for d in deltas if d.get("delta_id") != "PD-2026-08-25-HE2-R2-HOP"],
+    )
+    # Also modify a protected path so the sync check actually evaluates it
+    baseline_path = os.path.join(head, ".secrets.baseline")
+    with open(baseline_path, "a", encoding="utf-8") as fh:
+        fh.write('  "# r2-hop-delta-deleted-probe": []\n')
+    return head, base
+
+
+def mut_delete_cumulative_delta():
+    """R3: removing the cumulative delta + changing a protected path → no eligible
+    governance delta covers the 94b0c300 hop → SYNC-PROTECTED-PATH."""
+    head, base = make_workspace()
+    deltas = _load(head, "harness-governance/inventory/protocol-deltas.json")
+    _save(
+        head,
+        "harness-governance/inventory/protocol-deltas.json",
+        [d for d in deltas if d.get("delta_id") != "PD-2026-08-25-HE2-CUMULATIVE"],
+    )
+    baseline_path = os.path.join(head, ".secrets.baseline")
+    with open(baseline_path, "a", encoding="utf-8") as fh:
+        fh.write('  "# cumulative-delta-deleted-probe": []\n')
+    return head, base
+
+
+def mut_scanner_hex_in_backend():
+    """R3: governance hex key in a non-allowed backend JSON file must be RED."""
+    head, base = make_workspace()
+    probe = os.path.join(head, "backend", "api", "_probe.json")
+    os.makedirs(os.path.dirname(probe), exist_ok=True)
+    with open(probe, "w", encoding="utf-8") as fh:
+        fh.write('{\n  "base_sha": "' + "aabbccdd" * 5 + '"\n}\n')
+    return head, base
+
+
 # GREEN controls -------------------------------------------------------------
 
 
@@ -606,6 +649,9 @@ RED_MUTATIONS = [
     ("N13-invalid-schema-ref", mut_invalid_schema_ref, ["SCHEMA-BAD-REF"], ()),
     ("N15-binary-blob-text-digest", mut_binary_blob_text_digest, ["EVIDENCE-BLOB-MISMATCH"], ()),
     ("N16-secrets-baseline-modified", mut_secrets_baseline_modified, ["SYNC-PROTECTED-PATH"], ()),
+    ("N17-delete-r2-hop-delta", mut_delete_r2_hop_delta, ["SYNC-PROTECTED-PATH"], ("--base-sha", "5a380586caab4f662d7e1dfbc7899cf5bd3bc300")),  # pragma: allowlist secret
+    ("N18-delete-cumulative-delta", mut_delete_cumulative_delta, ["SYNC-PROTECTED-PATH"], ("--base-sha", "94b0c30034d04d1bad87f926a4b09e3dbbe3c6db")),  # pragma: allowlist secret
+    ("N19-scanner-hex-in-backend", mut_scanner_hex_in_backend, ["SCANNER-SCOPE-VIOLATION"], ()),
 ]
 
 # N14 is a mode-behavior proof rather than a tree tamper: structural GREEN

@@ -92,6 +92,26 @@ PROTECTED_PATHS = (
     f"{GOV_DIR}/schemas/",
     f"{GOV_DIR}/tests/",
 )
+
+# R3: files where base_sha/evidence_sha/evidence_commit JSON lines are
+# legitimately allowed. The detect-secrets anchored exclusion applies only
+# to these files; the validator enforces this by scanning the whole repo.
+_SCANNER_ALLOWED_FILES = frozenset(
+    {
+        INVENTORY_RELPATH,
+        DEBT_RELPATH,
+        REGISTRY_RELPATH,
+        WAIVERS_RELPATH,
+        DELTAS_RELPATH,
+    }
+)
+
+# R3: strict anchored regex matching ONLY the three governance hex keys
+# with 40 or 64 hex values and an optional trailing comma.
+_SCANNER_HEX_RE = re.compile(
+    r'^\s*"(base_sha|evidence_sha|evidence_commit)"\s*:\s*'
+    r'"[0-9a-f]{40}([0-9a-f]{24})?"\s*,?\s*$'
+)
 # Phase 2: the minimum product surface that governed_prefixes must always
 # include; removing any of these is RED.
 MINIMUM_GOVERNED_PREFIXES = ("backend/", "frontend/src/", "scenarios/")
@@ -677,6 +697,7 @@ def validate_workspace(root: str, today: _dt.date, args) -> dict:
     )
     _check_waivers(ctx, waivers, today)
     _check_anchor_targets(ctx, root, nodes, interactions)
+    _check_scanner_scope(ctx, root)
     _check_ids_unique(ctx, nodes, debts, interactions, waivers, deltas)
 
     baseline = resolve_baseline(root, args)
@@ -1010,6 +1031,38 @@ def _check_anchor_targets(ctx: GovernanceContext, root: str, nodes, interactions
                 f"{REGISTRY_RELPATH}#/interactions/{idx}/source_anchors",
                 interaction.get("source_anchors"),
             )
+
+
+def _check_scanner_scope(ctx: GovernanceContext, root: str) -> None:
+    """R3: scan the repo for base_sha/evidence_sha/evidence_commit hex lines
+    in files outside the allowed governance JSON set. The detect-secrets
+    anchored exclusion only applies to _SCANNER_ALLOWED_FILES; if the same
+    shape appears in backend, frontend, scripts, or any other non-allowed
+    path, it is a structural violation."""
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in FS_COMPARE_IGNORE]
+        for name in filenames:
+            if not name.endswith(".json"):
+                continue
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, root).replace(os.sep, "/")
+            if rel in _SCANNER_ALLOWED_FILES:
+                continue
+            try:
+                with open(full, "r", encoding="utf-8", errors="replace") as fh:
+                    for lineno, line in enumerate(fh, 1):
+                        if _SCANNER_HEX_RE.search(line):
+                            ctx.emit(
+                                "SCANNER-SCOPE-VIOLATION",
+                                f"{rel}:{lineno}",
+                                f"governance hex key (base_sha/evidence_sha/evidence_commit) "
+                                f"found outside allowed governance JSON files; "
+                                f"the detect-secrets anchored exclusion does not cover {rel!r}",
+                            )
+                            return  # one violation is enough to prove the point
+            except (OSError, UnicodeDecodeError):
+                continue
 
 
 def _check_ids_unique(ctx, nodes, debts, interactions, waivers, deltas) -> None:

@@ -1,0 +1,886 @@
+{
+  "config": {
+    "configFile": "/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/playwright.config.ts",
+    "rootDir": "/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/tests",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 1,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "artifacts/results.json"
+        }
+      ],
+      [
+        "junit",
+        {
+          "outputFile": "artifacts/results-junit.xml"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 15000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/artifacts/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "",
+        "name": "",
+        "testDir": "/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 120000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "version": "1.49.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "forgot-reset.spec.ts",
+      "file": "forgot-reset.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "j1h2b-forgot-reset journey",
+          "file": "forgot-reset.spec.ts",
+          "line": 85,
+          "column": 6,
+          "specs": [
+            {
+              "title": "F1-D",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1436,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:23.464Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-ee21208c2e924b87c83f",
+              "file": "forgot-reset.spec.ts",
+              "line": 100,
+              "column": 3
+            },
+            {
+              "title": "F1-T",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1225,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:25.071Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-aa253afb4afaaed0ba5c",
+              "file": "forgot-reset.spec.ts",
+              "line": 108,
+              "column": 3
+            },
+            {
+              "title": "F1-M",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1256,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:26.313Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-7b98217e10d81a03208b",
+              "file": "forgot-reset.spec.ts",
+              "line": 116,
+              "column": 3
+            },
+            {
+              "title": "F2-D",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1196,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:27.579Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-58389b62a55d71a64f99",
+              "file": "forgot-reset.spec.ts",
+              "line": 124,
+              "column": 3
+            },
+            {
+              "title": "F2-T",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1161,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:28.782Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-91703c7f2bb38cb14f94",
+              "file": "forgot-reset.spec.ts",
+              "line": 131,
+              "column": 3
+            },
+            {
+              "title": "F2-M",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1197,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:29.952Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-de5ea9b28590c4abc105",
+              "file": "forgot-reset.spec.ts",
+              "line": 138,
+              "column": 3
+            },
+            {
+              "title": "F3",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 5795,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:31.160Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-5621e2467a961d651d74",
+              "file": "forgot-reset.spec.ts",
+              "line": 150,
+              "column": 3
+            },
+            {
+              "title": "F4",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1444,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:36.964Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-cb94980b5c4cff70921e",
+              "file": "forgot-reset.spec.ts",
+              "line": 171,
+              "column": 3
+            },
+            {
+              "title": "F5",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 16493,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:38.415Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-68c159a9b2fc7c1aece3",
+              "file": "forgot-reset.spec.ts",
+              "line": 196,
+              "column": 3
+            },
+            {
+              "title": "R1",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1129,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:54.922Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-eb128f915377c4f27cb1",
+              "file": "forgot-reset.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "R2",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1069,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:56.059Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-4f3c3bfd882feae34a43",
+              "file": "forgot-reset.spec.ts",
+              "line": 279,
+              "column": 3
+            },
+            {
+              "title": "R3",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1061,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:57.138Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-f7b3fa5af0f30db5a788",
+              "file": "forgot-reset.spec.ts",
+              "line": 301,
+              "column": 3
+            },
+            {
+              "title": "R4",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1181,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:58.206Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-a98bc4adcc58398f2fa9",
+              "file": "forgot-reset.spec.ts",
+              "line": 321,
+              "column": 3
+            },
+            {
+              "title": "R5",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1166,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:56:59.395Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-89d925c634b0eaceba2b",
+              "file": "forgot-reset.spec.ts",
+              "line": 335,
+              "column": 3
+            },
+            {
+              "title": "R7-POLICY",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1207,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:00.574Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-45c926cad7c19836aff8",
+              "file": "forgot-reset.spec.ts",
+              "line": 360,
+              "column": 3
+            },
+            {
+              "title": "R7-POLICY-M",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1177,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:01.788Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-33c6d3fe8f1b86aa108a",
+              "file": "forgot-reset.spec.ts",
+              "line": 377,
+              "column": 3
+            },
+            {
+              "title": "R8",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1611,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:02.973Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-4e2f5580983110b63b51",
+              "file": "forgot-reset.spec.ts",
+              "line": 393,
+              "column": 3
+            },
+            {
+              "title": "R8-M",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 3385,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:04.596Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-59cc6ce583b58f98b788",
+              "file": "forgot-reset.spec.ts",
+              "line": 410,
+              "column": 3
+            },
+            {
+              "title": "R9",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1679,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:07.987Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-512f3f458d67f4b541fa",
+              "file": "forgot-reset.spec.ts",
+              "line": 440,
+              "column": 3
+            },
+            {
+              "title": "R10",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1661,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:09.673Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-ae04b972e98a874167ac",
+              "file": "forgot-reset.spec.ts",
+              "line": 452,
+              "column": 3
+            },
+            {
+              "title": "R10-M",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 1684,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:11.344Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-1ac768ddb47253fa019d",
+              "file": "forgot-reset.spec.ts",
+              "line": 459,
+              "column": 3
+            },
+            {
+              "title": "R11",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 2147,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:13.036Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-0e681b65c1b476c9f444",
+              "file": "forgot-reset.spec.ts",
+              "line": 465,
+              "column": 3
+            },
+            {
+              "title": "R12",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "passed",
+                      "duration": 2719,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:15.190Z",
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-4c90ca4c8f695fbc2012",
+              "file": "forgot-reset.spec.ts",
+              "line": 484,
+              "column": 3
+            },
+            {
+              "title": "M1",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "failed",
+                      "duration": 8437,
+                      "error": {
+                        "message": "Error: provisioning: PUT /api/v1/users/{id}/roles answered 500 (code=UNKNOWN); expected 200",
+                        "stack": "Error: provisioning: PUT /api/v1/users/{id}/roles answered 500 (code=UNKNOWN); expected 200\n    at apiFetch (/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts:57:11)\n    at assignAdminRole (/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts:231:18)\n    at ensureM1Provisioned (/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts:337:3)\n    at /home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/tests/forgot-reset.spec.ts:624:5",
+                        "location": {
+                          "file": "/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts",
+                          "column": 11,
+                          "line": 57
+                        },
+                        "snippet": "   at ../src/api-client.ts:57\n\n  55 |   if (!expectedStatuses.includes(response.status)) {\n  56 |     const code = typeof json?.detail?.code === 'string' ? json.detail.code : 'UNKNOWN';\n> 57 |     throw new Error(\n     |           ^\n  58 |       `provisioning: ${label} answered ${response.status} (code=${code}); expected ${expectedStatuses.join('|')}`,\n  59 |     );\n  60 |   }"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts",
+                            "column": 11,
+                            "line": 57
+                          },
+                          "message": "Error: provisioning: PUT /api/v1/users/{id}/roles answered 500 (code=UNKNOWN); expected 200\n\n   at ../src/api-client.ts:57\n\n  55 |   if (!expectedStatuses.includes(response.status)) {\n  56 |     const code = typeof json?.detail?.code === 'string' ? json.detail.code : 'UNKNOWN';\n> 57 |     throw new Error(\n     |           ^\n  58 |       `provisioning: ${label} answered ${response.status} (code=${code}); expected ${expectedStatuses.join('|')}`,\n  59 |     );\n  60 |   }\n    at apiFetch (/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts:57:11)\n    at assignAdminRole (/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts:231:18)\n    at ensureM1Provisioned (/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts:337:3)\n    at /home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/tests/forgot-reset.spec.ts:624:5"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-25T05:57:17.919Z",
+                      "attachments": [],
+                      "errorLocation": {
+                        "file": "/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts",
+                        "column": 11,
+                        "line": 57
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "152ae6798ca0807d8abb-2f192948f57c50b90fd2",
+              "file": "forgot-reset.spec.ts",
+              "line": 619,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "message": "\u001b[31mTesting stopped early after 1 maximum allowed failures.\u001b[39m"
+    }
+  ],
+  "stats": {
+    "startTime": "2026-08-25T05:56:22.144Z",
+    "duration": 64258.388,
+    "expected": 23,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

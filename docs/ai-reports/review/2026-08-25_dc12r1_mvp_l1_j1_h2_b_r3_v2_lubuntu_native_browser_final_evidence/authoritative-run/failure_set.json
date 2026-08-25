@@ -1,0 +1,19 @@
+{
+  "failed_nodes": [
+    {
+      "node": "M1",
+      "spec_location": "tests/forgot-reset.spec.ts:624 via src/api-client.ts:337 ensureM1Provisioned \u2192 assignAdminRole:231 \u2192 apiFetch:57",
+      "error": "provisioning: PUT /api/v1/users/{id}/roles answered 500 (code=UNKNOWN); expected 200",
+      "root_cause_mechanism": {
+        "exception": "sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called; can't call await_only() here",
+        "location": "backend/api/v1/users.py:315 assign_user_roles_endpoint \u2192 :55 user_to_read \u2192 user.updated_at triggers expired-attribute lazy-load outside greenlet context after commit",
+        "trigger": "after role assignment commit, user_to_read accesses user.updated_at which fires synchronous lazy-load in async context without active greenlet"
+      },
+      "classification": "PRODUCT_SQLALCHEMY_MISSING_GREENLET_IN_ASYNC_USER_ROLES_ENDPOINT_AFTER_COMMIT",
+      "scope": "pre-existing product async endpoint bug in users.py (untouched by 0267ea73's 5-file delta); first exposed by M1's formal provisioning path in real async runtime; NOT a harness defect, NOT a regression from the interceptor fix, NOT an environmental defect",
+      "positive_result": "R5 and R11 (and all F1-F12 + R1-R12 browser journey nodes) PASSED, confirming0267ea73's401 anonymous-reset interceptor fix is effective"
+    }
+  ],
+  "rerun_performed": false,
+  "verdict_effect": "STOP_AND_REPORT_CTO per fail-stop mandate"
+}

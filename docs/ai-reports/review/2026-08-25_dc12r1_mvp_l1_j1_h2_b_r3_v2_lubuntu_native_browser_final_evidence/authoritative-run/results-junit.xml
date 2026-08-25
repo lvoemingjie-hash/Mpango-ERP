@@ -1,0 +1,72 @@
+<testsuites id="" name="" tests="24" failures="1" skipped="0" errors="0" time="64.258388">
+<testsuite name="forgot-reset.spec.ts" timestamp="2026-08-25T05:56:22.273Z" hostname="" tests="24" failures="1" skipped="0" time="62.516" errors="0">
+<testcase name="j1h2b-forgot-reset journey › F1-D" classname="forgot-reset.spec.ts" time="1.436">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-T" classname="forgot-reset.spec.ts" time="1.225">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-M" classname="forgot-reset.spec.ts" time="1.256">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-D" classname="forgot-reset.spec.ts" time="1.196">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-T" classname="forgot-reset.spec.ts" time="1.161">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-M" classname="forgot-reset.spec.ts" time="1.197">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F3" classname="forgot-reset.spec.ts" time="5.795">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F4" classname="forgot-reset.spec.ts" time="1.444">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F5" classname="forgot-reset.spec.ts" time="16.493">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R1" classname="forgot-reset.spec.ts" time="1.129">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R2" classname="forgot-reset.spec.ts" time="1.069">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R3" classname="forgot-reset.spec.ts" time="1.061">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R4" classname="forgot-reset.spec.ts" time="1.181">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R5" classname="forgot-reset.spec.ts" time="1.166">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY" classname="forgot-reset.spec.ts" time="1.207">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY-M" classname="forgot-reset.spec.ts" time="1.177">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8" classname="forgot-reset.spec.ts" time="1.611">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8-M" classname="forgot-reset.spec.ts" time="3.385">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R9" classname="forgot-reset.spec.ts" time="1.679">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10" classname="forgot-reset.spec.ts" time="1.661">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10-M" classname="forgot-reset.spec.ts" time="1.684">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R11" classname="forgot-reset.spec.ts" time="2.147">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R12" classname="forgot-reset.spec.ts" time="2.719">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › M1" classname="forgot-reset.spec.ts" time="8.437">
+<failure message="forgot-reset.spec.ts:619:3 M1" type="FAILURE">
+<![CDATA[  forgot-reset.spec.ts:619:3 › j1h2b-forgot-reset journey › M1 ─────────────────────────────────────
+
+    Error: provisioning: PUT /api/v1/users/{id}/roles answered 500 (code=UNKNOWN); expected 200
+
+       at ../src/api-client.ts:57
+
+      55 |   if (!expectedStatuses.includes(response.status)) {
+      56 |     const code = typeof json?.detail?.code === 'string' ? json.detail.code : 'UNKNOWN';
+    > 57 |     throw new Error(
+         |           ^
+      58 |       `provisioning: ${label} answered ${response.status} (code=${code}); expected ${expectedStatuses.join('|')}`,
+      59 |     );
+      60 |   }
+        at apiFetch (/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts:57:11)
+        at assignAdminRole (/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts:231:18)
+        at ensureM1Provisioned (/home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/src/api-client.ts:337:3)
+        at /home/ivy/MPANGO/dc12r1-h2br3v2-browser-wt/j1h2b-forgot-reset/tests/forgot-reset.spec.ts:624:5
+]]>
+</failure>
+</testcase>
+</testsuite>
+</testsuites>

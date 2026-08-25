@@ -1,0 +1,45 @@
+{
+  "task": "DC-12R1-MVP-L1-J1-H2-B-R3-V2_LUBUNTU_FRESH_RUNTIME_BROWSER_FINAL",
+  "executor": "OpenCode Lubuntu native",
+  "single_invocation": true,
+  "grep_or_shard_or_retry_used": false,
+  "browser_accounting": {
+    "expected_nodes": 24,
+    "passed": 23,
+    "failed": 1,
+    "not_run_fail_stop": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "first_red": "M1",
+    "fail_stop_enforced_by": "maxFailures=1"
+  },
+  "R5_R11_result": "BOTH_PASSED",
+  "non_browser_accounting": {
+    "F6": {
+      "surface": "launcher-mirrored task maildir (in-memory sink dump)"
+    },
+    "R6": {
+      "status": "BACKEND_PRE_GATE_ONLY",
+      "evidence_ref": "5570093ec7f9e3dc2b4083ac8c091aae75a62d1d"
+    },
+    "M2": {
+      "status": "BACKEND_PRE_GATE_ONLY",
+      "evidence_ref": "5570093ec7f9e3dc2b4083ac8c091aae75a62d1d"
+    },
+    "R13": {
+      "status": "EXECUTED_THIS_ROUND",
+      "result": "PASSED \u2014 zero leak findings"
+    },
+    "RT0": {
+      "status": "BLOCKED_BY_H2_C",
+      "pass_claimed": false
+    }
+  },
+  "total_accounting": {
+    "nodes": 29,
+    "browser": 24,
+    "non_browser": 5,
+    "gap": 0
+  },
+  "canonical_neutrality": "F3/F4/F5 PASSED under B1-R3 contract"
+}

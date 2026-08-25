@@ -1,0 +1,46 @@
+finding_id,phase,category,severity,description,evidence,status
+F1,Phase 1,Proof Gate,INFO,"Candidate == remote branch tip","0267ea73 == origin/zcode/dc12r1-mvp-l1-j1-h2-b-r3-public-password-recovery-interceptor-closure-2026-08-25",PASS
+F2,Phase 1,Proof Gate,INFO,"candidate^ == 8c7e847 (B1-R3 candidate)","git rev-parse HEAD~1 = 8c7e847",PASS
+F3,Phase 1,Proof Gate,INFO,"Delta exactly 5 authorized files","git diff --name-status 8c7e847..0267ea7 = 5 files",PASS
+F4,Phase 1,Proof Gate,INFO,"Only 1 product file changed (authService.ts)","Remaining 4 files are tests/ledger",PASS
+F5,Phase 1,Proof Gate,INFO,"api.ts / backend / harness / dependencies / lockfile zero changes","git diff --name-only confirms no such paths",PASS
+F6,Phase 1,Proof Gate,INFO,"Candidate SHA not modified (read-only review)","Worktree clean at detached HEAD",PASS
+F7,Phase 2,Public Recovery Calls,INFO,"forgotPassword sends explicit empty Authorization + skipAuthInterceptors","authService.ts:54-58",PASS
+F8,Phase 2,Public Recovery Calls,INFO,"resetPassword sends explicit empty Authorization + skipAuthInterceptors","authService.ts:60-64",PASS
+F9,Phase 2,Public Recovery Calls,INFO,"retailerForgotPassword sends explicit empty Authorization + skipAuthInterceptors","authService.ts:77-84",PASS
+F10,Phase 2,Public Recovery Calls,INFO,"retailerResetPassword sends explicit empty Authorization + skipAuthInterceptors","authService.ts:86-93",PASS
+F11,Phase 2,Interceptor Mechanism,INFO,"Request interceptor: explicit empty Authorization blocks stale token injection","api.ts:56: !config.headers.has('Authorization')",PASS
+F12,Phase 2,Interceptor Mechanism,INFO,"Response interceptor: skipAuthInterceptors bypasses toast/refresh/queue/logout","api.ts:119-121: return Promise.reject(error)",PASS
+F13,Phase 3,Anonymous 401 Side Effects,INFO,"Anonymous 401 does not trigger refresh","api.ts:119 skip path bypasses line 152+ refresh machinery",PASS
+F14,Phase 3,Anonymous 401 Side Effects,INFO,"Anonymous 401 does not trigger queue","api.ts:119 skip path bypasses line 164+ failedQueue",PASS
+F15,Phase 3,Anonymous 401 Side Effects,INFO,"Anonymous 401 does not trigger logout","api.ts:119 skip path bypasses line 177+ logout",PASS
+F16,Phase 3,Anonymous 401 Side Effects,INFO,"Anonymous 401 does not trigger toast","api.ts:119 skip path bypasses line 126+ toast echo",PASS
+F17,Phase 3,Anonymous 401 Side Effects,INFO,"Anonymous 401 does not trigger navigation","api.ts:119 skip path bypasses line 184/187/221/223 window.location.href",PASS
+F18,Phase 4,Protected Contract Regression,INFO,"401 refresh/retry contract intact","api.ts:152-228 unchanged",PASS
+F19,Phase 4,Protected Contract Regression,INFO,"Refresh成功后重试原请求 intact","api.ts:212-213",PASS
+F20,Phase 4,Protected Contract Regression,INFO,"Refresh失败则logout+导航 intact","api.ts:214-228",PASS
+F21,Phase 4,Protected Contract Regression,INFO,"请求队列 intact","api.ts:88-102 unchanged",PASS
+F22,Phase 4,Protected Contract Regression,INFO,"非401错误toast intact","api.ts:126-150 unchanged",PASS
+F23,Phase 4,Regression Test,INFO,"T5: protected request 401 still refreshes","PublicPasswordRecoveryInterceptor.test.tsx:302-334",PASS
+F24,Phase 5,Out-of-Bounds Changes,INFO,"api.ts unchanged","git diff confirms",PASS
+F25,Phase 5,Out-of-Bounds Changes,INFO,"backend unchanged","git diff confirms",PASS
+F26,Phase 5,Out-of-Bounds Changes,INFO,"frozen harness unchanged","git diff confirms no j1h2b-forgot-reset/**",PASS
+F27,Phase 5,Out-of-Bounds Changes,INFO,"dependencies/lockfile unchanged","git diff confirms no package.json/pnpm-lock.yaml",PASS
+F28,Phase 6,Test Authenticity,INFO,"T1 uses real ResetPasswordPage + real api instance + recording adapter","Source review of test file",PASS
+F29,Phase 6,Test Authenticity,INFO,"T2 uses real ResetPasswordPage + real api instance + recording adapter","Source review of test file",PASS
+F30,Phase 6,Test Authenticity,INFO,"T3 uses real RetailerResetPasswordPage + real api instance + recording adapter","Source review of test file",PASS
+F31,Phase 6,Test Authenticity,INFO,"T4 calls authService directly (no mock)","Source review of test file lines 269-277",PASS
+F32,Phase 6,Test Authenticity,INFO,"T5 calls api.get directly (no mock)","Source review of test file line 326",PASS
+F33,Phase 6,Test Authenticity,INFO,"T6 renders real ResetPasswordPage + calls authService.resetPassword","Source review of test file lines 349-351",PASS
+F34,Phase 6,Test Authenticity,INFO,"No vi.mock('@/services/api') or vi.mock('@/services/authService')","Source review of test file imports",PASS
+F35,Phase 7,Mutation M1,INFO,"M1: remove skipAuthInterceptors from resetPassword hits api.ts:119","Source analysis: skip removed -> enters 401 path -> T1/T4 fail",PASS
+F36,Phase 7,Mutation M2,INFO,"M2: remove empty Authorization from all four calls hits api.ts:56","Source analysis: no Authorization header -> stale token injected -> T4 fail",PASS
+F37,Phase 7,Mutation M3,INFO,"M3: remove skip from retailerResetPassword hits api.ts:119","Source analysis: skip removed -> enters 401 path -> T3/T4 fail",PASS
+F38,Phase 7,Mutation M4,INFO,"M4: remove skip bypass in api.ts hits api.ts:119-121","Source analysis: bypass removed -> 401 path -> 3 failed",PASS
+F39,Phase 7,Mutation M5,INFO,"M5: weaken neutral copy in ResetPasswordPage hits fixed copy","Source analysis: ResetPasswordPage.tsx:64,72 fixed text -> T1/T3 fail",PASS
+F40,Phase 7,Restoration,INFO,"Restoration byte-consistent: api.ts and ResetPasswordPage.tsx identical to parent","git diff shows no changes to these files; mutation-snapshots.txt per ledger",PASS
+F41,Phase 7,Restoration,INFO,"All 6 tests GREEN after restoration","Ledger records 6/6 GREEN for each mutation",PASS
+F42,Phase 8,History,INFO,"B1-R3 candidate 8c7e847 unmodified","Parent commit unchanged",PASS
+F43,Phase 8,History,INFO,"V2 STOP 3fb185be unmodified","Historical ref unchanged",PASS
+F44,Phase 8,History,INFO,"V3 STOP 888fd207 unmodified","Historical ref unchanged",PASS
+F45,Phase 8,History,INFO,"Lubuntu STOP f7dd9aa3 unmodified","Historical ref unchanged per ledger",PASS

@@ -1,0 +1,51 @@
+finding_id,phase,category,severity,description,evidence,status
+BE1,Browser Evidence,Inventory,INFO,"Inventory CSV has exactly 30 lines (header + 29 rows)","csvLines.length === 30 in validate-static.mjs",PASS
+BE2,Browser Evidence,Inventory,INFO,"Exactly 15 columns with correct header","HEADER_COLUMNS match; row.length === 15 for all rows",PASS
+BE3,Browser Evidence,Inventory,INFO,"24 browser nodes (BROWSER + BROWSER+POSTCOND + BROWSER_WITH_OFFICIAL_API_PRECONDITION)","browserIds.length === 24",PASS
+BE4,Browser Evidence,Inventory,INFO,"5 non-browser nodes (F6, R6, M2, R13, RT0)","nonBrowserIds.length === 5; set matches EXPECTED_NON_BROWSER",PASS
+BE5,Browser Evidence,Inventory,INFO,"Browser node IDs are unique","csvBrowserSet.size === 24",PASS
+BE6,Browser Evidence,Spec Authenticity,INFO,"playwright --list yields exactly 24 tests","titles.length === 24",PASS
+BE7,Browser Evidence,Spec Authenticity,INFO,"Listed test titles are ordered-equal with CSV browser row order","titles[i] === browserIds[i] for all i",PASS
+BE8,Browser Evidence,Spec Authenticity,INFO,"No duplicate test titles","seen.has(title) check passes",PASS
+BE9,Browser Evidence,Spec Authenticity,INFO,"No test.only / test.skip / test.fixme / describe.only / describe.skip / describe.fixme","FORBIDDEN_MARKERS regex scan passes",PASS
+BE10,Browser Evidence,Spec Authenticity,INFO,"No skip( / fixme( / xit( / xdescribe(","FORBIDDEN_MARKERS regex scan passes",PASS
+BE11,Browser Evidence,Spec Authenticity,INFO,"No waitForTimeout anywhere in tests/ or src/","FORBIDDEN_MARKERS regex scan passes",PASS
+BE12,Browser Evidence,Spec Authenticity,INFO,"No networkidle anywhere in tests/ or src/","FORBIDDEN_MARKERS regex scan passes",PASS
+BE13,Browser Evidence,Execution Contract,INFO,"test.describe.configure({ mode: 'serial' }) declared","Regex match in spec source",PASS
+BE14,Browser Evidence,Execution Contract,INFO,"workers: 1 in playwright.config.ts","CONFIG_INVARIANTS regex scan",PASS
+BE15,Browser Evidence,Execution Contract,INFO,"retries: 0 in playwright.config.ts","CONFIG_INVARIANTS regex scan",PASS
+BE16,Browser Evidence,Execution Contract,INFO,"maxFailures: 1 in playwright.config.ts","CONFIG_INVARIANTS regex scan",PASS
+BE17,Browser Evidence,Execution Contract,INFO,"fullyParallel: false in playwright.config.ts","CONFIG_INVARIANTS regex scan",PASS
+BE18,Browser Evidence,Execution Contract,INFO,"trace/screenshot/video all off","CONFIG_INVARIANTS regex scan",PASS
+BE19,Browser Evidence,UI Authenticity,INFO,"All browser actions use real Playwright UI APIs (goto, fill, click, waitForResponse)","Source review of ui-journey.ts + spec",PASS
+BE20,Browser Evidence,UI Authenticity,INFO,"No page.evaluate(() => { ... fake state ... }) to bypass UI","Source review of spec",PASS
+BE21,Browser Evidence,UI Authenticity,INFO,"Viewport sizes set via setViewportFromCsv (real browser engine viewport)","CSV_VIEWPORTS constant + setViewportFromCsv function",PASS
+BE22,Browser Evidence,Neutrality Capture,INFO,"captureForgotFingerprint installs route interceptor on /api/v1/auth/forgot-password","page.route in neutrality.ts",PASS
+BE23,Browser Evidence,Neutrality Capture,INFO,"Raw body exists only in route handler local scope","const body = await response.text() then canonicalizeNeutralEnvelope; not stored",PASS
+BE24,Browser Evidence,Neutrality Capture,INFO,"canonicalizeNeutralEnvelope is real module, transpiled by check-neutrality.mjs","ts.transpileModule on src/neutrality-core.ts",PASS
+BE25,Browser Evidence,Neutrality Capture,INFO,"State retains only CanonicalFingerprint (status, message, canonicalSha256, canonicalLengthBytes)","Interface definition in neutrality-core.ts",PASS
+BE26,Browser Evidence,Neutrality Capture,INFO,"Error output contains only fixed category strings","NeutralEnvelopeError.message = `neutral envelope contract violation: ${category}`",PASS
+BE27,Browser Evidence,F3/F4/F5 Coverage,INFO,"F3 executes captureForgotFingerprint + pinnedMessageMatches","Spec lines 150-169",PASS
+BE28,Browser Evidence,F3/F4/F5 Coverage,INFO,"F4 executes captureForgotFingerprint + pinnedMessageMatches + sameFingerprint(f3,f4) + visibleText check","Spec lines 171-194",PASS
+BE29,Browser Evidence,F3/F4/F5 Coverage,INFO,"F5 executes captureForgotFingerprint + pinnedMessageMatches + sameFingerprint(f3,f5) + visibleText check + negativeWindowHasLink","Spec lines 196-236",PASS
+BE30,Browser Evidence,F3/F4/F5 Coverage,INFO,"F5 canonical equality against F3 is statically enforced","validate-static.mjs step 4 checks sameFingerprint(f3, f5)",PASS
+BE31,Browser Evidence,Executable Check G1,INFO,"Envelopes differing only in timestamp value (and key order) are canonically equal","check-neutrality.mjs G1: fpA, fpB, fpC pairwise equal",PASS
+BE32,Browser Evidence,Executable Check G2,INFO,"Differing message breaks canonical equality","check-neutrality.mjs G2: !sameCanonicalFingerprint(fpA, fpM)",PASS
+BE33,Browser Evidence,Executable Check G2b,INFO,"Pinned constant matches existing neutral copy, rejects drift","check-neutrality.mjs G2b: pinnedMessageMatches(fpConst) === true",PASS
+BE34,Browser Evidence,Executable Check G3,INFO,"Added top-level keys (accountExists/eligible/userId/tenant/request_id) all rejected with top_level_key_set","check-neutrality.mjs G3 loop",PASS
+BE35,Browser Evidence,Executable Check G4,INFO,"Missing/non-string/unparseable/empty timestamp all rejected with correct categories","check-neutrality.mjs G4 TIMESTAMP_FIXTURES loop",PASS
+BE36,Browser Evidence,Executable Check G5,INFO,"Non-200 status rejected with status_non_200","check-neutrality.mjs G5",PASS
+BE37,Browser Evidence,Executable Check G6,INFO,"Failure/error output never contains leak marker, timestamp values, or raw body","check-neutrality.mjs G6 leakSurface check",PASS
+BE38,Browser Evidence,R12 Leak Scan,INFO,"R12 scans 5 surfaces: URL, storage, console, network, secrets","Source review of spec R12 region",PASS
+BE39,Browser Evidence,R12 Leak Scan,INFO,"R12 waits for real application settle conditions (pathname + empty hash + editable #newPassword)","page.waitForFunction + expect(locator).toBeEditable",PASS
+BE40,Browser Evidence,R12 Leak Scan,INFO,"No networkidle used for R12 settle","FORBIDDEN_MARKERS scan",PASS
+BE41,Browser Evidence,M1 Multi-Copy,INFO,"M1 provisions shared identity via official API (idempotent)","ensureM1Provisioned in spec",PASS
+BE42,Browser Evidence,M1 Multi-Copy,INFO,"M1 browser journey: forgot → maildir → reset via real UI","journeyPage.goto + submitForgot + waitForLink + openResetLink + submitReset",PASS
+BE43,Browser Evidence,M1 Multi-Copy,INFO,"M1 dual-context postcondition: two independent browser contexts","proveOldPasswordRejectedNewAccepted called twice with different contexts",PASS
+BE44,Browser Evidence,M1 Multi-Copy,INFO,"M1 gates on EXACTLY {W1, W2} workspaces","expectWorkspaceSelectorWithBoth",PASS
+BE45,Browser Evidence,Serial Order,INFO,"24 tests execute in CSV browser row order (not just set equality)","validate-static.mjs ordered equality check",PASS
+BE46,Browser Evidence,Fail-Stop,INFO,"First failing node aborts entire run (no cascade, no rerun-to-green)","maxFailures: 1 + serial mode + workers=1",PASS
+BE47,Browser Evidence,Anti-Tamper,INFO,"check-neutrality.mjs transpiles real neutrality-core.ts — cannot be bypassed by hardcoding","ts.transpileModule + dynamic import",PASS
+BE48,Browser Evidence,Anti-Tamper,INFO,"validate-static.mjs step 4 enforces F3/F4/F5 capture + pinnedMessageMatches + sameFingerprint presence","Regex checks on spec source",PASS
+BE49,Browser Evidence,Anti-Tamper,INFO,"validate-static.mjs step 3 enforces ordered test title equality","Ordered array comparison",PASS
+BE50,Browser Evidence,Anti-Tamper,INFO,"No skip/fixme/only markers anywhere in harness","FORBIDDEN_MARKERS scan across tests/, src/, tools/, playwright.config.ts",PASS

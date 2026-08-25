@@ -1,0 +1,100 @@
+<testsuites id="" name="" tests="24" failures="1" skipped="10" errors="0" time="53.878506">
+<testsuite name="forgot-reset.spec.ts" timestamp="2026-08-25T02:08:29.808Z" hostname="" tests="24" failures="1" skipped="10" time="52.287" errors="0">
+<testcase name="j1h2b-forgot-reset journey › F1-D" classname="forgot-reset.spec.ts" time="1.95">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-T" classname="forgot-reset.spec.ts" time="1.138">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-M" classname="forgot-reset.spec.ts" time="1.09">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-D" classname="forgot-reset.spec.ts" time="1.129">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-T" classname="forgot-reset.spec.ts" time="1.086">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-M" classname="forgot-reset.spec.ts" time="1.086">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F3" classname="forgot-reset.spec.ts" time="6.688">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F4" classname="forgot-reset.spec.ts" time="1.401">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F5" classname="forgot-reset.spec.ts" time="16.312">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R1" classname="forgot-reset.spec.ts" time="1.01">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R2" classname="forgot-reset.spec.ts" time="1.13">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R3" classname="forgot-reset.spec.ts" time="1.077">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R4" classname="forgot-reset.spec.ts" time="1.082">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R5" classname="forgot-reset.spec.ts" time="16.108">
+<failure message="forgot-reset.spec.ts:335:3 R5" type="FAILURE">
+<![CDATA[  forgot-reset.spec.ts:335:3 › j1h2b-forgot-reset journey › R5 ─────────────────────────────────────
+
+    Error: Timed out 15000ms waiting for expect(locator).toBeVisible()
+
+    Locator: getByText('This reset link is invalid or expired. Please request a new link.', { exact: true })
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+      - expect.toBeVisible with timeout 15000ms
+      - waiting for getByText('This reset link is invalid or expired. Please request a new link.', { exact: true })
+        - waiting for" http://127.0.0.1:5173/login" navigation to finish...
+        - navigated to "http://127.0.0.1:5173/login"
+
+
+       at ../src/ui-journey.ts:121
+
+      119 |
+      120 | export async function expectResetServerErrorVisible(page: Page): Promise<void> {
+    > 121 |   await expect(page.getByText(UI_COPY.resetServerError, { exact: true })).toBeVisible();
+          |                                                                           ^
+      122 | }
+      123 |
+      124 | export async function expectResetSuccessVisible(page: Page): Promise<void> {
+        at expectResetServerErrorVisible (/home/ivy/MPANGO/dc12r1-b1r3v2-browser-wt/j1h2b-forgot-reset/src/ui-journey.ts:121:75)
+        at /home/ivy/MPANGO/dc12r1-b1r3v2-browser-wt/j1h2b-forgot-reset/tests/forgot-reset.spec.ts:346:11
+]]>
+</failure>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY-M" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8-M" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R9" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10-M" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R11" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R12" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › M1" classname="forgot-reset.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+</testsuites>

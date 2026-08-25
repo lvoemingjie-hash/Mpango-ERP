@@ -1,0 +1,12 @@
+email_valid[A1]=true
+email_valid[UNKNOWN]=true
+email_valid[X]=true
+email_valid[W1]=true
+email_valid[W2]=true
+email_valid[M]=true
+special_use_probe_rejected=true
+special_use_probe_rejected=true
+special_use_probe_rejected=true
+special_use_probe_rejected=true
+special_use_probe_rejected=true
+{"validated_email_count": 6, "all_valid": true, "special_use_domain_count": 0, "special_use_probes_rejected": 5, "owner_signup_payload_accepted": true, "domain": "mail.j1h2b-v4-task.dev"}

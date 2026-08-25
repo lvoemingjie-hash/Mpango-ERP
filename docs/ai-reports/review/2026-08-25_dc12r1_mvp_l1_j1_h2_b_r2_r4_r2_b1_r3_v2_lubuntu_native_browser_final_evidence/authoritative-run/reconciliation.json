@@ -1,0 +1,51 @@
+{
+  "task": "DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1-R3-V2",
+  "executor": "OpenCode Lubuntu native",
+  "authoritative_run_utc_started": "2026-08-25T02:08:27Z(+08 display 10:08:27)",
+  "single_invocation": true,
+  "grep_or_shard_or_retry_used": false,
+  "browser_accounting": {
+    "expected_nodes": 24,
+    "passed": 13,
+    "failed": 1,
+    "not_run_fail_stop": 10,
+    "skipped": 0,
+    "flaky": 0,
+    "first_red": "R5",
+    "fail_stop_enforced_by": "maxFailures=1"
+  },
+  "non_browser_accounting": {
+    "F6": {
+      "surface": "launcher-mirrored task maildir (in-memory sink dump)",
+      "mails_dumped_this_run": 3,
+      "note": "A1 owner provisioning verify+setup mails and F3 forgot reset link; read by harness in-memory only"
+    },
+    "R6": {
+      "status": "BACKEND_PRE_GATE_ONLY",
+      "evidence_ref": "BACKEND_ZERO_RED 5570093ec7f9e3dc2b4083ac8c091aae75a62d1d backend suite; not re-executed this round"
+    },
+    "M2": {
+      "status": "BACKEND_PRE_GATE_ONLY",
+      "evidence_ref": "BACKEND_ZERO_RED 5570093ec7f9e3dc2b4083ac8c091aae75a62d1d backend suite; not re-executed this round"
+    },
+    "R13": {
+      "status": "EXECUTED_THIS_ROUND",
+      "result": "PASSED \u2014 zero leak findings over artifacts (3 files)"
+    },
+    "RT0": {
+      "status": "BLOCKED_BY_H2_C",
+      "pass_claimed": false,
+      "pb1_recheck": "retailerForgotPassword defined at services/authService.ts:66 with ZERO call sites; no /retailer/forgot-password route"
+    }
+  },
+  "total_accounting": {
+    "nodes": 29,
+    "browser": 24,
+    "non_browser": 5,
+    "gap": 0
+  },
+  "canonical_neutrality": {
+    "contract": "B1-R3 canonicalization (timestamp-value-only sentinel exemption)",
+    "observed": "F3/F4/F5 all executed and PASSED under the B1-R3 contract before the first red"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "failed_nodes": [
+    {
+      "node": "R5",
+      "spec_location": "tests/forgot-reset.spec.ts:346 via src/ui-journey.ts:121 expectResetServerErrorVisible",
+      "error": "Timed out 15000ms waiting for expect(locator).toBeVisible() \u2014 getByText('This reset link is invalid or expired. Please request a new link.', { exact: true }) not found",
+      "call_log_evidence": "waiting for ... navigation to finish... navigated to http://127.0.0.1:5173/login",
+      "preconditions_confirmed": [
+        "forged-token submit DID fire the real API: page.waitForResponse matched /api/v1/auth/reset-password",
+        "assertSan(response.status() === 401) PASSED before the visibility wait \u2014 backend answered exactly 401 as the protocol expects"
+      ],
+      "root_cause_mechanism": {
+        "file": "frontend/src/services/api.ts response interceptor",
+        "chain": [
+          "/auth/reset-password is NOT in the skipAuthInterceptors opt-out set (only refresh/login/client-login are excluded from the 401 machinery)",
+          "the anonymous /reset-password page receives a genuine 401 for the forged token",
+          "global interceptor treats it as session expiry: no refreshToken -> logout() -> window.location.href='/login'",
+          "ResetPasswordPage unmounts before rendering the fixed neutral server-error copy; page lands on /login so the mandated panel never exists in the DOM"
+        ]
+      },
+      "classification": "PRODUCT_401_SESSION_INTERCEPTOR_LOGOUT_REDIRECT_ON_ANONYMOUS_RESET_PAGE__NEUTRAL_ERROR_SURFACE_NEVER_RENDERS",
+      "scope": "product-side behavior conflicting with frozen protocol expected_ui for R5 (and by the same mechanism R11 would be affected); NOT a harness defect, NOT an environment defect",
+      "novelty_note": "R5 had never reached execution in prior browser rounds (V2 stopped pre-run on launcher identity domain; V3 stopped at F4 raw-body equality), so this conflict was unobservable before B1-R3 made F-series passable"
+    }
+  ],
+  "rerun_performed": false,
+  "verdict_effect": "STOP_AND_REPORT_CTO per fail-stop mandate"
+}

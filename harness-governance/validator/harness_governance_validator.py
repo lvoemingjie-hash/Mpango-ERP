@@ -112,6 +112,12 @@ _SCANNER_HEX_RE = re.compile(
     r'^\s*"(base_sha|evidence_sha|evidence_commit)"\s*:\s*'
     r'"[0-9a-f]{40}([0-9a-f]{24})?"\s*,?\s*$'
 )
+# R3-R1: the same contract as ASCII BYTES so the scanner never decodes file
+# content (an errors=replace decode could silently mangle and skip matches).
+_SCANNER_HEX_RE_BYTES = re.compile(
+    rb'^\s*"(base_sha|evidence_sha|evidence_commit)"\s*:\s*'
+    rb'"[0-9a-f]{40}([0-9a-f]{24})?"\s*,?\s*$'
+)
 # Phase 2: the minimum product surface that governed_prefixes must always
 # include; removing any of these is RED.
 MINIMUM_GOVERNED_PREFIXES = ("backend/", "frontend/src/", "scenarios/")
@@ -1033,36 +1039,92 @@ def _check_anchor_targets(ctx: GovernanceContext, root: str, nodes, interactions
             )
 
 
-def _check_scanner_scope(ctx: GovernanceContext, root: str) -> None:
-    """R3: scan the repo for base_sha/evidence_sha/evidence_commit hex lines
-    in files outside the allowed governance JSON set. The detect-secrets
-    anchored exclusion only applies to _SCANNER_ALLOWED_FILES; if the same
-    shape appears in backend, frontend, scripts, or any other non-allowed
-    path, it is a structural violation."""
+def _scanner_candidate_files(root: str) -> list[str]:
+    """R3-R1: every version-controlled or to-be-committed plain file under
+    root — NO extension whitelist. Prefers
+    ``git ls-files --cached --others --exclude-standard`` (gitignore is the
+    exclusion mechanism for node_modules/.git/.venv and friends); when root
+    is not itself a git work tree (unit-test workspaces), falls back to
+    os.walk with the same FIXED directory exclusions. The exclusion set is
+    a frozen constant — it can never be turned off through configuration."""
+    git_root = None
+    try:
+        probe = subprocess.run(
+            ["git", "-C", root, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode == 0:
+            candidate = os.path.normpath(probe.stdout.strip())
+            if candidate == os.path.normpath(root):
+                git_root = candidate
+    except OSError:
+        git_root = None
 
+    if git_root is not None:
+        try:
+            listing = subprocess.run(
+                [
+                    "git", "-C", root, "ls-files",
+                    "--cached", "--others", "--exclude-standard", "-z",
+                ],
+                capture_output=True,
+            )
+            if listing.returncode == 0:
+                names = listing.stdout.split(b"\0")
+                out = []
+                for raw in names:
+                    if not raw:
+                        continue
+                    rel = raw.decode("utf-8", "surrogateescape")
+                    # gitignore already excluded ignored files; the fixed
+                    # non-indexable dirs are guarded defensively as well.
+                    parts = rel.split("/")
+                    if any(part in FS_COMPARE_IGNORE for part in parts[:-1]):
+                        continue
+                    out.append(rel)
+                return out
+        except OSError:
+            pass
+
+    out = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in FS_COMPARE_IGNORE]
         for name in filenames:
-            if not name.endswith(".json"):
-                continue
             full = os.path.join(dirpath, name)
-            rel = os.path.relpath(full, root).replace(os.sep, "/")
-            if rel in _SCANNER_ALLOWED_FILES:
-                continue
-            try:
-                with open(full, "r", encoding="utf-8", errors="replace") as fh:
-                    for lineno, line in enumerate(fh, 1):
-                        if _SCANNER_HEX_RE.search(line):
-                            ctx.emit(
-                                "SCANNER-SCOPE-VIOLATION",
-                                f"{rel}:{lineno}",
-                                f"governance hex key (base_sha/evidence_sha/evidence_commit) "
-                                f"found outside allowed governance JSON files; "
-                                f"the detect-secrets anchored exclusion does not cover {rel!r}",
-                            )
-                            return  # one violation is enough to prove the point
-            except (OSError, UnicodeDecodeError):
-                continue
+            out.append(os.path.relpath(full, root).replace(os.sep, "/"))
+    return out
+
+
+def _check_scanner_scope(ctx: GovernanceContext, root: str) -> None:
+    """R3-R1: scan EVERY version-controlled / to-be-committed plain file
+    (any extension — .py/.ts/.tsx/.md/.yaml/.yml/.toml/.env/json/... and
+    everything else) for base_sha/evidence_sha/evidence_commit hex lines
+    outside the allowed governance JSON set. Content is matched as raw
+    ASCII bytes per line — no text decode, so no errors=replace path can
+    silently skip a match. The detect-secrets anchored exclusion only
+    applies to _SCANNER_ALLOWED_FILES; the same shape anywhere else is a
+    structural violation."""
+
+    for rel in _scanner_candidate_files(root):
+        if rel in _SCANNER_ALLOWED_FILES:
+            continue
+        full = os.path.join(root, *rel.split("/"))
+        try:
+            with open(full, "rb") as fh:
+                content = fh.read()
+        except OSError:
+            continue
+        for lineno, line in enumerate(content.splitlines(), 1):
+            if _SCANNER_HEX_RE_BYTES.match(line):
+                ctx.emit(
+                    "SCANNER-SCOPE-VIOLATION",
+                    f"{rel}:{lineno}",
+                    f"governance hex key (base_sha/evidence_sha/evidence_commit) "
+                    f"found outside allowed governance JSON files; "
+                    f"the detect-secrets anchored exclusion does not cover {rel!r}",
+                )
+                return  # one violation is enough to prove the point
 
 
 def _check_ids_unique(ctx, nodes, debts, interactions, waivers, deltas) -> None:

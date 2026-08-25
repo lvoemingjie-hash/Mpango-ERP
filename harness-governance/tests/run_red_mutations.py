@@ -554,6 +554,92 @@ def mut_scanner_hex_in_backend():
     return head, base
 
 
+def mut_scanner_py_ts_probes():
+    """R3-R1 truth workspace: exact evidence_sha lines in a Python and a
+    TypeScript probe. Against the candidate validator both must be RED
+    (SCANNER-SCOPE-VIOLATION); against a validator weakened back to
+    *.json-only scope they silently pass — which the gate must detect."""
+    head, base = make_workspace()
+    for relpath in ("backend/probe.py", "frontend/src/probe.ts"):
+        full = os.path.join(head, *relpath.split("/"))
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8") as fh:
+            fh.write("# scanner scope probe\n")
+            fh.write('  "evidence_sha": "' + "aabbccdd" * 5 + '",\n')
+    return head, base
+
+
+# R3-R1 validator mutations (N20/N21): these patch the CANDIDATE validator
+# file itself, prove that the py/ts probes ESCAPE under the weakened scanner
+# (the gate reports that as a failure — a regression that slipped through
+# undetected), then restore the file byte-identically (sha256-verified) and
+# re-prove the probes are caught again on the restored validator.
+
+_N20_PATCH = (
+    '        if rel in _SCANNER_ALLOWED_FILES:\n            continue\n',
+    '        if not rel.endswith(".json"):\n            continue\n'
+    '        if rel in _SCANNER_ALLOWED_FILES:\n            continue\n',
+)
+
+_N21_PATCH = (
+    '    for rel in _scanner_candidate_files(root):\n',
+    '    for rel in (r for r in _scanner_candidate_files(root) if r.endswith(".json")):\n',
+)
+
+
+def _run_validator_mutation(name, patch, failures):
+    original = VALIDATOR.read_bytes()
+    old, new = patch
+    text = original.decode("utf-8")
+    if text.count(old) != 1:
+        failures.append(f"{name}: patch anchor not unique in validator")
+        print(f"  {name:<40} PATCH ANCHOR ERROR")
+        return
+    try:
+        VALIDATOR.write_bytes(text.replace(old, new).encode("utf-8"))
+        head, base = mut_scanner_py_ts_probes()
+        try:
+            code, report = run_validator(head, base)
+            codes = {v["code"] for v in (report or {}).get("violations", [])}
+            if "SCANNER-SCOPE-VIOLATION" in codes:
+                failures.append(
+                    f"{name}: weakened validator still caught the py/ts probes — "
+                    f"mutation is not a real weakening"
+                )
+                print(f"  {name:<40} ESCAPED (still caught)")
+            else:
+                print(f"  {name:<40} RED as intended (probes escaped the weakened scanner)")
+        finally:
+            shutil.rmtree(head, ignore_errors=True)
+            shutil.rmtree(base, ignore_errors=True)
+    finally:
+        VALIDATOR.write_bytes(original)
+    restored = VALIDATOR.read_bytes()
+    if hashlib.sha256(restored).digest() != hashlib.sha256(original).digest():
+        failures.append(f"{name}: validator blob NOT byte-identical after restore")
+        print(f"  {name:<40} BLOB DRIFT after restore")
+        return
+    # GREEN re-proof on the restored candidate validator
+    head, base = mut_scanner_py_ts_probes()
+    try:
+        code, report = run_validator(head, base)
+        codes = {v["code"] for v in (report or {}).get("violations", [])}
+        if "SCANNER-SCOPE-VIOLATION" not in codes or code != 1:
+            failures.append(f"{name}: restored validator failed to catch the py/ts probes")
+            print(f"  {name:<40} RESTORE GREEN-PROOF FAILED")
+        else:
+            print(f"  {name:<40} restored: blob identical, probes RED again")
+    finally:
+        shutil.rmtree(head, ignore_errors=True)
+        shutil.rmtree(base, ignore_errors=True)
+
+
+VALIDATOR_MUTATIONS = [
+    ("N20-restore-json-only-filter", _N20_PATCH),
+    ("N21-drop-non-json-path-scan", _N21_PATCH),
+]
+
+
 # GREEN controls -------------------------------------------------------------
 
 
@@ -689,10 +775,11 @@ def main() -> int:
     failures = []
     before = tree_digest()
 
-    total_red = len(RED_MUTATIONS) + len(MODE_PROOFS)
+    total_red = len(RED_MUTATIONS) + len(MODE_PROOFS) + len(VALIDATOR_MUTATIONS)
     print(
         f"HE2-R1 RED mutation gate: {total_red} RED mutations "
-        f"({len(RED_MUTATIONS)} tamper + {len(MODE_PROOFS)} mode proof), "
+        f"({len(RED_MUTATIONS)} tamper + {len(MODE_PROOFS)} mode proof + "
+        f"{len(VALIDATOR_MUTATIONS)} validator-scope), "
         f"{len(GREEN_CONTROLS)} GREEN controls"
     )
     print("-" * 78)
@@ -716,6 +803,9 @@ def main() -> int:
         finally:
             shutil.rmtree(head, ignore_errors=True)
             shutil.rmtree(base, ignore_errors=True)
+
+    for name, patch in VALIDATOR_MUTATIONS:
+        _run_validator_mutation(name, patch, failures)
 
     for name, factory, *mode_args in MODE_PROOFS:
         result = factory()

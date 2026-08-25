@@ -49,5 +49,19 @@
     "reason": "DC-12R1-MVP-L1-HE2-R3 cumulative review governance delta: authorizes all governance-core path changes from HE2_PARENT (94b0c300) through R1, R2, and R3",
     "approval_ref": "DC-12R1-MVP-L1-HE2-R3",
     "date": "2026-08-25"
+  },
+  {
+    "delta_id": "PD-2026-08-25-HE2-R3-R1-ALL-FILE-SCOPE",
+    "kind": "governance",
+    "affected_ids": [],
+    "affected_paths": [
+      "harness-governance/validator/",
+      "harness-governance/tests/"
+    ],
+    "base_sha": "d7ea8027bf7d4ba5ec0a8d2f92965e5061680f34",
+    "owner": "cto",
+    "reason": "DC-12R1-MVP-L1-HE2-R3-R1 scanner all-file scope + evidence truth closure: extension whitelist removed, git ls-files --cached --others --exclude-standard with os.walk fallback for non-git trees, ASCII bytes per-line matching (no errors=replace decode), fixed-dir/gitignore-only exclusions, N20/N21 validator-scope mutations with byte-identical restore",
+    "approval_ref": "DC-12R1-MVP-L1-HE2-R3-R1",
+    "date": "2026-08-25"
   }
 ]

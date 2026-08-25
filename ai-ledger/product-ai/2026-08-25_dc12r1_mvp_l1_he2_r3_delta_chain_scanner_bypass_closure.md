@@ -1,3 +1,12 @@
+> **SUPERSEDED_METADATA_ONLY — DC-12R1-MVP-L1-HE2-R3-R1（2026-08-25）**
+> 本文件末尾的 "FINAL_REPORT_TIP = 8eb61d21" 与任何 parent/tip 声明
+> 属**报告元数据**，已被 R3-R1 证据真相修正取代（真实历史链：
+> 077774e7 → 8eb61d21 → d7ea8027，且后续以 R3-R1 分支为准）。
+> 本文件的门禁结论、delta 链与测试证据本身仍然有效；仅 tip/parent
+> 元数据不再作为权威引用。权威链以
+> `2026-08-25_dc12r1_mvp_l1_he2_r3_r1_scanner_all_file_scope_evidence_truth.md`
+> 为准。
+
 # DC-12R1-MVP-L1-HE2-R3 Structural Delta Chain and Scanner Prefix-Bypass Closure
 
 ## Verdict

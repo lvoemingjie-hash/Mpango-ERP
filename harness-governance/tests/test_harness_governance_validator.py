@@ -830,7 +830,21 @@ class DeltaChainTests(WorkspaceTestCase):
 
 
 class ScannerScopeTests(WorkspaceTestCase):
-    """R3: governance hex keys in non-allowed paths must be RED."""
+    """R3/R3-R1: governance hex keys in non-allowed paths must be RED — for
+    EVERY file type, not only *.json (os.walk fallback path here; the git
+    ls-files path is covered by the git-workspace test below)."""
+
+    HEX40 = "aabbccdd" * 5
+    HEX64 = "aabbccdd" * 8
+
+    def _write_probe(self, relpath, line=None):
+        line = line if line is not None else f'  "evidence_sha": "{self.HEX40}",'
+        full = os.path.join(self.tmp, *relpath.split("/"))
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("# probe\n")
+            fh.write(line + "\n")
+        return relpath
 
     def test_backend_json_with_hex_key_is_red(self):
         self.workspace()
@@ -841,12 +855,97 @@ class ScannerScopeTests(WorkspaceTestCase):
         report = self.validate()
         self.assertIn("SCANNER-SCOPE-VIOLATION", self.codes(report))
 
+    def test_backend_python_with_exact_evidence_sha_line_is_red(self):
+        self.workspace()
+        self._write_probe("backend/probe.py")
+        report = self.validate()
+        self.assertIn("SCANNER-SCOPE-VIOLATION", self.codes(report))
+
+    def test_frontend_typescript_probe_is_red(self):
+        self.workspace()
+        self._write_probe("frontend/src/probe.ts")
+        report = self.validate()
+        self.assertIn("SCANNER-SCOPE-VIOLATION", self.codes(report))
+
+    def test_docs_markdown_probe_is_red(self):
+        self.workspace()
+        self._write_probe("docs/probe.md")
+        report = self.validate()
+        self.assertIn("SCANNER-SCOPE-VIOLATION", self.codes(report))
+
+    def test_workflow_yaml_probe_is_red(self):
+        self.workspace()
+        self._write_probe("workflow/probe.yml")
+        report = self.validate()
+        self.assertIn("SCANNER-SCOPE-VIOLATION", self.codes(report))
+
+    def test_toml_shaped_line_is_red(self):
+        """No extension whitelist: a matching line in a .toml file is RED
+        exactly like any other file type."""
+        self.workspace()
+        self._write_probe("config/probe.toml")
+        report = self.validate()
+        self.assertIn("SCANNER-SCOPE-VIOLATION", self.codes(report))
+
+    def test_arbitrary_key_stays_green(self):
+        self.workspace()
+        self._write_probe("backend/probe_any.py", f'  "commit_hash": "{self.HEX40}",')
+        scanner_violations = [
+            v for v in self.validate()["violations"] if v["code"] == "SCANNER-SCOPE-VIOLATION"
+        ]
+        self.assertEqual(scanner_violations, [])
+
+    def test_prefix_and_suffix_attached_values_stay_green(self):
+        self.workspace()
+        self._write_probe("backend/probe_affix.py", f'  "evidence_sha": "secret-{self.HEX40}",')
+        self._write_probe("backend/probe_suffix.py", f'  "evidence_sha": "{self.HEX40}-secret",')
+        scanner_violations = [
+            v for v in self.validate()["violations"] if v["code"] == "SCANNER-SCOPE-VIOLATION"
+        ]
+        self.assertEqual(scanner_violations, [])
+
+    def test_wrong_length_hex_stays_green(self):
+        self.workspace()
+        self._write_probe("backend/probe_short.py", '  "evidence_sha": "aabbccdd",')
+        self._write_probe("backend/probe_39.py", '  "evidence_sha": "' + "a" * 39 + '",')
+        self._write_probe("backend/probe_65.py", '  "evidence_sha": "' + "a" * 65 + '",')
+        scanner_violations = [
+            v for v in self.validate()["violations"] if v["code"] == "SCANNER-SCOPE-VIOLATION"
+        ]
+        self.assertEqual(scanner_violations, [])
+
+    def test_64_hex_variant_is_red(self):
+        self.workspace()
+        self._write_probe("backend/probe_64.py", f'  "evidence_sha": "{self.HEX64}",')
+        report = self.validate()
+        self.assertIn("SCANNER-SCOPE-VIOLATION", self.codes(report))
+
+    def test_git_tracked_python_probe_is_red_via_ls_files_path(self):
+        """The git ls-files candidate path: a tracked probe in a real git
+        workspace must be found (no extension filter on the listing)."""
+        self.workspace()
+        self._write_probe("backend/probe_git.py")
+
+        def git(*args):
+            subprocess.run(["git", "-C", self.tmp, *args], check=True, capture_output=True)
+
+        git("init", "-b", "main")
+        git("config", "user.email", "scanner-test@example.invalid")
+        git("config", "user.name", "scanner scope test")
+        git("add", "-A")
+        git("commit", "-m", "probe")
+        report = self.validate()
+        self.assertIn("SCANNER-SCOPE-VIOLATION", self.codes(report))
+
     def test_allowed_governance_file_with_hex_key_is_green(self):
-        """The same hex line in protocol-deltas.json is legitimate."""
+        """The same hex line in protocol-deltas.json is legitimate — and the
+        five allowed governance documents still pass through the ordinary
+        schema + delta/evidence verification in the same report."""
         self.workspace()
         report = self.validate()
         scanner_violations = [v for v in report["violations"] if v["code"] == "SCANNER-SCOPE-VIOLATION"]
         self.assertEqual(scanner_violations, [])
+        self.assertTrue(report["green"], report["violations"])
 
 
 class ConfigProtectionTests(WorkspaceTestCase):

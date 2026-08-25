@@ -1,11 +1,14 @@
-# Harness Governance (HE2) — Machine-Enforced Inventory Tooling
+# Harness Governance (HE2-R1) — Machine-Enforced, Bypass-Closed Inventory Tooling
 
-This directory implements **DC-12R1-MVP-L1-HE2** on top of the HE1 standard
+This directory implements **DC-12R1-MVP-L1-HE2** and its bypass-closure
+revision **DC-12R1-MVP-L1-HE2-R1** on top of the HE1 standard
 (`docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md`): the inventory,
-coverage-debt, and critical-interaction documents become machine-validated
-artifacts, and CI blocks changes that silently diverge from them.
+coverage-debt, and critical-interaction documents are machine-validated
+artifacts, and CI blocks changes that silently diverge from them — including
+changes that try to satisfy the gate by touching files without changing the
+governed semantics.
 
-**Scope guard:** HE2 delivers governance tooling only. The seed inventory here
+**Scope guard:** HE2/R1 deliver governance tooling only. The seed inventory
 proves the machinery against the J1/H2 incidents and the seven required
 cross-cutting interactions; it deliberately claims no coverage (no node is
 PASS, no evidence SHA is set). Risk-first business backfill is separately
@@ -15,82 +18,103 @@ authorized under HE3.
 
 ```
 harness-governance/
-  governed-paths.json        data-driven config: governed prefixes, sync paths,
-                            required interaction categories
-  schemas/                   machine-parseable JSON Schemas (draft-07)
-    inventory.schema.json    node contract: HE1 §9 fields, five oracles, status
-    coverage-debt.schema.json debt contract: HE1 §13 fields
-    critical-interactions.schema.json registry contract: HE1 §15
-    waivers.schema.json      temporary waiver contract
-    protocol-deltas.schema.json  reviewed removal/rename/reorder/reclassify
+  governed-paths.json        data-driven config: governed prefixes, required
+                            interaction categories (hardcoded floor applies on top)
+  schemas/                   machine-parseable JSON Schemas (draft-07 subset)
+    governed-paths.schema.json   config contract (non-empty, unique prefixes)
+    inventory.schema.json    node contract: HE1 §9 fields, five oracles, status,
+                            evidence binding fields (evidence_paths/evidence_commit)
+    coverage-debt.schema.json debt contract: HE1 §13 fields + affected_paths
+    critical-interactions.schema.json registry contract: HE1 §15 + affected_paths
+    waivers.schema.json      fail-closed waiver contract (scoped, dated, approved)
+    protocol-deltas.schema.json  single-use, base-bound, kind-precise deltas
   inventory/                 the governed state (what CI diffs against)
     inventory.json           seed: 13 nodes, honest statuses only
     coverage-debt.json       seed: 3 owned debts (P0 HE3 backfill, real-device)
     critical-interactions.json  the 7 required mechanisms with real anchors
     waivers.json             active waivers (empty; expired ones are RED)
-    protocol-deltas.json     inventory identity changes (empty)
+    protocol-deltas.json     inventory identity changes + governance deltas
   validator/
-    harness_governance_validator.py  stdlib-only validator + summaries + CLI
+    harness_governance_validator.py  stdlib-only validator + gates + CLI
   tests/
-    test_harness_governance_validator.py  unit tests (unittest)
-    run_red_mutations.py     14 deterministic RED mutations + 2 GREEN controls
+    test_harness_governance_validator.py  66 unit tests (unittest)
+    run_red_mutations.py     30 deterministic RED mutations + 5 GREEN controls
+                             + candidate-tree integrity check
 ```
 
 ## Usage
 
 ```bash
-# local, no baseline: structure + semantics + summaries only
+# local, no baseline: structure + semantics + gates only
 python harness-governance/validator/harness_governance_validator.py --root .
 
-# the CI check: drift + inventory-sync versus the integration branch
+# the CI PR check: semantic sync + drift anti-replay vs the integration branch
 python harness-governance/validator/harness_governance_validator.py \
-  --root . --baseline-ref origin/product-dev-recovered
+  --root . --baseline-ref origin/product-dev-recovered --mode structural
+
+# the release/milestone check: additionally requires no open P0/P1
+# release-blocking debt (exit code 3 while blocked)
+python harness-governance/validator/harness_governance_validator.py \
+  --root . --mode release
 
 # deterministic test batteries
 python -m unittest discover -s harness-governance/tests -p "test_*.py" -v
 python harness-governance/tests/run_red_mutations.py
 ```
 
-Exit codes: `0` GREEN, `1` RED (merge blocked), `2` environment error.
-Useful flags: `--today YYYY-MM-DD` (deterministic waiver evaluation),
-`--report-json`, `--markdown-summary`, `--baseline-dir` (filesystem baseline,
-used by the tests). Python 3.11+, standard library only — no new third-party
+Exit codes: `0` GREEN, `1` structural violations (merge blocked), `3` release
+blocked (release mode only), `2` environment error. Useful flags:
+`--today YYYY-MM-DD` (deterministic waiver evaluation), `--base-sha`
+(delta base binding for `--baseline-dir` runs), `--report-json`,
+`--markdown-summary`. Python 3.11+, standard library only — no third-party
 dependencies anywhere in this directory.
+
+## Gates (R1): structural vs release
+
+Every run reports two gates:
+
+- **STRUCTURAL_GATE** = PASS/FAIL — document and semantic validity. This is
+  the mandatory PR gate (CI check name `HE2-R1 structural gate`, fixed for
+  branch protection). Ordinary PRs are not blocked by already-registered
+  debt.
+- **RELEASE_GATE** = PASS/BLOCKED — BLOCKED while any open P0/P1 debt with
+  `release_blocked: true` exists, even when structural passes. Structural
+  GREEN is never a release statement. The `HE2-R1 release gate` CI job
+  (workflow_dispatch) exits 3 while blocked.
 
 ## What the validator enforces
 
 | Code | Rule |
 |---|---|
-| `SCHEMA-*` | every document must satisfy its JSON Schema (types, required fields, enums, patterns, `additionalProperties: false`) |
+| `SCHEMA-*` | every document must satisfy its JSON Schema; the subset checker is fail-closed: unknown schema keywords (`SCHEMA-UNKNOWN-KEYWORD`) and unresolvable `$ref`s (`SCHEMA-BAD-REF`) are RED, and `uniqueItems` is enforced |
+| `CONFIG-PREFIXES-EMPTY` / `CONFIG-PREFIX-DUP` / `CONFIG-MINIMUM-PREFIX` | governed_prefixes cannot be emptied, duplicated, or lose the minimum product paths (`backend/`, `frontend/src/`, `scenarios/`) |
+| `SYNC-PROTECTED-PATH` | the governance core (workflow, governed-paths.json, validator/, schemas/, tests/) is hardcoded-governed and never waivable; changes need a `governance` protocol delta |
+| `SYNC-SEMANTIC-MISSING` | every changed governed path needs a *semantically changed* record covering it: a node whose anchors include the path, an interaction source/affected path, a debt `affected_paths` entry, or a new/modified eligible protocol delta. Notes-only edits, README touches, and unrelated JSON churn do not satisfy the gate; uncovered paths are named in the violation |
 | `INV-DUP-ID` / `DEBT-DUP-ID` / `REG-DUP-ID` / `WVR-DUP-ID` / `DELTA-DUP-ID` | no duplicate IDs in any registry |
-| `INV-ORACLE-EMPTY` | a blank oracle means NOT_COVERED, never PASS; blank or whitespace oracles are RED |
-| `INV-ORACLE-INVALID` | non-applicable oracles must use the exact sentinel `NOT_APPLICABLE` |
+| `INV-ORACLE-EMPTY` / `INV-ORACLE-INVALID` | blank oracles mean NOT_COVERED, never PASS; non-applicable oracles must use the exact sentinel `NOT_APPLICABLE` |
 | `INV-STATUS-UNKNOWN` (via `SCHEMA-ENUM`) | status must be one of PASS / FAIL / BLOCKED / NOT_RUN / NOT_APPLICABLE |
 | `INV-MUTATION-MISSING` | P0/P1 nodes require a mutation or counterexample ID (HE1 §11) |
-| `INV-BLOCKED-OWNER` | BLOCKED requires `blocked_owner` and `blocked_closure_condition` (HE1 §9.18) |
-| `INV-BLOCKED-DEBT` / `INV-FAIL-DEBT` | BLOCKED and FAIL nodes must be tracked in an open debt entry |
-| `INV-PASS-EVIDENCE` | PASS requires a 40- or 64-hex evidence SHA — no fabricated greens |
+| `INV-BLOCKED-OWNER` / `INV-BLOCKED-DEBT` / `INV-FAIL-DEBT` | BLOCKED needs an owner, a closure condition, and an open debt entry; FAIL needs debt |
+| `INV-PASS-EVIDENCE` | PASS requires a 40/64-hex evidence SHA shape |
+| `EVIDENCE-SHA-INVALID` | all-zero evidence SHAs are RED |
+| `EVIDENCE-COMMIT-MISSING` / `EVIDENCE-COMMIT-UNREACHABLE` | 40-hex evidence must be an existing commit reachable from a fetched branch or tag; 64-hex digests must bind via `evidence_commit` |
+| `EVIDENCE-PATH-MISSING` / `EVIDENCE-BLOB-MISMATCH` | `evidence_paths` must exist at the evidence commit; a 64-hex digest must equal the SHA-256 of the blob bytes at `evidence_commit:evidence_paths[0]` |
+| `EVIDENCE-UNVERIFIABLE` | PASS claims outside a git repository fail closed |
 | `DEBT-INCOMPLETE` | BLOCKED/NOT_COVERED debts need owner, reason, closure condition, target milestone (HE1 §13) |
 | `DEBT-NODE-REF-UNKNOWN` / `REG-REF-UNKNOWN` | cross-references must resolve |
 | `REG-CATEGORY-MISSING` | the seven required interaction categories must stay registered |
-| `WVR-EXPIRED` / `WVR-INVALID-DATE` | an expired or malformed waiver is RED, always — renew or remove it |
-| `DRIFT-SILENT-DELETE` | a node removed versus the baseline without a `removal` protocol delta |
-| `DRIFT-REORDER` | node order changed without `reorder` deltas (order is canonical, HE1 §9) |
-| `DRIFT-RENAME-UNKNOWN` / `DRIFT-RENAME-UNREGISTERED` | renames must reference a real baseline ID and carry a `rename` delta |
-| `SYNC-INVENTORY-MISSING` | governed product/test/harness paths changed without an inventory update or an active waiver |
+| `WVR-EXPIRED` / `WVR-INVALID-DATE` | expired or malformed waivers are RED, always — renew or remove; a waiver is active on its expiry day and RED the day after |
+| `WVR-PATH-INVALID` / `WVR-PATH-PROTECTED` | waiver paths are required, unique, non-empty, wildcard-free, not a repo-root form, and may never touch the governance core |
+| `DRIFT-SILENT-DELETE` / `DRIFT-REORDER` / `DRIFT-RENAME-*` | node removal, reorder, and rename need eligible protocol deltas |
+| `DELTA-REPLAY` | a delta byte-identical to the baseline copy is single-use history; relying on it again is RED |
+| `DELTA-BASE-MISMATCH` | deltas only authorize the comparison whose `base_sha` they carry; an unbound comparison (no base SHA) authorizes nothing |
+| `STATUS-UNAUTHORIZED` | relabeling executed results (leaving PASS/FAIL, or entering/leaving NOT_APPLICABLE, or reopening CLOSED debt) needs a `reclassify` delta; ordinary evidence flow (NOT_RUN/BLOCKED → PASS/FAIL/BLOCKED) does not |
+| `ANCHOR-MISSING` / `ANCHOR-LINE-INVALID` | source anchors must point at existing files with valid, in-range line numbers (`path`, `path:LINE`, `path:START-END`) |
 
-Warnings (never RED): `ANCHOR-MISSING` (anchor path absent in this tree) and
-`DRIFT-STATUS-RELABEL` (executed status changed; history must be preserved per
-HE1 §16).
+Warnings (never RED): `WVR-UNUSED` (active waiver matching no changed path)
+and `WVR-OVERLAP` (two active waivers with overlapping scope).
 
-## The inventory-sync rule (requirement 6 of the directive)
-
-When a change touches any prefix in `governed-paths.json` (`backend/`,
-`frontend/src/`, `scenarios/`, `harness-governance/validator/`,
-`harness-governance/schemas/`), the same change must also update the governed
-state under `harness-governance/inventory/` — **except** `waivers.json`,
-because a waiver is the alternative to an inventory update, not an update
-itself. Otherwise the change must carry a temporary waiver:
+## Waivers (fail-closed)
 
 ```json
 {
@@ -98,39 +122,61 @@ itself. Otherwise the change must carry a temporary waiver:
   "scope": "inventory-sync",
   "reason": "dependency bump only; no behavioral surface change",
   "owner": "cto",
-  "risk": "low: lockfile-only change, no API or UI surface affected",
-  "expires": "2026-09-15"
+  "risk": "P2",
+  "approval_ref": "CTO approval reference",
+  "opened_on": "2026-08-25",
+  "expires_on": "2026-09-15",
+  "paths": ["backend/requirements.txt"]
 }
 ```
 
-A waiver is active on its expiry day and RED the day after. Expired waivers
-may not stay parked in the file — remove or renew them; history lives in git.
+Paths are exact repo paths or directory prefixes — required, unique, no
+wildcards, no repo root, no implicit global exemption. The **union** of all
+active waivers must cover *every* changed governed path not otherwise
+mapped; a waiver matching one path never releases the others. The governance
+core is not waivable at all — governance changes need a `kind=governance`
+protocol delta (see `inventory/protocol-deltas.json` for the R1 example).
+
+## Protocol deltas (single-use, base-bound, kind-precise)
+
+Every delta carries `kind`, `affected_ids`, `affected_paths`, `base_sha`,
+`owner`, `reason`, and `approval_ref`. A delta is eligible only when it is
+new or substantively modified versus the baseline copy AND its `base_sha`
+equals the validator's comparison base. Kinds authorize precisely:
+`removal`, `rename` (both old and new id), `reorder`, `reclassify` (status
+transitions), `governance` (protected paths, via `affected_paths`).
 
 ## Baselines and bootstrap
 
-The CI job (`harness-governance-gate.yml`, mandatory for PRs and pushes to
-`product-dev-recovered`) compares against `origin/product-dev-recovered` on
-pull requests and against the previous pushed commit on pushes. When the
-baseline predates this governance system (no `governed-paths.json`), drift and
-sync checks bootstrap-skip — enforcement binds every change **after** adoption.
-The unit tests and mutation gate always run.
+The CI structural gate compares against `origin/product-dev-recovered` on
+pull requests and the previous pushed commit on pushes (`fetch-depth: 0` so
+git objects and reachability checks work). When the baseline predates the
+governance system (no `governed-paths.json`), drift/sync checks
+bootstrap-skip — enforcement binds every change **after** adoption. The
+unit tests and mutation gate always run.
 
-## How the summaries count (requirement 9)
+## How the summaries count
 
 Pass rate is `PASS / (total − NOT_APPLICABLE)`. BLOCKED, NOT_RUN, and
 NOT_COVERED debt all count **against** coverage; BLOCKED is an honest state,
-never a passing one. Oracle completeness is the share of nodes with all five
-oracles explicit (assertion or `NOT_APPLICABLE`). The same figures are emitted
-to stdout, `--report-json` (machine), `--markdown-summary` (CI step summary),
-and the debt table lists every open debt with owner and milestone.
+never a passing one. The same figures go to stdout, `--report-json`
+(machine), `--markdown-summary` (CI step summary), and the debt table lists
+every open debt with owner and milestone.
 
-## Mutation sensitivity (requirement 8)
+## Mutation sensitivity
 
-`run_red_mutations.py` tampers with a copy of the real governance tree and
-asserts the validator goes RED with the intended rule code — 14 mutations
-covering duplicate IDs, blank oracles, unknown status, missing P0 mutations,
-missing blocked owners, silent deletion, reorder, expired waivers on unsynced
-changes, fake evidence SHAs, incomplete debts, missing registry categories,
-orphaned BLOCKED nodes, and dangling references. Two GREEN controls (pristine
-tree; active waiver covering a governed change) prove the gate still passes
-when it should. A mutation that escapes (stays GREEN) fails CI.
+`run_red_mutations.py` tampers with copies of the real governance tree and
+asserts RED with the intended rule code: 29 tamper mutations (duplicate IDs,
+blank oracles, unknown status, missing P0 mutations, missing blocked owners,
+silent deletion, reorder, expired waivers on unmapped changes, fake
+evidence, incomplete debts, missing registry categories, orphaned BLOCKED
+nodes, dangling references, config self-protection attacks, notes-only
+sync, partial path coverage, missing waiver paths, partial waiver coverage,
+zero/nonexistent/unreachable evidence commits, missing evidence paths, blob
+digest mismatch, historical delta replay, unauthorized relabeling, unknown
+schema keywords, invalid refs) plus one mode proof (release-blocker debt can
+never be reported as global GREEN). Five GREEN controls (pristine tree,
+full scoped waiver, semantic record mapping, multi-waiver union, valid
+committed evidence) prove the gate still passes when it should, and a
+frozen-snapshot integrity check proves the gate never modifies the
+candidate tree.

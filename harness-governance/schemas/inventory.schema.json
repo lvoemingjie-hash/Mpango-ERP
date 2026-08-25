@@ -73,6 +73,17 @@
         "mutation_id": { "type": "string" },
         "owner": { "type": "string", "minLength": 1 },
         "evidence_sha": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})?$" },
+        "evidence_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 2 },
+          "description": "committed evidence artifacts; required non-empty when status is PASS; each path must exist at the evidence commit; a 64-hex evidence_sha must equal the SHA-256 of the blob at evidence_commit:evidence_paths[0]"
+        },
+        "evidence_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "required binding commit for 64-hex evidence digests"
+        },
         "status": { "enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN", "NOT_APPLICABLE"] },
         "interaction_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "renamed_from": { "type": "string", "minLength": 3 },

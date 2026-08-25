@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
-"""Deterministic RED mutation gate for the HE2 harness governance validator.
+"""Deterministic RED mutation gate for the HE2-R1 harness governance validator.
 
 Every mutation tampers with a pristine copy of the real governance tree and
-MUST turn the validator RED with the intended rule code. This proves the gate
-is sensitive to the regressions it exists to catch (standard section 11):
-a gate that stays green when its own detection logic is attacked is not
-evidence. Two GREEN controls prove the harness can still pass.
+MUST turn the validator RED with the intended rule code. This proves the
+gate is sensitive to the regressions it exists to catch (standard section
+11): a gate that stays green when its own detection logic is attacked is
+not evidence. GREEN controls prove the harness still passes when it should.
 
-Standard library only. Exit code 0 iff all mutations go RED with the expected
-codes and all controls stay GREEN.
+R1 adds mutations for every closed bypass (config self-protection, notes
+sync, partial waiver coverage, evidence authenticity, delta replay,
+unauthorized relabeling, fail-closed schema checking, release gating) and
+a frozen-snapshot integrity check proving the gate never modifies the
+candidate tree it validates (Phase 9.41).
+
+Standard library only. Exit code 0 iff every mutation goes RED with the
+expected codes, every control stays GREEN, and the candidate tree is
+byte-identical before and after the run.
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -27,6 +35,7 @@ VALIDATOR = GOV_DIR / "validator" / "harness_governance_validator.py"
 TODAY = "2026-08-25"
 EXPIRED_DATE = "2026-08-24"
 ACTIVE_DATE = "2026-08-26"
+OPENED_DATE = "2026-08-20"
 
 
 def _load(root, relpath):
@@ -52,15 +61,87 @@ def _node(root, node_id):
     return doc, next(node for node in nodes if node["id"] == node_id)
 
 
+def _copy_anchors(dst_root):
+    """Copy every anchored product file so R1's RED anchor checks can pass."""
+
+    anchors = set()
+    for relpath in ("inventory/inventory.json", "inventory/critical-interactions.json"):
+        with open(os.path.join(GOV_DIR, relpath), encoding="utf-8") as fh:
+            doc = json.load(fh)
+        for item in doc.get("nodes") or doc.get("interactions") or []:
+            for anchor in item.get("source_anchors", []):
+                path = anchor.split(":", 1)[0].strip()
+                if path:
+                    anchors.add(path)
+    for relpath in sorted(anchors):
+        src = os.path.join(REPO_ROOT, relpath)
+        if os.path.isfile(src):
+            dst = os.path.join(dst_root, relpath)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(src, dst)
+
+
 def make_workspace():
-    head = tempfile.mkdtemp(prefix="he2-mut-head-")
-    baseline = tempfile.mkdtemp(prefix="he2-mut-base-")
-    shutil.copytree(GOV_DIR, os.path.join(head, "harness-governance"))
-    shutil.copytree(GOV_DIR, os.path.join(baseline, "harness-governance"))
+    head = tempfile.mkdtemp(prefix="he2r1-mut-head-")
+    baseline = tempfile.mkdtemp(prefix="he2r1-mut-base-")
+    for root in (head, baseline):
+        shutil.copytree(GOV_DIR, os.path.join(root, "harness-governance"))
+        _copy_anchors(root)
     return head, baseline
 
 
-def run_validator(head, baseline):
+def touch(head, relpath, content="# governance mutation probe\n"):
+    full = os.path.join(head, relpath)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    with open(full, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    return relpath.replace(os.sep, "/")
+
+
+def waiver_entry(waiver_id, paths, expires_on=ACTIVE_DATE):
+    return {
+        "waiver_id": waiver_id,
+        "scope": "inventory-sync",
+        "reason": "mutation gate waiver",
+        "owner": "cto",
+        "risk": "P2",
+        "approval_ref": "mutation-gate",
+        "opened_on": OPENED_DATE,
+        "expires_on": expires_on,
+        "paths": paths,
+    }
+
+
+def make_git_workspace():
+    """Workspace whose head is a real git repo with committed evidence."""
+
+    head, baseline = make_workspace()
+    evidence = os.path.join(head, "evidence")
+    os.makedirs(evidence, exist_ok=True)
+    with open(os.path.join(evidence, "EVID-001.json"), "w", encoding="utf-8") as fh:
+        json.dump({"node": "AUTH-INT-001", "result": "PASS", "artifact": "mutation gate"}, fh)
+        fh.write("\n")
+
+    def git(*args):
+        subprocess.run(
+            ["git", "-C", head, *args], check=True, capture_output=True, text=True
+        )
+
+    git("init", "-b", "main")
+    git("config", "user.email", "mutation-gate@example.invalid")
+    git("config", "user.name", "HE2-R1 mutation gate")
+    git("add", "-A")
+    git("commit", "-m", "evidence seed")
+    sha = subprocess.run(
+        ["git", "-C", head, "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return head, baseline, sha
+
+
+def run_validator(head, baseline, extra_args=()):
     report_path = os.path.join(head, "_mutation_report.json")
     proc = subprocess.run(
         [
@@ -75,6 +156,7 @@ def run_validator(head, baseline):
             "--report-json",
             report_path,
             "--quiet",
+            *extra_args,
         ],
         capture_output=True,
         text=True,
@@ -89,7 +171,7 @@ def run_validator(head, baseline):
 
 
 # ---------------------------------------------------------------------------
-# Mutations: each returns (head_root, baseline_root) with the tamper applied.
+# Original HE2 mutations (M01-M14, kept; M08 updated to the R1 waiver shape)
 # ---------------------------------------------------------------------------
 
 
@@ -151,23 +233,11 @@ def mut_node_reorder():
 
 def mut_expired_waiver_on_unsynced_change():
     head, base = make_workspace()
-    probe = os.path.join(head, "backend", "api", "_mutation_probe.py")
-    os.makedirs(os.path.dirname(probe), exist_ok=True)
-    with open(probe, "w", encoding="utf-8") as fh:
-        fh.write("# governed-path change without inventory update\n")
+    probe = touch(head, "backend/api/_mutation_probe.py")
     _save(
         head,
         "harness-governance/inventory/waivers.json",
-        [
-            {
-                "waiver_id": "WVR-MUT-001",
-                "scope": "inventory-sync",
-                "reason": "expired waiver must not cover the change",
-                "owner": "cto",
-                "risk": "mutation proof",
-                "expires": EXPIRED_DATE,
-            }
-        ],
+        [waiver_entry("WVR-MUT-001", [probe], expires_on=EXPIRED_DATE)],
     )
     return head, base
 
@@ -225,6 +295,184 @@ def mut_unknown_interaction_reference():
     return head, base
 
 
+# ---------------------------------------------------------------------------
+# R1 mutations (N01-N15): every closed bypass must have a deterministic RED
+# ---------------------------------------------------------------------------
+
+
+def mut_empty_governed_prefixes():
+    head, base = make_workspace()
+    config = _load(head, "harness-governance/governed-paths.json")
+    config["governed_prefixes"] = []
+    _save(head, "harness-governance/governed-paths.json", config)
+    return head, base
+
+
+def mut_minimum_prefix_removed():
+    head, base = make_workspace()
+    config = _load(head, "harness-governance/governed-paths.json")
+    config["governed_prefixes"] = [
+        p for p in config["governed_prefixes"] if p != "backend/"
+    ]
+    _save(head, "harness-governance/governed-paths.json", config)
+    return head, base
+
+
+def mut_notes_only_sync():
+    head, base = make_workspace()
+    touch(head, "backend/api/_mutation_probe.py")
+    doc, nodes = _nodes(head)
+    doc["notes"] = doc.get("notes", "") + " [probe: touched the inventory file]"
+    nodes[0]["notes"] = "note-only change must not satisfy sync"
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def mut_partial_path_coverage():
+    head, base = make_workspace()
+    backend_probe = touch(head, "backend/api/_probe_a.py")
+    touch(head, "frontend/src/_probe_b.tsx")
+    doc, node = _node(head, "AUTH-INT-001")
+    node["source_anchors"] = [
+        backend_probe,
+        *[a for a in node["source_anchors"] if a.startswith("frontend/src/services/api.ts")],
+    ]
+    node["ui_oracle"] = "updated assertion anchored only to the backend probe"
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def mut_waiver_paths_missing():
+    head, base = make_workspace()
+    touch(head, "backend/api/_mutation_probe.py")
+    entry = waiver_entry("WVR-MUT-002", ["backend/api/_mutation_probe.py"])
+    del entry["paths"]
+    _save(head, "harness-governance/inventory/waivers.json", [entry])
+    return head, base
+
+
+def mut_waiver_partial_coverage():
+    head, base = make_workspace()
+    touch(head, "backend/api/_probe_a.py")
+    touch(head, "frontend/src/_probe_b.tsx")
+    _save(
+        head,
+        "harness-governance/inventory/waivers.json",
+        [waiver_entry("WVR-MUT-003", ["backend/api/_probe_a.py"])],
+    )
+    return head, base
+
+
+def mut_evidence_all_zero_sha():
+    head, base, _sha = make_git_workspace()
+    doc, node = _node(head, "AUTH-INT-001")
+    node["status"] = "PASS"
+    node["evidence_sha"] = "0" * 40
+    node["evidence_paths"] = ["evidence/EVID-001.json"]
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def mut_evidence_nonexistent_commit():
+    head, base, _sha = make_git_workspace()
+    doc, node = _node(head, "AUTH-INT-001")
+    node["status"] = "PASS"
+    node["evidence_sha"] = "1" * 40
+    node["evidence_paths"] = ["evidence/EVID-001.json"]
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def mut_evidence_unreachable_commit():
+    head, base, _sha = make_git_workspace()
+    dangling = subprocess.run(
+        ["git", "-C", head, "commit-tree", "HEAD^{tree}", "-m", "dangling evidence"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    doc, node = _node(head, "AUTH-INT-001")
+    node["status"] = "PASS"
+    node["evidence_sha"] = dangling
+    node["evidence_paths"] = ["evidence/EVID-001.json"]
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def mut_evidence_path_missing():
+    head, base, sha = make_git_workspace()
+    doc, node = _node(head, "AUTH-INT-001")
+    node["status"] = "PASS"
+    node["evidence_sha"] = sha
+    node["evidence_paths"] = ["evidence/DOES-NOT-EXIST.json"]
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def mut_evidence_blob_digest_mismatch():
+    head, base, sha = make_git_workspace()
+    doc, node = _node(head, "AUTH-INT-001")
+    node["status"] = "PASS"
+    node["evidence_sha"] = hashlib.sha256(b"not the committed bytes").hexdigest()
+    node["evidence_commit"] = sha
+    node["evidence_paths"] = ["evidence/EVID-001.json"]
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def mut_historical_reorder_replay():
+    head, base = make_workspace()
+    replay_delta = {
+        "delta_id": "PD-MUT-REPLAY",
+        "kind": "reorder",
+        "affected_ids": ["AUTH-INT-001"],
+        "affected_paths": [],
+        "base_sha": "a" * 40,
+        "owner": "cto",
+        "reason": "old reorder authorization that must be single-use",
+        "approval_ref": "mutation-gate",
+    }
+    # The identical delta exists on BOTH sides: relying on it again is replay.
+    _save(base, "harness-governance/inventory/protocol-deltas.json", [replay_delta])
+    head_deltas = _load(head, "harness-governance/inventory/protocol-deltas.json")
+    _save(
+        head,
+        "harness-governance/inventory/protocol-deltas.json",
+        head_deltas + [replay_delta],
+    )
+    doc, nodes = _nodes(head)
+    doc["nodes"] = [nodes[1], nodes[0], *nodes[2:]]  # AUTH-INT-001 moved
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def mut_unauthorized_status_transition():
+    head, base = make_workspace()
+    base_doc = _load(base, "harness-governance/inventory/inventory.json")
+    for node in base_doc["nodes"]:
+        if node["id"] == "AUTH-INT-001":
+            node["status"] = "PASS"
+    _save(base, "harness-governance/inventory/inventory.json", base_doc)
+    # head stays pristine (NOT_RUN): PASS -> NOT_RUN without a reclassify delta
+    return head, base
+
+
+def mut_unknown_schema_keyword():
+    head, base = make_workspace()
+    schema = _load(head, "harness-governance/schemas/inventory.schema.json")
+    schema["definitions"]["node"]["properties"]["id"]["minimum"] = 1
+    _save(head, "harness-governance/schemas/inventory.schema.json", schema)
+    return head, base
+
+
+def mut_invalid_schema_ref():
+    head, base = make_workspace()
+    schema = _load(head, "harness-governance/schemas/inventory.schema.json")
+    schema["properties"]["nodes"]["items"] = {"$ref": "#/definitions/nonexistent"}
+    _save(head, "harness-governance/schemas/inventory.schema.json", schema)
+    return head, base
+
+
 # GREEN controls -------------------------------------------------------------
 
 
@@ -232,70 +480,142 @@ def control_pristine_green():
     return make_workspace()
 
 
-def control_active_waiver_covers_change():
+def control_full_scoped_waiver():
     head, base = make_workspace()
-    probe = os.path.join(head, "backend", "api", "_mutation_probe.py")
-    os.makedirs(os.path.dirname(probe), exist_ok=True)
-    with open(probe, "w", encoding="utf-8") as fh:
-        fh.write("# governed-path change covered by an active waiver\n")
+    probe = touch(head, "backend/api/_mutation_probe.py")
+    _save(
+        head,
+        "harness-governance/inventory/waivers.json",
+        [waiver_entry("WVR-MUT-CTRL", [probe])],
+    )
+    return head, base
+
+
+def control_semantic_mapping():
+    head, base = make_workspace()
+    probe = touch(head, "backend/api/_probe_c.py")
+    doc, node = _node(head, "AUTH-INT-001")
+    node["source_anchors"] = [*node["source_anchors"], probe]
+    node["ui_oracle"] = "updated assertion covering the new probe path"
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
+def control_multi_waiver_union():
+    head, base = make_workspace()
+    probe_a = touch(head, "backend/api/_probe_a.py")
+    probe_b = touch(head, "frontend/src/_probe_b.tsx")
     _save(
         head,
         "harness-governance/inventory/waivers.json",
         [
-            {
-                "waiver_id": "WVR-MUT-002",
-                "scope": "inventory-sync",
-                "reason": "active waiver must cover the change",
-                "owner": "cto",
-                "risk": "mutation proof",
-                "expires": ACTIVE_DATE,
-            }
+            waiver_entry("WVR-MUT-U1", [probe_a]),
+            waiver_entry("WVR-MUT-U2", [probe_b]),
         ],
     )
     return head, base
 
 
+def control_valid_committed_evidence():
+    head, base, sha = make_git_workspace()
+    doc, node = _node(head, "AUTH-INT-001")
+    node["status"] = "PASS"
+    node["evidence_sha"] = sha
+    node["evidence_paths"] = ["evidence/EVID-001.json"]
+    _save(head, "harness-governance/inventory/inventory.json", doc)
+    return head, base
+
+
 RED_MUTATIONS = [
-    ("M01-duplicate-node-id", mut_duplicate_node_id, ["INV-DUP-ID"]),
-    ("M02-blank-oracle", mut_blank_oracle, ["INV-ORACLE-EMPTY"]),
-    ("M03-unknown-status", mut_unknown_status, ["SCHEMA-ENUM"]),
-    ("M04-p0-mutation-removed", mut_p0_mutation_removed, ["INV-MUTATION-MISSING"]),
-    ("M05-blocked-owner-removed", mut_blocked_owner_removed, ["INV-BLOCKED-OWNER"]),
-    ("M06-silent-node-deletion", mut_silent_node_deletion, ["DRIFT-SILENT-DELETE"]),
-    ("M07-node-reorder", mut_node_reorder, ["DRIFT-REORDER"]),
+    ("M01-duplicate-node-id", mut_duplicate_node_id, ["INV-DUP-ID"], ()),
+    ("M02-blank-oracle", mut_blank_oracle, ["INV-ORACLE-EMPTY"], ()),
+    ("M03-unknown-status", mut_unknown_status, ["SCHEMA-ENUM"], ()),
+    ("M04-p0-mutation-removed", mut_p0_mutation_removed, ["INV-MUTATION-MISSING"], ()),
+    ("M05-blocked-owner-removed", mut_blocked_owner_removed, ["INV-BLOCKED-OWNER"], ()),
+    ("M06-silent-node-deletion", mut_silent_node_deletion, ["DRIFT-SILENT-DELETE"], ()),
+    ("M07-node-reorder", mut_node_reorder, ["DRIFT-REORDER"], ()),
     (
         "M08-expired-waiver-on-unsynced-change",
         mut_expired_waiver_on_unsynced_change,
-        ["WVR-EXPIRED", "SYNC-INVENTORY-MISSING"],
+        ["WVR-EXPIRED", "SYNC-SEMANTIC-MISSING"],
+        (),
     ),
-    ("M09-pass-without-evidence", mut_pass_without_evidence, ["INV-PASS-EVIDENCE"]),
-    ("M10-pass-with-bogus-evidence", mut_pass_with_bogus_evidence, ["INV-PASS-EVIDENCE"]),
-    ("M11-debt-owner-blank", mut_debt_owner_blank, ["DEBT-INCOMPLETE"]),
-    ("M12-required-interaction-removed", mut_required_interaction_removed, ["REG-CATEGORY-MISSING"]),
+    ("M09-pass-without-evidence", mut_pass_without_evidence, ["INV-PASS-EVIDENCE"], ()),
+    ("M10-pass-with-bogus-evidence", mut_pass_with_bogus_evidence, ["INV-PASS-EVIDENCE"], ()),
+    ("M11-debt-owner-blank", mut_debt_owner_blank, ["DEBT-INCOMPLETE"], ()),
+    ("M12-required-interaction-removed", mut_required_interaction_removed, ["REG-CATEGORY-MISSING"], ()),
     (
         "M13-blocked-node-orphaned-from-debt",
         mut_blocked_node_orphaned_from_debt,
         ["INV-BLOCKED-DEBT"],
+        (),
     ),
-    ("M14-unknown-interaction-reference", mut_unknown_interaction_reference, ["REG-REF-UNKNOWN"]),
+    ("M14-unknown-interaction-reference", mut_unknown_interaction_reference, ["REG-REF-UNKNOWN"], ()),
+    ("N01-empty-governed-prefixes", mut_empty_governed_prefixes, ["CONFIG-PREFIXES-EMPTY", "CONFIG-MINIMUM-PREFIX"], ()),
+    ("N02-minimum-prefix-removed", mut_minimum_prefix_removed, ["CONFIG-MINIMUM-PREFIX"], ()),
+    ("N03-notes-only-sync", mut_notes_only_sync, ["SYNC-SEMANTIC-MISSING"], ()),
+    ("N04-partial-path-coverage", mut_partial_path_coverage, ["SYNC-SEMANTIC-MISSING"], ()),
+    ("N05-waiver-paths-missing", mut_waiver_paths_missing, ["SCHEMA-REQUIRED"], ()),
+    ("N06-waiver-partial-coverage", mut_waiver_partial_coverage, ["SYNC-SEMANTIC-MISSING"], ()),
+    ("N07-evidence-all-zero-sha", mut_evidence_all_zero_sha, ["EVIDENCE-SHA-INVALID"], ()),
+    ("N08-evidence-nonexistent-commit", mut_evidence_nonexistent_commit, ["EVIDENCE-COMMIT-MISSING"], ()),
+    ("N08b-evidence-unreachable-commit", mut_evidence_unreachable_commit, ["EVIDENCE-COMMIT-UNREACHABLE"], ()),
+    ("N09-evidence-path-missing", mut_evidence_path_missing, ["EVIDENCE-PATH-MISSING"], ()),
+    ("N09b-evidence-blob-digest-mismatch", mut_evidence_blob_digest_mismatch, ["EVIDENCE-BLOB-MISMATCH"], ()),
+    ("N10-historical-reorder-replay", mut_historical_reorder_replay, ["DELTA-REPLAY", "DRIFT-REORDER"], ()),
+    ("N11-unauthorized-status-transition", mut_unauthorized_status_transition, ["STATUS-UNAUTHORIZED"], ()),
+    ("N12-unknown-schema-keyword", mut_unknown_schema_keyword, ["SCHEMA-UNKNOWN-KEYWORD"], ()),
+    ("N13-invalid-schema-ref", mut_invalid_schema_ref, ["SCHEMA-BAD-REF"], ()),
+]
+
+# N14 is a mode-behavior proof rather than a tree tamper: structural GREEN
+# with open P0/P1 release-blocking debt must NOT be reportable as a global
+# GREEN in release mode (exit code 3, RELEASE_GATE=BLOCKED).
+MODE_PROOFS = [
+    ("N14-release-blocker-not-global-green", control_pristine_green, "--mode", "release"),
 ]
 
 GREEN_CONTROLS = [
     ("C01-pristine-tree-green", control_pristine_green),
-    ("C02-active-waiver-covers-change", control_active_waiver_covers_change),
+    ("C02-full-scoped-waiver", control_full_scoped_waiver),
+    ("C03-semantic-record-mapping", control_semantic_mapping),
+    ("C04-multi-waiver-union", control_multi_waiver_union),
+    ("C05-valid-committed-evidence", control_valid_committed_evidence),
 ]
+
+
+def tree_digest():
+    digest = hashlib.sha256()
+    for dirpath, dirnames, filenames in os.walk(GOV_DIR):
+        dirnames[:] = sorted(d for d in dirnames if d != "__pycache__")
+        for name in sorted(filenames):
+            if name.endswith(".pyc"):
+                continue
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, GOV_DIR).replace(os.sep, "/")
+            with open(full, "rb") as fh:
+                digest.update(rel.encode("utf-8"))
+                digest.update(fh.read())
+    return digest.hexdigest()
 
 
 def main() -> int:
     failures = []
+    before = tree_digest()
 
-    print(f"HE2 RED mutation gate: {len(RED_MUTATIONS)} mutations, {len(GREEN_CONTROLS)} controls")
+    total_red = len(RED_MUTATIONS) + len(MODE_PROOFS)
+    print(
+        f"HE2-R1 RED mutation gate: {total_red} RED mutations "
+        f"({len(RED_MUTATIONS)} tamper + {len(MODE_PROOFS)} mode proof), "
+        f"{len(GREEN_CONTROLS)} GREEN controls"
+    )
     print("-" * 78)
 
-    for name, factory, expected_codes in RED_MUTATIONS:
-        head, base = factory()
+    for name, factory, expected_codes, extra in RED_MUTATIONS:
+        result = factory()
+        head, base = result[0], result[1]
         try:
-            code, report = run_validator(head, base)
+            code, report = run_validator(head, base, extra)
             codes = {v["code"] for v in (report or {}).get("violations", [])}
             missing = [c for c in expected_codes if c not in codes]
             if code != 1:
@@ -311,8 +631,29 @@ def main() -> int:
             shutil.rmtree(head, ignore_errors=True)
             shutil.rmtree(base, ignore_errors=True)
 
+    for name, factory, *mode_args in MODE_PROOFS:
+        result = factory()
+        head, base = result[0], result[1]
+        try:
+            code, report = run_validator(head, base, tuple(mode_args))
+            gates = (report or {}).get("gates", {})
+            if code == 3 and gates.get("structural_gate") == "PASS" and gates.get(
+                "release_gate"
+            ) == "BLOCKED":
+                print(f"  {name:<40} RED as intended (exit 3, RELEASE_GATE=BLOCKED)")
+            else:
+                failures.append(
+                    f"{name}: expected exit 3 with structural PASS / release BLOCKED, "
+                    f"got exit {code}, gates {gates}"
+                )
+                print(f"  {name:<40} FAILED (exit {code}, gates {gates})")
+        finally:
+            shutil.rmtree(head, ignore_errors=True)
+            shutil.rmtree(base, ignore_errors=True)
+
     for name, factory in GREEN_CONTROLS:
-        head, base = factory()
+        result = factory()
+        head, base = result[0], result[1]
         try:
             code, report = run_validator(head, base)
             if code == 0:
@@ -325,15 +666,25 @@ def main() -> int:
             shutil.rmtree(head, ignore_errors=True)
             shutil.rmtree(base, ignore_errors=True)
 
+    after = tree_digest()
     print("-" * 78)
+    if before != after:
+        failures.append(
+            "candidate tree integrity: harness-governance changed during the gate run"
+        )
+        print("TREE INTEGRITY: FAIL (candidate tree was modified)")
+    else:
+        print(f"TREE INTEGRITY: OK ({before[:12]} before == after)")
+
     if failures:
         print(f"FAIL: {len(failures)} problem(s):")
         for failure in failures:
             print(f"  - {failure}")
         return 1
     print(
-        f"PASS: all {len(RED_MUTATIONS)} mutations produced the intended RED "
-        f"and {len(GREEN_CONTROLS)} controls stayed GREEN"
+        f"PASS: all {total_red} mutations produced the intended RED "
+        f"({len(RED_MUTATIONS)} with explicit rule codes), "
+        f"{len(GREEN_CONTROLS)} controls stayed GREEN, candidate tree byte-identical"
     )
     return 0
 

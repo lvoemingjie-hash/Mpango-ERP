@@ -110,3 +110,51 @@ and makes no coverage claim; HE3 owns risk-first backfill.
 The HE2 change set adds governance tooling, one CI workflow, and register
 entries only. It changes no backend, frontend, test, migration, deployment,
 or dependency code.
+
+## R1 Addendum (DR-2026-08-25-002-R1): Bypass Closure
+
+**Date:** 2026-08-25
+**Authority:** CTO directive DC-12R1-MVP-L1-HE2-R1, on HE2 checkpoint 94b0c300
+
+Review of the HE2 gate identified bypass classes; R1 closes them
+machine-side (validator 2.0.0):
+
+1. **Governance self-protection.** `governed-paths.json` no longer controls
+   whether the governance core is governed: the workflow, the config file,
+   `validator/`, `schemas/`, and `tests/` are hardcoded protected paths,
+   changeable only through a `kind=governance` protocol delta (owner,
+   reason, approval_ref, base_sha). `governed_prefixes` cannot be emptied,
+   duplicated, or lose `backend/`, `frontend/src/`, `scenarios/`.
+2. **Semantic sync.** "Any inventory file changed" no longer satisfies the
+   gate. Each changed governed path must be covered by a record that
+   *semantically changed* this comparison (node anchor, interaction
+   source/affected path, debt `affected_paths`, or an eligible new delta).
+   Notes-only edits and unrelated JSON churn stay RED; uncovered paths are
+   named.
+3. **Fail-closed waivers.** `paths` required/unique/non-empty, no wildcards
+   or repo-root forms; owner, reason, risk (P0–P3), approval_ref, opened_on,
+   expires_on required; union coverage per changed path; expired waivers
+   always RED; the governance core is never waivable.
+4. **PASS evidence authenticity.** 40-hex SHAs must be existing commits
+   reachable from fetched refs/tags with `evidence_paths` present at that
+   commit; 64-hex digests must bind `evidence_commit` and match the blob
+   bytes; all-zero, dangling, wrong-path, and wrong-digest claims are RED;
+   unverifiable contexts fail closed. The seed still claims 0 PASS.
+5. **Delta anti-replay.** Deltas carry base_sha bound to the comparison
+   base; historical deltas are single-use; kind-precise authorization;
+   unauthorized status transitions (leaving PASS/FAIL, NOT_APPLICABLE in or
+   out, reopening CLOSED debt) are violations, not warnings.
+6. **Fail-closed schema checking.** Unknown schema keywords and
+   unresolvable $refs are RED; `uniqueItems` enforced; source anchors must
+   exist with in-range line numbers.
+7. **Structural vs release gates.** STRUCTURAL_GATE (PASS/FAIL) is the PR
+   gate; RELEASE_GATE (PASS/BLOCKED) fails release runs while open P0/P1
+   release-blocking debt exists (`--mode release`, exit 3). Registered debt
+   does not block ordinary PRs; structural GREEN is never a release
+   statement.
+
+**R1 validation:** 66 unit tests GREEN (original 31 kept or strengthened);
+30 RED mutations (14 original + 16 new including the release-mode proof)
+plus 5 GREEN controls and a candidate-tree integrity check all pass on the
+committed tree. R1 changes no backend, frontend, business-test, migration,
+dependency, or deployment code.

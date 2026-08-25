@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "delta_id": "PD-2026-08-25-HE2-R1-GOV",
+    "kind": "governance",
+    "affected_ids": [],
+    "affected_paths": [
+      ".github/workflows/harness-governance-gate.yml",
+      "harness-governance/governed-paths.json",
+      "harness-governance/validator/",
+      "harness-governance/schemas/",
+      "harness-governance/tests/"
+    ],
+    "base_sha": "94b0c30034d04d1bad87f926a4b09e3dbbe3c6db",
+    "owner": "cto",
+    "reason": "DC-12R1-MVP-L1-HE2-R1 bypass closure: harden the governance core itself (fail-closed schemas, semantic sync, waiver scoping, evidence binding, delta anti-replay, structural/release gate split)",
+    "approval_ref": "DC-12R1-MVP-L1-HE2-R1",
+    "date": "2026-08-25"
+  }
+]

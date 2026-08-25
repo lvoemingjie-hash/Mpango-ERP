@@ -19,7 +19,7 @@
 | R2 impl | `739d066f884f7d96211b8cefe9ec44a6fa8d31d0` | R2 evidence byte integrity |
 | R2 report | `b20ec157b2440c46894c5504f085a5534025ce78` | R2 delivery ledger |
 | BRANCH_BASE | `b20ec157` | R3 starts here |
-| R3 impl | *(this commit)* | R3 delta chain + scanner closure |
+| R3 impl | `077774e7967bc0cfcfec822a16bd73dcdba901c0` | R3 delta chain + scanner closure |
 | FINAL_REPORT_TIP | *(filled after push)* | R3 delivery ledger |
 | FINAL_REPORT_TIP^ | R3 impl | parent of final report |
 
@@ -126,8 +126,8 @@ deployment code was changed in HE2, R1, R2, or R3.
 
 ## External enforcement status
 
-- **Branch pushed:** ✓ *(SHA filled after push)*
-- **Remote SHA verified:** ✓ local == remote
+- **Branch pushed:** ✓ `077774e7` (impl) + *(report tip filled below)*
+- **Remote SHA verified:** ✓ local == remote (`077774e7`)
 - **Branch protection on product-dev-recovered:** NOT VERIFIED (GitHub API 404)
 - **Required check name:** `HE2-R1 structural gate` (defined in workflow, not confirmed as GitHub required check)
 

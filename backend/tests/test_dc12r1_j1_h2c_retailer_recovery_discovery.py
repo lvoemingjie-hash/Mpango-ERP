@@ -897,12 +897,22 @@ async def test_fw2_token_and_email_created_ids_unregistered():
 
 
 async def test_fw3_canonical_assertion_fails_after_side_effects():
-    """Cut: HTTP side effects done, canonical assertion fails pre-registration."""
+    """Cut: HTTP side effects done, canonical assertion fails pre-registration.
+
+    R2-R1 identity proof: the ORIGINAL AssertionError object produced by a
+    REAL canonical assertion (against the real response, after the real
+    side effects) is captured in the inner handler and re-raised AS-IS; the
+    object captured OUTSIDE _residue_lifecycle must be the SAME object
+    (`propagated is original`). Type/message membership or `is not None`
+    checks are NOT identity proofs and are not used. The real assertion is
+    never replaced by a manual ``raise AssertionError()``.
+    """
     registry = _Registry()
     email7, _ws7, canonical7 = await _established_retailer(
         registry, code=f"S1T{uuid.uuid4().hex[:5].upper()}"
     )
-    caught: BaseException | None = None
+    original_assertion: AssertionError | None = None
+    propagated: BaseException | None = None
     try:
         async with _residue_lifecycle(registry):
             clear_dev_email_deliveries()
@@ -910,19 +920,28 @@ async def test_fw3_canonical_assertion_fails_after_side_effects():
                 r7 = await client.post(
                     FORGOT_URL, json={"email": email7, "wholesaler_code": canonical7}
                 )
-                # Canonical assertion failure AFTER the side effect produced
-                # a token + sink delivery, BEFORE any id registration.
-                assert r7.status_code == 542, "simulated canonical assertion failure"
-    except AssertionError:
-        caught = AssertionError()
-    except BaseException as exc:  # noqa: BLE001
-        if any(
-            isinstance(e, AssertionError) for e in getattr(exc, "exceptions", ())
-        ):
-            caught = exc
-        else:
-            caught = exc
-    assert caught is not None, "canonical assertion failure was swallowed"
+                # REAL canonical assertion on the REAL response body, AFTER
+                # the side effect produced a token + sink delivery and
+                # BEFORE any token id registration. It fails by construction
+                # (the real neutral message can never equal the unreachable
+                # expected value) — deterministically, on real data.
+                try:
+                    actual_message = r7.json()["message"]
+                    expected_message = NEUTRAL_RETAILER_CREDENTIAL_MESSAGE + "::fw3-unreachable"
+                    assert actual_message == expected_message, "canonical message mismatch"
+                except AssertionError as exc:
+                    original_assertion = exc
+                    raise  # re-raise the ORIGINAL object unchanged
+    except AssertionError as exc:
+        propagated = exc
+    except BaseException as exc:  # noqa: BLE001 - capture any group wrapper
+        propagated = exc
+    assert original_assertion is not None, "real canonical assertion never fired"
+    assert isinstance(original_assertion, AssertionError)
+    assert propagated is original_assertion, (
+        "the original AssertionError object did not survive _residue_lifecycle "
+        "with its identity intact"
+    )
     await _assert_window_outcomes(registry.anchors)
 
 

@@ -1,0 +1,56 @@
+{
+  "task": "DC-12R1-MVP-L1-J1-H2-B-R3-R2-V2-R1_LUBUNTU_LAUNCHER_CORRECTED_BACKEND_FINAL",
+  "executor": "OpenCode Lubuntu native",
+  "single_invocation": true,
+  "grep_or_shard_or_retry_used": false,
+  "expected": {
+    "collected": 3773,
+    "passed": 3710,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 48,
+    "xfailed": 15,
+    "xpassed": 0,
+    "gap": 0
+  },
+  "observed_junit": {
+    "collected": 3773,
+    "passed": 3710,
+    "failed": 0,
+    "errors": 0,
+    "plain_skipped": 48,
+    "xfailed": 15,
+    "xpassed": 0,
+    "gap": 0
+  },
+  "match": "EXACT_ALL_AXES",
+  "wall_time": "1704.70s (0:28:24)",
+  "launcher_correction_proofs": {
+    "pre_exec_proof_all_true": true,
+    "pytest_sessionstart_proof_all_true": true,
+    "process_boundary": "exec inherits runner env; session proof written by the pytest process itself (pid recorded)",
+    "negative_controls": [
+      {
+        "probe": "wrong-stack URL (port 99999) via poisoned runner copy",
+        "result": "probe rejected mismatch -> runner exited VOID_ENVIRONMENT_PRECHECK rc=9 before pytest collection"
+      }
+    ],
+    "disclosure": "an earlier negative-control attempt accidentally started a real collection (~2% executed); it was killed and the authoritative stack was destroyed and recreated fresh before THE single authoritative run"
+  },
+  "post_run_truth": {
+    "wholesalers": 4,
+    "tenant_registrations": 0,
+    "uuid_schemas": 29,
+    "known_candidate_poststate": "4/0/29",
+    "set_match": true,
+    "marking": "PRE_EXISTING_OUT_OF_SCOPE_TEST_HYGIENE_DEBT \u2014 residue=0 NOT claimed",
+    "extra_databases": 0,
+    "dc11t2fr_roles": 0,
+    "redis_db0_keys": 3,
+    "redis_db15_keys": 0
+  },
+  "v2_lineage": {
+    "void_v2_evidence_branch_tip_unchanged": "88ba0d56b0d505ac330526d2baa7ef8bb7456466",
+    "v2_classification": "VOID_EXECUTOR_LAUNCHER_ENVIRONMENT"
+  }
+}

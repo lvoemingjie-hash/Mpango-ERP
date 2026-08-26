@@ -1,0 +1,5 @@
+finding_id,severity,phase,node_or_area,status,classification,detail,recommendation
+N1,INFO,Phase5-authoritative-run,full suite 3773 nodes,EXACT_ALL_AXES_ZERO_RED,INDEPENDENT_BACKEND_GATE_PASS,collected 3773 = passed 3710 + failed 0 + errors 0 + plain skipped 48 + xfailed 15；gap=0；1704.70s 单次调用；retries=0 无 grep/shard/重跑,无
+N2,INFO,Phase3-4-launcher,process-boundary environment proofs,BOTH_BOUNDARIES_ALL_TRUE,LAUNCHER_CORRECTION_EFFECTIVE,pre_exec(runner shell)与 pytest_sessionstart(pytest 进程自身)双份脱敏证明全 TRUE（set/nonempty/equals/host/port/db/redis 端口/26379 缺席）；负控（错误栈端口）→ VOID_ENVIRONMENT_PRECHECK rc=9 收集前退出,无
+N3,INFO,Phase6-post-run,residue snapshot,SET_MATCH_CONFIRMED,PRE_EXISTING_OUT_OF_SCOPE_TEST_HYGIENE_DEBT,wholesalers=4/registrations=0/uuid_schemas=29 与已知候选终态 4/0/29 一致；不声称 residue=0；未以模块重放改写权威结果。披露：首测探针长度过滤误报 0，只读复核修正（t_+32hex=34 字符）,无
+N4,INFO,lineage,V2 evidence branch,PRESERVED_UNTOUCHED,VOID_EXECUTOR_LAUNCHER_ENVIRONMENT_FIXED_BY_R1,V2 分支 tip 88ba0d56 未重写；R1 以全新栈+修正 launcher 完成单次权威运行并 PASS,无

@@ -1,0 +1,10 @@
+== POST-RUN TRUTH (authoritative zero-red run; fresh admin connection; corrected probe) ==
+wholesalers=4
+tenant_registrations=0
+uuid_schemas=29
+known_candidate_poststate=4/0/29
+set_match=YES (PRE_EXISTING_OUT_OF_SCOPE_TEST_HYGIENE_DEBT)
+extra_databases=0
+dc11t2fr_roles=0
+redis_db0_dbsize=3
+redis_db15_dbsize=0

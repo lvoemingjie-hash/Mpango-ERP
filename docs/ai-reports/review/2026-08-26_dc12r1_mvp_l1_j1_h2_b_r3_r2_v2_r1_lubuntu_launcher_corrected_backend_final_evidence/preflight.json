@@ -1,0 +1,55 @@
+{
+  "task": "DC-12R1-MVP-L1-J1-H2-B-R3-R2-V2-R1",
+  "executor": "OpenCode — Lubuntu native independent",
+  "generated": "2026-08-26",
+  "platform": {
+    "os": "Lubuntu native Linux (non-WSL)",
+    "python": "3.12.3",
+    "pytest": "9.1.1",
+    "pytest_asyncio": "1.4.0",
+    "hypothesis": "6.165.10",
+    "postgresql_image": "postgres:16-alpine",
+    "redis_image": "redis:7-alpine"
+  },
+  "stacks": [
+    {
+      "role": "authoritative (fresh; no V2 reuse)",
+      "containers": ["r3r2r1-pg", "r3r2r1-redis"],
+      "ports": {"pg": "127.0.0.1:15603", "redis": "127.0.0.1:16603"},
+      "network": "r3r2r1-net",
+      "volumes": ["r3r2r1-pgdata", "r3r2r1-redisdata"],
+      "database": "test_r3r2r1_auth",
+      "max_connections": 300
+    }
+  ],
+  "pg_role": {"name": "r3r2tester", "superuser": false, "createdb": true, "createrole": true},
+  "database_naming": "test_ prefixed (test_r3r2r1_auth)",
+  "temp_db_safety_gate": {
+    "MPANGO_ALLOW_TEMP_DB_CREATE": "<set>",
+    "MPANGO_TEMP_DB_ALLOWED_HOSTS": "127.0.0.1",
+    "MPANGO_TEMP_DB_ALLOWED_PORTS": "15603"
+  },
+  "alembic": {"migrations_applied": 37, "final_head": "037_payment_declarations_schema", "unique_head": true},
+  "redis_proofs": {
+    "db0_dbsize_pre_run": 0,
+    "db15_dbsize_pre_run": 0,
+    "REDIS_URL_endpoint": "redis://127.0.0.1:16603/0",
+    "PW1R3_TEST_REDIS_URL_endpoint": "redis://127.0.0.1:16603/15",
+    "port_26379_connect_ex": 111,
+    "note": "26379 unreachable throughout the run"
+  },
+  "required_vars_presence_only": {
+    "TEST_DATABASE_URL": "<set,nonempty,equal-to-DATABASE_URL — proven at both process boundaries>",
+    "DATABASE_URL": "<set,nonempty>",
+    "REDIS_URL": "<set>",
+    "PW1R3_TEST_REDIS_URL": "<set>",
+    "REPORTING_USER_PASSWORD": "<set>"
+  },
+  "candidate_files_encoding": "4/4 strict UTF-8, no BOM, LF-only",
+  "host_snapshot_before_task": {
+    "pre_existing_j1h2b_or_r3r2_task_containers": 0,
+    "task_ports_free_before_creation": true,
+    "protected_refs_recorded": ["origin/product-dev-recovered=6e9470a1daa5d6eece29724316fdd8aef6b737c1"]
+  },
+  "preflight_verdict": "PASS"
+}

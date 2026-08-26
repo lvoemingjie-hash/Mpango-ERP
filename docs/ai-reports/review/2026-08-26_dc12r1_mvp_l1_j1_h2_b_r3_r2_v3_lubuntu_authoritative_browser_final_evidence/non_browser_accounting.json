@@ -1,0 +1,41 @@
+{
+  "total_nodes": 29,
+  "gap": 0,
+  "browser_authoritative": {
+    "count": 24,
+    "result": "ALL PASS (single authoritative invocation)"
+  },
+  "non_browser": [
+    {
+      "node": "F6",
+      "class": "PRECONDITION",
+      "status": "PASS",
+      "accounting": "launcher-mirrored task maildir: 10 mails captured this run (provisioning verify/setup + forgot reset links); read in-memory by harness"
+    },
+    {
+      "node": "R6",
+      "class": "BACKEND_PRE_GATE_ONLY",
+      "status": "BACKEND_PRE_GATE_ACCEPTED",
+      "evidence_ref": "90f96e3ffdbc9071b8847893f1a0f009fd96afc4 (Lubuntu independent backend final)"
+    },
+    {
+      "node": "M2",
+      "class": "BACKEND_PRE_GATE_ONLY",
+      "status": "BACKEND_PRE_GATE_ACCEPTED",
+      "evidence_ref": "90f96e3ffdbc9071b8847893f1a0f009fd96afc4"
+    },
+    {
+      "node": "R13",
+      "class": "POSTCOND",
+      "status": "PASS",
+      "evidence_ref": "artifact scan this round: zero leak findings (--secrets-from-env)"
+    },
+    {
+      "node": "RT0",
+      "class": "PROTOCOL_BLOCKER",
+      "status": "BLOCKED_BY_H2_C",
+      "pass_claimed": false,
+      "pb1_note": "no retailer forgot-password route/page; retailerForgotPassword has zero production call sites"
+    }
+  ]
+}

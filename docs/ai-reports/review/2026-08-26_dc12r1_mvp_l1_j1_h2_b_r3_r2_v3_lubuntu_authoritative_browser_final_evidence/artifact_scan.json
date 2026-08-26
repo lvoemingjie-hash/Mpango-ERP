@@ -1,0 +1,8 @@
+{
+  "tool": "tools/scan-artifacts.mjs --artifacts-dir artifacts --secrets-from-env",
+  "executed_after_single_authoritative_run": true,
+  "files_scanned": 3,
+  "leak_findings": 0,
+  "verdict": "PASS — zero leak findings (values withheld by tool design)",
+  "secret_env_vars_probed": ["J1H2B_A1_INITIAL_PASSWORD","J1H2B_A1_NEW_PASSWORD","J1H2B_A1_REPLAY_PASSWORD","J1H2B_INELIGIBLE_TEMP_PASSWORD","J1H2B_W1_OWNER_PASSWORD","J1H2B_W2_OWNER_PASSWORD","J1H2B_M_INITIAL_PASSWORD","J1H2B_M_NEW_PASSWORD"]
+}

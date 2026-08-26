@@ -1,0 +1,133 @@
+{
+  "task": "DC-12R1-MVP-L1-J1-H2-B-R3-R2-V3",
+  "executor": "OpenCode Lubuntu native",
+  "generated": "2026-08-26",
+  "env_vars": {
+    "J1H2B_BASE_URL": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_API_BASE_URL": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_MAILDIR_ROOT": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_SIGNUP_COUNTRY": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_A1_EMAIL": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_A1_INITIAL_PASSWORD": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_A1_NEW_PASSWORD": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_A1_REPLAY_PASSWORD": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_A1_COMPANY_NAME": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_UNKNOWN_EMAIL": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_INELIGIBLE_EMAIL": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_INELIGIBLE_TEMP_PASSWORD": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_W1_OWNER_EMAIL": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_W1_OWNER_PASSWORD": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_W1_COMPANY_NAME": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_W2_OWNER_EMAIL": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_W2_OWNER_PASSWORD": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_W2_COMPANY_NAME": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_M_EMAIL": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_M_FULL_NAME": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_M_INITIAL_PASSWORD": {
+      "present": true,
+      "nonempty": true
+    },
+    "J1H2B_M_NEW_PASSWORD": {
+      "present": true,
+      "nonempty": true
+    }
+  },
+  "all_22_present_nonempty": true,
+  "password_contract": {
+    "min_length_8": true,
+    "distinctness_enforced_at_generation": true,
+    "initial_ne_new": true,
+    "new_ne_replay": true,
+    "m_initial_ne_m_new": true
+  },
+  "identity_emails_unique_count": 6,
+  "email_domain": "mail.j1h2b-v4-task.dev (non-special-use .dev)",
+  "offline_signuprequest_validation": {
+    "validated_email_count": 6,
+    "all_valid": true,
+    "special_use_domain_count": 0
+  },
+  "origins": {
+    "frontend_base_url": "http://127.0.0.1:5173",
+    "public_frontend_url_equals_j1h2b_base_url": true,
+    "api_base": "http://127.0.0.1:8000",
+    "maildir_root_present": true
+  },
+  "playwright_chromium_available": true,
+  "trace_screenshot_video": "off",
+  "runtime_health": {
+    "backend_health": 200,
+    "backend_ready": 200,
+    "backend_live": 200,
+    "frontend": 200,
+    "proxy_probe": 422
+  },
+  "no_reuse_of_prior_databases_identities_emails_browser_state": true,
+  "alembic": {
+    "migrations_applied": 37,
+    "head": "037_payment_declarations_schema",
+    "unique_head": true,
+    "tenant_registrations_table_present": true,
+    "void_disclosure": "attempt1 VOID_ENVIRONMENT_PRECHECK: alembic was never applied in first runtime build (venv not ready at setup time); runtime destroyed and rebuilt with verified migration before THE authoritative invocation"
+  }
+}

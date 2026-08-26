@@ -1,0 +1,22 @@
+{
+  "task": "DC-12R1-MVP-L1-J1-H2-B-R3-R2-V3_LUBUNTU_AUTHORITATIVE_BROWSER_FINAL",
+  "executor": "OpenCode Lubuntu native",
+  "single_invocation": true,
+  "grep_or_shard_or_retry_used": false,
+  "browser_accounting": {
+    "expected": 24,
+    "passed": 24,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "not_run": 0
+  },
+  "key_contract_results": {
+    "F3_F4_F5_canonical_neutrality": "PASSED",
+    "R5_anonymous_401_reset_page_neutral_error_zero_navigation": "PASSED",
+    "R11_token_replay_401_plus_P2_recheck": "PASSED",
+    "M1_dual_tenant_provisioning_POST_users_PUT_roles_and_exact_W1W2_gate": "PASSED (21.5s)",
+    "R12_five_surface_leak_scan": "PASSED"
+  },
+  "viewport_disclosure": "390px/768px are simulated desktop-engine viewports; only viewport results reported, no real-device claims"
+}

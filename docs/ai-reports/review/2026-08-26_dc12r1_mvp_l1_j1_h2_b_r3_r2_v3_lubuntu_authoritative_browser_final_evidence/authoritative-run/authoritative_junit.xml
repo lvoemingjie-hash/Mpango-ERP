@@ -1,0 +1,52 @@
+<testsuites id="" name="" tests="24" failures="0" skipped="0" errors="0" time="78.011147">
+<testsuite name="forgot-reset.spec.ts" timestamp="2026-08-26T09:12:36.254Z" hostname="" tests="24" failures="0" skipped="0" time="76.187" errors="0">
+<testcase name="j1h2b-forgot-reset journey › F1-D" classname="forgot-reset.spec.ts" time="1.598">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-T" classname="forgot-reset.spec.ts" time="1.253">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F1-M" classname="forgot-reset.spec.ts" time="1.157">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-D" classname="forgot-reset.spec.ts" time="1.179">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-T" classname="forgot-reset.spec.ts" time="1.19">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F2-M" classname="forgot-reset.spec.ts" time="1.179">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F3" classname="forgot-reset.spec.ts" time="6.688">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F4" classname="forgot-reset.spec.ts" time="1.493">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › F5" classname="forgot-reset.spec.ts" time="16.409">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R1" classname="forgot-reset.spec.ts" time="1.076">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R2" classname="forgot-reset.spec.ts" time="1.044">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R3" classname="forgot-reset.spec.ts" time="1">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R4" classname="forgot-reset.spec.ts" time="1.107">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R5" classname="forgot-reset.spec.ts" time="1.245">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY" classname="forgot-reset.spec.ts" time="1.297">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R7-POLICY-M" classname="forgot-reset.spec.ts" time="1.164">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8" classname="forgot-reset.spec.ts" time="1.739">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R8-M" classname="forgot-reset.spec.ts" time="2.401">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R9" classname="forgot-reset.spec.ts" time="1.784">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10" classname="forgot-reset.spec.ts" time="1.674">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R10-M" classname="forgot-reset.spec.ts" time="1.629">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R11" classname="forgot-reset.spec.ts" time="2.387">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › R12" classname="forgot-reset.spec.ts" time="2.954">
+</testcase>
+<testcase name="j1h2b-forgot-reset journey › M1" classname="forgot-reset.spec.ts" time="21.54">
+</testcase>
+</testsuite>
+</testsuites>

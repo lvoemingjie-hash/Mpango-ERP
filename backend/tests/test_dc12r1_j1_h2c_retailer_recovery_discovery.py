@@ -497,6 +497,18 @@ async def _module_lifecycle():
     _MODULE_STATE["entry_overrides"] = dict(app.dependency_overrides)
     _MODULE_STATE["anchors"] = _Anchors()
     _MODULE_STATE["active"] = True
+    # Baseline connection count at entry: other modules' pooled connections
+    # may exist when this module runs after them; the final proof asserts
+    # THIS module added zero connections (delta, not absolute).
+    async with _fresh_session() as db:
+        _MODULE_STATE["entry_connections"] = (
+            await db.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+                )
+            )
+        ).scalar_one()
     try:
         yield
     finally:
@@ -1030,4 +1042,9 @@ async def test_module_global_state_zero():
                 )
             )
         ).scalar_one()
-    assert lingering == 0, f"{lingering} lingering DB connections"
+    # Delta proof: this module must add ZERO connections relative to its
+    # entry baseline (earlier modules' pooled connections are theirs).
+    assert lingering == _MODULE_STATE.get("entry_connections"), (
+        f"connection count drifted: entry={_MODULE_STATE.get('entry_connections')} "
+        f"now={lingering}"
+    )

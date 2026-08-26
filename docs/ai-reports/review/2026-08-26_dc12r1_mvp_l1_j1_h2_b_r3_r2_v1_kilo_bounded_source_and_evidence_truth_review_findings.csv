@@ -1,0 +1,54 @@
+phase,check_id,description,result,severity,evidence
+Phase 1: Proof Gate,PG-01,git fetch --all --prune 完成,PASS,INFO,远程分支 zcode/dc12r1-mvp-l1-j1-h2-b-r3-r2-test-residue-zero-red-evidence-closure-2026-08-26 存在
+Phase 1: Proof Gate,PG-02,candidate == remote tip,PASS,INFO,25626f4d9245a9b15cce92300fcdff8a5eb95de9 == origin/zcode/...
+Phase 1: Proof Gate,PG-03,candidate^ == R3_R1 (13a8d25),PASS,INFO,git rev-parse HEAD~1 = 13a8d25ca8d40dbc0b1ac05aa8206d5dcf56f070
+Phase 1: Proof Gate,PG-04,BASE_ACCEPTED_SOURCE 是祖先,PASS,INFO,git merge-base --is-ancestor 0267ea73 HEAD = true
+Phase 1: Proof Gate,PG-05,PROTECTED 是祖先,PASS,INFO,git merge-base --is-ancestor 6e9470a1 HEAD = true
+Phase 1: Proof Gate,PG-06,R3-R2 delta 恰好 3 文件,PASS,INFO,git diff --name-status 13a8d25..HEAD = 3 文件
+Phase 1: Proof Gate,PG-07,累计 delta 恰好 4 文件,PASS,INFO,git diff --name-status 0267ea73..HEAD = 4 文件
+Phase 1: Proof Gate,PG-08,backend/crud/user.py 字节不变 (R3_R1..candidate),PASS,INFO,git diff --name-status 13a8d25..HEAD 无 user.py; Python bytes 比较 11568 bytes 相等
+Phase 1: Proof Gate,PG-09,实际 stat 4 files / +245 / -7 (BASE..candidate),PASS,INFO,git diff --stat 0267ea73..HEAD
+Phase 2: Product Fix,PF-01,flush 后重查询完整加载全部 scalar 与 roles,PASS,INFO,assign_roles_to_user line 397-403: select(User).options(selectinload(User.roles)).execution_options(populate_existing=True)
+Phase 2: Product Fix,PF-02,user_to_read 零隐式 SQL,PASS,INFO,显式 select 加载全部 scalar + roles，返回后同步序列化不触发 lazy-load
+Phase 2: Product Fix,PF-03,不得提前 commit,PASS,INFO,使用 await db.flush() 而非 await db.commit()
+Phase 2: Product Fix,PF-04,不得吞异常,PASS,INFO,无 try/except 包裹核心逻辑
+Phase 2: Product Fix,PF-05,不得改变事务边界,PASS,INFO,函数不管理 commit/rollback，事务边界由调用方控制
+Phase 2: Product Fix,PF-06,400/403/404 合同不变,PASS,INFO,错误处理在 API 层，crud 层不修改
+Phase 2: Product Fix,PF-07,租户隔离不变,PASS,INFO,无 search_path 或 tenant filter 修改
+Phase 2: Product Fix,PF-08,rollback 合同不变,PASS,INFO,T8 验证 flush-only 写入在 rollback 后零残留
+Phase 3: Test Authenticity,TA-01,T1 真实命中 MissingGreenlet 修复点,PASS,INFO,真实官方供给链 + 真实 ASGI 客户端 + 真实 JWT 链；PUT roles -> 200
+Phase 3: Test Authenticity,TA-02,T2 真实命中 MissingGreenlet 修复点,PASS,INFO,真实 assign_roles_to_user + event.listen cursor probe；零 SQL 语句
+Phase 3: Test Authenticity,TA-03,T3-T8 未弱化产品合同,PASS,INFO,T3 持久化/T4 400/T5 404/T6 隔离/T7 403/T8 rollback 均验证真实产品行为
+Phase 3: Test Authenticity,TA-04,T9 在删除末端清理时真实 RED,PASS,INFO,变异门删除 teardown 清理后仅 T9 RED (1 failed / 8 passed)
+Phase 3: Test Authenticity,TA-05,无 skip/xfail/conditional pass/retry 刷绿,PASS,INFO,全文搜索无 skip/xfail/retry marker
+Phase 3: Test Authenticity,TA-06,timestamp 排序断言删除不降低 MissingGreenlet 检测,PASS,INFO,T1 时间戳断言改为存在性（非空），仍验证 updated_at 可序列化
+Phase 4: Cleanup Safety,CS-01,清理使用 fresh session,PASS,INFO,_cleanup_tenant_state_fail_closed line 226: async with AsyncSessionLocal() as db:
+Phase 4: Cleanup Safety,CS-02,独立 fresh session 复核,PASS,INFO,line 255: snapshot = await _tenant_residue_snapshot() 在清理 commit 后新建 session
+Phase 4: Cleanup Safety,CS-03,清理前后均执行,PASS,INFO,_r3r1_isolation fixture line 299 (before) + line 304 (after)
+Phase 4: Cleanup Safety,CS-04,body failure 与 teardown failure 同时保留,PASS,INFO,try/finally 结构；pytest 独立记录 body FAIL 和 teardown ERROR
+Phase 4: Cleanup Safety,CS-05,JwtAuthStrategy 两层均恢复,PASS,INFO,_real_jwt_strategy fixture 交换 + 恢复 built stack + user_middleware spec；_r3r2_module_guard 模块出口复核
+Phase 4: Cleanup Safety,CS-06,清理器是全测试库破坏性清理,PASS,INFO,_cleanup_tenant_state_fail_closed 删除 ALL wholesaler schemas + ALL registrations + ALL wholesalers
+Phase 4: Cleanup Safety,CS-07,数据库安全门阻止连接非测试数据库,PASS,INFO,async_test_utils.py:_validate_temporary_database_source: localhost-only, test-name regex, MPANGO_ENV=test
+Phase 4: Cleanup Safety,CS-08,T9 只证明零新增,PASS,INFO,line 807-816: new_wholesalers = snapshot - _MODULE_BASELINE; assert not new_wholesalers
+Phase 4: Cleanup Safety,CS-09,T9 不误写为恢复模块入口基线,PASS,INFO,T9 不修改数据，仅观察和断言；clean baseline 时额外断言绝对零
+Phase 5: Evidence Truth,ET-01,独立解析 JUnit 重算 3773/3710/48/15/0,PASS,INFO,台账 §5: Run A/B total=3773, passed=3710, skipped=48, xfailed=15, failed=0
+Phase 5: Evidence Truth,ET-02,R3-R1 两次红色全量保持 NON_AUTHORITATIVE_FOR_MERGE,PASS,INFO,R3-R1 台账顶部勘误块明确标记
+Phase 5: Evidence Truth,ET-03,R3-R2 A/B 分类为 CANDIDATE_PROVIDED_ZERO_RED,PASS,INFO,台账 §5: 候选方提供运行环境并执行
+Phase 5: Evidence Truth,ET-04,权威全量 post-run 为 4/0/29,PASS,INFO,台账 §5: Run A/B 后 4 wholesalers / 0 registrations / 29 schemas
+Phase 5: Evidence Truth,ET-05,后续重放 9/9 清零为诊断性归因,PASS,INFO,台账 §5: 脏库重放本模块 9/9 后 0/0/0，非权威 full-suite 结果
+Phase 5: Evidence Truth,ET-06,核对 PW1R3_TEST_REDIS_URL / DB15 / 26379,PASS,INFO,台账 §4-5: PW1R3_TEST_REDIS_URL=DB15 生效；DB15 DBSIZE=0；26379 零套接字；pw1r3 7/7
+Phase 5: Evidence Truth,ET-07,真实链 0267ea73 -> 13a8d25 -> 25626f4,PASS,INFO,git log --oneline 0267ea73..25626f4 显示线性链
+Phase 5: Evidence Truth,ET-08,旧 tip/parent 声明已标记 SUPERSEDED_METADATA_ONLY,PASS,INFO,R3-R1 台账顶部勘误块标记 NON_AUTHORITATIVE_FOR_MERGE
+Phase 5: Evidence Truth,ET-09,不要求 committed report 声称自身 SHA,PASS,INFO,R3-R2 台账未包含 FINAL_REPORT_TIP = 25626f4
+Phase 5: Evidence Truth,ET-10,branch protection 404/rulesets 状态,INFO,INFO,REMOTE_ENFORCEMENT_NOT_VERIFIED (无 GITHUB_TOKEN，API 返回 401)
+Phase 6: Reviewer Runtime,RR-01,本模块 9/9 自然序和逆序,INFO,INFO,声明性证据（候选方提供，Kilo 未独立重跑）
+Phase 6: Reviewer Runtime,RR-02,focused 97/97,INFO,INFO,声明性证据（候选方提供，Kilo 未独立重跑）
+Phase 6: Reviewer Runtime,RR-03,teardown/body 双失败反例,INFO,INFO,声明性证据（候选方提供，Kilo 未独立重跑）
+Phase 6: Reviewer Runtime,RR-04,不得冒充独立 zero-red,PASS,INFO,Kilo 明确声明本审查为源码级 + 证据链级审查
+Phase 7: Quality,Q-01,py_compile clean,PASS,INFO,python -m py_compile exit 0
+Phase 7: Quality,Q-02,diff-check clean,PASS,INFO,git diff --check exit 0
+Phase 7: Quality,Q-03,detect-secrets clean,PASS,INFO,detect-secrets scan exit 0
+Phase 7: Quality,Q-04,UTF-8/no-BOM,PASS,INFO,目标文件 UTF-8=True, BOM=False
+Phase 7: Quality,Q-05,no-CR (blob level),PASS,INFO,git blobs LF-only; working tree CRLF 为 Windows core.autocrlf 预期行为
+Phase 7: Quality,Q-06,GitNexus analyze,PASS,INFO,npx gitnexus analyze .: 15742 nodes / 47174 edges / 831 clusters / 300 flows
+Phase 7: Quality,Q-07,工作树 clean,PASS,INFO,git status --short 仅显示 .secrets.baseline 的 Windows CRLF 自动转换（非候选改动）

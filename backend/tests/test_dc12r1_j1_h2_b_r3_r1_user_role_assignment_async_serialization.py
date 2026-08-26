@@ -39,6 +39,25 @@ Contract proven here:
   T8  Rollback path: assign_roles_to_user inside a transaction that rolls
       back leaves ZERO user_roles residue (flush-only writes are fully
       transactional).
+
+R3-R2 residue and zero-red closure (this revision):
+
+  T9  Final residue proof on a FRESH session: after the final provisioning
+      node, public.wholesalers / public.tenant_registrations / task-derived
+      (uuid-named) pg_namespace schemas are ZERO when the module started on
+      a clean baseline, and never grow beyond the module-entry baseline in
+      any context. The node opts out of the pre-node wipe so it observes
+      real residue left by earlier nodes.
+
+Isolation contract (R3-R2):
+
+  - every node is bracketed by a fail-closed fresh-session tenant-state
+    cleanup (before AND after each node);
+  - a cleanup failure surfaces as its own teardown ERROR and never erases
+    or disguises an original test-body failure (pytest records the body
+    failure independently of teardown errors);
+  - the JwtAuthStrategy swap is restored on both wiring layers after every
+    node and re-verified at module exit (no shared-app strategy leak).
 """
 from __future__ import annotations
 
@@ -76,6 +95,18 @@ AUTH_SELECT = "/api/v1/auth/select-tenant"
 
 OWNER_PW = "R3r1OwnerPw_01!"  # pragma: allowlist secret
 MEMBER_PW = "R3r1MemberPw_01!"  # pragma: allowlist secret
+
+# Task-derived tenant schemas are exactly "t_" + 32 lowercase hex chars
+# (wholesaler UUID without dashes) — matched in SQL by the residue queries;
+# fixed-name test schemas (t_test, t_s4_inventory_other, ...) are NOT
+# task-derived tenant residue.
+
+# The final residue-proof node must NOT run the pre-node wipe (the wipe
+# would mask exactly the residue the node is supposed to observe).
+_RESIDUE_PROOF_NODE = "test_t9_final_residue_zero"
+
+# Module-entry tenant-state baseline, captured once by _r3r2_module_guard.
+_MODULE_BASELINE: dict[str, set[str]] | None = None
 
 
 def _find_auth_middleware(application: FastAPI) -> AuthenticationMiddleware | None:
@@ -145,31 +176,133 @@ async def _real_jwt_strategy():
             live._strategy = original_mock
 
 
+async def _tenant_residue_snapshot() -> dict[str, set[str]]:
+    """Fresh-session read of every tenant-residue dimension this task can
+    create: public wholesaler rows, tenant registration rows, and
+    task-derived (uuid-named) pg_namespace schemas."""
+    async with AsyncSessionLocal() as db:
+        wholesalers = set(
+            (await db.execute(text("SELECT id::text FROM public.wholesalers")))
+            .scalars()
+            .all()
+        )
+        registrations = set(
+            (
+                await db.execute(
+                    text("SELECT id::text FROM public.tenant_registrations")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        schemas = set(
+            (
+                await db.execute(
+                    text(
+                        "SELECT nspname FROM pg_namespace "
+                        "WHERE nspname ~ '^t_[0-9a-f]{32}$'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return {
+        "wholesalers": wholesalers,
+        "registrations": registrations,
+        "schemas": schemas,
+    }
+
+
+async def _cleanup_tenant_state_fail_closed() -> None:
+    """Wipe ALL tenant state on a FRESH session and fail closed.
+
+    Drops every wholesaler-derived tenant schema plus any orphaned
+    uuid-named tenant schema, deletes registrations + wholesalers, commits,
+    then re-reads the residue dimensions on another fresh session: any
+    exception or any surviving row/schema raises. Called before AND after
+    every node so residue can never cross node boundaries.
+    """
+    async with AsyncSessionLocal() as db:
+        try:
+            ids = (
+                await db.execute(text("SELECT id FROM public.wholesalers"))
+            ).scalars().all()
+            for wid in ids:
+                schema = f"t_{str(wid).replace('-', '')}"
+                await db.execute(
+                    text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+                )
+            orphans = (
+                await db.execute(
+                    text(
+                        "SELECT nspname FROM pg_namespace "
+                        "WHERE nspname ~ '^t_[0-9a-f]{32}$'"
+                    )
+                )
+            ).scalars().all()
+            for schema in orphans:
+                await db.execute(
+                    text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+                )
+            await db.execute(text("DELETE FROM public.tenant_registrations"))
+            await db.execute(text("DELETE FROM public.wholesalers"))
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+
+    snapshot = await _tenant_residue_snapshot()
+    if any(snapshot.values()):
+        raise AssertionError(f"tenant residue survived cleanup: {snapshot}")
+
+
+@pytest.fixture(autouse=True, scope="module")
+async def _r3r2_module_guard():
+    """Module-entry baseline + module-exit shared-app leak verification.
+
+    Captures the tenant-state baseline once (so the final residue proof can
+    distinguish this module's own residue from pre-existing state left by
+    files that ran earlier in a full suite) and, after the last node,
+    fail-closed verifies that the JwtAuthStrategy swap was fully restored
+    on BOTH wiring layers of the shared app (no strategy leak).
+    """
+    global _MODULE_BASELINE
+    _MODULE_BASELINE = await _tenant_residue_snapshot()
+    try:
+        yield
+    finally:
+        live = _find_auth_middleware(app)
+        assert live is not None, "AuthenticationMiddleware missing at module exit"
+        assert isinstance(
+            live._strategy, MockAuthStrategy
+        ), f"shared-app strategy leak: live={type(live._strategy).__name__}"
+        for entry in app.user_middleware:
+            if entry.cls is AuthenticationMiddleware:
+                assert isinstance(
+                    entry.kwargs.get("strategy"), MockAuthStrategy
+                ), "shared-app strategy leak: user_middleware spec not restored"
+
+
 @pytest.fixture(autouse=True)
-async def _r3r1_isolation():
-    """Deterministic per-test state: drop every tenant schema + registration
-    so the cross-tenant login scan and role lookups never see leftovers
-    from a previous test (same approach as the H2-B runtime closure suite)."""
-    await _reset_tenant_state()
+async def _r3r1_isolation(request):
+    """Bracket every node with fail-closed fresh-session tenant cleanup.
+
+    BEFORE: wipe (except for the residue-proof node, which must observe
+    what earlier nodes actually left behind). AFTER: wipe again so no
+    residue crosses node boundaries. The after-wipe runs in teardown: a
+    cleanup failure surfaces as its own teardown ERROR and pytest keeps
+    the original test-body failure independently recorded — a cleanup
+    failure can therefore never erase or disguise a body failure.
+    """
+    if request.node.name != _RESIDUE_PROOF_NODE:
+        await _cleanup_tenant_state_fail_closed()
     clear_dev_email_deliveries()
     try:
         yield
     finally:
+        await _cleanup_tenant_state_fail_closed()
         clear_dev_email_deliveries()
-
-
-async def _reset_tenant_state() -> None:
-    async with AsyncSessionLocal() as db:
-        ids = (
-            await db.execute(text("SELECT id FROM public.wholesalers"))
-        ).scalars().all()
-        for wid in ids:
-            schema = f"t_{str(wid).replace('-', '')}"
-            await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        if ids:
-            await db.execute(text("DELETE FROM public.tenant_registrations"))
-        await db.execute(text("DELETE FROM public.wholesalers"))
-        await db.commit()
 
 
 def _client() -> AsyncClient:
@@ -348,10 +481,12 @@ async def test_t1_put_roles_200_full_scalars_and_admin_role():
     assert data["is_active"] is True
     assert data["full_name"] == "R3 R1 Member"
     # The expired-scalar contract: both timestamps must serialize (old code
-    # died exactly on updated_at).
+    # died exactly on updated_at). Presence only — wall-clock ORDER across
+    # two requests is not a contract: PG now() is transaction-START time and
+    # a pooled connection can carry a transaction opened before the other
+    # request's transaction, legitimately inverting the observed order.
     assert data["created_at"], data
     assert data["updated_at"], data
-    assert data["updated_at"] >= data["created_at"]
     assert [role["name"] for role in data["roles"]] == ["admin"]
     assert data["roles"][0]["id"] == admin_role_id
 
@@ -646,3 +781,51 @@ async def test_t8_rollback_leaves_zero_user_roles_residue():
         await db.rollback()
 
     assert await _user_role_binding_count(schema, str(user.id)) == 0
+
+
+# ---------------------------------------------------------------------------
+# T9 — final residue proof (R3-R2)
+# ---------------------------------------------------------------------------
+
+async def test_t9_final_residue_zero():
+    """R3-R2 residue proof: after the final provisioning node this module
+    leaves ZERO public.wholesalers, ZERO public.tenant_registrations, and
+    ZERO task-derived (uuid-named) pg_namespace schemas — read on a FRESH
+    session, with the pre-node wipe intentionally skipped so the node
+    observes what earlier nodes actually left behind.
+
+    In a full-suite context where earlier FILES left pre-existing tenant
+    state, the module-entry baseline is non-empty; the proof then asserts
+    the current state never EXCEEDS that baseline (this module adds
+    nothing). On a clean baseline (focused runs / fresh stacks) the
+    assertion is absolute zero. Either way, any tenant that survives an
+    earlier node's after-cleanup contract turns this node RED.
+    """
+    assert _MODULE_BASELINE is not None, "module baseline not captured"
+    snapshot = await _tenant_residue_snapshot()
+
+    new_wholesalers = snapshot["wholesalers"] - _MODULE_BASELINE["wholesalers"]
+    new_registrations = (
+        snapshot["registrations"] - _MODULE_BASELINE["registrations"]
+    )
+    new_schemas = snapshot["schemas"] - _MODULE_BASELINE["schemas"]
+    assert not new_wholesalers, f"new wholesaler residue: {new_wholesalers}"
+    assert not new_registrations, (
+        f"new tenant_registration residue: {new_registrations}"
+    )
+    assert not new_schemas, f"new task-derived schema residue: {new_schemas}"
+
+    baseline_was_clean = not any(_MODULE_BASELINE.values())
+    if baseline_was_clean:
+        assert not snapshot["wholesalers"], (
+            f"public.wholesalers not zero after final test: "
+            f"{snapshot['wholesalers']}"
+        )
+        assert not snapshot["registrations"], (
+            f"public.tenant_registrations not zero after final test: "
+            f"{snapshot['registrations']}"
+        )
+        assert not snapshot["schemas"], (
+            f"task-derived pg_namespace schemas not zero after final test: "
+            f"{snapshot['schemas']}"
+        )

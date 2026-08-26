@@ -1,12 +1,32 @@
 # DC-12R1-MVP-L1-J1-H2-B-R3-R1 — 用户角色分配异步序列化收口（User Role Assignment Async Serialization Closure）
 
-- 日期：2026-08-26（+08:00）；执行者：ZCode
+> **R3-R2 真相修正（2026-08-26，勘误块，原文未删改）**
+>
+> 1. **中期裁决修正**：本任务冻结时的中期裁决应为
+>    `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_INDEPENDENT_ZERO_RED`
+>    （并非仅等待 Kilo —— zero-red 独立证明当时尚未闭合）。
+> 2. **本台账 §6 的 A/B 双 fresh-stack 运行
+>    （各 3708 passed / 1 failed）记为 `NON_AUTHORITATIVE_FOR_MERGE`**：
+>    - 两者均非 literal zero-red（各含 1 个 failed——当时已定性为预存
+>      pw1r3 项，且已证明 parent `0267ea73` 同样失败）；
+>    - 当时测试文件缺少节点后清理（残留仅靠下一节点的前置清理掩盖），
+>      不满足残留合同；
+>    - pw1r3 的失败根因后经 R3-R2 定位为缺少任务专用
+>      `PW1R3_TEST_REDIS_URL`（默认回退 sentinel 端口 26379 不可连接）。
+> 3. 权威 zero-red 与残留证据由 **R3-R2**（提交于
+>    `zcode/dc12r1-mvp-l1-j1-h2-b-r3-r2-test-residue-zero-red-evidence-closure-2026-08-26`，
+>    父 = 本提交 `13a8d25c`）重新建立；本台账的修复正文（§1–§5、§7）与
+>    变异门证据仍然有效，仅套件证据级别降级如上。
+
+- 日期：2026-08-26（+08:00）；执行者：Zcode
 - 分支：`zcode/dc12r1-mvp-l1-j1-h2-b-r3-r1-user-role-assignment-async-serialization-closure-2026-08-26`
   （自候选父提交 `0267ea73b77c1246232124278892de11739f408e` = H2-B-R3 tip 创建）
 - 接受证据核对：Kilo source review `f795e0fb…`、Lubuntu STOP `9d6b3e43…`、
   冻结 harness `8c7e84779cc1810baab32859d3dc353e1028384a` 均未触碰；
   HE2 治理分支未成为本产品分支 base（分支唯一父 = `0267ea73`）。
 - 裁决目标：`PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_B_R3_R1_MERGE_REVIEW`
+  （R3-R2 修正：中期裁决为
+  `STOP_AND_REPORT_CTO_AWAITING_KILO_AND_INDEPENDENT_ZERO_RED`）
 
 ## 1. 确认因果链（实现前锁定，实测复核一致）
 

@@ -1,0 +1,4 @@
+== Gate 4: residue after module run (fresh admin connection) ==
+wholesalers=0
+registrations=0
+uuid_schemas=0

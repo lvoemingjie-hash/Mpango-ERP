@@ -1,0 +1,19 @@
+## py_compile on 4 candidate files
+py_compile OK (crud/user.py, r3r1 module)
+## git diff --check
+diff_check OK
+## strict UTF-8 / no BOM / LF-only on the 4 candidate files
+OK 2026-08-26_dc12r1_mvp_l1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.md
+OK 2026-08-26_dc12r1_mvp_l1_j1_h2_b_r3_r2_test_residue_zero_red_evidence.md
+OK user.py
+OK test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py
+detect_secrets_findings: 0
+分支: （分离 HEAD）
+索引时间: 2026/8/26 14:11:12
+索引提交: 25626f4
+当前提交: 25626f4
+状态: ✅ 已是最新
+== refs re-verify post-run ==
+candidate_remote_tip=25626f4d9245a9b15cce92300fcdff8a5eb95de9
+protected=6e9470a1daa5d6eece29724316fdd8aef6b737c1
+base_accepted_in_history=YES

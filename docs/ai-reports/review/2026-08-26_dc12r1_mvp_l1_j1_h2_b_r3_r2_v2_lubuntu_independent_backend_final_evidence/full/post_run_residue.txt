@@ -1,0 +1,8 @@
+== POST-RUN TRUTH SNAPSHOT (authoritative red run; fresh admin connection) ==
+wholesalers=4
+tenant_registrations=0
+uuid_schemas=0
+extra_databases_beyond_expected=0
+dc11t2fr_roles=0
+redis_db0_dbsize=6
+redis_db15_dbsize=0

@@ -1,0 +1,62 @@
+{
+  "task": "DC-12R1-MVP-L1-J1-H2-B-R3-R2-V2",
+  "executor": "OpenCode — Lubuntu native independent (INDEPENDENT_GATE_OWNER)",
+  "generated": "2026-08-26",
+  "platform": {
+    "os": "Lubuntu native Linux (non-WSL)",
+    "python": "3.12.3",
+    "pytest": "9.1.1",
+    "pytest_asyncio": "1.4.0",
+    "hypothesis": "6.165.10",
+    "postgresql_image": "postgres:16-alpine",
+    "redis_image": "redis:7-alpine"
+  },
+  "stacks": [
+    {
+      "role": "preflight",
+      "containers": ["r3r2v2-pref-pg", "r3r2v2-pref-redis"],
+      "ports": {"pg": "127.0.0.1:15601", "redis": "127.0.0.1:16601"},
+      "network": "r3r2v2-pref-net",
+      "volumes": ["r3r2v2-pref-pgdata", "r3r2v2-pref-redisdata"],
+      "database": "test_r3r2v2_pref",
+      "max_connections": 300,
+      "destroyed_before_authoritative_run": true
+    },
+    {
+      "role": "authoritative",
+      "containers": ["r3r2v2-auth-pg", "r3r2v2-auth-redis"],
+      "ports": {"pg": "127.0.0.1:15602", "redis": "127.0.0.1:16602"},
+      "network": "r3r2v2-auth-net",
+      "volumes": ["r3r2v2-auth-pgdata", "r3r2v2-auth-redisdata"],
+      "database": "test_r3r2v2_auth",
+      "max_connections": 300
+    }
+  ],
+  "pg_role": {"name": "r3r2tester", "superuser": false, "createdb": true, "createrole": true},
+  "database_naming": "test_ prefixed (test_r3r2v2_pref / test_r3r2v2_auth)",
+  "temp_db_safety_gate": {"MPANGO_ALLOW_TEMP_DB_CREATE": "<set>", "MPANGO_TEMP_DB_ALLOWED_HOSTS": "127.0.0.1", "MPANGO_TEMP_DB_ALLOWED_PORTS": "<stack pg port, presence recorded>"},
+  "alembic": {"migrations_applied": 37, "final_head": "037_payment_declarations_schema", "unique_head": true},
+  "redis_proofs": {
+    "db0_dbsize_pre_run": 0,
+    "db15_dbsize_pre_run": 0,
+    "REDIS_URL_endpoint": "redis://127.0.0.1:<stack port>/0",
+    "PW1R3_TEST_REDIS_URL_endpoint": "redis://127.0.0.1:<stack port>/15",
+    "port_26379_connect_ex": 111,
+    "note": "26379 unreachable throughout; no listener"
+  },
+  "required_vars_presence_only": {
+    "TEST_DATABASE_URL": "<set>",
+    "DATABASE_URL": "<set>",
+    "REDIS_URL": "<set>",
+    "PW1R3_TEST_REDIS_URL": "<set>",
+    "REPORTING_USER_PASSWORD": "<set>",
+    "SECRET_KEY": "<n/a for pytest suite; conftest default path not exercised>"
+  },
+  "candidate_files_encoding": "4/4 strict UTF-8, no BOM, LF-only",
+  "host_snapshot_before_task": {
+    "pre_existing_j1h2b_or_r3r2v2_containers": 0,
+    "task_ports_free_before_creation": true,
+    "protected_refs_recorded": ["origin/product-dev-recovered=6e9470a1daa5d6eece29724316fdd8aef6b737c1"]
+  },
+  "preflight_verdict": "PASS (all machine checks green before any pytest)"
+}

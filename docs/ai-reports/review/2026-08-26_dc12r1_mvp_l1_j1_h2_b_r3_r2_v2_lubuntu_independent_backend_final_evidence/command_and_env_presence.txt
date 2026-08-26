@@ -1,0 +1,16 @@
+# Exact authoritative invocation + environment presence record
+# Command (single invocation, 2026-08-26T13:15:10+08:00):
+#   python -m pytest -p no:cacheprovider tests --junitxml=<evidence>/full_junit.xml
+# cwd: <candidate worktree>/backend ; retries=0 (default), no grep/shard/repeat-each
+#
+# Environment presence at launch (names + boolean only; values withheld):
+TEST_DATABASE_URL=true        # NOTE: exported EMPTY STRING by launcher expansion-ordering defect — see REPORT.md F1
+DATABASE_URL=true
+REDIS_URL=true
+PW1R3_TEST_REDIS_URL=true
+MPANGO_ENV=test
+MPANGO_ALLOW_TEMP_DB_CREATE=1
+MPANGO_TEMP_DB_ALLOWED_HOSTS=127.0.0.1
+MPANGO_TEMP_DB_ALLOWED_PORTS=15602
+REPORTING_USER_PASSWORD=true
+PYTHONDONTWRITEBYTECODE=1

@@ -1,0 +1,54 @@
+{
+  "task": "DC-12R1-MVP-L1-J1-H2-B-R3-R2-V2_LUBUNTU_INDEPENDENT_FRESH_RUNTIME_BACKEND_FINAL",
+  "executor": "OpenCode Lubuntu native",
+  "single_invocation": true,
+  "grep_or_shard_or_retry_used": false,
+  "expected_machine_accounting": {
+    "collected": 3773,
+    "passed": 3710,
+    "skipped": 48,
+    "xfailed": 15,
+    "failed": 0,
+    "errors": 0,
+    "xpassed": 0,
+    "gap": 0
+  },
+  "observed_authoritative_run": {
+    "collected": 3773,
+    "passed": 3646,
+    "failed": 8,
+    "errors": 35,
+    "plain_skipped": 69,
+    "xfailed": 15,
+    "junit_skipped_incl_xfail": 84
+  },
+  "delta_vs_expected": {
+    "passed": -64,
+    "failed": 8,
+    "errors": 35,
+    "plain_skips": 21
+  },
+  "verdict": "STOP_AND_REPORT_CTO_WITH_EXACT_CAUSAL_CLASSIFICATION",
+  "exact_causal_classification": "EXECUTOR_LAUNCHER_ENVIRONMENT_DEFECT__TEST_DATABASE_URL_EXPORTED_AS_EMPTY_STRING_BY_SHELL_EXPANSION_ORDERING",
+  "root_cause_mechanism": {
+    "defective_launch_pattern": "env DATABASE_URL='<literal>' TEST_DATABASE_URL=\"$DATABASE_URL\" ...",
+    "explanation": "$DATABASE_URL was expanded by the shell BEFORE env applied DATABASE_URL, so TEST_DATABASE_URL was exported as an empty string for the authoritative pytest process",
+    "evidence_signature": [
+      "29 setup errors: AssertionError: TEST_DATABASE_URL required for real Alembic evidence tests (real_alembic_upgrade module asserts non-empty)",
+      "dc11t2_async_test_utils + s4g_migration_infrastructure_hardening + migration_preflight_exact_catalog + reporting_bootstrap_contract: RuntimeError temporary database creation requires TEST_DATABASE_URL / psycopg2 host 'None'",
+      "+21 conditional skips on missing TEST_DATABASE_URL",
+      "environ dump captured in failure output shows TEST_DATABASE_URL: ''"
+    ],
+    "why_3646_still_passed": "conftest falls back to DATABASE_URL when TEST_DATABASE_URL is falsy \u2014 modules using the shared conftest URL resolution were unaffected; only modules asserting/using TEST_DATABASE_URL directly went red"
+  },
+  "scope_attribution": {
+    "product_candidate_defect": "NO evidence \u2014 crud/user.py fix path proven green in pre-gate stack with correctly-set env (module 9/9 natural+reverse, focused 97/97 x2 orders, pw1r3 7/7 DB15)",
+    "stack_defect": "NO \u2014 max_connections=300 held; no TooManyConnectionsError anywhere in the run",
+    "harness_defect": "NO \u2014 harness not exercised this round (backend gate)"
+  },
+  "mandate_discipline": {
+    "rerun_performed_after_red": false,
+    "authoritative_run_count": 1,
+    "preflight_stack_destroyed_and_rebuilt_before_authoritative_run": true
+  }
+}

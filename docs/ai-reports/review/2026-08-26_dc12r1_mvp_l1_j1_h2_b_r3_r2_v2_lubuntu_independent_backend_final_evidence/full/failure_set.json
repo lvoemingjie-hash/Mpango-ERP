@@ -1,0 +1,17 @@
+{
+  "run_verdict": "STOP_AND_REPORT_CTO_WITH_EXACT_CAUSAL_CLASSIFICATION",
+  "red_summary": {
+    "failed": 8,
+    "errors": 35,
+    "extra_plain_skips": 21,
+    "modules_affected": [
+      "test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade",
+      "test_dc11t2_async_test_utils",
+      "test_s4g_migration_infrastructure_hardening",
+      "test_dc12r1_s1_r5_migration_preflight_exact_catalog",
+      "test_dc11t4c_reporting_bootstrap_contract"
+    ]
+  },
+  "root_cause": "executor launcher exported TEST_DATABASE_URL='' (shell expansion ordering); product/candidate/stack exonerated by pre-gate evidence",
+  "remediation_path_for_cto": "authorize one corrected-environment fresh-stack authoritative rerun (launcher passes literal TEST_DATABASE_URL identical to DATABASE_URL), OR reassign gate; no rerun performed under this mandate"
+}

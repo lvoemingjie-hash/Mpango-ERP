@@ -62,3 +62,9 @@ backend/frontend 终止；PG/Redis 容器/卷/网络删除；maildir/私有 env/
 ## 裁决链
 
 本 PASS 完成链路：BACKEND_AUTHORITY `90f96e3f`（R1 后端门）→ 本轮 BROWSER GATE。CLAIM_CEILING 为 INDEPENDENT_BROWSER_GATE_PASS——merge review 与 deployment approval 不在范围内。即使 PASS 也 STOP。
+
+## Evidence Packaging Clarification (E1)
+
+- attempt #1 was classified `VOID_ENVIRONMENT_PRECHECK` and is disclosed above as narrative only.
+- The VOID attempt's raw artifacts (console output, partial JUnit) existed solely inside the task-private runtime directory and were destroyed during Phase 8 cleanup; **no `void_attempts/` directory or any VOID raw artifact was committed to this branch**. Nothing in this repository should be read as a published copy of VOID raw artifacts.
+- The committed-blob manifest previously carried a header naming a pre-amend commit hash that no longer exists on any ref; E1 removes that claim and re-scopes the manifest to "all non-manifest committed blob bytes under the current report tip", recomputed and verified missing=0 / extra=0 / mismatch=0.

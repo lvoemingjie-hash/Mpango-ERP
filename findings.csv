@@ -1,0 +1,27 @@
+phase,checkpoint,severity,status,finding,evidence,remediation
+Phase 1,fetch prune,PASS,git fetch --all --prune executed successfully in main worktree,N/A,N/A
+Phase 1,detached worktree,PASS,Created detached clean worktree at CANDIDATE bf20e8c9eae620fcf101ded672dfb0afeab937cb,N/A,N/A
+Phase 1,remote tip match,PASS,origin/zcode/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-fw3-exception-identity-closure-2026-08-27 points to CANDIDATE,N/A,N/A
+Phase 1,commit chain,PASS,CANDIDATE^ = a8613fb3 (ledger) and a8613fb3^ = BASE (8aced8c7) verified via git rev-parse,N/A,N/A
+Phase 1,2-file delta,PASS,BASE..CANDIDATE contains exactly backend/tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py and ai-ledger/product-ai/2026-08-27_dc12r1_mvp_l1_j1_h2_c_r1_r2_r1_fw3_exception_identity.md,N/A,N/A
+Phase 1,protected unchanged,PASS,product/ frontend/ migrations/ shared/s1_db/ backend/tests/harness/ requirements pyproject.toml and protected ref 2c20d58c... show zero diff,N/A,N/A
+Phase 2,real HTTP assertion,PASS,FW3 asserts r7.json()["message"] against real HTTP response body — no manual raise AssertionError(),lines 929-931,None
+Phase 2,assertion timing,PASS,Assertion occurs after HTTP POST side effects and before any token ID registration; no _sweep_tokens between,lines 920-934,None
+Phase 2,inner except saves original,PASS,except AssertionError as exc: original_assertion = exc preserves original object reference,lines 932-933,None
+Phase 2,bare raise,PASS,raise re-raises the original AssertionError object unchanged through _residue_lifecycle,line 934,None
+Phase 2,outer catches propagated,PASS,except AssertionError as exc: propagated = exc captures lifecycle-propagated exception,lines 935-938,None
+Phase 2,identity assertion,PASS,assert propagated is original_assertion uses only object identity — no type/message/non-null/membership substitution,lines 941-944,None
+Phase 2,no identity shortcuts,PASS,Test does not use isinstance/non-null/membership checks as identity proof,lines 941-944,None
+Phase 2,zero residue proven,PASS,_assert_window_outcomes proves DB/schema/email sink zero after failure window,line 845,None
+Phase 2,other tests unchanged,PASS,FW1/FW2/FW4/FW5 and _residue_lifecycle implementation are identical to BASE,lines 847-1034,None
+Phase 3,falsification gate mutation,PASS,Temporary mutation of _residue_lifecycle to raise new AssertionError causes FW3 RED; recovery SHA-256 matches,CANDIDATE_PROVIDED_EVIDENCE,None
+Phase 3,recovery SHA-256,PASS,Current test file SHA-256 39e451c0d79ad64824b77687cc90e98cbb22d90b08baff3df0305ff290208de1 matches ledger,lines 47-48,None
+Phase 3,runtime scope disclosure,PASS,Static source review only; mutations labeled CANDIDATE_PROVIDED_EVIDENCE; no runtime PASS claimed,verification tier header,None
+Phase 4,ledger preserves STOP,PASS,Ledger explicitly records PRIOR_KILO_STOP de1c88cce96b39c63ea6b3eddda9f7d0278218b9,lines 9-11,None
+Phase 4,only P1 closed,PASS,Ledger states only P1 TEST_FALSE_GREEN is closed; no product/full-suite/Lubuntu/Playwright/merge-ready claims,lines 67-69,None
+Phase 4,py_compile,PASS,python -m py_compile backend/tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py returned no errors,N/A,None
+Phase 4,git diff --check,PASS,No whitespace errors or conflict markers detected,N/A,None
+Phase 4,detect-secrets,PASS,Scan of modified files returned zero secret detections,N/A,None
+Phase 4,UTF-8/no-BOM/no-NUL/LF,PASS,Binary inspection: BOM=False NUL=False CR=False size=43769 bytes,N/A,None
+Phase 4,worktree clean,PASS,git status --short empty,N/A,None
+Phase 4,trailing whitespace reports,N/A,Report files not yet written; will verify before push,N/A,Ensure no trailing whitespace in review.md and findings.csv

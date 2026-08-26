@@ -66,9 +66,45 @@ request_password_reset（邮件负载 + 3 个后端测试断言）。
 - 未修改冻结 j1h2b-forgot-reset harness（`git diff` 该目录为空）。
 - 产品运行时/Playwright/PG/Redis：零执行。
 
-## 6. 裁决
+## 6. R0-R1 精化（Contract Determinism and Legacy Compatibility Closure）
 
-FINAL VERDICT: **PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_R0_CONTRACT_REVIEW**
+R0 verdict（§6 原裁决）**被 R0-R1 精确合同取代**。R0-R1 于同一组三文件内
+完成以下修正（BASE `e8858dd6`，分支
+`zcode/dc12r1-mvp-l1-j1-h2-c-r0-r1-contract-truth-closure-2026-08-26`）：
+
+1. **canonical neutrality 冻结**：精确键集 `success/data/message/timestamp`；
+   `success=true`、`data={}`、`message` 为固定中性常量；`timestamp`
+   必须存在且可解析；比较时仅将 timestamp 值替换为 sentinel 后逐键相等；
+   不做 raw-byte 或时序相等声明；timing sidechannel 明确
+   OUT_OF_SCOPE。（HC07-HC10 同步改为 canonical response equality。）
+2. **HC12 精化**：resetToken 永不进入 query/storage/日志/console/network
+   metadata；`w` 为公共代码，仅允许出现在初始 fragment 与成功后
+   canonical `/retail/login?w=` URL；`w` 不进入 reset POST body、
+   storage 或日志。
+3. **legacy 兼容**：legacy 链接携带有效 token 仍允许完成密码重置；
+   成功后仅显示 "Return to the portal link your supplier provided"，
+   不提供 `/login` 链接、不猜测门户（HC14 同步改写）。
+4. **HC02 精化**：无效门户判例改为缺失 `w` 与明确畸形 `w=BAD%21`。
+5. **DB canonical w**：reset 邮件中的 `w` 必须来自数据库匹配到的
+   canonical wholesaler code（`lower(w.code)=lower(:code)` 匹配后取
+   `w.code`）；追加节点 HC17（小写调用输入 → DB canonical 大写代码）。
+   HC01-HC16 ID 与顺序保持稳定，HC17 仅追加。
+6. **影响分析修正**：删除无证据的 P25 描述（经核实 P25_RouteInventory
+   只钉住 PlatformRoute 下 19 条平台路由，公共路由不在其清单内）；
+   补充真实受影响测试范围，含
+   `test_dc12r1_j1_h2b_forgot_password_runtime_closure.py`。
+
+R0-R1 质量门：delta 恰三个 R0 文档文件；CSV 17 数据行 × 15 列、
+ID 唯一（HC01-HC17）、oracle 全非空；`git diff --check` 干净；
+scoped pre-commit + detect-secrets Passed；三文件严格 UTF-8 无 BOM；
+未实施 H2-C-R1。
+
+## 7. 裁决
+
+ORIGINAL_R0_VERDICT: **PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_R0_CONTRACT_REVIEW**
+（已被 R0-R1 精确合同取代）
+
+FINAL VERDICT: **PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_R0_R1_CONTRACT_TRUTH_CLOSURE**
 
 CLAIM_CEILING：`CONTRACT_AND_IMPACT_ANALYSIS_ONLY`。
 完成后 STOP：等待 CTO 审阅合同与节点清单，再授权 H2-C-R1 实现；

@@ -1,10 +1,12 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-08-20
+**Last updated:** 2026-08-26
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current reviewed product-code baseline:** `a29f8db02365737c64d0d8d442e8ef48a8a19d6d` (the accepted DC-12R1-MVP-L1-PW1-R4-C1-R1 controlled merge; fetch the live protected tip and verify this commit is its ancestor before new controlled work)
-**R4-C1-R1 status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `a29f8db0` has parents `9067e38f` and `f51c109`; its tree is identical to the reviewed source. Accepted evidence: Kilo source review `5cff172a`, OpenCode fresh-runtime browser evidence `0e1c7ed8` (`162/162`), Kilo evidence review `b0b1ff4f`, and merge report `046fe7de`. This closes the responsive wholesaler MainLayout and mobile navigation browser gate; it does not claim human acceptance, VPS, HTTPS, or customer delivery.
+**Current reviewed product-code baseline:** `436d61e2dfed88a9469e4572615b98b9c4a7aed4` (the accepted DC-12R1-MVP-L1-J1-H2-B-R3-R2-M1 controlled merge; fetch the live protected tip and verify this commit is its ancestor before new controlled work)
+**H2-B status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `436d61e2` has parents `6e9470a1` and `25626f4d`; its tree is identical to the reviewed source. Accepted evidence: source `25626f4d`, Kilo review `d6289a6b`, backend authority `90f96e3f` (3773 collected / 3710 passed / 48 skipped / 15 xfailed / zero red), browser E1 `04134016` (24/24 browser PASS, 29-node inventory gap=0), and merge report `c400b7c5`. This closes the wholesaler forgot/reset password chain, the anonymous reset 401 redirect defect, multi-replica password-reset atomicity, the user role assignment `MissingGreenlet` defect, and the associated test-residue/temporary-database stability fixes. It does not claim deployment, VPS, real-device acceptance, or customer delivery.
+**J1-H2-A-R2 status: MERGED** - controlled merge `6e9470a1` has parents `c5b66d26` and `bf574cf9`; an ancestor of the current tip, not the tip itself.
+**R4-C1-R1 status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `a29f8db0` has parents `9067e38f` and `f51c109`; its tree is identical to the reviewed source. Accepted evidence: Kilo source review `5cff172a`, OpenCode fresh-runtime browser evidence `0e1c7ed8` (`162/162`), Kilo evidence review `b0b1ff4f`, and merge report `046fe7de`. This closes the responsive wholesaler MainLayout and mobile navigation browser gate; now an ancestor of the current tip, it does not claim human acceptance, VPS, HTTPS, or customer delivery.
 **H7 status: MERGED_AND_CLOSED** - controlled merge `ea990826` has parents `a6ef3aac` and `a0a14e4d`, and its tree is identical to the reviewed source. Accepted evidence: Kilo `8b04a92b`, Lubuntu native setup `189852da`, Lubuntu Phase-4 zero-red `4fa13dac`, post-merge H7 bundle 325/325, and GitNexus indexed/current at `ea990826`. This proves the merged source and setup path; it does not claim local or VPS deployment.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (the accepted Contract D merge; an ancestor contained in the current tip — it is NOT the current branch tip)
 **Current database head:** `037_payment_declarations_schema`
@@ -79,8 +81,8 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product code baseline | `a29f8db0` is the current reviewed product-code baseline. It descends from `9067e38f`, `ea990826`, and `adcc7f28`, so it includes Contracts A-D, H7 setup/dependency reconciliation, PW1 authentication/rate-limit/cache/permission closures, and the R4-C1-R1 responsive MainLayout closure. The live protected tip may include later docs-only commits and must descend from `a29f8db0` |
-| Protected-tip rule | Every task fetches `origin/product-dev-recovered` live, verifies `a29f8db0` is its ancestor, and starts from that fetched tip. Do not encode a docs commit as its own "current tip" because the act of committing changes the tip |
+| Product code baseline | `436d61e2` is the current reviewed product-code baseline. It descends from `6e9470a1` (J1-H2-A-R2), `c5b66d26` (J1-R1-R1 lineage), `a29f8db0` (R4-C1-R1), `ea990826` (H7), and `adcc7f28` (Contract D), so it includes Contracts A-D, H7 setup/dependency reconciliation, PW1 closures, the responsive MainLayout, the J1-H2-A-R2 credential closure, and the H2-B password-recovery/test-hygiene closure. The live protected tip may include later docs-only commits and must descend from `436d61e2` |
+| Protected-tip rule | Every task fetches `origin/product-dev-recovered` live, verifies `436d61e2` is its ancestor, and starts from that fetched tip. Do not encode a docs commit as its own "current tip" because the act of committing changes the tip |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
 | Alembic head | `037_payment_declarations_schema` |
@@ -98,6 +100,7 @@ deployment state from a merged branch.
 |---|---|---|
 | Tenant isolation | Strong foundation | Schema-per-tenant, validated identifiers, contextual JWTs, and binding guards |
 | Wholesaler authentication | Implemented | Login, tenant selection, setup/reset, and terminal-token handling |
+| Wholesaler credential recovery H2-B | Merged and browser-verified | Forgot/reset password chain, anonymous reset 401 no-redirect, multi-replica reset atomicity, and role-assignment `MissingGreenlet` closure merged at `436d61e2` |
 | Credential email links | Source complete; runtime pending | Absolute fragment links and query rejection are merged |
 | Users and RBAC | Implemented | Tenant roles exist; retailer permissions are isolated as `client:*` |
 | Orders | Implemented and hardened | State, financial, ownership, and cross-retailer boundaries are regression-covered |
@@ -115,7 +118,7 @@ deployment state from a merged branch.
 | Printable business records | Backend and browser A-D merged | Read-only order, declaration, eligible receipt, and relationship-statement print data plus browser-print UI are available |
 | H7 setup and dependency reconciliation | Merged and independently verified | Native setup ran twice on Lubuntu; cross-host focused gates and post-merge evidence are zero-red |
 | Local deployment and browser rehearsal | Automated browser gate closed | Fresh-runtime Playwright evidence passed `162/162` for source `f51c109`, merged as `a29f8db0`; human acceptance remains and no VPS delivery is claimed |
-| Retailer workspace closure | Responsive shell merged; product friction audit active next | Mobile navigation and overflow are closed; branding, invitation/pricing friction, and operator usability require real-business rehearsal before further implementation |
+| Retailer workspace closure | Responsive shell and credential closure merged; pre-delivery queue active | Mobile navigation, overflow, and the H2-A/H2-B credential lineage are closed; pricing, onboarding, and final acceptance move through the 2026-08-26 pre-delivery execution queue |
 | Retailer end-to-end S4 | Partially closed | Local real-JWT browser matrix is green; real mailbox and deployed HTTPS journey on the latest SHA remain |
 | Platform operator schema | Foundation merged | Migration `034` tables exist |
 | Platform operator runtime | Incomplete | Dedicated login/JWT/guard/frontend lifecycle remains |
@@ -262,17 +265,54 @@ desktop focus order changed, desktop exposes two equivalent Logout controls,
 and the mobile drawer declares `aria-modal` while the external hamburger stays
 interactive.
 
+### DC-12R1-MVP-L1-J1-H2-B password recovery and test-hygiene closure
+
+Merged as `436d61e2dfed88a9469e4572615b98b9c4a7aed4` from approved source
+`25626f4d9245a9b15cce92300fcdff8a5eb95de9`. The merge has parents `6e9470a1`
+and `25626f4d`; its tree is byte-identical to the reviewed source.
+
+Delivered:
+
+- the wholesaler forgot/reset password chain closed end to end, including the
+  standalone `j1h2b-forgot-reset` neutrality harness;
+- anonymous reset 401 responses no longer wrongly redirect to the login page;
+- multi-replica password-reset token consumption is atomic and deterministic;
+- the user role assignment `MissingGreenlet` async serialization defect is
+  closed with a pinned regression suite;
+- associated test-residue attribution and temporary-database teardown/stability
+  fixes close the lineage's test-hygiene debt.
+
+Accepted evidence: Kilo source review `d6289a6b`, authoritative backend
+`90f96e3f` (3773 collected / 3710 passed / 48 skipped / 15 xfailed, zero red),
+authoritative browser E1 `04134016` (24/24 browser nodes PASS, 29-node
+inventory reconciliation gap=0), and controlled merge report `c400b7c5`.
+Retained known debt: full-suite post-state 4/0/29 test-hygiene residue,
+`RT0 = BLOCKED_BY_H2_C`, `REMOTE_ENFORCEMENT_NOT_VERIFIED`, and no
+deployment/VPS/real-device acceptance.
+
 ## 6. Latest Validation Snapshot
 
-The current reviewed product tree is `a29f8db0`. Its merge tree equals source
-`f51c109`. The accepted local browser evidence used fresh PostgreSQL 16 and
-Redis 7 data, real staging JWT authentication, lifecycle-provisioned W1/W2/RA/
+The current reviewed product tree is `436d61e2` (H2-B closure). Its merge tree
+equals source `25626f4d`. The authoritative backend gate reported 3773
+collected, 3710 passed, 48 skipped, 15 xfailed, zero red. The authoritative
+browser gate reported 24/24 browser nodes PASS with the 29-node inventory
+reconciliation gap=0 (24 browser + 5 non-browser). This proves the merged
+source tree for the password-recovery lineage. It does not prove deployment,
+VPS networking, HTTPS, real-device acceptance, or customer readiness. Retained
+post-state debt: 4/0/29 test-hygiene residue (external attribution; module
+replay restores 0/0/0), `RT0 = BLOCKED_BY_H2_C`,
+`REMOTE_ENFORCEMENT_NOT_VERIFIED`.
+
+At the R4-C1-R1 merge, the reviewed product tree was `a29f8db0`. Its merge
+tree equals source `f51c109`. The accepted local browser evidence used fresh
+PostgreSQL 16 and Redis 7 data, real staging JWT authentication,
+lifecycle-provisioned W1/W2/RA/
 RB identities, Alembic head `037`, and the frozen seven-file Playwright harness.
 The result was `162 passed`, zero failures, zero skips, one worker, and zero
 retries; JSON, JUnit, the 162-row CSV, and the committed SHA-256 manifest
 reconciled with accounting gap zero. This proves the automated local browser
-journeys for the merged source. It does not prove human usability, real-mailbox
-delivery, VPS networking, HTTPS, or customer readiness.
+journeys for that merged source. It does not prove human usability,
+real-mailbox delivery, VPS networking, HTTPS, or customer readiness.
 
 Contract D source `133ca46b` passed Kilo adversarial source/test-authenticity
 review and Lubuntu independent runtime verification. The independent gate
@@ -335,6 +375,19 @@ real browser/mailbox journey.
    safe AI-agent actions are not one approved DB-OPS package.
 3. Dedicated platform operator runtime authentication is incomplete.
 4. User manuals and operator runbooks do not yet match final deployed behavior.
+
+### Tracked known debt (preserved, non-blocking)
+
+1. Full-suite post-state test-hygiene residue of 4 wholesalers /
+   0 registrations / 29 uuid-named schemas (4/0/29), externally attributed to
+   other test files; the closed module's net contribution is zero and replay
+   restores 0/0/0.
+2. `RT0 = BLOCKED_BY_H2_C`: the retailer discovery layer is missing and no API
+   bypass of the missing retailer UI is permitted.
+3. `REMOTE_ENFORCEMENT_NOT_VERIFIED`: remote/server-side enforcement is not
+   verified.
+4. Not deployed: no VPS deployment or real-device acceptance exists for the
+   current baseline; no customer-ready or release-approved status is claimed.
 
 ### Important but later
 
@@ -472,15 +525,41 @@ retailer authentication, catalog/order, payment declaration, isolation,
 printing, responsive behavior, and logout paths. It is not a human acceptance,
 real-mailbox, VPS, HTTPS, or customer-delivery claim.
 
-#### DC-12R1-MVP-L1-J1 - real business journey friction audit (active next gate)
+#### DC-12R1-MVP-L1-J1 - real business journey friction audit (completed)
 
-Run a non-developer human rehearsal from wholesaler setup through SKU import,
-inventory, retailer invitation, pricing, retailer login, order, declaration,
-cashier confirmation, printing, and statement review. Record elapsed time,
-clicks, assistance requests, API/script-only steps, dead ends, and abandonment
-risk. This is an observation and prioritization gate: do not implement a
-default-price contract, notification provider, bulk inventory, or cart redesign
-until the audit identifies the smallest adoption-blocking scope.
+The J1 friction-audit lineage is merged through `c5b66d26`, and the
+J1-H2-A-R2 credential closure (dual-entry retailer self-join and invitation
+closure, Kilo findings F1-F4) is merged as `6e9470a1`. Follow-on journey
+observations are folded into the pre-delivery queue below (first-use
+onboarding and full business journey / VPS / real-device final acceptance).
+
+#### DC-12R1-MVP-L1-J1-H2-B - password recovery and test-hygiene closure (completed)
+
+Merged and browser-verified as `436d61e2`; see Section 5 for the full record.
+
+#### Pre-delivery execution queue (active, in order)
+
+Frozen record: `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`
+(brought into the current baseline from planning source `addda5b6` by
+DC-12R1-MVP-L1-CT1). The ordered queue is:
+
+1. `H2-C` - retailer discovery layer (also unblocks `RT0`)
+2. `PRICING-R0` - freeze base-price, customer special-price, order-price
+   snapshot, price-adjustment, and reorder contracts
+3. `PRICING-R1` - implement SKU base price and single-retailer special price
+4. `ORDER-PRICE-R1` - implement one-shot wholesaler order price adjustment
+   with retailer confirm/reject/24h timeout
+5. `REORDER-R1` - generate new drafts from historical orders with
+   current-price re-resolution
+6. `SKU-R0` - freeze MVP core SKU fields and the three-layer extension
+   boundary (custom SKU fields remain `POST_MVP_DISCOVERY`)
+7. First-use onboarding (首次使用引导)
+8. Full business journey / VPS / real-device final acceptance
+
+`FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING`: Uganda/UGX and
+multi-currency questions do not block the MVP queue. Each queue entry still
+requires its own CTO-authorized gate before any product code changes, and the
+queue itself is planning truth, not implementation authorization.
 
 #### DC-12R1-S3-S3-D - branded workspace and residual UX closure (after J1)
 

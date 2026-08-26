@@ -1,0 +1,40 @@
+phase,checkpoint,severity,status,finding,evidence,remediation
+Phase 1,fetch prune,PASS,fetch --all --prune executed successfully in main worktree,N/A,N/A
+Phase 1,detached worktree,PASS,Created detached clean worktree at CANDIDATE d1198f3ba30b39016299fe449087980310ff5df1,N/A,N/A
+Phase 1,remote tip match,PASS,origin/zcode/dc12r1-mvp-l1-j1-h2-c-r1-r1-canonical-neutrality-residue-closure-2026-08-27 points to CANDIDATE,N/A,N/A
+Phase 1,commit chain,PASS,CANDIDATE^ == ff6fc4f3 and ff6fc4f3^ == BASE verified via git rev-parse,N/A,N/A
+Phase 1,2-file delta,PASS,BASE..CANDIDATE contains exactly ai-ledger/product-ai/...canonical_neutrality_residue.md and backend/tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py,N/A,N/A
+Phase 1,protected unchanged,PASS,product/ frontend/ shared/s1_db/ migrations/ requirements pyproject.toml tests/harness/ and protected ref 2c20d58c... show zero diff,N/A,N/A
+Phase 2,registry precision,PASS,_Registry records exact IDs/schemas per test; _MODULE_REGISTRY mirrors at teardown,lines 89-101 214-225,N/A
+Phase 2,fresh connection FK order,PASS,_fresh_session creates new engine per call; _cleanup_exact deletes in FK-safe order (tokens→bindings→invitations→retailers→wholesalers→schemas),lines 114-128 159-172,N/A
+Phase 2,no wildcard,PASS,All deletions use WHERE id = :exact; schema drops use exact name; no LIKE/wildcard/full-table/DROP DATABASE,lines 159-172,N/A
+Phase 2,second zero-proof,PASS,_prove_zero opens second fresh connection and asserts every exact ID and schema absent,lines 175-201,N/A
+Phase 2,DROP SCHEMA IF EXISTS,PASS,Exact schema names from registry; IF EXISTS is idempotent and does not mask lifecycle errors,lines 169-172,N/A
+Phase 2,teardown failure preservation,PASS,yield fixture; pytest reports teardown errors alongside test-body failures,lines 204-230,N/A
+Phase 3,cut point 1 (ws/schema committed; invitation missing),PASS,wholesaler_ids and schemas registered immediately in _register_ws_and_schema; finalizer can delete them,lines 237-241 159-172,None
+Phase 3,cut point 2 (invitation committed; retailer/binding missing),PASS,invitation_ids registered immediately in _register_invitation; no FK dependents yet,lines 244-253 159-172,None
+Phase 3,cut point 3 (setup token created; _sweep_tokens not run),P1 TEST_HYGIENE DEFECT,FAIL,setup_token_ids NOT appended if _sweep_tokens not reached; unregistered token FK-references retailer_id causing DELETE failure and cleanup rollback,lines 143-157 159-172 281-301,Re-sweep all tokens for every registered retailer_id before deletion OR guarantee zero-window registration inside try/finally
+Phase 3,cut point 4 (forgot-password creates token; ID not in registry),P1 TEST_HYGIENE DEFECT,FAIL,reset_token_ids appended only after HTTP block assertions; test failure before sweep leaves unregistered reset token in DB,lines 143-157 426-509,Same as cut point 3
+Phase 3,cut point 5 (canonical assertion fails before token registration),P1 TEST_HYGIENE DEFECT,FAIL,Identical to cut point 4; unregistered token survives teardown,lines 143-157 426-509,Same as cut point 3
+Phase 4,dependency_overrides restoration,PASS,_real_client sets override; test_hc07_hc10 pops it in finally block; success and exception paths both restore,lines 399-413 445-470,None
+Phase 4,dev email sink per-test restoration,P1 GLOBAL TEST STATE RESIDUE,FAIL,clear_dev_email_deliveries() called only at test START (lines 341 367 445); never at test END or module teardown,lines 341 367 445 516-522,Add clear_dev_email_deliveries() to h2c_registry fixture teardown or module-level autouse fixture
+Phase 4,no post-test email leak,P1 GLOBAL TEST STATE RESIDUE,FAIL,Module ends with _DEV_RETAILER_EMAIL_DELIVERIES non-zero because test_module_residue_zero does not clear sink and test_hc07_hc10 leaves HC07 email,lines 445 516-522,Same as above
+Phase 4,_MODULE_REGISTRY order safety,PASS,_MODULE_REGISTRY is ID-based (UUID); reverse-order execution does not replay same IDs; no cross-test assertion leakage,lines 102 214-225,None
+Phase 4,engine/session closure,PASS,_fresh_session disposes engine in finally; all sessions context-managed,lines 114-128,None
+Phase 4,mutation state zeroed,PASS,test_module_residue_zero calls _prove_zero(_MODULE_REGISTRY); however unregistered objects bypass proof (see Phase 3),lines 516-522,Coupled with Phase 3 remediation
+Phase 5,real ASGI endpoint,PASS,test_hc07_hc10 uses ASGITransport(app=app) with real get_db_session override; not a service直调 or mock,N/A,None
+Phase 5,HC07-HC10 real states,PASS,Four states exercised via real HTTP POST: established+correct (HC07) ghost+correct (HC08) established+wrong (HC09) unverified+correct (HC10),lines 426-509,None
+Phase 5,exact assertions,PASS,_assert_canonical_neutral_body asserts exact key set success is True data == {} message == NEUTRAL_RETAILER_CREDENTIAL_MESSAGE parseable timestamp,lines 383-390,None
+Phase 5,timestamp sentinel,PASS,_sentinel replaces ONLY timestamp value; four dicts compared key-for-key,lines 393-396 479-482,None
+Phase 5,no forbidden equality,PASS,Docstring and code explicitly disclaim raw-byte duration and timing-side-channel equality,lines 17-23,None
+Phase 5,HC07 side effects exact,PASS,Exactly 1 token + 1 email for HC07; 0 tokens + 0 emails for HC08-HC10,lines 484-509,None
+Phase 5,C4 mutation hits HTTP assertion,PASS,Any message change or key addition causes _assert_canonical_neutral_body or sentinel-equality failure,lines 383-390 479-482,None
+Phase 6,C1-C4 hit real fix points,PASS,Each mutation anchor maps to a specific regression: C1→residue proof C2→schema zero-proof C3→public-row zero-proof C4→canonical equality,lines 36-43 512-522,None
+Phase 6,Kilo-not-executed labeling,PASS,C1-C4 are documented as CANDIDATE_PROVIDED_EVIDENCE; review does not claim Kilo runtime verification,lines 36-43,None
+Phase 6,runtime scope disclosure,PASS,Static source review only; no PG16/Redis7 launched; HOST_LIMITATION disclosed by scope,verification tier header,None
+Phase 7,py_compile,PASS,python -m py_compile backend/tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py returned no errors,N/A,None
+Phase 7,git diff --check,PASS,No whitespace errors or conflict markers detected,N/A,None
+Phase 7,detect-secrets,PASS,Scan of modified test file returned zero secret detections,N/A,None
+Phase 7,UTF-8/no-BOM/LF,PASS,Binary inspection: BOM=False NUL=False CR=False size=21224 bytes,N/A,None
+Phase 7,worktree clean,PASS,git status --short empty,N/A,None
+Phase 7,GitNexus analyze/status,N/A,gn CLI not available in this environment; cannot execute,N/A,Install GitNexus CLI or run from environment with gn available

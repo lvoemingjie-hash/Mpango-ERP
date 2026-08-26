@@ -293,23 +293,34 @@ async def test_unregistered_job_error():
 
 @pytest.mark.asyncio
 async def test_job_metrics():
-    """Test that job metrics are tracked."""
+    """Test that job metrics are tracked (deterministic synchronization)."""
     queue = LocalJobQueue(max_workers=2)
     await queue.start()
 
     try:
+        release = asyncio.Event()
+        handled = asyncio.Event()
+
         @job_handler("test_metrics")
         async def test_handler(payload: dict):
+            # Deterministic handler synchronization: both jobs park inside
+            # the handler until released, so metrics are provably zero
+            # before the completion wait and only advance afterwards.
+            await release.wait()
             if payload.get("fail"):
                 raise RuntimeError("Test failure")
+            handled.set()
 
-        # Enqueue successful job
-        await queue.enqueue("test_metrics", {"fail": False})
-        await asyncio.sleep(0.3)
+        # max_retries=0: the deliberately failing job settles as failed
+        # immediately (no retry re-enqueue, no timing dependence).
+        await queue.enqueue("test_metrics", {"fail": False}, max_retries=0)
+        await queue.enqueue("test_metrics", {"fail": True}, max_retries=0)
 
-        # Enqueue failing job
-        await queue.enqueue("test_metrics", {"fail": True})
-        await asyncio.sleep(0.3)
+        release.set()
+        # Bounded deterministic completion: join() returns only after every
+        # enqueued job (success and failure) has called task_done().
+        await asyncio.wait_for(queue.queue.join(), timeout=10.0)
+        assert handled.is_set()
 
         # Check stats
         status = await queue.get_status()

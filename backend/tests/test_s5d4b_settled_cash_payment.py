@@ -23,6 +23,42 @@ from sqlalchemy import text
 from core.domain.order_state import OrderState
 from schemas.order import PayOrderRequest
 from repositories.payment_repository import PaymentRepository
+from database.session import AsyncSessionLocal
+from tests.test_dc11d_payment_replay_concurrency_integrity import (
+    _restore_public_tenant,
+    _snapshot_public_tenant,
+)
+
+
+# ---------------------------------------------------------------------------
+# R2-R3 (DC-12R1-MVP-L1-J1-H2-B): shared-tenant ownership guard for the one
+# committing node in this module. The shared t_test tenant (1111..., resolved
+# at runtime) may PRE-EXIST: its public rows are snapshotted before the test
+# and restored EXACTLY after it (a row is never deleted merely because the
+# test touched it). Runs even on body failure; cannot mask the original
+# failure; cleanup + proof use fresh connections outside the test
+# transaction; proof must show post-state == pre-test state (fail-closed).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def _shared_tenant_guard(async_session):
+    wholesaler_id = str(async_session.info["tenant_id"])
+    async with AsyncSessionLocal() as snapshot_session:
+        snap = await _snapshot_public_tenant(
+            snapshot_session, wholesaler_id=wholesaler_id
+        )
+    yield
+    await async_session.rollback()
+    async with AsyncSessionLocal() as cleanup:
+        await _restore_public_tenant(cleanup, wholesaler_id=wholesaler_id, snap=snap)
+        await cleanup.commit()
+    async with AsyncSessionLocal() as proof:
+        post = await _snapshot_public_tenant(proof, wholesaler_id=wholesaler_id)
+    assert post == snap, (
+        "shared-tenant ownership violation: post-test public rows differ from "
+        f"pre-test snapshot for wholesaler {wholesaler_id}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -542,7 +578,9 @@ async def test_api_legacy_pay_no_settle():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_route_settlement_failure_rolls_back_payment_order_balance_and_ledger(async_session):
+async def test_route_settlement_failure_rolls_back_payment_order_balance_and_ledger(
+    async_session, _shared_tenant_guard
+):
     """Real DB/request lifecycle: settlement failure after transition rolls back."""
     pytest.importorskip("httpx", reason="httpx required for ASGI transport")
 

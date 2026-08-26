@@ -384,9 +384,23 @@ async def assign_roles_to_user(
             pass
 
     await db.flush()
-    await db.refresh(user, ["roles"])
 
-    return user
+    # H2-B-R3-R1: the flushed UPDATE carries the SQL-expression onupdate
+    # (updated_at = now()), which leaves scalar state expired for
+    # post-fetch, and the previous partial refresh(user, ["roles"]) never
+    # reloaded it — user_to_read then read user.updated_at in synchronous
+    # context and hit async implicit lazy-load (MissingGreenlet -> 500).
+    # Reload the row explicitly inside this await boundary: populate_existing
+    # re-reads ALL scalar state from the flushed UPDATE and selectinload
+    # re-binds roles, so the returned User is fully loaded and serialization
+    # can never trigger implicit SQL. (identity map: same instance returned)
+    refreshed = await db.execute(
+        select(User)
+        .where(User.id == user.id)
+        .options(selectinload(User.roles))
+        .execution_options(populate_existing=True)
+    )
+    return refreshed.scalar_one()
 
 
 async def email_exists(

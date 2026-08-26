@@ -46,11 +46,22 @@ export const authService = {
   setupCredential: (payload: { setupToken: string; password: string }) =>
     api.post('/auth/onboarding/setup-credential', payload),
 
+  // DC-12R1-MVP-L1-J1-H2-B-R3: public password-recovery calls are anonymous
+  // by contract. The explicitly EMPTY Authorization header blocks stale-store
+  // token injection (PW1-R2-R2 precedence) and skipAuthInterceptors lets a
+  // 401 reject straight to the page's fixed neutral copy — no refresh, no
+  // queue, no logout, no navigation, no global toast.
   forgotPassword: (payload: { email: string }) =>
-    api.post('/auth/forgot-password', payload),
+    api.post('/auth/forgot-password', payload, {
+      headers: { Authorization: '' },
+      skipAuthInterceptors: true,
+    }),
 
   resetPassword: (payload: { resetToken: string; newPassword: string }) =>
-    api.post('/auth/reset-password', payload),
+    api.post('/auth/reset-password', payload, {
+      headers: { Authorization: '' },
+      skipAuthInterceptors: true,
+    }),
 
   verifyEmail: (payload: { token: string }) =>
     api.post('/auth/verify-email', payload),
@@ -67,12 +78,18 @@ export const authService = {
     api.post('/client/auth/forgot-password', {
       email: payload.email,
       wholesaler_code: payload.wholesalerCode,
+    }, {
+      headers: { Authorization: '' },
+      skipAuthInterceptors: true,
     }),
 
   retailerResetPassword: (payload: { resetToken: string; newPassword: string }) =>
     api.post('/client/auth/reset-password', {
       reset_token: payload.resetToken,
       new_password: payload.newPassword,
+    }, {
+      headers: { Authorization: '' },
+      skipAuthInterceptors: true,
     }),
 
   // DC-12R1-S2: supplier-scoped retailer login. Calls only /client/auth/login.

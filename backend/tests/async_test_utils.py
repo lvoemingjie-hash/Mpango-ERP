@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import time
 import warnings
 from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
@@ -20,6 +21,8 @@ T = TypeVar("T")
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _TEST_DATABASE_NAME = re.compile(r"^(?:test|pytest|ci)[_-][a-z0-9_-]+$")
 _TEMP_DATABASE_PREFIX = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
+_TEMP_DB_SESSION_WAIT_SECONDS = 5.0
+_TEMP_DB_SESSION_POLL_SECONDS = 0.05
 
 
 def _current_or_new_loop() -> asyncio.AbstractEventLoop:
@@ -121,9 +124,77 @@ def _validate_temporary_database_source(source_url: str):
     return parsed
 
 
+class TemporaryDatabaseTeardownError(RuntimeError):
+    """Fail-closed, sanitized temporary-database teardown failure.
+
+    Messages are static and contain no source/admin URLs, hosts, users, or
+    credentials.
+    """
+
+
+def _teardown_temporary_database(admin, database: str) -> None:
+    """Session-aware teardown of exactly one generated temporary database.
+
+    Within ONE bounded monotonic deadline the loop enumerates the sessions
+    attached to the exact generated database name, terminates only sessions
+    owned by the current (non-superuser) test role, and attempts the exact
+    DROP. ObjectInUse is the only retryable DROP error (a session attached to
+    the database or raced in between enumeration and drop); every other DROP
+    or privilege error fails closed immediately. A DROP that stays ObjectInUse
+    until the deadline raises a sanitized deterministic error instead of
+    attempting privilege escalation. The exact drop uses no IF EXISTS, so an
+    unexpected absence is never masked, and absence is independently proved
+    after a successful drop. InsufficientPrivilege, ObjectInUse, DROP
+    failures, and timeouts are never silently suppressed.
+    """
+    import psycopg2
+    from psycopg2 import sql
+
+    deadline = time.monotonic() + _TEMP_DB_SESSION_WAIT_SECONDS
+    with admin.cursor() as cursor:
+        cursor.execute("SELECT current_user")
+        (current_user,) = cursor.fetchone()
+        while True:
+            cursor.execute(
+                "SELECT pid, usename FROM pg_stat_activity "
+                "WHERE datname = %s AND pid <> pg_backend_pid() ORDER BY pid",
+                (database,),
+            )
+            sessions = cursor.fetchall()
+            for pid, usename in sessions:
+                if usename == current_user:
+                    cursor.execute("SELECT pg_terminate_backend(%s)", (pid,))
+            if not sessions:
+                try:
+                    cursor.execute(
+                        sql.SQL("DROP DATABASE {}").format(sql.Identifier(database))
+                    )
+                    break
+                except psycopg2.errors.ObjectInUse:
+                    admin.rollback()
+            if time.monotonic() >= deadline:
+                raise TemporaryDatabaseTeardownError(
+                    "temporary database teardown deadline exceeded: sessions "
+                    "owned by other roles are still attached to the generated "
+                    "test database"
+                )
+            time.sleep(_TEMP_DB_SESSION_POLL_SECONDS)
+        cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (database,))
+        if cursor.fetchone() is not None:
+            raise TemporaryDatabaseTeardownError(
+                "temporary database teardown verification failed: generated "
+                "test database still exists after drop"
+            )
+
+
 @contextmanager
 def temporary_database_url(source_url: str, prefix: str):
-    """Create and remove a disposable database on an explicit test server."""
+    """Create and remove a disposable database on an explicit test server.
+
+    If the test body raises and cleanup also fails, both exact exception
+    objects are delivered in one BaseExceptionGroup so the original test
+    failure is never masked. The admin connection always closes.
+    """
     import psycopg2
     from psycopg2 import sql
 
@@ -140,14 +211,25 @@ def temporary_database_url(source_url: str, prefix: str):
         with admin.cursor() as cursor:
             cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
         created = True
-        yield urlunparse(parsed._replace(path=f"/{database}"))
+        body_exc: BaseException | None = None
+        try:
+            yield urlunparse(parsed._replace(path=f"/{database}"))
+        except BaseException as exc:
+            body_exc = exc
+        cleanup_exc: BaseException | None = None
+        try:
+            if created:
+                _teardown_temporary_database(admin, database)
+        except BaseException as exc:
+            cleanup_exc = exc
+        if body_exc is not None and cleanup_exc is not None:
+            raise BaseExceptionGroup(
+                "temporary database cleanup failed after test body failure",
+                [body_exc, cleanup_exc],
+            )
+        if body_exc is not None:
+            raise body_exc
+        if cleanup_exc is not None:
+            raise cleanup_exc
     finally:
-        if created:
-            with admin.cursor() as cursor:
-                cursor.execute(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = %s AND pid <> pg_backend_pid()",
-                    (database,),
-                )
-                cursor.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(database)))
         admin.close()

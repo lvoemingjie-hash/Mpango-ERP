@@ -102,7 +102,9 @@ describe('credential lifecycle frontend', () => {
     await userEvent.click(screen.getByRole('button', { name: /send reset instructions/i }));
 
     expect(await screen.findByText('If an account exists, reset instructions will be sent.')).toBeInTheDocument();
-    expect(mockPost).toHaveBeenCalledWith('/auth/forgot-password', { email: 'person@example.com' });
+    expect(mockPost).toHaveBeenCalledWith('/auth/forgot-password', { email: 'person@example.com' },
+      // H2-B-R3: public recovery call opts out of auth interceptors.
+      expect.objectContaining({ headers: { Authorization: '' }, skipAuthInterceptors: true }));
   });
 
   // DC-12A-R3: Tests use fragment tokens (not query)
@@ -123,7 +125,9 @@ describe('credential lifecycle frontend', () => {
       expect(mockPost).toHaveBeenCalledWith('/auth/reset-password', {
         resetToken: 'reset-token-456',
         newPassword: 'NewStrongPass123', // pragma: allowlist secret
-      });
+      },
+      // H2-B-R3: public recovery call opts out of auth interceptors.
+      expect.objectContaining({ headers: { Authorization: '' }, skipAuthInterceptors: true }));
     });
     expect(mockPost.mock.calls[0][0]).not.toContain('?');
     expect(mockPost.mock.calls[0][0]).not.toContain('resetToken');

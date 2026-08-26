@@ -1,0 +1,18 @@
+{
+  "name": "j1h2b-forgot-reset-harness",
+  "private": true,
+  "version": "1.0.0",
+  "description": "DC-12R1-MVP-L1-J1-H2-B-R2-R4-R2-B1 frozen Playwright harness for the forgot/reset browser protocol: 24 browser-authoritative nodes; 5 non-browser nodes (F6/R6/M2/R13/RT0) reconciled, never faked as browser PASS.",
+  "type": "module",
+  "scripts": {
+    "test:list": "playwright test --list",
+    "typecheck": "tsc --noEmit",
+    "validate:static": "node tools/validate-static.mjs",
+    "scan:artifacts": "node tools/scan-artifacts.mjs --artifacts-dir artifacts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1",
+    "@types/node": "22.10.5",
+    "typescript": "5.7.3"
+  }
+}

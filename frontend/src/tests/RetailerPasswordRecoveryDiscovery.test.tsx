@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { ClientLoginPage } from '@/pages/client/ClientLoginPage';
@@ -140,8 +140,13 @@ describe('H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes)', () =>
 
     await userEvent.type(screen.getByLabelText(/^email/i), 'retailer@example.com');
     const button = screen.getByRole('button', { name: /send reset link/i });
-    fireEvent.click(button);
-    fireEvent.click(button);
+    // Both clicks inside ONE act batch: React cannot re-render and disable
+    // the button between them, so only the synchronous ref guard can
+    // suppress the duplicate submit.
+    act(() => {
+      button.click();
+      button.click();
+    });
 
     await waitFor(() => {
       expect(mockPost).toHaveBeenCalledTimes(1);

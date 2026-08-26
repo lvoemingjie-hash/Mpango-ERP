@@ -51,6 +51,8 @@ import { StatementPrintPage } from '@/pages/print/StatementPrintPage';
 import { RetailerSetupCredentialPage } from '@/pages/retailer/RetailerSetupCredentialPage';
 // DC-12R1-MVP-L1-J1-H2-A-R1: public dual-entry retailer self-join.
 import { RetailerJoinPage } from '@/pages/retailer/RetailerJoinPage';
+// DC-12R1-MVP-L1-J1-H2-C-R1: public retailer forgot-password discovery page.
+import { RetailerForgotPasswordPage } from '@/pages/retailer/RetailerForgotPasswordPage';
 import { RetailerResetPasswordPage } from '@/pages/retailer/RetailerResetPasswordPage';
 // Platform Admin Cockpit pages (P11)
 import { PlatformOverviewPage } from '@/pages/platform/PlatformOverviewPage';
@@ -90,6 +92,7 @@ const router = createBrowserRouter([
       { path: '/verify-email', element: <VerifyEmailPage /> },
       // DC-12R1-S1: retailer credential setup/reset (fragment-only token)
       { path: '/retailer/setup-credential', element: <RetailerSetupCredentialPage /> },
+      { path: '/retailer/forgot-password', element: <RetailerForgotPasswordPage /> },
       { path: '/retailer/reset-password', element: <RetailerResetPasswordPage /> },
     ],
   },

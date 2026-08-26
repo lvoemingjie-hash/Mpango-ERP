@@ -252,6 +252,35 @@ describe('H2-B-R3 T3: retailer reset 401 stays neutral on /retailer/reset-passwo
 });
 
 // ---------------------------------------------------------------------------
+// T3.5 — H2-C-R1: retailer reset SUCCESS with a portal code returns to the
+// supplier portal (never the wholesaler /login), interceptor-neutral.
+// ---------------------------------------------------------------------------
+
+describe('H2-C-R1 T3.5: retailer reset 200 success returns to the supplier portal', () => {
+  it('success with w shows the /retail/login?w= CTA and stays interceptor-neutral', async () => {
+    seedStaleSession();
+    const before = snapshotSession();
+    const { log } = installAdapter({
+      'POST /client/auth/reset-password': (c) => ok(c, { success: true, data: {}, message: 'neutral', timestamp: '2026-08-26T00:00:00Z' }),
+    });
+
+    renderAt('/retailer/reset-password#resetToken=valid-retailer-token&w=ACME01', <RetailerResetPasswordPage />);
+    await waitFor(() => expect(window.location.hash).toBe(''));
+    await fillAndSubmitReset('NewStrongPass123');
+
+    expect(await screen.findByText('Your password has been reset successfully.')).toBeInTheDocument();
+    const cta = screen.getByTestId('reset-success-portal-link');
+    expect(cta).toHaveAttribute('href', '/retail/login?w=ACME01');
+    expect(screen.queryByRole('link', { name: /go to login/i })).toBeNull();
+    expect(log.filter((k) => k === 'POST /client/auth/reset-password')).toHaveLength(1);
+    expect(log.filter((k) => k === 'POST /auth/refresh')).toEqual([]);
+    expect(log.filter((k) => k === 'POST /auth/logout')).toEqual([]);
+    expect(useToastStore.getState().toasts).toEqual([]);
+    expect(snapshotSession()).toEqual(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // T4 — all four public recovery calls carry an explicit empty Authorization
 // ---------------------------------------------------------------------------
 

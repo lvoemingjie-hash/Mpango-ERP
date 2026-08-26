@@ -68,7 +68,11 @@
 2. `docs/ai/PROJECT.md` — 头部状态、分支映射、能力表、里程碑、验证快照、
    交付阻断与债务、有序工作计划。
 3. `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md` —
-   新增（自 PLANNING_SOURCE 带入并更新顺序；冻结输入 3-5 节保持不变）。
+   新增（自 PLANNING_SOURCE 带入并更新顺序）。相对规划源的冻结输入差异
+   （CT1-R1 勘误后精确表述）：第 3、4 节原文不变；第 5 节原有决策条目
+   未删除或改变语义，但新增 custom-SKU = `POST_MVP_DISCOVERY` 与
+   `FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING` 两项范围注释。
+   不声称第 5 节字节一致。
 4. `ai-ledger/product-ai/2026-08-26_dc12r1_mvp_l1_h2b_current_truth_sync.md`
    — 本台账。
 
@@ -88,7 +92,23 @@
   变更文件恰为 4 个授权文件。
 - 未修改产品源码、未运行测试、未部署、未启动 H2-C。
 
-## 7. 裁决
+## 7. CT1-R1 勘误（2026-08-26，规划证据措辞真相收口）
+
+- 勘误对象：本台账 §5 第 3 条原表述"冻结输入 3-5 节保持不变"不精确，
+  现予撤回并替换为上文的精确差异表述。
+- 事实核对（`git diff addda5b6..HEAD -- docs/planning/…queue.md`）：
+  第 3、4 节原文不变；第 5 节原有决策条目未删除或改变语义，
+  但新增 custom-SKU = `POST_MVP_DISCOVERY` 与
+  `FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING` 两项范围注释
+  （前者附加于既有"无限 SKU 自定义属性"条目，后者为新增条目）。
+  不声称第 5 节字节一致。
+- 勘误边界：CT1 的产品状态记载、预交付队列顺序与实现范围均未改变；
+  仅修正规划源差异的证据措辞；未修改另外三个 CT1 文件、产品源码、
+  测试或任何历史报告。
+- 勘误提交分支：`zcode/dc12r1-mvp-l1-ct1-r1-planning-evidence-wording-2026-08-26`
+  （父提交 = CT1 提交 `ede56edc`；delta 恰为本台账 1 个文件）。
+
+## 8. 裁决
 
 FINAL VERDICT: **PASS_FOR_CTO_DC12R1_MVP_L1_CT1_H2B_CURRENT_TRUTH_SYNC**
 

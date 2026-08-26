@@ -1,0 +1,40 @@
+phase,checkpoint,severity,status,finding,evidence,remediation
+Phase 1,fetch prune,PASS,git fetch --all --prune executed successfully in main worktree,N/A,N/A
+Phase 1,detached worktree,PASS,Created detached clean worktree at CANDIDATE 8aced8c7d6d034a0ac2c4b849b3586464f8c5710,N/A,N/A
+Phase 1,remote tip match,PASS,origin/zcode/dc12r1-mvp-l1-j1-h2-c-r1-r2-failure-window-global-state-closure-2026-08-27 points to CANDIDATE,N/A,N/A
+Phase 1,commit chain,PASS,d1198f3b → 30e27702 → 3c116136 → 8aced8c7 verified via git rev-parse,N/A,N/A
+Phase 1,2-file delta,PASS,BASE_R1_R1..CANDIDATE contains exactly backend/tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py and ai-ledger/product-ai/2026-08-27_dc12r1_mvp_l1_j1_h2_c_r1_r2_failure_window_global_state.md,N/A,N/A
+Phase 1,protected unchanged,PASS,product/ frontend/ migrations/ shared/s1_db/ backend/tests/harness/ requirements pyproject.toml and protected ref 2c20d58c... show zero diff,N/A,N/A
+Phase 2,anchors before side effects,PASS,_plan_identity registers email/phone before DB writes; _register_ws_and_schema and _register_invitation register anchors immediately after creation,lines 532-538 541-547 550-562,None
+Phase 2,collision protection,PASS,Exact-match predicates on UUID-based anchors; astronomically unlikely collision,lines 532-538,None
+Phase 2,hydrate exact anchors,PASS,_hydrate re-discovers retailers by exact email/phone; bindings by exact wholesaler/retailer; invitations by exact code; tokens by exact retailer_id; no LIKE/wildcard,lines 177-278,None
+Phase 2,no wildcard,PASS,All queries use exact equality or exact IN-list; no LIKE/prefix/wildcard/full-table delete/global reset/DROP DATABASE,lines 177-278 293-345,None
+Phase 2,FK cleanup order + dedup,PASS,_cleanup_exact deletes in FK-safe order (tokens→bindings→invitations→retailers→wholesalers→schemas); _merge_ids deduplicates,lines 281-286 308-345,None
+Phase 2,hydrate failure honesty,PASS,Hydrate failures captured in follow_up_errors; cleanup and zero-proof still run; residue exposed by failing zero-proof,lines 456-473,None
+Phase 2,FK mechanism correction,PASS,Models confirm ON DELETE CASCADE on token→retailer and token→binding; silent residue (not FK rollback) is the reproducible defect,models/retailer_credentials.py lines 88 94 167,None
+Phase 2,FW3 original exception identity,P1 TEST FALSE GREEN,FAIL,test_fw3 catches original AssertionError and replaces it with new AssertionError() — original object identity lost; only exception type proven not body exception fidelity,lines 916-917,Change 'except AssertionError: caught = AssertionError()' to 'except AssertionError as exc: caught = exc'
+Phase 3,email sink fail-closed entry,PASS,_module_lifecycle fails module if get_dev_retailer_email_deliveries() non-empty at entry,lines 495-496,None
+Phase 3,sink cleared after lifecycle,PASS,_residue_lifecycle calls clear_dev_email_deliveries() in finally regardless of earlier failures,lines 474-477,None
+Phase 3,override exact restore,PASS,_override_guard saves previous value object and restores exact identity; never unconditionally pops,lines 419-434,None
+Phase 3,foreign override preserved,PASS,FW4 asserts foreign override key exists and value identity is unchanged after mid-request failure,lines 959-963,None
+Phase 3,module anchors zeroed,PASS,_module_lifecycle clears _MODULE_STATE['anchors'] and sets active=False in finally,lines 515-518,None
+Phase 3,connection delta proof,PASS,_module_lifecycle records entry_connections at module start; final test asserts delta == 0,lines 503-511 1036-1050,None
+Phase 3,no inheritance consecutive rounds,PASS,Module state and sink cleared at end; design supports zero inheritance across consecutive runs,lines 515-518 474-477,None
+Phase 4,ExceptionGroup aggregation,PASS,_residue_lifecycle uses ExceptionGroup or BaseExceptionGroup for multiple errors,lines 478-485,None
+Phase 4,original identity preserved by lifecycle,PASS,body_error = exc preserves original object; re-raised unchanged when sole error,lines 455 478-482,None
+Phase 4,cleanup errors dont override body,PASS,Body error is first element in all_errors; ExceptionGroup contains all without covering,lines 478,None
+Phase 4,transient cleanup reported,PASS,_cleanup_exact retries once; healed and persistent failures both reported in RuntimeError,lines 320-345,None
+Phase 5,FW1 real failure window,PASS,Registration committed before sweep; sentinel preserved in ExceptionGroup; DB/schema/sink zero,lines 847-870,None
+Phase 5,FW2 real failure window,PASS,Token/email created before ID registration; sentinel preserved; DB/schema/sink zero,lines 873-896,None
+Phase 5,FW3 real failure window,P1 TEST FALSE GREEN,FAIL,Sentinel preserved and DB/schema/sink zero but original AssertionError object identity lost by test creating new instance,lines 899-926,Fix exception catch to preserve original identity
+Phase 5,FW4 real failure window,PASS,Override installed then request fails; foreign override identity preserved; sentinel preserved; DB/schema/sink zero,lines 929-965,None
+Phase 5,FW5 real failure window,PASS,Cleanup transient failure + body failure both preserved in BaseExceptionGroup; DB zero after retry,lines 968-1015,None
+Phase 5,C1-C8 real fix points,PASS,Each mutation anchor maps to specific regression in cleanup hydration sink override or exception aggregation,lines 54-66,None
+Phase 5,Kilo-not-executed labeling,PASS,C1-C8 documented as CANDIDATE_PROVIDED_EVIDENCE; no fabricated runtime PASS,lines 54-66,None
+Phase 5,runtime scope disclosure,PASS,Static source review only; HOST_LIMITATION disclosed; no backend full suite or Playwright run,verification tier header,None
+Phase 6,py_compile,PASS,python -m py_compile backend/tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py returned no errors,N/A,None
+Phase 6,git diff --check,PASS,No whitespace errors or conflict markers detected,N/A,None
+Phase 6,detect-secrets,PASS,Scan of modified files returned zero secret detections,N/A,None
+Phase 6,UTF-8/no-BOM/no-NUL/LF,PASS,Binary inspection: BOM=False NUL=False CR=False size=42529 bytes,N/A,None
+Phase 6,worktree clean,PASS,git status --short empty before report commit,N/A,None
+Phase 6,trailing whitespace reports,N/A,Report files not yet written; will verify before push,N/A,Ensure no trailing whitespace in review.md and findings.csv

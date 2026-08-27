@@ -1,0 +1,38 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /tmp/dc12r1-v2-worktree/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: hypothesis-6.165.10, reverse-1.9.0, asyncio-1.4.0, anyio-4.12.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 3784 items
+
+tests/api/test_wholesaler.py ....                                        [  0%]
+tests/b6_hardening/test_b6_global_tenant_filter.py ......                [  0%]
+tests/b6_hardening/test_b6_payment_atomicity.py .                        [  0%]
+tests/b6_hardening/test_b6_payments_api.py ....                          [  0%]
+tests/business/test_financial_loop.py ...                                [  0%]
+tests/business/test_s4_order_fulfillment_inventory_invariants.py ......  [  0%]
+tests/business/test_s4b_inventory_reversal_invariants.py .........       [  0%]
+tests/business/test_s4c_concurrent_fulfillment_oversell_invariants.py .. [  0%]
+...                                                                      [  1%]
+tests/business/test_s4d_inventory_movement_ledger_integrity.py ......... [  1%]
+                                                                         [  1%]
+tests/business/test_s4e_reservation_schema_contract.py ...               [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py ........... [  1%]
+.                                                                        [  1%]
+tests/business/test_s4f_business_invariant_closeout.py ........          [  1%]
+tests/security/test_exploit_guardrail.py ...                             [  1%]
+tests/security/test_jwt_boundaries.py ...........                        [  2%]
+tests/test_alembic_migrations.py sss....                                 [  2%]
+tests/test_auth_bypass.py .....                                          [  2%]
+tests/test_auth_regressions.py ..                                        [  2%]
+tests/test_b5_real_db.py ....                                            [  2%]
+tests/test_crud_scoped.py ..                                             [  2%]
+tests/test_dc10e_export_worker_tenant_context.py ........                [  2%]
+tests/test_dc10f_payment_method_integrity.py ....                        [  3%]
+tests/test_dc10f_r1_payment_method_migration.py ........................ [  3%]
+                                                                         [  3%]
+tests/test_dc10g_platform_uuid_export_error_hardening.py ........        [  3%]
+tests/test_dc10k_finance_receivables_runtime.py ..                       [  3%]
+tests/test_dc10l_order_status_enum_reconciliation.py ........            [  4%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py .

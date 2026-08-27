@@ -1,0 +1,8 @@
+=== AUTHORITATIVE FULL SUITE START 2026-08-27T11:17:13+08:00 ===
+CANDIDATE=bf20e8c9eae620fcf101ded672dfb0afeab937cb
+=== AUTHORITATIVE FULL SUITE END 2026-08-27T11:43:26+08:00 exit=1 ===
+ERROR tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_prefix_compatible_wrong_type_rejected
+ERROR tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_computed_status_default_rejected
+ERROR tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestExactCatalogShapeBypass::test_next_seq_computed_default_rejected
+ERROR tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py::TestTwoRegisteredTenantsUpgrade::test_cross_tenant_failure_neither_mutates
+= 13 failed, 3627 passed, 100 skipped, 15 xfailed, 12542 warnings, 29 errors in 1568.67s (0:26:08) =

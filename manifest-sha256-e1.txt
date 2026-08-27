@@ -1,5 +1,6 @@
 # DC-12R1-MVP-L1-J1-H2-C-R1-R2-R1-V2-E1 committed-blob SHA-256 manifest (git blob raw bytes)
 # base: V2 checkpoint 013d765a0087ca7a96d0b4e7d9f812c9a36949aa + E1 commits
+# SELF-EXCLUSION: manifest-sha256-e1.txt is intentionally not listed (a file cannot embed its own final hash); it is verified by the E1 commit itself
 
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  "ai-ledger/# AI Ledger \347\274\226\345\206\231\350\247\204\350\214\203\344\270\216\351\252\214\350\257\201\350\246\201\346\261\202.md"
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  "ai-ledger/Constraints/\360\237\223\234 CANONICAL_CONSTRAINTS.md"
@@ -2003,7 +2004,6 @@ c046db5d450272514635ef734b97445da6eb8e32e1826fd3f678446df2087340  j1h2b-forgot-r
 81dc7cd1818afb1324a37cf2eed483053996ad2185c40361074a520c3d833e6a  k8s/backend-deployment.yaml
 e3f16bab67b8fb181ab215d5d758e8baae47ef0e122b27b531dd0ab8a8ff7365  k8s/backend-secrets.yaml
 8337f7fef4ba54f24cda44745774d607bc22058d4d6b32bd3050974107a7bdad  login_test.json
-25c0a56625648676870ee3e88e8106a3dfe75724ff6178dc9a3793930dc12f0d  manifest-sha256-e1.txt
 beeabe22367dd203c213e0603a69c7ebaf9de7f468f3530bae2c5d9b7c1e763d  manifest_sha256_h2a.txt
 78975f76581e8a3114a598f80495ef86ae9df96de1612fe5ea7864d53363891a  manifest_sha256_h2a_r1.txt
 b082b505505ff147bf0740f8dc95eb2c7cfd9c03ddffdf11f10e8671590a5d0f  manifest_sha256_h2a_r2.txt

@@ -330,20 +330,33 @@ for (const [needle, where, label] of [
   ['setupTokens', 'scanner', 'I: per-mailbox setup tokens collected'],
   ['duplicate token across mailboxes', 'scanner', 'I: duplicate-token fail-closed'],
   ['recordPreconditionFail', 'spec', 'R3: precondition failure accounted'],
+  ['normalizeEmail(env.retailer.email)', 'preconditions-absent-snapshot', 'M31: snapshot must not embed established email value'],
+  ['normalizeEmail(env.unverifiedEmail)', 'preconditions-absent-snapshot', 'M31: snapshot must not embed unverified email value'],
   ['assertComplete();', 'spec', 'R3: success completeness asserted'],
   ['zero new-mail tokens', 'scanner', 'I: zero-new-token fail-closed'],
   ['equals a real mail token', 'scanner', 'I: forged-token reuse fail-closed'],
   ['--maildir-root', 'package', 'I: authoritative command consistent'],
 ]) {
+  const preconditionsSnapshotBlock = (() => {
+    const text = preconditionsText;
+    const start = text.indexOf('writeFileSync(');
+    const end = start < 0 ? text.length : text.indexOf(');', start) + 2;
+    return text.slice(start < 0 ? 0 : start, end);
+  })();
   const haystack =
     where === 'spec' ? specText :
     where === 'preconditions' ? preconditionsText :
+    where === 'preconditions-absent-snapshot' ? preconditionsSnapshotBlock :
     where === 'env' ? readFileSync(join(ROOT, 'src', 'env.ts'), 'utf8') :
     where === 'package' ? packageText :
     readFileSync(join(ROOT, 'tools', 'scan-artifacts.mjs'), 'utf8');
-  if (!haystack.includes(needle)) fail(11, `missing anchor: ${label}`);
+  if (where === 'preconditions-absent-snapshot') {
+    if (haystack.includes(needle)) fail(11, `forbidden value in snapshot: ${label}`);
+  } else if (!haystack.includes(needle)) {
+    fail(11, `missing anchor: ${label}`);
+  }
 }
-if (failures === 0) ok(11, 'B1-R2 D/I anchors present');
+if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
 
 if (failures > 0) {
   console.error(`STATIC GATE FAILED (${failures} failure(s))`);

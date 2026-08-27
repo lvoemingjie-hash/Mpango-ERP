@@ -1,0 +1,24 @@
+{
+  "protocolCommitRef": "see README.md / FROZEN-REPORT.md (provenance SHAs are recorded there; kept out of JSON so secret scanners do not misread them as high-entropy secrets)",
+  "inventoryCsvPath": "inventory/2026-08-26_dc12r1_mvp_l1_j1_h2_c_node_inventory.csv",
+  "expectedCounts": { "browser": 15, "static": 2, "total": 17 },
+  "nodes": [
+    { "nodeId": "HC01", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC02", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC03", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC04", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN", "accounting": "390px SIMULATED viewport check — explicitly not a real-device proof." },
+    { "nodeId": "HC05", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC06", "surface": "browser", "executionClass": "BROWSER+POSTCOND", "status": "PENDING_AUTHORITATIVE_RUN", "accounting": "Double-click single POST plus maildir read-only post-proof of exactly one new delivery." },
+    { "nodeId": "HC07", "surface": "browser", "executionClass": "BROWSER+STATIC_EVIDENCE", "status": "PENDING_AUTHORITATIVE_RUN", "accounting": "Submission navigates with the LOWERCASE caller URL code; the resulting email feeds the HC11/HC17 static checks." },
+    { "nodeId": "HC08", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC09", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC10", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC11", "surface": "static", "executionClass": "STATIC", "status": "PENDING_RUNTIME_CHECK", "accounting": "Fragment-only resetToken + public w verified from the HC07 email delivery. NEVER reported as a browser PASS; flips to PASS only when the runtime check succeeds in the same run." },
+    { "nodeId": "HC12", "surface": "browser", "executionClass": "BROWSER+LEAKSCAN", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC13", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC14", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC15", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN" },
+    { "nodeId": "HC16", "surface": "browser", "executionClass": "BROWSER", "status": "PENDING_AUTHORITATIVE_RUN", "accounting": "390px SIMULATED viewport check — explicitly not a real-device proof." },
+    { "nodeId": "HC17", "surface": "static", "executionClass": "STATIC", "status": "PENDING_RUNTIME_CHECK", "accounting": "Lowercase caller input (HC07 navigation) must produce a DB-canonical UPPERCASE w in the email. NEVER reported as a browser PASS; flips to PASS only when the runtime check succeeds in the same run." }
+  ]
+}

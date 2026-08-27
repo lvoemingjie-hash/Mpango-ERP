@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "validate:static": "node tools/validate-static.mjs",
     "check:neutrality": "node tools/check-neutrality.mjs",
-    "scan:artifacts": "node tools/scan-artifacts.mjs --artifacts-dir artifacts --secrets-from-env",
+    "scan:artifacts": "node tools/scan-artifacts.mjs --artifacts-dir artifacts --maildir-root $J1H2C_MAILDIR_ROOT --secrets-from-env",
     "check:runtime-contracts": "node tools/check-runtime-contracts.mjs"
   },
   "devDependencies": {

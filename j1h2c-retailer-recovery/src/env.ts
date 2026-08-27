@@ -50,6 +50,8 @@ export interface H2CJourneyEnv {
   unknownEmail: string;
   /** HC10 — registered but UNVERIFIED W1 retailer email (setup never consumed). */
   unverifiedEmail: string;
+  /** HC15 + scanner: unique per-run forged reset token (launcher-provided). */
+  forgedResetToken: string;
   /**
    * Official-lifecycle provisioning inputs (Kilo D). The invitations are
    * created by the wholesaler through the official API by the launcher's
@@ -83,6 +85,7 @@ export function loadJourneyEnv(): H2CJourneyEnv {
     },
     unknownEmail: required('J1H2C_UNKNOWN_EMAIL'),
     unverifiedEmail: required('J1H2C_UNVERIFIED_EMAIL'),
+    forgedResetToken: required('J1H2C_FORGED_RESET_TOKEN'),
     provisioning: {
       w1VerifiedInvitationCode: required('J1H2C_W1_VERIFIED_INVITATION_CODE'),
       w1VerifiedInvitationPhone: required('J1H2C_W1_VERIFIED_INVITATION_PHONE'),

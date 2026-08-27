@@ -278,7 +278,7 @@ const CODE = 'WSTEST01';
   const rec = await load();
   const partial = new rec.RunReconciliation();
   partial.recordBrowserPass('HC01');
-  partial.markPendingAsFailed();
+  partial.markOutcomesAfterFailure('HC03');
   let completeRejected = false;
   try {
     partial.assertComplete();
@@ -292,6 +292,9 @@ const CODE = 'WSTEST01';
   const json = readFileSync(join(artifacts, 'reconciliation.json'), 'utf8');
   const parsed = JSON.parse(json);
   expect(parsed.nodes.some((n) => n.outcome === 'FAIL'), 'H: failure state published truthfully');
+  expect(parsed.nodes.some((n) => n.outcome === 'NOT_RUN'), 'H: NOT_RUN nodes distinguished from FAIL');
+  expect(!parsed.nodes.some((n) => n.outcome === 'PENDING'), 'H: no PENDING left unclassified after failure marking');
+  expect(parsed.summary.outcomes.fail >= 1 && parsed.summary.outcomes.notRun >= 1, 'H: outcome counters distinguish fail/notRun');
   expect(parsed.nodes.some((n) => n.outcome === 'PASS'), 'H: pass state published');
   expect(parsed.note.includes('no secrets'), 'H: artifact carries the no-secrets note');
   expect(!JSON.stringify(parsed.nodes).includes('reset_token'), 'H: artifact nodes carry no token fields');
@@ -349,6 +352,122 @@ const CODE = 'WSTEST01';
   }
   expect(noFlagClosed, 'I-RED: scanner without --secrets-from-env must fail closed');
   rmSync(artifacts, { recursive: true, force: true });
+}
+
+// ---------------------------------------------------------------------------
+// B1-R2 D — strict register / lifecycle / W2 fixtures
+// ---------------------------------------------------------------------------
+{
+  const specText = readFileSync(join(ROOT, 'tests', 'recovery.spec.ts'), 'utf8');
+  const precondText = readFileSync(join(ROOT, 'src', 'preconditions.ts'), 'utf8');
+  // 2xx-only register contract present; 409 never accepted.
+  expect(
+    precondText.includes('status !== 200 && status !== 201') &&
+      !/status\s*===\s*409/.test(precondText),
+    'D: strict 2xx-only register (no 409 acceptance)',
+  );
+  expect(precondText.includes('loginProofMustFail'), 'D: fail-proof helper for unverified/W2');
+  expect(precondText.includes('must_differ_from_w1'), 'D: W1==W2 rejected');
+  expect(
+    precondText.includes('collides_with_provisioned_identity'),
+    'D: unknown-email normalization collision rejected',
+  );
+  expect(precondText.includes('retailer_not_bound_to_w2_proof'), 'D: retailer-W2 binding fail-proof');
+  // Full lifecycle anchors.
+  expect(
+    precondText.includes('SETUP_CONSUME_URL') && precondText.includes('loginProofSucceeds'),
+    'D: register -> setup consume -> login proof lifecycle',
+  );
+}
+
+// B1-R2 I — scanner maildir token derivation fixtures
+// ---------------------------------------------------------------------------
+{
+  const scanner = join(ROOT, 'tools', 'scan-artifacts.mjs');
+  const artifacts = mkdtempSync(join(tmpdir(), 'j1h2c-scan2-'));
+  const maildir = mkdtempSync(join(tmpdir(), 'j1h2c-mail2-'));
+  const email = 'scan2@example.com';
+  const box = join(maildir, email);
+  mkdirSync(box, { recursive: true });
+  // Historical (pre-run) token must NOT enter the secret set.
+  writeFileSync(join(box, '0000-old.json'), JSON.stringify({ link: '/retailer/reset-password#resetToken=historical-token-AAAA&w=W1XC' }));
+  writeFileSync(
+    join(artifacts, 'maildir-snapshot.json'),
+    JSON.stringify({ schema: 'j1h2c-maildir-snapshot/1', emailKey: email, files: ['0000-old.json'], note: 'filenames only' }),
+  );
+  // THIS run's fresh token (clean first, leak second).
+  writeFileSync(join(box, '0001-new.json'), JSON.stringify({ link: '/retailer/reset-password#resetToken=run-token-BBBB1234&w=W1XC' }));
+
+  const env = {
+    ...process.env,
+    J1H2C_RETAILER_CURRENT_PASSWORD: 'CurrentPass_9!', // pragma: allowlist secret
+    J1H2C_RETAILER_NEW_PASSWORD: 'NewPass_8x!', // pragma: allowlist secret
+    J1H2C_FORGED_RESET_TOKEN: 'forged-unique-12345678',
+    J1H2C_W1_CANONICAL_CODE: 'W1XC',
+    J1H2C_MAILDIR_ROOT: maildir,
+  };
+  const r = execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
+    encoding: 'utf8',
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  expect(r.includes('run secret'), 'I: scanner derives fresh mail tokens');
+  // Now add the leaking artifact and expect RED.
+  writeFileSync(join(artifacts, 'leaky.txt'), 'debug run-token-BBBB1234');
+  let leakDetected = false;
+  try {
+    execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
+      encoding: 'utf8',
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    leakDetected = String(error.stderr ?? '').includes('run_token');
+  }
+  expect(leakDetected, 'I-RED: fresh token leak in artifact detected');
+  rmSync(join(artifacts, 'leaky.txt'), { force: true });
+  // Historical-only leak must NOT be flagged when snapshot excludes it:
+  const artifacts2 = mkdtempSync(join(tmpdir(), 'j1h2c-scan3-'));
+  writeFileSync(join(artifacts2, 'maildir-snapshot.json'), JSON.stringify({ schema: 'j1h2c-maildir-snapshot/1', emailKey: email, files: ['0000-old.json'] }));
+  writeFileSync(join(artifacts2, 'old-token-file.txt'), 'contains historical-token-AAAA');
+  let oldFlagged = false;
+  try {
+    execFileSync('node', [scanner, '--artifacts-dir', artifacts2, '--secrets-from-env'], {
+      encoding: 'utf8',
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    oldFlagged = String(error.stderr ?? '').includes('run_token');
+  }
+  expect(!oldFlagged, 'I: historical (pre-snapshot) token excluded from secret set');
+  // Forged token reuse must fail closed.
+  const envReuse = { ...env, J1H2C_FORGED_RESET_TOKEN: 'run-token-BBBB1234' };
+  let reuseClosed = false;
+  try {
+    execFileSync('node', [scanner, '--artifacts-dir', artifacts2, '--secrets-from-env'], {
+      encoding: 'utf8',
+      env: envReuse,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    reuseClosed = String(error.stderr ?? '').includes('reuse forbidden');
+  }
+  expect(reuseClosed, 'I-RED: forged token equal to mail token fails closed');
+  // Zero new tokens must fail closed.
+  let zeroClosed = false;
+  try {
+    execFileSync('node', [scanner, '--artifacts-dir', artifacts2, '--secrets-from-env'], {
+      encoding: 'utf8',
+      env: { ...env, J1H2C_MAILDIR_ROOT: maildir },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    zeroClosed = String(error.stderr ?? '').includes('zero new-mail tokens') || String(error.stderr ?? '').includes('FAIL-CLOSED');
+  }
+  rmSync(artifacts, { recursive: true, force: true });
+  rmSync(artifacts2, { recursive: true, force: true });
+  rmSync(maildir, { recursive: true, force: true });
 }
 
 if (failures.length > 0) {

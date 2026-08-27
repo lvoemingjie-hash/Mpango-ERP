@@ -26,7 +26,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export type NodeOutcome = 'PENDING' | 'PASS' | 'FAIL';
+export type NodeOutcome = 'PENDING' | 'PASS' | 'FAIL' | 'NOT_RUN';
 
 export interface ReconciliationEntry {
   nodeId: string;
@@ -71,11 +71,23 @@ export class RunReconciliation {
     entry.outcome = 'PASS';
   }
 
-  /** Mark every still-PENDING node as FAIL (used when the run failed). */
-  markPendingAsFailed(): void {
-    for (const entry of this.entries.values()) {
-      if (entry.outcome === 'PENDING') entry.outcome = 'FAIL';
-    }
+  /**
+   * B1-R2 (Kilo H #4): distinguish FAILED nodes from NOT_RUN nodes. A run
+   * that stopped at its first failure marks reached-but-unpassed nodes as
+   * FAIL and everything after the stopping point as NOT_RUN — never a
+   * blanket FAIL that erases the distinction.
+   */
+  markOutcomesAfterFailure(firstFailedNodeId?: string): void {
+    const order = [...this.entries.values()];
+    let stopIndex = order.findIndex(
+      (entry) => entry.nodeId === firstFailedNodeId,
+    );
+    if (stopIndex < 0) stopIndex = order.length;
+    order.forEach((entry, index) => {
+      if (entry.outcome === 'PENDING') {
+        entry.outcome = index <= stopIndex ? 'FAIL' : 'NOT_RUN';
+      }
+    });
   }
 
   snapshot(): ReconciliationEntry[] {
@@ -88,6 +100,7 @@ export class RunReconciliation {
     total: number;
     gap: number;
     incomplete: string[];
+    outcomes: { pass: number; fail: number; notRun: number; pending: number };
   } {
     const values = [...this.entries.values()];
     const browser = values.filter((entry) => entry.surface === 'browser');
@@ -108,6 +121,12 @@ export class RunReconciliation {
       incomplete: values
         .filter((entry) => entry.outcome !== 'PASS')
         .map((entry) => entry.nodeId),
+      outcomes: {
+        pass: values.filter((e) => e.outcome === 'PASS').length,
+        fail: values.filter((e) => e.outcome === 'FAIL').length,
+        notRun: values.filter((e) => e.outcome === 'NOT_RUN').length,
+        pending: values.filter((e) => e.outcome === 'PENDING').length,
+      },
     };
   }
 

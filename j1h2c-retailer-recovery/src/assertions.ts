@@ -7,7 +7,7 @@
  */
 
 export function fieldOnly(
-  surface: 'ui' | 'http' | 'mail' | 'storage' | 'console' | 'network' | 'artifact',
+  surface: 'ui' | 'http' | 'mail' | 'storage' | 'console' | 'network' | 'artifact' | 'precondition',
   field: string,
   category: string,
 ): Error {

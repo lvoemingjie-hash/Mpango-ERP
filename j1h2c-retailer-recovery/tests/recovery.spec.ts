@@ -46,7 +46,7 @@ import {
   pollForExactlyOneNewDelivery,
   parseAndValidateResetLink,
 } from '../src/maildir.js';
-import { provisionPreconditions } from '../src/api-client.js';
+import { runPreconditions } from '../src/preconditions.js';
 import {
   storeResetToken,
   getResetToken,
@@ -95,15 +95,27 @@ function env(): ReturnType<typeof loadJourneyEnv> {
 
 test.describe.configure({ mode: 'serial' });
 
+let firstFailedNodeId: string | undefined;
+
 test.describe('j1h2c retailer recovery journey', () => {
+  test.afterEach(async ({}, testInfo) => {
+    if (testInfo.status !== testInfo.expectedStatus && firstFailedNodeId === undefined) {
+      firstFailedNodeId = undefined; // resolved from title below
+      const match = testInfo.title.match(/^(HC\d+)/);
+      firstFailedNodeId = match ? match[1] : undefined;
+    }
+  });
+
   test.beforeAll(async () => {
     journey = loadJourneyEnv();
     CANONICAL = journey.w1CanonicalCode;
     LOWERCASE = CANONICAL.toLowerCase();
     W2 = journey.w2CanonicalCode;
-    // Kilo D: PRECONDITION provisioning through the formal API lifecycle.
-    // Never a browser node PASS; fail-closed on unexpected status.
-    await provisionPreconditions(journey);
+    // Kilo D (B1-R2): STRICT executable launcher/precondition contract —
+    // fresh invitations, 2xx-only register, full official lifecycle,
+    // unverified stop-proof, W2 proofs, maildir snapshot persistence.
+    // Never a browser node PASS.
+    await runPreconditions(journey);
   });
 
   test.afterAll(async () => {
@@ -112,7 +124,7 @@ test.describe('j1h2c retailer recovery journey', () => {
     // failure has already failed the run (maxFailures=1); this afterAll
     // cannot mask it — publication errors surface as teardown errors.
     try {
-      reconciliation.markPendingAsFailed();
+      reconciliation.markOutcomesAfterFailure(firstFailedNodeId);
       reconciliation.publishArtifacts('artifacts');
     } finally {
       clearMemoryState();
@@ -488,9 +500,8 @@ test.describe('j1h2c retailer recovery journey', () => {
   // HC15 — runtime-forged token: neutral invalid/expired behavior; the
   // failure output never includes the token value.
   test('HC15 forged token neutral failure', async ({ page }) => {
-    const forged = `forged-${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 10)}`;
+    // B1-R2 (Kilo I #4): the launcher-injected unique forged token.
+    const forged = env().forgedResetToken;
     await openResetLink(
       page,
       `${env().baseUrl}/retailer/reset-password#resetToken=${encodeURIComponent(

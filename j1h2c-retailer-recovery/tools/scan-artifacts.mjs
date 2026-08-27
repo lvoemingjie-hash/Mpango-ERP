@@ -1,38 +1,45 @@
 #!/usr/bin/env node
 /**
- * Post-run evidence zero-leak scanner — B1-R1 (Kilo I closure).
+ * Post-run evidence zero-leak scanner — B1-R2 (Kilo I closure).
  *
  * Executed AFTER the single authoritative run over the produced evidence
- * directory (machine JSON, JUnit XML, reconciliation artifacts, any
- * logs). Frozen with the harness but NOT a Playwright node; it can never
- * surface as a browser PASS.
+ * directory (machine JSON, JUnit XML, reconciliation + maildir-snapshot
+ * artifacts, any logs). Frozen with the harness but NOT a Playwright node;
+ * it can never surface as a browser PASS.
  *
- * AUTHORITATIVE MODE (Kilo I #1/#5): the package script `scan:artifacts`
- * ALWAYS runs with --secrets-from-env. Without the dynamic secret inputs
- * (J1H2C_* password/token variables) the scanner FAILS CLOSED — it never
- * degrades to a structure-only scan.
+ * AUTHORITATIVE MODE (Kilo I #1/#2/#3, B1-R2): the scanner derives its
+ * dynamic secret inputs EXECUTABLY — no cross-process env handoff from the
+ * Playwright child is relied upon:
+ *   1. It reads THIS run's reset emails from the task-private maildir for
+ *      the exact retailer email, scoped by the run-start snapshot persisted
+ *      by runPreconditions (artifacts/maildir-snapshot.json) — only NEW
+ *      files are parsed, so historical-task tokens never enter the secret
+ *      set.
+ *   2. Every mail token of THIS run is scanned against every artifact.
+ *   3. The forged token comes from J1H2C_FORGED_RESET_TOKEN (the same
+ *      launcher-injected value HC15 used); missing/short/equal-to-any-mail
+ *      token fails closed.
+ *   4. Runtime passwords (current/new) and the canonical w code come from
+ *      J1H2C_* env; Authorization header shapes are pattern-scanned.
  *
- * Scanned secret surfaces (Kilo I #2):
- *   - runtime passwords (J1H2C_RETAILER_CURRENT_PASSWORD / NEW_PASSWORD)
- *   - the dynamic reset token (J1H2C_LAST_RESET_TOKEN, exported by the
- *     launcher after the run) across every artifact byte
- *   - Authorization header shapes (Bearer / Basic value patterns)
- *   - the canonical w code on FORBIDDEN artifact surfaces (any file other
- *     than the reconciliation artifacts, which contain no URLs)
- *   - structural patterns: resetToken= fragments, reset_token JSON values
+ * Secrets live ONLY in this process's memory (Kilo I #6): no secret files,
+ * no CLI arguments carrying values, no logging of values. Output carries
+ * file/surface/category ONLY (Kilo I #7).
  *
- * Findings are sanitized: file + surface + category ONLY (Kilo I #3) —
- * never a matched value, never a secret.
+ * Fail-closed conditions (Kilo I #8): missing --secrets-from-env,
+ * unreadable maildir, zero new-mail tokens for THIS run, missing artifacts
+ * directory, missing/short/reused forged token.
  */
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 function parseArgs(argv) {
-  const args = { artifactsDir: 'artifacts', secretsFromEnv: false };
+  const args = { artifactsDir: 'artifacts', secretsFromEnv: false, maildirRoot: '' };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--artifacts-dir') args.artifactsDir = argv[i + 1] ?? args.artifactsDir;
     if (argv[i] === '--secrets-from-env') args.secretsFromEnv = true;
+    if (argv[i] === '--maildir-root') args.maildirRoot = argv[i + 1] ?? '';
   }
   return args;
 }
@@ -40,37 +47,95 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 const findings = [];
 
-// Kilo I #5: fail closed when secret inputs are missing.
-if (args.secretsFromEnv) {
-  const requiredEnv = [
-    'J1H2C_RETAILER_CURRENT_PASSWORD',
-    'J1H2C_RETAILER_NEW_PASSWORD',
-    'J1H2C_LAST_RESET_TOKEN',
-  ];
-  const missing = requiredEnv.filter(
-    (name) => !process.env[name] || process.env[name].length < 4,
-  );
-  if (missing.length > 0) {
-    console.error(
-      `SCANNER FAIL-CLOSED: dynamic secret inputs missing: ${missing.join(', ')} (names only)`,
-    );
-    process.exit(1);
-  }
-} else {
-  console.error(
-    'SCANNER FAIL-CLOSED: authoritative scan requires --secrets-from-env (this mode is never optional)',
-  );
+function failClosed(reason) {
+  console.error(`SCANNER FAIL-CLOSED: ${reason}`);
   process.exit(1);
 }
 
+if (!args.secretsFromEnv) {
+  failClosed('authoritative scan requires --secrets-from-env (this mode is never optional)');
+}
+
+const requiredEnv = [
+  'J1H2C_RETAILER_CURRENT_PASSWORD',
+  'J1H2C_RETAILER_NEW_PASSWORD',
+  'J1H2C_FORGED_RESET_TOKEN',
+  'J1H2C_W1_CANONICAL_CODE',
+];
+const missingEnv = requiredEnv.filter((name) => !process.env[name] || process.env[name].length < 4);
+if (missingEnv.length > 0) {
+  failClosed(`dynamic secret inputs missing: ${missingEnv.join(', ')} (names only)`);
+}
+
+if (!existsSync(args.artifactsDir) || !statSync(args.artifactsDir).isDirectory()) {
+  failClosed('artifacts directory missing');
+}
+
+// --- derive THIS run's mail tokens (Kilo I #1/#2) ---------------------------
+const snapshotPath = join(args.artifactsDir, 'maildir-snapshot.json');
+if (!existsSync(snapshotPath)) {
+  failClosed('run-start maildir snapshot artifact missing (precondition gate did not run)');
+}
+let snapshot;
+try {
+  snapshot = JSON.parse(readFileSync(snapshotPath, 'utf8'));
+} catch {
+  failClosed('maildir snapshot artifact unreadable');
+}
+const maildirRoot = args.maildirRoot || process.env.J1H2C_MAILDIR_ROOT || '';
+if (!maildirRoot) {
+  failClosed('maildir root missing (--maildir-root or J1H2C_MAILDIR_ROOT)');
+}
+const emailKey = snapshot.emailKey;
+const box = join(maildirRoot, emailKey);
+let currentNames;
+try {
+  currentNames = readdirSync(box).filter((name) => name.endsWith('.json'));
+} catch {
+  failClosed('maildir unreadable for the exact retailer email');
+}
+const prior = new Set(snapshot.files ?? []);
+const freshNames = currentNames.filter((name) => !prior.has(name));
+const mailTokens = [];
+for (const name of freshNames) {
+  let payload;
+  try {
+    payload = JSON.parse(readFileSync(join(box, name), 'utf8'));
+  } catch {
+    failClosed('fresh delivery file unreadable');
+  }
+  if (typeof payload.link !== 'string') failClosed('delivery link wrong type');
+  const hashIndex = payload.link.indexOf('#');
+  if (hashIndex < 0) failClosed('delivery link missing fragment');
+  const fragment = new URLSearchParams(payload.link.slice(hashIndex + 1));
+  for (const key of ['resetToken', 'setupToken']) {
+    const value = fragment.get(key);
+    if (value && value.length >= 4) mailTokens.push(value);
+  }
+}
+if (mailTokens.length === 0) {
+  failClosed('zero new-mail tokens for THIS run (snapshot scoping found nothing)');
+}
+
+const forgedToken = process.env.J1H2C_FORGED_RESET_TOKEN;
+if (forgedToken.trim().length < 8) {
+  failClosed('forged token missing or too short');
+}
+if (mailTokens.includes(forgedToken)) {
+  failClosed('forged token equals a real mail token (reuse forbidden)');
+}
+
+const canonicalCode = process.env.J1H2C_W1_CANONICAL_CODE;
+const passwordSecrets = [
+  process.env.J1H2C_RETAILER_CURRENT_PASSWORD,
+  process.env.J1H2C_RETAILER_NEW_PASSWORD,
+];
+const allTokens = [...mailTokens, forgedToken];
+
+// --- scan artifacts ----------------------------------------------------------
 function listFiles(dir) {
   const out = [];
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return out;
-  }
+  const entries = readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) out.push(...listFiles(full));
@@ -84,18 +149,13 @@ const bannedNamePatterns = [/trace\.zip$/i, /screenshot/i, /video/i];
 const structuralSecretPatterns = [
   /resetToken=[A-Za-z0-9._~%-]{8,}/,
   /#resetToken=/,
+  /#setupToken=/,
   /"reset_token"\s*:\s*"[^"]{8,}"/,
+  /"setup_token"\s*:\s*"[^"]{8,}"/,
   /Authorization['"]?\s*[:=]\s*['"]?(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/i,
 ];
-const canonicalCode = process.env.J1H2C_W1_CANONICAL_CODE ?? '';
 
 const files = listFiles(args.artifactsDir);
-const passwordSecrets = [
-  process.env.J1H2C_RETAILER_CURRENT_PASSWORD,
-  process.env.J1H2C_RETAILER_NEW_PASSWORD,
-];
-const runtimeToken = process.env.J1H2C_LAST_RESET_TOKEN ?? '';
-
 for (const file of files) {
   const name = file.split(/[\\/]/).pop();
   const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
@@ -124,11 +184,11 @@ for (const file of files) {
       findings.push(`env-secret-match:${category}:password`);
     }
   }
-  if (runtimeToken && text.includes(runtimeToken)) {
-    findings.push(`env-secret-match:${category}:reset_token`);
+  for (const token of allTokens) {
+    if (text.includes(token)) {
+      findings.push(`env-secret-match:${category}:run_token`);
+    }
   }
-  // Canonical w is public in URLs but artifacts carry NO URLs; any
-  // occurrence in an artifact is a leak (exception: none expected).
   if (canonicalCode && text.includes(canonicalCode)) {
     findings.push(`canonical-code-forbidden-surface:${category}`);
   }
@@ -139,4 +199,6 @@ if (findings.length > 0) {
   console.error(`ARTIFACT SCAN FAILED (${findings.length} finding(s))`);
   process.exit(1);
 }
-console.log(`ARTIFACT SCAN PASSED (${files.length} file(s), zero findings).`);
+console.log(
+  `ARTIFACT SCAN PASSED (${files.length} file(s), ${allTokens.length} run secret(s) in memory only; zero findings).`,
+);

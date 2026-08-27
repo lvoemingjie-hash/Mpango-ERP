@@ -277,7 +277,7 @@ for (const [needle, where, label] of [
   ['assertPublicCodeClean', 'spec', 'B: public w full scan asserted'],
   ['journey.w2CanonicalCode', 'spec', 'C: real W2 canonical code from env'],
   ['WRONG${CANONICAL}', 'spec-absent', 'C: fabricated wrong-supplier code forbidden'],
-  ['provisionPreconditions(journey)', 'spec', 'D: precondition provisioning called'],
+  ['runPreconditions(journey)', 'spec', 'D: precondition provisioning called'],
   ['PRECONDITION', 'api', 'D: provisioning documented as precondition'],
   ['snapshotDeliveries(', 'spec', 'E: mail snapshot before submission'],
   ['pollForExactlyOneNewDelivery(', 'spec', 'E: exactly-one-new poll'],
@@ -289,7 +289,7 @@ for (const [needle, where, label] of [
   ['assertInteractiveNoOverflowAt390px', 'spec', 'G: interactive 390px proof'],
   ["fresh valid token + w; genuine interactive form", 'spec', 'G: real-form anchor'],
   ["publishArtifacts('artifacts')", 'spec', 'H: reconciliation artifact published'],
-  ['markPendingAsFailed', 'spec', 'H: partial state marked truthfully'],
+  ['markOutcomesAfterFailure', 'spec', 'H: failed vs NOT_RUN distinguished'],
   ['clearMemoryState', 'spec', 'H: token store cleared in afterAll'],
   ['--secrets-from-env', 'package', 'I: scanner forces secrets-from-env'],
   ['SCANNER FAIL-CLOSED', 'scanner', 'I: scanner fails closed'],
@@ -310,8 +310,36 @@ for (const [needle, where, label] of [
 }
 if (failures === 0) ok(10, 'B1-R1 A-I runtime-oracle anchors present');
 
+// [11] B1-R2 D/I anchors -----------------------------------------------------
+const preconditionsText = readFileSync(join(ROOT, 'src', 'preconditions.ts'), 'utf8');
+for (const [needle, where, label] of [
+  ['status !== 200 && status !== 201', 'preconditions', 'D: strict 2xx-only register'],
+  ['strict_register_rejected', 'preconditions', 'D: non-2xx fail-closed category'],
+  ['loginProofSucceeds', 'preconditions', 'D: established login proof'],
+  ['loginProofMustFail', 'preconditions', 'D: unverified/W2 fail proofs'],
+  ['SETUP_CONSUME_URL', 'preconditions', 'D: full lifecycle setup consume'],
+  ['must_differ_from_w1', 'preconditions', 'D: W2 differs from W1'],
+  ['collides_with_provisioned_identity', 'preconditions', 'D: unknown email normalization'],
+  ['maildir-snapshot.json', 'preconditions', 'I: run-start snapshot persisted'],
+  ['J1H2C_FORGED_RESET_TOKEN', 'env', 'I: forged token env contract'],
+  ['forgedResetToken', 'spec', 'I: spec consumes forged token env'],
+  ['maildir-snapshot.json', 'scanner', 'I: scanner scoped by run snapshot'],
+  ['zero new-mail tokens', 'scanner', 'I: zero-new-token fail-closed'],
+  ['equals a real mail token', 'scanner', 'I: forged-token reuse fail-closed'],
+  ['--maildir-root', 'package', 'I: authoritative command consistent'],
+]) {
+  const haystack =
+    where === 'spec' ? specText :
+    where === 'preconditions' ? preconditionsText :
+    where === 'env' ? readFileSync(join(ROOT, 'src', 'env.ts'), 'utf8') :
+    where === 'package' ? packageText :
+    readFileSync(join(ROOT, 'tools', 'scan-artifacts.mjs'), 'utf8');
+  if (!haystack.includes(needle)) fail(11, `missing anchor: ${label}`);
+}
+if (failures === 0) ok(11, 'B1-R2 D/I anchors present');
+
 if (failures > 0) {
   console.error(`STATIC GATE FAILED (${failures} failure(s))`);
   process.exit(1);
 }
-console.log('STATIC GATE PASSED (10/10 steps).');
+console.log('STATIC GATE PASSED (11/11 steps).');

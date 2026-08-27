@@ -25,7 +25,11 @@
 非超户 test role、Alembic base→唯一 head `037_payment_declarations_schema`、
 REDIS_URL 可达、PW1R3_TEST_REDIS_URL 指向 DB15、sentinel 26379 不可达、
 UTF-8/LF、负控（错误端口只读探针 fail-closed）通过。
-原始结论行："Phase 2 — Preflight: 基本通过"。
+
+**E1 修正**：原结论行"Phase 2 — Preflight: 基本通过"**撤回**。preflight
+合同不完整（EXACT_CAUSE:
+PRECHECK_CONTRACT_OMITTED_REQUIRED_TEMP_DATABASE_CAPABILITY）——
+`MPANGO_ALLOW_TEMP_DB_CREATE` 未被验证为精确值 `"1"`。
 
 ## Phase 3 — Focused Pre-Gates（全部 GREEN，有效证据）
 
@@ -54,7 +58,7 @@ UTF-8/LF、负控（错误端口只读探针 fail-closed）通过。
 - 模块后 DB/schema/email sink/override/连接增量均为零：GREEN
   （test_module_global_state_zero）。
 
-## Phase 4 — 全量运行（原始记录；分类已被 E1 修正为 VOID）
+## Phase 4 — 全量运行（E1 修正分类：VOID_ENVIRONMENT_PRECHECK）
 
 原始发射记录（4 次发射，1 次完成）：
 
@@ -65,15 +69,17 @@ UTF-8/LF、负控（错误端口只读探针 fail-closed）通过。
 4. 发射 4（setsid 独立会话）：26:08 完成 —
    13 failed / 3627 passed / 100 skipped / 15 xfailed / 29 errors。
 
-原始措辞（保留）："权威全量运行完成：13 failed / 3627 passed /
+原始措辞（E1 撤回）："权威全量运行完成：13 failed / 3627 passed /
 100 skipped / 15 xfailed / 29 errors —— 红。按任务规则立即 STOP。"
+E1 修正：该 invocation 不具备产品裁决效力 —
+RUN_VERDICT: VOID_ENVIRONMENT_PRECHECK。
 
-红节点根因诊断（原始 DIAGNOSTIC_ONLY 记录，E1 确认并升级分类）：
+红节点根因（E1 确认分类：EXACT_CAUSE，非候选缺陷）：
 启动器未设置 `MPANGO_ALLOW_TEMP_DB_CREATE=1`；42 个红节点（13 failed +
 29 errors）全部属于 temp-DB/Alembic 证据家族（s4g migration infra、
 i1_r4_r1 real-alembic、dc11t2 temp-db、dc11t4c、s1_r5 preflight），
-fail-closed 安全门按合同生效。与 R1 ledger 记录的 Windows 红集家族
-1:1 对应。
+fail-closed 安全门按合同生效。不构成 backend zero-red，也不构成
+candidate red；未授权重跑，未发生刷绿。
 
 49-bundle 节点在完成运行的 JUnit 内对账：49/49 ALL_GREEN。
 
@@ -98,9 +104,15 @@ PENDING_AUTHORIZED_HARNESS：H2-C 浏览器 harness 尚不存在；j1h2b harness
 已冻结（不覆盖 HC 节点、禁止修改、禁止自行执行权威旅程）。V2 冻结
 ceiling 本就排除 Playwright。
 
-## 裁决（原始）
+## 裁决（E1 修正后）
 
-VERDICT: STOP_AND_REPORT_CTO（未达 PASS；权威运行红，按规则冻结不重跑）
+RUN_VERDICT: **VOID_ENVIRONMENT_PRECHECK**
+
+OVERALL_TASK_STATUS:
+**STOP_AND_REPORT_CTO_WITH_VOID_ENVIRONMENT_PRECHECK**
+
+（原 VERDICT 行"STOP_AND_REPORT_CTO（未达 PASS；权威运行红…）"撤回；
+完整修正记录见 E1_EVIDENCE_TRUTH_CORRECTION.md。）
 
 ## Cleanup（已执行）
 

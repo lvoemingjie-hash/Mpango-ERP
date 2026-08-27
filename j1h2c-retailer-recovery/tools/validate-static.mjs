@@ -264,8 +264,54 @@ for (const [needle, label] of [
 }
 if (failures === 0) ok(9, 'HC01-HC17 contract anchors present');
 
+// [10] B1-R1 A-I anchor checks (runtime-oracle authenticity) ---------------
+const uiText = readFileSync(join(ROOT, 'src', 'ui-journey.ts'), 'utf8');
+const packageText = readFileSync(join(ROOT, 'package.json'), 'utf8');
+const maildirText = readFileSync(join(ROOT, 'src', 'maildir.ts'), 'utf8');
+const apiText = readFileSync(join(ROOT, 'src', 'api-client.ts'), 'utf8');
+for (const [needle, where, label] of [
+  ['page.waitForRequest(', 'spec', 'A: reset POST observed before click'],
+  ['reset_post_count:must_be_exactly_one', 'spec', 'A: exactly-one reset POST'],
+  ["'new_password,reset_token'", 'spec', 'A: reset body exact key set'],
+  ['mismatch_with_memory', 'spec', 'A: reset_token equals memory token'],
+  ['assertPublicCodeClean', 'spec', 'B: public w full scan asserted'],
+  ['journey.w2CanonicalCode', 'spec', 'C: real W2 canonical code from env'],
+  ['WRONG${CANONICAL}', 'spec-absent', 'C: fabricated wrong-supplier code forbidden'],
+  ['provisionPreconditions(journey)', 'spec', 'D: precondition provisioning called'],
+  ['PRECONDITION', 'api', 'D: provisioning documented as precondition'],
+  ['snapshotDeliveries(', 'spec', 'E: mail snapshot before submission'],
+  ['pollForExactlyOneNewDelivery(', 'spec', 'E: exactly-one-new poll'],
+  ['parseAndValidateResetLink', 'spec', 'E: exact link validation'],
+  ['query_string_forbidden', 'maildir', 'E: query string forbidden'],
+  ['genuineDoubleClickSubmit', 'spec', 'F: genuine dblclick used'],
+  ['.dblclick();', 'ui', 'F: Playwright dblclick action'],
+  ['dispatchEvent', 'ui-absent', 'F: synthetic dispatch forbidden'],
+  ['assertInteractiveNoOverflowAt390px', 'spec', 'G: interactive 390px proof'],
+  ["fresh valid token + w; genuine interactive form", 'spec', 'G: real-form anchor'],
+  ["publishArtifacts('artifacts')", 'spec', 'H: reconciliation artifact published'],
+  ['markPendingAsFailed', 'spec', 'H: partial state marked truthfully'],
+  ['clearMemoryState', 'spec', 'H: token store cleared in afterAll'],
+  ['--secrets-from-env', 'package', 'I: scanner forces secrets-from-env'],
+  ['SCANNER FAIL-CLOSED', 'scanner', 'I: scanner fails closed'],
+]) {
+  const haystack =
+    where === 'spec' ? specText :
+    where === 'ui' ? uiText :
+    where === 'maildir' ? maildirText :
+    where === 'api' ? apiText :
+    where === 'package' ? packageText :
+    readFileSync(join(ROOT, 'tools', 'scan-artifacts.mjs'), 'utf8');
+  const present = haystack.includes(needle);
+  if (where.endsWith('-absent')) {
+    if (present) fail(10, `forbidden marker present: ${label}`);
+  } else if (!present) {
+    fail(10, `missing anchor: ${label}`);
+  }
+}
+if (failures === 0) ok(10, 'B1-R1 A-I runtime-oracle anchors present');
+
 if (failures > 0) {
   console.error(`STATIC GATE FAILED (${failures} failure(s))`);
   process.exit(1);
 }
-console.log('STATIC GATE PASSED (9/9 steps).');
+console.log('STATIC GATE PASSED (10/10 steps).');

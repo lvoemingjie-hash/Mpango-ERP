@@ -1,0 +1,6 @@
+check_id,file_path,line_number,mechanism,verdict,minimal_fix
+D,j1h2c-retailer-recovery/src/api-client.ts,32-44,PRIOR_STOP_FIXED: catch block returned true for ANY error including 409 Conflict,FIXED,Replaced by preconditions.ts strictRegister: only 200/201 accepted; 409/4xx/5xx fail-closed with fieldOnly error
+I,j1h2c-retailer-recovery/tools/scan-artifacts.mjs,97,PRIOR_STOP_FIXED: scanner required J1H2C_LAST_RESET_TOKEN env var never set by harness,FIXED,Scanner rewritten to derive secrets from maildir snapshot + fresh deliveries; no cross-process env handoff
+H,j1h2c-retailer-recovery/src/token-store.ts,42-46,PRIOR_WARNING_FIXED: clearMemoryState defined but never called,FIXED,Spec afterAll finally block now calls clearMemoryState()
+SECRETS,j1h2c-retailer-recovery/pnpm-lock.yaml,42;47;52,detect-secrets reports 3 Base64 high-entropy strings (dependency blobs),WARNING,Baseline-whitelist these dependency artifacts in detect-secrets config
+GITNEXUS,N/A,N/A,GitNexus analyze/status not executed (tool not available in environment),WARNING,Execute gn analyze and gn status in environment with GitNexus CLI available

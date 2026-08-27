@@ -1,22 +1,38 @@
 /**
- * DC-12R1-MVP-L1-J1-H2-C-R1-R2-R1-B1 — single serial spec.
+ * DC-12R1-MVP-L1-J1-H2-C-R1-R2-R1-B1(+R1) — single serial spec.
  *
  * 15 browser-authoritative nodes in inventory order: HC01-HC10 then
  * HC12-HC16 (HC11/HC17 are static-class nodes accounted separately by the
  * run reconciliation — never as browser PASS).
  *
- *  - One outer describe with `test.describe.configure({ mode: 'serial' })`:
- *    nodes run in file order, later nodes depend on state produced by
- *    earlier ones (mail token, canonical code), and any failure stops the
- *    run (maxFailures=1).
- *  - No skip/fixme/only, no conditional pass, no waitForTimeout/sleep/
- *    network-idle waits; every wait is locator/event/poll based.
- *  - Failure messages name surfaces/fields/categories only (src/assertions).
- *  - The 390px checks (HC04/HC16) are SIMULATED VIEWPORT checks, explicitly
- *    not a real device proof.
- *  - HC07's submission navigates with the LOWERCASE caller code so the
- *    HC11/HC17 static checks prove the email carries the DB-canonical
- *    UPPERCASE w.
+ * B1-R1 Kilo A-I closures implemented here:
+ *   A  HC12 observes EXACTLY ONE reset POST via a waitForRequest installed
+ *      BEFORE the click; asserts 200 + success UI; asserts the JSON body
+ *      key set is exactly {reset_token, new_password} and reset_token
+ *      equals the in-memory token; w and extra fields are forbidden.
+ *      A missing reset POST is deterministically RED (wait timeout).
+ *   B  the public w is scanned across request URLs/headers/bodies,
+ *      storage, and console — allowed ONLY in the initial fragment and
+ *      the canonical /retail/login?w= URL.
+ *   C  HC09 uses a REAL second supplier (W2 canonical code from env); the
+ *      target retailer belongs to W1 only. No fabricated codes.
+ *   D  beforeAll runs the formal-API PRECONDITION provisioning
+ *      (api-client.provisionPreconditions); it is a precondition, never a
+ *      browser PASS; --list still works env-free (lazy env load).
+ *   E  HC07 snapshots the maildir BEFORE submitting, polls for EXACTLY
+ *      ONE new delivery, parses only that file, and validates the link
+ *      exactly (pathname, empty query, fragment key set, canonical w).
+ *   F  HC06 uses Playwright's genuine dblclick (actionability pipeline).
+ *   G  HC16 opens a REAL fresh reset form (new token + w), proves the
+ *      control is visible+editable at 390x844, and that BOTH
+ *      documentElement and body have zero horizontal overflow.
+ *   H  afterAll ALWAYS publishes reconciliation.json/.csv (true partial
+ *      state on failure) and clears the token-store; the first browser
+ *      failure is never masked.
+ *
+ * Frozen: single serial describe, maxFailures=1, no skip/fixme/only, no
+ * waitForTimeout/sleep/network-idle waits; failure output names
+ * surfaces/fields/categories only.
  */
 import { test, expect, type Request } from '@playwright/test';
 import { loadJourneyEnv } from '../src/env.js';
@@ -25,17 +41,23 @@ import {
   fingerprintNeutralResponse,
 } from '../src/neutrality.js';
 import type { CanonicalFingerprint } from '../src/neutrality-core.js';
-import { readLatestDelivery, countDeliveries } from '../src/maildir.js';
+import {
+  snapshotDeliveries,
+  pollForExactlyOneNewDelivery,
+  parseAndValidateResetLink,
+} from '../src/maildir.js';
+import { provisionPreconditions } from '../src/api-client.js';
 import {
   storeResetToken,
   getResetToken,
-  storeCanonicalCodeFromEmail,
+  clearMemoryState,
 } from '../src/token-store.js';
 import {
   installConsoleCapture,
-  scanForSecretLeak,
-  assertNoSecretLeak,
-  assertPublicCodeOnlyInAllowedLocations,
+  scanTokenLeak,
+  assertNoTokenLeak,
+  scanPublicCode,
+  assertPublicCodeClean,
 } from '../src/leak-scan.js';
 import {
   portalLoginPage,
@@ -44,38 +66,58 @@ import {
   expectForgotEntryAbsent,
   expectInvalidPortalState,
   fillForgotEmailAndSubmitOnce,
-  doubleClickSubmit,
+  genuineDoubleClickSubmit,
   expectNeutralResultShown,
   openResetLink,
   fillNewPasswordAndSubmit,
   expectPortalReturnCta,
   expectLegacyGuidanceOnly,
-  assertNoHorizontalOverflowAt390px,
+  assertInteractiveNoOverflowAt390px,
 } from '../src/ui-journey.js';
 import { RunReconciliation } from '../src/reconciliation.js';
 
+const RESET_POST_URL_FRAGMENT = '/client/auth/reset-password';
+const FORGOT_POST_URL_FRAGMENT = '/client/auth/forgot-password';
 const CODE_CLASS = /^[A-Z0-9]+$/;
 
 const reconciliation = new RunReconciliation();
-// Fail-closed at RUN time only: the journey env is loaded lazily in the
-// first beforeAll so `playwright test --list` works with zero env.
+// Fail-closed at RUN time only: lazy so `playwright test --list` works
+// with zero env (Kilo D #6).
 let journey: ReturnType<typeof loadJourneyEnv> | null = null;
 let CANONICAL = '';
 let LOWERCASE = '';
+let W2 = '';
+
+function env(): ReturnType<typeof loadJourneyEnv> {
+  if (!journey) throw new Error('state:journey_env:not_loaded');
+  return journey;
+}
 
 test.describe.configure({ mode: 'serial' });
 
 test.describe('j1h2c retailer recovery journey', () => {
   test.beforeAll(async () => {
     journey = loadJourneyEnv();
-    CANONICAL = journey.wholesalerCanonicalCode;
+    CANONICAL = journey.w1CanonicalCode;
     LOWERCASE = CANONICAL.toLowerCase();
+    W2 = journey.w2CanonicalCode;
+    // Kilo D: PRECONDITION provisioning through the formal API lifecycle.
+    // Never a browser node PASS; fail-closed on unexpected status.
+    await provisionPreconditions(journey);
   });
 
-  function env(): ReturnType<typeof loadJourneyEnv> {
-    if (!journey) throw new Error('state:journey_env:not_loaded');
-    return journey;
-  }
+  test.afterAll(async () => {
+    // Kilo H: ALWAYS publish the true reconciliation state (partial on
+    // failure) and clear the in-memory token store. The first browser
+    // failure has already failed the run (maxFailures=1); this afterAll
+    // cannot mask it — publication errors surface as teardown errors.
+    try {
+      reconciliation.markPendingAsFailed();
+      reconciliation.publishArtifacts('artifacts');
+    } finally {
+      clearMemoryState();
+    }
+  });
 
   // HC01 — valid portal shows the discovery entry carrying the code.
   test('HC01 valid portal shows Forgot password entry', async ({ page }) => {
@@ -126,7 +168,16 @@ test.describe('j1h2c retailer recovery journey', () => {
   // device).
   test('HC04 forgot page 390px no overflow (simulated)', async ({ page }) => {
     await page.goto(forgotPasswordPage(page, CANONICAL));
-    await assertNoHorizontalOverflowAt390px(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const overflow = await page.evaluate(() => {
+      const doc = document.documentElement;
+      const body = document.body;
+      return {
+        doc: doc.scrollWidth > doc.clientWidth,
+        body: body.scrollWidth > body.clientWidth,
+      };
+    });
+    expect(overflow.doc || overflow.body, 'ui:viewport_390px:horizontal_overflow').toBe(false);
     reconciliation.recordBrowserPass('HC04');
   });
 
@@ -150,61 +201,91 @@ test.describe('j1h2c retailer recovery journey', () => {
     reconciliation.recordBrowserPass('HC05');
   });
 
-  // HC06 — deterministic double click produces exactly ONE POST and no
-  // duplicate issuance (maildir read-only post-proof, poll-based).
-  test('HC06 double click single POST single issuance', async ({ page }) => {
-    const before = await countDeliveries(env().maildirRoot, env().retailer.email);
-    const posts: string[] = [];
+  // HC06 — GENUINE user double click (Kilo F): exactly ONE POST and no
+  // duplicate issuance (maildir snapshot + poll post-proof).
+  test('HC06 genuine double click single POST single issuance', async ({ page }) => {
+    const before = await snapshotDeliveries(env().maildirRoot, env().retailer.email);
+    const posts: Request[] = [];
     page.on('request', (request) => {
       if (
         request.method() === 'POST' &&
-        request.url().includes('/client/auth/forgot-password')
+        request.url().includes(FORGOT_POST_URL_FRAGMENT)
       ) {
-        posts.push(request.url());
+        posts.push(request);
       }
     });
     await page.goto(forgotPasswordPage(page, CANONICAL));
-    await doubleClickSubmit(page, env().retailer.email);
+    await genuineDoubleClickSubmit(page, env().retailer.email);
     await expectNeutralResultShown(page);
-    // ANCHOR(HC06): exactly one POST for a double click.
+    // ANCHOR(HC06): exactly one POST for a genuine double click.
     expect(posts.length, 'http:recovery_post_count:must_be_exactly_one').toBe(1);
-    // Read-only post-proof: EXACTLY one new delivery settles (a duplicate
-    // issuance makes this poll fail by timeout).
-    await expect
-      .poll(
-        async () =>
-          (await countDeliveries(env().maildirRoot, env().retailer.email)) - before,
-        { timeout: 30_000 },
-      )
-      .toBe(1);
+    // Read-only post-proof: EXACTLY one new delivery settles; a duplicate
+    // issuance (two new files) fails deterministically.
+    const fresh = await pollForExactlyOneNewDelivery(
+      env().maildirRoot,
+      env().retailer.email,
+      before,
+      { timeoutMs: 30_000 },
+    );
+    void fresh;
     reconciliation.recordBrowserPass('HC06');
   });
 
-  // HC07-HC10 — four real-HTTP states through the REAL UI; canonical
-  // fingerprints (timestamp sentinel) pairwise equal; only HC07 issues.
   // Shared four-state fingerprint store (single serial run, memory only).
   const fingerprints: Partial<
     Record<'HC07' | 'HC08' | 'HC09' | 'HC10', CanonicalFingerprint>
   > = {};
 
-  // HC07 — established retailer, LOWERCASE caller URL code (feeds HC11/HC17).
+  // HC07 — established W1 retailer, LOWERCASE caller URL code (feeds
+  // HC11/HC17 with fresh-mail evidence).
   test('HC07 established retailer correct supplier', async ({ page }) => {
+    // Kilo E #1: snapshot BEFORE the submission.
+    const mailSnapshot = await snapshotDeliveries(
+      env().maildirRoot,
+      env().retailer.email,
+    );
     await page.goto(forgotPasswordPage(page, LOWERCASE));
     const responsePromise = page.waitForResponse(
-      (response) => response.url().includes('/client/auth/forgot-password'),
+      (response) => response.url().includes(FORGOT_POST_URL_FRAGMENT),
       { timeout: 30_000 },
     );
     await fillForgotEmailAndSubmitOnce(page, env().retailer.email);
     fingerprints.HC07 = await fingerprintNeutralResponse(await responsePromise);
     await expectNeutralResultShown(page);
     reconciliation.recordBrowserPass('HC07');
+
+    // Kilo E #2/#3: poll for EXACTLY ONE new delivery; parse only it.
+    const fresh = await pollForExactlyOneNewDelivery(
+      env().maildirRoot,
+      env().retailer.email,
+      mailSnapshot,
+      { timeoutMs: 30_000 },
+    );
+    // Kilo E #6: exact validation — pathname, empty query, fragment key
+    // set, canonical w. Supports relative AND absolute links.
+    const delivery = parseAndValidateResetLink(fresh.link, {
+      requireCanonicalW: CANONICAL,
+    });
+    storeResetToken(delivery.resetToken, delivery.portalCode);
+
+    // HC17 (static-class, runtime check): the HC07 request used the
+    // LOWERCASE caller input; the email w must be the DB-canonical
+    // UPPERCASE code. ANCHOR(HC17).
+    if ((delivery.portalCode ?? '') !== (delivery.portalCode ?? '').toUpperCase()) {
+      throw new Error('mail:reset_link.w:hc17_not_db_canonical_uppercase');
+    }
+    if (!CODE_CLASS.test(delivery.portalCode ?? '')) {
+      throw new Error('mail:reset_link.w:hc17_code_class_violation');
+    }
+    reconciliation.recordStaticPass('HC11');
+    reconciliation.recordStaticPass('HC17');
   });
 
   // HC08 — unknown account.
   test('HC08 unknown account neutral result', async ({ page }) => {
     await page.goto(forgotPasswordPage(page, CANONICAL));
     const responsePromise = page.waitForResponse(
-      (response) => response.url().includes('/client/auth/forgot-password'),
+      (response) => response.url().includes(FORGOT_POST_URL_FRAGMENT),
       { timeout: 30_000 },
     );
     await fillForgotEmailAndSubmitOnce(page, env().unknownEmail);
@@ -213,24 +294,37 @@ test.describe('j1h2c retailer recovery journey', () => {
     reconciliation.recordBrowserPass('HC08');
   });
 
-  // HC09 — established retailer + wrong supplier code.
-  test('HC09 wrong supplier neutral result', async ({ page }) => {
-    await page.goto(forgotPasswordPage(page, `WRONG${CANONICAL}`));
+  // HC09 — REAL second supplier (Kilo C): the retailer belongs to W1; a
+  // valid W2 portal form is shown; exactly one POST; neutral result.
+  test('HC09 genuine wrong supplier neutral result', async ({ page }) => {
+    // ANCHOR(HC09): real W2 canonical code from env — never fabricated.
+    await page.goto(forgotPasswordPage(page, W2));
+    await expect(page.getByLabel(/^email/i)).toBeVisible();
+    const posts: Request[] = [];
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        request.url().includes(FORGOT_POST_URL_FRAGMENT)
+      ) {
+        posts.push(request);
+      }
+    });
     const responsePromise = page.waitForResponse(
-      (response) => response.url().includes('/client/auth/forgot-password'),
+      (response) => response.url().includes(FORGOT_POST_URL_FRAGMENT),
       { timeout: 30_000 },
     );
     await fillForgotEmailAndSubmitOnce(page, env().retailer.email);
     fingerprints.HC09 = await fingerprintNeutralResponse(await responsePromise);
     await expectNeutralResultShown(page);
+    expect(posts.length, 'http:recovery_post_count:must_be_exactly_one').toBe(1);
     reconciliation.recordBrowserPass('HC09');
   });
 
-  // HC10 — registered but unverified account.
+  // HC10 — registered but unverified W1 account.
   test('HC10 unverified account neutral result', async ({ page }) => {
     await page.goto(forgotPasswordPage(page, CANONICAL));
     const responsePromise = page.waitForResponse(
-      (response) => response.url().includes('/client/auth/forgot-password'),
+      (response) => response.url().includes(FORGOT_POST_URL_FRAGMENT),
       { timeout: 30_000 },
     );
     await fillForgotEmailAndSubmitOnce(page, env().unverifiedEmail);
@@ -245,42 +339,11 @@ test.describe('j1h2c retailer recovery journey', () => {
       HC10: fingerprints.HC10 as CanonicalFingerprint,
     });
     reconciliation.recordBrowserPass('HC10');
-
-    // HC11 (static-class, runtime check): fragment-only resetToken and the
-    // public w verified from the HC07 email delivery.
-    const delivery = await readLatestDelivery(
-      env().maildirRoot,
-      env().retailer.email,
-    );
-    const link = delivery.resetLink;
-    if (!link.startsWith('/retailer/reset-password#resetToken=')) {
-      throw new Error('mail:reset_link:hc11_wrong_shape');
-    }
-    if (link.includes('?')) {
-      throw new Error('mail:reset_link:hc11_query_string_forbidden');
-    }
-    if (delivery.portalCode !== CANONICAL) {
-      throw new Error('mail:reset_link.w:hc11_canonical_code_missing');
-    }
-    storeResetToken(delivery.resetToken, delivery.portalCode);
-
-    // HC17 (static-class, runtime check): the HC07 request used the
-    // LOWERCASE caller input; the email w must be the DB-canonical
-    // UPPERCASE code (never the caller's raw casing). ANCHOR(HC17).
-    if ((delivery.portalCode ?? '') !== (delivery.portalCode ?? '').toUpperCase()) {
-      throw new Error('mail:reset_link.w:hc17_not_db_canonical_uppercase');
-    }
-    if (!CODE_CLASS.test(delivery.portalCode ?? '')) {
-      throw new Error('mail:reset_link.w:hc17_code_class_violation');
-    }
-    storeCanonicalCodeFromEmail(delivery.portalCode ?? '');
-    reconciliation.recordStaticPass('HC11');
-    reconciliation.recordStaticPass('HC17');
   });
 
-  // HC12 — reset page reads w pre-scrub; token/w never leak into URL,
-  // query, storage, console or network metadata.
-  test('HC12 reset page scrub and leak scan', async ({ page }) => {
+  // HC12 — Kilo A/B closure: exactly-one reset POST observed; body shape
+  // asserted; token/w leak scanned across every surface.
+  test('HC12 reset POST observed with full leak scan', async ({ page }) => {
     const token = getResetToken();
     if (!token) {
       throw new Error('state:reset_token:missing_for_hc12');
@@ -293,51 +356,88 @@ test.describe('j1h2c retailer recovery journey', () => {
       `${env().baseUrl}/retailer/reset-password#resetToken=${encodeURIComponent(token)}&w=${CANONICAL}`,
     );
     await expect(page.getByLabel(/new password/i)).toBeVisible();
-    // URL scrubbed: the fragment does not survive.
     await expect
       .poll(() => page.url(), { timeout: 15_000 })
       .not.toContain('resetToken');
-    await fillNewPasswordAndSubmit(page, env().retailer.newPassword);
-    // ANCHOR(HC12): token leak scan over url/query/storage/console/network.
-    const leak = await scanForSecretLeak(page, token, capture, requests);
-    assertNoSecretLeak(leak, 'hc12_reset_token');
-    assertPublicCodeOnlyInAllowedLocations(page, CANONICAL);
-    // The reset POST body must not carry the public w code.
-    const resetPost = requests.find(
+    // Kilo A #1: waitForRequest installed BEFORE the click.
+    const resetPostPromise = page.waitForRequest(
       (request) =>
         request.method() === 'POST' &&
-        request.url().includes('/client/auth/reset-password'),
+        request.url().includes(RESET_POST_URL_FRAGMENT),
+      { timeout: 30_000 },
     );
-    if (resetPost) {
-      const postData = resetPost.postData() ?? '';
-      if (postData.includes(CANONICAL)) {
-        throw new Error('network:reset_post.body:public_code_forbidden');
-      }
+    await fillNewPasswordAndSubmit(page, env().retailer.newPassword);
+    const resetPost = await resetPostPromise; // missing POST => timeout RED
+    // Kilo A #2: exactly one reset POST.
+    const resetPosts = requests.filter(
+      (request) =>
+        request.method() === 'POST' &&
+        request.url().includes(RESET_POST_URL_FRAGMENT),
+    );
+    expect(resetPosts.length, 'http:reset_post_count:must_be_exactly_one').toBe(1);
+    // Kilo A #3: contract-conformant response and success UI.
+    const resetResponse = await resetPost.response();
+    expect(resetResponse?.status(), 'http:reset_post.status:expected_200').toBe(200);
+    await expect(page.getByText(/has been reset successfully/i)).toBeVisible();
+    // Kilo A #4/#5: JSON body exact key set; reset_token equals the
+    // in-memory token; w and extra fields forbidden.
+    const bodyText = resetPost.postData() ?? '';
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(bodyText) as Record<string, unknown>;
+    } catch {
+      throw new Error('http:reset_post.body:not_json');
     }
+    expect(
+      Object.keys(body).sort().join(','),
+      'http:reset_post.body.keys:exact_set',
+    ).toBe('new_password,reset_token');
+    if (body.reset_token !== token) {
+      throw new Error('http:reset_post.body.reset_token:mismatch_with_memory');
+    }
+    if (bodyText.includes(CANONICAL)) {
+      throw new Error('http:reset_post.body:public_code_forbidden');
+    }
+    // Kilo A #7 + B: full-surface scans (legitimate reset_token body
+    // field excluded by the scanner itself).
+    const tokenLeak = await scanTokenLeak(page, token, capture, requests);
+    assertNoTokenLeak(tokenLeak);
+    const codeLeak = await scanPublicCode(page, CANONICAL, capture, requests);
+    assertPublicCodeClean(codeLeak);
     reconciliation.recordBrowserPass('HC12');
   });
 
-  // HC13 — its own real journey; success CTA returns to the CANONICAL
-  // supplier portal, never the wholesaler /login.
+  // HC13 — success CTA returns to the CANONICAL supplier portal, never the
+  // wholesaler /login. Its own real journey (fresh token from a fresh
+  // forgot submission with exact fresh-mail parsing).
   test('HC13 success returns to canonical portal', async ({ page }) => {
     // ANCHOR(HC13): canonical portal return, wholesaler /login forbidden.
+    const mailSnapshot = await snapshotDeliveries(
+      env().maildirRoot,
+      env().retailer.email,
+    );
     await page.goto(forgotPasswordPage(page, CANONICAL));
     const responsePromise = page.waitForResponse(
-      (response) => response.url().includes('/client/auth/forgot-password'),
+      (response) => response.url().includes(FORGOT_POST_URL_FRAGMENT),
       { timeout: 30_000 },
     );
     await fillForgotEmailAndSubmitOnce(page, env().retailer.email);
     await responsePromise;
     await expectNeutralResultShown(page);
-    const delivery = await readLatestDelivery(
+    const fresh = await pollForExactlyOneNewDelivery(
       env().maildirRoot,
       env().retailer.email,
+      mailSnapshot,
+      { timeoutMs: 30_000 },
     );
+    const delivery = parseAndValidateResetLink(fresh.link, {
+      requireCanonicalW: CANONICAL,
+    });
     await openResetLink(
       page,
-      `${env().baseUrl}/retailer/reset-password#resetToken=${encodeURIComponent(
-        delivery.resetToken,
-      )}&w=${delivery.portalCode ?? CANONICAL}`,
+      delivery.resetLink.startsWith('http')
+        ? delivery.resetLink
+        : `${env().baseUrl}${delivery.resetLink}`,
     );
     await fillNewPasswordAndSubmit(page, env().retailer.newPassword);
     await expectPortalReturnCta(page);
@@ -356,18 +456,25 @@ test.describe('j1h2c retailer recovery journey', () => {
   // the UI; success shows ONLY the neutral supplier guidance.
   test('HC14 legacy valid-token link neutral guidance', async ({ page }) => {
     // ANCHOR(HC14): legacy = real token, no w; UI reset; guidance only.
+    const mailSnapshot = await snapshotDeliveries(
+      env().maildirRoot,
+      env().retailer.email,
+    );
     await page.goto(forgotPasswordPage(page, CANONICAL));
     const responsePromise = page.waitForResponse(
-      (response) => response.url().includes('/client/auth/forgot-password'),
+      (response) => response.url().includes(FORGOT_POST_URL_FRAGMENT),
       { timeout: 30_000 },
     );
     await fillForgotEmailAndSubmitOnce(page, env().retailer.email);
     await responsePromise;
     await expectNeutralResultShown(page);
-    const delivery = await readLatestDelivery(
+    const fresh = await pollForExactlyOneNewDelivery(
       env().maildirRoot,
       env().retailer.email,
+      mailSnapshot,
+      { timeoutMs: 30_000 },
     );
+    const delivery = parseAndValidateResetLink(fresh.link);
     // Re-strip w to construct the legacy shape from the REAL token.
     const legacyLink = `${env().baseUrl}/retailer/reset-password#resetToken=${encodeURIComponent(
       delivery.resetToken,
@@ -395,14 +502,38 @@ test.describe('j1h2c retailer recovery journey', () => {
     reconciliation.recordBrowserPass('HC15');
   });
 
-  // HC16 — reset page 390px SIMULATED viewport, no horizontal overflow.
-  test('HC16 reset page 390px no overflow (simulated)', async ({ page }) => {
-    await page.goto(`${env().baseUrl}/retailer/reset-password`);
-    await assertNoHorizontalOverflowAt390px(page);
+  // HC16 — Kilo G closure: REAL fresh reset form at 390x844; control
+  // visible+editable; documentElement AND body zero horizontal overflow.
+  test('HC16 real reset form 390px interactive no overflow', async ({ page }) => {
+    // ANCHOR(HC16): fresh valid token + w; genuine interactive form.
+    const mailSnapshot = await snapshotDeliveries(
+      env().maildirRoot,
+      env().retailer.email,
+    );
+    await page.goto(forgotPasswordPage(page, CANONICAL));
+    const responsePromise = page.waitForResponse(
+      (response) => response.url().includes(FORGOT_POST_URL_FRAGMENT),
+      { timeout: 30_000 },
+    );
+    await fillForgotEmailAndSubmitOnce(page, env().retailer.email);
+    await responsePromise;
+    await expectNeutralResultShown(page);
+    const fresh = await pollForExactlyOneNewDelivery(
+      env().maildirRoot,
+      env().retailer.email,
+      mailSnapshot,
+      { timeoutMs: 30_000 },
+    );
+    const delivery = parseAndValidateResetLink(fresh.link, {
+      requireCanonicalW: CANONICAL,
+    });
+    await openResetLink(
+      page,
+      delivery.resetLink.startsWith('http')
+        ? delivery.resetLink
+        : `${env().baseUrl}${delivery.resetLink}`,
+    );
+    await assertInteractiveNoOverflowAt390px(page);
     reconciliation.recordBrowserPass('HC16');
-  });
-
-  test.afterAll(async () => {
-    reconciliation.assertComplete();
   });
 });

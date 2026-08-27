@@ -1,20 +1,32 @@
 /**
- * Run reconciliation: 15 browser + 2 static-class = 17, gap = 0.
+ * Run reconciliation: 15 browser + 2 static-class = 17, gap = 0 — B1-R1
+ * (Kilo H closure).
  *
  * Browser nodes (HC01-HC10, HC12-HC16) are accounted from the actual
  * Playwright run. The two static-class nodes are accounted SEPARATELY and
  * can be marked PASS only when their runtime checks actually succeeded in
  * THIS run:
  *   HC11 — fragment-only resetToken + public w verified from the HC07
- *          email delivery;
+ *          email delivery (fresh-delivery parsed by src/maildir.ts);
  *   HC17 — lowercase caller input produced a DB-canonical UPPERCASE w in
  *          the email.
  * They are NEVER reported as browser PASS. No results are pre-written: the
  * reconciliation starts every run from PENDING and only records what the
  * run itself proved.
+ *
+ * ARTIFACT PUBLICATION (Kilo H): publishArtifacts() writes an auditable
+ * reconciliation.json + reconciliation.csv into the run artifacts dir.
+ * It is called from the spec's afterAll REGARDLESS of run outcome, so a
+ * failed run publishes its true PARTIAL state — never a fabricated
+ * complete one, and never masked by a second error. The artifact contains
+ * node ids, surfaces, and outcomes ONLY — no tokens, passwords, emails,
+ * or full URLs.
  */
 
-export type NodeOutcome = 'PENDING' | 'PASS';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+export type NodeOutcome = 'PENDING' | 'PASS' | 'FAIL';
 
 export interface ReconciliationEntry {
   nodeId: string;
@@ -59,6 +71,17 @@ export class RunReconciliation {
     entry.outcome = 'PASS';
   }
 
+  /** Mark every still-PENDING node as FAIL (used when the run failed). */
+  markPendingAsFailed(): void {
+    for (const entry of this.entries.values()) {
+      if (entry.outcome === 'PENDING') entry.outcome = 'FAIL';
+    }
+  }
+
+  snapshot(): ReconciliationEntry[] {
+    return [...this.entries.values()].map((entry) => ({ ...entry }));
+  }
+
   summary(): {
     browser: { total: number; pass: number };
     static: { total: number; pass: number };
@@ -82,9 +105,9 @@ export class RunReconciliation {
       },
       total,
       gap: total - accounted,
-      incomplete: values.filter((entry) => entry.outcome === 'PENDING').map(
-        (entry) => entry.nodeId,
-      ),
+      incomplete: values
+        .filter((entry) => entry.outcome !== 'PASS')
+        .map((entry) => entry.nodeId),
     };
   }
 
@@ -102,5 +125,31 @@ export class RunReconciliation {
         `reconciliation:incomplete:${summary.incomplete.join('+') || 'structural'}`,
       );
     }
+  }
+
+  /**
+   * Publish the auditable artifacts (Kilo H #1/#2). Safe to call on
+   * success OR failure — a failed run publishes its true partial state
+   * with PENDING/FAIL outcomes. Contains ids/surfaces/outcomes ONLY.
+   */
+  publishArtifacts(artifactsDir: string): void {
+    mkdirSync(artifactsDir, { recursive: true });
+    const entries = this.snapshot();
+    const payload = {
+      schema: 'j1h2c-reconciliation/1',
+      note: 'ids/surfaces/outcomes only; no secrets, emails, tokens, or URLs',
+      summary: this.summary(),
+      nodes: entries,
+    };
+    writeFileSync(
+      join(artifactsDir, 'reconciliation.json'),
+      `${JSON.stringify(payload, null, 2)}\n`,
+      'utf8',
+    );
+    const csvLines = ['node_id,surface,outcome'];
+    for (const entry of entries) {
+      csvLines.push(`${entry.nodeId},${entry.surface},${entry.outcome}`);
+    }
+    writeFileSync(join(artifactsDir, 'reconciliation.csv'), `${csvLines.join('\n')}\n`, 'utf8');
   }
 }

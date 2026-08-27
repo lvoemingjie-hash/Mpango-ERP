@@ -1,13 +1,14 @@
 /**
- * Real-UI journey helpers for the retailer recovery discovery protocol.
+ * Real-UI journey helpers — B1-R1 (Kilo F closure).
  *
- * Every forgot/reset journey action goes through the REAL rendered UI
- * (clicks, typing, form submission on the real pages). No API substitution,
- * no waitForTimeout, no fixed sleeps, no networkidle waits — all waits are
- * event/locator based.
+ * Every forgot/reset journey action goes through the REAL rendered UI.
+ * The HC06 double click uses Playwright's REAL dblclick action (full
+ * actionability pipeline: visible, stable, receives events, enabled) —
+ * never two synthetic dispatchEvent('click') calls (Kilo F).
+ * No waitForTimeout, no fixed sleeps, no networkidle waits.
  */
 
-import type { Page, Locator } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { fieldOnly } from './assertions.js';
 
 export function portalLoginPage(page: Page, code: string): string {
@@ -48,19 +49,22 @@ export async function fillForgotEmailAndSubmitOnce(
   await page.getByRole('button', { name: /send reset link/i }).click();
 }
 
-/** Deterministic double click: both clicks dispatched back-to-back. */
-export async function doubleClickSubmit(page: Page, email: string): Promise<void> {
+/**
+ * HC06 genuine user double click (Kilo F): Playwright's real dblclick —
+ * a single trusted OS-level double-click event sequence through the full
+ * actionability pipeline. Never two synthetic dispatchEvent calls.
+ */
+export async function genuineDoubleClickSubmit(
+  page: Page,
+  email: string,
+): Promise<void> {
   const input = page.getByLabel(/^email/i);
   await input.fill(email);
-  const button = page.getByRole('button', { name: /send reset link/i });
-  await button.dispatchEvent('click');
-  await button.dispatchEvent('click');
+  await page.getByRole('button', { name: /send reset link/i }).dblclick();
 }
 
-export async function expectNeutralResultShown(page: Page): Promise<Locator> {
-  const result = page.getByTestId('forgot-neutral-result');
-  await result.waitFor({ state: 'visible' });
-  return result;
+export async function expectNeutralResultShown(page: Page): Promise<void> {
+  await page.getByTestId('forgot-neutral-result').waitFor({ state: 'visible' });
 }
 
 export async function openResetLink(page: Page, resetLink: string): Promise<void> {
@@ -106,14 +110,33 @@ export async function expectLegacyGuidanceOnly(page: Page): Promise<void> {
   }
 }
 
-/** 390px simulated viewport horizontal-overflow check (NOT a real device). */
-export async function assertNoHorizontalOverflowAt390px(page: Page): Promise<void> {
+/**
+ * 390px simulated viewport interactive-form proof (Kilo G): the REAL reset
+ * form must be present (new-password control visible AND editable) and
+ * BOTH documentElement and body must have zero horizontal overflow.
+ * An invalid/missing-token neutral page can never satisfy this helper.
+ * Explicitly NOT a real-device proof.
+ */
+export async function assertInteractiveNoOverflowAt390px(page: Page): Promise<void> {
   await page.setViewportSize({ width: 390, height: 844 });
-  const overflowed = await page.evaluate(() => {
-    const doc = document.documentElement;
-    return doc.scrollWidth > doc.clientWidth;
+  const control = page.getByLabel(/new password/i);
+  await control.waitFor({ state: 'visible' });
+  await control.fill('Probe-Pass-390px!');
+  const controlEditable = await control.evaluate((node) => {
+    return node instanceof HTMLInputElement && node.value === 'Probe-Pass-390px!';
   });
-  if (overflowed) {
+  if (!controlEditable) {
+    throw fieldOnly('ui', 'viewport_390px.control', 'not_editable');
+  }
+  const overflow = await page.evaluate(() => {
+    const doc = document.documentElement;
+    const body = document.body;
+    return {
+      documentOverflow: doc.scrollWidth > doc.clientWidth,
+      bodyOverflow: body.scrollWidth > body.clientWidth,
+    };
+  });
+  if (overflow.documentOverflow || overflow.bodyOverflow) {
     throw fieldOnly('ui', 'viewport_390px', 'horizontal_overflow');
   }
 }

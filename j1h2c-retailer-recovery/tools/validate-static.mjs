@@ -246,15 +246,21 @@ for (const [needle, label] of [
   ["expect(posts.length, 'http:recovery_post_count:must_be_zero').toBe(0)", 'HC02/HC05 zero POST'],
   ["expect(posts.length, 'http:recovery_post_count:must_be_exactly_one').toBe(1)", 'HC06 single POST'],
   ['assertFourStateCanonicalEquality', 'HC07-HC10 canonical equality'],
-  ['scanForSecretLeak', 'HC12 leak scan'],
-  ['assertNoSecretLeak', 'HC12 leak assertion'],
+  ['scanTokenLeak', 'HC12 token leak scan'],
+  ['scanPublicCode', 'HC12 public-code scan'],
+  ['assertNoTokenLeak', 'HC12 token leak assertion'],
+  ['assertPublicCodeClean', 'HC12 public-code leak assertion'],
   ['expectPortalReturnCta', 'HC13 canonical portal'],
   ['expectLegacyGuidanceOnly', 'HC14 legacy guidance'],
   ['hc17_not_db_canonical_uppercase', 'HC17 DB canonical uppercase'],
-  ['hc11_query_string_forbidden', 'HC11 fragment-only'],
+  ['reset_link.query', 'HC11 fragment-only (maildir source)'],
+  ['parseAndValidateResetLink', 'HC11 exact link validation'],
   ['LOWERCASE', 'HC17 lowercase caller input'],
 ]) {
-  if (!specText.includes(needle)) fail(9, `spec missing anchor: ${label}`);
+  const anchorHaystack = label.includes('(maildir source)')
+    ? specText + readFileSync(join(ROOT, 'src', 'maildir.ts'), 'utf8')
+    : specText;
+  if (!anchorHaystack.includes(needle)) fail(9, `spec missing anchor: ${label}`);
 }
 if (failures === 0) ok(9, 'HC01-HC17 contract anchors present');
 

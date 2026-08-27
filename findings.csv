@@ -1,0 +1,5 @@
+check_id,file_path,line_number,mechanism,verdict,minimal_fix
+D,j1h2c-retailer-recovery/src/api-client.ts,32-44,Fake precondition success: catch block returns true for ANY error including HTTP 409 Conflict,STOP_AND_REPORT_CTO,Check response.status() in success branch; return true only on 2xx; fail closed on 4xx/5xx
+I,j1h2c-retailer-recovery/tools/scan-artifacts.mjs,97,Unreachable scanner dynamic input: J1H2C_LAST_RESET_TOKEN env var is never set by harness code,STOP_AND_REPORT_CTO,Export token to process.env.J1H2C_LAST_RESET_TOKEN in token-store.ts storeResetToken; clear in clearMemoryState
+H,j1h2c-retailer-recovery/src/token-store.ts,42-46,clearMemoryState defined but never called in spec afterAll/finally,WARNING,CALL tokenStore.clearMemoryState() in tests/recovery.spec.ts afterAll
+SECRETS,j1h2c-retailer-recovery/pnpm-lock.yaml,42;47;52,detect-secrets reports 3 Base64 high-entropy strings (dependency blobs),WARNING,Baseline-whitelist these dependency artifacts in detect-secrets config

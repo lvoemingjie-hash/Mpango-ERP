@@ -470,6 +470,58 @@ const CODE = 'WSTEST01';
   rmSync(maildir, { recursive: true, force: true });
 }
 
+// B1-R2 I-extra — forged token scanned; missing env fail-closed; clear call site
+// ---------------------------------------------------------------------------
+{
+  const scanner = join(ROOT, 'tools', 'scan-artifacts.mjs');
+  const artifacts = mkdtempSync(join(tmpdir(), 'j1h2c-scan4-'));
+  const maildir = mkdtempSync(join(tmpdir(), 'j1h2c-mail4-'));
+  const email = 'scan4@example.com';
+  const box = join(maildir, email);
+  mkdirSync(box, { recursive: true });
+  writeFileSync(join(box, '0001-new.json'), JSON.stringify({ link: '/retailer/reset-password#resetToken=run4-token-CCCC99&w=W1XC' }));
+  writeFileSync(join(artifacts, 'maildir-snapshot.json'), JSON.stringify({ schema: 'j1h2c-maildir-snapshot/1', emailKey: email, files: [] }));
+  const env = {
+    ...process.env,
+    J1H2C_RETAILER_CURRENT_PASSWORD: 'CurrentPass_9!', // pragma: allowlist secret
+    J1H2C_RETAILER_NEW_PASSWORD: 'NewPass_8x!', // pragma: allowlist secret
+    J1H2C_FORGED_RESET_TOKEN: 'forged-scan4-unique-8x',
+    J1H2C_W1_CANONICAL_CODE: 'W1XC',
+    J1H2C_MAILDIR_ROOT: maildir,
+  };
+  // Artifact leaks the FORGED token -> must be RED.
+  writeFileSync(join(artifacts, 'forged-leak.txt'), 'oops forged-scan4-unique-8x');
+  let forgedLeakDetected = false;
+  try {
+    execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
+      encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    forgedLeakDetected = String(error.stderr ?? '').includes('run_token');
+  }
+  expect(forgedLeakDetected, 'I-RED: forged token leak in artifact detected');
+  rmSync(join(artifacts, 'forged-leak.txt'), { force: true });
+
+  // Missing dynamic env inputs -> fail closed (never structural-only).
+  const stripped = { ...env };
+  delete stripped.J1H2C_RETAILER_CURRENT_PASSWORD;
+  let missingClosed = false;
+  try {
+    execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
+      encoding: 'utf8', env: stripped, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    missingClosed = String(error.stderr ?? '').includes('FAIL-CLOSED');
+  }
+  expect(missingClosed, 'I-RED: scanner missing dynamic inputs fails closed');
+  rmSync(artifacts, { recursive: true, force: true });
+  rmSync(maildir, { recursive: true, force: true });
+
+  // clearMemoryState call site present in spec afterAll finally.
+  const specText = readFileSync(join(ROOT, 'tests', 'recovery.spec.ts'), 'utf8');
+  expect(specText.includes('clearMemoryState();'), 'H: clearMemoryState called in spec');
+}
+
 if (failures.length > 0) {
   for (const message of failures) console.error(message);
   console.error(`RUNTIME-CONTRACT CHECK FAILED (${failures.length})`);

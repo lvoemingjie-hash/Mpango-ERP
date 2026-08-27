@@ -290,7 +290,7 @@ for (const [needle, where, label] of [
   ["fresh valid token + w; genuine interactive form", 'spec', 'G: real-form anchor'],
   ["publishArtifacts('artifacts')", 'spec', 'H: reconciliation artifact published'],
   ['markOutcomesAfterFailure', 'spec', 'H: failed vs NOT_RUN distinguished'],
-  ['clearMemoryState', 'spec', 'H: token store cleared in afterAll'],
+  ['clearMemoryState();', 'spec', 'H: token store CLEARED (call site) in afterAll'],
   ['--secrets-from-env', 'package', 'I: scanner forces secrets-from-env'],
   ['SCANNER FAIL-CLOSED', 'scanner', 'I: scanner fails closed'],
 ]) {
@@ -318,7 +318,8 @@ for (const [needle, where, label] of [
   ['loginProofSucceeds', 'preconditions', 'D: established login proof'],
   ['loginProofMustFail', 'preconditions', 'D: unverified/W2 fail proofs'],
   ['SETUP_CONSUME_URL', 'preconditions', 'D: full lifecycle setup consume'],
-  ['must_differ_from_w1', 'preconditions', 'D: W2 differs from W1'],
+  ['if (w1 === w2) {', 'preconditions', 'D: W1==W2 guard code present'],
+  ['must_differ_from_w1', 'preconditions', 'D: W2 differs from W1 category'],
   ['collides_with_provisioned_identity', 'preconditions', 'D: unknown email normalization'],
   ['maildir-snapshot.json', 'preconditions', 'I: run-start snapshot persisted'],
   ['J1H2C_FORGED_RESET_TOKEN', 'env', 'I: forged token env contract'],

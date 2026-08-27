@@ -28,6 +28,9 @@ import { join } from 'node:path';
 
 export type NodeOutcome = 'PENDING' | 'PASS' | 'FAIL' | 'NOT_RUN';
 
+/** B1-R3: distinct top-level precondition outcome (never fabricated onto HC nodes). */
+export type PreconditionOutcome = 'PRECONDITION_PASS' | 'PRECONDITION_FAIL';
+
 export interface ReconciliationEntry {
   nodeId: string;
   surface: 'browser' | 'static';
@@ -44,6 +47,7 @@ const STATIC_NODES = ['HC11', 'HC17'] as const;
 
 export class RunReconciliation {
   private readonly entries = new Map<string, ReconciliationEntry>();
+  private preconditionOutcome: PreconditionOutcome = 'PRECONDITION_PASS';
 
   constructor() {
     for (const nodeId of BROWSER_NODES) {
@@ -69,6 +73,17 @@ export class RunReconciliation {
       throw new Error(`reconciliation:${nodeId}:not_a_static_node`);
     }
     entry.outcome = 'PASS';
+  }
+
+  /**
+   * B1-R3: beforeAll/precondition failure — the precondition itself is
+   * FAIL; every HC node is NOT_RUN (never fabricated as FAIL).
+   */
+  recordPreconditionFail(): void {
+    this.preconditionOutcome = 'PRECONDITION_FAIL';
+    for (const entry of this.entries.values()) {
+      entry.outcome = 'NOT_RUN';
+    }
   }
 
   /**
@@ -101,6 +116,7 @@ export class RunReconciliation {
     gap: number;
     incomplete: string[];
     outcomes: { pass: number; fail: number; notRun: number; pending: number };
+    preconditionOutcome: PreconditionOutcome;
   } {
     const values = [...this.entries.values()];
     const browser = values.filter((entry) => entry.surface === 'browser');
@@ -127,12 +143,16 @@ export class RunReconciliation {
         notRun: values.filter((e) => e.outcome === 'NOT_RUN').length,
         pending: values.filter((e) => e.outcome === 'PENDING').length,
       },
+      preconditionOutcome: this.preconditionOutcome,
     };
   }
 
   /** 15 browser + 2 static = 17 with gap 0 and nothing PENDING. */
   assertComplete(): void {
     const summary = this.summary();
+    if (summary.preconditionOutcome !== 'PRECONDITION_PASS') {
+      throw new Error('reconciliation:precondition_failed');
+    }
     if (
       summary.browser.total !== 15 ||
       summary.static.total !== 2 ||
@@ -156,6 +176,7 @@ export class RunReconciliation {
     const entries = this.snapshot();
     const payload = {
       schema: 'j1h2c-reconciliation/1',
+      preconditionOutcome: this.preconditionOutcome,
       note: 'ids/surfaces/outcomes only; no secrets, emails, tokens, or URLs',
       summary: this.summary(),
       nodes: entries,

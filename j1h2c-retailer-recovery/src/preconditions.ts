@@ -170,18 +170,29 @@ export async function runPreconditions(env: H2CJourneyEnv): Promise<Precondition
     throw fieldOnly('precondition', 'forged_reset_token', 'missing_or_too_short');
   }
 
-  // Persist the run-start maildir snapshot (filenames only) for scanner
-  // scoping — no secret values ever hit disk here.
-  const mailSnapshot = await snapshotDeliveries(env.maildirRoot, env.retailer.email);
+  // B1-R3: dual-mailbox snapshot BEFORE any register side-effect. The
+  // artifact stores only stable IDENTITY LABELS and filename sets — never
+  // emails, tokens, URLs, or any other value.
+  const establishedSnapshot = await snapshotDeliveries(
+    env.maildirRoot,
+    env.retailer.email,
+  );
+  const unverifiedSnapshot = await snapshotDeliveries(
+    env.maildirRoot,
+    env.unverifiedEmail,
+  );
   mkdirSync('artifacts', { recursive: true });
   writeFileSync(
     join('artifacts', 'maildir-snapshot.json'),
     `${JSON.stringify({
-      schema: 'j1h2c-maildir-snapshot/1',
-      emailKey: normalizeEmail(env.retailer.email),
-      files: [...mailSnapshot].sort(),
-      note: 'filenames only; no secret values',
-    })}\n`,
+      schema: 'j1h2c-maildir-snapshot/2',
+      mailboxes: {
+        established: [...establishedSnapshot].sort(),
+        unverified: [...unverifiedSnapshot].sort(),
+      },
+      note: 'identity labels + filenames only; no emails/tokens/URLs/values',
+    })}
+`,
     'utf8',
   );
 
@@ -194,7 +205,7 @@ export async function runPreconditions(env: H2CJourneyEnv): Promise<Precondition
       email: env.retailer.email,
       step: 'w1_verified_register',
     });
-    const setupToken = await readSetupTokenFromMaildir(env, mailSnapshot);
+    const setupToken = await readSetupTokenFromMaildir(env, establishedSnapshot);
     const consume = await context.post(SETUP_CONSUME_URL, {
       data: { setup_token: setupToken, new_password: env.retailer.currentPassword },
     });

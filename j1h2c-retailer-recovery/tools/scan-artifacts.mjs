@@ -82,41 +82,71 @@ try {
 } catch {
   failClosed('maildir snapshot artifact unreadable');
 }
+if (!snapshot.mailboxes || !snapshot.mailboxes.established || !snapshot.mailboxes.unverified) {
+  failClosed('snapshot missing an expected mailbox (established/unverified)');
+}
 const maildirRoot = args.maildirRoot || process.env.J1H2C_MAILDIR_ROOT || '';
 if (!maildirRoot) {
   failClosed('maildir root missing (--maildir-root or J1H2C_MAILDIR_ROOT)');
 }
-const emailKey = snapshot.emailKey;
-const box = join(maildirRoot, emailKey);
-let currentNames;
-try {
-  currentNames = readdirSync(box).filter((name) => name.endsWith('.json'));
-} catch {
-  failClosed('maildir unreadable for the exact retailer email');
+// Identity labels -> env emails (values stay in memory only).
+const mailboxEnv = {
+  established: process.env.J1H2C_RETAILER_EMAIL,
+  unverified: process.env.J1H2C_UNVERIFIED_EMAIL,
+};
+for (const [label, email] of Object.entries(mailboxEnv)) {
+  if (!email || email.length < 3) {
+    failClosed(`mailbox env missing: ${label} (label only)`);
+  }
 }
-const prior = new Set(snapshot.files ?? []);
-const freshNames = currentNames.filter((name) => !prior.has(name));
-const mailTokens = [];
-for (const name of freshNames) {
-  let payload;
+const setupTokens = { established: [], unverified: [] };
+const resetTokens = [];
+function collectFromMailbox(label, priorFiles) {
+  const box = join(maildirRoot, mailboxEnv[label].trim().toLowerCase());
+  let currentNames;
   try {
-    payload = JSON.parse(readFileSync(join(box, name), 'utf8'));
+    currentNames = readdirSync(box).filter((name) => name.endsWith('.json'));
   } catch {
-    failClosed('fresh delivery file unreadable');
+    failClosed(`mailbox unreadable: ${label} (label only)`);
   }
-  if (typeof payload.link !== 'string') failClosed('delivery link wrong type');
-  const hashIndex = payload.link.indexOf('#');
-  if (hashIndex < 0) failClosed('delivery link missing fragment');
-  const fragment = new URLSearchParams(payload.link.slice(hashIndex + 1));
-  for (const key of ['resetToken', 'setupToken']) {
-    const value = fragment.get(key);
-    if (value && value.length >= 4) mailTokens.push(value);
+  const prior = new Set(priorFiles ?? []);
+  const freshNames = currentNames.filter((name) => !prior.has(name));
+  for (const name of freshNames) {
+    let payload;
+    try {
+      payload = JSON.parse(readFileSync(join(box, name), 'utf8'));
+    } catch {
+      failClosed('fresh delivery file unreadable');
+    }
+    if (typeof payload.link !== 'string') failClosed('delivery link wrong type');
+    const hashIndex = payload.link.indexOf('#');
+    if (hashIndex < 0) failClosed('delivery link missing fragment');
+    const fragment = new URLSearchParams(payload.link.slice(hashIndex + 1));
+    const setupToken = fragment.get('setupToken');
+    if (setupToken && setupToken.length >= 4) setupTokens[label].push(setupToken);
+    const resetToken = fragment.get('resetToken');
+    if (resetToken && resetToken.length >= 4) resetTokens.push(resetToken);
   }
 }
+collectFromMailbox('established', snapshot.mailboxes.established);
+collectFromMailbox('unverified', snapshot.mailboxes.unverified);
+// Exactly one NEW setup token per mailbox is expected this run.
+for (const label of ['established', 'unverified']) {
+  if (setupTokens[label].length === 0) {
+    failClosed(`zero new setup tokens for mailbox: ${label} (label only)`);
+  }
+}
+const mailTokens = [...setupTokens.established, ...setupTokens.unverified, ...resetTokens];
 if (mailTokens.length === 0) {
   failClosed('zero new-mail tokens for THIS run (snapshot scoping found nothing)');
 }
-
+const seen = new Set();
+for (const token of mailTokens) {
+  if (seen.has(token)) {
+    failClosed('duplicate token across mailboxes (token collision)');
+  }
+  seen.add(token);
+}
 const forgedToken = process.env.J1H2C_FORGED_RESET_TOKEN;
 if (forgedToken.trim().length < 8) {
   failClosed('forged token missing or too short');

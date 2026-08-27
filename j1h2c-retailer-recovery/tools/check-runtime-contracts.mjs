@@ -380,129 +380,114 @@ const CODE = 'WSTEST01';
   );
 }
 
-// B1-R2 I — scanner maildir token derivation fixtures
+// B1-R3 — multi-mailbox scanner truth fixtures (schema/2, both mailboxes)
 // ---------------------------------------------------------------------------
 {
   const scanner = join(ROOT, 'tools', 'scan-artifacts.mjs');
-  const artifacts = mkdtempSync(join(tmpdir(), 'j1h2c-scan2-'));
-  const maildir = mkdtempSync(join(tmpdir(), 'j1h2c-mail2-'));
-  const email = 'scan2@example.com';
-  const box = join(maildir, email);
-  mkdirSync(box, { recursive: true });
-  // Historical (pre-run) token must NOT enter the secret set.
-  writeFileSync(join(box, '0000-old.json'), JSON.stringify({ link: '/retailer/reset-password#resetToken=historical-token-AAAA&w=W1XC' }));
+  const artifacts = mkdtempSync(join(tmpdir(), 'j1h2c-scan5-'));
+  const maildir = mkdtempSync(join(tmpdir(), 'j1h2c-mail5-'));
+  const est = 'est5@example.com';
+  const unv = 'unv5@example.com';
+  const estBox = join(maildir, est);
+  const unvBox = join(maildir, unv);
+  mkdirSync(estBox, { recursive: true });
+  mkdirSync(unvBox, { recursive: true });
+  // Historical (pre-run) tokens in BOTH mailboxes must be excluded.
+  writeFileSync(join(estBox, '0000-old.json'), JSON.stringify({ link: '/retailer/reset-password#resetToken=historical-est-token&w=W1XC' }));
+  writeFileSync(join(unvBox, '0000-old.json'), JSON.stringify({ link: '/retailer/setup-credential#setupToken=historical-unv-token&w=W1XC' }));
   writeFileSync(
     join(artifacts, 'maildir-snapshot.json'),
-    JSON.stringify({ schema: 'j1h2c-maildir-snapshot/1', emailKey: email, files: ['0000-old.json'], note: 'filenames only' }),
+    JSON.stringify({
+      schema: 'j1h2c-maildir-snapshot/2',
+      mailboxes: { established: ['0000-old.json'], unverified: ['0000-old.json'] },
+      note: 'identity labels + filenames only',
+    }),
   );
-  // THIS run's fresh token (clean first, leak second).
-  writeFileSync(join(box, '0001-new.json'), JSON.stringify({ link: '/retailer/reset-password#resetToken=run-token-BBBB1234&w=W1XC' }));
-
+  // THIS run: established setup + reset tokens; unverified setup token.
+  writeFileSync(join(estBox, '0001-new.json'), JSON.stringify({ link: '/retailer/setup-credential#setupToken=est-setup-token-777&w=W1XC' }));
+  writeFileSync(join(estBox, '0002-new.json'), JSON.stringify({ link: '/retailer/reset-password#resetToken=est-reset-token-888&w=W1XC' }));
+  writeFileSync(join(unvBox, '0001-new.json'), JSON.stringify({ link: '/retailer/setup-credential#setupToken=unv-setup-token-999&w=W1XC' }));
   const env = {
     ...process.env,
+    J1H2C_RETAILER_EMAIL: est,
+    J1H2C_UNVERIFIED_EMAIL: unv,
     J1H2C_RETAILER_CURRENT_PASSWORD: 'CurrentPass_9!', // pragma: allowlist secret
     J1H2C_RETAILER_NEW_PASSWORD: 'NewPass_8x!', // pragma: allowlist secret
-    J1H2C_FORGED_RESET_TOKEN: 'forged-unique-12345678',
+    J1H2C_FORGED_RESET_TOKEN: 'forged-run5-unique-8x',
     J1H2C_W1_CANONICAL_CODE: 'W1XC',
     J1H2C_MAILDIR_ROOT: maildir,
   };
+  // Snapshot artifact hygiene: labels + filenames only (M31 truth).
+  const snapText = readFileSync(join(artifacts, 'maildir-snapshot.json'), 'utf8');
+  expect(!snapText.includes(est) && !snapText.includes(unv), 'M31: snapshot carries no email values');
+  expect(!/token/i.test(snapText.split('note')[0]), 'M31: snapshot carries no token values');
+
+  // Clean pass: 3 mail tokens + forged = 4 run secrets.
   const r = execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
-    encoding: 'utf8',
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
   });
-  expect(r.includes('run secret'), 'I: scanner derives fresh mail tokens');
-  // Now add the leaking artifact and expect RED.
-  writeFileSync(join(artifacts, 'leaky.txt'), 'debug run-token-BBBB1234');
-  let leakDetected = false;
-  try {
-    execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
-      encoding: 'utf8',
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (error) {
-    leakDetected = String(error.stderr ?? '').includes('run_token');
-  }
-  expect(leakDetected, 'I-RED: fresh token leak in artifact detected');
-  rmSync(join(artifacts, 'leaky.txt'), { force: true });
-  // Historical-only leak must NOT be flagged when snapshot excludes it:
-  const artifacts2 = mkdtempSync(join(tmpdir(), 'j1h2c-scan3-'));
-  writeFileSync(join(artifacts2, 'maildir-snapshot.json'), JSON.stringify({ schema: 'j1h2c-maildir-snapshot/1', emailKey: email, files: ['0000-old.json'] }));
-  writeFileSync(join(artifacts2, 'old-token-file.txt'), 'contains historical-token-AAAA');
-  let oldFlagged = false;
-  try {
-    execFileSync('node', [scanner, '--artifacts-dir', artifacts2, '--secrets-from-env'], {
-      encoding: 'utf8',
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (error) {
-    oldFlagged = String(error.stderr ?? '').includes('run_token');
-  }
-  expect(!oldFlagged, 'I: historical (pre-snapshot) token excluded from secret set');
-  // Forged token reuse must fail closed.
-  const envReuse = { ...env, J1H2C_FORGED_RESET_TOKEN: 'run-token-BBBB1234' };
-  let reuseClosed = false;
-  try {
-    execFileSync('node', [scanner, '--artifacts-dir', artifacts2, '--secrets-from-env'], {
-      encoding: 'utf8',
-      env: envReuse,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (error) {
-    reuseClosed = String(error.stderr ?? '').includes('reuse forbidden');
-  }
-  expect(reuseClosed, 'I-RED: forged token equal to mail token fails closed');
-  // Zero new tokens must fail closed.
-  let zeroClosed = false;
-  try {
-    execFileSync('node', [scanner, '--artifacts-dir', artifacts2, '--secrets-from-env'], {
-      encoding: 'utf8',
-      env: { ...env, J1H2C_MAILDIR_ROOT: maildir },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (error) {
-    zeroClosed = String(error.stderr ?? '').includes('zero new-mail tokens') || String(error.stderr ?? '').includes('FAIL-CLOSED');
-  }
-  rmSync(artifacts, { recursive: true, force: true });
-  rmSync(artifacts2, { recursive: true, force: true });
-  rmSync(maildir, { recursive: true, force: true });
-}
+  expect(r.includes('4 run secret'), 'B1-R3: both mailboxes collected (setup+setup+reset+forged)');
 
-// B1-R2 I-extra — forged token scanned; missing env fail-closed; clear call site
-// ---------------------------------------------------------------------------
-{
-  const scanner = join(ROOT, 'tools', 'scan-artifacts.mjs');
-  const artifacts = mkdtempSync(join(tmpdir(), 'j1h2c-scan4-'));
-  const maildir = mkdtempSync(join(tmpdir(), 'j1h2c-mail4-'));
-  const email = 'scan4@example.com';
-  const box = join(maildir, email);
-  mkdirSync(box, { recursive: true });
-  writeFileSync(join(box, '0001-new.json'), JSON.stringify({ link: '/retailer/reset-password#resetToken=run4-token-CCCC99&w=W1XC' }));
-  writeFileSync(join(artifacts, 'maildir-snapshot.json'), JSON.stringify({ schema: 'j1h2c-maildir-snapshot/1', emailKey: email, files: [] }));
-  const env = {
-    ...process.env,
-    J1H2C_RETAILER_CURRENT_PASSWORD: 'CurrentPass_9!', // pragma: allowlist secret
-    J1H2C_RETAILER_NEW_PASSWORD: 'NewPass_8x!', // pragma: allowlist secret
-    J1H2C_FORGED_RESET_TOKEN: 'forged-scan4-unique-8x',
-    J1H2C_W1_CANONICAL_CODE: 'W1XC',
-    J1H2C_MAILDIR_ROOT: maildir,
-  };
-  // Artifact leaks the FORGED token -> must be RED.
-  writeFileSync(join(artifacts, 'forged-leak.txt'), 'oops forged-scan4-unique-8x');
-  let forgedLeakDetected = false;
+  // Leak probes: each secret category must be RED when present in artifacts.
+  for (const [label, value] of [
+    ['est_setup', 'est-setup-token-777'],
+    ['unv_setup', 'unv-setup-token-999'],
+    ['est_reset', 'est-reset-token-888'],
+    ['forged', 'forged-run5-unique-8x'],
+  ]) {
+    writeFileSync(join(artifacts, 'probe.txt'), `oops ${value}`);
+    let detected = false;
+    try {
+      execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
+        encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      detected = String(error.stderr ?? '').includes('run_token');
+    }
+    expect(detected, `M28-RED: ${label} token leak detected`);
+    rmSync(join(artifacts, 'probe.txt'), { force: true });
+  }
+
+  // Historical tokens (both mailboxes) must NOT be in the secret set.
+  writeFileSync(join(artifacts, 'old-probe.txt'), 'contains historical-est-token and historical-unv-token');
+  let oldFlagged = false;
   try {
     execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
       encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (error) {
-    forgedLeakDetected = String(error.stderr ?? '').includes('run_token');
+    oldFlagged = String(error.stderr ?? '').includes('run_token');
   }
-  expect(forgedLeakDetected, 'I-RED: forged token leak in artifact detected');
-  rmSync(join(artifacts, 'forged-leak.txt'), { force: true });
+  expect(!oldFlagged, 'B1-R3: historical tokens from BOTH mailboxes excluded');
+  rmSync(join(artifacts, 'old-probe.txt'), { force: true });
 
-  // Missing dynamic env inputs -> fail closed (never structural-only).
+  // Forged reuse fail-closed.
+  const envReuse = { ...env, J1H2C_FORGED_RESET_TOKEN: 'est-reset-token-888' };
+  let reuseClosed = false;
+  try {
+    execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
+      encoding: 'utf8', env: envReuse, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    reuseClosed = String(error.stderr ?? '').includes('reuse forbidden');
+  }
+  expect(reuseClosed, 'B1-R3-RED: forged==real token fails closed');
+
+  // Missing mailbox snapshot entry fails closed.
+  const artifacts6 = mkdtempSync(join(tmpdir(), 'j1h2c-scan6-'));
+  writeFileSync(join(artifacts6, 'maildir-snapshot.json'), JSON.stringify({ schema: 'j1h2c-maildir-snapshot/2', mailboxes: { established: [] } }));
+  let mailboxClosed = false;
+  try {
+    execFileSync('node', [scanner, '--artifacts-dir', artifacts6, '--secrets-from-env'], {
+      encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    mailboxClosed = String(error.stderr ?? '').includes('expected mailbox');
+  }
+  expect(mailboxClosed, 'B1-R3-RED: missing unverified mailbox snapshot fails closed');
+  rmSync(artifacts6, { recursive: true, force: true });
+
+  // Missing dynamic env inputs still fail closed.
   const stripped = { ...env };
   delete stripped.J1H2C_RETAILER_CURRENT_PASSWORD;
   let missingClosed = false;
@@ -513,12 +498,87 @@ const CODE = 'WSTEST01';
   } catch (error) {
     missingClosed = String(error.stderr ?? '').includes('FAIL-CLOSED');
   }
-  expect(missingClosed, 'I-RED: scanner missing dynamic inputs fails closed');
+  expect(missingClosed, 'B1-R3-RED: missing dynamic inputs fails closed');
   rmSync(artifacts, { recursive: true, force: true });
   rmSync(maildir, { recursive: true, force: true });
+}
 
-  // clearMemoryState call site present in spec afterAll finally.
+// B1-R3 — reconciliation truth fixtures
+// ---------------------------------------------------------------------------
+{
+  const { load, dir } = transpile('src/reconciliation.ts');
+  const rec = await load();
+
+  // M29 truth: precondition failure => precondition FAIL + ALL 17 NOT_RUN.
+  {
+    const preconditionFail = new rec.RunReconciliation();
+    preconditionFail.recordPreconditionFail();
+    const summary = preconditionFail.summary();
+    expect(summary.preconditionOutcome === 'PRECONDITION_FAIL', 'M29: precondition outcome FAIL');
+    expect(summary.outcomes.fail === 0, 'M29: zero fabricated node FAILs');
+    expect(summary.outcomes.notRun === 17, 'M29: all 17 nodes NOT_RUN');
+    expect(summary.outcomes.pending === 0 && summary.outcomes.pass === 0, 'M29: no pass/pending leaks');
+    let completeRejected = false;
+    try {
+      preconditionFail.assertComplete();
+    } catch (error) {
+      completeRejected = String(error.message).includes('precondition_failed');
+    }
+    expect(completeRejected, 'M29-RED: precondition-failed run cannot assert complete');
+  }
+
+  // HC03 first-failure exactness: prior PASS, HC03 FAIL, later NOT_RUN.
+  {
+    const run = new rec.RunReconciliation();
+    run.recordBrowserPass('HC01');
+    run.recordBrowserPass('HC02');
+    // Static HC11/HC17 follow their HC07 dependency: HC07 not reached =>
+    // they stay NOT_RUN alongside the unreached browser nodes.
+    run.markOutcomesAfterFailure('HC03');
+    const byId = new Map(run.snapshot().map((n) => [n.nodeId, n.outcome]));
+    expect(byId.get('HC01') === 'PASS' && byId.get('HC02') === 'PASS', 'HC03-fail: prior nodes stay PASS');
+    expect(byId.get('HC03') === 'FAIL', 'HC03-fail: exact failed node FAIL');
+    expect(byId.get('HC04') === 'NOT_RUN' && byId.get('HC16') === 'NOT_RUN', 'HC03-fail: later browser nodes NOT_RUN');
+    expect(byId.get('HC11') === 'NOT_RUN' && byId.get('HC17') === 'NOT_RUN', 'HC03-fail: HC11/HC17 NOT_RUN (HC07 dependency)');
+    const summary = run.summary();
+    expect(summary.outcomes.pass === 2 && summary.outcomes.fail === 1 && summary.outcomes.notRun === 14, 'HC03-fail: counters exact');
+  }
+
+  // Full success: 17/17 PASS, gap 0; M30: a missing record must throw.
+  {
+    const complete = new rec.RunReconciliation();
+    for (const id of ['HC01','HC02','HC03','HC04','HC05','HC06','HC07','HC08','HC09','HC10','HC12','HC13','HC14','HC15']) {
+      complete.recordBrowserPass(id);
+    }
+    complete.recordStaticPass('HC11');
+    // M30 variant: omit HC16 -> assertComplete must throw (command RED).
+    let incompleteRejected = false;
+    try {
+      complete.assertComplete();
+    } catch {
+      incompleteRejected = true;
+    }
+    expect(incompleteRejected, 'M30-RED: missing recordBrowserPass(HC16) cannot pass assertComplete');
+    complete.recordBrowserPass('HC16');
+    complete.recordStaticPass('HC17');
+    let ok = true;
+    try {
+      complete.assertComplete();
+    } catch {
+      ok = false;
+    }
+    expect(ok, 'B1-R3: full 17/17 gap-0 reconciliation passes');
+    expect(complete.summary().outcomes.notRun === 0 && complete.summary().outcomes.fail === 0, 'B1-R3: success has zero FAIL/NOT_RUN');
+  }
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// B1-R3 — spec wiring anchors
+// ---------------------------------------------------------------------------
+{
   const specText = readFileSync(join(ROOT, 'tests', 'recovery.spec.ts'), 'utf8');
+  expect(specText.includes('recordPreconditionFail();'), 'spec: beforeAll catch records precondition failure');
+  expect(specText.includes('reconciliation.assertComplete();'), 'spec: success afterAll asserts completeness');
   expect(specText.includes('clearMemoryState();'), 'H: clearMemoryState called in spec');
 }
 
@@ -527,4 +587,4 @@ if (failures.length > 0) {
   console.error(`RUNTIME-CONTRACT CHECK FAILED (${failures.length})`);
   process.exit(1);
 }
-console.log('EXECUTABLE RUNTIME-CONTRACT CHECKS PASSED (A/B/E/C/H/I fixtures).');
+console.log('EXECUTABLE RUNTIME-CONTRACT CHECKS PASSED (A/B/E/C/H/I + B1-R3 multi-mailbox/reconciliation truth).');

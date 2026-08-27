@@ -113,9 +113,18 @@ test.describe('j1h2c retailer recovery journey', () => {
     W2 = journey.w2CanonicalCode;
     // Kilo D (B1-R2): STRICT executable launcher/precondition contract —
     // fresh invitations, 2xx-only register, full official lifecycle,
-    // unverified stop-proof, W2 proofs, maildir snapshot persistence.
+    // unverified stop-proof, W2 proofs, dual-mailbox snapshot persistence.
     // Never a browser node PASS.
-    await runPreconditions(journey);
+    // B1-R3: a precondition failure is accounted as PRECONDITION_FAIL with
+    // ALL 17 nodes NOT_RUN — never fabricated as node FAILs — and the
+    // truthful artifact is still published before rethrowing.
+    try {
+      await runPreconditions(journey);
+    } catch (error) {
+      reconciliation.recordPreconditionFail();
+      reconciliation.publishArtifacts('artifacts');
+      throw error;
+    }
   });
 
   test.afterAll(async () => {
@@ -124,6 +133,17 @@ test.describe('j1h2c retailer recovery journey', () => {
     // failure has already failed the run (maxFailures=1); this afterAll
     // cannot mask it — publication errors surface as teardown errors.
     try {
+      if (
+        firstFailedNodeId === undefined &&
+        reconciliation.summary().preconditionOutcome === 'PRECONDITION_PASS'
+      ) {
+        // B1-R3: on a run that reached afterAll without a precondition
+        // failure, completeness is ASSERTED — any unrecorded node makes
+        // this afterAll throw (teardown error -> non-zero exit), never a
+        // silent incomplete JSON + exit 0. (On a browser-node failure the
+        // assertion is skipped so the truthful partial state publishes.)
+        reconciliation.assertComplete();
+      }
       reconciliation.markOutcomesAfterFailure(firstFailedNodeId);
       reconciliation.publishArtifacts('artifacts');
     } finally {

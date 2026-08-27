@@ -149,7 +149,9 @@ for (const [needle, label] of [
 ]) {
   if (!configText.includes(needle)) fail(4, `config missing ${label}`);
 }
-if (!specText.includes("test.describe.configure({ mode: 'serial' })")) {
+// The frozen code line carries a trailing semicolon; the docstring mention
+// (backticked, no semicolon) must NOT satisfy this check.
+if (!specText.includes("test.describe.configure({ mode: 'serial' });")) {
   fail(4, 'spec missing single serial describe');
 }
 const specFiles = readdirSync(join(ROOT, 'tests')).filter((f) => f.endsWith('.spec.ts'));

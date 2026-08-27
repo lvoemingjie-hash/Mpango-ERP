@@ -7,8 +7,21 @@
   `HARNESS_CORRECTION_CANDIDATE_READY_FOR_KILO_RE_REVIEW_ONLY`
 - BASE：`d11b51045fe415e5b8e3222e7bc037af75138c92`（B1-R3 tip，远端一致）
 - 分支：`zcode/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-b1-r3-r1-publication-cardinality-closure-2026-08-28`
-- 授权范围：恰 4 个 harness 文件 + 本台账；未修改产品/产品测试/依赖/
-  lockfile/其他 harness；未启动产品运行时/PG/Redis/Vite/Playwright 旅程。
+- 授权范围（B1-R3-R1-E1 勘误后的精确 Git 真值）：原表述"恰 4 个 harness
+  文件 + 本台账"不准确，现标记为
+  **SUPERSEDED_BY_E1_SCOPE_ACCOUNTING_TRUTH**。`git diff --name-only
+  d11b5104..64746b9c` 的实际 delta 恰为以下 4 个文件（3 个 harness
+  文件 + 1 个 ledger）：
+  - `j1h2c-retailer-recovery/tests/recovery.spec.ts`
+  - `j1h2c-retailer-recovery/tools/check-runtime-contracts.mjs`
+  - `j1h2c-retailer-recovery/tools/scan-artifacts.mjs`
+  - `ai-ledger/product-ai/2026-08-28_dc12r1_mvp_l1_j1_h2_c_r1_r2_r1_b1_r3_r1_publication_cardinality.md`
+  （`tools/validate-static.mjs` 相对 B1-R3 tip 未变更。）
+  未修改产品/产品测试/依赖/lockfile/其他 harness；未启动产品运行时/
+  PG/Redis/Vite/Playwright 旅程。
+- E1 勘误边界：仅修正范围记账 —— 不修改任何 harness bytes，不改变
+  功能、测试结论、mutation 证据或裁决，不重新运行测试，
+  CLAIM_CEILING 保持 `HARNESS_CORRECTION_CANDIDATE_READY_FOR_KILO_RE_REVIEW_ONLY`。
 - GitNexus 编辑前 impact：`publishArtifacts`/`assertComplete`/setup 基数
   调用方全部闭合于 harness 内部（spec/validator/fixtures/scanner）；
   无 HIGH/CRITICAL（记录后继续）。

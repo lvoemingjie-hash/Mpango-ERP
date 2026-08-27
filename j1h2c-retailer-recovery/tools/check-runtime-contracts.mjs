@@ -573,6 +573,132 @@ const CODE = 'WSTEST01';
   rmSync(dir, { recursive: true, force: true });
 }
 
+// B1-R3-R1 — publication ordering truth (publish BEFORE completeness)
+// ---------------------------------------------------------------------------
+{
+  const specText = readFileSync(join(ROOT, 'tests', 'recovery.spec.ts'), 'utf8');
+  const publishIdx = specText.indexOf(["reconciliation.publishArtifacts('artifacts');", '        reconciliation.assertComplete();'].join('\n'));
+  expect(publishIdx >= 0, 'M32: success path must publish BEFORE assertComplete');
+  // The old reversed order must not exist anywhere.
+  const reversed = specText.indexOf('reconciliation.assertComplete();');
+  const publishAll = [];
+  let searchFrom = 0;
+  while (true) {
+    const idx = specText.indexOf("reconciliation.publishArtifacts('artifacts');", searchFrom);
+    if (idx < 0) break;
+    publishAll.push(idx);
+    searchFrom = idx + 1;
+  }
+  // Every assertComplete call must have a publish BEFORE it on the same
+  // success path (the first publish precedes the only assertComplete).
+  expect(publishAll.length >= 1 && reversed > publishAll[0], 'M32: publish index precedes assert index');
+
+  // M33: missing record -> artifact published AND command RED. Use the
+  // reconciliation module: publish then assert (exact spec order).
+  const { load, dir } = transpile('src/reconciliation.ts');
+  const rec = await load();
+  const artifacts = mkdtempSync(join(tmpdir(), 'j1h2c-scan7-'));
+  const run = new rec.RunReconciliation();
+  for (const id of ['HC01','HC02','HC03','HC04','HC05','HC06','HC07','HC08','HC09','HC10','HC12','HC13','HC14','HC15','HC16']) {
+    run.recordBrowserPass(id);
+  }
+  run.recordStaticPass('HC11');
+  // HC17 missing => publish truthful (incomplete) state, THEN assert -> throw.
+  run.publishArtifacts(artifacts); // publish first (spec order)
+  const json = readFileSync(join(artifacts, 'reconciliation.json'), 'utf8');
+  const parsed = JSON.parse(json);
+  expect(parsed.nodes.some((n) => n.nodeId === 'HC17' && n.outcome === 'PENDING'), 'M33: truthful PENDING published for the missing record');
+  let asserted = false;
+  try {
+    run.assertComplete(); // then judge -> must throw
+  } catch {
+    asserted = true;
+  }
+  expect(asserted, 'M33: command-equivalent assertComplete throws (non-zero exit)');
+  expect(parsed.summary.outcomes.pending >= 1, 'M33: published artifact shows the incomplete truth');
+  rmSync(artifacts, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// B1-R3-R1 — setup token cardinality truth (M34/M35)
+// ---------------------------------------------------------------------------
+{
+  const scanner = join(ROOT, 'tools', 'scan-artifacts.mjs');
+  for (const variant of ['unverified', 'established']) {
+    const artifacts = mkdtempSync(join(tmpdir(), 'j1h2c-scan8-'));
+    const maildir = mkdtempSync(join(tmpdir(), 'j1h2c-mail8-'));
+    const est = 'est8@example.com';
+    const unv = 'unv8@example.com';
+    const estBox = join(maildir, est);
+    const unvBox = join(maildir, unv);
+    mkdirSync(estBox, { recursive: true });
+    mkdirSync(unvBox, { recursive: true });
+    writeFileSync(join(estBox, '0001.json'), JSON.stringify({ link: '/retailer/setup-credential#setupToken=est8-setup-main-token&w=W1XC' }));
+    writeFileSync(join(unvBox, '0001.json'), JSON.stringify({ link: '/retailer/setup-credential#setupToken=unv8-setup-main-token&w=W1XC' }));
+    // The variant mailbox gets a SECOND distinct setup token (M34/M35).
+    const targetBox = variant === 'unverified' ? unvBox : estBox;
+    writeFileSync(join(targetBox, '0002.json'), JSON.stringify({ link: `/retailer/setup-credential#setupToken=${variant}-8-setup-extra-token&w=W1XC` }));
+    writeFileSync(
+      join(artifacts, 'maildir-snapshot.json'),
+      JSON.stringify({ schema: 'j1h2c-maildir-snapshot/2', mailboxes: { established: [], unverified: [] } }),
+    );
+    const env = {
+      ...process.env,
+      J1H2C_RETAILER_EMAIL: est,
+      J1H2C_UNVERIFIED_EMAIL: unv,
+      J1H2C_RETAILER_CURRENT_PASSWORD: 'CurrentPass_9!', // pragma: allowlist secret
+      J1H2C_RETAILER_NEW_PASSWORD: 'NewPass_8x!', // pragma: allowlist secret
+      J1H2C_FORGED_RESET_TOKEN: 'forged-run8-unique-8x',
+      J1H2C_W1_CANONICAL_CODE: 'W1XC',
+      J1H2C_MAILDIR_ROOT: maildir,
+    };
+    let cardinalityClosed = false;
+    try {
+      execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
+        encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      const err = String(error.stderr ?? '');
+      cardinalityClosed = err.includes('setup_token_cardinality') && err.includes(variant);
+    }
+    expect(cardinalityClosed, `M${variant === 'unverified' ? '34' : '35'}-RED: dual setup tokens in ${variant} mailbox fail closed`);
+    rmSync(artifacts, { recursive: true, force: true });
+    rmSync(maildir, { recursive: true, force: true });
+  }
+  // Zero-setup also still fails closed (label+category only).
+  {
+    const artifacts = mkdtempSync(join(tmpdir(), 'j1h2c-scan9-'));
+    const maildir = mkdtempSync(join(tmpdir(), 'j1h2c-mail9-'));
+    const est = 'est9@example.com';
+    const unv = 'unv9@example.com';
+    mkdirSync(join(maildir, est), { recursive: true });
+    mkdirSync(join(maildir, unv), { recursive: true });
+    writeFileSync(join(maildir, est, '0001.json'), JSON.stringify({ link: '/retailer/setup-credential#setupToken=est9-setup-token-xx&w=W1XC' }));
+    writeFileSync(join(artifacts, 'maildir-snapshot.json'), JSON.stringify({ schema: 'j1h2c-maildir-snapshot/2', mailboxes: { established: [], unverified: [] } }));
+    const env = {
+      ...process.env,
+      J1H2C_RETAILER_EMAIL: est,
+      J1H2C_UNVERIFIED_EMAIL: unv,
+      J1H2C_RETAILER_CURRENT_PASSWORD: 'CurrentPass_9!', // pragma: allowlist secret
+      J1H2C_RETAILER_NEW_PASSWORD: 'NewPass_8x!', // pragma: allowlist secret
+      J1H2C_FORGED_RESET_TOKEN: 'forged-run9-unique-8x',
+      J1H2C_W1_CANONICAL_CODE: 'W1XC',
+      J1H2C_MAILDIR_ROOT: maildir,
+    };
+    let zeroClosed = false;
+    try {
+      execFileSync('node', [scanner, '--artifacts-dir', artifacts, '--secrets-from-env'], {
+        encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      zeroClosed = String(error.stderr ?? '').includes('setup_token_cardinality:unverified:0');
+    }
+    expect(zeroClosed, 'B1-R3-R1-RED: zero unverified setup tokens fail closed (label+category only)');
+    rmSync(artifacts, { recursive: true, force: true });
+    rmSync(maildir, { recursive: true, force: true });
+  }
+}
+
 // B1-R3 — spec wiring anchors
 // ---------------------------------------------------------------------------
 {
@@ -587,4 +713,4 @@ if (failures.length > 0) {
   console.error(`RUNTIME-CONTRACT CHECK FAILED (${failures.length})`);
   process.exit(1);
 }
-console.log('EXECUTABLE RUNTIME-CONTRACT CHECKS PASSED (A/B/E/C/H/I + B1-R3 multi-mailbox/reconciliation truth).');
+console.log('EXECUTABLE RUNTIME-CONTRACT CHECKS PASSED (A/B/E/C/H/I + B1-R3 truth + B1-R3-R1 ordering/cardinality).');

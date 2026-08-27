@@ -128,24 +128,31 @@ test.describe('j1h2c retailer recovery journey', () => {
   });
 
   test.afterAll(async () => {
-    // Kilo H: ALWAYS publish the true reconciliation state (partial on
-    // failure) and clear the in-memory token store. The first browser
-    // failure has already failed the run (maxFailures=1); this afterAll
-    // cannot mask it — publication errors surface as teardown errors.
+    // B1-R3-R1 PUBLICATION ORDERING TRUTH:
+    //   1. classify the true outcomes FIRST (precondition failure keeps the
+    //      17 NOT_RUN set recorded by recordPreconditionFail; a browser
+    //      failure is classified exactly via markOutcomesAfterFailure);
+    //   2. PUBLISH the reconciliation artifact BEFORE any completeness
+    //      judgment, so a missing record can never leave the run without
+    //      its truthful (possibly incomplete) reconciliation.json/csv;
+    //   3. ONLY on surface success (no first failure, precondition pass)
+    //      assert completeness — a missing record then throws (teardown
+    //      error -> non-zero exit) WITH the truthful artifact already on
+    //      disk. Publication/classification errors never mask the first
+    //      browser failure; clearMemoryState always runs in finally.
     try {
-      if (
-        firstFailedNodeId === undefined &&
-        reconciliation.summary().preconditionOutcome === 'PRECONDITION_PASS'
-      ) {
-        // B1-R3: on a run that reached afterAll without a precondition
-        // failure, completeness is ASSERTED — any unrecorded node makes
-        // this afterAll throw (teardown error -> non-zero exit), never a
-        // silent incomplete JSON + exit 0. (On a browser-node failure the
-        // assertion is skipped so the truthful partial state publishes.)
+      if (firstFailedNodeId !== undefined) {
+        // Browser-node failure path: exact PASS/FAIL/NOT_RUN, then publish.
+        reconciliation.markOutcomesAfterFailure(firstFailedNodeId);
+        reconciliation.publishArtifacts('artifacts');
+      } else if (reconciliation.summary().preconditionOutcome === 'PRECONDITION_FAIL') {
+        // Precondition-failure path: 17 NOT_RUN already recorded; publish.
+        reconciliation.publishArtifacts('artifacts');
+      } else {
+        // Surface-success path: publish the TRUE state first, THEN judge.
+        reconciliation.publishArtifacts('artifacts');
         reconciliation.assertComplete();
       }
-      reconciliation.markOutcomesAfterFailure(firstFailedNodeId);
-      reconciliation.publishArtifacts('artifacts');
     } finally {
       clearMemoryState();
     }

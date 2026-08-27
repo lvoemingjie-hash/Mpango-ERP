@@ -130,10 +130,12 @@ function collectFromMailbox(label, priorFiles) {
 }
 collectFromMailbox('established', snapshot.mailboxes.established);
 collectFromMailbox('unverified', snapshot.mailboxes.unverified);
-// Exactly one NEW setup token per mailbox is expected this run.
+// B1-R3-R1: setup token cardinality is STRICTLY ONE per mailbox. Zero OR
+// more-than-one both fail closed (label + category only). Reset tokens are
+// NEVER count-limited — every one is collected and scanned.
 for (const label of ['established', 'unverified']) {
-  if (setupTokens[label].length === 0) {
-    failClosed(`zero new setup tokens for mailbox: ${label} (label only)`);
+  if (setupTokens[label].length !== 1) {
+    failClosed(`setup_token_cardinality:${label}:${setupTokens[label].length}`);
   }
 }
 const mailTokens = [...setupTokens.established, ...setupTokens.unverified, ...resetTokens];

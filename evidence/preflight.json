@@ -1,0 +1,92 @@
+{
+  "alembic": {
+    "expected_head": "037_payment_declarations_schema",
+    "head": "037_payment_declarations_schema",
+    "head_count": 1
+  },
+  "candidate_worktree": {
+    "clean_before_run": true,
+    "detached": true,
+    "head": "2582750dedfb591e801703ff57bea69fbe91c605",
+    "path": "/home/ivy/Documents/Codex/2026-08-28/dc-12r1-mvp-l1-he2-et1-2/work/candidate-wt"
+  },
+  "classification": "PREFLIGHT_GREEN",
+  "date": "2026-08-28",
+  "environment": {
+    "ET1_E2E_BASELINE": {
+      "matches_required_baseline": true,
+      "present": true
+    },
+    "MPANGO_ALLOW_TEMP_DB_CREATE": {
+      "present": true,
+      "value_is_1": true
+    },
+    "PW1R3_TEST_REDIS_URL": {
+      "label": "redis://127.0.0.1:16591/15",
+      "present": true
+    },
+    "TEST_DATABASE_URL": {
+      "label": "postgresql://127.0.0.1:15591/<redacted>",
+      "present": true
+    },
+    "TEST_DATABASE_URL_SUPER": {
+      "label": "postgresql://127.0.0.1:15591/<redacted>",
+      "present": true
+    }
+  },
+  "lineage": {
+    "candidate_parent": "18abc7a256f451ad7fa013e9d34c87e5442d852d",
+    "candidate_parent_equals_functional_candidate": true,
+    "functional_parent": "aaff330e395a1ae555672bd86f183d2fd89cae54",
+    "functional_parent_equals_base": true
+  },
+  "postgres": {
+    "admin": {
+      "current_user": "et1admin_f8f53033",
+      "rolcreatedb": true,
+      "rolsuper": true
+    },
+    "non_super": {
+      "current_user": "et1runner_fccca7d2",
+      "rolcreatedb": true,
+      "rolsuper": false
+    }
+  },
+  "python": {
+    "pytest_from_uv_probe": "9.1.1",
+    "python3": "Python 3.12.3",
+    "uv": "uv 0.10.9"
+  },
+  "redis": {
+    "db": 15,
+    "dbsize_before_run": 0,
+    "ping": "PONG",
+    "sentinel_26379_reachable": false,
+    "url_label": "redis://127.0.0.1:16591/15"
+  },
+  "remote": {
+    "candidate_branch_local_tracking_tip": "2582750dedfb591e801703ff57bea69fbe91c605",
+    "candidate_branch_ref": "refs/heads/zcode/dc12r1-mvp-l1-he2-et1-r1-e1-provenance-review-independence-2026-08-28",
+    "candidate_branch_remote_tip": "2582750dedfb591e801703ff57bea69fbe91c605",
+    "kilo_branch_local_tracking_tip": "68885826c19f09b48b7b035eab65ec67273748fb",
+    "kilo_branch_ref": "refs/heads/reports/dc12r1-mvp-l1-he2-et1-r1-e1-v1-kilo-final-cumulative-review-2026-08-28",
+    "kilo_branch_remote_tip": "68885826c19f09b48b7b035eab65ec67273748fb"
+  },
+  "schema": "dc12r1/he2-et1/independent-preflight/1",
+  "scope": {
+    "commit_count": 2,
+    "cumulative_file_count": 10,
+    "cumulative_files": [
+      "ai-ledger/product-ai/2026-08-28_dc12r1_mvp_l1_he2_et1_r1_e2e_authority_execution_closure.md",
+      "harness-governance/README.md",
+      "harness-governance/inventory/et1-node-manifest.txt",
+      "harness-governance/inventory/protocol-deltas.json",
+      "harness-governance/tests/_et1_collector_fixtures.py",
+      "harness-governance/tests/et1_e2e_mutations.py",
+      "harness-governance/tests/pytest_et1_collector.py",
+      "harness-governance/tests/run_e2e_core_chain.py",
+      "harness-governance/tests/run_red_mutations.py",
+      "harness-governance/validator/authority_runner.py"
+    ]
+  }
+}

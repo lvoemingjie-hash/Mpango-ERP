@@ -1,0 +1,11 @@
+PASS  1-green-full-pipeline              rc=0 state=FINISHED sentinel=1
+PASS  2-red-superuser                    rc=10 state=VOID sentinel=0
+PASS  3-red-empty-url                    rc=11 state=VOID sentinel=0
+PASS  4-red-temp-db-flag                 rc=12 state=VOID sentinel=0
+PASS  5-red-missing-command              rc=16 state=VOID sentinel=0
+PASS  6-red-nonce-tamper                 ev={"reason": "nonce_mismatch"} sentinel=0
+PASS  7-red-node-drift                   ev={"count_equal": false} sentinel=0
+PASS  8-red-profile-drift                trap=TRAP_SESSIONSTART_DRIFT reason=profile_drift sentinel=0
+------------------------------------------------------------------------
+E2E CORE CHAIN: 8/8 cases PASS
+ALL CORE CASES GREEN — vertical proof closed

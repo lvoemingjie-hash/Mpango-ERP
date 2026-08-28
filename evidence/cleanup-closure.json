@@ -1,0 +1,16 @@
+{
+  "all_green": false,
+  "execution_worktree_removed": true,
+  "frozen_refs_unchanged": false,
+  "local_equals_remote_for_frozen_refs": true,
+  "ports_released": {
+    "15591": true,
+    "16591": true,
+    "26379": true
+  },
+  "runtime": {
+    "containers_removed": true,
+    "network_removed": true,
+    "volumes_removed": true
+  }
+}

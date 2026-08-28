@@ -1,0 +1,124 @@
+{
+  "cases": [
+    {
+      "actual": {
+        "case_id": 1,
+        "child_sha_match": {
+          "candidate": true,
+          "manifest": true,
+          "profile": true
+        },
+        "collect_child_spawns": 1,
+        "command_exit_code": 0,
+        "console_detail": "rc=0 state=FINISHED sentinel=1",
+        "nonce_match": true,
+        "publish_state": "FINISHED",
+        "sentinel_calls": 1
+      },
+      "case_id": 1,
+      "expected": "rc=0 state=FINISHED sentinel_calls=1 collect_child_spawns=1 nonce_match=true",
+      "name": "1-green-full-pipeline",
+      "pass": true
+    },
+    {
+      "actual": {
+        "case_id": 2,
+        "child_sha_match": {},
+        "collect_child_spawns": 0,
+        "command_exit_code": null,
+        "console_detail": "rc=10 state=VOID sentinel=0",
+        "nonce_match": false,
+        "publish_state": "VOID",
+        "sentinel_calls": 0
+      },
+      "case_id": 2,
+      "expected": "rc=10 state=VOID sentinel_calls=0",
+      "name": "2-red-superuser",
+      "pass": true
+    },
+    {
+      "actual": {
+        "case_id": 3,
+        "child_sha_match": {},
+        "collect_child_spawns": 0,
+        "command_exit_code": null,
+        "console_detail": "rc=11 state=VOID sentinel=0",
+        "nonce_match": false,
+        "publish_state": "VOID",
+        "sentinel_calls": 0
+      },
+      "case_id": 3,
+      "expected": "rc=11 state=VOID sentinel_calls=0",
+      "name": "3-red-empty-url",
+      "pass": true
+    },
+    {
+      "actual": {
+        "case_id": 4,
+        "child_sha_match": {},
+        "collect_child_spawns": 0,
+        "command_exit_code": null,
+        "console_detail": "rc=12 state=VOID sentinel=0",
+        "nonce_match": false,
+        "publish_state": "VOID",
+        "sentinel_calls": 0
+      },
+      "case_id": 4,
+      "expected": "rc=12 state=VOID sentinel_calls=0",
+      "name": "4-red-temp-db-flag",
+      "pass": true
+    },
+    {
+      "actual": {
+        "case_id": 5,
+        "child_sha_match": {
+          "candidate": true,
+          "manifest": true,
+          "profile": true
+        },
+        "collect_child_spawns": 1,
+        "command_exit_code": null,
+        "console_detail": "rc=16 state=VOID sentinel=0",
+        "nonce_match": true,
+        "publish_state": "VOID",
+        "sentinel_calls": 0
+      },
+      "case_id": 5,
+      "expected": "rc=16 state=VOID sentinel_calls=0",
+      "name": "5-red-missing-command",
+      "pass": true
+    },
+    {
+      "actual": {
+        "console_detail": "ev={\"reason\": \"nonce_mismatch\"} sentinel=0"
+      },
+      "case_id": 6,
+      "expected": "VOID sentinel_calls=0 nonce_mismatch",
+      "name": "6-red-nonce-tamper",
+      "pass": true
+    },
+    {
+      "actual": {
+        "console_detail": "ev={\"count_equal\": false} sentinel=0"
+      },
+      "case_id": 7,
+      "expected": "TRAP_COLLECT_NODE_SET_DRIFT VOID sentinel_calls=0",
+      "name": "7-red-node-drift",
+      "pass": true
+    },
+    {
+      "actual": {
+        "console_detail": "trap=TRAP_SESSIONSTART_DRIFT reason=profile_drift sentinel=0"
+      },
+      "case_id": 8,
+      "expected": "VOID sentinel_calls=0 profile_drift",
+      "name": "8-red-profile-drift",
+      "pass": true
+    }
+  ],
+  "summary": {
+    "all_cases_pass": true,
+    "run_exit_code": 0,
+    "summary_line": "E2E CORE CHAIN: 8/8 cases PASS"
+  }
+}

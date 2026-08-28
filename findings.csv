@@ -1,0 +1,4 @@
+check_id,file_path,line_number,mechanism,verdict,minimal_fix
+DETECT-SECRETS,harness-governance/inventory/protocol-deltas.json,94;111;125,"3 hex high-entropy strings (SHA-256 hashes of protocol delta identifiers); governance artifacts, not secrets",WARNING,Baseline-whitelist these SHA hash values in detect-secrets config
+RELEASE-VALIDATOR,N/A,N/A,Release validator exit 3 (BLOCKED) due to pre-existing P0/P1 debt (DEBT-AUTH-CRITICAL-TUPLES, DEBT-COMMERCE-CRITICAL-TUPLES),WARNING,None — expected pre-existing debt; structural gate PASS
+E2E-PG,N/A,N/A,Docker available but fresh PG16 + Redis infrastructure with non-superuser CREATEDB role not configured,HOST_LIMITATION,Independent Lubuntu Codex-L E2E run with fresh throwaway PG16 container is required next gate

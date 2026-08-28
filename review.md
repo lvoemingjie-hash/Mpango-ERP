@@ -7,7 +7,7 @@
 **FUNCTIONAL_CANDIDATE:** `18abc7a256f451ad7fa013e9d34c87e5442d852d`
 **BASE_ET1:** `aaff330e395a1ae555672bd86f183d2fd89cae54`
 **PRIOR_HE2_ET1_KILO_REVIEW:** `NONE`
-**PRIOR_CROSS_TASK_REF:** `26ed3fac` — marked `INVALID_CROSS_TASK_REFERENCE` (H2-C browser harness Kilo STOP, never HE2-ET1)
+**PRIOR_CROSS_TASK_REF:** `26ed3fac` - marked `INVALID_CROSS_TASK_REFERENCE` (H2-C browser harness Kilo STOP, never HE2-ET1)
 
 ---
 
@@ -33,13 +33,13 @@ resolved**, and the governance framework implements:
 
 - **detect-secrets:** 3 hex high-entropy strings in `harness-governance/inventory/protocol-deltas.json` (lines 94, 111, 125). These are SHA-256 hashes of protocol delta identifiers, not embedded secrets. Recommend baseline-whitelist.
 - **Release validator:** Exit code 3 (BLOCKED) due to pre-existing P0/P1 debt (`DEBT-AUTH-CRITICAL-TUPLES`, `DEBT-COMMERCE-CRITICAL-TUPLES`). This is expected and documented.
-- **E2E PG test:** `HOST_LIMITATION` — Docker is available but a fresh PG16 + Redis infrastructure with the required role/permission configuration is not readily available. Independent Lubuntu Codex-L E2E run is the required next gate.
+- **E2E PG test:** `HOST_LIMITATION` - Docker is available but a fresh PG16 + Redis infrastructure with the required role/permission configuration is not readily available. Independent Lubuntu Codex-L E2E run is the required next gate.
 
 **This is a GOVERNANCE_SOURCE_AND_AUTHORITY_RUNNER_AUTHENTICITY_ONLY review. No product full-suite PASS, merge approval, or deployment approval is made or implied.**
 
 ---
 
-## Phase 1 — Proof Gate (PASS)
+## Phase 1 - Proof Gate (PASS)
 
 | Check | Result |
 |-------|--------|
@@ -62,7 +62,7 @@ resolved**, and the governance framework implements:
 
 ---
 
-## Phase 2 — Cumulative Source Review
+## Phase 2 - Cumulative Source Review
 
 | # | Requirement | Status | Evidence |
 |---|-------------|--------|----------|
@@ -81,7 +81,7 @@ resolved**, and the governance framework implements:
 
 ---
 
-## Phase 3 — Independent Authenticity Gate
+## Phase 3 - Independent Authenticity Gate
 
 | Gate | Result | Evidence Tier |
 |------|--------|---------------|
@@ -109,7 +109,7 @@ resolved**, and the governance framework implements:
 
 ---
 
-## Phase 4 — Independent PG E2E
+## Phase 4 - Independent PG E2E
 
 **Result: `HOST_LIMITATION`**
 
@@ -133,7 +133,7 @@ throwaway PG16 container.
 
 ---
 
-## Phase 5 — STOP Condition Check
+## Phase 5 - STOP Condition Check
 
 | STOP Condition | Status |
 |----------------|--------|

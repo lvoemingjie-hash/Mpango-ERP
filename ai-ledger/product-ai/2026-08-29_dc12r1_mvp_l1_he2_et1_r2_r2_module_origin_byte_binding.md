@@ -190,3 +190,14 @@ The R2-R2 verdict above stands ONLY with these corrections applied;
 R2-R2-R1 verdict: PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_
 BASELINE_AND_CHILD_PROOF_TRUTH_CLOSURE (candidate readiness for Kilo
 review; Kilo NOT started).
+
+### Correction to the erratum (same round, appended before push of the final SHA)
+
+The erratum above states the destroyed baseline was "1 file / 1 finding /
+144 lines". The 144 figure was carried over from the separate E1-round
+clobber; the version actually committed at 3e2457ca is **1 file / 1
+finding / 154 lines** (verified by `git show 3e2457ca:.secrets.baseline`:
+only `harness-governance/tests/test_authority_runner_r2r2.py` with one
+Hex High Entropy finding). The restored figures (17 files / 484 findings /
+3567 newline-terminated lines) and every other statement in the erratum
+are unchanged and correct.

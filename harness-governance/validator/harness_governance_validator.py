@@ -652,10 +652,12 @@ class DeltaAuthorizer:
 
 # HE2-ET1 evaluator whitelist (mirrors authority_runner.EVALUATOR_WHITELIST;
 # the registry may only reference these in-process evaluator ids).
+# R2-R1: EVAL_REDIS removed alongside the runner — no rollback to the
+# pre-live URL-string semantics.
 ET1_EVALUATOR_WHITELIST = frozenset(
     {
         "EVAL_PG_ROLE", "EVAL_TEST_DB_URL", "EVAL_TEMP_DB", "EVAL_ALEMBIC_HEAD",
-        "EVAL_REDIS", "EVAL_REDIS_LIVE", "EVAL_COLLECT_MANIFEST", "EVAL_PHASE_FAIL_STOP",
+        "EVAL_REDIS_LIVE", "EVAL_COLLECT_MANIFEST", "EVAL_PHASE_FAIL_STOP",
         "EVAL_ROLE_RECHECK", "EVAL_SESSIONSTART_PROOF", "EVAL_GIT_REMOTE",
         "EVAL_GIT_LINEAGE", "EVAL_EVIDENCE_PACKAGING", "EVAL_EOL",
         "EVAL_VITE_SETTLE", "EVAL_EMAIL_DOMAIN",

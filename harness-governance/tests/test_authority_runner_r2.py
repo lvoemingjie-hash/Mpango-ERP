@@ -40,13 +40,44 @@ class FakeRedis(threading.Thread):
     def __init__(self, handlers):
         super().__init__(daemon=True)
         self.handlers = handlers
-        self.received = []
+        self.received = []   # (verb, " ".join(args)) legacy shape
+        self.commands = []   # (verb, [arg, ...]) exact RESP args
         self.sock = socket.socket()
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(("127.0.0.1", 0))
         self.sock.listen(8)
         self.port = self.sock.getsockname()[1]
         self.stop_flag = threading.Event()
+
+    def _read_command(self, reader):
+        """(verb, args) from a standard RESP array (bulk-string arguments,
+        as real redis speaks) or an inline-command fallback; None on EOF or
+        parse failure."""
+        line = reader.readline()
+        if not line:
+            return None
+        if line.startswith(b"*"):
+            try:
+                count = int(line[1:].strip())
+            except ValueError:
+                return None
+            args = []
+            for _ in range(count):
+                header = reader.readline()
+                if not header.startswith(b"$"):
+                    return None
+                try:
+                    length = int(header[1:].strip())
+                except ValueError:
+                    return None
+                payload = reader.read(length)
+                if payload is None or len(payload) != length:
+                    return None
+                reader.read(2)  # trailing CRLF
+                args.append(payload.decode("utf-8", "replace"))
+            return (args[0], args[1:]) if args else ("", [])
+        parts = line.decode("utf-8", "replace").strip().split(" ")
+        return (parts[0], parts[1:]) if parts and parts[0] else None
 
     def run(self):
         while not self.stop_flag.is_set():
@@ -58,15 +89,15 @@ class FakeRedis(threading.Thread):
             with conn:
                 reader = conn.makefile("rb")
                 while True:
-                    line = reader.readline()
-                    if not line:
+                    command = self._read_command(reader)
+                    if command is None:
                         break
-                    verb = line.decode("utf-8", "replace").split(" ", 1)[0].strip()
-                    arg = line.decode("utf-8", "replace")[len(verb):].strip()
-                    self.received.append((verb, arg))
+                    verb, args = command
+                    self.received.append((verb, " ".join(args)))
+                    self.commands.append((verb, list(args)))
                     reply = self.handlers.get(verb)
                     if callable(reply):
-                        reply = reply(arg)
+                        reply = reply(args)
                     if reply is None:
                         reply = b"-ERR fake\r\n"
                     if reply:

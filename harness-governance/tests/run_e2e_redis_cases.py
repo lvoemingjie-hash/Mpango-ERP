@@ -4,6 +4,7 @@ Truth nodes over a REAL redis7 container (task-scoped, throwaway):
   RL1 GREEN          fresh empty DB15 -> full authority chain rc=0 FINISHED
                      sentinel_calls=1
   RL2 wrong DB       URL /0 -> rc 14 VOID sentinel 0
+  RL7 invalid port   ':notaport' -> rc 14 VOID, no traceback
   RL3 unreachable    redis stopped -> rc 14 VOID sentinel 0
   RL4 DB15 nonempty  one seeded key -> rc 14 VOID sentinel 0
   RL5 post-preflight redis disappears -> child sessionstart fail-closed,
@@ -110,6 +111,13 @@ def main():
     rc, pub, _ = run_authority(f"redis://{host}:{port}/0")
     ok = rc == 14 and pub.get("state") == "VOID" and pub.get("sentinel_calls") == 0
     report("RL2-red-wrong-db", ok,
+           f"rc={rc} state={pub.get('state')} sentinel={pub.get('sentinel_calls')}")
+
+    # RL7 invalid port: malformed port string must VOID sanitized (no traceback).
+    rc, pub, out = run_authority("redis://127.0.0.1:notaport/15")
+    ok = (rc == 14 and pub.get("state") == "VOID"
+          and pub.get("sentinel_calls") == 0 and "Traceback" not in out)
+    report("RL7-red-invalid-port", ok,
            f"rc={rc} state={pub.get('state')} sentinel={pub.get('sentinel_calls')}")
 
     # RL4 DB15 nonempty: seed one key, expect VOID (clean up afterwards).

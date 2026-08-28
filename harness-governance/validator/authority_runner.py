@@ -88,10 +88,12 @@ ALLOWED_TRANSITIONS = {
 }
 
 # Hardcoded evaluator whitelist: the ONLY ids the registry may reference.
+# R2-R1: the pre-live evaluator name EVAL_REDIS is REMOVED — the registry
+# cannot roll back to the old URL-string semantics.
 EVALUATOR_WHITELIST = frozenset(
     {
         "EVAL_PG_ROLE", "EVAL_TEST_DB_URL", "EVAL_TEMP_DB", "EVAL_ALEMBIC_HEAD",
-        "EVAL_REDIS", "EVAL_REDIS_LIVE", "EVAL_COLLECT_MANIFEST", "EVAL_PHASE_FAIL_STOP",
+        "EVAL_REDIS_LIVE", "EVAL_COLLECT_MANIFEST", "EVAL_PHASE_FAIL_STOP",
         "EVAL_ROLE_RECHECK", "EVAL_SESSIONSTART_PROOF", "EVAL_GIT_REMOTE",
         "EVAL_GIT_LINEAGE", "EVAL_EVIDENCE_PACKAGING", "EVAL_EOL",
         "EVAL_VITE_SETTLE", "EVAL_EMAIL_DOMAIN",
@@ -102,13 +104,32 @@ CANONICAL_ORIGIN = "https://github.com/lvoemingjie-hash/Mpango-ERP.git"
 EXPECTED_ALEMBIC_HEAD = "037_payment_declarations_schema"
 SPECIAL_USE_DOMAINS = ("invalid", "example", "test", "localhost")
 
-# R2 live-Redis authority constants. The URL must point at DB15; the probe
-# speaks raw RESP (stdlib socket only) against the URL's OWN host/port.
-REDIS_REQUIRED_DB = "15"
-REDIS_SCHEMES = ("redis", "rediss")
-REDIS_TIMEOUT_S = 2.0
+# R2-R1 live-Redis authority constants. The implementation itself lives in
+# the SHARED stdlib module validator/redis_authority.py (loaded below) so the
+# runner preflight and the child plugin probe use one identical code path.
 SENTINEL_PROBE_ENDPOINT = ("127.0.0.1", 26379)
 REDIS_TRAP = ("TRAP_REDIS_WRONG_DB", 14, "PREFLIGHT")
+
+
+def _load_redis_authority():
+    """Load the shared Redis authority module by file-relative path under a
+    FIXED sys.modules key — every consumer (runner here, child plugin,
+    in-process probes) resolves to the SAME module object."""
+    import importlib.util
+
+    key = "et1_redis_authority"
+    cached = sys.modules.get(key)
+    if cached is not None:
+        return cached
+    module_path = Path(__file__).resolve().parent / "redis_authority.py"
+    spec = importlib.util.spec_from_file_location(key, str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[key] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_redis_auth = _load_redis_authority()
 
 
 class TrapFired(Exception):
@@ -258,100 +279,25 @@ def eval_alembic_head(repo_root) -> dict:
     return {"head_count": 1}
 
 
-def _resp_encode(*parts) -> bytes:
-    """RESP inline request encoding (never surfaced in evidence/logs)."""
-    return (" ".join(str(p) for p in parts) + "\r\n").encode("utf-8")
-
-
-def _redis_reply(reader):
-    """Read ONE RESP reply; returns (kind, value) with the payload dropped
-    for errors (server error text may echo request bytes)."""
-    line = reader.readline()
-    if not line:
-        return ("closed", None)
-    line = line.rstrip(b"\r\n")
-    kind = line[:1]
-    body = line[1:]
-    if kind == b"+":
-        return ("simple", body.decode("utf-8", "replace"))
-    if kind == b"-":
-        return ("error", None)
-    if kind == b":":
-        try:
-            return ("int", int(body))
-        except ValueError:
-            return ("error", None)
-    return ("error", None)  # bulk/arrays never requested; fail closed
-
-
-def _redis_cmd(reader, sock, parts):
-    sock.sendall(_resp_encode(*parts))
-    return _redis_reply(reader)
-
-
 def redis_live_check(url: str) -> dict:
-    """R2 live Redis authority: connect the URL's OWN host/port and prove
-    PING==PONG, SELECT 15==OK, DBSIZE==0 over raw stdlib RESP. AUTH is used
-    when the URL carries credentials; credentials NEVER enter evidence,
-    proofs, logs, or exception text — only fixed boolean categories do."""
-    raw = (url or "").strip()
-    if not raw:
-        raise TrapFired(*REDIS_TRAP, True, {"redis": "url_absent"})
-    parsed = urllib.parse.urlsplit(raw)
-    db = (parsed.path or "").strip("/")
-    if parsed.scheme not in REDIS_SCHEMES or not parsed.hostname:
-        raise TrapFired(*REDIS_TRAP, True, {"redis": "url_malformed"})
-    if db != REDIS_REQUIRED_DB:
-        raise TrapFired(*REDIS_TRAP, True, {"redis": "wrong_db"})
-    host = parsed.hostname
-    port = parsed.port or 6379
-    password = parsed.password
+    """Runner-side wrapper over the SHARED stdlib Redis authority. Every
+    shared failure category maps to the registered trap with sanitized
+    evidence only (fixed category label; no URL/host/port/credentials and
+    no chained traceback — `from None` keeps internal frames unpublished)."""
     try:
-        sock = socket.create_connection((host, port), timeout=REDIS_TIMEOUT_S)
-    except OSError:
-        raise TrapFired(*REDIS_TRAP, True, {"redis": "connect_failed"})
-    try:
-        if parsed.scheme == "rediss":
-            import ssl
-
-            sock = ssl.create_default_context().wrap_socket(
-                sock, server_hostname=host
-            )
-        reader = sock.makefile("rb")
-        if password is not None:
-            if _redis_cmd(reader, sock, ("AUTH", password)) != ("simple", "OK"):
-                raise TrapFired(*REDIS_TRAP, True, {"redis": "auth_failed"})
-        if _redis_cmd(reader, sock, ("PING",)) != ("simple", "PONG"):
-            raise TrapFired(*REDIS_TRAP, True, {"redis": "ping_failed"})
-        if _redis_cmd(reader, sock, ("SELECT", REDIS_REQUIRED_DB)) != ("simple", "OK"):
-            raise TrapFired(*REDIS_TRAP, True, {"redis": "select_failed"})
-        if _redis_cmd(reader, sock, ("DBSIZE",)) != ("int", 0):
-            raise TrapFired(*REDIS_TRAP, True, {"redis": "db_nonempty"})
-        try:
-            sock.sendall(_resp_encode("QUIT"))
-        except OSError:
-            pass
-    finally:
-        try:
-            sock.close()
-        except OSError:
-            pass
-    return {"redis": "ok", "ping_pong": True, "selected_db15": True,
-            "dbsize_zero": True, "auth_used": password is not None}
+        return _redis_auth.redis_live_check(url)
+    except _redis_auth.RedisAuthorityError as err:
+        raise TrapFired(*REDIS_TRAP, True, {"redis": err.category}) from None
 
 
 def eval_redis(url: str) -> dict:
-    """Preflight Redis authority: live DB15 proof + sentinel unreachability."""
-    result = redis_live_check(url)
+    """Preflight Redis authority: live DB15 proof + sentinel unreachability,
+    both from the shared module (the sentinel endpoint is passed explicitly
+    so tests can point the probe at a controlled listener)."""
     try:
-        with socket.create_connection(SENTINEL_PROBE_ENDPOINT, timeout=0.5):
-            sentinel_reachable = True
-    except OSError:
-        sentinel_reachable = False
-    if sentinel_reachable:
-        raise TrapFired(*REDIS_TRAP, True, {"redis": "sentinel_reachable"})
-    result["sentinel_26379"] = False
-    return result
+        return _redis_auth.eval_redis(url, SENTINEL_PROBE_ENDPOINT)
+    except _redis_auth.RedisAuthorityError as err:
+        raise TrapFired(*REDIS_TRAP, True, {"redis": err.category}) from None
 
 
 def eval_collect_manifest(actual_nodes: list, expected_nodes: list) -> dict:

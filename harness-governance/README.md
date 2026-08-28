@@ -153,6 +153,52 @@ Protocol delta `PD-2026-08-28-HE2-ET1-R2` (base 2582750d) authorizes the
 round; the M0 rehearsal report tip 58b8e2ac is marked
 SUPERSEDED_BY_HE2_ET1_R2_REDIS_AUTHORITY_DEFECT in the R2 ledger.
 
+## HE2-ET1-R2-R1: malformed URL, RESP AUTH, shared-probe closure
+
+Six confirmed defects closed on top of R2:
+
+- **A** `redis://127.0.0.1:notaport/15` raised a raw `ValueError` instead
+  of a sanitized VOID. All URL/port/IPv6 parse failures now map to the
+  fixed `url_malformed` category — no traceback ever escapes
+  (`from None` keeps internal frames out of published surfaces).
+- **B** percent-encoded credentials were sent literally. Username and
+  password are now `urllib.parse.unquote`d exactly (empty-string
+  credentials normalize to absent, so `://:pwd@host` is a one-argument
+  AUTH).
+- **C** the Redis 6 ACL username was ignored. `username + password` now
+  AUTHs as a proper two-argument command; `username without password`
+  fails closed (`auth_misconfigured`).
+- **D** the inline space-joined encoder could not safely carry
+  spaces/CR/LF/special bytes. The wire protocol is now formal RESP arrays
+  of bulk strings (binary-safe); credentials with CR/LF/non-ASCII travel
+  as one argument and cannot inject commands.
+- **E** runner and plugin duplicated the probe. Both now call ONE shared
+  stdlib module (`validator/redis_authority.py`), loaded under a fixed
+  `sys.modules` key so both sides literally share the module object;
+  thin delegators remain for API compatibility.
+- **F** R2's registry rewrite re-formatted the whole
+  `execution-traps.json`. The file is restored to its original compact
+  format and only the Redis trap block carries an 8-line minimal semantic
+  edit (evaluator `EVAL_REDIS_LIVE`, `child.sessionstart` scope,
+  live-probe evidence).
+
+`rediss://` is rejected fail-closed (`tls_unsupported_fail_closed`) this
+round — no TLS deployment was proven, so no unverified support is claimed.
+The legacy evaluator name `EVAL_REDIS` is REMOVED from both whitelists
+(runner + validator), preventing any config rollback to the pre-live
+URL-string semantics. Tests: `tests/test_authority_runner_r2r1.py` (14
+tests: invalid/out-of-range port, malformed IPv6, valid-bracket-IPv6 not
+malformed, rediss fail-closed, username-without-password, exact percent
+decode, ACL two-argument array, CR/LF/space/non-ASCII injection
+resistance, protocol break, mid-session close, no-traceback/no-secret
+surfaces, same-module-object proof, no-duplicated-protocol proof).
+Mutations R211–R215 (inline encoder restored, percent decode deleted,
+username ignored, invalid port escapes, child bypasses the shared probe)
+join the retargeted R201–R205 — total gate **76 RED / 9 GREEN**. Live
+E2E adds RL7 (invalid port → VOID, no traceback) to the redis case file.
+Protocol delta `PD-2026-08-28-HE2-ET1-R2-R1` (base 30e3e48f) authorizes
+the round.
+
 
 ## Layout
 

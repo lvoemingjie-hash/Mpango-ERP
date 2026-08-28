@@ -707,7 +707,7 @@ def _run_probe_mutation(name, target_file, patch, probe_call, failures):
             print(f"  {name:<40} RED as intended (probe escaped)")
         else:
             failures.append(
-                f"{name}: probe {probe_name} still holds — mutation is not a real weakening"
+                f"{name}: probe still holds — mutation is not a real weakening"
             )
             print(f"  {name:<40} ESCAPED (still caught)")
     finally:

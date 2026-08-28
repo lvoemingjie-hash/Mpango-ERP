@@ -148,5 +148,27 @@
     "owner": "cto",
     "reason": "DC-12R1-MVP-L1-HE2-ET1-R2 live Redis authority and child recheck closure (V3_GOVERNANCE_AUTHORITY_SECURITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY): the Redis gate becomes a live stdlib-RESP probe on the URL's own host/port (connect; optional AUTH with credentials never in evidence/proofs/logs; PING==PONG; SELECT 15==OK; DBSIZE==0; sentinel 26379 unreachable; wrong-DB traps pre-connect) executed BOTH in runner preflight and in the child plugin's pytest_sessionstart, so Redis disappearing after preflight fails the child closed and the authority command is never launched; published artifacts carry fixed boolean categories only. TRAP_REDIS_WRONG_DB extended to evaluator EVAL_REDIS_LIVE (P1 ACTIVE exit 14, applies to runner.preflight + child.sessionstart) with live-probe required evidence; EVAL_REDIS_LIVE whitelisted in the runner and the mirrored validator whitelist (validator change is the single whitelist line; schema unchanged because the extension stays within the existing draft-07 contract). +15 unit tests over a threaded real-socket fake RESP server incl. credential-redaction proofs; +5 RED mutations R201-R205 (connect deleted, PING skipped, DBSIZE skipped, connection errors swallowed, child recheck deleted) with pristine + byte-exact-restore controls, total gate 71 RED / 9 GREEN; live E2E run_e2e_redis_cases.py 6/6 on fresh throwaway redis7 (GREEN fresh DB15, wrong db, unreachable, DB15 non-empty, post-preflight disappearance child-fail-closed sentinel 0, sentinel-26379-reachable) plus the 8-case core chain green on fresh PG16+redis7; PRIOR_M0 report tip 58b8e2ac marked SUPERSEDED_BY_HE2_ET1_R2_REDIS_AUTHORITY_DEFECT.",
     "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2 task directive (BASE 2582750dedfb591e801703ff57bea69fbe91c605; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
+  },
+  {
+    "delta_id": "PD-2026-08-28-HE2-ET1-R2-R1",
+    "kind": "governance",
+    "affected_ids": [],
+    "affected_paths": [
+      "harness-governance/validator/redis_authority.py",
+      "harness-governance/validator/authority_runner.py",
+      "harness-governance/validator/harness_governance_validator.py",
+      "harness-governance/tests/pytest_et1_collector.py",
+      "harness-governance/tests/test_authority_runner_r2.py",
+      "harness-governance/tests/test_authority_runner_r2r1.py",
+      "harness-governance/tests/et1_r2_mutations.py",
+      "harness-governance/tests/run_e2e_redis_cases.py",
+      "harness-governance/inventory/execution-traps.json",
+      "harness-governance/README.md"
+    ],
+    "base_sha": "30e3e48f9ebc707223e43734a0c4357346b6e2da",
+    "date": "2026-08-28",
+    "owner": "cto",
+    "reason": "DC-12R1-MVP-L1-HE2-ET1-R2-R1 malformed Redis URL, RESP AUTH and shared-probe closure (V3_GOVERNANCE_AUTHORITY_SECURITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY). Six confirmed defects closed: (A) invalid port/malformed IPv6/URL parse failures now map to the sanitized url_malformed VOID, never a raw ValueError or traceback; (B) username/password percent-decoded exactly (empty-string credentials normalized to absent); (C) ACL username+password AUTHs as a proper two-argument RESP command, username-without-password fails closed auth_misconfigured; (D) formal RESP array/bulk-string encoding replaces the injectable space-joined inline encoder — credentials with spaces/CR/LF/non-ASCII travel as one binary-safe argument; (E) one shared stdlib module validator/redis_authority.py serves BOTH the runner preflight and the child sessionstart recheck (fixed sys.modules key; same module object asserted), protocol code no longer duplicated; (F) execution-traps.json restored to its original compact format with an 8-line surgical edit confined to the Redis trap block. rediss rejected fail-closed (tls_unsupported_fail_closed) — no unverified TLS support claimed. Legacy EVAL_REDIS evaluator name removed from the runner and validator whitelists (no config rollback to pre-live semantics). +14 truth tests (ports, IPv6, decode precision, ACL array, injection resistance, protocol breaks, sanitized surfaces, same-module proof); mutations R211-R215 (inline encoder restored, decode deleted, username ignored, invalid-port escape, child shared-probe bypass) join retargeted R201-R205, gate 76 RED / 9 GREEN; live RL7 invalid-port case added.",
+    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2-R1 task directive (BASE 30e3e48f9ebc707223e43734a0c4357346b6e2da; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
   }
 ]

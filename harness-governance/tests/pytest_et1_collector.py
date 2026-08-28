@@ -34,86 +34,55 @@ import pytest
 PLUGIN_PROOF_SCHEMA = "harness-governance/pytest_et1_collector/2"
 SESSIONSTART_SCHEMA = "harness-governance/pytest_et1_collector_sessionstart/2"
 
-# R2 live Redis recheck constants (mirrors the runner's authority probe).
-REDIS_REQUIRED_DB = "15"
-REDIS_SCHEMES = ("redis", "rediss")
-REDIS_TIMEOUT_S = 2.0
+# R2-R1: the child uses the SHARED stdlib Redis authority module (same file,
+# same cached sys.modules entry as the runner) — no duplicated protocol
+# code. Only this endpoint constant stays local so tests can point the
+# sentinel probe at a controlled listener.
 SENTINEL_PROBE_ENDPOINT = ("127.0.0.1", 26379)
 
+# Fixed child-label translation: the shared module's connect failure
+# category is published as the child's historical "unreachable" label.
+_CHILD_LABELS = {"connect_failed": "unreachable"}
 
-def _resp_encode(*parts) -> bytes:
-    return (" ".join(str(p) for p in parts) + "\r\n").encode("utf-8")
+
+def _load_redis_authority():
+    """Load the shared Redis authority under the SAME fixed sys.modules key
+    the runner uses — both sides literally share one module object."""
+    import importlib.util
+
+    key = "et1_redis_authority"
+    cached = sys.modules.get(key)
+    if cached is not None:
+        return cached
+    module_path = Path(__file__).resolve().parents[1] / "validator" / "redis_authority.py"
+    spec = importlib.util.spec_from_file_location(key, str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[key] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def _redis_reply(reader):
-    line = reader.readline()
-    if not line:
-        return ("closed", None)
-    line = line.rstrip(b"\r\n")
-    kind, body = line[:1], line[1:]
-    if kind == b"+":
-        return ("simple", body.decode("utf-8", "replace"))
-    if kind == b"-":
-        return ("error", None)
-    if kind == b":":
-        try:
-            return ("int", int(body))
-        except ValueError:
-            return ("error", None)
-    return ("error", None)
+_redis_auth = _load_redis_authority()
 
 
 def _redis_recheck_problems(env) -> list:
-    """R2 CHILD-side live Redis recheck (fail-closed label list).
+    """R2-R1 CHILD-side live Redis recheck via the SHARED authority module.
 
     Connects the PW1R3_TEST_REDIS_URL's OWN host/port and proves
     PING==PONG / SELECT 15==OK / DBSIZE==0 plus sentinel-26379
     unreachability. Returns fixed `redis:` labels only — never hosts,
     ports, passwords, or any environment value. An empty list = recheck
-    passed.
+    passed. Redis disappearing after the runner preflight fails the child
+    closed here: no proof, no launch.
     """
     url = (env.get("PW1R3_TEST_REDIS_URL", "") or "").strip()
     if not url:
         return ["redis:url_absent"]
-    parsed = urllib.parse.urlsplit(url)
-    db = (parsed.path or "").strip("/")
-    if parsed.scheme not in REDIS_SCHEMES or not parsed.hostname:
-        return ["redis:url_malformed"]
-    if db != REDIS_REQUIRED_DB:
-        return ["redis:wrong_db"]
-    host, port = parsed.hostname, parsed.port or 6379
-    password = parsed.password
     try:
-        sock = socket.create_connection((host, port), timeout=REDIS_TIMEOUT_S)
-    except OSError:
-        return ["redis:unreachable"]
-    try:
-        reader = sock.makefile("rb")
-        if password is not None:
-            if _redis_cmd(reader, sock, ("AUTH", password)) != ("simple", "OK"):
-                return ["redis:auth_failed"]
-        if _redis_cmd(reader, sock, ("PING",)) != ("simple", "PONG"):
-            return ["redis:ping_failed"]
-        if _redis_cmd(reader, sock, ("SELECT", REDIS_REQUIRED_DB)) != ("simple", "OK"):
-            return ["redis:select_failed"]
-        if _redis_cmd(reader, sock, ("DBSIZE",)) != ("int", 0):
-            return ["redis:db_nonempty"]
-    finally:
-        try:
-            sock.close()
-        except OSError:
-            pass
-    try:
-        with socket.create_connection(SENTINEL_PROBE_ENDPOINT, timeout=0.5):
-            return ["redis:sentinel_reachable"]
-    except OSError:
-        pass
+        _redis_auth.eval_redis(url, SENTINEL_PROBE_ENDPOINT)
+    except _redis_auth.RedisAuthorityError as err:
+        return [f"redis:{_CHILD_LABELS.get(err.category, err.category)}"]
     return []
-
-
-def _redis_cmd(reader, sock, parts):
-    sock.sendall(_resp_encode(*parts))
-    return _redis_reply(reader)
 
 
 def _sha256_bytes(data: bytes) -> str:

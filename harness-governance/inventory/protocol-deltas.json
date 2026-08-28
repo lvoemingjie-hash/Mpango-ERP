@@ -127,5 +127,26 @@
     "owner": "cto",
     "reason": "DC-12R1-MVP-L1-HE2-ET1-R1-E1 cross-task evidence reference and reviewer independence closure (PROVENANCE_CORRECTION_ONLY, V1_METADATA_AND_GOVERNANCE_STRUCTURE): the 26ed3fac KILO_STOP reference is marked INVALID_CROSS_TASK_REFERENCE (26ed3fac belongs to the H2-C browser harness Kilo STOP, not HE2-ET1; no citable prior HE2-ET1 Kilo review exists); PRIOR_HE2_ET1_KILO_REVIEW=NONE and NEXT_GATE=KILO_FINAL_CUMULATIVE_BOUNDED_REVIEW recorded; the R1 delta approval_ref now cites only the DC-12R1-MVP-L1-HE2-ET1-R1 task directive; functional bytes and verification conclusions of 18abc7a2 are unchanged and no functional gate was re-run or claim upgraded; author-owned gate container he2et1r1_pg16 removed (container + anonymous volumes; port 15445 freed) so any reviewer creates its own fresh throwaway PG.",
     "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R1-E1 task directive (BASE 18abc7a256f451ad7fa013e9d34c87e5442d852d; PROVENANCE_CORRECTION_ONLY)"
+  },
+  {
+    "delta_id": "PD-2026-08-28-HE2-ET1-R2",
+    "kind": "governance",
+    "affected_ids": [],
+    "affected_paths": [
+      "harness-governance/validator/authority_runner.py",
+      "harness-governance/validator/harness_governance_validator.py",
+      "harness-governance/tests/pytest_et1_collector.py",
+      "harness-governance/tests/test_authority_runner_r2.py",
+      "harness-governance/tests/et1_r2_mutations.py",
+      "harness-governance/tests/run_e2e_redis_cases.py",
+      "harness-governance/tests/run_red_mutations.py",
+      "harness-governance/inventory/execution-traps.json",
+      "harness-governance/README.md"
+    ],
+    "base_sha": "2582750dedfb591e801703ff57bea69fbe91c605",
+    "date": "2026-08-28",
+    "owner": "cto",
+    "reason": "DC-12R1-MVP-L1-HE2-ET1-R2 live Redis authority and child recheck closure (V3_GOVERNANCE_AUTHORITY_SECURITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY): the Redis gate becomes a live stdlib-RESP probe on the URL's own host/port (connect; optional AUTH with credentials never in evidence/proofs/logs; PING==PONG; SELECT 15==OK; DBSIZE==0; sentinel 26379 unreachable; wrong-DB traps pre-connect) executed BOTH in runner preflight and in the child plugin's pytest_sessionstart, so Redis disappearing after preflight fails the child closed and the authority command is never launched; published artifacts carry fixed boolean categories only. TRAP_REDIS_WRONG_DB extended to evaluator EVAL_REDIS_LIVE (P1 ACTIVE exit 14, applies to runner.preflight + child.sessionstart) with live-probe required evidence; EVAL_REDIS_LIVE whitelisted in the runner and the mirrored validator whitelist (validator change is the single whitelist line; schema unchanged because the extension stays within the existing draft-07 contract). +15 unit tests over a threaded real-socket fake RESP server incl. credential-redaction proofs; +5 RED mutations R201-R205 (connect deleted, PING skipped, DBSIZE skipped, connection errors swallowed, child recheck deleted) with pristine + byte-exact-restore controls, total gate 71 RED / 9 GREEN; live E2E run_e2e_redis_cases.py 6/6 on fresh throwaway redis7 (GREEN fresh DB15, wrong db, unreachable, DB15 non-empty, post-preflight disappearance child-fail-closed sentinel 0, sentinel-26379-reachable) plus the 8-case core chain green on fresh PG16+redis7; PRIOR_M0 report tip 58b8e2ac marked SUPERSEDED_BY_HE2_ET1_R2_REDIS_AUTHORITY_DEFECT.",
+    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2 task directive (BASE 2582750dedfb591e801703ff57bea69fbe91c605; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
   }
 ]

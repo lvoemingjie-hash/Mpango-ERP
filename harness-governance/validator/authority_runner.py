@@ -91,7 +91,7 @@ ALLOWED_TRANSITIONS = {
 EVALUATOR_WHITELIST = frozenset(
     {
         "EVAL_PG_ROLE", "EVAL_TEST_DB_URL", "EVAL_TEMP_DB", "EVAL_ALEMBIC_HEAD",
-        "EVAL_REDIS", "EVAL_COLLECT_MANIFEST", "EVAL_PHASE_FAIL_STOP",
+        "EVAL_REDIS", "EVAL_REDIS_LIVE", "EVAL_COLLECT_MANIFEST", "EVAL_PHASE_FAIL_STOP",
         "EVAL_ROLE_RECHECK", "EVAL_SESSIONSTART_PROOF", "EVAL_GIT_REMOTE",
         "EVAL_GIT_LINEAGE", "EVAL_EVIDENCE_PACKAGING", "EVAL_EOL",
         "EVAL_VITE_SETTLE", "EVAL_EMAIL_DOMAIN",
@@ -101,6 +101,14 @@ EVALUATOR_WHITELIST = frozenset(
 CANONICAL_ORIGIN = "https://github.com/lvoemingjie-hash/Mpango-ERP.git"
 EXPECTED_ALEMBIC_HEAD = "037_payment_declarations_schema"
 SPECIAL_USE_DOMAINS = ("invalid", "example", "test", "localhost")
+
+# R2 live-Redis authority constants. The URL must point at DB15; the probe
+# speaks raw RESP (stdlib socket only) against the URL's OWN host/port.
+REDIS_REQUIRED_DB = "15"
+REDIS_SCHEMES = ("redis", "rediss")
+REDIS_TIMEOUT_S = 2.0
+SENTINEL_PROBE_ENDPOINT = ("127.0.0.1", 26379)
+REDIS_TRAP = ("TRAP_REDIS_WRONG_DB", 14, "PREFLIGHT")
 
 
 class TrapFired(Exception):
@@ -250,18 +258,100 @@ def eval_alembic_head(repo_root) -> dict:
     return {"head_count": 1}
 
 
-def eval_redis(url: str) -> dict:
-    parsed = urllib.parse.urlsplit(url)
-    if (parsed.path or "").strip("/") != "15":
-        raise TrapFired("TRAP_REDIS_WRONG_DB", 14, "PREFLIGHT", True, {"db": "<redacted>"})
+def _resp_encode(*parts) -> bytes:
+    """RESP inline request encoding (never surfaced in evidence/logs)."""
+    return (" ".join(str(p) for p in parts) + "\r\n").encode("utf-8")
+
+
+def _redis_reply(reader):
+    """Read ONE RESP reply; returns (kind, value) with the payload dropped
+    for errors (server error text may echo request bytes)."""
+    line = reader.readline()
+    if not line:
+        return ("closed", None)
+    line = line.rstrip(b"\r\n")
+    kind = line[:1]
+    body = line[1:]
+    if kind == b"+":
+        return ("simple", body.decode("utf-8", "replace"))
+    if kind == b"-":
+        return ("error", None)
+    if kind == b":":
+        try:
+            return ("int", int(body))
+        except ValueError:
+            return ("error", None)
+    return ("error", None)  # bulk/arrays never requested; fail closed
+
+
+def _redis_cmd(reader, sock, parts):
+    sock.sendall(_resp_encode(*parts))
+    return _redis_reply(reader)
+
+
+def redis_live_check(url: str) -> dict:
+    """R2 live Redis authority: connect the URL's OWN host/port and prove
+    PING==PONG, SELECT 15==OK, DBSIZE==0 over raw stdlib RESP. AUTH is used
+    when the URL carries credentials; credentials NEVER enter evidence,
+    proofs, logs, or exception text — only fixed boolean categories do."""
+    raw = (url or "").strip()
+    if not raw:
+        raise TrapFired(*REDIS_TRAP, True, {"redis": "url_absent"})
+    parsed = urllib.parse.urlsplit(raw)
+    db = (parsed.path or "").strip("/")
+    if parsed.scheme not in REDIS_SCHEMES or not parsed.hostname:
+        raise TrapFired(*REDIS_TRAP, True, {"redis": "url_malformed"})
+    if db != REDIS_REQUIRED_DB:
+        raise TrapFired(*REDIS_TRAP, True, {"redis": "wrong_db"})
+    host = parsed.hostname
+    port = parsed.port or 6379
+    password = parsed.password
     try:
-        with socket.create_connection(("127.0.0.1", 26379), timeout=0.5):
+        sock = socket.create_connection((host, port), timeout=REDIS_TIMEOUT_S)
+    except OSError:
+        raise TrapFired(*REDIS_TRAP, True, {"redis": "connect_failed"})
+    try:
+        if parsed.scheme == "rediss":
+            import ssl
+
+            sock = ssl.create_default_context().wrap_socket(
+                sock, server_hostname=host
+            )
+        reader = sock.makefile("rb")
+        if password is not None:
+            if _redis_cmd(reader, sock, ("AUTH", password)) != ("simple", "OK"):
+                raise TrapFired(*REDIS_TRAP, True, {"redis": "auth_failed"})
+        if _redis_cmd(reader, sock, ("PING",)) != ("simple", "PONG"):
+            raise TrapFired(*REDIS_TRAP, True, {"redis": "ping_failed"})
+        if _redis_cmd(reader, sock, ("SELECT", REDIS_REQUIRED_DB)) != ("simple", "OK"):
+            raise TrapFired(*REDIS_TRAP, True, {"redis": "select_failed"})
+        if _redis_cmd(reader, sock, ("DBSIZE",)) != ("int", 0):
+            raise TrapFired(*REDIS_TRAP, True, {"redis": "db_nonempty"})
+        try:
+            sock.sendall(_resp_encode("QUIT"))
+        except OSError:
+            pass
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+    return {"redis": "ok", "ping_pong": True, "selected_db15": True,
+            "dbsize_zero": True, "auth_used": password is not None}
+
+
+def eval_redis(url: str) -> dict:
+    """Preflight Redis authority: live DB15 proof + sentinel unreachability."""
+    result = redis_live_check(url)
+    try:
+        with socket.create_connection(SENTINEL_PROBE_ENDPOINT, timeout=0.5):
             sentinel_reachable = True
     except OSError:
         sentinel_reachable = False
     if sentinel_reachable:
-        raise TrapFired("TRAP_REDIS_WRONG_DB", 14, "PREFLIGHT", True, {"sentinel_26379": True})
-    return {"sentinel_26379": False}
+        raise TrapFired(*REDIS_TRAP, True, {"redis": "sentinel_reachable"})
+    result["sentinel_26379"] = False
+    return result
 
 
 def eval_collect_manifest(actual_nodes: list, expected_nodes: list) -> dict:
@@ -879,6 +969,16 @@ def self_test() -> int:
         check("lineage traps", False)
     except TrapFired as fired:
         check("lineage exit code", fired.exit_code == 20)
+
+    # R2 live Redis authority: absent/malformed/wrong-db URLs trap closed
+    # before any connection is attempted (hermetic: no server required).
+    for url, category in (("", "url_absent"), ("garbage", "url_malformed"),
+                          ("redis://127.0.0.1:6399/0", "wrong_db")):
+        try:
+            redis_live_check(url)
+            check(f"redis {category} traps", False)
+        except TrapFired as fired:
+            check(f"redis {category} traps", fired.evidence.get("redis") == category)
 
     # Trap: packaging mismatch.
     try:

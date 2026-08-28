@@ -111,6 +111,48 @@ controls guard the pattern. Total gate: 66 RED / 9 GREEN. The protocol
 delta `PD-2026-08-28-HE2-ET1-R1` authorizes the R1 changes with
 base_sha=aaff330e.
 
+## HE2-ET1-R2: live Redis authority and child recheck closure
+
+The Redis gate is no longer URL-string parsing: the runner's preflight AND
+the child plugin's `pytest_sessionstart` both connect the
+`PW1R3_TEST_REDIS_URL`'s OWN host/port and prove, over raw stdlib RESP
+(no client library, no shell):
+
+- URL present, well-formed (`redis`/`rediss`), and pointing at DB15 —
+  wrong-DB traps BEFORE any connection is attempted;
+- live connect succeeds (connection failure = VOID, category
+  `connect_failed`);
+- optional AUTH when the URL carries credentials — credentials NEVER enter
+  evidence, proofs, logs, or exception text (fixed boolean categories
+  only: `url_absent` / `url_malformed` / `wrong_db` / `connect_failed` /
+  `auth_failed` / `ping_failed` / `select_failed` / `db_nonempty` /
+  `sentinel_reachable` / `ok`);
+- `PING == PONG`, `SELECT 15 == OK`, `DBSIZE == 0` (task DB15 must be
+  empty);
+- port 26379 sentinel must remain unreachable.
+
+The registry trap `TRAP_REDIS_WRONG_DB` is extended to evaluator
+`EVAL_REDIS_LIVE` (P1, ACTIVE, exit 14, applies to `runner.preflight` AND
+`child.sessionstart`) with the live-probe required evidence; the evaluator
+is whitelisted in both the runner and the validator, so the check cannot
+be disabled via config (P0/P1 must stay ACTIVE and referenced by the
+authority profile). Redis disappearing between preflight and the child
+collect fails the CHILD closed: its sessionstart recheck records
+`redis:*` problems and exits before collection, no proof is written, the
+runner traps, and the authority command is never launched.
+
+Tests: `tests/test_authority_runner_r2.py` (15 tests over a threaded fake
+RESP server — real sockets for every truth node plus credential-redaction
+assertions); mutations `tests/et1_r2_mutations.py` (R201 connect deleted,
+R202 PING skipped, R203 DBSIZE skipped, R204 connection errors swallowed,
+R205 child recheck deleted — total gate 71 RED / 9 GREEN); live truth
+nodes `tests/run_e2e_redis_cases.py` (GREEN fresh DB15, wrong DB,
+unreachable, DB15 non-empty, post-preflight disappearance with child
+fail-closed, sentinel 26379 reachable — all on a fresh throwaway redis7).
+Protocol delta `PD-2026-08-28-HE2-ET1-R2` (base 2582750d) authorizes the
+round; the M0 rehearsal report tip 58b8e2ac is marked
+SUPERSEDED_BY_HE2_ET1_R2_REDIS_AUTHORITY_DEFECT in the R2 ledger.
+
 
 ## Layout
 

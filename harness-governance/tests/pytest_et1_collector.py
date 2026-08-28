@@ -23,6 +23,7 @@ THIS plugin can never authorize a launch.
 import hashlib
 import json
 import os
+import socket
 import subprocess
 import sys
 import urllib.parse
@@ -32,6 +33,87 @@ import pytest
 
 PLUGIN_PROOF_SCHEMA = "harness-governance/pytest_et1_collector/2"
 SESSIONSTART_SCHEMA = "harness-governance/pytest_et1_collector_sessionstart/2"
+
+# R2 live Redis recheck constants (mirrors the runner's authority probe).
+REDIS_REQUIRED_DB = "15"
+REDIS_SCHEMES = ("redis", "rediss")
+REDIS_TIMEOUT_S = 2.0
+SENTINEL_PROBE_ENDPOINT = ("127.0.0.1", 26379)
+
+
+def _resp_encode(*parts) -> bytes:
+    return (" ".join(str(p) for p in parts) + "\r\n").encode("utf-8")
+
+
+def _redis_reply(reader):
+    line = reader.readline()
+    if not line:
+        return ("closed", None)
+    line = line.rstrip(b"\r\n")
+    kind, body = line[:1], line[1:]
+    if kind == b"+":
+        return ("simple", body.decode("utf-8", "replace"))
+    if kind == b"-":
+        return ("error", None)
+    if kind == b":":
+        try:
+            return ("int", int(body))
+        except ValueError:
+            return ("error", None)
+    return ("error", None)
+
+
+def _redis_recheck_problems(env) -> list:
+    """R2 CHILD-side live Redis recheck (fail-closed label list).
+
+    Connects the PW1R3_TEST_REDIS_URL's OWN host/port and proves
+    PING==PONG / SELECT 15==OK / DBSIZE==0 plus sentinel-26379
+    unreachability. Returns fixed `redis:` labels only — never hosts,
+    ports, passwords, or any environment value. An empty list = recheck
+    passed.
+    """
+    url = (env.get("PW1R3_TEST_REDIS_URL", "") or "").strip()
+    if not url:
+        return ["redis:url_absent"]
+    parsed = urllib.parse.urlsplit(url)
+    db = (parsed.path or "").strip("/")
+    if parsed.scheme not in REDIS_SCHEMES or not parsed.hostname:
+        return ["redis:url_malformed"]
+    if db != REDIS_REQUIRED_DB:
+        return ["redis:wrong_db"]
+    host, port = parsed.hostname, parsed.port or 6379
+    password = parsed.password
+    try:
+        sock = socket.create_connection((host, port), timeout=REDIS_TIMEOUT_S)
+    except OSError:
+        return ["redis:unreachable"]
+    try:
+        reader = sock.makefile("rb")
+        if password is not None:
+            if _redis_cmd(reader, sock, ("AUTH", password)) != ("simple", "OK"):
+                return ["redis:auth_failed"]
+        if _redis_cmd(reader, sock, ("PING",)) != ("simple", "PONG"):
+            return ["redis:ping_failed"]
+        if _redis_cmd(reader, sock, ("SELECT", REDIS_REQUIRED_DB)) != ("simple", "OK"):
+            return ["redis:select_failed"]
+        if _redis_cmd(reader, sock, ("DBSIZE",)) != ("int", 0):
+            return ["redis:db_nonempty"]
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+    try:
+        with socket.create_connection(SENTINEL_PROBE_ENDPOINT, timeout=0.5):
+            return ["redis:sentinel_reachable"]
+    except OSError:
+        pass
+    return []
+
+
+def _redis_cmd(reader, sock, parts):
+    sock.sendall(_resp_encode(*parts))
+    return _redis_reply(reader)
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -82,6 +164,11 @@ def sessionstart_gate(env) -> dict:
     need(bool(db_url.strip()), "test_db_url:missing")
     allow_flag = env.get("MPANGO_ALLOW_TEMP_DB_CREATE", "")
     need(allow_flag == "1", "temp_db_capability:missing")
+
+    # R2: the CHILD re-verifies the live Redis authority (DB15, PING/SELECT/
+    # DBSIZE, sentinel unreachability). Redis disappearing after the runner
+    # preflight fails the child closed here — no proof, no launch.
+    problems.extend(_redis_recheck_problems(env))
 
     # LIVE role re-verification in the child: not superuser AND createdb.
     role = {"verified": False, "rolsuper": True, "rolcreatedb": False}

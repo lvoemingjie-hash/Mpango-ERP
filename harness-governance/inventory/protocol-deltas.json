@@ -76,5 +76,25 @@
     "reason": "DC-12R1-MVP-L1-HE2-R3-R2 mutation EOL portability closure: validator-mutation patches convert to the validator file's native checkout EOL (pure LF / pure CRLF; mixed EOL fails closed with a fixed category), unique-anchor enforcement, unconditional byte-exact restore with full SHA-256 + bytes comparison; dual-checkout gate proof (autocrlf=false and true)",
     "approval_ref": "DC-12R1-MVP-L1-HE2-R3-R2",
     "date": "2026-08-25"
+  },
+  {
+    "delta_id": "PD-2026-08-28-HE2-ET1",
+    "kind": "governance",
+    "affected_ids": [],
+    "affected_paths": [
+      ".github/workflows/harness-governance-gate.yml",
+      ".secrets.baseline",
+      "harness-governance/governed-paths.json",
+      "harness-governance/validator/",
+      "harness-governance/schemas/",
+      "harness-governance/inventory/execution-traps.json",
+      "harness-governance/inventory/authority-profiles.json",
+      "harness-governance/tests/"
+    ],
+    "base_sha": "246eb190fc07866f098a380e61ebdc5bd9428a04",
+    "owner": "cto",
+    "reason": "DC-12R1-MVP-L1-HE2-ET1 execution traps and authority runner: 15 machine-verifiable traps (schema/2 + additionalProperties=false, hardcoded evaluator whitelist, fail-closed token cardinality); authority profile references; fail-stop runner (in-process evaluators, nonce-bound proof binding); +20 unit tests, +14 RED mutations, +4 GREEN controls; structural/release split preserved (release=BLOCKED for open P0/P1 debt). Validator ET1 checker integrated with PROTECTED_PATHS gating governance-core changes through protocol-delta authorization.",
+    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1",
+    "date": "2026-08-28"
   }
 ]

@@ -50,8 +50,7 @@ PREFLIGHT_CONTRACT_VIOLATION__PYTEST_ROLE_WAS_SUPERUSER_AND_FULL_SUITE_COLLECTIO
    - 证据: JUnit XML
 
 3. **测试结果无效**
-   - 37 failed / 22 errors / 63 skipped
-   - 这些结果来自无效环境，不具产品裁决效力
+   - 37 failed / 22 errors / 63 skipped observed under an invalid environment，因此不具产品归因效力
    - 证据: JUnit XML
 
 4. **Preflight 检查缺陷**
@@ -145,7 +144,7 @@ PREFLIGHT_CONTRACT_VIOLATION__PYTEST_ROLE_WAS_SUPERUSER_AND_FULL_SUITE_COLLECTIO
 
 ## 五、结论
 
-本轮验证因环境前置门违反而无效。角色 `mpango_test_nosuper` 在 Alembic 迁移过程中被提升为超级用户，违反了合同要求的 `rolsuper=false` 条件。在此无效环境下运行的完整套件结果不具产品裁决效力。
+本轮验证因环境前置门违反而无效。角色 `mpango_test_nosuper` 在 Alembic 迁移过程中被提升为超级用户，违反了合同要求的 `rolsuper=false` 条件。在此无效环境下运行的完整套件结果 observed under an invalid environment，因此不具产品归因效力。
 
 **最终裁决:**
 

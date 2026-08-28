@@ -14,6 +14,42 @@ cross-cutting interactions; it deliberately claims no coverage (no node is
 PASS, no evidence SHA is set). Risk-first business backfill is separately
 authorized under HE3.
 
+## HE2-ET1: execution traps + authority runner
+
+The execution-traps registry (`harness-governance/inventory/execution-traps.json`)
+is a hardcoded JSON catalog of 15 machine-verifiable traps (P0/P1/P2 mix);
+the validator schema (`execution-traps.schema.json`) enforces
+`additionalProperties=false` and the data shape (trap_id, category, risk,
+applies_to, evaluator_id, stop_phase, stable_exit_code, required_evidence,
+forbidden_next_phases, negative_control_id, owner, remediation,
+source_evidence_refs, status). Authority profiles
+(`authority-profiles.json` + `authority-profiles.schema.json`) name the
+required traps per profile (any P0/P1 trap not referenced by any profile
+fails closed). The fail-stop authority runner
+(`harness-governance/validator/authority_runner.py`) is the single gate
+between an environment and an authoritative command; only the SAME runner
+process that completes preflight + exact collection + a just-in-time
+recheck may launch the authority command, the authorization proof is bound
+to a random nonce + candidate SHA + profile SHA + node-manifest SHA + a
+wall-clock boundary, and an externally edited JSON cannot resume a run.
+
+Manual CI equivalence (delegated to the runner):
+```
+cd /c/Users/Jeff0/MPANGO ERP/worktrees/zcode-he2et1-gov-2026-08-28/harness-governance
+python validator/harness_governance_validator.py
+python tests/run_red_mutations.py
+python tests/test_harness_governance_validator.py
+python tests/test_authority_runner_et1.py
+python validator/authority_runner.py --self-test
+```
+
+The ET1 mutations (`tests/et1_mutations.py`) are appended to the HE2 mutation
+gate (51 RED / 9 GREEN total) and the ET1 unit tests (`test_authority_runner_et1.py`)
+add 20 tests to the suite (116 total). The protocol delta
+`PD-2026-08-28-HE2-ET1` authorizes the new registry, schemas, profile, runner,
+and the related protected-path additions.
+
+
 ## Layout
 
 ```

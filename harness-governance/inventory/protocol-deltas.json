@@ -170,5 +170,27 @@
     "owner": "cto",
     "reason": "DC-12R1-MVP-L1-HE2-ET1-R2-R1 malformed Redis URL, RESP AUTH and shared-probe closure (V3_GOVERNANCE_AUTHORITY_SECURITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY). Six confirmed defects closed: (A) invalid port/malformed IPv6/URL parse failures now map to the sanitized url_malformed VOID, never a raw ValueError or traceback; (B) username/password percent-decoded exactly (empty-string credentials normalized to absent); (C) ACL username+password AUTHs as a proper two-argument RESP command, username-without-password fails closed auth_misconfigured; (D) formal RESP array/bulk-string encoding replaces the injectable space-joined inline encoder — credentials with spaces/CR/LF/non-ASCII travel as one binary-safe argument; (E) one shared stdlib module validator/redis_authority.py serves BOTH the runner preflight and the child sessionstart recheck (fixed sys.modules key; same module object asserted), protocol code no longer duplicated; (F) execution-traps.json restored to its original compact format with an 8-line surgical edit confined to the Redis trap block. rediss rejected fail-closed (tls_unsupported_fail_closed) — no unverified TLS support claimed. Legacy EVAL_REDIS evaluator name removed from the runner and validator whitelists (no config rollback to pre-live semantics). +14 truth tests (ports, IPv6, decode precision, ACL array, injection resistance, protocol breaks, sanitized surfaces, same-module proof); mutations R211-R215 (inline encoder restored, decode deleted, username ignored, invalid-port escape, child shared-probe bypass) join retargeted R201-R205, gate 76 RED / 9 GREEN; live RL7 invalid-port case added.",
     "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2-R1 task directive (BASE 30e3e48f9ebc707223e43734a0c4357346b6e2da; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
+  },
+  {
+    "delta_id": "PD-2026-08-28-HE2-ET1-R2-R2",
+    "kind": "governance",
+    "affected_ids": [],
+    "affected_paths": [
+      "harness-governance/validator/authority_runner.py",
+      "harness-governance/tests/pytest_et1_collector.py",
+      "harness-governance/tests/test_authority_runner_r2.py",
+      "harness-governance/tests/test_authority_runner_r2r1.py",
+      "harness-governance/tests/test_authority_runner_r2r2.py",
+      "harness-governance/tests/et1_e2e_mutations.py",
+      "harness-governance/tests/et1_r2r2_mutations.py",
+      "harness-governance/tests/run_red_mutations.py",
+      "harness-governance/README.md",
+      ".secrets.baseline"
+    ],
+    "base_sha": "16ea089b5633b031cf5b133815454f41035223f9",
+    "date": "2026-08-29",
+    "owner": "cto",
+    "reason": "DC-12R1-MVP-L1-HE2-ET1-R2-R2 shared Redis probe module-origin and cross-process byte-binding closure (V3_MERGE_CRITICAL_GOVERNANCE_AUTHORITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY). P1 defect SHARED_PROBE_MODULE_PRELOAD_INJECTION__AUTHORITY_BYPASS closed: the R2-R1 loaders trusted a fixed sys.modules key, so a preloaded fake module was executed by the real runner and an unreachable Redis was accepted (PROBE_RC=0). Binding chain: (1) a preloaded entry under the fixed key is never returned or trusted; a foreign origin is tamper evidence (module_preload_detected) and the cache is evicted with the module freshly executed from the canonical file on every load; (2) post-execution, __spec__.origin AND __file__ must both resolve to the exact canonical path; missing spec/loader = module_origin_untrusted; (3) the runner binds SHA-256 over the shared module's RAW FILE BYTES at preflight as the ORIGINAL; (4) the ORIGINAL travels to the child via ET1_RUNNER_REDIS_MODULE_SHA and the child independently recomputes and compares in pytest_sessionstart (never self-compared); drift = redis_module:bytes_drift, child fail-closed, no proof; (5) the child's independently recomputed digest is written into the collect proof and the runner cross-compares against its own ORIGINAL (module_digest_mismatch); (6) just-in-time raw-byte rechecks run at authorize (drift_at_authorize) and immediately before the authority launch (drift_at_launch); (7) any origin/path/byte inconsistency lands VOID with the authority command launched zero times; (8) evidence carries only the fixed categories module_preload_detected / module_origin_untrusted / module_bytes_drift / module_digest_missing / module_digest_mismatch / drift_at_authorize / drift_at_launch - never paths, URLs, credentials, or environment values. The R2-R1 'same module object' cross-process claim is RETRACTED and replaced by independently loaded from the same canonical path and bound to the same raw-byte SHA-256. Truth counterexamples A-H in test_authority_runner_r2r2.py (10 tests, 155/155 total); mutations S221-S228 with pristine + byte-exact-restore controls, gate 84 RED / 9 GREEN; R2-R1 candidate marked SUPERSEDED_BY_HE2_ET1_R2_R2_MODULE_ORIGIN_BINDING. .secrets.baseline gains one allowlist entry for the public chain-base commit SHA quoted in the new test file (Hex High Entropy = public git object id, not a credential).",
+    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2-R2 task directive (BASE 16ea089b5633b031cf5b133815454f41035223f9; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
   }
 ]

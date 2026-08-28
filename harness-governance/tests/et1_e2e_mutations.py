@@ -101,8 +101,12 @@ def _honest_child(nonce, collected):
         "sessionstart_ok": True,
         "nonce": nonce,
         "sha_match": {"candidate": True, "profile": True, "manifest": True},
+        "redis_module_sha": "M" * 64,
         "collected_node_ids": list(collected),
     }
+
+
+E2E_MODULE_SHA = "M" * 64
 
 
 def _seed_collected(mod, ctx, manifest_sha=None, candidate_sha=None, expires_delta=None):
@@ -148,7 +152,8 @@ def _authorize_seeded(mod, r):
 
 def probe_nonce_self_compare(mod, ctx):
     try:
-        mod.verify_child_proof(_honest_child("A" * 32, ["N1"]), "B" * 32, ["N1"])
+        mod.verify_child_proof(_honest_child("A" * 32, ["N1"]), "B" * 32, ["N1"],
+                               redis_module_sha=E2E_MODULE_SHA)
         return False  # tampered nonce accepted
     except mod.TrapFired as fired:
         return fired.evidence.get("reason") == "nonce_mismatch"
@@ -156,7 +161,8 @@ def probe_nonce_self_compare(mod, ctx):
 
 def probe_actual_equals_expected(mod, ctx):
     try:
-        mod.verify_child_proof(_honest_child("A" * 32, ["N1", "N2"]), "A" * 32, ["N1", "N3"])
+        mod.verify_child_proof(_honest_child("A" * 32, ["N1", "N2"]), "A" * 32, ["N1", "N3"],
+                               redis_module_sha=E2E_MODULE_SHA)
         return False  # drifted node set accepted
     except mod.TrapFired:
         return True
@@ -174,7 +180,7 @@ def probe_missing_command_allowed(mod, ctx):
 def probe_foreign_proof_accepted(mod, ctx):
     forged = dict(_honest_child("A" * 32, ["N1"]), schema="someone-else/1")
     try:
-        mod.verify_child_proof(forged, "A" * 32, ["N1"])
+        mod.verify_child_proof(forged, "A" * 32, ["N1"], redis_module_sha=E2E_MODULE_SHA)
         return False  # non-plugin proof accepted
     except mod.TrapFired as fired:
         return fired.evidence.get("reason") == "foreign_proof_origin"
@@ -195,7 +201,8 @@ def probe_sessionstart_gate_disabled(mod_plugin, ctx):
 
 def probe_duplicate_node_ids_accepted(mod, ctx):
     try:
-        mod.verify_child_proof(_honest_child("A" * 32, ["N1", "N1"]), "A" * 32, ["N1"])
+        mod.verify_child_proof(_honest_child("A" * 32, ["N1", "N1"]), "A" * 32, ["N1"],
+                               redis_module_sha=E2E_MODULE_SHA)
         return False
     except mod.TrapFired as fired:
         return fired.evidence.get("reason") == "duplicate_node_ids"
@@ -352,8 +359,8 @@ E2E_MUTATIONS = [
     (
         "X06-sessionstart-gate-disabled", PLUGIN_RELPATH,
         (
-            '    return {"ok": not problems, "problems": problems, "role": role}',
-            '    return {"ok": True, "problems": problems, "role": role}',
+            '    return {\n        "ok": not problems,',
+            '    return {\n        "ok": True,',
         ),
         "sessionstart_gate_disabled",
     ),

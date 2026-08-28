@@ -173,9 +173,11 @@ Six confirmed defects closed on top of R2:
   of bulk strings (binary-safe); credentials with CR/LF/non-ASCII travel
   as one argument and cannot inject commands.
 - **E** runner and plugin duplicated the probe. Both now call ONE shared
-  stdlib module (`validator/redis_authority.py`), loaded under a fixed
-  `sys.modules` key so both sides literally share the module object;
-  thin delegators remain for API compatibility.
+  stdlib module (`validator/redis_authority.py`). [R2-R2 retraction: the
+  earlier "both sides literally share the module object" claim was wrong
+  across processes — each consumer now independently loads the module from
+  the exact canonical resolved path and binds its raw-byte SHA-256.]
+  Thin delegators remain for API compatibility.
 - **F** R2's registry rewrite re-formatted the whole
   `execution-traps.json`. The file is restored to its original compact
   format and only the Redis trap block carries an 8-line minimal semantic
@@ -376,3 +378,49 @@ full scoped waiver, semantic record mapping, multi-waiver union, valid
 committed evidence) prove the gate still passes when it should, and a
 frozen-snapshot integrity check proves the gate never modifies the
 candidate tree.
+
+## HE2-ET1-R2-R2: shared-probe module-origin and cross-process byte binding
+
+P1 defect closed: `SHARED_PROBE_MODULE_PRELOAD_INJECTION__AUTHORITY_BYPASS`.
+Both consumers' loaders trusted a fixed `sys.modules` key, so a module
+planted under `et1_redis_authority` was executed by the real runner and an
+unreachable Redis was accepted. The binding chain now is:
+
+1. The shared module is NEVER taken from the cache: any preloaded entry
+   under the fixed key is checked against the canonical resolved path; a
+   foreign origin is tamper evidence (`module_preload_detected`) and the
+   cache is evicted, then the module is freshly re-executed from the
+   canonical file on every load.
+2. After execution, the module's `__spec__.origin` AND `__file__` must both
+   resolve to the exact canonical path; a missing spec/loader is
+   `module_origin_untrusted`.
+3. The runner computes SHA-256 over the shared module's RAW FILE BYTES at
+   preflight and binds it as the ORIGINAL.
+4. The ORIGINAL digest travels to the child via the environment
+   (`ET1_RUNNER_REDIS_MODULE_SHA`); the child independently recomputes the
+   digest from its own canonical resolution in `pytest_sessionstart` and
+   compares against the runner's ORIGINAL (never self-compared); drift is
+   `redis_module:bytes_drift` -> child fail-closed, no proof.
+5. The child writes its independently recomputed digest into the collect
+   proof; the runner cross-compares against its own ORIGINAL
+   (`module_digest_mismatch`).
+6. A just-in-time raw-byte recheck runs immediately before the authority
+   launch (`drift_at_launch`), and again at authorize
+   (`drift_at_authorize`).
+7. Any module origin/path/byte inconsistency lands VOID on disk with the
+   authority command launched ZERO times.
+8. Evidence is fixed categories only (`module_preload_detected`,
+   `module_origin_untrusted`, `module_bytes_drift`, `module_digest_missing`,
+   `module_digest_mismatch`, `drift_at_authorize`, `drift_at_launch`) —
+   never paths, URLs, credentials, or environment values.
+
+Truth counterexamples A-H live in `tests/test_authority_runner_r2r2.py`
+(10 tests; the GREEN case H executes via `run_e2e_redis_cases.py` RL1 on a
+fresh stack). Mutations S221-S228 in `tests/et1_r2r2_mutations.py` attack
+every link of the chain (key-trust restored, path validation deleted,
+runner digest deleted, child recompute deleted, child self-compare,
+runner/child compare deleted, JIT deleted, launch allowed after drift) —
+total gate **84 RED / 9 GREEN**. Protocol delta
+`PD-2026-08-28-HE2-ET1-R2-R2` (base 16ea089b) authorizes the round; the
+R2-R1 candidate is marked SUPERSEDED_BY_HE2_ET1_R2_R2_MODULE_ORIGIN_BINDING
+in the R2-R2 ledger.

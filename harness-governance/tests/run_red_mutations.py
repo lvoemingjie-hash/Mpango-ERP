@@ -899,6 +899,17 @@ try:
 except ImportError:  # pragma: no cover - et1_r2_mutations ships with the gate
     R2_MUTATIONS_WIRED = []
 
+# HE2-ET1-R2-R2: module-origin and cross-process byte-binding mutations.
+try:
+    import et1_r2r2_mutations as _r2r2_mut
+
+    R2R2_MUTATIONS_WIRED = [
+        (name, REPO_ROOT / target_relpath, patch, probe_name)
+        for name, target_relpath, patch, probe_name in _r2r2_mut.R2R2_MUTATIONS
+    ]
+except ImportError:  # pragma: no cover - et1_r2r2_mutations ships with the gate
+    R2R2_MUTATIONS_WIRED = []
+
 
 def tree_digest():
     digest = hashlib.sha256()
@@ -920,12 +931,13 @@ def main() -> int:
     before = tree_digest()
 
     total_red = (len(RED_MUTATIONS) + len(MODE_PROOFS) + len(VALIDATOR_MUTATIONS)
-                 + len(E2E_MUTATIONS_WIRED) + len(R2_MUTATIONS_WIRED))
+                 + len(E2E_MUTATIONS_WIRED) + len(R2_MUTATIONS_WIRED)
+                 + len(R2R2_MUTATIONS_WIRED))
     print(
         f"HE2-R1 RED mutation gate: {total_red} RED mutations "
         f"({len(RED_MUTATIONS)} tamper + {len(MODE_PROOFS)} mode proof + "
         f"{len(VALIDATOR_MUTATIONS)} validator-scope + {len(E2E_MUTATIONS_WIRED)} authority-e2e "
-        f"+ {len(R2_MUTATIONS_WIRED)} redis-authority), "
+        f"+ {len(R2_MUTATIONS_WIRED)} redis-authority + {len(R2R2_MUTATIONS_WIRED)} module-binding), "
         f"{len(GREEN_CONTROLS)} GREEN controls"
     )
     print("-" * 78)
@@ -980,6 +992,19 @@ def main() -> int:
     for name, target_file, patch, probe_name in R2_MUTATIONS_WIRED:
         _run_probe_mutation(
             name, target_file, patch, (lambda pn=probe_name: _r2_mut.run_probe(pn)), failures
+        )
+
+    # HE2-ET1-R2-R2 GREEN control + module-binding mutations.
+    if R2R2_MUTATIONS_WIRED:
+        pristine_s = all(_r2r2_mut.run_probe(probe_name) for _, _, _, probe_name in R2R2_MUTATIONS_WIRED)
+        if pristine_s:
+            print(f"  {'RS-C01-pristine-module-binding-held':<40} GREEN as intended")
+        else:
+            failures.append("RS-C01: pristine candidate already fails an R2-R2 probe")
+            print(f"  {'RS-C01-pristine-module-binding-held':<40} UNEXPECTED WEAK (pristine)")
+    for name, target_file, patch, probe_name in R2R2_MUTATIONS_WIRED:
+        _run_probe_mutation(
+            name, target_file, patch, (lambda pn=probe_name: _r2r2_mut.run_probe(pn)), failures
         )
 
     for name, factory, *mode_args in MODE_PROOFS:

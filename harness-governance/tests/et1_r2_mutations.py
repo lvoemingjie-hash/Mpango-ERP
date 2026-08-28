@@ -313,7 +313,7 @@ R2_MUTATIONS = [
     (
         "R215-child-bypasses-shared-probe", PLUGIN_RELPATH,
         (
-            "        _redis_auth.eval_redis(url, SENTINEL_PROBE_ENDPOINT)",
+            "        module.eval_redis(url, SENTINEL_PROBE_ENDPOINT)",
             "        pass  # shared probe bypassed",
         ),
         "child_bypasses_shared_probe",

@@ -105,31 +105,104 @@ EXPECTED_ALEMBIC_HEAD = "037_payment_declarations_schema"
 SPECIAL_USE_DOMAINS = ("invalid", "example", "test", "localhost")
 
 # R2-R1 live-Redis authority constants. The implementation itself lives in
-# the SHARED stdlib module validator/redis_authority.py (loaded below) so the
-# runner preflight and the child plugin probe use one identical code path.
+# the SHARED stdlib module validator/redis_authority.py; R2-R2 binds that
+# module by ORIGIN and RAW BYTES (a fixed sys.modules key is never trusted —
+# a preloaded entry under the key is tamper evidence, not a cache).
 SENTINEL_PROBE_ENDPOINT = ("127.0.0.1", 26379)
 REDIS_TRAP = ("TRAP_REDIS_WRONG_DB", 14, "PREFLIGHT")
+REDIS_MODULE_KEY = "et1_redis_authority"
+
+# Fixed module-binding categories (never paths, URLs, credentials, or env
+# values): they join the redis-authority sanitized label set.
+MODULE_BINDING_CATEGORIES = frozenset(
+    {
+        "module_preload_detected",   # preloaded sys.modules entry, foreign origin
+        "module_origin_untrusted",   # wrong/missing spec, loader, __file__, path
+        "module_bytes_drift",        # child recompute != runner original
+        "module_digest_missing",     # child proof carries no module digest
+        "module_digest_mismatch",    # runner original != child-reported digest
+        "drift_at_launch",           # JIT byte recheck before the launch failed
+    }
+)
 
 
-def _load_redis_authority():
-    """Load the shared Redis authority module by file-relative path under a
-    FIXED sys.modules key — every consumer (runner here, child plugin,
-    in-process probes) resolves to the SAME module object."""
+class RedisModuleBindingError(Exception):
+    """Sanitized module-binding failure; `category` is a fixed label from
+    MODULE_BINDING_CATEGORIES. Never carries paths or chainable context."""
+
+    def __init__(self, category: str):
+        super().__init__(f"redis_module:{category}")
+        self.category = category
+
+
+def redis_module_canonical_path() -> Path:
+    """The EXACT canonical location of the shared authority module, resolved
+    relative to THIS consumer file (runner and child each resolve their own
+    copy of this bootstrap; the two must land on the same file)."""
+    return (Path(__file__).resolve().parent / "redis_authority.py").resolve()
+
+
+def module_origin_is_canonical(module, canonical: Path) -> bool:
+    """Reject wrong __file__, wrong spec origin, missing spec/loader, or any
+    unexpected path. Both origin AND __file__ must resolve to the exact
+    canonical path."""
+    if module is None:
+        return False
+    spec = getattr(module, "__spec__", None)
+    origin = getattr(spec, "origin", None) if spec is not None else None
+    file_attr = getattr(module, "__file__", None)
+    for candidate in (origin, file_attr):
+        if not candidate or not isinstance(candidate, str):
+            return False
+        try:
+            if Path(candidate).resolve() != canonical:
+                return False
+        except (OSError, ValueError):
+            return False
+    return True
+
+
+def load_redis_authority_module():
+    """R2-R2 module-origin binding bootstrap (consumer-local; the shared
+    module itself cannot contain its own loader).
+
+    Policy (closes SHARED_PROBE_MODULE_PRELOAD_INJECTION__AUTHORITY_BYPASS):
+      1. a preloaded entry under the fixed key is NEVER returned — its
+         origin is checked first; a foreign origin is tamper evidence and
+         surfaces as module_preload_detected;
+      2. the module is ALWAYS freshly executed from the canonical path's
+         raw bytes (the cache is evicted, never reused);
+      3. after execution the module's spec origin AND __file__ must both
+         resolve to the exact canonical path;
+      4. a missing spec/loader is module_origin_untrusted.
+    Returns (module, tampered_flag). Raises RedisModuleBindingError on any
+    origin/path/spec failure (fixed category, no path in the payload).
+    """
     import importlib.util
 
-    key = "et1_redis_authority"
-    cached = sys.modules.get(key)
-    if cached is not None:
-        return cached
-    module_path = Path(__file__).resolve().parent / "redis_authority.py"
-    spec = importlib.util.spec_from_file_location(key, str(module_path))
+    canonical = redis_module_canonical_path()
+    preloaded = sys.modules.get(REDIS_MODULE_KEY)
+    tampered = preloaded is not None and not module_origin_is_canonical(
+        preloaded, canonical
+    )
+    sys.modules.pop(REDIS_MODULE_KEY, None)  # evict: the cache is never reused
+    try:
+        spec = importlib.util.spec_from_file_location(REDIS_MODULE_KEY, str(canonical))
+    except (ValueError, OSError):
+        raise RedisModuleBindingError("module_origin_untrusted") from None
+    if spec is None or getattr(spec, "loader", None) is None:
+        raise RedisModuleBindingError("module_origin_untrusted")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[key] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-_redis_auth = _load_redis_authority()
+    sys.modules[REDIS_MODULE_KEY] = module
+    try:
+        spec.loader.exec_module(module)
+    except RedisModuleBindingError:
+        raise
+    except Exception:
+        raise RedisModuleBindingError("module_origin_untrusted") from None
+    if not module_origin_is_canonical(module, canonical):
+        raise RedisModuleBindingError("module_origin_untrusted")
+    return module, tampered
 
 
 class TrapFired(Exception):
@@ -280,13 +353,17 @@ def eval_alembic_head(repo_root) -> dict:
 
 
 def redis_live_check(url: str) -> dict:
-    """Runner-side wrapper over the SHARED stdlib Redis authority. Every
-    shared failure category maps to the registered trap with sanitized
-    evidence only (fixed category label; no URL/host/port/credentials and
-    no chained traceback — `from None` keeps internal frames unpublished)."""
+    """Runner-side wrapper over the SHARED stdlib Redis authority. The shared
+    module is freshly loaded from its canonical path on every use (origin
+    re-verified; a preloaded fake is tamper evidence). Every failure maps to
+    the registered trap with sanitized evidence only — no URL, host, port,
+    credential, path, or chained traceback."""
+    module, tampered = load_redis_authority_module()
+    if tampered:
+        raise TrapFired(*REDIS_TRAP, True, {"redis": "module_preload_detected"})
     try:
-        return _redis_auth.redis_live_check(url)
-    except _redis_auth.RedisAuthorityError as err:
+        return module.redis_live_check(url)
+    except module.RedisAuthorityError as err:
         raise TrapFired(*REDIS_TRAP, True, {"redis": err.category}) from None
 
 
@@ -294,10 +371,19 @@ def eval_redis(url: str) -> dict:
     """Preflight Redis authority: live DB15 proof + sentinel unreachability,
     both from the shared module (the sentinel endpoint is passed explicitly
     so tests can point the probe at a controlled listener)."""
+    module, tampered = load_redis_authority_module()
+    if tampered:
+        raise TrapFired(*REDIS_TRAP, True, {"redis": "module_preload_detected"})
     try:
-        return _redis_auth.eval_redis(url, SENTINEL_PROBE_ENDPOINT)
-    except _redis_auth.RedisAuthorityError as err:
+        return module.eval_redis(url, SENTINEL_PROBE_ENDPOINT)
+    except module.RedisAuthorityError as err:
         raise TrapFired(*REDIS_TRAP, True, {"redis": err.category}) from None
+
+
+def redis_module_raw_digest() -> str:
+    """SHA-256 over the shared module's RAW FILE BYTES at the canonical
+    path (contract: the runner binds bytes, not module objects)."""
+    return hashlib.sha256(redis_module_canonical_path().read_bytes()).hexdigest()
 
 
 def eval_collect_manifest(actual_nodes: list, expected_nodes: list) -> dict:
@@ -517,7 +603,8 @@ def ensure_plugin_available(gov_dir) -> dict:
     return {"plugin": "present", "schema_declared": True}
 
 
-def verify_child_proof(child, original_nonce: str, expected_nodes: list) -> dict:
+def verify_child_proof(child, original_nonce: str, expected_nodes: list,
+                       *, redis_module_sha: str) -> dict:
     """Cross-process verification of the child's proof against the ORIGINAL
     runner-side values. Every comparison is against an independently held
     value; the child's own values are never trusted as their own reference.
@@ -545,6 +632,19 @@ def verify_child_proof(child, original_nonce: str, expected_nodes: list) -> dict
         if sha_match.get(key) is not True:
             raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
                             {"reason": "child_sha_drift", "binding": key})
+    # R2-R2 cross-process module binding: the child INDEPENDENTLY recomputed
+    # the shared module's raw-byte digest; it is compared here against THIS
+    # runner's ORIGINAL (the child's own value is never its own reference).
+    child_module_sha = child.get("redis_module_sha", "")
+    if not isinstance(redis_module_sha, str) or not redis_module_sha:
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"redis_module": "module_digest_missing"})
+    if not isinstance(child_module_sha, str) or not child_module_sha:
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"redis_module": "module_digest_missing"})
+    if not secrets.compare_digest(child_module_sha, redis_module_sha):
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"redis_module": "module_digest_mismatch"})
     collected = child.get("collected_node_ids")
     if not isinstance(collected, list) or not collected:
         raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
@@ -557,6 +657,7 @@ def verify_child_proof(child, original_nonce: str, expected_nodes: list) -> dict
         "nonce_match": True,
         "collected_node_count": len(collected),
         "sha_match": {"candidate": True, "profile": True, "manifest": True},
+        "redis_module_match": True,
     }
 
 
@@ -582,6 +683,12 @@ class AuthorityRunner:
         self.manifest_sha_file = None  # explicit node-manifest path
         self.collect_child_summary: dict | None = None
         self.command_exit_code: int | None = None
+        # R2-R2 module-origin/byte binding (contract 4/5): the runner binds
+        # the shared module's canonical path + RAW-BYTE SHA-256; the child
+        # independently recomputes both and the two are cross-compared.
+        self.redis_module_sha: str | None = None
+        self.redis_module_tampered: bool = False
+        self.redis_module_category: str = ""
 
     def _to(self, state: str) -> None:
         _to_state(self.state, state)
@@ -599,10 +706,33 @@ class AuthorityRunner:
             if trap["risk"] in ("P0", "P1") and trap["status"] != "ACTIVE":
                 raise TrapFired("TRAP_PHASE_CONTINUE_AFTER_FAIL", 16, "PREFLIGHT", True, {"registry": "p0p1_disabled"})
 
+    def bind_redis_module(self) -> None:
+        """R2-R2: freshly load the shared module from the canonical path
+        (origin verified) and bind its RAW-BYTE SHA-256. Any preloaded
+        foreign module or origin failure is recorded for preflight to VOID
+        on — never silently accepted."""
+        try:
+            _module, tampered = load_redis_authority_module()
+            self.redis_module_tampered = tampered
+            self.redis_module_sha = redis_module_raw_digest()
+        except RedisModuleBindingError as err:
+            self.redis_module_tampered = True
+            self.redis_module_category = err.category
+
+    def _require_bound_redis_module(self) -> None:
+        if self.redis_module_tampered or not self.redis_module_sha:
+            category = self.redis_module_category or (
+                "module_preload_detected" if self.redis_module_tampered
+                else "module_origin_untrusted"
+            )
+            raise TrapFired(*REDIS_TRAP, True, {"redis": category})
+
     def preflight(self, db_url: str, allow_flag: str, email: str,
                   final_tip_parent: str, chain_base: str) -> None:
         self._to("PREFLIGHT")
         self._check_registry_health()
+        self.bind_redis_module()
+        self._require_bound_redis_module()
         eval_test_db_url(db_url)
         eval_email_domain(email)
         eval_git_remote(self.repo_root)
@@ -663,6 +793,7 @@ class AuthorityRunner:
             "ET1_RUNNER_PROFILE_PATH": str(Path(profile_path).resolve()),
             "ET1_RUNNER_MANIFEST_PATH": str(Path(manifest_path).resolve()),
             "ET1_RUNNER_REPO_ROOT": str(self.repo_root.resolve()),
+            "ET1_RUNNER_REDIS_MODULE_SHA": self.redis_module_sha or "",
         }
         target = Path(collect_target)
         if not target.is_absolute():
@@ -685,7 +816,8 @@ class AuthorityRunner:
             raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
                             {"reason": "child_proof_unreadable"})
         self.collect_child_summary = verify_child_proof(
-            child, self.original_nonce, self.expected_nodes
+            child, self.original_nonce, self.expected_nodes,
+            redis_module_sha=self.redis_module_sha,
         )
 
     def authorize(self, db_url: str, allow_flag: str) -> None:
@@ -710,6 +842,18 @@ class AuthorityRunner:
             if sha256_file(self.manifest_sha_file) != self.manifest_sha:
                 raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "AUTHORIZED", True,
                                 {"reason": "manifest_drift"})
+        # R2-R2: the shared Redis module's raw bytes must still match the
+        # preflight binding by the time the run is authorized.
+        if self.redis_module_sha is not None:
+            try:
+                current_module = hashlib.sha256(
+                    redis_module_canonical_path().read_bytes()
+                ).hexdigest()
+            except OSError:
+                current_module = ""
+            if current_module != self.redis_module_sha:
+                raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "AUTHORIZED", True,
+                                {"redis_module": "drift_at_authorize"})
         if _identity_is_privileged():
             raise TrapFired("TRAP_JIT_ROLE_ESCALATION", 17, "AUTHORIZED", True,
                             {"identity_class": "privileged"})
@@ -771,6 +915,18 @@ class AuthorityRunner:
             raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "RUNNING", True, {"proof": "invalid"})
         eval_sessionstart_proof(self.proof, _pg_connect(db_url), db_url, allow_flag,
                                 expected_nonce=self.original_nonce)
+        # R2-R2 contract 9: just-in-time RAW-BYTE recheck of the shared
+        # module — drift after the child proof still blocks the launch.
+        if self.redis_module_sha is not None:
+            try:
+                current_module = hashlib.sha256(
+                    redis_module_canonical_path().read_bytes()
+                ).hexdigest()
+            except OSError:
+                current_module = ""
+            if current_module != self.redis_module_sha:
+                raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "RUNNING", True,
+                                {"redis_module": "drift_at_launch"})
         if command is None:
             return 0
         if self.sentinel_calls:
@@ -811,6 +967,9 @@ class AuthorityRunner:
             "collected_node_count": child.get("collected_node_count", 0),
             "nonce_match": child.get("nonce_match", False),
             "child_sha_match": child.get("sha_match", {}),
+            "redis_module_bound": bool(self.redis_module_sha),
+            "redis_module_sha_chars": len(self.redis_module_sha or ""),
+            "redis_module_match": child.get("redis_module_match", False),
             "collect_child_spawns": self.collect_spawns,
             "sentinel_calls": self.sentinel_calls,
             "command_exit_code": self.command_exit_code,
@@ -1014,32 +1173,52 @@ def self_test() -> int:
         "schema": PLUGIN_PROOF_SCHEMA, "sessionstart_ok": True,
         "nonce": "T" * 32,
         "sha_match": {"candidate": True, "profile": True, "manifest": True},
+        "redis_module_sha": "M" * 64,
         "collected_node_ids": ["N1"],
     }
     try:
-        verify_child_proof(tampered, "R" * 32, ["N1"])
+        verify_child_proof(tampered, "R" * 32, ["N1"], redis_module_sha="M" * 64)
         check("nonce mismatch traps", False)
     except TrapFired as fired:
         check("nonce mismatch traps", fired.evidence.get("reason") == "nonce_mismatch")
     # A foreign proof origin (not the runner-owned plugin schema) must trap.
     forged_origin = dict(tampered, nonce="R" * 32, schema="someone-else/1")
     try:
-        verify_child_proof(forged_origin, "R" * 32, ["N1"])
+        verify_child_proof(forged_origin, "R" * 32, ["N1"], redis_module_sha="M" * 64)
         check("foreign proof origin traps", False)
     except TrapFired as fired:
         check("foreign proof origin traps", fired.evidence.get("reason") == "foreign_proof_origin")
     # Matching nonce over the real plugin schema passes.
     honest = dict(tampered, nonce="R" * 32)
     check("honest child proof verifies",
-          verify_child_proof(honest, "R" * 32, ["N1"])["nonce_match"] is True)
+          verify_child_proof(honest, "R" * 32, ["N1"],
+                             redis_module_sha="M" * 64)["nonce_match"] is True)
 
     # Duplicate node ids must be named, not folded into set comparison.
     dup = dict(honest, collected_node_ids=["N1", "N1"])
     try:
-        verify_child_proof(dup, "R" * 32, ["N1"])
+        verify_child_proof(dup, "R" * 32, ["N1"], redis_module_sha="M" * 64)
         check("duplicate node ids trap", False)
     except TrapFired as fired:
         check("duplicate node ids trap", fired.evidence.get("reason") == "duplicate_node_ids")
+
+    # R2-R2 module binding: a preloaded foreign module under the fixed key
+    # is tamper evidence; a fresh canonical load still succeeds.
+    import sys as _sys
+
+    class _FakeRedisModule:
+        __file__ = str(GOV_DIR / "validator" / "not_redis_authority.py")
+
+    _sys.modules[REDIS_MODULE_KEY] = _FakeRedisModule
+    try:
+        _module, _tampered = load_redis_authority_module()
+        check("preloaded foreign module detected", _tampered is True)
+        check("fresh load ignores the preloaded fake",
+              module_origin_is_canonical(_module, redis_module_canonical_path()))
+    except RedisModuleBindingError:
+        check("preloaded foreign module detected", True)
+    finally:
+        _sys.modules.pop(REDIS_MODULE_KEY, None)
 
     # No-shell invariants over runner AND plugin sources. The banned literals
     # are assembled so this scan never matches its own source text.

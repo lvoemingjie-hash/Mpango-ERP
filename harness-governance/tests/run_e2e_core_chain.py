@@ -150,6 +150,8 @@ def make_inproc_runner(expected):
     r.profile_sha_file = tmp_profile
     r.manifest_sha_file = tmp_manifest
     r._to("PREFLIGHT")  # models a completed preflight; collect/authorize under test
+    r.bind_redis_module()  # R2-R2: bind the shared module like a real preflight
+    r._require_bound_redis_module()
     return r
 
 

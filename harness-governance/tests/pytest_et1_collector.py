@@ -34,35 +34,112 @@ import pytest
 PLUGIN_PROOF_SCHEMA = "harness-governance/pytest_et1_collector/2"
 SESSIONSTART_SCHEMA = "harness-governance/pytest_et1_collector_sessionstart/2"
 
-# R2-R1: the child uses the SHARED stdlib Redis authority module (same file,
-# same cached sys.modules entry as the runner) — no duplicated protocol
-# code. Only this endpoint constant stays local so tests can point the
-# sentinel probe at a controlled listener.
+# R2-R1/R2-R2: the child independently loads the SHARED stdlib Redis
+# authority module from the exact canonical resolved path — never from a
+# sys.modules cache — and binds its RAW-BYTE SHA-256 against the runner's
+# ORIGINAL digest passed via the environment. No protocol code is duplicated
+# here. Only the sentinel endpoint constant stays local so tests can point
+# the probe at a controlled listener.
 SENTINEL_PROBE_ENDPOINT = ("127.0.0.1", 26379)
 
 # Fixed child-label translation: the shared module's connect failure
 # category is published as the child's historical "unreachable" label.
 _CHILD_LABELS = {"connect_failed": "unreachable"}
 
+REDIS_MODULE_KEY = "et1_redis_authority"
+
+
+def _redis_module_canonical_path() -> Path:
+    """The child's own resolution of the shared module location; it must
+    land on the exact same file the runner binds."""
+    return (Path(__file__).resolve().parents[1] / "validator" / "redis_authority.py").resolve()
+
+
+def _module_origin_is_canonical(module, canonical: Path) -> bool:
+    if module is None:
+        return False
+    spec = getattr(module, "__spec__", None)
+    origin = getattr(spec, "origin", None) if spec is not None else None
+    file_attr = getattr(module, "__file__", None)
+    for candidate in (origin, file_attr):
+        if not candidate or not isinstance(candidate, str):
+            return False
+        try:
+            if Path(candidate).resolve() != canonical:
+                return False
+        except (OSError, ValueError):
+            return False
+    return True
+
 
 def _load_redis_authority():
-    """Load the shared Redis authority under the SAME fixed sys.modules key
-    the runner uses — both sides literally share one module object."""
+    """Child-side module-origin binding bootstrap. A preloaded entry under
+    the fixed key is NEVER returned or trusted: a foreign origin is tamper
+    evidence (redis_module:preload_detected); the module is always freshly
+    executed from the canonical raw bytes and its origin/PATH re-verified.
+    Returns (module, tampered). Raises _RedisModuleBindingError on origin
+    or spec failures (fixed categories, no paths)."""
     import importlib.util
 
-    key = "et1_redis_authority"
-    cached = sys.modules.get(key)
-    if cached is not None:
-        return cached
-    module_path = Path(__file__).resolve().parents[1] / "validator" / "redis_authority.py"
-    spec = importlib.util.spec_from_file_location(key, str(module_path))
+    class _RedisModuleBindingError(Exception):
+        def __init__(self, category):
+            super().__init__(f"redis_module:{category}")
+            self.category = category
+
+    canonical = _redis_module_canonical_path()
+    preloaded = sys.modules.get(REDIS_MODULE_KEY)
+    tampered = preloaded is not None and not _module_origin_is_canonical(
+        preloaded, canonical
+    )
+    sys.modules.pop(REDIS_MODULE_KEY, None)  # the cache is never reused
+    try:
+        spec = importlib.util.spec_from_file_location(REDIS_MODULE_KEY, str(canonical))
+    except (ValueError, OSError):
+        raise _RedisModuleBindingError("origin_untrusted") from None
+    if spec is None or getattr(spec, "loader", None) is None:
+        raise _RedisModuleBindingError("origin_untrusted")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[key] = module
-    spec.loader.exec_module(module)
-    return module
+    sys.modules[REDIS_MODULE_KEY] = module
+    try:
+        spec.loader.exec_module(module)
+    except _RedisModuleBindingError:
+        raise
+    except Exception:
+        raise _RedisModuleBindingError("origin_untrusted") from None
+    if not _module_origin_is_canonical(module, canonical):
+        raise _RedisModuleBindingError("origin_untrusted")
+    return module, tampered
 
 
-_redis_auth = _load_redis_authority()
+def _redis_module_binding(env) -> tuple:
+    """Independent child-side binding: load the shared module fresh from
+    the canonical path, recompute the RAW-BYTE SHA-256, and compare it
+    against the runner's ORIGINAL digest from the environment (never a
+    self-comparison). Returns (problems, recomputed_digest)."""
+    import hashlib
+
+    problems: list = []
+    try:
+        _module, tampered = _load_redis_authority()
+    except _RedisModuleBindingError as err:
+        problems.append(f"redis_module:{err.category}")
+        if err.category == "origin_untrusted":
+            problems.append("redis_module:preload_detected")
+        return problems, ""
+    if tampered:
+        problems.append("redis_module:preload_detected")
+    canonical = _redis_module_canonical_path()
+    try:
+        recomputed = hashlib.sha256(canonical.read_bytes()).hexdigest()
+    except OSError:
+        problems.append("redis_module:origin_untrusted")
+        return problems, ""
+    runner_original = env.get("ET1_RUNNER_REDIS_MODULE_SHA", "") or ""
+    if not runner_original:
+        problems.append("redis_module:digest_missing")
+    elif recomputed != runner_original:
+        problems.append("redis_module:bytes_drift")
+    return problems, recomputed
 
 
 def _redis_recheck_problems(env) -> list:
@@ -79,8 +156,14 @@ def _redis_recheck_problems(env) -> list:
     if not url:
         return ["redis:url_absent"]
     try:
-        _redis_auth.eval_redis(url, SENTINEL_PROBE_ENDPOINT)
-    except _redis_auth.RedisAuthorityError as err:
+        module, tampered = _load_redis_authority()
+    except _RedisModuleBindingError as err:
+        return [f"redis_module:{err.category}"]
+    if tampered:
+        return ["redis_module:preload_detected"]
+    try:
+        module.eval_redis(url, SENTINEL_PROBE_ENDPOINT)
+    except module.RedisAuthorityError as err:
         return [f"redis:{_CHILD_LABELS.get(err.category, err.category)}"]
     return []
 
@@ -139,6 +222,13 @@ def sessionstart_gate(env) -> dict:
     # preflight fails the child closed here — no proof, no launch.
     problems.extend(_redis_recheck_problems(env))
 
+    # R2-R2: independent module-origin + raw-byte binding. The child
+    # recomputes the shared module's digest from the canonical path and
+    # compares it with the runner's ORIGINAL (never self-compared); any
+    # mismatch means the module moved between preflight and the child.
+    module_problems, redis_module_sha = _redis_module_binding(env)
+    problems.extend(module_problems)
+
     # LIVE role re-verification in the child: not superuser AND createdb.
     role = {"verified": False, "rolsuper": True, "rolcreatedb": False}
     if db_url.strip():
@@ -163,7 +253,13 @@ def sessionstart_gate(env) -> dict:
     need(role.get("verified") and not role.get("rolsuper") and role.get("rolcreatedb"),
          "role:child_recheck_failed")
 
-    return {"ok": not problems, "problems": problems, "role": role}
+    return {
+        "ok": not problems,
+        "problems": problems,
+        "role": role,
+        "redis_module_sha": redis_module_sha,
+        "redis_module_ok": not module_problems,
+    }
 
 
 def _write_sessionstart_proof(path, gate_result, nonce) -> None:
@@ -174,6 +270,8 @@ def _write_sessionstart_proof(path, gate_result, nonce) -> None:
         "problems": gate_result["problems"],
         "role": {k: gate_result["role"].get(k) for k in ("verified", "rolsuper", "rolcreatedb")},
         "nonce_chars": len(nonce),
+        "redis_module_ok": gate_result.get("redis_module_ok", False),
+        "redis_module_sha_chars": len(gate_result.get("redis_module_sha", "")),
     }
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -200,6 +298,8 @@ def pytest_sessionstart(session):
 
 def pytest_collection_finish(session):
     """Items are populated: real node IDs + live SHA re-verification."""
+    _module_problems, redis_module_sha = _redis_module_binding(os.environ)
+    redis_module_ok = not _module_problems
     nonce = os.environ.get("ET1_RUNNER_NONCE", "")
     candidate_expected = os.environ.get("ET1_RUNNER_CANDIDATE_SHA", "")
     profile_expected = os.environ.get("ET1_RUNNER_PROFILE_SHA", "")
@@ -238,6 +338,8 @@ def pytest_collection_finish(session):
     for key, matched in sha_match.items():
         if not matched:
             errors.append(f"sha_drift:{key}")
+    if not redis_module_ok:
+        errors.append("redis_module:drift")
 
     collected = []
     try:
@@ -271,6 +373,8 @@ def pytest_collection_finish(session):
             "collected_unique": len(collected) == len(set(collected)),
         },
         "sha_match": sha_match,
+        "redis_module_sha": redis_module_sha,
+        "redis_module_ok": redis_module_ok,
         "nonce": nonce,
         "collected_node_ids": sorted(collected),
     }

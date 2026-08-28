@@ -216,17 +216,29 @@ class RespAuthTruthTests(unittest.TestCase):
 
 
 class SharedImplementationTruthTests(unittest.TestCase):
-    def test_runner_and_child_use_the_same_module_object(self):
+    def test_runner_and_child_bind_same_canonical_path_and_bytes(self):
+        """R2-R2 retraction: the R2-R1 'same module object' claim is WRONG
+        across processes. Both consumers independently load from the SAME
+        canonical path and bind the SAME raw-byte SHA-256."""
+        import hashlib
+        import sys as _sys
+
         runner = _load(RUNNER_PATH, "he2et1_r2r1_shared_runner")
         plugin = _load(PLUGIN_PATH, "he2et1_r2r1_shared_plugin")
-        # Both consumers resolve to ONE cached module object under the fixed
-        # sys.modules key, loaded from the shared file.
-        self.assertIs(runner._redis_auth, plugin._redis_auth)
-        self.assertIs(runner._redis_auth, sys.modules["et1_redis_authority"])
+        runner_path = runner.redis_module_canonical_path().resolve()
+        plugin_path = plugin._redis_module_canonical_path().resolve()
+        self.assertEqual(runner_path, SHARED_PATH.resolve())
+        self.assertEqual(plugin_path, SHARED_PATH.resolve())
+        # Both bind the same raw bytes of that one file.
+        expected = hashlib.sha256(SHARED_PATH.read_bytes()).hexdigest()
+        self.assertEqual(runner.redis_module_raw_digest(), expected)
+        _plugin_module, _plugin_tampered = plugin._load_redis_authority()
         self.assertEqual(
-            Path(runner._redis_auth.__file__).resolve(),
-            SHARED_PATH.resolve(),
+            hashlib.sha256(plugin_path.read_bytes()).hexdigest(), expected
         )
+        # And the fixed sys.modules key now holds the freshly executed real
+        # module — not a trusted cache (it was evicted and re-executed).
+        self.assertIn("et1_redis_authority", _sys.modules)
 
     def test_no_protocol_code_duplicated_in_runner_or_plugin(self):
         runner_src = RUNNER_PATH.read_text(encoding="utf-8")
@@ -241,9 +253,9 @@ class SharedImplementationTruthTests(unittest.TestCase):
         self.assertNotIn("def _read_reply", runner_src)
         self.assertNotIn("def _read_reply", plugin_src)
         # The runner/plugin keep only thin DELEGATORS over the shared module.
-        self.assertIn("_redis_auth.redis_live_check(url)", runner_src)
-        self.assertIn("_redis_auth.eval_redis(url, SENTINEL_PROBE_ENDPOINT)", runner_src)
-        self.assertIn("_redis_auth.eval_redis(url, SENTINEL_PROBE_ENDPOINT)", plugin_src)
+        self.assertIn("module.redis_live_check(url)", runner_src)
+        self.assertIn("module.eval_redis(url, SENTINEL_PROBE_ENDPOINT)", runner_src)
+        self.assertIn("module.eval_redis(url, SENTINEL_PROBE_ENDPOINT)", plugin_src)
         # The shared module holds the whole probe body (connect/AUTH/PING/
         # SELECT/DBSIZE sequence appears once).
         probe_markers = ("create_connection", '"PING"', '"SELECT"', '"DBSIZE"')

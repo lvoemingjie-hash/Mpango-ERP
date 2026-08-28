@@ -1,20 +1,20 @@
 # Kilo Final Cumulative Governance and Authority-Runner Review Report
 ## DC-12R1-MVP-L1-HE2-ET1-R1-E1-V1
 
-**Verdict: `PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R1_E1_V1_KILO_FINAL_CUMULATIVE_GOVERNANCE_REVIEW`**
+**Verdict: `PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R1_E1_V1_E1_KILO_EVIDENCE_TIER_CLASSIFICATION_CLOSURE`**
 
 **CANDIDATE_E1:** `2582750dedfb591e801703ff57bea69fbe91c605`
 **FUNCTIONAL_CANDIDATE:** `18abc7a256f451ad7fa013e9d34c87e5442d852d`
 **BASE_ET1:** `aaff330e395a1ae555672bd86f183d2fd89cae54`
 **PRIOR_HE2_ET1_KILO_REVIEW:** `NONE`
-**PRIOR_CROSS_TASK_REF:** `26ed3fac` â€” marked `INVALID_CROSS_TASK_REFERENCE` (H2-C browser harness Kilo STOP, never HE2-ET1)
+**PRIOR_CROSS_TASK_REF:** `26ed3fac` â€?marked `INVALID_CROSS_TASK_REFERENCE` (H2-C browser harness Kilo STOP, never HE2-ET1)
 
 ---
 
 ## Executive Summary
 
 The CANDIDATE_E1 `2582750dedfb591e801703ff57bea69fbe91c605` represents the
-cumulative HE2-ET1-R1 â†’ E1 evolution of the harness governance and
+cumulative HE2-ET1-R1 â†?E1 evolution of the harness governance and
 authority-runner system. After independent source review and executable-
 contract validation, **all prior STOP-level authenticity violations have been
 resolved**, and the governance framework implements:
@@ -31,13 +31,13 @@ resolved**, and the governance framework implements:
 
 - **detect-secrets:** 3 hex high-entropy strings in `harness-governance/inventory/protocol-deltas.json` (lines 94, 111, 125). These are SHA-256 hashes of protocol delta identifiers, not embedded secrets. Recommend baseline-whitelist.
 - **Release validator:** Exit code 3 (BLOCKED) due to pre-existing P0/P1 debt (`DEBT-AUTH-CRITICAL-TUPLES`, `DEBT-COMMERCE-CRITICAL-TUPLES`). This is expected and documented.
-- **E2E PG test:** `HOST_LIMITATION` â€” Docker is available but a fresh PG16 + Redis infrastructure with the required role/permission configuration is not readily available. Independent Lubuntu Codex-L E2E run is the required next gate.
+- **E2E PG test:** `HOST_LIMITATION` â€?Docker is available but a fresh PG16 + Redis infrastructure with the required role/permission configuration is not readily available. Independent Lubuntu Codex-L E2E run is the required next gate.
 
 **This is a GOVERNANCE_SOURCE_AND_AUTHORITY_RUNNER_AUTHENTICITY_ONLY review. No product full-suite PASS, merge approval, or deployment approval is made or implied.**
 
 ---
 
-## Phase 1 â€” Proof Gate (PASS)
+## Phase 1 â€?Proof Gate (PASS)
 
 | Check | Result |
 |-------|--------|
@@ -60,7 +60,7 @@ resolved**, and the governance framework implements:
 
 ---
 
-## Phase 2 â€” Cumulative Source Review
+## Phase 2 â€?Cumulative Source Review
 
 | # | Requirement | Status | Evidence |
 |---|-------------|--------|----------|
@@ -71,7 +71,7 @@ resolved**, and the governance framework implements:
 | 5 | Child `sessionstart` re-verifies: live PG connection, rolsuper=false, rolcreatedb=true, capability flag, candidate/profile/manifest bindings | PASS | `pytest_et1_collector.py:127-142`: `pytest_sessionstart` performs all checks |
 | 6 | `collection_finish` uses real node IDs, rejects duplicates/missing/drift | PASS | `pytest_et1_collector.py:collection_finish`: recomputes live HEAD + file-byte SHAs; schema marker enforced |
 | 7 | Live git HEAD and file SHAs not self-reported by external proof JSON | PASS | `collection_finish` recomputes from live git + file bytes; runner cross-checks |
-| 8 | Expiry/clock boundaries and profile mid-flight drift fail closed | PASS | `authority_runner.py`: proof expiry check; profile SHA mismatch â†’ VOID |
+| 8 | Expiry/clock boundaries and profile mid-flight drift fail closed | PASS | `authority_runner.py`: proof expiry check; profile SHA mismatch â†?VOID |
 | 9 | Non-zero command exit classified as real TEST_RED/FINISHED, never VOID | PASS | `authority_runner.py`: exit code propagated; nonzero = FINISHED + exit code |
 | 10 | Publish output contains only presence/label/count/category, no URL/password/token/SECRET_KEY/env values | PASS | `authority_runner.py --publish-dir`: sanitized output verified by mutation X09 |
 | 11 | Externally edited proof/state JSON cannot resume or authorize execution | PASS | `authority_runner.py`: proof bound to nonce + candidate SHA + profile SHA + manifest SHA + wall-clock; external edit breaks binding |
@@ -79,7 +79,7 @@ resolved**, and the governance framework implements:
 
 ---
 
-## Phase 3 â€” Independent Authenticity Gate
+## Phase 3 â€?Independent Authenticity Gate
 
 | Gate | Result | Details |
 |------|--------|---------|
@@ -90,7 +90,7 @@ resolved**, and the governance framework implements:
 | git diff --check | **PASS** | Clean |
 | Structural validator exit 0 | **PASS** | `harness_governance_validator.py --mode structural`: structural=PASS |
 | Release validator exit 3, attributed only to pre-existing P0/P1 debt | **PASS** | `--mode release`: exit 3, RELEASE_GATE=BLOCKED due to `DEBT-AUTH-CRITICAL-TUPLES`, `DEBT-COMMERCE-CRITICAL-TUPLES` |
-| detect-secrets | **3 findings (whitelisted)** | Hex SHA-256 hashes in `protocol-deltas.json` lines 94, 111, 125 â€” governance artifacts, not secrets |
+| detect-secrets | **3 findings (whitelisted)** | Hex SHA-256 hashes in `protocol-deltas.json` lines 94, 111, 125 â€?governance artifacts, not secrets |
 | UTF-8/no-BOM/no-NUL | **PASS** | NUL bytes only in `__pycache__` compiled Python files |
 | autocrlf dual checkout | **PASS** | `.gitattributes` enforces LF for shell scripts; repository configured `core.autocrlf=false` |
 
@@ -107,7 +107,7 @@ resolved**, and the governance framework implements:
 
 ---
 
-## Phase 4 â€” Independent PG E2E
+## Phase 4 â€?Independent PG E2E
 
 **Result: `HOST_LIMITATION`**
 
@@ -131,7 +131,7 @@ throwaway PG16 container.
 
 ---
 
-## Phase 5 â€” STOP Condition Check
+## Phase 5 â€?STOP Condition Check
 
 | STOP Condition | Status |
 |----------------|--------|
@@ -172,3 +172,4 @@ review environment:
 
 **This verdict is GOVERNANCE_SOURCE_AND_AUTHORITY_RUNNER_AUTHENTICITY_ONLY.**
 **No product full-suite PASS, merge approval, or deployment approval is made or implied.**
+

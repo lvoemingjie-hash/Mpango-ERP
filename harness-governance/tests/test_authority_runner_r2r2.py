@@ -217,18 +217,22 @@ class ByteBindingTests(unittest.TestCase):
                          "module_digest_missing")
 
 
-class ChildSitecustomizeTest(unittest.TestCase):
-    """Counterexample B: a REAL child process with a preloaded fake module
-    fails closed; the runner records VOID and launches nothing."""
+class RunnerPreflightSitecustomizeTests(unittest.TestCase):
+    """Counterexample B (accurately scoped per R2-R2-R1): a preloaded fake
+    module via PYTHONPATH/sitecustomize is detected by the RUNNER PREFLIGHT
+    process (the injected interpreter IS the runner here), which VOIDs at
+    preflight with sentinel 0. This is the runner-preflight proof, NOT a
+    child-only proof — the dedicated child-only subprocess proof lives in
+    test_child_only_sitecustomize_preload below."""
 
-    def test_b_sitecustomize_preload_child_fail_closed(self):
+    def test_b_runner_preflight_sitecustomize_preload_voids(self):
         mod = _load(RUNNER_PATH, "he2et1_r2r2_site_runner")
         with tempfile.TemporaryDirectory() as tmp:
             hook = Path(tmp) / "sitecustomize.py"
             hook.write_text(
                 "import sys, types\n"
                 "_fake = types.ModuleType('et1_redis_authority')\n"
-                "_fake.__file__ = 'C:/attacker/redis_authority.py'\n"
+                "_fake.__file__ = 'C:/attacker/child_only/redis_authority.py'\n"
                 "def redis_live_check(_url):\n"
                 "    return {'redis': 'ok'}\n"
                 "_fake.redis_live_check = redis_live_check\n"
@@ -249,7 +253,7 @@ class ChildSitecustomizeTest(unittest.TestCase):
             }
             args = [
                 sys.executable, str(RUNNER_PATH),
-                "--baseline-sha", "246eb190fc07866f098a380e61ebdc5bd9428a04",
+                "--baseline-sha", "246eb190fc07866f098a380e61ebdc5bd9428a04",  # pragma: allowlist secret (public git commit id)
                 "--publish-dir", str(case_dir / "publish"),
                 "--profile", str(PROFILE), "--node-manifest", str(MANIFEST),
                 "--collect-target", str(COLLECT),
@@ -270,6 +274,126 @@ class ChildSitecustomizeTest(unittest.TestCase):
             self.assertEqual(published.get("state"), "VOID")
             self.assertEqual(published.get("sentinel_calls"), 0)
             self.assertIn("module_preload_detected", proc.stdout + proc.stderr)
+
+
+class ChildOnlySitecustomizeTests(unittest.TestCase):
+    """R2-R2-R1: the TRUE child-only injection proof.
+
+    The PARENT process env stays clean (no sitecustomize, no PYTHONPATH);
+    only the pytest child's environment receives the injected PYTHONPATH
+    (the monkeypatched spawn mirrors the runner's real child-env assembly).
+    The child's sessionstart must fail closed on the preloaded fake, no
+    collect proof may be written, and the authority command count stays 0.
+    """
+
+    def test_child_only_sitecustomize_preload_fails_child_closed(self):
+        mod = _load(RUNNER_PATH, "he2et1_r2r2_childonly_runner")
+        import os
+
+        with tempfile.TemporaryDirectory() as hook_dir:
+            hook = Path(hook_dir) / "sitecustomize.py"
+            hook.write_text(
+                "import sys, types\n"
+                "_fake = types.ModuleType('et1_redis_authority')\n"
+                "_fake.__file__ = 'C:/attacker/child_only/redis_authority.py'\n"
+                "def redis_live_check(_url):\n"
+                "    return {'redis': 'ok'}\n"
+                "_fake.redis_live_check = redis_live_check\n"
+                "def eval_redis(_url, _ep):\n"
+                "    return {'redis': 'ok'}\n"
+                "_fake.eval_redis = eval_redis\n"
+                "sys.modules['et1_redis_authority'] = _fake\n",
+                encoding="utf-8",
+            )
+            # the parent env must stay clean
+            self.assertNotIn(hook_dir, os.environ.get("PYTHONPATH", ""))
+            real_run = mod.subprocess.run
+            saved_pythonpath = os.environ.get("PYTHONPATH")
+
+            def child_only_injecting_run(cmd, **kwargs):
+                env = kwargs.get("env")
+                if env is not None and "pytest" in " ".join(map(str, cmd)):
+                    injected = dict(env)
+                    injected["PYTHONPATH"] = hook_dir
+                    kwargs = dict(kwargs, env=injected)
+                return real_run(cmd, **kwargs)
+
+            mod.subprocess.run = child_only_injecting_run
+            try:
+                profile = json.loads(PROFILE.read_text(encoding="utf-8"))
+                sel = next(p for p in profile["profiles"]
+                           if p["profile_id"] == "AUTHORITY_H2C_BACKEND")
+                r = mod.AuthorityRunner(REPO_ROOT, sel, ["x"])
+                r._to("PREFLIGHT")
+                r.bind_redis_module()
+                r._require_bound_redis_module()
+                case_dir = Path(tempfile.mkdtemp(prefix="et1r2r2r1-child-"))
+                trapped = None
+                try:
+                    r.collect_proven(
+                        profile_path=str(PROFILE), manifest_path=str(MANIFEST),
+                        proof_out=str(case_dir / "proof.json"),
+                        sessionstart_out=str(case_dir / "ss.json"),
+                        collect_target=str(COLLECT),
+                    )
+                except mod.TrapFired as fired:
+                    trapped = fired
+                # child failed closed: the runner saw no collect proof
+                self.assertIsNotNone(trapped)
+                self.assertFalse((case_dir / "proof.json").exists())
+                self.assertEqual(r.sentinel_calls, 0)  # no authority command
+                self.assertEqual(r.collect_spawns, 1)  # the child really ran
+                # the child's own sessionstart proof documents the detection
+                ss = json.loads((case_dir / "ss.json").read_text(encoding="utf-8"))
+                self.assertFalse(ss.get("ok", True))
+                self.assertIn("redis_module:preload_detected", ss.get("problems", []))
+                # the parent env never carried the injection
+                self.assertNotIn(hook_dir, os.environ.get("PYTHONPATH", ""))
+            finally:
+                mod.subprocess.run = real_run
+                if saved_pythonpath is None:
+                    os.environ.pop("PYTHONPATH", None)
+                else:
+                    os.environ["PYTHONPATH"] = saved_pythonpath
+
+
+class CategorySetIntegrityTests(unittest.TestCase):
+    """R2-R2-R1: the fixed module-binding category set must be complete —
+    exactly the documented labels, and every redis_module label emitted by
+    the runner or plugin source must be a member."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load(RUNNER_PATH, "he2et1_r2r2_categories_runner")
+
+    def test_exact_category_set(self):
+        expected = {
+            "module_preload_detected", "module_origin_untrusted",
+            "module_bytes_drift", "module_digest_missing",
+            "module_digest_mismatch", "drift_at_authorize", "drift_at_launch",
+        }
+        self.assertEqual(self.mod.MODULE_BINDING_CATEGORIES, expected)
+
+    def test_every_emitted_label_is_in_the_set(self):
+        import re
+
+        # Child-side `redis_module:<label>` labels are their own fixed set
+        # (documented translation of the runner categories for the proof).
+        child_allowed = {
+            "preload_detected", "origin_untrusted", "bytes_drift",
+            "digest_missing", "drift",
+        }
+        emitted = set()
+        for source_path in (RUNNER_PATH, PLUGIN_PATH):
+            text = source_path.read_text(encoding="utf-8")
+            for match in re.findall(r'"(module_[a-z_]+|drift_at_[a-z_]+)"', text):
+                emitted.add(match)
+            for match in re.findall(r'redis_module:([a-z_]+)', text):
+                if match in child_allowed:
+                    continue
+                emitted.add(match)
+        unknown = emitted - self.mod.MODULE_BINDING_CATEGORIES
+        self.assertEqual(unknown, set(), f"labels missing from the set: {unknown}")
 
 
 class ContractWordingTests(unittest.TestCase):

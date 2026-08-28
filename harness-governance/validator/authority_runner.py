@@ -121,6 +121,7 @@ MODULE_BINDING_CATEGORIES = frozenset(
         "module_bytes_drift",        # child recompute != runner original
         "module_digest_missing",     # child proof carries no module digest
         "module_digest_mismatch",    # runner original != child-reported digest
+        "drift_at_authorize",        # JIT byte recheck at AUTHORIZED failed
         "drift_at_launch",           # JIT byte recheck before the launch failed
     }
 )

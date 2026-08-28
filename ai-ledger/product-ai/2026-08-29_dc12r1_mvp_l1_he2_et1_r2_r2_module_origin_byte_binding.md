@@ -135,3 +135,58 @@ STOP. Kilo not started; no merge; R2-R1 history branch untouched.
   anonymous volumes; post-check 0 containers matching, volumes 0.
 - Port probes: 127.0.0.1:15450 CLOSED, 127.0.0.1:16383 CLOSED.
 - CRLF detached worktree removed; no merge or rehearsal refs created.
+
+## 8. R2-R2-R1 erratum (appended 2026-08-29; history NOT rewritten)
+
+Round DC-12R1-MVP-L1-HE2-ET1-R2-R2-R1 (branch
+`zcode/dc12r1-mvp-l1-he2-et1-r2-r2-r1-baseline-child-proof-truth-2026-08-29`,
+base 3e2457ca) corrects two evidence defects in THIS round's report above:
+
+1. **Baseline clobbering.** During R2-R2, a `detect-secrets scan
+   --baseline` invocation (a baseline-REWRITING command) destroyed
+   `.secrets.baseline`: 17 files / 484 findings / 3567 lines were
+   overwritten to 1 file / 1 finding / 144 lines, and that destroyed file
+   was committed at 3e2457ca as an "allowlist entry". The section-5 claims
+   "detect-secrets vs baseline: no new findings (baseline
+   snapshot-protected)" and the implied diff-check cleanliness of that
+   staged change are **RETRACTED** — the comparison ran against the already
+   destroyed baseline, so it proved nothing about the real 17/484 set.
+   R2-R2-R1 restores the file byte-exact to the 16ea089b version (proven by
+   `git diff --quiet 16ea089b..HEAD -- .secrets.baseline` exiting 0) and
+   bans baseline-rewriting commands for the remainder of the chain; the
+   public chain-base commit SHA false positive is now suppressed by a
+   per-line `pragma: allowlist secret` in the test file, and the R2-R2
+   delta's `affected_paths`/reason no longer mention `.secrets.baseline`.
+2. **Child-proof misclassification.** The section-3 "B" counterexample as
+   described ("REAL child process … fails closed") was actually a
+   RUNNER-preflight proof: the injected PYTHONPATH interpreter WAS the
+   runner process, which voided at its own preflight before any child
+   existed. R2-R2-R1 renames/reclassifies that test and adds a TRUE
+   child-only subprocess proof: the parent environment stays clean, only
+   the pytest child's env receives the injected PYTHONPATH, the child's
+   sessionstart fails closed with `redis_module:preload_detected` recorded
+   in its proof file, no collect proof is written, and the authority
+   command count stays 0.
+
+Additional corrections shipped in R2-R2-R1: `drift_at_authorize` is added
+to the fixed `MODULE_BINDING_CATEGORIES` set (it was emitted but missing
+from the documented set) with a set-integrity test (exact label set +
+every emitted module label is a member); a new RED mutation S229 (child
+preload detection deleted) proves the child-side detection is
+mutation-guarded; gate 85 RED / 9 GREEN. Redis protocol implementation,
+product code, and protected branches untouched; no runtime behavior
+changed (live 7/7 and core 8/8 not repeated per round instructions).
+
+Gates (interpreter Python 3.12.10, pytest 9.1.1, psycopg 3.3.4):
+158/158 unittests; 85 RED / 9 GREEN mutations + tree integrity;
+`git diff --check 16ea089b..HEAD` exit 0; baseline byte-identical to
+16ea089b (sha256 prefix c8f3aa245b94d4f4); detect-secrets hook (read-only,
+baseline sha256 identical before/after run) clean over the changed files;
+strict UTF-8 / no BOM / no NUL / no CR over changed files; structural
+validator exit 0 and release validator exit 3 (pre-existing debt only);
+local == remote; working tree clean.
+
+The R2-R2 verdict above stands ONLY with these corrections applied;
+R2-R2-R1 verdict: PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_
+BASELINE_AND_CHILD_PROOF_TRUTH_CLOSURE (candidate readiness for Kilo
+review; Kilo NOT started).

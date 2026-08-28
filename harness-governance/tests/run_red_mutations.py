@@ -905,7 +905,8 @@ try:
 
     R2R2_MUTATIONS_WIRED = [
         (name, REPO_ROOT / target_relpath, patch, probe_name)
-        for name, target_relpath, patch, probe_name in _r2r2_mut.R2R2_MUTATIONS
+        for name, target_relpath, patch, probe_name in (
+            _r2r2_mut.R2R2_MUTATIONS + _r2r2_mut.R2R2R1_MUTATIONS)
     ]
 except ImportError:  # pragma: no cover - et1_r2r2_mutations ships with the gate
     R2R2_MUTATIONS_WIRED = []

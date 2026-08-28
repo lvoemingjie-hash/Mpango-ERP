@@ -226,6 +226,21 @@ def probe_launch_allowed_after_drift(mod, ctx):
     return _launch_after_drift(mod)
 
 
+def probe_child_preload_detection_deleted(mod_plugin, ctx):
+    """R2-R2-R1: the child loader must DETECT a preloaded fake under the
+    fixed key; with the detection deleted the fake is silently accepted and
+    the child stops surfacing the preload problem."""
+    sys.modules["et1_redis_authority"] = _FakePreloaded
+    try:
+        try:
+            _module, tampered = mod_plugin._load_redis_authority()
+            return tampered is True
+        except mod_plugin._RedisModuleBindingError:
+            return True  # binding failure is also a strict detection
+    finally:
+        sys.modules.pop("et1_redis_authority", None)
+
+
 PROBES = {
     "sysmodules_key_trust_restored": probe_sysmodules_key_trust_restored,
     "canonical_path_validation_deleted": probe_canonical_path_validation_deleted,
@@ -235,6 +250,7 @@ PROBES = {
     "runner_child_compare_deleted": probe_runner_child_compare_deleted,
     "launch_jit_deleted": probe_launch_jit_deleted,
     "launch_allowed_after_drift": probe_launch_allowed_after_drift,
+    "child_preload_detection_deleted": probe_child_preload_detection_deleted,
 }
 
 
@@ -349,10 +365,25 @@ def run_probe(probe_name):
     Returns True when the gate HELD and False when the weakness ESCAPED;
     any unexpected exception counts as ESCAPED (fail loud)."""
     try:
-        if probe_name in ("child_recompute_deleted", "child_digest_self_compare"):
+        if probe_name in ("child_recompute_deleted", "child_digest_self_compare",
+                          "child_preload_detection_deleted"):
             mod = _load_plugin()
         else:
             mod = _load_runner()
         return bool(PROBES[probe_name](mod, None))
     except Exception:
         return False
+
+
+# R2-R2-R1: child-proof evidence-truth mutation (the child loader must
+# detect a preloaded fake; deleting the detection hides the bypass).
+R2R2R1_MUTATIONS = [
+    (
+        "S229-child-preload-detection-deleted", PLUGIN_RELPATH,
+        (
+            '    tampered = preloaded is not None and not _module_origin_is_canonical(\n        preloaded, canonical\n    )',
+            '    tampered = False and preloaded is not None and not _module_origin_is_canonical(\n        preloaded, canonical\n    )',
+        ),
+        "child_preload_detection_deleted",
+    ),
+]

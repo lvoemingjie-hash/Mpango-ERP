@@ -1,7 +1,7 @@
 # Kilo Final Cumulative Governance and Authority-Runner Review Report
 ## DC-12R1-MVP-L1-HE2-ET1-R2-R2-R1-V1
 
-**Verdict: `PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_V1_KILO_FINAL_CUMULATIVE_GOVERNANCE_AND_AUTHORITY_REVIEW`**
+**Verdict: `PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_V1_E1_KILO_RAW_BLOB_BASELINE_HASH_EVIDENCE_TRUTH_CLOSURE`**
 
 **BASE_ACCEPTED_SOURCE:** `2582750dedfb591e801703ff57bea69fbe91c605`
 **PRIOR_KILO_PUBLICATION:** `180c9346feb28e5daaa6e47d5aab30b35c1b6360`
@@ -45,7 +45,7 @@ resolved**, and the governance framework implements:
 | BASE_ACCEPTED_SOURCE..CANDIDATE linear chain | **5 commits** |
 | Cumulative files changed (BASE..HEAD) | **19 files** (all under `harness-governance/` or `ai-ledger/`) |
 | No product/test/migration changes | PASS |
-| .secrets.baseline byte-identical to 16ea089b | PASS (17 files / 484 findings / 3567 lines / SHA-256 `883c65414a18cddb553dcc1231c218a587fc290c5e5dbbeca6b1ae1eed19e95d`) |
+| .secrets.baseline byte-identical to CANDIDATE raw blob | PASS (17 files / 484 findings / 3567 LF lines / SHA-256 `c8f3aa245b94d4f4b0242ae8c5a64fbf1f4716483baae91ad65f78735c0290e6`; computed as `git cat-file blob CANDIDATE:.secrets.baseline | SHA-256` on raw output bytes) |
 | git diff --check | PASS (exit 0) |
 | detect-secrets vs baseline | PASS (NONE) |
 | UTF-8 / no-BOM / no-NUL / LF-only on changed files | PASS |
@@ -134,6 +134,29 @@ The commit `26ed3fac` (DC-12R1-MVP-L1-J1-H2-C-R1-R2-R1-B1-R1-V1) is
 explicitly marked `INVALID_CROSS_TASK_REFERENCE` in BASE_ACCEPTED_SOURCE.
 It belongs to the H2-C browser harness review and has no bearing on HE2-ET1
 governance or authority-runner authenticity.
+
+---
+
+## E1 Metadata Correction - Baseline Hash Evidence-Truth Closure
+
+This E1 round corrects the baseline SHA-256 publication metadata in
+`review.md` and `findings.csv` only. The parent commit `30acc31e` and all
+prior source, test, and mutation conclusions remain fully valid and unchanged.
+
+**Correction applied:**
+- The `.secrets.baseline` SHA-256 was recomputed using the authoritative
+  raw-blob method: `git cat-file blob CANDIDATE:.secrets.baseline` piped
+  directly to SHA-256 on raw output bytes (no text decoding, line-ending
+  conversion, Out-String, or working-tree checkout).
+- Correct SHA-256: `c8f3aa245b94d4f4b0242ae8c5a64fbf1f4716483baae91ad65f78735c0290e6`
+- Path corrected to repository root: `.secrets.baseline`
+- File statistics unchanged: 17 files / 484 findings / 3567 LF lines
+- CANDIDATE source tree is unmodified.
+
+**What was NOT changed:**
+- No source code, tests, or mutation conclusions were re-executed.
+- No product runtime, browser, merge, or deployment initiated.
+- `30acc31e` history preserved; this commit is a linear fast-forward.
 
 ---
 

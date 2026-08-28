@@ -1,20 +1,20 @@
 # Kilo Final Cumulative Governance and Authority-Runner Review Report
 ## DC-12R1-MVP-L1-HE2-ET1-R1-E1-V1
 
-**Verdict: `PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R1_E1_V1_E1_KILO_EVIDENCE_TIER_CLASSIFICATION_CLOSURE`**
+**Verdict: `PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R1_E1_V1_E2_KILO_PUBLICATION_ENCODING_AND_EVIDENCE_TIER_CLOSURE`**
 
 **CANDIDATE_E1:** `2582750dedfb591e801703ff57bea69fbe91c605`
 **FUNCTIONAL_CANDIDATE:** `18abc7a256f451ad7fa013e9d34c87e5442d852d`
 **BASE_ET1:** `aaff330e395a1ae555672bd86f183d2fd89cae54`
 **PRIOR_HE2_ET1_KILO_REVIEW:** `NONE`
-**PRIOR_CROSS_TASK_REF:** `26ed3fac` â€?marked `INVALID_CROSS_TASK_REFERENCE` (H2-C browser harness Kilo STOP, never HE2-ET1)
+**PRIOR_CROSS_TASK_REF:** `26ed3fac` — marked `INVALID_CROSS_TASK_REFERENCE` (H2-C browser harness Kilo STOP, never HE2-ET1)
 
 ---
 
 ## Executive Summary
 
 The CANDIDATE_E1 `2582750dedfb591e801703ff57bea69fbe91c605` represents the
-cumulative HE2-ET1-R1 â†?E1 evolution of the harness governance and
+cumulative HE2-ET1-R1 to E1 evolution of the harness governance and
 authority-runner system. After independent source review and executable-
 contract validation, **all prior STOP-level authenticity violations have been
 resolved**, and the governance framework implements:
@@ -25,19 +25,21 @@ resolved**, and the governance framework implements:
 - Child `sessionstart` re-verification of live PG role/URL/capability/nonce/bindings
 - `collection_finish` with live HEAD + file-byte SHA recomputation
 - Sanitized publish (presence/labels/counts only)
-- 116 unittests, 66 RED mutations, 9 GREEN controls
+- Evidence tiers:
+  - **116 unittests, 66 RED mutations, 9 GREEN controls:** `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE`
+  - **Candidate 8/8 fresh-PG E2E core-chain:** `CANDIDATE_PROVIDED_EVIDENCE / NOT_INDEPENDENTLY_EXECUTED_BY_KILO`
 
 ### Residual Items (non-STOP)
 
 - **detect-secrets:** 3 hex high-entropy strings in `harness-governance/inventory/protocol-deltas.json` (lines 94, 111, 125). These are SHA-256 hashes of protocol delta identifiers, not embedded secrets. Recommend baseline-whitelist.
 - **Release validator:** Exit code 3 (BLOCKED) due to pre-existing P0/P1 debt (`DEBT-AUTH-CRITICAL-TUPLES`, `DEBT-COMMERCE-CRITICAL-TUPLES`). This is expected and documented.
-- **E2E PG test:** `HOST_LIMITATION` â€?Docker is available but a fresh PG16 + Redis infrastructure with the required role/permission configuration is not readily available. Independent Lubuntu Codex-L E2E run is the required next gate.
+- **E2E PG test:** `HOST_LIMITATION` — Docker is available but a fresh PG16 + Redis infrastructure with the required role/permission configuration is not readily available. Independent Lubuntu Codex-L E2E run is the required next gate.
 
 **This is a GOVERNANCE_SOURCE_AND_AUTHORITY_RUNNER_AUTHENTICITY_ONLY review. No product full-suite PASS, merge approval, or deployment approval is made or implied.**
 
 ---
 
-## Phase 1 â€?Proof Gate (PASS)
+## Phase 1 — Proof Gate (PASS)
 
 | Check | Result |
 |-------|--------|
@@ -60,7 +62,7 @@ resolved**, and the governance framework implements:
 
 ---
 
-## Phase 2 â€?Cumulative Source Review
+## Phase 2 — Cumulative Source Review
 
 | # | Requirement | Status | Evidence |
 |---|-------------|--------|----------|
@@ -71,7 +73,7 @@ resolved**, and the governance framework implements:
 | 5 | Child `sessionstart` re-verifies: live PG connection, rolsuper=false, rolcreatedb=true, capability flag, candidate/profile/manifest bindings | PASS | `pytest_et1_collector.py:127-142`: `pytest_sessionstart` performs all checks |
 | 6 | `collection_finish` uses real node IDs, rejects duplicates/missing/drift | PASS | `pytest_et1_collector.py:collection_finish`: recomputes live HEAD + file-byte SHAs; schema marker enforced |
 | 7 | Live git HEAD and file SHAs not self-reported by external proof JSON | PASS | `collection_finish` recomputes from live git + file bytes; runner cross-checks |
-| 8 | Expiry/clock boundaries and profile mid-flight drift fail closed | PASS | `authority_runner.py`: proof expiry check; profile SHA mismatch â†?VOID |
+| 8 | Expiry/clock boundaries and profile mid-flight drift fail closed | PASS | `authority_runner.py`: proof expiry check; profile SHA mismatch -> VOID |
 | 9 | Non-zero command exit classified as real TEST_RED/FINISHED, never VOID | PASS | `authority_runner.py`: exit code propagated; nonzero = FINISHED + exit code |
 | 10 | Publish output contains only presence/label/count/category, no URL/password/token/SECRET_KEY/env values | PASS | `authority_runner.py --publish-dir`: sanitized output verified by mutation X09 |
 | 11 | Externally edited proof/state JSON cannot resume or authorize execution | PASS | `authority_runner.py`: proof bound to nonce + candidate SHA + profile SHA + manifest SHA + wall-clock; external edit breaks binding |
@@ -79,35 +81,35 @@ resolved**, and the governance framework implements:
 
 ---
 
-## Phase 3 â€?Independent Authenticity Gate
+## Phase 3 — Independent Authenticity Gate
 
-| Gate | Result | Details |
-|------|--------|---------|
-| 116 unittests | **PASS** | `pytest tests/ -v`: 116 passed in 38.34s |
-| 66 RED mutations | **PASS** | `run_red_mutations.py`: all 66 mutations produced intended RED (48 with explicit rule codes) |
-| 9 GREEN controls | **PASS** | C01-C05 + EC01-EC04 stayed GREEN |
-| Tree integrity before == after | **PASS** | SHA-256 of file set byte-identical before/after mutation gate |
-| git diff --check | **PASS** | Clean |
-| Structural validator exit 0 | **PASS** | `harness_governance_validator.py --mode structural`: structural=PASS |
-| Release validator exit 3, attributed only to pre-existing P0/P1 debt | **PASS** | `--mode release`: exit 3, RELEASE_GATE=BLOCKED due to `DEBT-AUTH-CRITICAL-TUPLES`, `DEBT-COMMERCE-CRITICAL-TUPLES` |
-| detect-secrets | **3 findings (whitelisted)** | Hex SHA-256 hashes in `protocol-deltas.json` lines 94, 111, 125 â€?governance artifacts, not secrets |
-| UTF-8/no-BOM/no-NUL | **PASS** | NUL bytes only in `__pycache__` compiled Python files |
-| autocrlf dual checkout | **PASS** | `.gitattributes` enforces LF for shell scripts; repository configured `core.autocrlf=false` |
+| Gate | Result | Evidence Tier |
+|------|--------|---------------|
+| 116 unittests | **PASS** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| 66 RED mutations | **PASS** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| 9 GREEN controls | **PASS** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| Tree integrity before == after | **PASS** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| git diff --check | **PASS** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| Structural validator exit 0 | **PASS** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| Release validator exit 3, attributed only to pre-existing P0/P1 debt | **PASS** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| detect-secrets | **3 findings (whitelisted)** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| UTF-8/no-BOM/no-NUL | **PASS** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| autocrlf dual checkout | **PASS** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
 
 ### Mutation Truth Summary
 
-| Mutation Group | Count | Result |
-|----------------|-------|--------|
-| Tamper mutations | 48 | All RED |
-| Mode proof | 1 | RED (release-blocker debt cannot be global GREEN) |
-| Validator-scope mutations | 2 | RED |
-| Authority E2E mutations (X01-X15) | 15 | All RED |
-| GREEN controls | 9 | All GREEN |
-| **Total** | **75** | **66 RED / 9 GREEN** |
+| Mutation Group | Count | Result | Evidence Tier |
+|----------------|-------|--------|---------------|
+| Tamper mutations | 48 | All RED | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| Mode proof | 1 | RED (release-blocker debt cannot be global GREEN) | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| Validator-scope mutations | 2 | RED | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| Authority E2E mutations (X01-X15) | 15 | All RED | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| GREEN controls | 9 | All GREEN | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
+| **Total** | **75** | **66 RED / 9 GREEN** | `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE` |
 
 ---
 
-## Phase 4 â€?Independent PG E2E
+## Phase 4 — Independent PG E2E
 
 **Result: `HOST_LIMITATION`**
 
@@ -122,16 +124,16 @@ required infrastructure would require:
 4. Ensuring network connectivity and credentials
 
 **No independent E2E PASS is claimed.** The candidate's 8/8 E2E core-chain
-results (GREEN sentinel=1 collect=1; 7 RED traps sentinel=0) and 15
-behavioral mutations (66 RED / 9 GREEN) are accepted as
-**CANDIDATE_PROVIDED_EVIDENCE** per verification tier constraints.
+results (GREEN sentinel=1 collect=1; 7 RED traps sentinel=0) are accepted as
+`CANDIDATE_PROVIDED_EVIDENCE / NOT_INDEPENDENTLY_EXECUTED_BY_KILO`
+per verification tier constraints.
 
 **Required next gate:** Lubuntu Codex-L independent E2E run with fresh
 throwaway PG16 container.
 
 ---
 
-## Phase 5 â€?STOP Condition Check
+## Phase 5 — STOP Condition Check
 
 | STOP Condition | Status |
 |----------------|--------|
@@ -166,10 +168,11 @@ review environment:
 
 - **Proof Gate:** PASS (exact 10-file cumulative scope, exact 2-file E1 delta)
 - **Source Review:** PASS (all 12 requirements verified in code)
-- **Authenticity Gate:** PASS (116 unittests, 66 RED mutations, 9 GREEN controls, tree integrity, structural validator)
+- **Authenticity Gate:** PASS
+  - `KILO_INDEPENDENTLY_EXECUTED_EVIDENCE`: 116 unittests, 66 RED mutations, 9 GREEN controls, tree integrity, structural validator, release validator, detect-secrets, UTF-8/no-BOM/no-NUL, autocrlf dual checkout
+  - `CANDIDATE_PROVIDED_EVIDENCE / NOT_INDEPENDENTLY_EXECUTED_BY_KILO`: candidate 8/8 fresh-PG E2E core-chain
 - **E2E PG:** `HOST_LIMITATION` (Docker available but PG16+Redis infrastructure not configured; Lubuntu Codex-L required next gate)
 - **STOP conditions:** None triggered
 
 **This verdict is GOVERNANCE_SOURCE_AND_AUTHORITY_RUNNER_AUTHENTICITY_ONLY.**
 **No product full-suite PASS, merge approval, or deployment approval is made or implied.**
-

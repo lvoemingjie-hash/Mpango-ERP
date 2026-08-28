@@ -5,14 +5,24 @@
 - Verification: V1_E2E_AUTHORITY_EXECUTION_AND_CHILD_PROCESS_PROOF
 - Claim ceiling: SOURCE_GATE_PASS_BUT_REMOTE_ENFORCEMENT_NOT_VERIFIED
 - Base: aaff330e395a1ae555672bd86f183d2fd89cae54
-- KILO_STOP: 26ed3fac9bfcf573e2a483e954d933228094509a (bounded re-review may
-  proceed only after local == remote)
+- E1 provenance amendment (DC-12R1-MVP-L1-HE2-ET1-R1-E1, 2026-08-28): the
+  KILO_STOP reference previously carried here — 26ed3fac9bfcf573e2a483e954d933228094509a —
+  is **INVALID_CROSS_TASK_REFERENCE**: 26ed3fac is the H2-C browser-harness
+  Kilo STOP and never belonged to the HE2-ET1 chain; it must not be retained
+  as a valid approval basis for anything on this task.
+  PRIOR_HE2_ET1_KILO_REVIEW=NONE
+  NEXT_GATE=KILO_FINAL_CUMULATIVE_BOUNDED_REVIEW
+  No citable prior HE2-ET1 Kilo review exists. See §9 for the amendment
+  scope (PROVENANCE_CORRECTION_ONLY; functional bytes and verification
+  conclusions of 18abc7a2 unchanged).
 - Forbidden: no product source, no real full-suite, no PG/Redis/Playwright
   product stacks, no merge/deploy claims. The gate-scoped throwaway PG
   container (`he2et1r1_pg16`, postgres:16-alpine on 127.0.0.1:15445, trust
   auth, role `et1_gate` rolsuper=f rolcreatedb=t, instance superuser
-  `et1_admin` for the superuser RED case) exists only so the role traps are
-  proven against a real server, not mocked.
+  `et1_admin` for the superuser RED case) was used ONLY so the role traps
+  are proven against a real server, not mocked; it was REMOVED after the
+  round (cleanup proof in §7) and MUST NOT be reused by any reviewer —
+  a reviewer creates its own fresh throwaway PG from scratch.
 
 ## 0. Vertical proof first, delivery second (operator directive)
 
@@ -169,5 +179,68 @@ GREEN, candidate tree byte-identical`.
   README.
 - Claim ceiling unchanged: SOURCE_GATE_PASS_BUT_REMOTE_ENFORCEMENT_NOT_
   VERIFIED. Nothing here claims GitHub required-check enforcement, merge
-  rights, or a product PASS. After local == remote, the next step is the
-  Kilo bounded re-review at KILO_STOP 26ed3fac — nothing further.
+  rights, or a product PASS.
+
+## 9. E1 amendment — provenance and reviewer-independence closure (2026-08-28)
+
+Round DC-12R1-MVP-L1-HE2-ET1-R1-E1 (branch
+`zcode/dc12r1-mvp-l1-he2-et1-r1-e1-provenance-review-independence-2026-08-28`,
+base 18abc7a2, VERIFICATION_TIER V1_METADATA_AND_GOVERNANCE_STRUCTURE,
+claim ceiling PROVENANCE_CORRECTION_ONLY) corrects exactly two files:
+
+1. this ledger (`ai-ledger/product-ai/2026-08-28_dc12r1_mvp_l1_he2_et1_r1_
+   e2e_authority_execution_closure.md`);
+2. `harness-governance/inventory/protocol-deltas.json` (R1 approval_ref now
+   cites ONLY the DC-12R1-MVP-L1-HE2-ET1-R1 task directive; the unrelated
+   26ed3fac mention is removed; new entry PD-2026-08-28-HE2-ET1-R1-E1
+   authorizes this metadata round).
+
+Corrected provenance facts (supersede any contradicting line above only in
+the metadata sense — functional content is untouched):
+
+- INVALID_CROSS_TASK_REFERENCE: 26ed3fac9bfcf573e2a483e954d933228094509a
+  belongs to the H2-C browser harness Kilo STOP, not to HE2-ET1. It must
+  not be retained as a valid approval basis anywhere in this chain.
+- PRIOR_HE2_ET1_KILO_REVIEW=NONE
+- NEXT_GATE=KILO_FINAL_CUMULATIVE_BOUNDED_REVIEW
+- The commit under review is 18abc7a256f451ad7fa013e9d34c87e5442d852d; its
+  functional bytes and verification conclusions are UNCHANGED by this
+  round. No functional gate (E2E core chain, mutation gate, unittest suite)
+  was re-run and no functional claim was upgraded: this round ran only the
+  metadata/structure gates (JSON parse, structural validator,
+  `git diff --check`, detect-secrets, UTF-8/no-BOM) — see §10.
+
+### Container cleanup proof (reviewer independence)
+
+The author-owned gate container was fully removed so no reviewer can or
+will reuse the author's environment; a reviewer MUST create its own fresh
+throwaway PG from scratch:
+
+- `docker rm -f -v he2et1r1_pg16` → removed (container AND its anonymous
+  volumes).
+- `docker ps -a --format {{.Names}} | grep he2et1r1` → 0 remaining
+  containers.
+- `docker volume ls | grep -ci "et1|15445"` → 0 remaining volumes.
+- Port probe `127.0.0.1:15445` → CLOSED (freed).
+
+### Final adjudication
+
+PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R1_E1_PROVENANCE_AND_REVIEW_INDEPENDENCE_CLOSURE
+
+After push with local == remote: STOP. Do not start Kilo; the next gate is
+the CTO-directed KILO_FINAL_CUMULATIVE_BOUNDED_REVIEW, which starts from a
+clean environment with no citable prior HE2-ET1 Kilo review.
+
+## 10. E1 gate transcript (metadata/structure only)
+
+- `git diff --name-only 18abc7a2` over the E1 commit → exactly the two
+  authorized files; `harness-governance/validator/authority_runner.py`,
+  `harness-governance/README.md`, `harness-governance/inventory/
+  et1-node-manifest.txt`, and every test file are byte-identical to
+  18abc7a2 (no functional re-run, no claim upgrade).
+- JSON parse: protocol-deltas.json loads (7 entries → 8 with the E1 entry).
+- Structural validator: exit 0 PASS (structural), release mode exit 3
+  BLOCKED unchanged (pre-existing P0/P1 debt).
+- `git diff --check 18abc7a2` → no whitespace/conflict-marker errors.
+- detect-secrets over both changed files → none.
+- UTF-8 decode + no BOM on both changed files → clean.

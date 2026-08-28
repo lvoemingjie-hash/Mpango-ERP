@@ -1,0 +1,41 @@
+id,area,check,result,evidence
+PG01,proof-gate,git fetch --all --prune,PASS,no errors; remote state current
+PG02,proof-gate,TARGET == live remote tip,PASS,2c20d58c88a0a8f5175f4d11041d03b6ca785e06 == refs/heads/product-dev-recovered
+PG03,proof-gate,SOURCE == live remote tip,PASS,2582750dedfb591e801703ff57bea69fbe91c605 == refs/heads/zcode/dc12r1-mvp-l1-he2-et1-r1-e1-provenance-review-independence-2026-08-28
+PG04,proof-gate,KILO_FINAL == live remote tip,PASS,180c9346feb28e5daaa6e47d5aab30b35c1b6360 == refs/heads/reports/dc12r1-mvp-l1-he2-et1-r1-e1-v1-kilo-final-cumulative-review-2026-08-28
+PG05,proof-gate,CODEXL_E2E_FINAL == live remote tip,PASS,ec823cc210ce498837d3b3f3b284db998698c62f == refs/heads/reports/dc12r1-mvp-l1-he2-et1-r1-e1-v2-codexl-lubuntu-independent-e2e-final-2026-08-28
+PG06,proof-gate,merge-base == EXPECTED_MERGE_BASE,PASS,6e9470a1daa5d6eece29724316fdd8aef6b737c1 exact match
+PG07,proof-gate,merge-base..TARGET file count,PASS,57 (expected ~57)
+PG08,proof-gate,merge-base..SOURCE file count,PASS,46 (expected ~46)
+PG09,proof-gate,path intersection == 0,PASS,comm -12 of sorted side lists = 0 paths
+MR01,merge-rehearsal,isolated worktree from exact TARGET,PASS,worktree ../he2et1_m0_rehearsal at 2c20d58c on temp branch integration/he2-et1-m0-rehearsal-2026-08-28
+MR02,merge-rehearsal,git merge --no-ff --no-edit SOURCE,PASS,exit 0
+MR03,merge-rehearsal,zero conflicts / zero manual edits,PASS,git status clean immediately post-merge; no conflict markers
+MR04,merge-rehearsal,rehearsal merge SHA,PASS,b0ecd282313061928c831cd6c3d5ac02e3126a7f (NOT pushed)
+MR05,merge-rehearsal,parents recorded,PASS,parent1=2c20d58c(TARGET) parent2=2582750d(SOURCE)
+MR06,merge-rehearsal,tree SHA recorded,PASS,cdf110ad72cf39040c29e085b713042c66dd1090
+MR07,merge-rehearsal,SOURCE governance blobs identical in merge tree,PASS,46/46 paths: git rev-parse SOURCE:path == merge:path
+MR08,merge-rehearsal,TARGET product files not deleted/overwritten,PASS,diff TARGET..merge = exactly 46 SOURCE paths; 0 of 57 TARGET paths changed; 0 backend/ frontend/src/ scenarios/ paths; 0 deletions
+GT01,gates,governance unittests on merge tree,PASS,116/116 OK
+GT02,gates,RED mutation gate on merge tree,PASS,66 RED as intended (48 tamper + 1 mode proof + 2 validator-scope + 15 authority-e2e)
+GT03,gates,GREEN controls on merge tree,PASS,9/9 controls GREEN
+GT04,gates,candidate-tree integrity,PASS,tree digest a6edfc42c2e6 before == after mutation gate
+GT05,gates,structural validator,PASS,exit 0 STRUCTURAL_GATE PASS
+GT06,gates,release validator,PASS-as-expected,exit 3 RELEASE_GATE BLOCKED; attribution only pre-existing P0/P1 debt DEBT-AUTH-CRITICAL-TUPLES + DEBT-COMMERCE-CRITICAL-TUPLES (+1 real-device); unchanged by merge
+GT07,gates,git diff --check,PASS,clean; no whitespace or conflict-marker errors
+GT08,gates,detect-secrets vs .secrets.baseline,PASS,0 new findings; baseline snapshot-restored byte-identical after tool run
+GT09,gates,strict encoding scan 103 touched paths,PASS,UTF-8 decode clean; no BOM; no NUL; no U+FFFD; no raw cp1252 0x97 (all 0x97 bytes are valid UTF-8 continuation bytes)
+GT10,gates,JSON parse,PASS,17/17 config + schema + inventory JSON files parse
+GT11,gates,workflow YAML strict parse,PARTIAL-pre-existing,3/6 parse; s1-2-ci-gate.yml s2-7-ci-gates.yml s5-ci-gate.yml fail strict pyyaml; pre-existing at merge-base: absent from both diff sides and blob-identical TARGET==SOURCE; not introduced or worsened by merge
+GT12,gates,E2E authority core chain on merge tree,PASS,8/8 cases PASS with FRESH throwaway PG he2et1_m0_pg16 (m0_gate rolsuper=f/rolcreatedb=t; superuser RED via m0_admin); GREEN sentinel=1 collect_spawns=1; 7 RED cases VOID sentinel=0
+GT13,gates,cross-reference Codex-L E2E final,NOTED,ec823cc2 corroborates 8/8 but ran on SOURCE bytes (not merge-tree runtime proof); merge-tree proof is GT12
+GT14,gates,product full-suite / Playwright,NOT-RUN,prohibited by task; not executed
+CL01,cleanup,rehearsal worktree removed,PASS,../he2et1_m0_rehearsal deleted
+CL02,cleanup,temp branch deleted,PASS,integration/he2-et1-m0-rehearsal-2026-08-28 deleted locally
+CL03,cleanup,no merge commit remote ref,PASS,git ls-remote origin | grep integration/he2-et1-m0 -> empty
+CL04,cleanup,E2E gate container removed,PASS,docker rm -f -v he2et1_m0_pg16; 0 containers; 0 volumes; port 15446 CLOSED
+CL05,cleanup,report branch pushed local==remote,PASS,reports/dc12r1-mvp-l1-he2-et1-m0-merge-readiness-rehearsal-2026-08-28 local SHA == origin SHA (see review.md for final SHA)
+CL06,cleanup,TARGET/SOURCE/protected refs unchanged,PASS,post-cleanup rev-parse + ls-remote re-verified identical to PG02/PG03 tips
+LIM01,limits,remote enforcement,NOT_VERIFIED,REMOTE_ENFORCEMENT_NOT_VERIFIED; no GitHub-side enforcement proven
+LIM02,limits,rehearsal merge push,NOT-PUSHED,b0ecd282 exists only as a deleted local object; no remote ref ever created
+LIM03,limits,merge approval,NOT-CLAIMED,LOCAL_MERGE_REHEARSAL_PASS_ONLY; no merge approval claimed or implied

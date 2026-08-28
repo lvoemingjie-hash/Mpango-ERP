@@ -1,40 +1,43 @@
-# Codex-L Lubuntu Independent Authority E2E Final
-## DC-12R1-MVP-L1-HE2-ET1-R1-E1-V2
+# Codex-L Evidence Packaging, URL Boundary and Remote Publication Closure
+## DC-12R1-MVP-L1-HE2-ET1-R1-E1-V2-R1
 
 **Date:** `2026-08-28`
-**Verdict:** `PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R1_E1_V2_CODEXL_LUBUNTU_INDEPENDENT_AUTHORITY_E2E_FINAL`
+**Verdict:** `PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R1_E1_V2_R1_CODEXL_EVIDENCE_PACKAGING_AND_REMOTE_PUBLICATION_CLOSURE`
 **Report Branch:** `reports/dc12r1-mvp-l1-he2-et1-r1-e1-v2-codexl-lubuntu-independent-e2e-final-2026-08-28`
+**LOCAL_REPORT_TIP:** `8f331faaaf589b1bf5031f2915c702608fffff48`
 **CANDIDATE:** `2582750dedfb591e801703ff57bea69fbe91c605`
 **FUNCTIONAL_CANDIDATE:** `18abc7a256f451ad7fa013e9d34c87e5442d852d`
 **BASE_ET1:** `aaff330e395a1ae555672bd86f183d2fd89cae54`
-**KILO_REVIEW:** `b6bba74057553329c309f800bcedd5ce4bd4c58d`
-**Verification Tier:** `V3_INDEPENDENT_LINUX_RUNTIME`
-**Claim Ceiling:** `AUTHORITY_RUNNER_INDEPENDENT_E2E_PASS_ONLY`
+**KILO_TASK_INPUT:** `b6bba74057553329c309f800bcedd5ce4bd4c58d`
+**KILO_AT_PREFLIGHT:** `68885826c19f09b48b7b035eab65ec67273748fb`
+**KILO_FINAL:** `180c9346feb28e5daaa6e47d5aab30b35c1b6360`
+**Verification Tier:** `V1_EVIDENCE_PACKAGING_ONLY`
+**Scope Ceiling:** `EVIDENCE_PACKAGING_AND_REMOTE_PUBLICATION_CLOSURE_ONLY`
 
 ## Scope
 
-- Only the fresh PG16 + Redis7 authority-runner 8/8 E2E gap was executed.
-- Kilo's 116 tests and 66 RED / 9 GREEN evidence were not repeated.
-- Candidate bytes and governed files were kept read-only; the report branch adds evidence files only.
+- This closure round did not rerun E2E and did not create a new runtime.
+- The previously recorded independent fresh PG16 + Redis7 authority-runner 8/8 result remains unchanged.
+- Candidate bytes and governed files stayed read-only; only report packaging files were revised.
 
 ## Preflight
 
-- Classification: `GREEN`
+- Historical classification from the V2 authority round: `GREEN`
 - Execution worktree detached HEAD: `2582750dedfb591e801703ff57bea69fbe91c605`
 - Execution worktree clean before authority run: `True`
 - Remote candidate tip on 2026-08-28: `2582750dedfb591e801703ff57bea69fbe91c605`
 - Candidate parent: `18abc7a256f451ad7fa013e9d34c87e5442d852d`
 - Functional parent equals BASE_ET1: `True`
 - BASE_ET1..CANDIDATE cumulative file count: `10`
-- PG16 non-super role proved `current_user=et1runner_fccca7d2` with `rolsuper=False` and `rolcreatedb=True`.
-- PG16 admin role proved `current_user=et1admin_f8f53033` with `rolsuper=True`.
-- Redis `redis://127.0.0.1:16591/15` returned `PING=PONG` and `dbsize_before_run=0`.
-- `127.0.0.1:26379` reachable: `False`
+- PG16 non-super role proved `current_user=et1runner_fccca7d2`, `rolsuper=False`, `rolcreatedb=True`, `loopback=true`, `port=15591`, `credential_present=true`.
+- PG16 admin role proved `current_user=et1admin_f8f53033`, `rolsuper=True`, `rolcreatedb=True`, `loopback=true`, `port=15591`, `credential_present=true`.
+- Redis proved `PING=PONG`, `dbsize_before_run=0`, `loopback=true`, `port=16591`, `redis_db=15`, `credential_present=false`.
+- Sentinel probe proved `loopback=true`, `port=26379`, `reachable=false`.
 - Alembic unique head: `037_payment_declarations_schema`
 
 ## Authority Execution
 
-- Authoritative run attempted: `True`
+- Historical authority run attempted in the V2 round: `True`
 - Console summary: `E2E CORE CHAIN: 8/8 cases PASS`
 - `run_e2e_core_chain.py` exit code: `0`
 
@@ -71,8 +74,17 @@
   - `evidence/cleanup-closure.json`
   - `evidence/committed-blob-sha256-manifest.txt`
 - The committed-blob SHA-256 manifest intentionally excludes itself to avoid a self-referential digest cycle.
+- Manifest was rebuilt from the final committed report blobs with `missing=0`, `extra=0`, `mismatch=0`.
+- `git diff --check` from `2582750dedfb591e801703ff57bea69fbe91c605` to the final report tip exited `0`.
+- All 7 committed report files validated strict UTF-8, no BOM, no NUL, no U+FFFD, and no byte `0x97`.
+
+## Publication
+
+- The report branch was advanced linearly from `8f331faaaf589b1bf5031f2915c702608fffff48` and pushed to canonical `origin`.
+- Final report tip ancestry contains `2582750dedfb591e801703ff57bea69fbe91c605`.
+- Candidate and frozen refs remained unchanged during this packaging-only closure.
 
 ## Boundary
 
 - No HE2 merge, required-check mutation, full-suite or Playwright run, or deployment was performed.
-- PASS is claimed only if the independent fresh-runtime authority 8/8 gate is green.
+- The recorded 8/8 authority conclusion is preserved exactly as established in the V2 round.

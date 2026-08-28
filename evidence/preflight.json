@@ -22,15 +22,22 @@
       "value_is_1": true
     },
     "PW1R3_TEST_REDIS_URL": {
-      "label": "redis://127.0.0.1:16591/15",
-      "present": true
+      "credential_present": false,
+      "loopback": true,
+      "port": 16591,
+      "present": true,
+      "redis_db": 15
     },
     "TEST_DATABASE_URL": {
-      "label": "postgresql://127.0.0.1:15591/<redacted>",
+      "credential_present": true,
+      "loopback": true,
+      "port": 15591,
       "present": true
     },
     "TEST_DATABASE_URL_SUPER": {
-      "label": "postgresql://127.0.0.1:15591/<redacted>",
+      "credential_present": true,
+      "loopback": true,
+      "port": 15591,
       "present": true
     }
   },
@@ -58,11 +65,18 @@
     "uv": "uv 0.10.9"
   },
   "redis": {
+    "credential_present": false,
     "db": 15,
     "dbsize_before_run": 0,
+    "loopback": true,
     "ping": "PONG",
+    "port": 16591,
     "sentinel_26379_reachable": false,
-    "url_label": "redis://127.0.0.1:16591/15"
+    "sentinel_probe": {
+      "loopback": true,
+      "port": 26379,
+      "reachable": false
+    }
   },
   "remote": {
     "candidate_branch_local_tracking_tip": "2582750dedfb591e801703ff57bea69fbe91c605",

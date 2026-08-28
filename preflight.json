@@ -1,0 +1,138 @@
+{
+  "timestamp": "2026-08-28T08:45:00Z",
+  "task_id": "DC-12R1-MVP-L1-J1-H2-C-R1-R2-R1-V2-R1",
+  "candidate_commit": "bf20e8c9eae620fcf101ded672dfb0afeab937cb",
+  "candidate_branch": "zcode/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-fw3-exception-identity-closure-2026-08-27",
+  "verification_tier": "V3_MERGE_CRITICAL_INDEPENDENT_FRESH_RUNTIME",
+  "claim_ceiling": "INDEPENDENT_BACKEND_LITERAL_ZERO_RED_ONLY",
+  "system": {
+    "os": "Ubuntu 24.04.4 LTS",
+    "os_version": "24.04",
+    "is_lubuntu": false,
+    "is_ubuntu": true
+  },
+  "python": {
+    "version": "3.12.3",
+    "pytest_version": "8.4.2",
+    "exists": true
+  },
+  "postgresql": {
+    "version": "16.15",
+    "is_16x": true,
+    "exists": true,
+    "max_connections": 100,
+    "max_connections_sufficient": true
+  },
+  "redis": {
+    "version": "7.4.11",
+    "is_7x": true,
+    "exists": true
+  },
+  "docker": {
+    "version": "29.1.3",
+    "exists": true
+  },
+  "containers": {
+    "dc12r1_postgres": {
+      "exists": true,
+      "status": "healthy",
+      "port": 15432,
+      "task_owned": true
+    },
+    "dc12r1_redis": {
+      "exists": true,
+      "status": "healthy",
+      "port": 16379,
+      "task_owned": true
+    }
+  },
+  "volumes": {
+    "dc12r1_postgres_data": {
+      "exists": true,
+      "task_owned": true
+    },
+    "dc12r1_redis_data": {
+      "exists": true,
+      "task_owned": true
+    }
+  },
+  "networks": {
+    "dc12r1_network": {
+      "exists": true,
+      "task_owned": true
+    }
+  },
+  "database": {
+    "role": "mpango_test_nosuper",
+    "is_superuser": false,
+    "has_createdb": true,
+    "database_url_set": true,
+    "test_database_url_set": true,
+    "test_database_url_points_to_task_db": true,
+    "test_database_url_port": 15432
+  },
+  "environment_variables": {
+    "MPANGO_ALLOW_TEMP_DB_CREATE": {
+      "exists": true,
+      "value": "1"
+    },
+    "REPORTING_USER_PASSWORD": {
+      "exists": true
+    },
+    "SECRET_KEY": {
+      "exists": true
+    },
+    "PW1R3_TEST_REDIS_URL": {
+      "exists": true,
+      "points_to_task_redis_db15": true,
+      "port": 16379,
+      "db": 15
+    }
+  },
+  "redis_databases": {
+    "db0_dbsize": 0,
+    "db15_dbsize": 0,
+    "both_empty": true
+  },
+  "sentinel": {
+    "port_26379_reachable": false,
+    "expected": true
+  },
+  "alembic": {
+    "head": "037_payment_declarations_schema",
+    "is_037": true,
+    "unique_head": true
+  },
+  "worktree": {
+    "path": "/home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree",
+    "clean": true,
+    "untracked_files": ["docker-compose.task.yml"],
+    "untracked_expected": true
+  },
+  "encoding": {
+    "lang": "zh_CN.UTF-8",
+    "is_utf8": true,
+    "line_endings": "LF",
+    "no_bom": true,
+    "no_nul": true
+  },
+  "cleanup_ownership": {
+    "registered": true,
+    "owner": "dc12r1-v2-r1-task"
+  },
+  "frozen_refs_verified": {
+    "CANDIDATE": "bf20e8c9eae620fcf101ded672dfb0afeab937cb",
+    "PRODUCT_KILO_REVIEW": "f5fdf187fab88f628a6b2f3aca80d03d3be60054",
+    "HARNESS_E1": "e2274af7816b80d0efb83a8294b2c6503e246b19",
+    "HARNESS_KILO_REVIEW": "1d1d4f22ccb30088d188b23a4b55e4254541e253",
+    "PRIOR_VOID_E1": "6a62fb19b2973f9565e7bfe93ada133903d693cf",
+    "PROTECTED_BASELINE": "2c20d58c88a0a8f5175f4d11041d03b6ca785e06",
+    "all_exist": true,
+    "none_drifted": true
+  },
+  "parent_chain_proofs": {
+    "PRODUCT_KILO_REVIEW_parent_equals_CANDIDATE": true,
+    "HARNESS_KILO_REVIEW_parent_equals_HARNESS_E1": true
+  },
+  "preflight_passed": true
+}

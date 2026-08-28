@@ -1,0 +1,11 @@
+finding_id,category,severity,description,evidence,status
+E1-001,Preflight Contract Violation,CRITICAL,pytest role has rolsuper=true but contract requires rolsuper=false,pg_roles query result,CONFIRMED
+E1-002,Preflight Contract Violation,HIGH,preflight.json records is_superuser=false but actual role has rolsuper=true,preflight.json vs pg_roles query,CONFIRMED
+E1-003,Collection Baseline Not Proven,HIGH,full-suite collected 2727 tests but frozen expectation is 3773,JUnit XML,CONFIRMED
+E1-004,Environment Invalidity,HIGH,37 failures and 22 errors来自无效执行环境,JUnit XML,CONFIRMED
+E1-005,Preflight Check Defect,MEDIUM,rolsuper check was incorrect or missing,preflight.json,CONFIRMED
+E1-006,Role Escalation Undetected,MEDIUM,role was escalated to superuser during Alembic migration without re-validation,pg_roles query,CONFIRMED
+E1-007,Missing Collect-Only Gate,MEDIUM,no collect-only verification before full-suite run,execution log,CONFIRMED
+E1-008,Missing Fail-Closed Mechanism,MEDIUM,no mechanism to fail-closed when collection count mismatches,execution log,CONFIRMED
+E1-009,Invalid Product Verdict,CRITICAL,original report claimed candidate/backend regression based on invalid environment,original report,RETRACTED
+E1-010,Invalid Causal Classification,CRITICAL,original report claimed exact causal classification was complete,original report,RETRACTED

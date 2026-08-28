@@ -1,0 +1,111 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend
+configfile: pytest.ini
+plugins: base-url-2.1.0, timeout-2.4.0, hypothesis-6.150.2, playwright-0.7.2, asyncio-0.26.0, anyio-4.12.1, cov-4.1.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 49 items
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t1_internal_failure_neutral_200_zero_tokens_plus_observable_log PASSED [  2%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email PASSED [  4%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t3_nonexistent_and_inactive_neutral_zero_side_effects_and_zero_events PASSED [  6%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t4_unrelated_scan_failure_target_found_partial_telemetry PASSED [  8%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t5_delivery_failure_rollback PASSED [ 10%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t6_unexpected_failure_metric_and_neutral_external PASSED [ 12%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t7_replay_exact_401_token_remains_used_password_not_applied PASSED [ 14%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t8_query_string_token_rejected PASSED [ 16%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t9_target_scan_failure_one_internal_event_evidence_preserved PASSED [ 18%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t10_consume_scan_incomplete_token_stays_actionable PASSED [ 20%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t11_consume_partial_scan_fails_closed_both_old_token_intact PASSED [ 22%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t12_partial_apply_rolls_back_first_copy_token_intact PASSED [ 24%]
+tests/test_dc12r1_s1_r2_strict_mapping.py::test_missing_mapping_raises_exact_RetailerProvisioningError_with_code PASSED [ 26%]
+tests/test_dc12r1_s1_r2_strict_mapping.py::test_token_remains_usable_after_failed_then_repaired_mapping PASSED [ 28%]
+tests/test_dc12r1_s1_r2_strict_mapping.py::test_migration_seeds_retailer_operator_role_and_client_perms_in_real_pg PASSED [ 30%]
+tests/test_dc12r1_s1_r2_strict_mapping.py::test_malformed_setup_token_table_missing_column_triggers_preflight PASSED [ 32%]
+tests/test_dc12r1_s1_r1_corrections.py::test_A_pending_then_B_keeps_both_inactive_and_shared_setup_token PASSED [ 34%]
+tests/test_dc12r1_s1_r1_corrections.py::test_partial_update_failure_leaves_all_copies_unchanged_and_token_unconsumed PASSED [ 36%]
+tests/test_dc12r1_s1_r1_corrections.py::test_missing_retailer_operator_role_rolls_back PASSED [ 38%]
+tests/test_dc12r1_s1_r1_corrections.py::test_create_invitation_without_expires_at_yields_finite_seven_day_default PASSED [ 40%]
+tests/test_dc12r1_s1_r1_corrections.py::test_lookup_expired_invitation_no_500 PASSED [ 42%]
+tests/test_dc12r1_s1_r1_corrections.py::test_migration_seeds_reissue_permission_for_admin PASSED [ 44%]
+tests/test_dc12r1_s1_r1_corrections.py::test_bootstrap_seeds_reissue_permission_for_admin_not_retailer PASSED [ 46%]
+tests/test_dc12r1_s1_r1_corrections.py::test_setup_token_tampered_binding_retailer_mismatch_rejected PASSED [ 48%]
+tests/test_dc12r1_s1_retailer_identity.py::test_register_with_invitation_provisions_pending_user_and_setup_token PASSED [ 51%]
+tests/test_dc12r1_s1_retailer_identity.py::test_setup_consumption_activates_user_and_verifies_email PASSED [ 53%]
+tests/test_dc12r1_s1_retailer_identity.py::test_expired_invitation_rejected PASSED [ 55%]
+tests/test_dc12r1_s1_retailer_identity.py::test_phone_mismatch_rejected PASSED [ 57%]
+tests/test_dc12r1_s1_retailer_identity.py::test_reused_invitation_rejected PASSED [ 59%]
+tests/test_dc12r1_s1_retailer_identity.py::test_revoked_invitation_rejected PASSED [ 61%]
+tests/test_dc12r1_s1_retailer_identity.py::test_AB_mapped_copies_preserve_one_effective_password PASSED [ 63%]
+tests/test_dc12r1_s1_retailer_identity.py::test_retailer_self_reset_updates_both_AB_copies PASSED [ 65%]
+tests/test_dc12r1_s1_retailer_identity.py::test_pending_user_cannot_authenticate PASSED [ 67%]
+tests/test_dc12r1_s1_retailer_identity.py::test_reissue_denied_after_credential_established PASSED [ 69%]
+tests/test_dc12r1_s1_retailer_identity.py::test_cross_tenant_reissue_is_neutral_404 PASSED [ 71%]
+tests/test_dc12r1_s1_retailer_identity.py::test_used_setup_token_rejected PASSED [ 73%]
+tests/test_dc12r1_s1_retailer_identity.py::test_invalid_reset_token_rejected PASSED [ 75%]
+tests/test_dc12r1_s1_retailer_identity.py::test_forgot_password_neutral_for_unknown_account PASSED [ 77%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_reset_link_legacy_shape_unchanged_without_code PASSED [ 79%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_reset_link_with_canonical_code_keeps_fragment_only PASSED [ 81%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_forgot_password_email_carries_db_canonical_uppercase_code PASSED [ 83%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_forgot_password_email_w_matches_case_insensitive_lookup PASSED [ 85%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_hc07_hc10_canonical_neutrality_real_http PASSED [ 87%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw1_registration_committed_sentinel_before_sweep PASSED [ 89%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw2_token_and_email_created_ids_unregistered PASSED [ 91%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw3_canonical_assertion_fails_after_side_effects PASSED [ 93%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw4_override_installed_request_fails PASSED [ 95%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw5_cleanup_failure_with_body_failure PASSED [ 97%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_module_global_state_zero PASSED [100%]
+
+=============================== warnings summary ===============================
+../../../.local/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/ivy/.local/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py: 13 warnings
+  /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/api/v1/auth.py:832: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/services/onboarding_service.py:299: DeprecationWarning: deprecated
+    if request.password is not None:
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/services/onboarding_service.py:300: DeprecationWarning: deprecated
+    validate_signup_password(request.password)
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/api/v1/auth.py:154: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/api/v1/auth.py:197: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email
+  /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/api/v1/auth.py:716: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t7_replay_exact_401_token_remains_used_password_not_applied
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t10_consume_scan_incomplete_token_stays_actionable
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t11_consume_partial_scan_fails_closed_both_old_token_intact
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t12_partial_apply_rolls_back_first_copy_token_intact
+  /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/api/v1/auth.py:974: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_hc07_hc10_canonical_neutrality_real_http
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_hc07_hc10_canonical_neutrality_real_http
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_hc07_hc10_canonical_neutrality_real_http
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_hc07_hc10_canonical_neutrality_real_http
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw3_canonical_assertion_fails_after_side_effects
+  /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/api/v1/client/auth.py:387: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ivy/Desktop/dc12r1-mvp-l1-j1-h2-c-r1-r2-r1-v2-r1-worktree/backend/focused-reverse-junit.xml -
+================== 49 passed, 29 warnings in 73.63s (0:01:13) ==================

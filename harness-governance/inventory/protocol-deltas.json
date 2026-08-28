@@ -96,5 +96,22 @@
     "reason": "DC-12R1-MVP-L1-HE2-ET1 execution traps and authority runner: 15 machine-verifiable traps (schema/2 + additionalProperties=false, hardcoded evaluator whitelist, fail-closed token cardinality); authority profile references; fail-stop runner (in-process evaluators, nonce-bound proof binding); +20 unit tests, +14 RED mutations, +4 GREEN controls; structural/release split preserved (release=BLOCKED for open P0/P1 debt). Validator ET1 checker integrated with PROTECTED_PATHS gating governance-core changes through protocol-delta authorization.",
     "approval_ref": "DC-12R1-MVP-L1-HE2-ET1",
     "date": "2026-08-28"
+  },
+  {
+    "delta_id": "PD-2026-08-28-HE2-ET1-R1",
+    "kind": "governance",
+    "affected_ids": [],
+    "affected_paths": [
+      "harness-governance/validator/",
+      "harness-governance/tests/",
+      "harness-governance/inventory/et1-node-manifest.txt",
+      "harness-governance/inventory/authority-profiles.json",
+      "harness-governance/README.md"
+    ],
+    "base_sha": "aaff330e395a1ae555672bd86f183d2fd89cae54",
+    "date": "2026-08-28",
+    "owner": "cto",
+    "reason": "DC-12R1-MVP-L1-HE2-ET1-R1 end-to-end authority execution and child-process proof closure: runner v2 on the ET1 API with explicit ALLOWED_TRANSITIONS state machine (trap lands VOID, terminal states enforced), real argv --command via argparse REMAINDER launched exactly once (counter-guarded; non-zero exit = real test RED on FINISHED, never VOID), real pytest --collect-only child via the runner-owned plugin (child sessionstart re-verifies live PG role/URL/capability/nonce/bindings; collection_finish recomputes live HEAD + file-byte SHAs and writes real node IDs), cross-process nonce compare vs the runner-minted original (self-compare removed), candidate_sha=live rev-parse HEAD, profile/manifest sha256 over actual file bytes (frozen et1-node-manifest.txt), explicit-path schema-validated authority profile (hardcoded cli-mode rejected), live-git lineage, sanitized publish (presence/labels/counts only), +15 behavioral E2E mutations (X01-X15) with pristine/restore controls (66 RED / 9 GREEN total), 8-case E2E core-chain gate (GREEN sentinel==1; 7 RED sentinel==0); 116 unittest baseline preserved.",
+    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R1 task directive (BASE aaff330e; KILO_STOP 26ed3fac; SOURCE_GATE_PASS_BUT_REMOTE_ENFORCEMENT_NOT_VERIFIED)"
   }
 ]

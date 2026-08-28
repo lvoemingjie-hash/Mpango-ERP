@@ -1,0 +1,9 @@
+tests/_et1_collector_fixtures.py::test_et1_fixture_node_01
+tests/_et1_collector_fixtures.py::test_et1_fixture_node_02
+tests/_et1_collector_fixtures.py::test_et1_fixture_node_03
+tests/_et1_collector_fixtures.py::test_et1_fixture_node_04
+tests/_et1_collector_fixtures.py::test_et1_fixture_node_05
+tests/_et1_collector_fixtures.py::test_et1_fixture_node_06
+tests/_et1_collector_fixtures.py::test_et1_fixture_node_07
+tests/_et1_collector_fixtures.py::test_et1_fixture_node_08
+tests/_et1_collector_fixtures.py::test_et1_fixture_node_09

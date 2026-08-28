@@ -689,6 +689,45 @@ VALIDATOR_MUTATIONS = [
 ]
 
 
+def _run_e2e_mutation(name, target_file, patch, probe_name, failures):
+    """Patch the candidate runner/plugin, require the probe to report the
+    gate WEAKENED, then restore byte-identically and re-probe (N20 pattern).
+    Returns True when the mutation behaved as a detectable weakening."""
+    original = target_file.read_bytes()
+    mutated, fail_category = _apply_validator_patch(original, patch)
+    if fail_category is not None:
+        failures.append(f"{name}: {fail_category}")
+        print(f"  {name:<40} FAIL CLOSED ({fail_category})")
+        return False
+    weak = False
+    try:
+        target_file.write_bytes(mutated)
+        weak = _e2e_mut.run_probe(probe_name) is False
+        if weak:
+            print(f"  {name:<40} RED as intended (probe escaped: {probe_name})")
+        else:
+            failures.append(
+                f"{name}: probe {probe_name} still holds — mutation is not a real weakening"
+            )
+            print(f"  {name:<40} ESCAPED (still caught)")
+    finally:
+        target_file.write_bytes(original)
+    restored = target_file.read_bytes()
+    if (
+        hashlib.sha256(restored).digest() != hashlib.sha256(original).digest()
+        or restored != original
+    ):
+        failures.append(f"{name}: candidate blob NOT byte-identical after restore")
+        print(f"  {name:<40} BLOB DRIFT after restore")
+        return False
+    if not _e2e_mut.run_probe(probe_name):
+        failures.append(f"{name}: restored candidate failed probe {probe_name}")
+        print(f"  {name:<40} RESTORE GREEN-PROOF FAILED")
+        return False
+    print(f"  {name:<40} restored: blob identical, probe holds again")
+    return weak
+
+
 # GREEN controls -------------------------------------------------------------
 
 
@@ -835,6 +874,20 @@ try:
 except ImportError:  # pragma: no cover - et1_mutations ships with the gate
     pass
 
+# HE2-ET1-R1: end-to-end authority runner/plugin BEHAVIORAL mutations. Each
+# patch weakens the candidate runner or plugin source; an in-process probe
+# must then report the gate as WEAKENED (a behavior the pristine candidate
+# rejects becomes accepted). Restores are sha256 + bytes verified like N20/N21.
+try:
+    import et1_e2e_mutations as _e2e_mut
+
+    E2E_MUTATIONS_WIRED = [
+        (name, REPO_ROOT / target_relpath, patch, probe_name)
+        for name, target_relpath, patch, probe_name in _e2e_mut.E2E_MUTATIONS
+    ]
+except ImportError:  # pragma: no cover - et1_e2e_mutations ships with the gate
+    E2E_MUTATIONS_WIRED = []
+
 
 def tree_digest():
     digest = hashlib.sha256()
@@ -855,11 +908,11 @@ def main() -> int:
     failures = []
     before = tree_digest()
 
-    total_red = len(RED_MUTATIONS) + len(MODE_PROOFS) + len(VALIDATOR_MUTATIONS)
+    total_red = len(RED_MUTATIONS) + len(MODE_PROOFS) + len(VALIDATOR_MUTATIONS) + len(E2E_MUTATIONS_WIRED)
     print(
         f"HE2-R1 RED mutation gate: {total_red} RED mutations "
         f"({len(RED_MUTATIONS)} tamper + {len(MODE_PROOFS)} mode proof + "
-        f"{len(VALIDATOR_MUTATIONS)} validator-scope), "
+        f"{len(VALIDATOR_MUTATIONS)} validator-scope + {len(E2E_MUTATIONS_WIRED)} authority-e2e), "
         f"{len(GREEN_CONTROLS)} GREEN controls"
     )
     print("-" * 78)
@@ -886,6 +939,20 @@ def main() -> int:
 
     for name, patch in VALIDATOR_MUTATIONS:
         _run_validator_mutation(name, patch, failures)
+
+    # HE2-ET1-R1 GREEN control: on the PRISTINE candidate every E2E probe
+    # must hold (no weakness present). Then each mutation must weaken its
+    # target probe, restore byte-identically, and leave the probe held again.
+    if E2E_MUTATIONS_WIRED:
+        pristine_held = all(_e2e_mut.run_probe(probe_name) for _, _, _, probe_name in E2E_MUTATIONS_WIRED)
+        if pristine_held:
+            print(f"  {'E2E-GC01-pristine-runner-all-probes-held':<40} GREEN as intended")
+        else:
+            failures.append("E2E-GC01: pristine candidate already fails an E2E probe")
+            print(f"  {'E2E-GC01-pristine-runner-all-probes-held':<40} UNEXPECTED WEAK (pristine)")
+
+    for name, target_file, patch, probe_name in E2E_MUTATIONS_WIRED:
+        _run_e2e_mutation(name, target_file, patch, probe_name, failures)
 
     for name, factory, *mode_args in MODE_PROOFS:
         result = factory()

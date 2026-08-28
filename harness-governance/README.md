@@ -44,10 +44,72 @@ python validator/authority_runner.py --self-test
 ```
 
 The ET1 mutations (`tests/et1_mutations.py`) are appended to the HE2 mutation
-gate (51 RED / 9 GREEN total) and the ET1 unit tests (`test_authority_runner_et1.py`)
-add 20 tests to the suite (116 total). The protocol delta
-`PD-2026-08-28-HE2-ET1` authorizes the new registry, schemas, profile, runner,
-and the related protected-path additions.
+gate, and the ET1 unit tests (`test_authority_runner_et1.py`) add 20 tests to
+the suite (116 total). The protocol delta `PD-2026-08-28-HE2-ET1` authorizes
+the new registry, schemas, profile, runner, and the related protected-path
+additions.
+
+## HE2-ET1-R1: end-to-end authority execution and child-process proof closure
+
+R1 closes the runner's missing last mile: the authority command is a REAL
+argv launch (never a shell string) and the collect set comes from a REAL
+`pytest --collect-only` child process running the runner-owned plugin
+(`tests/pytest_et1_collector.py`). Division of proof:
+
+- The child's `pytest_sessionstart` re-verifies role (live PG: not superuser,
+  has CREATEDB), TEST_DATABASE_URL presence, temp-DB capability flag, runner
+  nonce, and candidate/profile/manifest bindings inside the child process.
+- The child's `pytest_collection_finish` recomputes the live candidate HEAD
+  and the profile/manifest file-byte SHAs, compares them against the
+  runner-provided values, and writes the proof with the REAL node IDs.
+- The runner compares the child's nonce against the ORIGINAL it minted
+  (cross-process; self-comparison is a defect), requires the plugin's proof
+  schema marker, checks count + uniqueness + exact set against the frozen
+  node manifest (`inventory/et1-node-manifest.txt`), and only then
+  authorizes.
+- `candidate_sha` is the live `git rev-parse HEAD`; `profile_sha` and
+  `manifest_sha` are SHA-256 over actual file bytes; lineage comes from live
+  git refs (parent `HEAD^`, chain base resolved via `git rev-parse`).
+- The authority profile is loaded from an explicit `--profile` path and
+  validated against the JSON schema + trap registry; a hardcoded
+  `{"mode":"cli"}` document can never pass.
+- The state machine enforces an explicit `ALLOWED_TRANSITIONS` map; every
+  trap lands VOID on disk (never COLLECT/AUTHORIZED/RUNNING after a
+  failure); the command is launched exactly once (counter-guarded); a
+  non-zero exit is the product test's REAL verdict (FINISHED + exit code,
+  never VOID).
+- Publishing (`--publish-dir`) is sanitized: variable presence, labels,
+  counts, and booleans only — never values.
+
+Manual CI equivalence (delegated to the runner):
+```
+cd /c/Users/Jeff0/MPANGO ERP/worktrees/zcode-he2et1r1-e2e-2026-08-28
+uv run --with pytest --with psycopg --with psycopg-binary \
+  python harness-governance/validator/authority_runner.py --self-test
+uv run --with pytest --with psycopg --with psycopg-binary \
+  python -m unittest discover -s harness-governance/tests -p "test_*.py"
+uv run --with pytest --with psycopg --with psycopg-binary \
+  python harness-governance/tests/run_red_mutations.py
+
+# E2E core chain (needs the round's gate PG + redis env vars):
+#   TEST_DATABASE_URL        non-superuser CREATEDB role (e.g. container he2et1r1_pg16 :15445)
+#   TEST_DATABASE_URL_SUPER  instance superuser (proves the superuser trap)
+#   PW1R3_TEST_REDIS_URL     redis URL with /15 db
+#   MPANGO_ALLOW_TEMP_DB_CREATE=1
+uv run --with pytest --with psycopg --with psycopg-binary \
+  python harness-governance/tests/run_e2e_core_chain.py
+```
+
+The R1 behavioral mutations (`tests/et1_e2e_mutations.py`) patch the
+candidate runner/plugin with a specific weakening (self-compare restore,
+actual=expected, command=None, foreign proof origin, state jumps, disabled
+child sessionstart gate, duplicate nodes, hardcoded profile, env leaking,
+double launch, nonzero→VOID, dropped file-byte bindings, dropped expiry,
+hardcoded candidate, deleted child plugin) and an in-process probe must
+report the gate WEAKENED; pristine-candidate and byte-exact-restore
+controls guard the pattern. Total gate: 66 RED / 9 GREEN. The protocol
+delta `PD-2026-08-28-HE2-ET1-R1` authorizes the R1 changes with
+base_sha=aaff330e.
 
 
 ## Layout
@@ -74,8 +136,18 @@ harness-governance/
     harness_governance_validator.py  stdlib-only validator + gates + CLI
   tests/
     test_harness_governance_validator.py  66 unit tests (unittest)
-    run_red_mutations.py     30 deterministic RED mutations + 5 GREEN controls
-                             + candidate-tree integrity check
+    test_authority_runner_et1.py  20 ET1 unit tests (unittest)
+    run_red_mutations.py     66 deterministic RED mutations (48 tamper +
+                             1 mode proof + 2 validator-scope + 15
+                             authority-e2e) + 9 GREEN controls + candidate-
+                             tree integrity check
+    et1_mutations.py         ET1 registry/profile tamper mutations
+    et1_e2e_mutations.py     R1 authority runner/plugin behavioral mutations
+    pytest_et1_collector.py  runner-owned collect-only proof plugin
+    _et1_collector_fixtures.py  stable node set collected by the runner child
+    run_e2e_core_chain.py    8-case E2E core-chain gate (GREEN sentinel==1;
+                             superuser/empty-url/capability/missing-command/
+                             nonce-tamper/node-drift/profile-drift sentinel==0)
 ```
 
 ## Usage

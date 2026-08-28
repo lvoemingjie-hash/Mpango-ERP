@@ -804,6 +804,37 @@ GREEN_CONTROLS = [
     ("C05-valid-committed-evidence", control_valid_committed_evidence),
 ]
 
+# HE2-ET1: execution-traps registry / authority-profile mutations (appended;
+# the original 37 RED / 5 GREEN above are preserved untouched).
+try:
+    import et1_mutations as _et1
+
+    def _et1_red(name, tamper, expected, extra):
+        def factory():
+            head, base = make_workspace()
+            tamper(head, base)
+            return head, base
+
+        return (name, factory, expected, extra)
+
+    def _et1_green(name, control):
+        def factory():
+            head, base = make_workspace()
+            control(head, base)
+            return head, base
+
+        return (name, factory)
+
+    RED_MUTATIONS = RED_MUTATIONS + [
+        _et1_red(name, tamper, expected, extra)
+        for name, tamper, expected, extra in _et1.ET1_MUTATIONS
+    ]
+    GREEN_CONTROLS = GREEN_CONTROLS + [
+        _et1_green(name, control) for name, control in _et1.ET1_GREEN_CONTROLS
+    ]
+except ImportError:  # pragma: no cover - et1_mutations ships with the gate
+    pass
+
 
 def tree_digest():
     digest = hashlib.sha256()

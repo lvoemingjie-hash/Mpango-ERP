@@ -1,0 +1,246 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HE2-ET1 execution-traps registry",
+  "description": "Machine-verifiable registry of known execution traps. additionalProperties=false; no shell commands \u2014 evaluator_id must reference a whitelisted in-process evaluator.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "registry_version",
+    "traps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1$"
+    },
+    "registry_version": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(-[A-Z0-9]+)?$"
+    },
+    "traps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "trap_id",
+          "category",
+          "risk",
+          "applies_to",
+          "evaluator_id",
+          "stop_phase",
+          "stable_exit_code",
+          "required_evidence",
+          "forbidden_next_phases",
+          "negative_control_id",
+          "owner",
+          "remediation",
+          "source_evidence_refs",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "trap_id": {
+            "type": "string",
+            "pattern": "^TRAP_[A-Z0-9_]+$"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "database_role",
+              "environment",
+              "capability",
+              "migration",
+              "cache",
+              "test_plan",
+              "state_machine",
+              "just_in_time_recheck",
+              "in_process_proof",
+              "git_remote",
+              "git_lineage",
+              "evidence_packaging",
+              "encoding",
+              "ui_timing",
+              "provisioning"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "P0",
+              "P1",
+              "P2",
+              "P3"
+            ]
+          },
+          "applies_to": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "evaluator_id": {
+            "type": "string",
+            "pattern": "^EVAL_[A-Z0-9_]+$"
+          },
+          "stop_phase": {
+            "type": "string",
+            "enum": [
+              "PREFLIGHT",
+              "COLLECT_PROVEN",
+              "AUTHORIZED",
+              "RUNNING",
+              "SESSIONSTART",
+              "PACKAGING"
+            ]
+          },
+          "stable_exit_code": {
+            "type": "integer",
+            "enum": [
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60,
+              61,
+              62,
+              63,
+              64,
+              65,
+              66,
+              67,
+              68,
+              69,
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90,
+              91,
+              92,
+              93,
+              94,
+              95,
+              96,
+              97,
+              98,
+              99
+            ]
+          },
+          "required_evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "forbidden_next_phases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "PREFLIGHT",
+                "COLLECT_PROVEN",
+                "AUTHORIZED",
+                "RUNNING",
+                "SESSIONSTART",
+                "PACKAGING"
+              ]
+            }
+          },
+          "negative_control_id": {
+            "type": "string",
+            "pattern": "^NC[-_][A-Z0-9_]+$"
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "remediation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "RETIRED"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

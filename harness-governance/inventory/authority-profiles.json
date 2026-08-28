@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "profiles": [
+    {
+      "profile_id": "AUTHORITY_H2C_BACKEND",
+      "description": "H2-C authoritative backend re-verification on Lubuntu; driven only by the HE2-ET1 authority runner.",
+      "required_traps": [
+        "TRAP_PG_ROLE_SUPER",
+        "TRAP_TEST_DB_URL_EMPTY",
+        "TRAP_TEMP_DB_CAPABILITY",
+        "TRAP_ALEMBIC_MULTI_HEAD",
+        "TRAP_REDIS_WRONG_DB",
+        "TRAP_COLLECT_NODE_SET_DRIFT",
+        "TRAP_PHASE_CONTINUE_AFTER_FAIL",
+        "TRAP_JIT_ROLE_ESCALATION",
+        "TRAP_SESSIONSTART_DRIFT",
+        "TRAP_NON_CANONICAL_REMOTE",
+        "TRAP_LINEAGE_CONFUSION",
+        "TRAP_EVIDENCE_GITIGNORED",
+        "TRAP_MIXED_EOF",
+        "TRAP_VITE_NETWORKIDLE",
+        "TRAP_SPECIAL_USE_EMAIL_DOMAIN"
+      ],
+      "phases": ["PREFLIGHT", "COLLECT_PROVEN", "AUTHORIZED", "RUNNING", "SESSIONSTART", "PACKAGING"],
+      "runner": "harness-governance/validator/authority_runner.py",
+      "status": "CANDIDATE"
+    }
+  ]
+}

@@ -91,6 +91,13 @@ PROTECTED_PATHS = (
     f"{GOV_DIR}/validator/",
     f"{GOV_DIR}/schemas/",
     f"{GOV_DIR}/tests/",
+    # HE2-ET1: execution-traps registry, authority profiles, and the
+    # fail-stop authority runner are governance-protected; changes need a
+    # kind=governance protocol delta and can never be waived.
+    f"{GOV_DIR}/inventory/execution-traps.json",
+    f"{GOV_DIR}/schemas/execution-traps.schema.json",
+    f"{GOV_DIR}/inventory/authority-profiles.json",
+    f"{GOV_DIR}/validator/authority_runner.py",
 )
 
 # R3: files where base_sha/evidence_sha/evidence_commit JSON lines are
@@ -643,6 +650,105 @@ class DeltaAuthorizer:
 # ---------------------------------------------------------------------------
 
 
+# HE2-ET1 evaluator whitelist (mirrors authority_runner.EVALUATOR_WHITELIST;
+# the registry may only reference these in-process evaluator ids).
+ET1_EVALUATOR_WHITELIST = frozenset(
+    {
+        "EVAL_PG_ROLE", "EVAL_TEST_DB_URL", "EVAL_TEMP_DB", "EVAL_ALEMBIC_HEAD",
+        "EVAL_REDIS", "EVAL_COLLECT_MANIFEST", "EVAL_PHASE_FAIL_STOP",
+        "EVAL_ROLE_RECHECK", "EVAL_SESSIONSTART_PROOF", "EVAL_GIT_REMOTE",
+        "EVAL_GIT_LINEAGE", "EVAL_EVIDENCE_PACKAGING", "EVAL_EOL",
+        "EVAL_VITE_SETTLE", "EVAL_EMAIL_DOMAIN",
+    }
+)
+ET1_TRAPS_RELPATH = f"{GOV_DIR}/inventory/execution-traps.json"
+ET1_PROFILES_RELPATH = f"{GOV_DIR}/inventory/authority-profiles.json"
+
+
+def _check_execution_traps(ctx: "GovernanceContext", root: str) -> None:
+    """HE2-ET1 structural mode: registry/profile/evaluator truth.
+
+    RED on: registry/profile unreadable, trap deleted (expected id set is
+    hardcoded), any P0/P1 trap disabled, duplicate exit codes, unknown
+    evaluator, evaluator without a reachable negative control, a P0/P1 trap
+    not referenced by any authority profile, or any authority profile
+    referencing an unknown trap.
+    """
+    registry, rerr = load_json(os.path.join(root, ET1_TRAPS_RELPATH))
+    if rerr or not isinstance(registry, dict):
+        ctx.emit("ET1-REGISTRY-ERROR", ET1_TRAPS_RELPATH, rerr or "must be an object")
+        return
+    profiles, perr = load_json(os.path.join(root, ET1_PROFILES_RELPATH))
+    if perr or not isinstance(profiles, dict):
+        ctx.emit("ET1-PROFILES-ERROR", ET1_PROFILES_RELPATH, perr or "must be an object")
+        profiles = {}
+
+    expected_trap_ids = {
+        "TRAP_PG_ROLE_SUPER", "TRAP_TEST_DB_URL_EMPTY", "TRAP_TEMP_DB_CAPABILITY",
+        "TRAP_ALEMBIC_MULTI_HEAD", "TRAP_REDIS_WRONG_DB",
+        "TRAP_COLLECT_NODE_SET_DRIFT", "TRAP_PHASE_CONTINUE_AFTER_FAIL",
+        "TRAP_JIT_ROLE_ESCALATION", "TRAP_SESSIONSTART_DRIFT",
+        "TRAP_NON_CANONICAL_REMOTE", "TRAP_LINEAGE_CONFUSION",
+        "TRAP_EVIDENCE_GITIGNORED", "TRAP_MIXED_EOF", "TRAP_VITE_NETWORKIDLE",
+        "TRAP_SPECIAL_USE_EMAIL_DOMAIN",
+    }
+    traps = registry.get("traps")
+    if not isinstance(traps, list):
+        ctx.emit("ET1-REGISTRY-ERROR", ET1_TRAPS_RELPATH, "traps must be an array")
+        return
+    seen_ids = set()
+    exit_codes = {}
+    by_id = {}
+    for trap in traps:
+        trap_id = trap.get("trap_id")
+        if trap_id in seen_ids:
+            ctx.emit("ET1-DUPLICATE-TRAP", ET1_TRAPS_RELPATH, f"duplicate trap id {trap_id}")
+            continue
+        seen_ids.add(trap_id)
+        by_id[trap_id] = trap
+        code = trap.get("stable_exit_code")
+        if code in exit_codes:
+            ctx.emit(
+                "ET1-EXIT-CODE-CONFLICT", ET1_TRAPS_RELPATH,
+                f"exit code {code} reused by {exit_codes[code]} and {trap_id}",
+            )
+        else:
+            exit_codes[code] = trap_id
+        if trap.get("evaluator_id") not in ET1_EVALUATOR_WHITELIST:
+            ctx.emit(
+                "ET1-UNKNOWN-EVALUATOR", ET1_TRAPS_RELPATH,
+                f"trap {trap_id} references evaluator {trap.get('evaluator_id')}",
+            )
+        elif not str(trap.get("negative_control_id") or "").startswith(("NC-", "NC_")):
+            ctx.emit(
+                "ET1-MISSING-NEGATIVE-CONTROL", ET1_TRAPS_RELPATH,
+                f"trap {trap_id} lacks a reachable negative control id",
+            )
+        if trap.get("risk") in ("P0", "P1") and trap.get("status") != "ACTIVE":
+            ctx.emit(
+                "ET1-P0P1-DISABLED", ET1_TRAPS_RELPATH,
+                f"trap {trap_id} ({trap.get('risk')}) is {trap.get('status')}",
+            )
+    for trap_id in sorted(expected_trap_ids - seen_ids):
+        ctx.emit("ET1-TRAP-DELETED", ET1_TRAPS_RELPATH, f"expected trap {trap_id} missing")
+
+    profile_trap_refs = set()
+    for profile in profiles.get("profiles", []) or []:
+        for ref in profile.get("required_traps", []) or []:
+            profile_trap_refs.add(ref)
+            if ref not in by_id:
+                ctx.emit(
+                    "ET1-PROFILE-UNKNOWN-TRAP", ET1_PROFILES_RELPATH,
+                    f"profile {profile.get('profile_id')} references unknown trap {ref}",
+                )
+    for trap_id, trap in sorted(by_id.items()):
+        if trap.get("risk") in ("P0", "P1") and trap_id not in profile_trap_refs:
+            ctx.emit(
+                "ET1-P0P1-UNREFERENCED", ET1_TRAPS_RELPATH,
+                f"{trap.get('risk')} trap {trap_id} is not referenced by any authority profile",
+            )
+
+
 def validate_workspace(root: str, today: _dt.date, args) -> dict:
     ctx = GovernanceContext()
     mode = getattr(args, "mode", "structural")
@@ -668,6 +774,8 @@ def validate_workspace(root: str, today: _dt.date, args) -> dict:
     governed_prefixes = config.get("governed_prefixes") or []
     _check_config_semantics(ctx, config)
 
+    _check_execution_traps(ctx, root)
+
     docs = {}
     doc_specs = [
         ("inventory", INVENTORY_RELPATH, INVENTORY_SCHEMA),
@@ -675,6 +783,10 @@ def validate_workspace(root: str, today: _dt.date, args) -> dict:
         ("registry", REGISTRY_RELPATH, REGISTRY_SCHEMA),
         ("waivers", WAIVERS_RELPATH, WAIVERS_SCHEMA),
         ("deltas", DELTAS_RELPATH, DELTAS_SCHEMA),
+        # HE2-ET1: execution-traps registry + authority profiles are
+        # schema-validated like every other governed document.
+        ("et1_traps", ET1_TRAPS_RELPATH, "execution-traps.schema.json"),
+        ("et1_profiles", ET1_PROFILES_RELPATH, "authority-profiles.schema.json"),
     ]
     for key, relpath, schema_file in doc_specs:
         schema = load_schema(schema_file)

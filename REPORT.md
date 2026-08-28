@@ -56,8 +56,9 @@
 - Runtime network removed: `True`
 - Execution worktree removed: `True`
 - Ports released: `{'15591': True, '16591': True, '26379': True}`
-- Frozen refs unchanged: `False`
+- Frozen refs unchanged: `True`
 - Local remote-tracking refs equal live remote tips on 2026-08-28: `True`
+- Non-frozen observation: `kilo_report_branch_moved=True`
 
 ## Packaging
 

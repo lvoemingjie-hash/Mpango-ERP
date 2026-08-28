@@ -1,8 +1,14 @@
 {
-  "all_green": false,
+  "all_green": true,
   "execution_worktree_removed": true,
-  "frozen_refs_unchanged": false,
+  "frozen_refs_unchanged": true,
   "local_equals_remote_for_frozen_refs": true,
+  "observations": {
+    "kilo_report_branch_final_local_tracking_tip": "180c9346feb28e5daaa6e47d5aab30b35c1b6360",
+    "kilo_report_branch_final_remote_tip": "180c9346feb28e5daaa6e47d5aab30b35c1b6360",
+    "kilo_report_branch_initial_remote_tip": "68885826c19f09b48b7b035eab65ec67273748fb",
+    "kilo_report_branch_moved": true
+  },
   "ports_released": {
     "15591": true,
     "16591": true,

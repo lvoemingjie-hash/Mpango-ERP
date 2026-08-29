@@ -1,7 +1,14 @@
 # REPORT — DC-12R1-MVP-L1-HE2-ET1-R2-R2-R1-V2
 ## Lubuntu OpenCode Independent Fresh-Runtime Authority E2E Final
 
-**VERDICT: `PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_V2_LUBUNTU_OPENCODE_INDEPENDENT_FRESH_RUNTIME_AUTHORITY_FINAL`**
+**ORIGINAL_RUNTIME_VERDICT=PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_V2_LUBUNTU_OPENCODE_INDEPENDENT_FRESH_RUNTIME_AUTHORITY_FINAL**
+
+**CURRENT_PUBLICATION_VERDICT=PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_V2_E1_R1_CANONICAL_PUBLICATION_VERDICT_METADATA_CLOSURE**
+
+The original runtime verdict above is retained unchanged and governs the
+runtime claims; the current publication verdict governs the canonical
+publication metadata only (E1-R1). Neither verdict is a product,
+merge, or deployment approval.
 
 **CANDIDATE:** `7fdb7c59ae23cf3891a99420bebd60cb8802be06`
 **KILO_FINAL:** `38ea191d62c40b00b2de97c5d967cfb6c0717159`
@@ -156,10 +163,21 @@ control launched it **0** times (`sentinel_calls == 0`). No exception.
    ceiling); release-validator exit-3 pre-existing debt acknowledged via
    KILO_FINAL without re-litigating.
 
-## 7. Claim ceiling compliance
+## 7. Claim ceiling compliance (E1-R1 push-state split)
 
-- No product full-suite PASS claimed; no merge; no deployment; nothing
-  pushed (refs verified unchanged at close).
+- No product full-suite PASS claimed; no merge; no deployment.
+- Push-state, precisely split by round:
+  - **V2 original runtime round**: did NOT modify and did NOT push the
+    candidate; the candidate branch `7fdb7c59` remained byte-identical
+    on origin before and after that round (refs verified unchanged at
+    its close).
+  - **E1 publication round**: pushed THIS evidence branch
+    `reports/dc12r1-mvp-l1-he2-et1-r2-r2-r1-v2-lubuntu-opencode-
+    independent-fresh-runtime-authority-final-2026-08-29` to origin
+    (commit `b9b99ba0`, parent == CANDIDATE); the evidence branch
+    carries only the 18 published publication files.
+  - **To date**: still NOT merged into any product branch and NOT
+    deployed anywhere.
 - CANDIDATE untouched; KILO_FINAL accepted as published.
 - This approval is limited to
   `HE2_ET1_AUTHORITY_RUNNER_RUNTIME_APPROVAL_ONLY`: the authority-runner
@@ -177,8 +195,12 @@ remote refs byte-identical to the round's opening verification.
 
 All preflight, E2E, AUTH ±, dual-process, launch-count, and negative-
 control requirements are met on an independent fresh runtime with zero
-candidate modification. The expected verdict is awarded:
+candidate modification.
 
-**`PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_V2_LUBUNTU_OPENCODE_INDEPENDENT_FRESH_RUNTIME_AUTHORITY_FINAL`**
+Verdict metadata closure (E1-R1):
 
-**STOP.** Even on PASS: no merge, no deploy, no further action.
+- **ORIGINAL_RUNTIME_VERDICT=PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_V2_LUBUNTU_OPENCODE_INDEPENDENT_FRESH_RUNTIME_AUTHORITY_FINAL** — retained unchanged from the original runtime round.
+- **CURRENT_PUBLICATION_VERDICT=PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_V2_E1_R1_CANONICAL_PUBLICATION_VERDICT_METADATA_CLOSURE** — this publication-metadata round; linear fast-forward on the publication branch (BASE `b9b99ba0`, parent preserved; no amend, no force-push); only REPORT.md, findings.csv, manifest_sha256.txt modified; all 15 evidence files byte-identical to BASE blobs.
+
+**STOP.** Even on PASS: no merge, no deploy, no further action; await
+CTO-controlled final merge rehearsal.

@@ -80,10 +80,10 @@ def et1_mut_negative_control_removed(head, _base):
 
 def et1_mut_p0p1_unreferenced(head, _base):
     doc = _profiles(head)
-    profile = doc["profiles"][0]
-    profile["required_traps"] = [
-        t for t in profile["required_traps"] if t != "TRAP_JIT_ROLE_ESCALATION"
-    ]
+    for profile in doc["profiles"]:
+        profile["required_traps"] = [
+            t for t in profile["required_traps"] if t != "TRAP_JIT_ROLE_ESCALATION"
+        ]
     _save_profiles(head, doc)
 
 
@@ -160,6 +160,7 @@ def et1_control_profile_extended(head, base):
                 "phases": ["PREFLIGHT"],
                 "runner": "harness-governance/validator/authority_runner.py",
                 "status": "CANDIDATE",
+                "expected_alembic_head": "037_payment_declarations_schema",
             }
         )
         _save_profiles(root, doc)

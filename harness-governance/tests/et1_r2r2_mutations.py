@@ -315,8 +315,14 @@ R2R2_MUTATIONS = [
     (
         "S225-child-digest-self-compare", PLUGIN_RELPATH,
         (
-            "    elif recomputed != runner_original:",
-            "    elif recomputed != recomputed:",
+            '    runner_original = env.get("ET1_RUNNER_REDIS_MODULE_SHA", "") or ""\n'
+            '    if not runner_original:\n'
+            '        problems.append("redis_module:digest_missing")\n'
+            '    elif recomputed != runner_original:',
+            '    runner_original = env.get("ET1_RUNNER_REDIS_MODULE_SHA", "") or ""\n'
+            '    if not runner_original:\n'
+            '        problems.append("redis_module:digest_missing")\n'
+            '    elif recomputed != recomputed:',
         ),
         "child_digest_self_compare",
     ),

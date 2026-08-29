@@ -314,7 +314,7 @@ class ChildOnlySitecustomizeTests(unittest.TestCase):
                 env = kwargs.get("env")
                 if env is not None and "pytest" in " ".join(map(str, cmd)):
                     injected = dict(env)
-                    injected["PYTHONPATH"] = hook_dir
+                    injected["PYTHONPATH"] = hook_dir + os.pathsep + env.get("PYTHONPATH", "")
                     kwargs = dict(kwargs, env=injected)
                 return real_run(cmd, **kwargs)
 
@@ -327,6 +327,18 @@ class ChildOnlySitecustomizeTests(unittest.TestCase):
                 r._to("PREFLIGHT")
                 r.bind_redis_module()
                 r._require_bound_redis_module()
+                # R3: the real collect flow binds the backend-env authority
+                # (legal env required); saved/restored around the run.
+                saved_env = {k: os.environ.get(k) for k in (
+                    "TEST_DATABASE_URL", "MPANGO_ENV",
+                    "MPANGO_TEMP_DB_ALLOWED_PORTS", "MPANGO_TEMP_DB_ALLOWED_HOSTS")}
+                os.environ["TEST_DATABASE_URL"] = "postgresql://i1_gate@127.0.0.1:15453/test_i1_gate"
+                os.environ["MPANGO_ENV"] = "testing"
+                os.environ["MPANGO_TEMP_DB_ALLOWED_PORTS"] = "15432,5432,15453"
+                os.environ["MPANGO_TEMP_DB_ALLOWED_HOSTS"] = ""
+                r.bind_backend_env_module()
+                r._require_bound_backend_env_module()
+                r._enforce_backend_env_authority()
                 case_dir = Path(tempfile.mkdtemp(prefix="et1r2r2r1-child-"))
                 trapped = None
                 try:
@@ -349,6 +361,11 @@ class ChildOnlySitecustomizeTests(unittest.TestCase):
                 self.assertIn("redis_module:preload_detected", ss.get("problems", []))
                 # the parent env never carried the injection
                 self.assertNotIn(hook_dir, os.environ.get("PYTHONPATH", ""))
+                for key, value in saved_env.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
             finally:
                 mod.subprocess.run = real_run
                 if saved_pythonpath is None:

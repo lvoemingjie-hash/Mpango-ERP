@@ -911,6 +911,28 @@ try:
 except ImportError:  # pragma: no cover - et1_r2r2_mutations ships with the gate
     R2R2_MUTATIONS_WIRED = []
 
+# HE2-ET1-R3: backend CWD / temp-DB authority mutations (same pattern).
+try:
+    import et1_r3_mutations as _r3_mut
+
+    R3_MUTATIONS_WIRED = [
+        (name, REPO_ROOT / target_relpath, patch, probe_name)
+        for name, target_relpath, patch, probe_name in _r3_mut.R3_MUTATIONS
+    ]
+except ImportError:  # pragma: no cover - et1_r3_mutations ships with the gate
+    R3_MUTATIONS_WIRED = []
+
+# HE2-ET1-R3-A1: profile-bound alembic successor mutations.
+try:
+    import et1_r3a1_mutations as _r3a1_mut
+
+    R3A1_MUTATIONS_WIRED = [
+        (name, REPO_ROOT / target_relpath, patch, probe_name)
+        for name, target_relpath, patch, probe_name in _r3a1_mut.R3A1_MUTATIONS
+    ]
+except ImportError:  # pragma: no cover - et1_r3a1_mutations ships with the gate
+    R3A1_MUTATIONS_WIRED = []
+
 
 def tree_digest():
     digest = hashlib.sha256()
@@ -933,12 +955,14 @@ def main() -> int:
 
     total_red = (len(RED_MUTATIONS) + len(MODE_PROOFS) + len(VALIDATOR_MUTATIONS)
                  + len(E2E_MUTATIONS_WIRED) + len(R2_MUTATIONS_WIRED)
-                 + len(R2R2_MUTATIONS_WIRED))
+                 + len(R2R2_MUTATIONS_WIRED) + len(R3_MUTATIONS_WIRED)
+                 + len(R3A1_MUTATIONS_WIRED))
     print(
         f"HE2-R1 RED mutation gate: {total_red} RED mutations "
         f"({len(RED_MUTATIONS)} tamper + {len(MODE_PROOFS)} mode proof + "
         f"{len(VALIDATOR_MUTATIONS)} validator-scope + {len(E2E_MUTATIONS_WIRED)} authority-e2e "
-        f"+ {len(R2_MUTATIONS_WIRED)} redis-authority + {len(R2R2_MUTATIONS_WIRED)} module-binding), "
+        f"+ {len(R2_MUTATIONS_WIRED)} redis-authority + {len(R2R2_MUTATIONS_WIRED)} module-binding "
+        f"+ {len(R3_MUTATIONS_WIRED)} backend-cwd-tempdb + {len(R3A1_MUTATIONS_WIRED)} alembic-authority), "
         f"{len(GREEN_CONTROLS)} GREEN controls"
     )
     print("-" * 78)
@@ -1006,6 +1030,32 @@ def main() -> int:
     for name, target_file, patch, probe_name in R2R2_MUTATIONS_WIRED:
         _run_probe_mutation(
             name, target_file, patch, (lambda pn=probe_name: _r2r2_mut.run_probe(pn)), failures
+        )
+
+    # HE2-ET1-R3 GREEN control + backend CWD/temp-DB authority mutations.
+    if R3_MUTATIONS_WIRED:
+        pristine_r3 = all(_r3_mut.run_probe(probe_name) for _, _, _, probe_name in R3_MUTATIONS_WIRED)
+        if pristine_r3:
+            print(f"  {'RT-C01-pristine-backend-env-authority-held':<40} GREEN as intended")
+        else:
+            failures.append("RT-C01: pristine candidate already fails an R3 probe")
+            print(f"  {'RT-C01-pristine-backend-env-authority-held':<40} UNEXPECTED WEAK (pristine)")
+    for name, target_file, patch, probe_name in R3_MUTATIONS_WIRED:
+        _run_probe_mutation(
+            name, target_file, patch, (lambda pn=probe_name: _r3_mut.run_probe(pn)), failures
+        )
+
+    # HE2-ET1-R3-A1 GREEN control + profile-bound alembic mutations.
+    if R3A1_MUTATIONS_WIRED:
+        pristine_a1 = all(_r3a1_mut.run_probe(probe_name) for _, _, _, probe_name in R3A1_MUTATIONS_WIRED)
+        if pristine_a1:
+            print(f"  {'RA-C01-pristine-alembic-authority-held':<40} GREEN as intended")
+        else:
+            failures.append("RA-C01: pristine candidate already fails an R3-A1 probe")
+            print(f"  {'RA-C01-pristine-alembic-authority-held':<40} UNEXPECTED WEAK (pristine)")
+    for name, target_file, patch, probe_name in R3A1_MUTATIONS_WIRED:
+        _run_probe_mutation(
+            name, target_file, patch, (lambda pn=probe_name: _r3a1_mut.run_probe(pn)), failures
         )
 
     for name, factory, *mode_args in MODE_PROOFS:

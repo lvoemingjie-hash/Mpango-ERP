@@ -102,6 +102,8 @@ def _honest_child(nonce, collected):
         "nonce": nonce,
         "sha_match": {"candidate": True, "profile": True, "manifest": True},
         "redis_module_sha": "M" * 64,
+        "tempdb_binding_sha": "T" * 64,
+        "alembic_actual_head": "037_payment_declarations_schema",
         "collected_node_ids": list(collected),
     }
 
@@ -153,7 +155,8 @@ def _authorize_seeded(mod, r):
 def probe_nonce_self_compare(mod, ctx):
     try:
         mod.verify_child_proof(_honest_child("A" * 32, ["N1"]), "B" * 32, ["N1"],
-                               redis_module_sha=E2E_MODULE_SHA)
+                               redis_module_sha=E2E_MODULE_SHA, tempdb_binding_sha="T" * 64,
+                               alembic_actual_head="037_payment_declarations_schema")
         return False  # tampered nonce accepted
     except mod.TrapFired as fired:
         return fired.evidence.get("reason") == "nonce_mismatch"
@@ -162,7 +165,8 @@ def probe_nonce_self_compare(mod, ctx):
 def probe_actual_equals_expected(mod, ctx):
     try:
         mod.verify_child_proof(_honest_child("A" * 32, ["N1", "N2"]), "A" * 32, ["N1", "N3"],
-                               redis_module_sha=E2E_MODULE_SHA)
+                               redis_module_sha=E2E_MODULE_SHA, tempdb_binding_sha="T" * 64,
+                               alembic_actual_head="037_payment_declarations_schema")
         return False  # drifted node set accepted
     except mod.TrapFired:
         return True
@@ -180,7 +184,7 @@ def probe_missing_command_allowed(mod, ctx):
 def probe_foreign_proof_accepted(mod, ctx):
     forged = dict(_honest_child("A" * 32, ["N1"]), schema="someone-else/1")
     try:
-        mod.verify_child_proof(forged, "A" * 32, ["N1"], redis_module_sha=E2E_MODULE_SHA)
+        mod.verify_child_proof(forged, "A" * 32, ["N1"], redis_module_sha=E2E_MODULE_SHA, tempdb_binding_sha="T" * 64)
         return False  # non-plugin proof accepted
     except mod.TrapFired as fired:
         return fired.evidence.get("reason") == "foreign_proof_origin"
@@ -202,7 +206,8 @@ def probe_sessionstart_gate_disabled(mod_plugin, ctx):
 def probe_duplicate_node_ids_accepted(mod, ctx):
     try:
         mod.verify_child_proof(_honest_child("A" * 32, ["N1", "N1"]), "A" * 32, ["N1"],
-                               redis_module_sha=E2E_MODULE_SHA)
+                               redis_module_sha=E2E_MODULE_SHA, tempdb_binding_sha="T" * 64,
+                               alembic_actual_head="037_payment_declarations_schema")
         return False
     except mod.TrapFired as fired:
         return fired.evidence.get("reason") == "duplicate_node_ids"
@@ -241,7 +246,7 @@ def probe_sentinel_launches_twice(mod, ctx):
     count = {"n": 0}
 
     def counting_run(cmd, **kwargs):
-        if set(kwargs) != {"shell"}:
+        if not set(kwargs) <= {"shell", "cwd"}:
             return real_run(cmd, **kwargs)  # git/other calls: passthrough
         count["n"] += 1
         return real_run(cmd, **kwargs)
@@ -391,9 +396,15 @@ E2E_MUTATIONS = [
     (
         "X10-sentinel-launches-more-than-once", RUNNER_RELPATH,
         (
-            "        result = subprocess.run(command, shell=False)",
-            "        result = subprocess.run(command, shell=False)\n"
-            "        subprocess.run(command, shell=False)",
+            "        result = subprocess.run(\n"
+            "            command, shell=False,\n"
+            "            cwd=str(self.authority_cwd) if self.authority_cwd else None,\n"
+            "        )",
+            "        result = subprocess.run(\n"
+            "            command, shell=False,\n"
+            "            cwd=str(self.authority_cwd) if self.authority_cwd else None,\n"
+            "        )\n"
+            "        subprocess.run(command, shell=False, cwd=str(self.authority_cwd))",
         ),
         "sentinel_launches_twice",
     ),

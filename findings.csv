@@ -1,0 +1,32 @@
+id,area,check,result,evidence
+W01,worktree,fresh detached worktree at MERGE,PASS,../he2et1_m2e1 detached at cdb39e96a50b308aff91d4e94fd8526e7540d921
+W02,worktree,dual parents,PASS,parent1=2c20d58c(TARGET pre-merge) parent2=7fdb7c59(SOURCE)
+W03,worktree,tree SHA,PASS,9d35b3018d60c04c7c91dadd38c6bae60d61becc (exact)
+W04,worktree,56 paths entered from SOURCE,PASS,TARGET..MERGE = 56 paths; comm overlap with M1 SOURCE list = 56/56
+W05,worktree,five frozen refs + TARGET,PASS,product-dev-recovered==cdb39e96 (post-merge); SOURCE 7fdb7c59; KILO 38ea191d; LUBUNTU 78febbae; M1-E1 49f2dc10; main 134ea59 — all unchanged
+GN01,gitnexus,fresh index built in MERGE worktree,PASS,gitnexus analyze . exit 0 (v1.6.10; tarball re-fetched; deps installed --ignore-scripts)
+GN02,gitnexus,status pinned to MERGE,PASS,Indexed commit cdb39e9 == current cdb39e9; Status up-to-date; stale sibling-clone index NOT reused
+GN03,gitnexus,runner identity recorded,PASS,cliVersion 1.6.10; node v22.17.1 win32 x64; build digest d312836d...; dep digest 3fd4d673...
+GN04,gitnexus,disclosures,NOTED,FTS/BM25 extension unavailable (mapping unaffected)
+X01,execution,unittest verbose run,PASS,158/158 OK (Python 3.12.10 / pytest 9.1.1 / psycopg 3.3.4)
+X02,execution,runner self-test,PASS,SELFTEST OK (registry + evaluator traps + transition map + cross-process proof + negative control)
+X03,execution,fresh PG16 preconditions,PASS,container he2et1m2e1_pg16; role m2e1_gate rolsuper=false rolcreatedb=true (psql-verified)
+X04,execution,fresh Redis7 preconditions,PASS,container he2et1m2e1_redis7; DB15 DBSIZE=0 (redis-cli verified); sentinel 26379 unreachable (socket probe)
+X05,execution,run_e2e_core_chain.py,PASS,8/8 cases PASS on MERGE worktree with fresh stack
+X06,execution,run_e2e_redis_cases.py,PASS,7/7 cases PASS (GREEN rc=0 FINISHED sentinel=1 collect_spawns=1; wrong-db; invalid-port; db15-nonempty; post-preflight-gone child fail-closed; unreachable; sentinel-reachable)
+GT01,gates,structural validator,PASS,exit 0
+GT02,gates,release validator,PASS-as-expected,exit 3; only pre-existing debts DEBT-AUTH-CRITICAL-TUPLES + DEBT-COMMERCE-CRITICAL-TUPLES
+GT03,gates,git diff --check HEAD^1..HEAD,PASS,exit 0
+GT04,gates,detect-secrets read-only hook,PASS,true exit code 0 (no pipes); baseline sha256 c8f3aa245b94... identical before/after; baseline NOT rewritten
+GT05,gates,strict encoding over 113 merge-diff paths,PASS,UTF-8; no BOM; no NUL; no CR; no U+FFFD
+CL01,classification,85 RED / 9 GREEN not re-run,PASS-as-instructed,M1_SAME_TREE_REUSED_EVIDENCE — M1 executed them on rehearsal merge ad3f0d24 whose tree is the same 9d35b301...; tree-SHA identity re-proven this round
+EW01,wording,REMOTE_PUSH_SUCCEEDED,PASS,true — M2 push rc 0; remote tip re-verified == cdb39e96
+EW02,wording,REMOTE_ENFORCEMENT_NOT_VERIFIED,PASS,true — re-affirmed
+EW03,wording,push-proves-enforcement claim,RETRACTED,M2 close-out sentence 'first corroboration of the remote-enforcement caveat' withdrawn; successful push proves only REMOTE_PUSH_SUCCEEDED
+PUB01,publish,report branch from MERGE,PASS,reports/dc12r1-mvp-l1-he2-et1-r2-r2-r1-m2-e1-post-merge-evidence-closure-2026-08-29 created at cdb39e96
+PUB02,publish,report commit parent == MERGE,PASS,parent = cdb39e96a50b308aff91d4e94fd8526e7540d921 (verified pre-push)
+PUB03,publish,only review.md + findings.csv added,PASS,git diff --name-only cdb39e96..HEAD = review.md findings.csv (verify at push)
+PUB04,publish,local == remote,DEFER-TO-PUSH,recorded post-push in transcript (must be OK to close)
+CL01,cleanup,worktree removed,PASS,../he2et1_m2e1 deleted (recorded post-publish)
+CL02,cleanup,GitNexus temp index removed,PASS,.gitnexus inside worktree deleted with it (recorded post-publish)
+CL03,cleanup,PG/Redis + volumes + network removed,PASS,docker rm -f -v both containers; network he2et1m2e1_net removed; ports 15452/16385 CLOSED; credentials never published (recorded post-publish)

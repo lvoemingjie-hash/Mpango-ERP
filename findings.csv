@@ -40,3 +40,18 @@ LIM01,limits,remote enforcement,NOT_VERIFIED,REMOTE_ENFORCEMENT_NOT_VERIFIED; no
 LIM02,limits,rehearsal merge push,NOT-PUSHED,ad3f0d24 exists only as a deleted local object; no remote ref ever created
 LIM03,limits,merge approval,NOT-CLAIMED,LOCAL_MERGE_READINESS_REHEARSAL_ONLY; no merge approval claimed or implied
 LIM04,limits,supersedes M0,NOTED,M0 report 58b8e2ac already SUPERSEDED_BY_HE2_ET1_R2_REDIS_AUTHORITY_DEFECT; M1 rehearses the full chain through R2-R2-R1
+E1R01,e1-retraction,"Kilo remains un-started" claim,RETRACTED,independent Kilo final review 38ea191d had completed on this SOURCE at M1 report time
+E1R02,e1-retraction,candidate ceiling still governs without later review,RETRACTED,Kilo and Lubuntu reviews exist and postdate the candidate; hierarchy corrected in review.md section 8
+E1V01,e1-evidence,KILO_FINAL verified live,PASS,38ea191d62c40b00b2de97c5d967cfb6c0717159 == refs/heads/reports/dc12r1-mvp-l1-he2-et1-r2-r2-r1-v1-kilo-final-cumulative-review-2026-08-29
+E1V02,e1-evidence,LUBUNTU_FINAL verified live,PASS,78febbae740e0a51575961357629cd5201f516ee == refs/heads/reports/dc12r1-mvp-l1-he2-et1-r2-r2-r1-v2-lubuntu-opencode-independent-fresh-runtime-authority-final-2026-08-29
+E1V03,e1-evidence,SOURCE ancestor of KILO_FINAL,PASS,git merge-base --is-ancestor 7fdb7c59 38ea191d rc 0 -> true
+E1V04,e1-evidence,SOURCE ancestor of LUBUNTU_FINAL,PASS,git merge-base --is-ancestor 7fdb7c59 78febbae rc 0 -> true
+E1V05,e1-evidence,four frozen refs exact vs live remote,PASS,TARGET/SOURCE/KILO/LUBUNTU all match git ls-remote after fetch --prune; no drift
+E1H01,e1-hierarchy,Kilo evidence class,NOTED,Kilo = independent source/test/mutation authenticity approval
+E1H02,e1-hierarchy,Lubuntu evidence class,NOTED,Lubuntu = independent fresh PG16+Redis7 runtime authority PASS
+E1H03,e1-hierarchy,M1 evidence class,NOTED,M1 = Windows local merge-tree rehearsal evidence only
+E1D01,e1-disclosure,GITNEXUS_DETECT_CHANGES_PRECOMMIT,DISCLOSED-NOT-EXECUTED,actual command was git merge --no-ff --no-edit; no pre-commit detect_changes gate ran; no retroactive claim
+E1M201,e1-m2-carry,M2 merge command requirement,NOTED,formal merge must use git merge --no-ff --no-commit
+E1M202,e1-m2-carry,M2 pre-commit detect_changes requirement,NOTED,GitNexus detect_changes MUST run before commit; tool unavailable => formal merge STOPs immediately; no substitute; no continue-then-push
+E1V901,e1-verdict,ORIGINAL_M1_VERDICT preserved,PASS,PASS_FOR_CTO_..._M1_LOCAL_MERGE_READINESS_REHEARSAL kept verbatim as ORIGINAL_M1_VERDICT
+E1V902,e1-verdict,E1 verdict,PASS,PASS_FOR_CTO_..._M1_E1_EVIDENCE_TRUTH_AND_PRECOMMIT_GATE_DISCLOSURE_CLOSURE; report-metadata correction only; formal merge still NOT authorized

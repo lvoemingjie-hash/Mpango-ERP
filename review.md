@@ -86,9 +86,63 @@ No product full-suite; no Playwright; no deployment.
 
 ## 7. Verdict
 
+ORIGINAL_M1_VERDICT (unchanged by the E1 correction):
+
 **PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_M1_LOCAL_MERGE_READINESS_REHEARSAL**
 
-STOP — awaiting CTO adjudication. Kilo remains un-started per the chain's
-standing instruction; the candidate's own verdict ceiling
-(CANDIDATE_READY_FOR_KILO_REVIEW_ONLY from R2-R2-R1) still governs the
-SOURCE side.
+STOP — awaiting CTO adjudication.
+
+> **E1 RETRACTIONS (M1-E1, 2026-08-29).** Two statements originally
+> closing this section are RETRACTED as evidence-truth errors:
+> "Kilo remains un-started" and "the candidate's own verdict ceiling
+> (CANDIDATE_READY_FOR_KILO_REVIEW_ONLY from R2-R2-R1) still governs the
+> SOURCE side." At report time the independent Kilo final review and the
+> Lubuntu independent runtime authority run had BOTH completed on this
+> SOURCE (see §8); this report omitted them. The M1 rehearsal evidence
+> itself (merge tree, gates, cleanup) is unaffected.
+
+## 8. E1 correction — the two independent evidence legs (verified live)
+
+KILO_FINAL=38ea191d62c40b00b2de97c5d967cfb6c0717159
+(refs/heads/reports/dc12r1-mvp-l1-he2-et1-r2-r2-r1-v1-kilo-final-cumulative-review-2026-08-29)
+
+LUBUNTU_FINAL=78febbae740e0a51575961357629cd5201f516ee
+(refs/heads/reports/dc12r1-mvp-l1-he2-et1-r2-r2-r1-v2-lubuntu-opencode-independent-fresh-runtime-authority-final-2026-08-29)
+
+- `git merge-base --is-ancestor SOURCE KILO_FINAL` → rc 0:
+  SOURCE is ancestor of KILO_FINAL=**true**
+- `git merge-base --is-ancestor SOURCE LUBUNTU_FINAL` → rc 0:
+  SOURCE is ancestor of LUBUNTU_FINAL=**true**
+- All four frozen refs verified EXACT against the live remote
+  (`git ls-remote origin` after `git fetch --all --prune`):
+  TARGET `2c20d58c…` = product-dev-recovered; SOURCE `7fdb7c59…` =
+  the R2-R2-R1 branch; KILO_FINAL `38ea191d…` and LUBUNTU_FINAL
+  `78febbae…` as above. No drift.
+
+Evidence hierarchy for the merge decision (explicit):
+
+- **Kilo (38ea191d)** = independent source/test/mutation AUTHENTICITY
+  approval of the candidate chain.
+- **Lubuntu (78febbae)** = independent FRESH PG16+Redis7 runtime
+  authority PASS (a non-Windows independent environment).
+- **M1 (this report, ad3f0d24 rehearsal object)** = Windows LOCAL
+  merge-tree rehearsal evidence only.
+
+## 9. E1 disclosure — pre-commit gate gap (P2) and the M2 carry-forward
+
+- GITNEXUS_DETECT_CHANGES_PRECOMMIT=**NOT_EXECUTED**. The M1 rehearsal
+  ran `git merge --no-ff --no-edit` directly; no GitNexus detect_changes
+  gate ran before the merge commit was created, and this was not
+  disclosed in the original report. No retroactive claim of completion
+  is made or implied.
+- Mandatory for M2 (the formal merge, whenever authorized): the merge
+  MUST use `git merge --no-ff --no-commit`, and GitNexus detect_changes
+  MUST be executed BEFORE the commit is created. If the tool is
+  unavailable (e.g., the known index/CLI storage-version skew), the
+  formal merge STOPs immediately — no substitute gate and no continue-
+  then-push.
+
+E1 verdict: PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_M1_E1_EVIDENCE_
+TRUTH_AND_PRECOMMIT_GATE_DISCLOSURE_CLOSURE (report-metadata correction
+only; no merge, test, mutation, PG, Redis, or GitNexus re-run; the formal
+merge remains NOT authorized).

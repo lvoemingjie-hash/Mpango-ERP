@@ -1,0 +1,12 @@
+=== self-test ===
+SELFTEST: OK (registry + evaluator traps + transition map + cross-process proof + negative control)
+SELFTEST_RC=0
+=== structural validator (expect exit 0) ===
+HE2-R1 harness governance: structural=PASS release=BLOCKED (mode structural)
+nodes=13 pass=0 blocked=1 not_run=12 open_debt=3
+STRUCTURAL_RC=0
+=== release validator (expect exit 3) ===
+RELEASE_BLOCKED: open P0/P1 release-blocking debt 'DEBT-AUTH-CRITICAL-TUPLES', 'DEBT-COMMERCE-CRITICAL-TUPLES'
+HE2-R1 harness governance: structural=PASS release=BLOCKED (mode release)
+nodes=13 pass=0 blocked=1 not_run=12 open_debt=3
+RELEASE_RC=3

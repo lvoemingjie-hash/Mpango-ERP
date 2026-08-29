@@ -1,0 +1,23 @@
+finding_id,phase,category,scope,result,detail
+F01,phase1,proof-gate,refs,PASS,candidate+kilo+base match remote exactly; candidate^==BASE
+F02,phase1,scope,delta,PASS,exactly 17 harness-governance files; all other paths zero-change
+F03,phase2,runtime,pg-role,PASS,rolsuper=false rolcreatedb=true live-verified
+F04,phase2,runtime,db-name,PASS,safe name matching candidate pattern
+F05,phase2,runtime,tempdb-ports,PASS,MPANGO_TEMP_DB_ALLOWED_PORTS contains task PG port; runner+child enforced
+F06,phase2,runtime,cwd,PASS,authority CWD = canonical backend; digest-bound; child uses entry shim
+F07,phase2,runtime,redis,PASS,DB15 DBSIZE=0 before/after; sentinel 26379 unreachable throughout
+F08,phase3,alembic,head,PASS,single head 037_payment_declarations_schema profile-bound
+F09,phase3,green,core-chain,PASS,8/8 cases; case1 sentinel=1; case8 profile-drift VOID sentinel=0
+F10,phase3,green,redis-cases,PASS,7/7 cases; RL1 sentinel=1; others VOID sentinel=0
+F11,phase3,green,authority-command,PASS,launch count=1; FINISHED exit 0; 186/186 harness truth suite
+F12,phase3,binding,child-runner,PASS,nonce/tempdb/alembic/SHA bindings all true
+F13,phase4,negctl,items-1-7,PASS,sibling CWD / symlink CWD / env missing / env wrong / allowlist missing / port not allowed / unsafe db name — all rc=12 VOID sentinel=0
+F14,phase4,negctl,items-8-10,PASS,CWD drift live rc=18 AUTHORIZED; URL drift + allowlist drift counterexamples held
+F15,phase4,negctl,items-11-14,PASS,SKU-on-037 rc=13; wrong head rc=13; wrong parent rc=13; multi-head rc=13 — all VOID sentinel=0
+F16,phase4,negctl,items-15-17,PASS,prefix-similar/whitespace byte-equality held; child benv+alembic recheck counterexamples held
+F17,phase5,038-boundary,sku-profile,PASS,schema+byte-binding+fixtures verified; VOID on 037 tree; no real 038 product PASS claimed
+F18,phase6,auxiliary,selftest-validators,PASS,selftest rc=0; structural exit 0; release exit 3 with exactly two pre-existing debts
+F19,phase6,auxiliary,hygiene,PASS,diff-check clean; detect-secrets 12 benign provenance SHAs; UTF-8/BOM/NUL/CR clean 17/17
+F20,phase6,integrity,tree,PASS,tree 4c55e375 unchanged before/after; worktree clean
+F21,cleanup,stack,destroy,PASS,containers+volumes+network removed; ports freed; creds destroyed; worktree deregistered
+F22,verdict,round,final,PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R3_A1_V2_LUBUNTU_INDEPENDENT_FRESH_RUNTIME_AUTHORITY_PROFILE_FINAL,scope GOVERNANCE_AUTHORITY_FRESH_RUNTIME_PASS_ONLY

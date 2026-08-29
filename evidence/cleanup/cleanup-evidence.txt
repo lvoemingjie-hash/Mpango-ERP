@@ -1,0 +1,16 @@
+== post-cleanup containers/volumes/networks (expect 0) ==
+0
+0
+0
+== task ports free ==
+0
+== sentinel 26379 ==
+unreachable-ok
+== creds/helper/venv/neg-tree destroyed ==
+0
+== worktree deregistration ==
+worktree removed and deregistered from git worktree list (count=0)
+== frozen refs at close (12-char) ==
+cdb39e96a50b BASE product-dev-recovered
+483b8ab01dae CANDIDATE remote tip
+db87f0d3eb55 KILO_REVIEW tip

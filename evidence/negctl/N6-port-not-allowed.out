@@ -1,0 +1,1 @@
+RUN_VERDICT=VOID_ENVIRONMENT_PRECHECK trap_id=TRAP_TEMP_DB_CAPABILITY phase=PREFLIGHT presence=True evidence={"backend_env": "db_port_not_allowed"}

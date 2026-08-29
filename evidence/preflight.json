@@ -1,0 +1,35 @@
+{
+  "task_id": "DC-12R1-MVP-L1-HE2-ET1-R3-A1-V2",
+  "candidate": "483b8ab01dae41d52404ebfe197e205a16d56e85",
+  "tree": "4c55e375f4b831635b8cfc913b342a5f3956f633",
+  "kilo_review_tip_prefix": "db87f0d3",
+  "verification_tier": "V3_INDEPENDENT_FRESH_RUNTIME_AUTHORITY",
+  "claim_ceiling": "GOVERNANCE_AUTHORITY_FRESH_RUNTIME_PASS_ONLY",
+  "preflight": "PASS (state=PREFLIGHT, rc=0)",
+  "runner_profile": "AUTHORITY_H2C_BACKEND",
+  "expected_alembic_head_bound": "037_payment_declarations_schema",
+  "presence_proven_by_name_only": {
+    "TEST_DATABASE_URL_set": true,
+    "MPANGO_ALLOW_TEMP_DB_CREATE": "1",
+    "PW1R3_TEST_REDIS_URL_set": true,
+    "MPANGO_ENV": "test",
+    "MPANGO_TEMP_DB_ALLOWED_PORTS_contains_task_pg_port": true,
+    "J1H2C_RETAILER_EMAIL_domain_non_special_use": true
+  },
+  "pg": {
+    "major": 16,
+    "test_role_rolsuper": false,
+    "test_role_rolcreatedb": true,
+    "db_name_class": "safe (matches candidate ^(?:test|pytest|ci)[_-][a-z0-9_-]+$)",
+    "unique_alembic_head": "037_payment_declarations_schema"
+  },
+  "redis": {"db15_dbsize_before": 0, "db15_dbsize_after": 0, "sentinel_26379": "unreachable throughout"},
+  "cwd_contract": {
+    "runner_process_cwd": "worktree root (relative GOV_DIR resolution)",
+    "authority_cwd": "canonical <worktree>/backend (derived, name==backend, non-symlink)",
+    "collect_child_cwd": "harness-governance via entry shim + absolute PYTHONPATH",
+    "binding": "tempdb_binding_sha covers env/db-name/port/host/allowlists/authority_cwd"
+  },
+  "child_sessionstart_rechecks": ["role", "url presence", "capability flag", "nonce", "candidate/profile/manifest SHA", "tempdb digest", "alembic expected/actual/parent"],
+  "credentials": "task-private 0600 file in /tmp only; destroyed at cleanup; never in worktree or evidence"
+}

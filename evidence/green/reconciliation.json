@@ -1,0 +1,25 @@
+{
+  "core_chain": {"expected": 8, "pass": 8, "failed": 0},
+  "redis_cases": {"expected": 7, "pass": 7, "failed": 0},
+  "authority_command": {
+    "profile": "AUTHORITY_H2C_BACKEND",
+    "launch_count": 1,
+    "sentinel_calls": 1,
+    "collect_child_spawns": 1,
+    "state": "FINISHED",
+    "exit_code": 0,
+    "command_class": "harness-truth-suite-pytest",
+    "junit_tests": 186,
+    "junit_failures": 0,
+    "junit_errors": 0,
+    "nonce_match": true,
+    "tempdb_match": true,
+    "alembic_match": true,
+    "child_sha_match": {"candidate": true, "profile": true, "manifest": true}
+  },
+  "negative_controls": {
+    "live_cli": {"count": 13, "void_correct": 13, "sentinel_nonzero": 0},
+    "fixture_counterexamples": {"count": 7, "held": 7},
+    "required_items_covered": 17
+  }
+}

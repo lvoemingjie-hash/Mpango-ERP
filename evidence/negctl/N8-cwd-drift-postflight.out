@@ -1,0 +1,1 @@
+RUN_VERDICT=VOID_ENVIRONMENT_PRECHECK trap_id=TRAP_SESSIONSTART_DRIFT phase=AUTHORIZED presence=True evidence={"backend_env": "drift_at_authorize"}

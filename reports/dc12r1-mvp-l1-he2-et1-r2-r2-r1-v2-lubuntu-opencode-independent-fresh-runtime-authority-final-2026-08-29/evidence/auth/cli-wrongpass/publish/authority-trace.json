@@ -1,0 +1,7 @@
+{
+  "state_trace": [
+    "INIT->PREFLIGHT",
+    "PREFLIGHT->VOID"
+  ],
+  "transitions_enforced": "ALLOWED_TRANSITIONS"
+}

@@ -1,0 +1,21 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ivy/.cache/uv/builds-v0/.tmpvwTrl7/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ivy/Desktop/dc12r1v2-he2et1-final-authority-worktree
+collecting ... collected 13 items
+
+harness-governance/tests/test_authority_runner_r2r2.py::PreloadInjectionTests::test_a_preloaded_fake_cannot_accept_unreachable_redis PASSED [  7%]
+harness-governance/tests/test_authority_runner_r2r2.py::PreloadInjectionTests::test_a_preloaded_foreign_module_is_tamper_evidence PASSED [ 15%]
+harness-governance/tests/test_authority_runner_r2r2.py::PreloadInjectionTests::test_e_wrong_module_file_is_origin_untrusted PASSED [ 23%]
+harness-governance/tests/test_authority_runner_r2r2.py::PreloadInjectionTests::test_f_missing_spec_and_loader_is_origin_untrusted PASSED [ 30%]
+harness-governance/tests/test_authority_runner_r2r2.py::ByteBindingTests::test_c_child_binding_green_when_bytes_unchanged PASSED [ 38%]
+harness-governance/tests/test_authority_runner_r2r2.py::ByteBindingTests::test_c_drift_before_child_is_flagged_by_child_binding PASSED [ 46%]
+harness-governance/tests/test_authority_runner_r2r2.py::ByteBindingTests::test_d_drift_before_launch_blocks_the_command PASSED [ 53%]
+harness-governance/tests/test_authority_runner_r2r2.py::ByteBindingTests::test_g_forged_child_digest_is_rejected PASSED [ 61%]
+harness-governance/tests/test_authority_runner_r2r2.py::RunnerPreflightSitecustomizeTests::test_b_runner_preflight_sitecustomize_preload_voids PASSED [ 69%]
+harness-governance/tests/test_authority_runner_r2r2.py::ChildOnlySitecustomizeTests::test_child_only_sitecustomize_preload_fails_child_closed PASSED [ 76%]
+harness-governance/tests/test_authority_runner_r2r2.py::CategorySetIntegrityTests::test_every_emitted_label_is_in_the_set PASSED [ 84%]
+harness-governance/tests/test_authority_runner_r2r2.py::CategorySetIntegrityTests::test_exact_category_set PASSED [ 92%]
+harness-governance/tests/test_authority_runner_r2r2.py::ContractWordingTests::test_retracted_claim_no_longer_in_sources PASSED [100%]
+
+============================== 13 passed in 1.04s ==============================

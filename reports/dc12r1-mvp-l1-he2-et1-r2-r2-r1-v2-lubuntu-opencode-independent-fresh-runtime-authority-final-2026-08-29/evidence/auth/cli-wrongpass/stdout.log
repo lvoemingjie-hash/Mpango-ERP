@@ -1,0 +1,1 @@
+RUN_VERDICT=VOID_ENVIRONMENT_PRECHECK trap_id=TRAP_REDIS_WRONG_DB phase=PREFLIGHT presence=True evidence={"redis": "auth_failed"}

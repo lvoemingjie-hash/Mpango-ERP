@@ -1,0 +1,27 @@
+{
+  "child_sha_match": {},
+  "collect_child_spawns": 0,
+  "collected_node_count": 0,
+  "command_exit_code": null,
+  "expected_node_count": 9,
+  "lineage": {
+    "candidate_sha_chars": 40,
+    "manifest_sha_chars": 0,
+    "nonce_chars": 0,
+    "parent_sha_chars": 40,
+    "profile_sha_chars": 0
+  },
+  "nonce_match": false,
+  "presence": {
+    "MPANGO_ALLOW_TEMP_DB_CREATE": true,
+    "PW1R3_TEST_REDIS_URL_set": true,
+    "TEST_DATABASE_URL_set": true
+  },
+  "redis_module_bound": true,
+  "redis_module_match": false,
+  "redis_module_sha_chars": 64,
+  "runner_version": "2.0.0",
+  "schema": "harness-governance/authority-runner/2",
+  "sentinel_calls": 0,
+  "state": "PREFLIGHT"
+}

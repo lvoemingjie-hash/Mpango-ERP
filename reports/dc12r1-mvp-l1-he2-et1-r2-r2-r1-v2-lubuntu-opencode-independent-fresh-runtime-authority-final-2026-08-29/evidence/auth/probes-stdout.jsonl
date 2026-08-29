@@ -1,0 +1,11 @@
+{"probe": "requirepass_positive_correct_password", "outcome": "ok", "detail": {"redis": "ok", "ping_pong": true, "selected_db15": true, "dbsize_zero": true, "auth_used": true, "acl_username_used": false}}
+{"probe": "requirepass_negative_wrong_password", "outcome": "fail_closed", "trap_id": "TRAP_REDIS_WRONG_DB", "evidence": {"redis": "auth_failed"}}
+{"probe": "acl_positive_username_password", "outcome": "fail_closed", "trap_id": "TRAP_REDIS_WRONG_DB", "evidence": {"redis": "auth_failed"}}
+{"probe": "acl_negative_username_without_password", "outcome": "fail_closed", "trap_id": "TRAP_REDIS_WRONG_DB", "evidence": {"redis": "auth_misconfigured"}}
+{"probe": "plain_positive_no_auth_container", "outcome": "ok", "detail": {"redis": "ok", "ping_pong": true, "selected_db15": true, "dbsize_zero": true, "auth_used": false, "acl_username_used": false}}
+{"probe": "malformed_url_scheme_missing", "outcome": "fail_closed", "trap_id": "TRAP_REDIS_WRONG_DB", "evidence": {"redis": "url_malformed"}}
+{"probe": "malformed_url_bracket_ipv6", "outcome": "fail_closed", "trap_id": "TRAP_REDIS_WRONG_DB", "evidence": {"redis": "url_malformed"}}
+{"probe": "malformed_url_double_port", "outcome": "fail_closed", "trap_id": "TRAP_REDIS_WRONG_DB", "evidence": {"redis": "url_malformed"}}
+{"probe": "malformed_url_db_not_integer", "outcome": "fail_closed", "trap_id": "TRAP_REDIS_WRONG_DB", "evidence": {"redis": "wrong_db"}}
+{"probe": "rediss_tls_rejected", "outcome": "fail_closed", "trap_id": "TRAP_REDIS_WRONG_DB", "evidence": {"redis": "tls_unsupported_fail_closed"}}
+{"probe": "sentinel_26379_unreachable_gate", "outcome": "ok"}

@@ -1,0 +1,10 @@
+PASS  RL1-green-fresh-db15           rc=0 state=FINISHED sentinel=1
+PASS  RL2-red-wrong-db               rc=14 state=VOID sentinel=0
+PASS  RL7-red-invalid-port           rc=14 state=VOID sentinel=0
+FAIL  RL4-red-db15-nonempty          rc=0 state=FINISHED sentinel=1 seed_rc=0
+PASS  RL5-red-redis-gone-after-preflight trap=TRAP_COLLECT_NODE_SET_DRIFT child_fail_closed=True sentinel=0 redis_was_down=True
+PASS  RL3-red-unreachable            rc=14 state=VOID sentinel=0 redis_was_down=True
+PASS  RL6-red-sentinel-reachable     rc=14 state=VOID sentinel=0
+------------------------------------------------------------------------
+R2 LIVE REDIS E2E: 6/7 cases PASS
+FAILED: RL4-red-db15-nonempty

@@ -1,0 +1,27 @@
+== pre-cleanup task containers ==
+dc12r1v2f-redis7-plain Up 4 minutes
+dc12r1v2f-redis7 Up 6 minutes
+dc12r1v2f-pg16 Up 8 minutes
+dc12r1v2f-pg16
+dc12r1v2f-redis7
+dc12r1v2f-redis7-plain
+dc12r1v2f-net
+== post-cleanup containers (expect none) ==
+0
+== network (expect empty) ==
+0
+== worktree dirs (expect none) ==
+1
+== creds file (expect none) ==
+1
+== task ports free ==
+0
+== sentinel 26379 ==
+unreachable-ok
+== worktree registrations ==
+fatal: Unable to read current working directory: No such file or directory
+== final worktree deregistration (from main checkout) ==
+0
+== remote refs at close ==
+38ea191d62c40b00b2de97c5d967cfb6c0717159	refs/heads/reports/dc12r1-mvp-l1-he2-et1-r2-r2-r1-v1-kilo-final-cumulative-review-2026-08-29
+7fdb7c59ae23cf3891a99420bebd60cb8802be06	refs/heads/zcode/dc12r1-mvp-l1-he2-et1-r2-r2-r1-baseline-child-proof-truth-2026-08-29

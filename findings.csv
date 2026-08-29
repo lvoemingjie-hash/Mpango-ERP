@@ -1,0 +1,38 @@
+id,area,check,result,evidence
+PG01,proof-gate,TARGET == live remote,PASS,cdb39e96a50b308aff91d4e94fd8526e7540d921 == origin/product-dev-recovered
+PG02,proof-gate,SOURCE == live remote,PASS,483b8ab01dae41d52404ebfe197e205a16d56e85 == origin/zcode/…r3-backend-cwd-tempdb-authority-preflight-closure-2026-08-29
+PG03,proof-gate,KILO_FINAL == live remote,PASS,db87f0d3eb55d4ff60b82b22f392db457a66a780 prefix match + exact tip
+PG04,proof-gate,LUBUNTU_FINAL == live remote,PASS,6fb1e31e8e92a5d365270ceb72b4982dd7f4c1ca prefix match + exact tip
+PG05,proof-gate,SOURCE^ == TARGET,PASS,parent of 483b8ab0 is cdb39e96
+PG06,proof-gate,SOURCE ancestor of KILO_FINAL,PASS,is-ancestor rc 0
+PG07,proof-gate,SOURCE ancestor of LUBUNTU_FINAL,PASS,is-ancestor rc 0
+PG08,proof-gate,TARGET..SOURCE 17 files,PASS,all under harness-governance/
+PG09,proof-gate,0 product/deploy paths,PASS,grep -vE harness-governance = 0 paths
+MR01,merge,isolated worktree from exact TARGET,PASS,../he2et1_r3a1_m1 at cdb39e96 on integration branch
+MR02,merge,git merge --no-ff --no-commit SOURCE,PASS,exit 0; zero conflicts; zero manual edits
+MR03,merge,MERGE_HEAD == SOURCE,PASS,MERGE_HEAD = 483b8ab0
+MR04,merge,staged tree == SOURCE tree,PASS,4c55e375f4b831635b8cfc913b342a5f3956f633 == both
+MR05,merge,staged paths == TARGET..SOURCE,PASS,17 paths set-equal
+GT01,gates,GitNexus analyze,PASS,exit 0; 36723 nodes / 65079 edges; indexed cdb39e9
+GT02,gates,GitNexus status,PASS,Indexed == Current (cdb39e9)
+GT03,gates,GitNexus detect-changes --scope staged,PASS,true exit 0; 17 files / 188 symbols / 11 processes / risk high
+GT04,gates,governance unittests,PASS,186/186 OK (Python 3.12.10 / pytest 9.1.1 / psycopg 3.3.4)
+GT05,gates,runner self-test,PASS,SELFTEST OK
+GT06,gates,structural validator,PASS,exit 0
+GT07,gates,release validator,PASS-as-expected,exit 3; ONLY pre-existing debts DEBT-AUTH-CRITICAL-TUPLES + DEBT-COMMERCE-CRITICAL-TUPLES
+GT08,gates,git diff --check,PASS,exit 0
+GT09,gates,detect-secrets read-only hook,PASS,true exit 0; baseline SHA-256 c8f3aa245b94... identical before/after
+GT10,gates,strict encoding 17 staged paths,PASS,UTF-8; no BOM; no NUL; LF only
+GT11,gates,fresh PG/Redis E2E + 102/9 mutations,NOT-RUN,instructions: reference Kilo + Lubuntu accepted evidence
+GT12,gates,evidence sources,NOTED,Kilo db87f0d3 = independent authenticity approval; Lubuntu 6fb1e31e = independent fresh PG16+Redis7 runtime authority PASS
+CL01,cleanup,worktree removed,PASS,../he2et1_r3a1_m1 deleted
+CL02,cleanup,integration branch deleted,PASS,integration/he2et1-r3a1-m1-governance-merge-2026-08-30 deleted
+PP01,push-race,TARGET unchanged pre-push,PASS,cdb39e96 still origin/product-dev-recovered tip
+PP02,push-race,SOURCE/KILO/LUBUNTU unchanged pre-push,PASS,all three tips verified identical
+PP03,push-race,normal push (no force),PASS,git push origin d9dc2e41:refs/heads/product-dev-recovered rc 0
+PP04,push-race,post-push remote tip,PASS,origin/product-dev-recovered == d9dc2e41
+PP05,push-race,post-push ancestry,PASS,TARGET and SOURCE both ancestors of d9dc2e41
+PP06,push-race,post-push refs no drift,PASS,SOURCE/KILO/LUBUNTU/main unchanged after push
+LIM01,limits,remote enforcement,NOT_VERIFIED,REMOTE_ENFORCEMENT_NOT_VERIFIED
+LIM02,limits,merge approval scope,NOTED,CONTROLLED_GOVERNANCE_MERGE_ONLY; no SKU resumption; no deploy
+LIM03,limits,H2-C/PRICING/SKU status,FROZEN,H2-C PRICING SKU and deployment continue frozen per M2-E1

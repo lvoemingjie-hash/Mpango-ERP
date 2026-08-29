@@ -1,0 +1,42 @@
+id,area,check,result,evidence
+PG01,proof-gate,git fetch --all --prune,PASS,remote state current
+PG02,proof-gate,TARGET == live remote tip,PASS,2c20d58c88a0a8f5175f4d11041d03b6ca785e06 == refs/heads/product-dev-recovered (unchanged since M0)
+PG03,proof-gate,SOURCE == live remote tip,PASS,7fdb7c59ae23cf3891a99420bebd60cb8802be06 == refs/heads/zcode/dc12r1-mvp-l1-he2-et1-r2-r2-r1-baseline-child-proof-truth-2026-08-29
+PG04,proof-gate,merge-base computed,PASS,6e9470a1daa5d6eece29724316fdd8aef6b737c1 (identical to M0 expected base)
+PG05,proof-gate,merge-base..TARGET file count,PASS,57
+PG06,proof-gate,merge-base..SOURCE file count,PASS,56
+PG07,proof-gate,path intersection == 0,PASS,comm -12 of sorted side lists = 0 paths
+MR01,merge-rehearsal,isolated worktree from exact TARGET,PASS,worktree ../he2et1_m1_rehearsal at 2c20d58c on temp branch integration/he2-et1-m1-rehearsal-2026-08-29
+MR02,merge-rehearsal,git merge --no-ff --no-edit SOURCE,PASS,exit 0
+MR03,merge-rehearsal,zero conflicts / zero manual edits,PASS,git status clean immediately post-merge
+MR04,merge-rehearsal,rehearsal merge SHA,PASS,ad3f0d244e3e28db0f3b1e17192a88d0112d1a04 (NOT pushed)
+MR05,merge-rehearsal,parents recorded,PASS,parent1=2c20d58c(TARGET) parent2=7fdb7c59(SOURCE)
+MR06,merge-rehearsal,tree SHA recorded,PASS,9d35b3018d60c04c7c91dadd38c6bae60d61becc
+MR07,merge-rehearsal,SOURCE blobs identical in merge tree,PASS,56/56 paths: git rev-parse SOURCE:path == merge:path
+MR08,merge-rehearsal,TARGET product files not deleted/overwritten,PASS,diff TARGET..merge = exactly 56 SOURCE paths; 0 of 57 TARGET paths changed; 0 backend/frontend/src/scenarios paths; 0 deletions
+GT01,gates,governance unittests on merge tree,PASS,158/158 OK (Python 3.12.10 / pytest 9.1.1 / psycopg 3.3.4)
+GT02,gates,RED mutation gate on merge tree,PASS,85 RED as intended (48 tamper + 1 mode proof + 2 validator-scope + 15 authority-e2e + 10 redis-authority + 9 module-binding)
+GT03,gates,GREEN controls on merge tree,PASS,9/9 controls GREEN incl. RS-C01 pristine module binding
+GT04,gates,tree integrity,PASS,digest identical before == after mutation gate
+GT05,gates,runner self-test,PASS,SELFTEST OK
+GT06,gates,live redis cases on merge tree,PASS,7/7 on fresh he2et1m1_redis7 DB15 + he2et1m1_pg16 (m1_gate rolsuper=f/rolcreatedb=t); GREEN rc=0 FINISHED sentinel=1 collect_spawns=1; 6 RED cases VOID sentinel=0
+GT07,gates,authority core chain on merge tree,PASS,8/8 cases PASS on the same fresh stack (runner + child = two real processes per CLI case)
+GT08,gates,structural validator,PASS,exit 0
+GT09,gates,release validator,PASS-as-expected,exit 3 RELEASE_GATE BLOCKED; attribution only pre-existing P0/P1 debt DEBT-AUTH-CRITICAL-TUPLES + DEBT-COMMERCE-CRITICAL-TUPLES
+GT10,gates,git diff --check,PASS,clean; no whitespace or conflict-marker errors
+GT11,gates,detect-secrets read-only hook,PASS,true exit code 0 (captured without pipe); baseline sha256 c8f3aa245b94d4f4... identical before/after the check
+GT12,gates,baseline integrity on merge tree,PASS,git diff --quiet 16ea089b..merge-tree -- .secrets.baseline rc 0 (R2-R2-R1 restoration carried through the merge)
+GT13,gates,strict encoding scan 113 touched paths,PASS,UTF-8; no BOM; no NUL; no CR; no U+FFFD
+GT14,gates,JSON parse,PASS,17/17 existing config+schema+inventory JSON (package.json/tsconfig.json absent at this root - not parse failures)
+GT15,gates,workflow YAML strict parse,PARTIAL-pre-existing,3/6 parse; s1-2-ci-gate.yml s2-7-ci-gates.yml s5-ci-gate.yml fail strict pyyaml; pre-existing at merge-base: blob-identical TARGET==SOURCE==merge and absent from both diff sides; same attribution as M0
+GT16,gates,product full-suite / Playwright,NOT-RUN,prohibited; not executed
+CL01,cleanup,rehearsal worktree removed,PASS,../he2et1_m1_rehearsal deleted
+CL02,cleanup,temp branch deleted,PASS,integration/he2-et1-m1-rehearsal-2026-08-29 deleted locally
+CL03,cleanup,no merge commit remote ref,PASS,git ls-remote origin | grep integration/he2-et1-m1 -> empty
+CL04,cleanup,E2E gate containers removed,PASS,docker rm -f -v he2et1m1_redis7 he2et1m1_pg16; 0 remaining; ports 15451/16384 CLOSED
+CL05,cleanup,report branch pushed local==remote,PASS,reports/dc12r1-mvp-l1-he2-et1-r2-r2-r1-m1-merge-readiness-rehearsal-2026-08-29 (see review.md for final SHA)
+CL06,cleanup,TARGET/SOURCE/protected refs unchanged,PASS,post-cleanup ls-remote re-verified identical to PG02/PG03 tips
+LIM01,limits,remote enforcement,NOT_VERIFIED,REMOTE_ENFORCEMENT_NOT_VERIFIED; no GitHub-side enforcement proven
+LIM02,limits,rehearsal merge push,NOT-PUSHED,ad3f0d24 exists only as a deleted local object; no remote ref ever created
+LIM03,limits,merge approval,NOT-CLAIMED,LOCAL_MERGE_READINESS_REHEARSAL_ONLY; no merge approval claimed or implied
+LIM04,limits,supersedes M0,NOTED,M0 report 58b8e2ac already SUPERSEDED_BY_HE2_ET1_R2_REDIS_AUTHORITY_DEFECT; M1 rehearses the full chain through R2-R2-R1

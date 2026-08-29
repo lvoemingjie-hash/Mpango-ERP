@@ -907,11 +907,15 @@ class RetailerProvisioningService:
         back the token and is logged sanitized (CTO constraint #3).
         """
         normalized = _normalize_email(email) or ""
-        retailer = await self._find_verified_retailer_for_wholesaler(
+        match = await self._find_verified_retailer_for_wholesaler(
             normalized=normalized, wholesaler_code=wholesaler_code
         )
-        if retailer is None:
+        if match is None:
             return False
+        # H2-C-R1: the reset email's public `w` code must be the CANONICAL
+        # wholesaler code from the matched DB row — never the caller's raw
+        # input casing (e.g. a lowercase request code).
+        retailer, canonical_wholesaler_code = match
         if not await self._retailer_has_established_password(retailer.id):
             return False
         now = _now()
@@ -939,7 +943,11 @@ class RetailerProvisioningService:
                 settings=self.settings,
                 to_email=retailer.email,
                 token=raw_token,
-                reset_link=build_retailer_reset_link(raw_token, self.settings),
+                reset_link=build_retailer_reset_link(
+                    raw_token,
+                    self.settings,
+                    wholesaler_code=canonical_wholesaler_code,
+                ),
             )
         except EmailDeliveryNotConfiguredError:
             # Roll back the token; log sanitized (no email/token/link). The API
@@ -995,15 +1003,20 @@ class RetailerProvisioningService:
 
     async def _find_verified_retailer_for_wholesaler(
         self, *, normalized: str, wholesaler_code: str
-    ) -> Optional[Retailer]:
-        """A match requires a verified-email retailer bound to that wholesaler."""
+    ) -> Optional[tuple[Retailer, str]]:
+        """A match requires a verified-email retailer bound to that wholesaler.
+
+        H2-C-R1: also returns the matched wholesaler's CANONICAL DB code so
+        downstream email links never echo the caller's raw input casing. The
+        match itself is case-insensitive (lower(w.code) = lower(:code)).
+        """
         if not normalized:
             return None
         row = (
             await self.db.execute(
                 text(
                     """
-                    SELECT r.id FROM public.retailers r
+                    SELECT r.id, w.code FROM public.retailers r
                     JOIN public.wholesaler_retailer_bindings b
                       ON b.retailer_id = r.id AND b.is_deleted = false
                     JOIN public.wholesalers w ON w.id = b.wholesaler_id
@@ -1024,7 +1037,10 @@ class RetailerProvisioningService:
         result = await self.db.execute(
             select(Retailer).where(Retailer.id == row[0]).execution_options(ignore_tenant=True)
         )
-        return result.scalar_one_or_none()
+        retailer = result.scalar_one_or_none()
+        if retailer is None:
+            return None
+        return retailer, row[1]
 
     # ------------------------------------------------------------------
     # Shared helpers

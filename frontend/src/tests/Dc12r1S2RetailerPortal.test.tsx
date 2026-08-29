@@ -204,6 +204,23 @@ describe('DC-12R1-S2 ClientLoginPage — invalid portal makes ZERO API calls', (
   });
 });
 
+// H2-C-R1: retailer recovery discovery entry — only a valid portal shows the
+// Forgot password link; the entry itself performs zero API calls.
+describe('H2-C-R1 ClientLoginPage — recovery discovery entry', () => {
+  it('valid portal shows the Forgot password entry carrying the normalized code', () => {
+    renderLoginPage(`?w=${PORTAL_CODE}`);
+    const link = screen.getByRole('link', { name: /forgot password\?/i });
+    expect(link).toHaveAttribute('href', `/retailer/forgot-password?w=${PORTAL_CODE}`);
+    expect(authService.retailerLogin).not.toHaveBeenCalled();
+  });
+
+  it('invalid portal hides the entry (neutral invalid-portal state only)', () => {
+    renderLoginPage('?w=BAD%21');
+    expect(screen.getByText(/invalid portal/i)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /forgot password\?/i })).toBeNull();
+  });
+});
+
 describe('DC-12R1-S2-R2 ClientLoginPage — fixed neutral 401 message', () => {
   async function submitLogin(portal: string) {
     renderLoginPage(`?w=${portal}`);

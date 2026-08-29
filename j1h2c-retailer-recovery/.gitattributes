@@ -1,0 +1,7 @@
+# Harness-local EOL portability contract (mirrors the j1h2b B1-R2 rule).
+#
+# Every text file under j1h2c-retailer-recovery/ MUST check out with LF
+# endings on EVERY host, overriding any core.autocrlf setting, so the strict
+# no-CR byte gate (tools/validate-static.mjs) fails for content reasons,
+# never host reasons.
+* text=auto eol=lf
